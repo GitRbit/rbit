@@ -156,6 +156,8 @@ pub struct ReleaseForm {
     pub notes: String,
     pub is_draft: bool,
     pub is_prerelease: bool,
+    /// The branch a new tag is created from (new releases only).
+    pub target: String,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -167,6 +169,8 @@ pub struct ReleaseFormPage {
     pub form: ReleaseForm,
     /// Existing tags, newest first, offered as suggestions.
     pub tags: Vec<String>,
+    /// Branches a new tag can be created from.
+    pub branches: Vec<String>,
     pub action_url: String,
     pub cancel_url: String,
     /// `false` when editing an existing release.

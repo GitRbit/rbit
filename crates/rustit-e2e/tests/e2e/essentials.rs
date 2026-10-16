@@ -115,6 +115,15 @@ async fn a_published_release_appears_on_the_releases_tab() {
     ]);
     anonymous.get("/alice/app").await.expect_contains(&["href=\"/alice/app/releases\"", "First"]);
     anonymous.get("/alice/app/releases/download/v1.0/nothing.zip").await.expect_status(StatusCode::NOT_FOUND);
+
+    // A release can create its tag from a branch.
+    alice
+        .post("/alice/app/releases/new", &[("tag", "v2.0"), ("target", Sample::BRANCH), ("name", ""), ("notes", ""), ("action", "publish")])
+        .await
+        .expect_redirect("/alice/app/releases/tag/v2.0");
+    let tagged = git.clone(&server.git_url("alice", "app"));
+    let feature = git.ok(&sample.dir, &["rev-parse", Sample::BRANCH]);
+    assert_eq!(git.ok(&tagged, &["rev-parse", "v2.0^{commit}"]).trim(), feature.trim());
 }
 
 #[tokio::test]

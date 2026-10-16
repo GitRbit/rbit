@@ -5,7 +5,7 @@
 {% block content %}
 <section class="mx-auto max-w-2xl">
   <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}New release{% else %}Edit release{% endif %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A release describes an existing tag. Push the tag first, then pick it here.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">A release describes a tag: its notes, and files to download.</p>
 
   <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
@@ -15,8 +15,18 @@
     <datalist id="release-tags">
       {% for tag in tags %}<option value="{{ tag }}"></option>{% endfor %}
     </datalist>
-    {% if tags.is_empty() %}
-    <p class="hint">This repository has no tags yet. Create one with <code class="font-mono">git tag v1.0 &amp;&amp; git push origin v1.0</code>.</p>
+    {% if is_new %}
+    <p class="hint">An existing <a class="link" href="{{ tags_url }}">tag</a>, or a new one created from the branch below.</p>
+
+    <label class="label mt-5" for="release-target">Create a new tag from <span class="font-normal text-ink-faint">used only when the tag does not exist</span></label>
+    <div class="relative">
+      <select class="input cursor-pointer appearance-none pr-9 font-mono text-xs" id="release-target" name="target">
+        {% for branch in branches %}
+        <option value="{{ branch }}" {% if *branch == form.target %}selected{% endif %}>{{ branch }}</option>
+        {% endfor %}
+      </select>
+      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+    </div>
     {% else %}
     <p class="hint">One of the repository's <a class="link" href="{{ tags_url }}">tags</a>.</p>
     {% endif %}

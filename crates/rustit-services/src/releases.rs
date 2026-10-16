@@ -7,7 +7,9 @@
 //! * Anyone who can read the repository sees its published releases; drafts are visible
 //!   to writers only (to everyone else a draft does not exist). Writers create, edit,
 //!   publish and delete releases.
-//! * A release names an **existing tag** of the repository, at most one release per tag.
+//! * A release names a tag of the repository, at most one release per tag. A new
+//!   release may create its tag from a branch or commit (`ReleaseInput::target`); the
+//!   new tag is reported like a push.
 //! * Publishing — creating a release as non-draft, or turning a draft into a release —
 //!   publishes [`DomainEvent::ReleasePublished`] once.
 //!
@@ -41,6 +43,7 @@ use rustit_core::{
     RepoId, Timestamp, User,
     release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseId, validate_asset_name, validate_release_name, validate_release_notes},
 };
+use rustit_git::GitError;
 use rustit_storage::sqlite::releases::{NewAsset, NewRelease, ReleaseChanges, ReleaseStore};
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -49,7 +52,7 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError};
+use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError};
 
 /// Releases per page of the releases list.
 pub const RELEASES_PER_PAGE: u32 = 10;
@@ -68,6 +71,9 @@ pub struct ReleaseInput {
     pub notes: String,
     pub is_draft: bool,
     pub is_prerelease: bool,
+    /// When creating a release for a tag that does not exist yet: the branch (or commit)
+    /// to create it from. Empty means the tag must already exist.
+    pub target: String,
 }
 
 /// A release with its attached files.
@@ -107,6 +113,8 @@ pub struct ReleaseService {
 #[derive(Debug)]
 struct Inner {
     ctx: ServiceContext,
+    /// Tags created for releases are reported like pushes.
+    pushes: PushService,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     started: AtomicBool,
@@ -115,7 +123,13 @@ struct Inner {
 impl ReleaseService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         Self {
-            inner: Arc::new(Inner { ctx, shutdown: CancellationToken::new(), tasks: TaskTracker::new(), started: AtomicBool::new(false) }),
+            inner: Arc::new(Inner {
+                pushes: PushService::new(ctx.clone()),
+                ctx,
+                shutdown: CancellationToken::new(),
+                tasks: TaskTracker::new(),
+                started: AtomicBool::new(false),
+            }),
         }
     }
 
@@ -179,16 +193,12 @@ impl ReleaseService {
         if repo.access.can_write() { Ok(()) } else { Err(ServiceError::Forbidden) }
     }
 
-    /// Validates `input` against the repository: the tag must exist, the title and notes
-    /// fit. Returns the trimmed tag and the title (the tag when left empty).
-    async fn validated(repo: &RepoContext, input: &ReleaseInput) -> Result<(String, String), ServiceError> {
+    /// Checks the text fields of `input`. Returns the trimmed tag and the title (the tag
+    /// when left empty).
+    fn validated_text(input: &ReleaseInput) -> Result<(String, String), ServiceError> {
         let tag = input.tag_name.trim();
         if tag.is_empty() {
             return Err(ServiceError::Invalid("choose the tag this release is for".to_owned()));
-        }
-        let snapshot = repo.reader.ref_snapshot().await?;
-        if snapshot.get(&format!("refs/tags/{tag}")).is_none() {
-            return Err(ServiceError::Invalid(format!("there is no tag called {tag}; push it first")));
         }
         let name = match input.name.trim() {
             "" => tag,
@@ -199,11 +209,51 @@ impl ReleaseService {
         Ok((tag.to_owned(), name.to_owned()))
     }
 
+    async fn tag_exists(repo: &RepoContext, tag: &str) -> Result<bool, ServiceError> {
+        Ok(repo.reader.ref_snapshot().await?.get(&format!("refs/tags/{tag}")).is_some())
+    }
+
+    /// [`Self::validated_text`], plus: the tag must exist.
+    async fn validated(repo: &RepoContext, input: &ReleaseInput) -> Result<(String, String), ServiceError> {
+        let (tag, name) = Self::validated_text(input)?;
+        if !Self::tag_exists(repo, &tag).await? {
+            return Err(ServiceError::Invalid(format!("there is no tag called {tag}; push it first")));
+        }
+        Ok((tag, name))
+    }
+
+    /// Creates tag `tag` at `target` for a new release, reported like a push of the tag
+    /// ([`DomainEvent::RepositoryPushed`]) so caches and webhooks see it.
+    async fn create_tag(&self, repo: &RepoContext, actor: &User, tag: &str, target: &str) -> Result<(), ServiceError> {
+        let pending = self.inner.pushes.begin(repo, Some(actor.id())).await;
+        match repo.reader.create_tag(tag.to_owned(), target.to_owned()).await {
+            Ok(_) => {
+                self.inner.pushes.complete(pending).await;
+                tracing::info!(repo = %repo.repo.full_name(), tag, target, "tag created for a release");
+                Ok(())
+            }
+            Err(GitError::InvalidBranchName(_)) => Err(ServiceError::Invalid(format!("{tag} is not a valid tag name"))),
+            Err(GitError::AlreadyExists) => Err(ServiceError::Conflict("the tag")),
+            Err(GitError::NotFound(_)) => Err(ServiceError::Invalid(format!("there is no branch or commit called {target}"))),
+            Err(other) => Err(other.into()),
+        }
+    }
+
     /// Creates a release; publishes [`DomainEvent::ReleasePublished`] unless it is a draft.
     pub async fn create(&self, repo: &RepoContext, actor: &User, input: ReleaseInput) -> Result<Release, ServiceError> {
         Self::require_writer(repo)?;
-        let (tag, name) = Self::validated(repo, &input).await?;
+        let (tag, name) = Self::validated_text(&input)?;
         let repo_id = repo.repo.repo.id;
+        if !Self::tag_exists(repo, &tag).await? {
+            let target = input.target.trim();
+            if target.is_empty() {
+                return Err(ServiceError::Invalid(format!("there is no tag called {tag}; push it or choose a branch to create it from")));
+            }
+            if self.store().find_by_tag(repo_id, &tag).await?.is_some() {
+                return Err(ServiceError::Conflict("a release for this tag"));
+            }
+            self.create_tag(repo, actor, &tag, target).await?;
+        }
         let id = self
             .store()
             .create(NewRelease {

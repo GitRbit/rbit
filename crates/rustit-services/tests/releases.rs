@@ -81,7 +81,14 @@ fn git(dir: &Path, args: &[&str]) {
 }
 
 fn input(tag: &str, draft: bool) -> ReleaseInput {
-    ReleaseInput { tag_name: tag.to_owned(), name: String::new(), notes: "Notes".to_owned(), is_draft: draft, is_prerelease: false }
+    ReleaseInput {
+        tag_name: tag.to_owned(),
+        name: String::new(),
+        notes: "Notes".to_owned(),
+        is_draft: draft,
+        is_prerelease: false,
+        target: String::new(),
+    }
 }
 
 #[tokio::test]
@@ -101,6 +108,31 @@ async fn releases_need_an_existing_unused_tag_and_writers() {
     let as_bob = fixture.open(Some(&bob)).await.unwrap();
     assert!(matches!(releases.create(&as_bob, &bob, input("v2", false)).await, Err(ServiceError::Forbidden)));
     assert!(matches!(releases.delete(&as_bob, created.id).await, Err(ServiceError::Forbidden)));
+}
+
+#[tokio::test]
+async fn a_release_can_create_its_tag_from_a_branch() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let repo = fixture.repo(&alice).await;
+    let releases = &fixture.services.releases;
+    let mut events = fixture.services.events.subscribe();
+
+    let new_tag = |tag: &str, target: &str| ReleaseInput { target: target.to_owned(), ..input(tag, false) };
+    let release = releases.create(&repo, &alice, new_tag("v3", "main")).await.unwrap();
+    assert_eq!(release.tag_name, "v3");
+    let main = repo.reader.commit_id("main".into()).await.unwrap();
+    assert_eq!(repo.reader.commit_id("v3".into()).await.unwrap(), main);
+    let DomainEvent::RepositoryPushed { updates, pusher, .. } = events.recv().await.unwrap() else {
+        panic!("the new tag is reported first")
+    };
+    assert_eq!((updates.len(), updates[0].tag(), pusher), (1, Some("v3"), Some(alice.id())));
+    assert!(matches!(events.recv().await.unwrap(), DomainEvent::ReleasePublished { .. }));
+
+    assert!(matches!(releases.create(&repo, &alice, new_tag("v4", "nope")).await, Err(ServiceError::Invalid(_))));
+    assert!(matches!(releases.create(&repo, &alice, new_tag("bad tag", "main")).await, Err(ServiceError::Invalid(_))));
+    // An existing tag is used as is; the target is ignored.
+    assert_eq!(releases.create(&repo, &alice, new_tag("v1", "nope")).await.unwrap().tag_name, "v1");
 }
 
 #[tokio::test]

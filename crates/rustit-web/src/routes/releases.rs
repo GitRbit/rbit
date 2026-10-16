@@ -189,6 +189,9 @@ pub struct ReleaseFormInput {
     #[serde(default)]
     notes: String,
     prerelease: Option<String>,
+    /// For a tag that does not exist yet: the branch to create it from.
+    #[serde(default)]
+    target: String,
     /// `draft` saves a draft; anything else publishes.
     #[serde(default)]
     action: String,
@@ -202,6 +205,7 @@ impl ReleaseFormInput {
             notes: self.notes.replace("\r\n", "\n"),
             is_draft: self.action == "draft",
             is_prerelease: self.prerelease.is_some(),
+            target: self.target,
         }
     }
 }
@@ -225,6 +229,7 @@ async fn form_page(
     editing: Option<(ReleaseId, bool)>,
 ) -> WebResult<ReleaseFormPage> {
     let urls = &loaded.urls;
+    let branches = loaded.refs().iter().filter(|r| r.kind == RefKind::Branch).map(|r| r.name.clone()).collect();
     let (title, action_url, cancel_url) = match editing {
         None => ("New release".to_owned(), format!("{}/new", urls.releases()), urls.releases()),
         Some((id, _)) => (format!("Edit {}", form.tag), urls.release_action(id.0, "edit"), urls.release(&form.tag)),
@@ -234,6 +239,7 @@ async fn form_page(
         header: loaded.header(state, "releases"),
         error: FormError::default(),
         tags: tag_names(loaded).await?,
+        branches,
         action_url,
         cancel_url,
         is_new: editing.is_none(),
@@ -250,6 +256,7 @@ fn form_values(input: &ReleaseInput) -> ReleaseForm {
         notes: input.notes.clone(),
         is_draft: input.is_draft,
         is_prerelease: input.is_prerelease,
+        target: input.target.clone(),
     }
 }
 
@@ -263,7 +270,8 @@ async fn new_form(
     Query(query): Query<NewQuery>,
 ) -> WebResult<ReleaseFormPage> {
     let loaded = load_for_writer(&state, &viewer, &owner, &repo).await?;
-    let mut form_page = form_page(&state, &loaded, page, ReleaseForm::default(), None).await?;
+    let form = ReleaseForm { target: loaded.default_branch().to_owned(), ..ReleaseForm::default() };
+    let mut form_page = form_page(&state, &loaded, page, form, None).await?;
     form_page.form.tag = query.tag.unwrap_or_else(|| form_page.tags.first().cloned().unwrap_or_default());
     Ok(form_page)
 }
@@ -319,6 +327,7 @@ async fn edit_form(
         notes: release.notes.clone(),
         is_draft: release.is_draft,
         is_prerelease: release.is_prerelease,
+        target: String::new(),
     };
     form_page(&state, &loaded, page, form, Some((release.id, !release.is_draft))).await
 }
