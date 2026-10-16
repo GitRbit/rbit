@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  <div class="grid size-10 place-items-center rounded-(--radius-ui) border border-line text-ink-muted">{% call ui::icon("smartphone", "size-5") %}{% endcall %}</div>
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">Two-factor authentication</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Enter the 6-digit code from your authenticator app.</p>
+
+  <form method="post" action="/login/two-factor" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <label class="label" for="code">Authentication code</label>
+    <input class="input font-mono tracking-widest" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123456" required autofocus>
+    <p class="hint">Lost your device? Enter one of your recovery codes instead.</p>
+
+    <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Verify</button>
+  </form>
+
+  <p class="mt-8 border-t border-line pt-6 text-[13px] text-ink-muted">Not you? <a href="/login" class="link">Sign in with a different account</a></p>
+</section>
+{% endblock %}

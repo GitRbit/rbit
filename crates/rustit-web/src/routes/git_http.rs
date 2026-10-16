@@ -6,6 +6,10 @@
 //! Suspended users are refused whichever credential they present.
 //! Anonymous users may fetch public repositories. When access is missing the server
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.
+//!
+//! Credentials are throttled per client address and per login (`429` + `Retry-After`).
+//! Accounts with two-factor authentication must use a personal access token: their
+//! password is refused with an explanation Git prints (`fatal: remote error: …`).
 
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
@@ -18,13 +22,13 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
 use rustit_core::{TokenScope, User};
-use rustit_services::{DomainEvent, RepoContext, ServiceError};
+use rustit_services::{DomainEvent, RepoContext, ServiceError, ThrottleScope, two_factor::GitPasswordOutcome};
 use rustit_transport::Service;
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
 use tokio_util::io::{ReaderStream, StreamReader};
 
-use crate::AppState;
+use crate::{AppState, client_ip::Client};
 
 #[derive(Debug, Deserialize)]
 pub struct InfoRefsQuery {
@@ -36,13 +40,16 @@ pub async fn info_refs(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<InfoRefsQuery>,
+    client: Client,
     headers: HeaderMap,
 ) -> Response {
     let Some(service) = query.service.as_deref().and_then(Service::from_wire_name) else {
         return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
     };
-    let ctx = match authorize(&state, &headers, &owner, &repo, service).await {
+    let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
         Ok(ctx) => ctx,
+        // The advertisement is the first request of every operation, so the message reaches the user.
+        Err(Denied::TokenRequired) => return remote_error(service, TOKEN_REQUIRED),
         Err(denied) => return denied.into_response(),
     };
 
@@ -57,23 +64,30 @@ pub async fn info_refs(
 }
 
 /// `POST /{owner}/{repo}.git/git-upload-pack` (fetch, clone)
-pub async fn upload_pack(state: State<AppState>, path: Path<(String, String)>, headers: HeaderMap, body: Body) -> Response {
-    run_service(state, path, headers, body, Service::UploadPack).await
+pub async fn upload_pack(state: State<AppState>, path: Path<(String, String)>, client: Client, headers: HeaderMap, body: Body) -> Response {
+    run_service(state, path, client, headers, body, Service::UploadPack).await
 }
 
 /// `POST /{owner}/{repo}.git/git-receive-pack` (push)
-pub async fn receive_pack(state: State<AppState>, path: Path<(String, String)>, headers: HeaderMap, body: Body) -> Response {
-    run_service(state, path, headers, body, Service::ReceivePack).await
+pub async fn receive_pack(
+    state: State<AppState>,
+    path: Path<(String, String)>,
+    client: Client,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    run_service(state, path, client, headers, body, Service::ReceivePack).await
 }
 
 async fn run_service(
     State(state): State<AppState>,
     Path((owner, repo)): Path<(String, String)>,
+    client: Client,
     headers: HeaderMap,
     body: Body,
     service: Service,
 ) -> Response {
-    let ctx = match authorize(&state, &headers, &owner, &repo, service).await {
+    let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
         Ok(ctx) => ctx,
         Err(denied) => return denied.into_response(),
     };
@@ -134,9 +148,20 @@ enum Denied {
     Forbidden,
     /// Correct credentials of a suspended user.
     Suspended,
+    /// The account password of a user with two-factor authentication.
+    TokenRequired,
+    /// Too many attempts from this client or against this login.
+    RateLimited {
+        retry_after_seconds: u64,
+    },
     NotFound,
     Internal,
 }
+
+/// Shown by Git when an account with two-factor authentication offers its password.
+const TOKEN_REQUIRED: &str = "two-factor authentication is enabled for this account, so its password cannot be used \
+                              with Git. Create a personal access token under Settings > Access tokens and use it as the \
+                              password.";
 
 impl IntoResponse for Denied {
     fn into_response(self) -> Response {
@@ -149,10 +174,25 @@ impl IntoResponse for Denied {
                 .into_response(),
             Self::Forbidden => (StatusCode::FORBIDDEN, "you do not have permission to push to this repository").into_response(),
             Self::Suspended => (StatusCode::FORBIDDEN, "this account has been suspended").into_response(),
+            Self::TokenRequired => (StatusCode::FORBIDDEN, TOKEN_REQUIRED).into_response(),
+            Self::RateLimited { retry_after_seconds } => (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(header::RETRY_AFTER, retry_after_seconds.to_string())],
+                format!("too many authentication attempts; try again in {retry_after_seconds} seconds"),
+            )
+                .into_response(),
             Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
+}
+
+/// A ref advertisement consisting of a single `ERR` packet: Git aborts and prints
+/// `fatal: remote error: <message>`, which plain HTTP error bodies never achieve.
+fn remote_error(service: Service, message: &str) -> Response {
+    let payload = format!("ERR {message}\n");
+    let packet = format!("{:04x}{payload}", payload.len() + 4);
+    ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], packet).into_response()
 }
 
 /// Who is making a Git request, and how far their credential reaches.
@@ -165,8 +205,15 @@ struct GitCaller {
 }
 
 /// Resolves credentials and checks that they grant `service` on the repository.
-async fn authorize(state: &AppState, headers: &HeaderMap, owner: &str, repo: &str, service: Service) -> Result<RepoContext, Denied> {
-    let caller = authenticate(state, headers).await?;
+async fn authorize(
+    state: &AppState,
+    client: &Client,
+    headers: &HeaderMap,
+    owner: &str,
+    repo: &str,
+    service: Service,
+) -> Result<RepoContext, Denied> {
+    let caller = authenticate(state, client, headers).await?;
     let user = caller.as_ref().map(|caller| &caller.user);
 
     let mut ctx = match state.services.repositories.open(user, owner, repo).await {
@@ -194,25 +241,35 @@ async fn authorize(state: &AppState, headers: &HeaderMap, owner: &str, repo: &st
 
 /// `Ok(None)` for anonymous requests; a challenge for wrong credentials.
 /// A password that looks like a personal access token is checked as one, never as a password.
-async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<Option<GitCaller>, Denied> {
+async fn authenticate(state: &AppState, client: &Client, headers: &HeaderMap) -> Result<Option<GitCaller>, Denied> {
     let Some((login, password)) = basic_credentials(headers) else {
         return Ok(None);
     };
     if AccessTokenSecret::looks_like_token(&password) {
+        // Tokens are unguessable, but a client spraying them still spends its budget.
+        let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
+        if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check(ThrottleScope::GitAuth, &ip) {
+            return Err(Denied::RateLimited { retry_after_seconds });
+        }
         // The token identifies its owner on its own; Git's username is ignored.
         return match state.services.tokens.authenticate(&password).await {
             Ok(Some((user, scope))) => Ok(Some(GitCaller { user, token_scope: Some(scope) })),
-            Ok(None) => Err(Denied::Challenge),
+            Ok(None) => {
+                state.services.throttle.record_failure(ThrottleScope::GitAuth, &ip);
+                Err(Denied::Challenge)
+            }
             Err(error) => {
                 tracing::error!(%error, "git token authentication failed");
                 Err(Denied::Internal)
             }
         };
     }
-    match state.services.accounts.authenticate(&login, password).await {
-        Ok(user) => Ok(Some(GitCaller { user, token_scope: None })),
+    match state.services.authenticate_git_password(&login, password, &client.0).await {
+        Ok(GitPasswordOutcome::Authenticated(user)) => Ok(Some(GitCaller { user, token_scope: None })),
+        Ok(GitPasswordOutcome::TokenRequired) => Err(Denied::TokenRequired),
         Err(ServiceError::InvalidCredentials) => Err(Denied::Challenge),
         Err(ServiceError::Forbidden) => Err(Denied::Suspended),
+        Err(ServiceError::RateLimited { retry_after_seconds }) => Err(Denied::RateLimited { retry_after_seconds }),
         Err(error) => {
             tracing::error!(%error, "git authentication failed");
             Err(Denied::Internal)
@@ -237,5 +294,21 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(header::AUTHORIZATION, HeaderValue::from_static("Basic YWxpY2U6czNjcjN0OndpdGg6Y29sb25z"));
         assert_eq!(basic_credentials(&headers), Some(("alice".into(), "s3cr3t:with:colons".into())));
+    }
+
+    #[tokio::test]
+    async fn remote_errors_are_single_err_packets() {
+        let response = remote_error(Service::UploadPack, "use a token");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/x-git-upload-pack-advertisement");
+        let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], b"0014ERR use a token\n");
+    }
+
+    #[test]
+    fn throttled_credentials_carry_retry_after() {
+        let response = Denied::RateLimited { retry_after_seconds: 12 }.into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()[header::RETRY_AFTER], "12");
     }
 }
