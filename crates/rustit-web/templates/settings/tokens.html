@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">Access tokens</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink">{{ username }}</span> and paste the token when Git asks for a password.</p>
+<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink">/api/v1</span> takes it as <span class="font-mono text-ink">Authorization: Bearer</span>.</p>
 
 {% if let Some(created) = created %}
 {#- hx-history="false" keeps this page (and the secret) out of htmx's localStorage history cache. -#}
@@ -35,20 +35,15 @@
     <fieldset class="mt-5">
       <legend class="label">Scope</legend>
       <div class="box overflow-hidden">
-        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
-          <input type="radio" name="scope" value="read" class="mt-1 accent-(--ink)" {% if !form.write_scope %}checked{% endif %}>
+        {% for choice in form.scope_choices %}
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="scope" value="{{ choice.value }}" class="mt-1 accent-(--ink)" {% if choice.selected %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Read</span>
-            <span class="block text-[13px] text-ink-muted">Clone and fetch.</span>
+            <span class="block font-medium">{{ choice.label }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ choice.description }}</span>
           </span>
         </label>
-        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
-          <input type="radio" name="scope" value="write" class="mt-1 accent-(--ink)" {% if form.write_scope %}checked{% endif %}>
-          <span>
-            <span class="block font-medium">Write</span>
-            <span class="block text-[13px] text-ink-muted">Clone, fetch and push.</span>
-          </span>
-        </label>
+        {% endfor %}
       </div>
       <p class="hint">A token can never do more than your account can.</p>
     </fieldset>

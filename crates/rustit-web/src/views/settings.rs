@@ -307,9 +307,39 @@ impl TokenRow {
 }
 
 const fn scope_label(scope: TokenScope) -> &'static str {
+    scope.label()
+}
+
+/// What each scope allows, as the create form explains it.
+const fn scope_description(scope: TokenScope) -> &'static str {
     match scope {
-        TokenScope::Read => "Read",
-        TokenScope::Write => "Write",
+        TokenScope::Read => "Clone and fetch; read through the API.",
+        TokenScope::Write => "Also push, create repositories and star through the API.",
+        TokenScope::Admin => "Also change repository settings and webhooks, and delete repositories through the API.",
+    }
+}
+
+/// One radio button of the scope picker.
+#[derive(Debug, Clone)]
+pub struct ScopeChoice {
+    pub value: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub selected: bool,
+}
+
+impl ScopeChoice {
+    /// Every scope, weakest first, with `selected` preselected.
+    pub fn list(selected: TokenScope) -> Vec<Self> {
+        TokenScope::ALL
+            .into_iter()
+            .map(|scope| Self {
+                value: scope.as_str(),
+                label: scope.label(),
+                description: scope_description(scope),
+                selected: scope == selected,
+            })
+            .collect()
     }
 }
 
@@ -358,19 +388,23 @@ pub fn parse_expiry(value: &str, choices: &[Option<u32>]) -> Option<Option<u32>>
 #[derive(Debug, Clone)]
 pub struct TokenForm {
     pub name: String,
-    pub write_scope: bool,
+    pub scope_choices: Vec<ScopeChoice>,
     pub expiry_choices: Vec<ExpiryChoice>,
 }
 
 impl TokenForm {
     pub fn blank(choices: &[Option<u32>]) -> Self {
-        Self { name: String::new(), write_scope: false, expiry_choices: ExpiryChoice::list(choices, DEFAULT_EXPIRY) }
+        Self {
+            name: String::new(),
+            scope_choices: ScopeChoice::list(TokenScope::default()),
+            expiry_choices: ExpiryChoice::list(choices, DEFAULT_EXPIRY),
+        }
     }
 
     pub fn submitted(name: String, scope: TokenScope, expiry: Option<Option<u32>>, choices: &[Option<u32>]) -> Self {
         Self {
             name,
-            write_scope: scope == TokenScope::Write,
+            scope_choices: ScopeChoice::list(scope),
             expiry_choices: ExpiryChoice::list(choices, expiry.unwrap_or(DEFAULT_EXPIRY)),
         }
     }
@@ -477,6 +511,22 @@ mod tests {
         assert_eq!(parse_expiry("90", CHOICES), Some(Some(90)));
         assert_eq!(parse_expiry("12", CHOICES), None);
         assert_eq!(parse_expiry("soon", CHOICES), None);
+    }
+
+    #[test]
+    fn scope_choices_offer_every_scope_once() {
+        let blank = TokenForm::blank(CHOICES);
+        let values: Vec<_> = blank.scope_choices.iter().map(|choice| choice.value).collect();
+        assert_eq!(values, ["read", "write", "admin"]);
+        let selected: Vec<_> = blank.scope_choices.iter().filter(|choice| choice.selected).map(|choice| choice.value).collect();
+        assert_eq!(selected, ["read"], "read is the default");
+
+        let submitted = TokenForm::submitted("ops".to_owned(), TokenScope::Admin, None, CHOICES);
+        let selected: Vec<_> = submitted.scope_choices.iter().filter(|choice| choice.selected).map(|choice| choice.label).collect();
+        assert_eq!(selected, ["Admin"]);
+        for choice in &submitted.scope_choices {
+            assert_eq!(TokenScope::parse(choice.value).map(TokenScope::label), Some(choice.label));
+        }
     }
 
     #[test]

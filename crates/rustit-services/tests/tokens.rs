@@ -130,6 +130,20 @@ async fn read_scope_limits_write_access_to_read() {
 }
 
 #[tokio::test]
+async fn admin_scope_reaches_administration_but_never_beyond_the_owner() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let (token, secret) = fixture.tokens().create(&alice, input("ops", TokenScope::Admin)).await.unwrap();
+    assert_eq!(token.scope, TokenScope::Admin);
+
+    let (_, scope) = fixture.tokens().authenticate(&secret).await.unwrap().unwrap();
+    assert_eq!(scope, TokenScope::Admin);
+    assert!(scope.limit(RepoAccess::Admin).can_admin());
+    assert_eq!(scope.limit(RepoAccess::Write), RepoAccess::Write);
+    assert_eq!(scope.limit(RepoAccess::None), RepoAccess::None);
+}
+
+#[tokio::test]
 async fn validates_input() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice").await;

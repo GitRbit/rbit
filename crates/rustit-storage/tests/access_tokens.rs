@@ -104,3 +104,50 @@ async fn touch_is_throttled_to_once_an_hour() {
     store.touch(token.id, Timestamp(1_000_000 + 3_600)).await.unwrap();
     assert_eq!(last_used().await, Some(Timestamp(1_000_000 + 3_600)));
 }
+
+#[tokio::test]
+async fn admin_scope_is_stored() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let alice = create_user(&database, "alice").await;
+    let admin = NewAccessToken { scope: TokenScope::Admin, ..new_token(&alice, "ops", 1) };
+    assert_eq!(database.access_tokens().create(admin).await.unwrap().scope, TokenScope::Admin);
+    let (found, _) = database.access_tokens().find_by_digest(&[1; 32]).await.unwrap().unwrap();
+    assert_eq!(found.scope, TokenScope::Admin);
+}
+
+/// Migration 0012 rebuilds the table to allow `admin`; tokens created before it keep their
+/// ids, digests and timestamps.
+#[tokio::test]
+async fn upgrading_keeps_existing_tokens() {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rustit.db");
+    let options = SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(true);
+    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(options).await.unwrap();
+    sqlx::migrate!("./migrations").run_to(11, &pool).await.unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO accounts (id, kind, name, created_at, updated_at) VALUES (7, 'user', 'alice', 1, 1); \
+         INSERT INTO user_logins (account_id, email, password_hash) VALUES (7, 'alice@example.com', 'x'); \
+         INSERT INTO access_tokens (id, account_id, name, token_digest, hint, scope, created_at, last_used_at, expires_at) \
+         VALUES (42, 7, 'laptop', X'0505050505050505050505050505050505050505050505050505050505050505', 'abcd', 'write', 100, 200, 4000000000);",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    let database = Database::open(&path).await.unwrap();
+    let (token, owner) = database.access_tokens().find_by_digest(&[5; 32]).await.unwrap().unwrap();
+    assert_eq!(token.id, AccessTokenId(42));
+    assert_eq!((token.name.as_str(), token.scope), ("laptop", TokenScope::Write));
+    assert_eq!(
+        (token.created_at, token.last_used_at, token.expires_at),
+        (Timestamp(100), Some(Timestamp(200)), Some(Timestamp(4_000_000_000)))
+    );
+    assert_eq!(owner.name().as_str(), "alice");
+    assert_eq!(database.access_tokens().list_for_account(owner.id()).await.unwrap().len(), 1);
+    let admin = NewAccessToken { scope: TokenScope::Admin, ..new_token(&owner, "ops", 6) };
+    database.access_tokens().create(admin).await.unwrap();
+}

@@ -57,6 +57,22 @@ async fn token_scopes_cap_git_access_and_revocation_is_immediate() {
 }
 
 #[tokio::test]
+async fn admin_tokens_are_offered_and_push_like_write_tokens() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "ops", "private").await;
+    alice.get("/settings/tokens").await.expect_status(StatusCode::OK).expect_contains(&["value=\"admin\""]);
+
+    let admin = alice.create_token("ops-admin", "admin").await;
+    alice.get("/settings/tokens").await.expect_contains(&["ops-admin", ">Admin<"]);
+    let sample = git.sample();
+    git.push_sample(&sample, &server.git_url_as("alice", "ops", "alice", &admin));
+    let clone = git.clone(&server.git_url_as("alice", "ops", "alice", &admin));
+    assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
+}
+
+#[tokio::test]
 async fn tokens_belong_to_their_owner() {
     let server = TestServer::start();
     let alice = server.sign_up("alice").await;

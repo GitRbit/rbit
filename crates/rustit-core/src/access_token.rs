@@ -1,4 +1,4 @@
-//! Personal access tokens: long-lived credentials for Git over HTTPS and (later) the API.
+//! Personal access tokens: long-lived credentials for Git over HTTPS and the REST API.
 
 use crate::{AccountId, RepoAccess, Timestamp};
 
@@ -6,20 +6,28 @@ use crate::{AccountId, RepoAccess, Timestamp};
 pub struct AccessTokenId(pub i64);
 
 /// What a token may do. A token never grants more than its owner has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// Scopes are ordered: each one includes everything the previous one allows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum TokenScope {
-    /// Clone and fetch.
+    /// Clone and fetch; API reads (`GET`) only.
     #[default]
     Read,
-    /// Clone, fetch and push.
+    /// Also push, and API changes that need write access (creating repositories, starring).
     Write,
+    /// Also repository settings, webhooks and deletion.
+    Admin,
 }
 
 impl TokenScope {
+    /// Every scope, in increasing order of power (the order the tokens page lists them).
+    pub const ALL: [Self; 3] = [Self::Read, Self::Write, Self::Admin];
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Read => "read",
             Self::Write => "write",
+            Self::Admin => "admin",
         }
     }
 
@@ -27,7 +35,16 @@ impl TokenScope {
         match value {
             "read" => Some(Self::Read),
             "write" => Some(Self::Write),
+            "admin" => Some(Self::Admin),
             _ => None,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Read => "Read",
+            Self::Write => "Write",
+            Self::Admin => "Admin",
         }
     }
 
@@ -36,8 +53,14 @@ impl TokenScope {
         let ceiling = match self {
             Self::Read => RepoAccess::Read,
             Self::Write => RepoAccess::Write,
+            Self::Admin => RepoAccess::Admin,
         };
         access.min(ceiling)
+    }
+
+    /// Whether this scope includes `required`.
+    pub fn allows(self, required: Self) -> bool {
+        self >= required
     }
 }
 
@@ -71,5 +94,21 @@ mod tests {
         assert_eq!(TokenScope::Write.limit(RepoAccess::Admin), RepoAccess::Write);
         assert_eq!(TokenScope::Write.limit(RepoAccess::Read), RepoAccess::Read);
         assert_eq!(TokenScope::Write.limit(RepoAccess::None), RepoAccess::None);
+        assert_eq!(TokenScope::Admin.limit(RepoAccess::Admin), RepoAccess::Admin);
+        assert_eq!(TokenScope::Admin.limit(RepoAccess::Write), RepoAccess::Write, "never more than the owner has");
+        assert_eq!(TokenScope::Admin.limit(RepoAccess::None), RepoAccess::None);
+    }
+
+    #[test]
+    fn scopes_round_trip_and_include_weaker_ones() {
+        for scope in TokenScope::ALL {
+            assert_eq!(TokenScope::parse(scope.as_str()), Some(scope));
+            assert!(scope.allows(TokenScope::Read));
+            assert!(scope.allows(scope));
+        }
+        assert_eq!(TokenScope::parse("ADMIN"), None);
+        assert!(!TokenScope::Read.allows(TokenScope::Write));
+        assert!(!TokenScope::Write.allows(TokenScope::Admin));
+        assert!(TokenScope::Admin.allows(TokenScope::Write));
     }
 }
