@@ -277,16 +277,29 @@ shadows, 6px radius, dense 13–14px type, underline tabs, inverted primary butt
 
 | Token | Light | Dark |
 |---|---|---|
-| `--canvas` / `--surface` | #ffffff / #ffffff | #000000 / #0a0a0a |
-| `--subtle` / `--hover` | #fafafa / #f2f2f2 | #111111 / #1a1a1a |
-| `--line` / `--line-strong` | #ebebeb / #d4d4d4 | #1f1f1f / #333333 |
-| `--ink` / `--ink-muted` / `--ink-faint` | #0a0a0a / #666666 / #8f8f8f | #ededed / #a1a1a1 / #6e6e6e |
+| `--canvas` (page) / `--surface` (containers) | #f7f7f7 / #ffffff | #000000 / #0d0d0d |
+| `--subtle` / `--hover` | #fafafa / #f0f0f0 | #141414 / #1c1c1c |
+| `--line` / `--line-strong` | #e3e3e3 / #cccccc | #2a2a2a / #3d3d3d |
+| `--ink` / `--ink-muted` / `--ink-faint` | #0a0a0a / #5c5c5c / #787878 | #ededed / #a3a3a3 / #7a7a7a |
 | `--inverted` (primary buttons) | #0a0a0a | #ededed |
 
 Every token is defined once with CSS `light-dark()`, so components never need `dark:`
-variants. The theme follows `prefers-color-scheme`; a toggle pins a choice (`data-theme`
-on `<html>`, persisted in `localStorage`). `scrollbar-gutter: stable` keeps page width
-identical whether or not a page scrolls.
+variants, and components use only tokens — never literal colours. Two elevation levels:
+the page `--canvas` and containers `--surface`, separated by a `--line` that stays visible
+in every theme. `scrollbar-gutter: stable` keeps page width identical whether or not a
+page scrolls.
+
+**Themes.** The active theme is `<html data-theme="SLUG">` (plus `data-scheme` with its
+light/dark variant): none follows the OS, `light` / `dark` pin the built-in monochrome
+themes, and `base16-…` / `base24-…` are ~500 [tinted-theming](https://github.com/tinted-theming/schemes)
+schemes mapped onto the same tokens by `npm run themes <schemes-checkout>` (generated,
+committed: `assets/themes/*.css`, `src/themes/catalog.rs`, `assets/themes/LICENSE.txt`).
+Theme selectors are scoped (`[data-theme="…"]`), so gallery preview cards render in their
+own theme. The choice lives in the `rustit-theme` cookie, which the server reads to render
+the attribute and the single ~600-byte theme stylesheet into the first byte of HTML — no
+flash, no blocking script. Signed-in users' choices are also stored (`user_preferences`)
+and restored into the cookie on sign-in. `/themes` (and Settings → Appearance) is the
+gallery: by family and variant, searchable, live preview on hover, plain-form fallback.
 
 **Components** (`styles/app.css`): `.box`, `.box-header`, `.row`, `.btn` (`-primary`,
 `-ghost`, `-danger`, `-icon`), `.input`, `.label`, `.hint`, `.badge`, `.tab`, `.menu`,
