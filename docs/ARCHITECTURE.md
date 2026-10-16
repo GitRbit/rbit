@@ -109,9 +109,12 @@ roles), `AccessTokenService`, `ProfileService`, `RepoSettingsService`, `StarServ
 settings), `AdminService` (statistics, moderation), `ThrottleService` (rate limits),
 `TwoFactorService`, `AuditService`, `MailService`, `RecoveryService` (password reset, email
 verification), `SshKeyService` and `JobService` (background work). Services communicate
-through an in-process `EventBus` of `DomainEvent`s (`RepositoryPushed`, `UserSignedUp`,
-`PasswordChanged`, `EmailChanged`), so producers never depend on reactions such as cache
-warming, session revocation or verification email. This is the only
+through an in-process `EventBus` of `DomainEvent`s (`RepositoryPushed` with the pusher and
+the ref updates, repository created/deleted/transferred/forked, `ReleasePublished`,
+`UserSignedUp`, `PasswordChanged`, `EmailChanged`), so producers never depend on reactions
+such as cache warming, session revocation, verification email or webhooks. Both Git
+transports report pushes through `PushService`, which diffs ref snapshots taken before and
+after `receive-pack` (it runs without hooks). This is the only
 layer that combines storage, git and auth. It is HTTP-agnostic so a future REST/GraphQL
 API, CLI admin commands and background jobs all reuse it.
 

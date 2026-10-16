@@ -138,8 +138,9 @@ as two waves because pull requests reuse the issue timeline/comment infrastructu
 | **Pull requests** | Compare branches (incl. forks), PR timeline on the issue model, review comments on diff lines, approvals/changes requested, merge strategies (merge commit, squash, rebase) executed safely on a temporary worktree, conflict detection, required checks placeholder. |
 | **Branch protection** | Protected branch rules (no force-push, required reviews, restrict pushers) enforced in both HTTP and SSH receive paths (pre-receive check), UI under repository settings. |
 
-Before launching each wave: write `docs/design/milestone-2.md` (contracts, file
-ownership, reserved migrations `0009+`), pre-wire stubs on `main`, then follow §4.
+**Wave A is prepared:** [design/milestone-2.md](design/milestone-2.md) holds the contracts,
+file ownership and reserved migrations (`0009`–`0015`), and every stub is pre-wired on
+`main`. Launch the three agents as in §4. Wave B gets its own contract after A merges.
 
 ## 6. Decisions on record
 
