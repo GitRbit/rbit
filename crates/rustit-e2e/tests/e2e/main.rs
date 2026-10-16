@@ -4,6 +4,7 @@
 
 mod accounts;
 mod compatibility;
+mod edge;
 mod harness;
 mod orgs;
 mod repositories;
