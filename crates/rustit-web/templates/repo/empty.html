@@ -7,10 +7,21 @@
   <h1 class="text-xl font-semibold tracking-tight">This repository is empty</h1>
   <p class="mt-1 text-[13px] text-ink-muted">Push an existing project, or start a new one from the command line.</p>
 
-  <div class="mt-6 flex">
+  {% if header.ssh_clone_url.is_some() %}
+  <p class="mb-2 mt-6 text-xs font-medium text-ink-muted">HTTPS</p>
+  {% endif %}
+  <div class="{% if header.ssh_clone_url.is_none() %}mt-6 {% endif %}flex">
     <input id="clone-url-setup" class="input rounded-r-none font-mono text-xs" value="{{ header.clone_url }}" readonly aria-label="Repository URL">
     <button type="button" class="btn btn-icon -ml-px h-10 w-10 rounded-l-none sm:h-9 sm:w-9" data-copy="clone-url-setup" aria-label="Copy repository URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
   </div>
+  {% if let Some(ssh_url) = header.ssh_clone_url %}
+  <p class="mb-2 mt-4 text-xs font-medium text-ink-muted">SSH</p>
+  <div class="flex">
+    <input id="ssh-clone-url-setup" class="input rounded-r-none font-mono text-xs" value="{{ ssh_url }}" readonly aria-label="SSH repository URL">
+    <button type="button" class="btn btn-icon -ml-px h-10 w-10 rounded-l-none sm:h-9 sm:w-9" data-copy="ssh-clone-url-setup" aria-label="Copy SSH repository URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+  </div>
+  <p class="hint">The commands below use HTTPS. To push over SSH, use the SSH URL instead and add a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
+  {% endif %}
 
   <div class="box mt-6 overflow-hidden">
     <div class="box-header text-[13px] font-medium">Create a new repository</div>

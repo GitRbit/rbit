@@ -72,6 +72,7 @@ impl RepoPage {
             is_private: !repo.repo.visibility.is_public(),
             owner_avatar: Avatar::for_account(&repo.owner),
             clone_url: format!("{}/{}.git", state.config.server.base_url(), repo.full_name()),
+            ssh_clone_url: state.config.ssh.enabled.then(|| state.config.ssh.clone_url(&state.config.server, &repo.full_name())),
             home_url: self.urls.home(),
             commits_url: self.urls.commits(&landing),
             branches_url: self.urls.branches(),

@@ -19,7 +19,10 @@ pub struct RepoHeader {
     pub description: Option<String>,
     pub is_private: bool,
     pub owner_avatar: Avatar,
+    /// The HTTPS (or HTTP) clone URL.
     pub clone_url: String,
+    /// The SSH clone URL, when the SSH server is enabled.
+    pub ssh_clone_url: Option<String>,
     pub home_url: String,
     pub commits_url: String,
     pub branches_url: String,

@@ -25,6 +25,14 @@
           <input id="clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
           <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
+        {% if let Some(ssh_url) = header.ssh_clone_url %}
+        <p class="mb-2 mt-3 text-xs font-medium text-ink-muted">SSH</p>
+        <div class="flex">
+          <input id="ssh-clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="SSH clone URL">
+          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="ssh-clone-url" aria-label="Copy SSH clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+        </div>
+        <p class="mt-2 text-xs text-ink-faint">SSH needs a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
+        {% endif %}
       </div>
     </details>
   </div>
