@@ -72,13 +72,19 @@ impl ProfileStore {
     }
 
     /// [`StorageError::Conflict`] (`"email"`) if another user already uses `email`.
+    ///
+    /// A different address starts out unverified; re-entering the same one (in any letter
+    /// case) keeps its verification.
     pub async fn set_email(&self, account_id: AccountId, email: &Email) -> Result<(), StorageError> {
-        sqlx::query("UPDATE user_logins SET email = ? WHERE account_id = ?")
-            .bind(email.as_str())
-            .bind(account_id.0)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "email"))?;
+        sqlx::query(
+            "UPDATE user_logins SET email = ?1, \
+             email_verified_at = CASE WHEN email = ?1 THEN email_verified_at ELSE NULL END WHERE account_id = ?2",
+        )
+        .bind(email.as_str())
+        .bind(account_id.0)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| StorageError::from_insert(e, "email"))?;
         Ok(())
     }
 
