@@ -28,31 +28,36 @@ When the code and this document disagree, fix one of them.
 ```
 Rustit/
 ├── Cargo.toml                 # workspace: shared deps, lints, release profile
-├── package.json               # Tailwind v4 CLI + htmx (build-time only)
-├── config/rustit.example.toml
-├── docs/ARCHITECTURE.md
+├── rustfmt.toml               # formatting standard (checked in CI)
+├── package.json               # Tailwind v4 CLI, htmx, icon rendering (build-time only)
+├── Dockerfile, deploy/        # container image, systemd unit, example production config
+├── .github/workflows/ci.yml   # fmt, clippy -D warnings, tests (Linux + Windows), builds
+├── docs/                      # ARCHITECTURE.md, deployment.md, design/ (per-phase contracts)
 └── crates/
-    ├── rustit-core/           # Domain model. No I/O, no async.
+    ├── rustit-core/           # Domain model and configuration. No I/O, no async.
     ├── rustit-storage/        # SQLite (relational) + redb (key/value) persistence
-    ├── rustit-auth/           # Password hashing, session tokens, permission rules
-    ├── rustit-git/            # Repository read model & management on top of gitoxide
-    ├── rustit-transport/      # Git smart-HTTP protocol (SSH planned)
-    ├── rustit-services/       # Application use-cases orchestrating the layers below
-    ├── rustit-web/            # Axum router, handlers, Askama templates, static assets
-    └── rustit-server/         # The `rustit` binary: CLI, config, wiring, shutdown
+    ├── rustit-auth/           # Passwords, session/token secrets, TOTP, permission rules
+    ├── rustit-git/            # Repository read model, diffs, languages, maintenance (gitoxide)
+    ├── rustit-transport/      # Git smart protocol: stateless (HTTP) and interactive (SSH)
+    ├── rustit-services/       # Application use-cases, domain events, background jobs
+    ├── rustit-mail/           # Email rendering (Askama) and delivery (SMTP, log)
+    ├── rustit-ssh/            # Built-in SSH server (russh) for Git over SSH
+    ├── rustit-web/            # Axum router, handlers, Askama templates, assets, metrics
+    ├── rustit-server/         # The `rustit` binary: CLI, config, wiring, backups, shutdown
+    └── rustit-e2e/            # End-to-end and Git compatibility tests (test-only)
 ```
 
 ### Dependency graph
 
 ```
-                 rustit-server (bin)
-                        │
-                    rustit-web ──────────────┐
-                        │                    │
-                 rustit-services      rustit-transport
-          ┌─────────┬───┴─────┬─────────┐    │
-   rustit-storage rustit-auth rustit-git ◄───┘
-          └─────────┴────┬────┴─────────┘
+                    rustit-server (bin)
+                   ┌────────┴─────────┐
+              rustit-web          rustit-ssh
+                   └────────┬─────────┘
+             rustit-services ─────── rustit-transport
+     ┌──────────┬───────┼─────────┬────────────┐
+rustit-storage rustit-auth rustit-git rustit-mail
+     └──────────┴───────┬─────────┴────────────┘
                     rustit-core
 ```
 
@@ -71,20 +76,29 @@ and the shared `Config` model. Pure Rust, trivially unit-testable.
 - `kv/` — a `redb` database with typed table definitions. Used for sessions and derived,
   rebuildable data (caches). Everything in redb can be lost without losing user data.
 
-**`rustit-auth`** — `PasswordHasher` (Argon2id, OWASP parameters), `SessionToken`
-(256-bit random, only its SHA-256 digest is persisted), and `AccessPolicy` (who may read,
-write or administer a repository).
+**`rustit-auth`** — `PasswordHasher` (Argon2id, OWASP parameters), `SessionToken` and
+`AccessTokenSecret` (256-bit random, only SHA-256 digests are persisted), TOTP (RFC 6238,
+own implementation verified against the RFC test vectors) with recovery codes, and the
+`repo_access` policy (who may read, write or administer a repository).
 
 **`rustit-git`** — `RepositoryStorage` (where bare repos live on disk, creation, deletion)
 and `RepositoryReader` (refs, trees, blobs, commit history) built on **gitoxide** (`gix`).
 Repos are always opened with *isolated* options: no system/global config, no hooks
 executed on read.
 
-**`rustit-transport`** — The Git smart-HTTP protocol (`info/refs`, `git-upload-pack`,
-`git-receive-pack`) behind a `GitTransport` trait. The current implementation
-(`ProcessTransport`) streams to `git upload-pack/receive-pack --stateless-rpc`, which is
-battle-tested and supports protocol v2. A pure-Rust gitoxide transport can replace it
-without touching any caller.
+**`rustit-transport`** — The Git smart protocol. `ProcessTransport` runs
+`git upload-pack/receive-pack` with a scrubbed environment in two modes: *stateless*
+(`--stateless-rpc`, for HTTP `info/refs` and POSTs) and *interactive* (one bidirectional
+conversation with exit status, for SSH). Both stream; pack data is never buffered. A
+pure-Rust gitoxide transport could replace it without touching callers.
+
+**`rustit-ssh`** — The built-in SSH server (russh): public-key authentication against user
+SSH keys and repository deploy keys, strictly parsed `git-upload-pack` / `git-receive-pack`
+exec requests, the same authorisation as HTTP, connection limits, throttled failures, and
+no shells, PTYs or forwarding. The Ed25519 host key is generated on first start.
+
+**`rustit-mail`** — A `Mailer` trait with SMTP (lettre over rustls), log and disabled
+transports; every message is rendered from Askama templates with text and HTML parts.
 
 **`rustit-services`** — Use-cases with business rules, one service per area, all built from
 a shared `ServiceContext` (config, database, key/value store, repository storage):
@@ -92,7 +106,12 @@ a shared `ServiceContext` (config, database, key/value store, repository storage
 membership-aware access, listings, explore search), `OrgService` (organisations, members,
 roles), `AccessTokenService`, `ProfileService`, `RepoSettingsService`, `StarService`,
 `InsightsService` (languages, last commit per entry, cached), `InstanceService` (runtime
-settings) and `AdminService` (statistics, moderation). This is the only
+settings), `AdminService` (statistics, moderation), `ThrottleService` (rate limits),
+`TwoFactorService`, `AuditService`, `MailService`, `RecoveryService` (password reset, email
+verification), `SshKeyService` and `JobService` (background work). Services communicate
+through an in-process `EventBus` of `DomainEvent`s (`RepositoryPushed`, `UserSignedUp`,
+`PasswordChanged`, `EmailChanged`), so producers never depend on reactions such as cache
+warming, session revocation or verification email. This is the only
 layer that combines storage, git and auth. It is HTTP-agnostic so a future REST/GraphQL
 API, CLI admin commands and background jobs all reuse it.
 
@@ -103,15 +122,18 @@ rustit-web/src/
 ├── state.rs            # AppState (cheaply cloneable Arc)
 ├── error.rs            # WebError → status page / HTMX-friendly response
 ├── assets.rs           # embedded static files with content-hash cache busting
-├── extract/            # CurrentUser, MaybeUser, HtmxRequest extractors
-├── middleware/         # security headers, CSRF origin check
-├── routes/             # one module per area: home, auth, repo, git_http, pwa
+├── client_ip.rs        # ClientIp (trusted-proxy aware), Https detection
+├── metrics.rs          # request metrics (Prometheus)
+├── extract.rs          # Viewer, SignedIn, SiteAdmin, Page extractors
+├── middleware.rs       # sessions, rate limiting, security headers, CSRF origin check
+├── routes/             # one module per area; each feature exposes its own routes()
 ├── views/              # view models + Askama template structs
 └── templates/          # *.html (Askama), organised by area
 ```
 
-**`rustit-server`** — `clap` CLI (`serve`, `migrate`, `user create`), layered config
-(`figment`: defaults → TOML file → `RUSTIT_*` env), tracing setup, graceful shutdown.
+**`rustit-server`** — `clap` CLI (`serve`, `migrate`, `backup`, `user create`), layered
+config (`figment`: defaults → TOML file → `RUSTIT_*` env), tracing and metrics setup, the
+SSH server and background jobs, graceful shutdown.
 
 ---
 
@@ -152,10 +174,20 @@ stars              account_id → accounts, repo_id → repositories, created_at
 access_tokens      id, account_id → accounts, name, token_digest BLOB UNIQUE, hint, scope(read|write),
                    created_at, last_used_at, expires_at
 instance_settings  key PRIMARY KEY, value, updated_at       (administrator overrides of config defaults)
+two_factor         account_id → accounts, secret, created_at, confirmed_at, last_used_step (replay guard)
+recovery_codes     account_id → accounts, code_digest, used_at
+audit_events       id, created_at, category, action, actor_id, actor_name, target_name, ip_address, detail
+email_tokens       digest PRIMARY KEY, account_id → accounts, purpose(reset|verify), email, created_at,
+                   expires_at, used_at                       (+ user_logins.email_verified_at)
+ssh_keys           id, account_id → accounts, title, public_key, algorithm, fingerprint UNIQUE,
+                   created_at, last_used_at
+deploy_keys        id, repo_id → repositories, title, public_key, algorithm, fingerprint UNIQUE,
+                   read_only, created_at, last_used_at
 ```
 
 Migrations live in `crates/rustit-storage/migrations/` and are embedded in the binary
-(`0001_initial` … `0005_profiles_and_stars`).
+(`0001_initial` … `0008_ssh_keys`). Secrets (passwords, sessions, tokens, recovery codes,
+email links) are only ever stored hashed.
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
 (`/rustit` can be either). Timestamps are Unix seconds (`INTEGER`).
@@ -164,9 +196,11 @@ Users and organisations share one namespace (`accounts`), exactly like GitHub UR
 
 | Table | Key → Value | Purpose |
 |---|---|---|
-| `sessions` | `sha256(token)` → `SessionRecord { account_id, expires_at }` | Login sessions. A leaked DB never leaks usable cookies. |
+| `sessions_v2` | `sha256(token)` → session record (account, expiry, created, last seen, client) | Login sessions. A leaked DB never leaks usable cookies. |
+| `account_sessions` | `(account id, sha256(token))` → `()` | Lists and revokes an account's sessions (sign out everywhere, password changes). |
 | `language_stats` | `commit id` → language shares | Language bar. Content-addressed, so never stale (and shared by forks). |
 | `tree_last_commit` | `(commit id, directory)` → `name → commit summary` | "Last commit" column in tree views. Results cut short by the time budget are not cached. |
+| `insights_entry_written`, `insights_entries_by_age` | entry → write time, and the reverse | Age- and size-based pruning of the two insights caches by background maintenance. |
 
 ### 3.5 Runtime instance settings
 
@@ -181,13 +215,17 @@ and served from memory by `InstanceService` (a synchronous snapshot per request)
 
 ```
 TCP → hyper → tower layers:
-  TraceLayer → CompressionLayer(br, gzip, zstd) → TimeoutLayer
-  → SecurityHeaders → CsrfOriginCheck (unsafe methods only)
+  TraceLayer → metrics::track (route template, status, latency)
 → Router
-  ├── /assets/*            immutable, content-hashed, embedded in the binary
-  ├── /sw.js, /manifest.webmanifest
-  ├── /{owner}/{repo}.git/… smart HTTP (Basic auth; streaming bodies)
-  └── HTML routes          extractors resolve the session → handler → service → view model → Askama
+  ├── /assets/*, /sw.js, /manifest.webmanifest   immutable, content-hashed, embedded
+  ├── /healthz, /readyz, /metrics                operations (metrics optional, token-gated)
+  ├── /{owner}/{repo}.git/…                       smart HTTP (Basic auth or token; throttled; streaming)
+  └── HTML routes
+        Compression → Timeout → body limit (1 MiB) → SecurityHeaders → CsrfOriginCheck
+        → rate_limit (unsafe requests, per client address) → session → error pages
+        → extractors → handler → service → view model → Askama
+
+SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/receive-pack
 ```
 
 **HTMX conventions**
@@ -213,6 +251,13 @@ TCP → hyper → tower layers:
 | Git config injection | Repos opened with isolated gix options; transport processes run with a scrubbed environment and `GIT_CONFIG_NOSYSTEM=1`. |
 | Enumeration | Private repositories return **404**, never 403, to unauthorised viewers. |
 | Headers | `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`, `Permissions-Policy`. |
+| Two-factor | TOTP (RFC 6238, ±1 step, each code accepted once), confirmed at enrolment; 10 single-use recovery codes stored hashed; disabling requires password + code. Enrolled accounts must use access tokens for Git over HTTP. |
+| Brute force | `ThrottleService` budgets per scope (sign-in, sign-up, 2FA, Git auth, SSH auth, email requests) keyed by account and by client address (larger shared budget); failures cost extra, success resets; 429 with `Retry-After`. Form posts are limited per address. |
+| Client address | `X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` are honoured only from `[security] trusted_proxies`. |
+| Sessions | Listed per account; revoke one or all others; all other sessions end when the password changes. |
+| Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
+| SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
+| Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`). |
 
 ---
 
@@ -290,7 +335,8 @@ identical whether or not a page scrolls.
 |---|---|
 | **1 — Foundation** ✓ | Accounts, sessions, repository create/browse, code/tree/blob/commits views, smart-HTTP clone & push, README rendering, syntax highlighting, PWA shell, light/dark theme. |
 | **2 — Collaboration** ✓ | Commit diffs, branches/tags pages, personal access tokens, organisations with roles, stars, language breakdown, last commit per entry, user/repository settings, administration panel, runtime instance settings, suspension. |
-| 2.5 — Next | Teams within organisations, collaborators on personal repositories, repository transfer, SSH transport (`russh`), email (verification, password reset), avatars. |
+| **M1 — Safe to self-host** ✓ | Rate limiting, trusted proxies, session management, TOTP two-factor, audit log, email (SMTP) with password reset and verification, SSH server with user and deploy keys, background jobs and maintenance, metrics and health checks, backups, Docker/systemd/CI, end-to-end and property tests. |
+| M2 — A real forge | Collaborators and teams, issues, pull requests with review and merge strategies, branch protection, webhooks and a REST API, releases, archives, blame, forks and mirrors. |
 | 3 — Workflow | Issues, labels, milestones, pull requests with merge strategies, code review. |
 | 4 — Platform | Webhooks, REST API (+ OpenAPI), actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |

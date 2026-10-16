@@ -26,6 +26,8 @@ min_password_length = 12
 # Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
 # the reverse proxy's address; anything broader lets clients spoof their IP address.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
+# Throttle sign-in, sign-up, 2FA, Git credentials, email requests and form posts.
+rate_limit = true
 
 [repository]
 default_branch = "main"
@@ -37,11 +39,28 @@ max_render_bytes = 1048576
 # "disabled" (password reset and verification explain that email is unavailable),
 # "log" (development) or "smtp" (see the [mail] reference for the relay settings).
 transport = "disabled"
+# from_address = "git@example.com"
+# from_name = ""                  # blank: the site name
+# smtp_host = "smtp.example.com"
+# smtp_port = 587                 # default 587 (starttls/none) or 465 (tls)
+# smtp_security = "starttls"      # "starttls" (required), "tls" or "none"
+# smtp_username = "rustit"
+# smtp_password = "…"             # prefer RUSTIT_MAIL__SMTP_PASSWORD in the environment
+# timeout_seconds = 30
 
 [ssh]
 # Built-in SSH server for git@… clone URLs.
 enabled = false
 bind = "0.0.0.0:2222"
+# Host and port shown in clone URLs (port 22 gives git@host:owner/repo.git).
+# public_host = "git.example.com"
+# public_port = 22
+# host_key_path = "/var/lib/rustit/ssh/host_ed25519"   # generated on first start
+# max_connections = 256
+# max_connections_per_ip = 16
+# auth_timeout_seconds = 30
+# idle_timeout_seconds = 300
+# max_session_seconds = 3600
 
 [operations]
 # Prometheus metrics at /metrics. Keep the endpoint private: set a token, or block
