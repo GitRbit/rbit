@@ -18,6 +18,7 @@ tracing.workspace = true
 getrandom.workspace = true
 metrics.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
+ssh-key.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
