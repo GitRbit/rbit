@@ -27,7 +27,8 @@ pub async fn index(State(state): State<AppState>, viewer: Viewer, page: Page) ->
     let recent = super::listing::repo_cards(&state, &repositories.recent_public(RECENT_ON_HOME).await?).await?;
 
     let Some(user) = viewer.user() else {
-        return Ok(LandingPage { page, recent }.into_response());
+        let counts = state.services.instance.public_counts().await?;
+        return Ok(LandingPage { page, recent, counts }.into_response());
     };
     let repos = super::listing::repo_cards(&state, &repositories.list_for_dashboard(user).await?).await?;
     let orgs = state.services.orgs.memberships(user).await?.iter().map(OrgLink::from).collect();

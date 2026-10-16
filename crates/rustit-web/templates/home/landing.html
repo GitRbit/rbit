@@ -1,43 +1,78 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="flex flex-col gap-6 border-b border-line pb-8 sm:flex-row sm:items-end sm:justify-between">
-  <div>
-    <h1 class="text-2xl font-semibold tracking-tight">{{ page.site_name }}</h1>
-    <p class="mt-1.5 max-w-lg text-ink-muted">A self-hosted Git server. Browse public repositories below, or sign in to host your own.</p>
-  </div>
-  <div class="flex gap-2">
-    <a href="/login" class="btn">Sign in</a>
-    <a href="/signup" class="btn btn-primary">Create account</a>
-  </div>
+<section class="flex flex-col items-center pb-10 pt-4 text-center sm:pb-14 sm:pt-12">
+  <span class="tile size-12">{% call ui::logo("size-6") %}{% endcall %}</span>
+  <h1 class="mt-6 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{{ page.site_name }}</h1>
+  <p class="mt-3 max-w-md text-[15px] text-ink-muted text-balance">Self-hosted Git that stays out of your way. Fast to browse, simple to run, and yours.</p>
+
+  <form method="get" action="/explore" role="search" class="mt-8 flex w-full max-w-md gap-2">
+    <div class="relative min-w-0 flex-1">
+      {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+      <input class="input pl-9" type="search" name="q" maxlength="100" placeholder="Search public repositories" aria-label="Search public repositories" autocapitalize="none" spellcheck="false">
+    </div>
+    <button class="btn h-10 sm:h-9" type="submit">Search</button>
+  </form>
+  <a href="/explore" class="mt-4 inline-flex items-center gap-1 text-[13px] text-ink-muted hover:text-ink">
+    {% call ui::icon("compass", "size-3.5") %}{% endcall %}Explore all repositories{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}
+  </a>
 </section>
 
-<section class="mt-8">
-  <div class="mb-3 flex items-center justify-between">
-    <h2 class="text-[13px] font-medium text-ink-muted">Recently updated</h2>
-    <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">View all</a>
+<dl class="grid grid-cols-3 gap-px overflow-hidden rounded-(--radius-ui) border border-line bg-line" aria-label="This instance">
+  {% for stat in stats() %}
+  <div class="flex flex-col-reverse items-center gap-0.5 bg-surface px-2 py-4 sm:items-start sm:px-5">
+    <dt class="text-xs text-ink-muted">{{ stat.label }}</dt>
+    <dd class="text-xl font-semibold tracking-tight tabular-nums">{{ stat.value }}</dd>
   </div>
-  <div class="box">
+  {% endfor %}
+</dl>
+
+<div class="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+  <section class="box self-start" aria-labelledby="recent-title">
+    <div class="box-header justify-between">
+      <h2 id="recent-title" class="box-title">Recently updated</h2>
+      <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">View all</a>
+    </div>
     {% if recent.is_empty() %}
     {% call ui::empty_state("repo", "No public repositories yet", "Repositories made public on this server will appear here.") %}{% endcall %}
+    {% if is_fresh() %}
+    <p class="-mt-6 px-6 pb-10 text-center text-xs text-ink-faint">This server has no accounts yet. The first account to sign up becomes its administrator.</p>
+    {% endif %}
     {% else %}
     <ul>{% for repo in recent %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
     {% endif %}
-  </div>
-</section>
+  </section>
 
-<section class="mt-8 grid gap-px overflow-hidden rounded-(--radius-ui) border border-line bg-line sm:grid-cols-3">
-  <div class="bg-surface p-4">
-    <p class="font-medium">Clone over HTTPS</p>
-    <p class="mt-1 text-[13px] text-ink-muted">Standard Git smart-HTTP with protocol v2. Works with every client.</p>
-  </div>
-  <div class="bg-surface p-4">
-    <p class="font-medium">One binary</p>
-    <p class="mt-1 text-[13px] text-ink-muted">SQLite, an embedded key/value store and plain bare repositories.</p>
-  </div>
-  <div class="bg-surface p-4">
-    <p class="font-medium">Installable</p>
-    <p class="mt-1 text-[13px] text-ink-muted">Responsive on any screen and installable as an app.</p>
-  </div>
-</section>
+  <section class="box self-start" aria-labelledby="features-title">
+    <div class="box-header">
+      <h2 id="features-title" class="box-title">Built for self-hosting</h2>
+    </div>
+    <ul>
+      <li class="flex gap-3 border-b border-line px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("zap", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">One fast binary</p><p class="mt-0.5 text-[13px] text-ink-muted">SQLite and an embedded store. No other services to install or run.</p></div>
+      </li>
+      <li class="flex gap-3 border-b border-line px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("terminal", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">Git over HTTPS and SSH</p><p class="mt-0.5 text-[13px] text-ink-muted">Smart HTTP with protocol v2, a built-in SSH server and deploy keys.</p></div>
+      </li>
+      <li class="flex gap-3 border-b border-line px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("users", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">Organizations and teams</p><p class="mt-0.5 text-[13px] text-ink-muted">Share repositories with teams and collaborators, role by role.</p></div>
+      </li>
+      <li class="flex gap-3 border-b border-line px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("package", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">Releases, mirrors and webhooks</p><p class="mt-0.5 text-[13px] text-ink-muted">Publish releases, mirror upstream projects and notify other services.</p></div>
+      </li>
+      <li class="flex gap-3 border-b border-line px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("shield", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">Secure by default</p><p class="mt-0.5 text-[13px] text-ink-muted">Two-factor sign-in, scoped access tokens and an audit log.</p></div>
+      </li>
+      <li class="flex gap-3 px-4 py-3.5">
+        <span class="tile size-8 text-ink-muted">{% call ui::icon("smartphone", "size-4") %}{% endcall %}</span>
+        <div class="min-w-0"><p class="text-[13px] font-medium">On every screen</p><p class="mt-0.5 text-[13px] text-ink-muted">Responsive down to phone size and installable as an app.</p></div>
+      </li>
+    </ul>
+  </section>
+</div>
 {% endblock %}

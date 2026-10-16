@@ -1,70 +1,108 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-  <section>
-    <div class="mb-3 flex h-8 items-center justify-between">
-      <h1 class="text-[13px] font-medium text-ink-muted">Repositories</h1>
-      <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New</a>
-    </div>
-    <div class="box">
-      {% if repos.is_empty() %}
-      {% call ui::empty_state("repo", "No repositories yet", "Create a repository to start hosting code on this server.") %}{% endcall %}
-      <div class="-mt-8 flex justify-center pb-10"><a href="/new" class="btn">Create repository</a></div>
-      {% else %}
-      <ul>{% for repo in repos %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
+<script type="module" src="{{ page.asset("filter.js") }}"></script>
+
+<header class="mb-6 flex items-center gap-3">
+  {% if let Some(user) = page.viewer %}
+  {% call ui::avatar(user.avatar, "size-10 text-[13px]") %}{% endcall %}
+  <div class="min-w-0 flex-1">
+    <h1 class="truncate text-lg font-semibold tracking-tight">{{ user.label }}</h1>
+    <p class="truncate text-[13px] text-ink-muted">{% if user.label != user.name %}{{ user.name }} · {% endif %}<a href="/{{ user.name }}" class="hover:text-ink">View profile</a></p>
+  </div>
+  {% endif %}
+  <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}<span>New<span class="hidden sm:inline"> repository</span></span></a>
+</header>
+
+<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+  <section class="box self-start" aria-labelledby="repos-title">
+    <div class="box-header flex-wrap gap-y-2 py-2">
+      <h2 id="repos-title" class="box-title">Repositories</h2>
+      <span class="badge tabular-nums" id="dashboard-repos-count" title="{{ private_count() }} private">{{ repos.len() }}</span>
+      {% if !repos.is_empty() %}
+      <div class="relative order-last w-full sm:order-none sm:ml-auto sm:w-56">
+        {% call ui::icon("search", "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+        <input class="input h-9 pl-8 text-[13px] sm:h-8" type="search" placeholder="Find a repository…" aria-label="Filter your repositories" aria-controls="dashboard-repos" autocapitalize="none" spellcheck="false" autocomplete="off" data-filter="dashboard-repos" data-filter-count="dashboard-repos-count">
+      </div>
       {% endif %}
     </div>
+    {% if repos.is_empty() %}
+    {% call ui::empty_state("repo", "No repositories yet", "Create a repository to start hosting code on this server.") %}{% endcall %}
+    <div class="-mt-8 flex justify-center pb-10"><a href="/new" class="btn">Create repository</a></div>
+    {% else %}
+    <ul id="dashboard-repos" class="filter-list">
+      {% for repo in repos %}
+      <li class="border-b border-line" data-filter-text="{{ Self::filter_text(repo) }}">
+        <a href="{{ repo.url }}" class="flex items-start gap-3 px-4 py-3 hover:bg-subtle">
+          {% if repo.is_private %}{% call ui::icon("lock", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}{% else %}{% call ui::icon("repo", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}{% endif %}
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
+              {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
+            </div>
+            {% if let Some(description) = repo.description %}
+            <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted sm:line-clamp-1">{{ description }}</p>
+            {% endif %}
+          </div>
+          <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
+            {% if repo.star_count > 0 %}<span class="flex items-center gap-1" title="{{ repo.star_count }} stars">{% call ui::icon("star", "size-3") %}{% endcall %}{{ repo.star_count }}</span>{% endif %}
+            <time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+      <li class="px-4 py-10 text-center text-[13px] text-ink-muted" data-filter-empty hidden>No repositories match your filter.</li>
+    </ul>
+    {% endif %}
   </section>
 
-  <aside class="flex flex-col gap-8">
-    <section aria-labelledby="orgs-title">
-      <div class="mb-3 flex h-8 items-center justify-between">
-        <h2 id="orgs-title" class="text-[13px] font-medium text-ink-muted">Organizations</h2>
-        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New</a>{% endif %}
+  <aside class="flex flex-col gap-6">
+    <section class="box" aria-labelledby="orgs-title">
+      <div class="box-header">
+        <h2 id="orgs-title" class="box-title">Organizations</h2>
+        {% if !orgs.is_empty() %}<span class="badge tabular-nums">{{ orgs.len() }}</span>{% endif %}
+        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost btn-icon -mr-2 ml-auto" aria-label="New organization" title="New organization">{% call ui::icon("plus", "size-4") %}{% endcall %}</a>{% endif %}
       </div>
-      <div class="box">
-        {% if orgs.is_empty() %}
-        <p class="px-4 py-6 text-center text-[13px] text-ink-muted">
-          You are not a member of any organization.
-          {% if can_create_org %}<a href="/organizations/new" class="link">Create one</a> to share repositories with a team.{% endif %}
-        </p>
-        {% else %}
-        <ul>
-          {% for org in orgs %}
-          <li class="border-b border-line last:border-b-0">
-            <a href="{{ org.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
-              {% call ui::avatar(org.avatar, "size-5 rounded text-[9px]") %}{% endcall %}
-              <span class="min-w-0 flex-1 truncate text-[13px]">{{ org.label }}</span>
-              <span class="shrink-0 text-xs text-ink-faint">{{ org.role_label }}</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-      </div>
+      {% if orgs.is_empty() %}
+      <p class="px-4 py-6 text-center text-[13px] text-ink-muted">
+        You are not a member of any organization.
+        {% if can_create_org %}<a href="/organizations/new" class="link">Create one</a> to share repositories with a team.{% endif %}
+      </p>
+      {% else %}
+      <ul>
+        {% for org in orgs %}
+        <li class="border-b border-line last:border-b-0">
+          <a href="{{ org.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
+            {% call ui::avatar(org.avatar, "size-5 rounded text-[9px]") %}{% endcall %}
+            <span class="min-w-0 flex-1 truncate text-[13px]">{{ org.label }}</span>
+            <span class="shrink-0 text-xs text-ink-faint">{{ org.role_label }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </section>
 
-    <section aria-labelledby="recent-title">
-      <div class="mb-3 flex h-8 items-center">
-        <h2 id="recent-title" class="text-[13px] font-medium text-ink-muted">Recently updated</h2>
+    <section class="box" aria-labelledby="recent-title">
+      <div class="box-header justify-between">
+        <h2 id="recent-title" class="box-title">Recently updated</h2>
+        <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">Explore</a>
       </div>
-      <div class="box">
-        {% if recent.is_empty() %}
-        <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Nothing public yet.</p>
-        {% else %}
-        <ul>
-          {% for repo in recent %}
-          <li class="border-b border-line last:border-b-0">
-            <a href="{{ repo.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
-              {% call ui::avatar(repo.owner_avatar, "size-5 text-[9px]") %}{% endcall %}
-              <span class="truncate text-[13px]"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-        {% endif %}
-      </div>
+      {% if recent.is_empty() %}
+      <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Nothing public yet.</p>
+      {% else %}
+      <ul>
+        {% for repo in recent %}
+        <li class="border-b border-line last:border-b-0">
+          <a href="{{ repo.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
+            {% call ui::avatar(repo.owner_avatar, "size-5 text-[9px]") %}{% endcall %}
+            <span class="min-w-0 flex-1 truncate text-[13px]"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
+            <time class="shrink-0 text-xs text-ink-faint" datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </section>
   </aside>
 </div>
