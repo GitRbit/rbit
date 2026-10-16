@@ -1,9 +1,22 @@
 //! Runtime configuration. Loaded by the server binary from defaults, an optional TOML
 //! file, and `RUSTIT_*` environment variables (later sources win).
+//!
+//! Each `[section]` of the TOML file is one struct. Larger areas live in their own
+//! submodule so they can evolve independently.
+
+mod mail;
+mod operations;
+mod security;
+mod ssh;
 
 use std::{net::SocketAddr, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+pub use mail::{MailConfig, MailTransport};
+pub use operations::OperationsConfig;
+pub use security::SecurityConfig;
+pub use ssh::SshConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -12,6 +25,9 @@ pub struct Config {
     pub storage: StorageConfig,
     pub security: SecurityConfig,
     pub repository: RepositoryConfig,
+    pub mail: MailConfig,
+    pub ssh: SshConfig,
+    pub operations: OperationsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,21 +90,6 @@ impl StorageConfig {
 
     pub fn repositories_dir(&self) -> PathBuf {
         self.data_dir.join("repositories")
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SecurityConfig {
-    /// How long a session stays valid without activity, in days.
-    pub session_lifetime_days: u32,
-    /// Minimum password length accepted at sign-up.
-    pub min_password_length: usize,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self { session_lifetime_days: 30, min_password_length: 10 }
     }
 }
 
