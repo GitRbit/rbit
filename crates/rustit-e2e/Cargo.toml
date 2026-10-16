@@ -21,6 +21,10 @@ tempfile.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+# W: API responses and verifying webhook signatures independently of the server's code.
+serde_json.workspace = true
+hmac.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

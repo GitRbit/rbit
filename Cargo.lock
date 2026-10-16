@@ -4399,11 +4399,14 @@ name = "rustit-e2e"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hmac",
  "reqwest",
  "rustit-core",
  "rustit-services",
  "rustit-storage",
  "rustit-web",
+ "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
 ]
