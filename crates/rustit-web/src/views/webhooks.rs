@@ -102,6 +102,18 @@ impl StatusBadge {
     fn for_last(last: &LastDelivery) -> Self {
         Self::new(last.status, last.response_status)
     }
+
+    /// Like [`Self::new`], but a pending delivery that already failed says it is retrying.
+    fn for_delivery(delivery: &Delivery) -> Self {
+        let mut badge = Self::new(delivery.status, delivery.response_status);
+        if delivery.status == DeliveryStatus::Pending && delivery.attempts > 0 {
+            badge.label = match delivery.response_status {
+                Some(code) => format!("Retrying · {code}"),
+                None => "Retrying".to_owned(),
+            };
+        }
+        badge
+    }
 }
 
 // ------------------------------------------------------------------ list
@@ -232,7 +244,7 @@ impl DeliveryRow {
         Self {
             guid: delivery.guid.clone(),
             event: event_name(delivery),
-            status: StatusBadge::new(delivery.status, delivery.response_status),
+            status: StatusBadge::for_delivery(delivery),
             when: at.relative(),
             when_iso: at.iso8601(),
             duration: delivery.duration_ms.map(|ms| format!("{ms} ms")).unwrap_or_default(),
@@ -380,7 +392,7 @@ impl DeliveryPage {
             hook_url,
             guid: delivery.guid.clone(),
             event: event_name(delivery),
-            status: StatusBadge::new(delivery.status, delivery.response_status),
+            status: StatusBadge::for_delivery(delivery),
             attempts: delivery.attempts,
             created: delivery.created_at.relative(),
             created_iso: delivery.created_at.iso8601(),
@@ -502,7 +514,10 @@ mod tests {
         assert_eq!(page.redeliver_url, "/ada/demo/settings/hooks/4/deliveries/9/redeliver");
         assert_eq!(page.response_body, None, "an empty body is not shown");
         assert_eq!(page.next_attempt, None);
-        assert_eq!(DeliveryRow::new("/x", &delivery(DeliveryStatus::Pending, None)).status.label, "Pending");
+        assert_eq!(DeliveryRow::new("/x", &delivery(DeliveryStatus::Pending, None)).status.label, "Retrying", "two attempts were made");
+        let fresh = Delivery { attempts: 0, ..delivery(DeliveryStatus::Pending, None) };
+        assert_eq!(DeliveryRow::new("/x", &fresh).status.label, "Pending");
+        assert_eq!(DeliveryRow::new("/x", &delivery(DeliveryStatus::Pending, Some(502))).status.label, "Retrying · 502");
     }
 
     fn page() -> Page {
