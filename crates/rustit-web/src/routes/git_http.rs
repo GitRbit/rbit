@@ -18,7 +18,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
 use rustit_core::{TokenScope, User};
-use rustit_services::{RepoContext, ServiceError};
+use rustit_services::{DomainEvent, RepoContext, ServiceError};
 use rustit_transport::Service;
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
@@ -89,13 +89,16 @@ async fn run_service(
 
     if service.is_write() {
         let repositories = state.services.repositories.clone();
+        let events = state.services.events.clone();
         let repo_id = ctx.repo.repo.id;
         tokio::spawn(async move {
-            if session_succeeded(session.completion).await
-                && let Err(error) = repositories.record_push(repo_id).await
-            {
+            if !session_succeeded(session.completion).await {
+                return;
+            }
+            if let Err(error) = repositories.record_push(repo_id).await {
                 tracing::warn!(%error, "failed to record push");
             }
+            events.publish(DomainEvent::RepositoryPushed { repo: repo_id });
         });
     }
 

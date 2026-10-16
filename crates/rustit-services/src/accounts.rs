@@ -10,7 +10,7 @@ use rustit_auth::{Passwords, SessionToken};
 use rustit_core::{Account, AccountId, AccountName, Config, Email, RegistrationMode, Timestamp, User};
 use rustit_storage::{AccountStore, NewUser, SessionRecord, SessionStore};
 
-use crate::{InstanceService, ServiceError};
+use crate::{DomainEvent, EventBus, InstanceService, ServiceError};
 
 /// Upper bound on password length: Argon2 accepts more, but unbounded input invites denial of service.
 const MAX_PASSWORD_LEN: usize = 256;
@@ -29,11 +29,18 @@ pub struct AccountService {
     accounts: AccountStore,
     sessions: SessionStore,
     instance: InstanceService,
+    events: EventBus,
 }
 
 impl AccountService {
-    pub(crate) fn new(config: Arc<Config>, accounts: AccountStore, sessions: SessionStore, instance: InstanceService) -> Self {
-        Self { config, accounts, sessions, instance }
+    pub(crate) fn new(
+        config: Arc<Config>,
+        accounts: AccountStore,
+        sessions: SessionStore,
+        instance: InstanceService,
+        events: EventBus,
+    ) -> Self {
+        Self { config, accounts, sessions, instance, events }
     }
 
     /// Whether the public sign-up form is available (an instance setting administrators
@@ -54,7 +61,9 @@ impl AccountService {
     /// Creates a user regardless of the registration setting (admin CLI, admin panel).
     /// `is_admin = None` applies the "first user is admin" rule.
     pub async fn create_user(&self, input: SignUp, is_admin: Option<bool>) -> Result<User, ServiceError> {
-        create_user(&self.config, &self.accounts, input, is_admin).await
+        let user = create_user(&self.config, &self.accounts, input, is_admin).await?;
+        self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
+        Ok(user)
     }
 
     /// Verifies credentials. Takes the same time whether or not the login exists.

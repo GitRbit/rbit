@@ -7,6 +7,7 @@
 pub mod accounts;
 pub mod admin;
 pub mod error;
+pub mod events;
 pub mod insights;
 pub mod instance;
 pub mod orgs;
@@ -25,6 +26,7 @@ use rustit_storage::{Database, KvStore};
 pub use accounts::{AccountService, SignUp};
 pub use admin::AdminService;
 pub use error::ServiceError;
+pub use events::{DomainEvent, EventBus};
 pub use insights::InsightsService;
 pub use instance::InstanceService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
@@ -41,6 +43,7 @@ pub struct ServiceContext {
     pub database: Database,
     pub kv: KvStore,
     pub repositories: RepositoryStorage,
+    pub events: EventBus,
 }
 
 /// All services, constructed once at start-up and shared by reference.
@@ -48,6 +51,7 @@ pub struct ServiceContext {
 pub struct Services {
     pub accounts: AccountService,
     pub admin: AdminService,
+    pub events: EventBus,
     pub insights: InsightsService,
     pub instance: InstanceService,
     pub orgs: OrgService,
@@ -65,11 +69,12 @@ impl Services {
             database: database.clone(),
             kv: kv.clone(),
             repositories: RepositoryStorage::new(config.storage.repositories_dir()),
+            events: EventBus::new(),
         };
         let instance = InstanceService::load(&ctx).await?;
 
         Ok(Self {
-            accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone()),
+            accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
@@ -78,6 +83,7 @@ impl Services {
             repositories: RepositoryService::new(config, database.repositories(), ctx.repositories.clone()),
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
+            events: ctx.events.clone(),
             instance,
         })
     }
