@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  {% include "repo/ref_switcher.html" %}
+  {% include "repo/breadcrumbs.html" %}
+</div>
+
+<section class="box overflow-hidden" aria-label="Blame of {{ file_name }}">
+  {% include "repo/latest_commit.html" %}
+
+  <div class="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-1.5 text-xs text-ink-muted">
+    <span class="font-medium text-ink">Blame</span>
+    <div class="ml-auto flex">
+      <a href="{{ blob_url }}" class="btn h-7 rounded-r-none px-2.5 text-xs sm:h-7">View file</a>
+      <a href="{{ raw_url }}" class="btn -ml-px h-7 rounded-l-none px-2.5 text-xs sm:h-7" hx-boost="false">Raw</a>
+    </div>
+  </div>
+
+  {% match content %}
+  {% when BlameContent::Hunks(hunks) %}
+  {% if hunks.is_empty() %}
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is empty.</p>
+  {% endif %}
+  {% for hunk in hunks %}
+  <div class="border-b border-line last:border-b-0">
+    <div class="flex min-w-0 items-center gap-2 bg-subtle px-4 py-1.5 text-xs">
+      {% call ui::avatar(hunk.commit.avatar, "size-4 text-[8px]") %}{% endcall %}
+      <a href="{{ hunk.commit.url }}" class="min-w-0 flex-1 truncate font-medium hover:underline hover:underline-offset-4" title="{{ hunk.commit.summary }}">{{ hunk.commit.summary }}</a>
+      {% if let Some(source) = hunk.source_path %}<span class="hidden shrink-0 font-mono text-ink-faint md:inline" title="Path in that commit">{{ source }}</span>{% endif %}
+      <span class="hidden shrink-0 text-ink-muted sm:inline">{{ hunk.commit.author }}</span>
+      <time class="shrink-0 text-ink-faint" datetime="{{ hunk.commit.when_iso }}" title="{{ hunk.commit.when_iso }}">{{ hunk.commit.when }}</time>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="code-view w-full border-collapse">
+        <tbody>
+          {% for line in hunk.lines %}
+          <tr id="L{{ line.number }}">
+            <td class="line-number"><a href="#L{{ line.number }}" hx-boost="false">{{ line.number }}</a></td>
+            <td class="line-code">{{ line.html|safe }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+  {% when BlameContent::Binary %}
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">Binary files cannot be blamed. <a href="{{ raw_url }}" class="link" hx-boost="false">Download</a></p>
+  {% when BlameContent::TooLarge %}
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is too large to blame. <a href="{{ blob_url }}" class="link">View the file</a></p>
+  {% endmatch %}
+</section>
+{% endblock %}

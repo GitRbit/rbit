@@ -40,6 +40,10 @@ impl RepoUrls {
         join(&self.base, "raw", revision, path)
     }
 
+    pub fn blame(&self, revision: &str, path: &str) -> String {
+        join(&self.base, "blame", revision, path)
+    }
+
     pub fn commits(&self, revision: &str) -> String {
         join(&self.base, "commits", revision, "")
     }

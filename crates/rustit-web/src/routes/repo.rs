@@ -86,7 +86,7 @@ impl RepoPage {
         }
     }
 
-    fn switcher(&self, current: &str, link: impl Fn(&str) -> String) -> RefSwitcher {
+    pub(super) fn switcher(&self, current: &str, link: impl Fn(&str) -> String) -> RefSwitcher {
         RefSwitcher::new(&self.refs, current, self.default_branch(), link)
     }
 }
@@ -290,6 +290,7 @@ pub async fn blob(
         size: format_size(view.size),
         line_count,
         language,
+        blame_url: urls.blame(&revision, &path),
         raw_url: urls.raw(&revision, &path),
         content,
     }

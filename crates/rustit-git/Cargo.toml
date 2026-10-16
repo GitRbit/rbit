@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 rustit-core.workspace = true
-gix.workspace = true
+gix = { workspace = true, features = ["blame"] }
 similar.workspace = true
 async-compression.workspace = true
 thiserror.workspace = true

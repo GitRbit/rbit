@@ -208,6 +208,7 @@ pub struct BlobPage {
     pub size: String,
     pub line_count: Option<usize>,
     pub language: Option<String>,
+    pub blame_url: String,
     pub raw_url: String,
     pub content: BlobContent,
 }
