@@ -1,6 +1,9 @@
 //! Read-only access to one bare repository.
 
-use std::path::PathBuf;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, PoisonError},
+};
 
 use gix::{
     ObjectId, bstr::ByteSlice, objs::tree::EntryKind as GixEntryKind, revision::walk::Sorting, traverse::commit::simple::CommitTimeOrder,
@@ -12,16 +15,35 @@ use crate::{BlobView, CommitSummary, EntryKind, GitError, RefKind, RefSummary, T
 /// File names recognised as a directory's README, in priority order.
 const README_NAMES: &[&str] = &["readme.md", "readme.markdown", "readme", "readme.txt", "readme.rst"];
 
-/// A handle to a repository on disk. Cheap to create; each operation opens the
-/// repository on the blocking pool, which is fast thanks to gitoxide's lazy loading.
+/// A handle to a repository on disk. Cheap to create; by default each operation opens
+/// the repository on the blocking pool, which is fast thanks to gitoxide's lazy loading.
+///
+/// A web page makes several calls (refs, tree, README, language statistics, …);
+/// [`Self::pinned`] lets them share one opened repository, so configuration, the
+/// reference store and pack indices are loaded once per page instead of once per call.
 #[derive(Debug, Clone)]
 pub struct RepositoryReader {
     path: PathBuf,
+    /// The repository opened by the first operation of a pinned reader, shared by all
+    /// its clones. `None` for an ordinary reader.
+    pinned: Option<Arc<Mutex<Option<gix::ThreadSafeRepository>>>>,
 }
 
 impl RepositoryReader {
     pub fn new(path: PathBuf) -> Self {
-        Self { path }
+        Self { path, pinned: None }
+    }
+
+    /// A reader whose operations (and those of its clones) share one opened repository.
+    ///
+    /// Meant to live for one request: an open repository keeps pack files mapped, and on
+    /// Windows a mapped file cannot be deleted, so a long-lived pinned reader would get in
+    /// the way of `git gc` and repository deletion. Objects and references written
+    /// meanwhile are still seen: gitoxide re-scans the packs when an object is missing
+    /// and reads references from disk on every lookup.
+    #[must_use]
+    pub fn pinned(&self) -> Self {
+        Self { path: self.path.clone(), pinned: Some(Arc::default()) }
     }
 
     /// Runs `operation` against the opened repository on the blocking thread pool.
@@ -31,8 +53,12 @@ impl RepositoryReader {
         F: FnOnce(&gix::Repository) -> Result<T, GitError> + Send + 'static,
     {
         let path = self.path.clone();
+        let pinned = self.pinned.clone();
         tokio::task::spawn_blocking(move || {
-            let mut repo = gix::open_opts(&path, gix::open::Options::isolated()).map_err(GitError::backend)?;
+            let mut repo = match pinned {
+                Some(slot) => shared_repository(&slot, &path)?.to_thread_local(),
+                None => gix::open_opts(&path, gix::open::Options::isolated()).map_err(GitError::backend)?,
+            };
             repo.object_cache_size_if_unset(4 * 1024 * 1024);
             operation(&repo)
         })
@@ -188,6 +214,19 @@ impl RepositoryReader {
         })
         .await
     }
+}
+
+/// The repository held by a pinned reader, opened on first use. Concurrent first calls
+/// wait for a single open rather than each opening their own.
+fn shared_repository(slot: &Mutex<Option<gix::ThreadSafeRepository>>, path: &Path) -> Result<gix::ThreadSafeRepository, GitError> {
+    // A panic while opening leaves `None` behind, which is safe to retry.
+    let mut guard = slot.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(repo) = guard.as_ref() {
+        return Ok(repo.clone());
+    }
+    let repo = gix::ThreadSafeRepository::open_opts(path, gix::open::Options::isolated()).map_err(GitError::backend)?;
+    *guard = Some(repo.clone());
+    Ok(repo)
 }
 
 /// Resolves a branch, tag, or (abbreviated) commit id to a commit id.
