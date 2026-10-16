@@ -82,10 +82,14 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="border-t border-line">
+  <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
     <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
-      <span class="flex items-center gap-2">{% call ui::logo("size-3.5") %}{% endcall %}{{ page.site_name }}</span>
-      <nav class="flex gap-4" aria-label="Footer">
+      <p class="flex min-w-0 items-center gap-2">
+        {% call ui::logo("size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
+        <span class="truncate">Powered by <span class="text-ink-muted">Rustit</span></span>
+        <span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>
+      </p>
+      <nav class="flex shrink-0 gap-4" aria-label="Footer">
         <a href="/explore" class="hover:text-ink">Explore</a>
         <a href="/healthz" class="hover:text-ink" hx-boost="false">Status</a>
       </nav>
