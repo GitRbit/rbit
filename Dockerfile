@@ -11,7 +11,7 @@
 
 ARG RUST_VERSION=1
 ARG NODE_VERSION=24
-ARG DEBIAN_RELEASE=bookworm
+ARG DEBIAN_RELEASE=trixie
 
 # ---------------------------------------------------------------- 1. stylesheet
 # Tailwind scans the templates and Rust sources for class names, so only those (and the
