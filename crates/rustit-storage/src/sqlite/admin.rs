@@ -248,13 +248,10 @@ impl AdminStore {
     /// Deletes a user account; everything it owns in SQLite cascades. Bare repositories on
     /// disk are the caller's responsibility (see [`Self::repositories_owned_by`]).
     pub async fn delete_user(&self, id: AccountId) -> Result<Moderation, StorageError> {
-        let result = sqlx::query(concat!(
-            "DELETE FROM accounts WHERE id = ?1 AND kind = 'user' AND ",
-            not_last_admin!()
-        ))
-        .bind(id.0)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query(concat!("DELETE FROM accounts WHERE id = ?1 AND kind = 'user' AND ", not_last_admin!()))
+            .bind(id.0)
+            .execute(&self.pool)
+            .await?;
         self.moderation_outcome(id, result.rows_affected()).await
     }
 
@@ -262,10 +259,8 @@ impl AdminStore {
         if rows_affected > 0 {
             return Ok(Moderation::Applied);
         }
-        let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM user_logins WHERE account_id = ?)")
-            .bind(id.0)
-            .fetch_one(&self.pool)
-            .await?;
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM user_logins WHERE account_id = ?)").bind(id.0).fetch_one(&self.pool).await?;
         Ok(if exists { Moderation::LastAdmin } else { Moderation::NotFound })
     }
 
@@ -277,10 +272,8 @@ impl AdminStore {
 
     /// `(owner, repository)` ids of every repository the account owns, for deleting them from disk.
     pub async fn repositories_owned_by(&self, owner: AccountId) -> Result<Vec<RepoId>, StorageError> {
-        let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM repositories WHERE owner_id = ? ORDER BY id")
-            .bind(owner.0)
-            .fetch_all(&self.pool)
-            .await?;
+        let ids: Vec<i64> =
+            sqlx::query_scalar("SELECT id FROM repositories WHERE owner_id = ? ORDER BY id").bind(owner.0).fetch_all(&self.pool).await?;
         Ok(ids.into_iter().map(RepoId).collect())
     }
 

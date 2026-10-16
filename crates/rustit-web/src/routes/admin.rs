@@ -72,7 +72,12 @@ pub async fn dashboard(State(state): State<AppState>, SiteAdmin(admin): SiteAdmi
 // ------------------------------------------------------------------ users
 
 /// `GET /admin/users`
-pub async fn users(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, page: Page, Query(params): Query<ListParams>) -> WebResult<UsersPage> {
+pub async fn users(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Query(params): Query<ListParams>,
+) -> WebResult<UsersPage> {
     users_page(&state, &admin, page, &params.query()).await
 }
 
@@ -148,7 +153,12 @@ fn new_user_page(state: &AppState, page: Page, error: FormError, username: Strin
 }
 
 /// `POST /admin/users/new`
-pub async fn create_user(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, page: Page, Form(form): Form<NewUserForm>) -> WebResult<Response> {
+pub async fn create_user(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Form(form): Form<NewUserForm>,
+) -> WebResult<Response> {
     let is_admin = form.is_admin.is_some();
     let input = SignUp { username: form.username.clone(), email: form.email.clone(), password: form.password };
     match state.services.admin.create_user(&admin, input, is_admin).await {
@@ -168,7 +178,12 @@ pub struct ConfirmForm {
 }
 
 /// `GET /admin/users/{id}/delete`: asks for the username to be typed.
-pub async fn delete_user_form(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, page: Page, Path(id): Path<String>) -> WebResult<DeleteUserPage> {
+pub async fn delete_user_form(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Path(id): Path<String>,
+) -> WebResult<DeleteUserPage> {
     let record = state.services.admin.user(&admin, AccountId(parse_id(&id)?)).await?;
     Ok(DeleteUserPage::new(page, &admin, &record, FormError::default()))
 }
@@ -260,7 +275,12 @@ pub struct SavedParams {
 }
 
 /// `GET /admin/settings`
-pub async fn settings(State(state): State<AppState>, SiteAdmin(_admin): SiteAdmin, page: Page, Query(params): Query<SavedParams>) -> SettingsPage {
+pub async fn settings(
+    State(state): State<AppState>,
+    SiteAdmin(_admin): SiteAdmin,
+    page: Page,
+    Query(params): Query<SavedParams>,
+) -> SettingsPage {
     let form = SettingsForm::from(&state.services.instance.current());
     SettingsPage::new(page, form, FormError::default(), params.saved.is_some())
 }

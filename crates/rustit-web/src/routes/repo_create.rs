@@ -44,7 +44,11 @@ pub struct NewRepoForm {
 async fn owner_options(state: &AppState, user: &User, selected: &str) -> WebResult<Vec<OwnerOption>> {
     let memberships = state.services.orgs.memberships(user).await?;
     let mut owners = vec![OwnerOption { name: user.name().to_string(), avatar: Avatar::for_account(&user.account), selected: false }];
-    owners.extend(memberships.iter().map(|m| OwnerOption { name: m.org.name.to_string(), avatar: Avatar::for_account(&m.org), selected: false }));
+    owners.extend(memberships.iter().map(|m| OwnerOption {
+        name: m.org.name.to_string(),
+        avatar: Avatar::for_account(&m.org),
+        selected: false,
+    }));
     let index = owners.iter().position(|owner| owner.name.eq_ignore_ascii_case(selected)).unwrap_or(0);
     if let Some(owner) = owners.get_mut(index) {
         owner.selected = true;
@@ -52,7 +56,12 @@ async fn owner_options(state: &AppState, user: &User, selected: &str) -> WebResu
     Ok(owners)
 }
 
-pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Query(query): Query<NewRepoQuery>) -> WebResult<NewRepositoryPage> {
+pub async fn new_form(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Query(query): Query<NewRepoQuery>,
+) -> WebResult<NewRepositoryPage> {
     let owners = owner_options(&state, &user, query.owner.as_deref().unwrap_or_default()).await?;
     Ok(NewRepositoryPage {
         page: page.titled("New repository"),
@@ -64,12 +73,14 @@ pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, p
     })
 }
 
-pub async fn create(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<NewRepoForm>) -> WebResult<Response> {
-    let visibility = form
-        .visibility
-        .as_deref()
-        .and_then(Visibility::parse)
-        .unwrap_or_else(|| state.services.instance.current().default_visibility);
+pub async fn create(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<NewRepoForm>,
+) -> WebResult<Response> {
+    let visibility =
+        form.visibility.as_deref().and_then(Visibility::parse).unwrap_or_else(|| state.services.instance.current().default_visibility);
     let input = CreateRepository { name: form.name.clone(), description: form.description.clone(), visibility };
 
     match state.services.repositories.create_in(&user, &form.owner, input).await {

@@ -43,13 +43,11 @@ impl StarStore {
 
     /// One indexed query (covered by `stars_by_repo`). `viewer = None` never counts as starred.
     pub async fn count(&self, repo: RepoId, viewer: Option<AccountId>) -> Result<StarCount, StorageError> {
-        Ok(sqlx::query_as(
-            "SELECT COUNT(*) AS count, COALESCE(MAX(account_id = ?), 0) AS starred FROM stars WHERE repo_id = ?",
-        )
-        .bind(viewer.map(|id| id.0))
-        .bind(repo.0)
-        .fetch_one(&self.pool)
-        .await?)
+        Ok(sqlx::query_as("SELECT COUNT(*) AS count, COALESCE(MAX(account_id = ?), 0) AS starred FROM stars WHERE repo_id = ?")
+            .bind(viewer.map(|id| id.0))
+            .bind(repo.0)
+            .fetch_one(&self.pool)
+            .await?)
     }
 
     /// Star counts for many repositories in one query. Repositories without stars are absent.
@@ -59,12 +57,11 @@ impl StarStore {
         }
         // A JSON array of integers keeps the statement static however many ids there are.
         let ids = format!("[{}]", repos.iter().map(|id| id.0.to_string()).collect::<Vec<_>>().join(","));
-        let rows: Vec<(i64, i64)> = sqlx::query_as(
-            "SELECT repo_id, COUNT(*) FROM stars WHERE repo_id IN (SELECT value FROM json_each(?)) GROUP BY repo_id",
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT repo_id, COUNT(*) FROM stars WHERE repo_id IN (SELECT value FROM json_each(?)) GROUP BY repo_id")
+                .bind(ids)
+                .fetch_all(&self.pool)
+                .await?;
         Ok(rows.into_iter().map(|(repo, count)| (RepoId(repo), count)).collect())
     }
 
@@ -104,7 +101,13 @@ impl StarStore {
     /// Readable means: public, or the viewer is a site admin, the owner, or a member of the
     /// owning organisation (the rules of `rustit_auth::repo_access`, expressed in SQL so the
     /// list can be filtered without loading every repository).
-    pub async fn starred_by(&self, account: AccountId, viewer: Option<AccountId>, viewer_is_admin: bool, limit: u32) -> Result<Vec<OwnedRepository>, StorageError> {
+    pub async fn starred_by(
+        &self,
+        account: AccountId,
+        viewer: Option<AccountId>,
+        viewer_is_admin: bool,
+        limit: u32,
+    ) -> Result<Vec<OwnedRepository>, StorageError> {
         let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
              r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \

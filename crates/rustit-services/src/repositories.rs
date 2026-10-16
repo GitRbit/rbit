@@ -135,11 +135,7 @@ impl RepositoryService {
         if !account.is_organization() {
             return Err(not_allowed());
         }
-        if actor.is_admin || self.store.org_role(account.id, actor.id()).await?.is_some() {
-            Ok(account)
-        } else {
-            Err(not_allowed())
-        }
+        if actor.is_admin || self.store.org_role(account.id, actor.id()).await?.is_some() { Ok(account) } else { Err(not_allowed()) }
     }
 
     /// Loads `owner/name` for `viewer`. Repositories the viewer cannot read are reported

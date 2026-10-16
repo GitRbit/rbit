@@ -109,7 +109,10 @@ pub enum FileDiffBody {
     /// Only the mode or path changed (e.g. made executable, renamed without edits).
     ModeOnly,
     /// A submodule pointer moved; ids are absent when it was added or removed.
-    Submodule { old: Option<String>, new: Option<String> },
+    Submodule {
+        old: Option<String>,
+        new: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone)]

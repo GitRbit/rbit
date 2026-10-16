@@ -25,9 +25,7 @@ use crate::{
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/{owner}/{repo}/star", post(toggle))
-        .route("/{owner}/{repo}/stargazers", get(stargazers))
+    Router::new().route("/{owner}/{repo}/star", post(toggle)).route("/{owner}/{repo}/stargazers", get(stargazers))
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,7 +43,13 @@ fn wants_fragment(headers: &HeaderMap) -> bool {
 
 /// `POST /{owner}/{repo}/star`: stars or unstars, then returns the updated button
 /// (htmx) or redirects back (plain form post). Anonymous visitors are sent to sign in.
-pub async fn toggle(State(state): State<AppState>, viewer: Viewer, headers: HeaderMap, Path((owner, repo)): Path<(String, String)>, Form(form): Form<StarFormInput>) -> WebResult<Response> {
+pub async fn toggle(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Form(form): Form<StarFormInput>,
+) -> WebResult<Response> {
     let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
     let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
     let return_to = form.next.as_deref().map_or_else(|| urls.home(), |next| safe_redirect_target(Some(next)).to_owned());
@@ -71,7 +75,12 @@ pub async fn toggle(State(state): State<AppState>, viewer: Viewer, headers: Head
 }
 
 /// `GET /{owner}/{repo}/stargazers`
-pub async fn stargazers(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>) -> WebResult<StargazersPage> {
+pub async fn stargazers(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+) -> WebResult<StargazersPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let stargazers = state.services.stars.stargazers(&loaded.ctx).await?;
     Ok(StargazersPage {

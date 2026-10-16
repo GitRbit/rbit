@@ -1,6 +1,8 @@
 //! Repository metadata.
 
-use rustit_core::{Account, AccountId, OrgRole, RepoId, RepoName, RepoSort, Repository, Timestamp, Visibility, repository::OwnedRepository};
+use rustit_core::{
+    Account, AccountId, OrgRole, RepoId, RepoName, RepoSort, Repository, Timestamp, Visibility, repository::OwnedRepository,
+};
 use sqlx::SqlitePool;
 
 use super::rows::{AccountRow, OwnedRepositoryRow, RepositoryRow};
@@ -95,23 +97,19 @@ impl RepositoryStore {
     }
 
     pub async fn find_by_path(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, StorageError> {
-        let row: Option<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!("WHERE o.name = ? AND r.name = ?"))
-            .bind(owner)
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row: Option<OwnedRepositoryRow> =
+            sqlx::query_as(select_owned_repo!("WHERE o.name = ? AND r.name = ?")).bind(owner).bind(name).fetch_optional(&self.pool).await?;
         row.map(OwnedRepository::try_from).transpose()
     }
 
     /// Repositories owned by `owner`, most recently updated first.
     pub async fn list_by_owner(&self, owner: AccountId, include_private: bool) -> Result<Vec<OwnedRepository>, StorageError> {
-        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!(
-            "WHERE r.owner_id = ? AND (? OR r.visibility = 'public') ORDER BY r.updated_at DESC"
-        ))
-        .bind(owner.0)
-        .bind(include_private)
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<OwnedRepositoryRow> =
+            sqlx::query_as(select_owned_repo!("WHERE r.owner_id = ? AND (? OR r.visibility = 'public') ORDER BY r.updated_at DESC"))
+                .bind(owner.0)
+                .bind(include_private)
+                .fetch_all(&self.pool)
+                .await?;
         rows.into_iter().map(OwnedRepository::try_from).collect()
     }
 
@@ -153,11 +151,10 @@ impl RepositoryStore {
 
     /// The user or organisation called `name`, for choosing a new repository's owner.
     pub async fn find_owner(&self, name: &str) -> Result<Option<Account>, StorageError> {
-        let row: Option<AccountRow> =
-            sqlx::query_as("SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name = ?")
-                .bind(name)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<AccountRow> = sqlx::query_as("SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name = ?")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(Account::try_from).transpose()
     }
 

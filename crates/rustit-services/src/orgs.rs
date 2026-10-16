@@ -76,9 +76,11 @@ impl OrgService {
         if !self.can_create(actor) {
             return Err(ServiceError::Forbidden);
         }
-        let name: AccountName = input.name.trim().parse().map_err(|e: rustit_core::NameError| {
-            ServiceError::Invalid(e.to_string().replace("username", "organization name"))
-        })?;
+        let name: AccountName = input
+            .name
+            .trim()
+            .parse()
+            .map_err(|e: rustit_core::NameError| ServiceError::Invalid(e.to_string().replace("username", "organization name")))?;
         let display_name = optional_text(&input.display_name, "display name", MAX_DISPLAY_NAME_LEN)?;
         let description = optional_text(&input.description, "description", MAX_DESCRIPTION_LEN)?;
 
@@ -152,10 +154,9 @@ impl OrgService {
                 Ok(())
             }
             MembershipChange::NotMember => Err(ServiceError::NotFound),
-            MembershipChange::LastOwner => Err(ServiceError::Invalid(format!(
-                "you are the last owner of {}; make another member an owner before leaving",
-                org.name()
-            ))),
+            MembershipChange::LastOwner => {
+                Err(ServiceError::Invalid(format!("you are the last owner of {}; make another member an owner before leaving", org.name())))
+            }
         }
     }
 
@@ -245,7 +246,11 @@ fn website(value: &str) -> Result<Option<String>, ServiceError> {
         let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
         !host.is_empty() && !host.starts_with('.')
     }) && !url.chars().any(|c| c.is_whitespace() || c.is_control());
-    if plausible { Ok(Some(url)) } else { Err(ServiceError::Invalid("website must be a link starting with https:// or http://".to_owned())) }
+    if plausible {
+        Ok(Some(url))
+    } else {
+        Err(ServiceError::Invalid("website must be a link starting with https:// or http://".to_owned()))
+    }
 }
 
 #[cfg(test)]

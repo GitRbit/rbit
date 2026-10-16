@@ -88,8 +88,14 @@ pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, p
 }
 
 /// `POST /organizations/new`
-pub async fn create(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<NewOrgForm>) -> WebResult<Response> {
-    let input = CreateOrganization { name: form.name.clone(), display_name: form.display_name.clone(), description: form.description.clone() };
+pub async fn create(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<NewOrgForm>,
+) -> WebResult<Response> {
+    let input =
+        CreateOrganization { name: form.name.clone(), display_name: form.display_name.clone(), description: form.description.clone() };
     match state.services.orgs.create(&user, input).await {
         Ok(org) => Ok(Redirect::to(&format!("/{}", org.name())).into_response()),
         Err(error) => {
@@ -138,7 +144,14 @@ pub struct RoleFormData {
 }
 
 /// Renders the members page; `error` and `form` carry a failed submission.
-async fn members_page(state: &AppState, viewer: Option<&User>, page: Page, ctx: &OrgContext, error: FormError, form: AddMemberForm) -> WebResult<MembersPage> {
+async fn members_page(
+    state: &AppState,
+    viewer: Option<&User>,
+    page: Page,
+    ctx: &OrgContext,
+    error: FormError,
+    form: AddMemberForm,
+) -> WebResult<MembersPage> {
     let (header, _) = header(state, viewer, ctx, OrgTab::Members).await?;
     let members = state.services.orgs.members(&ctx.org).await?;
     let base = format!("/{}/members", ctx.org.name());
@@ -156,7 +169,14 @@ async fn members_page(state: &AppState, viewer: Option<&User>, page: Page, ctx: 
 }
 
 /// Re-renders the members page with `message` and a 422, or redirects back on success.
-async fn after_member_change(state: &AppState, user: &User, page: Page, ctx: &OrgContext, result: Result<(), ServiceError>, form: AddMemberForm) -> WebResult<Response> {
+async fn after_member_change(
+    state: &AppState,
+    user: &User,
+    page: Page,
+    ctx: &OrgContext,
+    result: Result<(), ServiceError>,
+    form: AddMemberForm,
+) -> WebResult<Response> {
     match result {
         Ok(()) => Ok(Redirect::to(&format!("/{}/members", ctx.org.name())).into_response()),
         Err(error) => {
@@ -176,7 +196,13 @@ pub async fn members(State(state): State<AppState>, viewer: Viewer, page: Page, 
 }
 
 /// `POST /{org}/members`: add a member.
-pub async fn add_member(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Path(owner): Path<String>, Form(form): Form<AddMemberFormData>) -> WebResult<Response> {
+pub async fn add_member(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path(owner): Path<String>,
+    Form(form): Form<AddMemberFormData>,
+) -> WebResult<Response> {
     let ctx = state.services.orgs.open(Some(&user), &owner).await?;
     let role = form.role.as_deref().and_then(OrgRole::parse);
     let result = match role {
@@ -204,7 +230,12 @@ pub async fn change_role(
 }
 
 /// `POST /{org}/members/{member}/remove`
-pub async fn remove_member(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Path((owner, member)): Path<(String, String)>) -> WebResult<Response> {
+pub async fn remove_member(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path((owner, member)): Path<(String, String)>,
+) -> WebResult<Response> {
     let ctx = state.services.orgs.open(Some(&user), &owner).await?;
     let result = state.services.orgs.remove_member(&user, &ctx.org, &member).await;
     after_member_change(&state, &user, page, &ctx, result, AddMemberForm::default()).await
@@ -260,15 +291,30 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
 }
 
 /// `GET /{org}/settings`
-pub async fn settings(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Path(owner): Path<String>) -> WebResult<OrgSettingsPage> {
+pub async fn settings(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path(owner): Path<String>,
+) -> WebResult<OrgSettingsPage> {
     let ctx = managed(&state, &user, &owner).await?;
     settings_page(&state, &user, page, &ctx, OrgProfileForm::from_org(&ctx.org)).await
 }
 
 /// `POST /{org}/settings`: save the profile.
-pub async fn save_settings(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Path(owner): Path<String>, Form(form): Form<ProfileFormData>) -> WebResult<Response> {
+pub async fn save_settings(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path(owner): Path<String>,
+    Form(form): Form<ProfileFormData>,
+) -> WebResult<Response> {
     let ctx = managed(&state, &user, &owner).await?;
-    let input = UpdateOrganization { display_name: form.display_name.clone(), description: form.description.clone(), website: form.website.clone() };
+    let input = UpdateOrganization {
+        display_name: form.display_name.clone(),
+        description: form.description.clone(),
+        website: form.website.clone(),
+    };
     match state.services.orgs.update_profile(&user, &ctx.org, input).await {
         Ok(()) => Ok(Redirect::to(&format!("/{}/settings", ctx.org.name())).into_response()),
         Err(error) => {
@@ -282,7 +328,13 @@ pub async fn save_settings(State(state): State<AppState>, SignedIn(user): Signed
 }
 
 /// `POST /{org}/settings/delete`
-pub async fn delete(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Path(owner): Path<String>, Form(form): Form<DeleteFormData>) -> WebResult<Response> {
+pub async fn delete(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path(owner): Path<String>,
+    Form(form): Form<DeleteFormData>,
+) -> WebResult<Response> {
     let ctx = managed(&state, &user, &owner).await?;
     match state.services.orgs.delete(&user, &ctx.org, &form.confirm).await {
         Ok(()) => Ok(Redirect::to("/").into_response()),

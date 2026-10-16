@@ -130,7 +130,12 @@ impl AccountService {
 }
 
 /// Validates and stores a new user. Shared by sign-up, the CLI and the admin panel.
-pub(crate) async fn create_user(config: &Config, accounts: &AccountStore, input: SignUp, is_admin: Option<bool>) -> Result<User, ServiceError> {
+pub(crate) async fn create_user(
+    config: &Config,
+    accounts: &AccountStore,
+    input: SignUp,
+    is_admin: Option<bool>,
+) -> Result<User, ServiceError> {
     let name: AccountName = input.username.trim().parse()?;
     let email: Email = input.email.trim().parse()?;
     validate_password(config, &input.password)?;

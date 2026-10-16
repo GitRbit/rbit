@@ -18,7 +18,9 @@ use crate::{
     views::{
         components::FormError,
         layout::Page,
-        settings::{AccountForm, AccountPage, CreatedToken, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage, parse_expiry},
+        settings::{
+            AccountForm, AccountPage, CreatedToken, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage, parse_expiry,
+        },
     },
 };
 
@@ -62,13 +64,23 @@ pub struct ProfileFormInput {
 }
 
 /// `GET /settings/profile`
-pub async fn profile(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Query(query): Query<SavedQuery>) -> WebResult<ProfilePage> {
+pub async fn profile(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Query(query): Query<SavedQuery>,
+) -> WebResult<ProfilePage> {
     let profile = state.services.profiles.profile(&user).await?;
     Ok(ProfilePage::new(page, &user, profile.into()).saved(query.saved.is_some()))
 }
 
 /// `POST /settings/profile`
-pub async fn update_profile(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<ProfileFormInput>) -> WebResult<Response> {
+pub async fn update_profile(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<ProfileFormInput>,
+) -> WebResult<Response> {
     let input = UpdateProfile {
         display_name: form.display_name.clone(),
         bio: form.bio.clone(),
@@ -113,13 +125,23 @@ pub async fn account(State(state): State<AppState>, SignedIn(user): SignedIn, pa
 }
 
 /// `POST /settings/account/email`
-pub async fn change_email(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<EmailFormInput>) -> WebResult<Response> {
+pub async fn change_email(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<EmailFormInput>,
+) -> WebResult<Response> {
     let result = state.services.profiles.change_email(&user, form.current_password, &form.email).await;
     account_result(&state, &user, page, AccountForm::Email, result.map(drop), Some(form.email))
 }
 
 /// `POST /settings/account/password`
-pub async fn change_password(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<PasswordFormInput>) -> WebResult<Response> {
+pub async fn change_password(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<PasswordFormInput>,
+) -> WebResult<Response> {
     let result = if form.new == form.confirmation {
         state.services.profiles.change_password(&user, form.current, form.new).await
     } else {
@@ -130,7 +152,14 @@ pub async fn change_password(State(state): State<AppState>, SignedIn(user): Sign
 
 /// Redirects after a successful change, or re-renders the account page with the error
 /// shown above `form`.
-fn account_result(state: &AppState, user: &User, page: Page, form: AccountForm, result: Result<(), ServiceError>, submitted_email: Option<String>) -> WebResult<Response> {
+fn account_result(
+    state: &AppState,
+    user: &User,
+    page: Page,
+    form: AccountForm,
+    result: Result<(), ServiceError>,
+    submitted_email: Option<String>,
+) -> WebResult<Response> {
     let message = match result {
         Ok(()) => return Ok(Redirect::to(&format!("{}?saved={}", SettingsSection::Account.url(), form.key())).into_response()),
         Err(ServiceError::Invalid(message)) => message,
@@ -138,7 +167,11 @@ fn account_result(state: &AppState, user: &User, page: Page, form: AccountForm, 
         Err(conflict @ ServiceError::Conflict(_)) => conflict.to_string(),
         Err(other) => return Err(other.into()),
     };
-    let page = AccountPage::new(page, user, state.config.security.min_password_length).with_error(form, FormError::from_message(&message), submitted_email);
+    let page = AccountPage::new(page, user, state.config.security.min_password_length).with_error(
+        form,
+        FormError::from_message(&message),
+        submitted_email,
+    );
     Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
 }
 
@@ -162,7 +195,12 @@ pub async fn tokens(State(state): State<AppState>, SignedIn(user): SignedIn, pag
 ///
 /// Deliberately not a redirect: the secret is never stored, so it can only travel in
 /// this response, which is marked `no-store`.
-pub async fn create_token(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Form(form): Form<CreateTokenForm>) -> WebResult<Response> {
+pub async fn create_token(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<CreateTokenForm>,
+) -> WebResult<Response> {
     let choices = AccessTokenService::EXPIRY_CHOICES;
     let scope = form.scope.as_deref().and_then(TokenScope::parse).unwrap_or_default();
     let expiry = form.expires.as_deref().and_then(|value| parse_expiry(value, choices));
@@ -179,7 +217,8 @@ pub async fn create_token(State(state): State<AppState>, SignedIn(user): SignedI
     match result {
         Ok((token, secret)) => {
             let tokens = state.services.tokens.list(&user).await?;
-            let page = TokensPage::new(page, username, &tokens, TokenForm::blank(choices)).with_created(CreatedToken { name: token.name, secret });
+            let page =
+                TokensPage::new(page, username, &tokens, TokenForm::blank(choices)).with_created(CreatedToken { name: token.name, secret });
             Ok(([(header::CACHE_CONTROL, "no-store")], page).into_response())
         }
         Err(ServiceError::Invalid(message)) => {

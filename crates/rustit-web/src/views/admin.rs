@@ -455,7 +455,12 @@ pub struct DeleteRepositoryPage {
 impl DeleteRepositoryPage {
     pub fn new(page: Page, repo: &OwnedRepository, error: FormError) -> Self {
         let repo = RepoRow::from(repo);
-        Self { page: page.titled(format!("Delete {} · Administration", repo.full_name)), admin_nav: AdminSection::Repositories.nav(), error, repo }
+        Self {
+            page: page.titled(format!("Delete {} · Administration", repo.full_name)),
+            admin_nav: AdminSection::Repositories.nav(),
+            error,
+            repo,
+        }
     }
 }
 

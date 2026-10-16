@@ -41,7 +41,13 @@ impl InsightsService {
 
     /// The newest commit that changed each of `entries` inside the directory `path` as of
     /// `revision`. Entries the bounded history walk could not resolve are absent.
-    pub async fn last_commits(&self, repo: &RepoContext, revision: &str, path: &str, entries: &[TreeEntry]) -> Result<HashMap<String, CommitSummary>, ServiceError> {
+    pub async fn last_commits(
+        &self,
+        repo: &RepoContext,
+        revision: &str,
+        path: &str,
+        entries: &[TreeEntry],
+    ) -> Result<HashMap<String, CommitSummary>, ServiceError> {
         let commit_id = repo.reader.commit_id(revision.to_owned()).await?;
         match self.cache.last_commits(&commit_id, path).await {
             Ok(Some(cached)) => {
@@ -57,7 +63,8 @@ impl InsightsService {
         let result = repo.reader.last_commits(commit_id.clone(), path.to_owned(), names, LastCommitLimits::default()).await?;
         // A walk cut short by the deadline depends on server load; try again next time.
         if !result.timed_out {
-            let cached: Vec<(String, CachedCommit)> = result.commits.iter().map(|(name, commit)| (name.clone(), commit_to_cache(commit))).collect();
+            let cached: Vec<(String, CachedCommit)> =
+                result.commits.iter().map(|(name, commit)| (name.clone(), commit_to_cache(commit))).collect();
             let cached = CachedLastCommits::from_entries(cached.iter().map(|(name, commit)| (name.clone(), commit)));
             if let Err(error) = self.cache.put_last_commits(&commit_id, path, &cached).await {
                 tracing::warn!(%error, "last-commit cache write failed");
@@ -73,7 +80,12 @@ fn language_stats_to_cache(stats: &LanguageStats) -> CachedLanguageStats {
         languages: stats
             .languages
             .iter()
-            .map(|share| CachedLanguage { name: share.name.clone(), color: share.color.clone(), bytes: share.bytes, percent: share.percent })
+            .map(|share| CachedLanguage {
+                name: share.name.clone(),
+                color: share.color.clone(),
+                bytes: share.bytes,
+                percent: share.percent,
+            })
             .collect(),
     }
 }
@@ -117,11 +129,7 @@ fn commit_from_cache(commit: &CachedCommit) -> CommitSummary {
 fn last_commits_from_cache(cached: &CachedLastCommits) -> HashMap<String, CommitSummary> {
     // Convert each distinct commit once, then clone per entry.
     let commits: Vec<CommitSummary> = cached.commits.iter().map(commit_from_cache).collect();
-    cached
-        .entries
-        .iter()
-        .filter_map(|(name, index)| Some((name.clone(), commits.get(usize::try_from(*index).ok()?)?.clone())))
-        .collect()
+    cached.entries.iter().filter_map(|(name, index)| Some((name.clone(), commits.get(usize::try_from(*index).ok()?)?.clone()))).collect()
 }
 
 #[cfg(test)]

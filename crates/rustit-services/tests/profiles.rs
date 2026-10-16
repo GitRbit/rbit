@@ -64,7 +64,11 @@ async fn update_and_read_profile() {
     assert_eq!(blank, Profile::default());
     assert_eq!(fixture.profiles().public_profile(alice.id()).await.unwrap(), PublicProfile::default());
 
-    fixture.profiles().update_profile(&alice, update(" Alice Liddell ", "Curious.\nVery.", "https://alice.example", " Oxford ")).await.unwrap();
+    fixture
+        .profiles()
+        .update_profile(&alice, update(" Alice Liddell ", "Curious.\nVery.", "https://alice.example", " Oxford "))
+        .await
+        .unwrap();
     let profile = fixture.profiles().profile(&alice).await.unwrap();
     assert_eq!(profile.display_name.as_deref(), Some("Alice Liddell"));
     assert_eq!(profile.bio.as_deref(), Some("Curious.\nVery."));

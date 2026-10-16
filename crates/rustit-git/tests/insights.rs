@@ -20,7 +20,16 @@ impl<'a> Git<'a> {
         self.clock.set(self.clock.get() + 60);
         let date = format!("{} +0000", self.clock.get());
         let status = Command::new("git")
-            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false"])
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "init.defaultBranch=main",
+                "-c",
+                "core.autocrlf=false",
+            ])
             .args(args)
             .current_dir(self.dir)
             .env("GIT_CONFIG_NOSYSTEM", "1")

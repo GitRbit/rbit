@@ -5,7 +5,8 @@ use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 /// Characters escaped inside a single path segment (RFC 3986 `pchar` minus a few
 /// characters that are legal but confusing in file names).
-const SEGMENT: &AsciiSet = &CONTROLS.add(b' ').add(b'"').add(b'#').add(b'%').add(b'<').add(b'>').add(b'?').add(b'`').add(b'{').add(b'}').add(b'/');
+const SEGMENT: &AsciiSet =
+    &CONTROLS.add(b' ').add(b'"').add(b'#').add(b'%').add(b'<').add(b'>').add(b'?').add(b'`').add(b'{').add(b'}').add(b'/');
 
 /// Encodes a slash-separated path, keeping the slashes.
 pub fn encode_path(path: &str) -> String {

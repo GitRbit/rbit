@@ -164,7 +164,9 @@ fn match_segments(pattern: &[String], path: &[&str]) -> bool {
     match pattern.split_first() {
         None => path.is_empty(),
         Some((first, rest)) if first == "**" => (0..=path.len()).any(|skip| match_segments(rest, &path[skip..])),
-        Some((first, rest)) => path.split_first().is_some_and(|(name, remaining)| match_segment(first, name) && match_segments(rest, remaining)),
+        Some((first, rest)) => {
+            path.split_first().is_some_and(|(name, remaining)| match_segment(first, name) && match_segments(rest, remaining))
+        }
     }
 }
 

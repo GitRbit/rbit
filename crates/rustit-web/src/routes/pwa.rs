@@ -39,7 +39,9 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
 /// Served from the root so its scope covers the whole site. The asset build hash is
 /// injected so every deploy installs a fresh worker with a fresh cache.
 pub async fn service_worker() -> Response {
-    let source = assets::read("sw.js").map(|bytes| String::from_utf8_lossy(&bytes).replace("__VERSION__", assets::build_version())).unwrap_or_default();
+    let source = assets::read("sw.js")
+        .map(|bytes| String::from_utf8_lossy(&bytes).replace("__VERSION__", assets::build_version()))
+        .unwrap_or_default();
     (
         [
             (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),

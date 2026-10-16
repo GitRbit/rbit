@@ -74,7 +74,10 @@ pub enum DiffBodyView {
     TooLarge,
     NoContentChanges,
     /// Submodule pointer change, shown as abbreviated commit ids.
-    Submodule { old: String, new: String },
+    Submodule {
+        old: String,
+        new: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +153,11 @@ impl CommitPage {
             commit: CommitView::new(commit, urls),
             body: commit.body.clone(),
             committer: (detail.committer_name != commit.author_name).then(|| detail.committer_name.clone()),
-            parents: commit.parent_ids.iter().map(|id| ParentLink { short_id: id[..7.min(id.len())].to_owned(), url: urls.commit(id) }).collect(),
+            parents: commit
+                .parent_ids
+                .iter()
+                .map(|id| ParentLink { short_id: id[..7.min(id.len())].to_owned(), url: urls.commit(id) })
+                .collect(),
             files: detail.files.iter().enumerate().map(|(i, f)| FileDiffView::new(i, f, &commit.id, urls)).collect(),
             additions: detail.additions(),
             deletions: detail.deletions(),

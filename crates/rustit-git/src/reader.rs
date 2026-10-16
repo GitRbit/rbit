@@ -2,11 +2,12 @@
 
 use std::path::PathBuf;
 
-use gix::{ObjectId, bstr::ByteSlice, objs::tree::EntryKind as GixEntryKind, revision::walk::Sorting, traverse::commit::simple::CommitTimeOrder};
+use gix::{
+    ObjectId, bstr::ByteSlice, objs::tree::EntryKind as GixEntryKind, revision::walk::Sorting, traverse::commit::simple::CommitTimeOrder,
+};
 use rustit_core::Timestamp;
 
-use crate::{diff::is_binary, BlobView, CommitSummary, EntryKind, GitError, RefKind, RefSummary, TreeEntry, TreeView};
-
+use crate::{BlobView, CommitSummary, EntryKind, GitError, RefKind, RefSummary, TreeEntry, TreeView, diff::is_binary};
 
 /// File names recognised as a directory's README, in priority order.
 const README_NAMES: &[&str] = &["readme.md", "readme.markdown", "readme", "readme.txt", "readme.rst"];
@@ -112,7 +113,9 @@ impl RepositoryReader {
                     object_id: entry.oid.to_hex().to_string(),
                 })
                 .collect();
-            entries.sort_by(|a, b| a.kind.is_directory().cmp(&b.kind.is_directory()).reverse().then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+            entries.sort_by(|a, b| {
+                a.kind.is_directory().cmp(&b.kind.is_directory()).reverse().then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
 
             Ok(TreeView { commit: summarize(&commit)?, entries })
         })
@@ -148,7 +151,13 @@ impl RepositoryReader {
     }
 
     /// Finds and reads the README of the directory at `path`, if there is one.
-    pub async fn readme(&self, revision: String, directory: &[TreeEntry], path: &str, max_bytes: usize) -> Result<Option<(String, String)>, GitError> {
+    pub async fn readme(
+        &self,
+        revision: String,
+        directory: &[TreeEntry],
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<Option<(String, String)>, GitError> {
         let Some(name) = README_NAMES
             .iter()
             .find_map(|candidate| directory.iter().find(|e| !e.kind.is_directory() && e.name.eq_ignore_ascii_case(candidate)))

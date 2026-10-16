@@ -132,8 +132,9 @@ impl AdminService {
         let git_binary = self.ctx.config.repository.git_binary.clone();
         let data_dir = self.ctx.config.storage.data_dir.clone();
         let walked_dir = data_dir.clone();
-        let (git_version, data_dir_bytes) =
-            tokio::task::spawn_blocking(move || (git_version(&git_binary), directory_size(&walked_dir))).await.map_err(ServiceError::internal)?;
+        let (git_version, data_dir_bytes) = tokio::task::spawn_blocking(move || (git_version(&git_binary), directory_size(&walked_dir)))
+            .await
+            .map_err(ServiceError::internal)?;
 
         Ok(Dashboard {
             counts,

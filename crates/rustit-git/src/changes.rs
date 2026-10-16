@@ -94,8 +94,12 @@ fn describe(change: gix::object::tree::diff::ChangeDetached) -> Option<(String, 
 
     let text = |path: &gix::bstr::BStr| path.to_str_lossy().into_owned();
     let (path, old_path, status, old, new) = match change {
-        Change::Addition { location, entry_mode, id, .. } => (text(location.as_ref()), None, ChangeStatus::Added, None, Some((entry_mode, id))),
-        Change::Deletion { location, entry_mode, id, .. } => (text(location.as_ref()), None, ChangeStatus::Deleted, Some((entry_mode, id)), None),
+        Change::Addition { location, entry_mode, id, .. } => {
+            (text(location.as_ref()), None, ChangeStatus::Added, None, Some((entry_mode, id)))
+        }
+        Change::Deletion { location, entry_mode, id, .. } => {
+            (text(location.as_ref()), None, ChangeStatus::Deleted, Some((entry_mode, id)), None)
+        }
         Change::Modification { location, previous_entry_mode, previous_id, entry_mode, id } => {
             (text(location.as_ref()), None, ChangeStatus::Modified, Some((previous_entry_mode, previous_id)), Some((entry_mode, id)))
         }
@@ -126,7 +130,15 @@ fn file_diff(
     budget: &mut usize,
 ) -> Result<FileDiff, GitError> {
     // `stats_known = false`: the file was not diffed, so its line counts are unknown.
-    let summary = |body, stats_known| FileDiff { path: path.clone(), old_path: old_path.clone(), status, additions: 0, deletions: 0, stats_known, body };
+    let summary = |body, stats_known| FileDiff {
+        path: path.clone(),
+        old_path: old_path.clone(),
+        status,
+        additions: 0,
+        deletions: 0,
+        stats_known,
+        body,
+    };
 
     let is_submodule = |side: &Side| side.is_some_and(|(mode, _)| mode.is_commit());
     if is_submodule(&old) || is_submodule(&new) {
@@ -149,7 +161,15 @@ fn file_diff(
         return Ok(summary(FileDiffBody::ModeOnly, true));
     }
 
-    let mut file = FileDiff { path, old_path, status, additions: changes.additions, deletions: changes.deletions, stats_known: true, body: FileDiffBody::TooLarge };
+    let mut file = FileDiff {
+        path,
+        old_path,
+        status,
+        additions: changes.additions,
+        deletions: changes.deletions,
+        stats_known: true,
+        body: FileDiffBody::TooLarge,
+    };
     let lines = changes.line_count();
     if lines > *budget {
         // Keep the counts (they are already computed) but don't render a diff that would

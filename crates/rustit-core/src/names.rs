@@ -26,9 +26,27 @@ pub enum NameError {
 
 /// Top-level paths that would collide with application routes if used as an account name.
 const RESERVED_ACCOUNT_NAMES: &[&str] = &[
-    "admin", "api", "assets", "explore", "favicon.ico", "healthz", "login", "logout",
-    "manifest.webmanifest", "new", "notifications", "offline", "org", "organizations", "orgs", "robots.txt",
-    "settings", "signup", "sw.js", "user", "users",
+    "admin",
+    "api",
+    "assets",
+    "explore",
+    "favicon.ico",
+    "healthz",
+    "login",
+    "logout",
+    "manifest.webmanifest",
+    "new",
+    "notifications",
+    "offline",
+    "org",
+    "organizations",
+    "orgs",
+    "robots.txt",
+    "settings",
+    "signup",
+    "sw.js",
+    "user",
+    "users",
 ];
 
 /// Second-level paths reserved under `/{owner}/`.
@@ -141,9 +159,9 @@ impl FromStr for Email {
         let value = value.trim();
         let plausible = value.len() <= Self::MAX_LEN
             && !value.chars().any(char::is_whitespace)
-            && value
-                .split_once('@')
-                .is_some_and(|(local, domain)| !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.'));
+            && value.split_once('@').is_some_and(|(local, domain)| {
+                !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+            });
         if plausible { Ok(Self(value.to_owned())) } else { Err(NameError::InvalidEmail) }
     }
 }

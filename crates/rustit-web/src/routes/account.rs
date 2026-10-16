@@ -12,11 +12,7 @@ use crate::{
     AppState,
     error::WebResult,
     extract::Viewer,
-    views::{
-        account::ProfilePage,
-        components::Avatar,
-        layout::Page,
-    },
+    views::{account::ProfilePage, components::Avatar, layout::Page},
 };
 
 /// `?tab=stars` switches the profile from owned repositories to starred ones.

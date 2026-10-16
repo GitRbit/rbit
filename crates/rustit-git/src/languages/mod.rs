@@ -9,10 +9,7 @@ mod attributes;
 mod catalog;
 mod exclusions;
 
-use std::{
-    collections::HashMap,
-    sync::LazyLock,
-};
+use std::{collections::HashMap, sync::LazyLock};
 
 use gix::{
     ObjectId,
@@ -97,8 +94,9 @@ fn percent_of(part: u64, total: u64) -> f64 {
 static BY_FILENAME: LazyLock<HashMap<&'static str, &'static Language>> =
     LazyLock::new(|| LANGUAGES.iter().flat_map(|language| language.filenames.iter().map(move |name| (*name, language))).collect());
 
-static BY_EXTENSION: LazyLock<HashMap<&'static str, &'static Language>> =
-    LazyLock::new(|| LANGUAGES.iter().flat_map(|language| language.extensions.iter().map(move |extension| (*extension, language))).collect());
+static BY_EXTENSION: LazyLock<HashMap<&'static str, &'static Language>> = LazyLock::new(|| {
+    LANGUAGES.iter().flat_map(|language| language.extensions.iter().map(move |extension| (*extension, language))).collect()
+});
 
 /// The language of `path` judged by its name alone.
 pub fn detect(path: &str) -> Option<&'static Language> {
@@ -163,7 +161,7 @@ fn root_attributes(repo: &gix::Repository, tree: &gix::Tree<'_>) -> Result<Lingu
         return Ok(LinguistAttributes::default());
     };
     let is_file = matches!(entry.mode().kind(), GixEntryKind::Blob | GixEntryKind::BlobExecutable);
-    if !is_file ||repo.find_header(entry.object_id()).map_err(GitError::backend)?.size() > MAX_ATTRIBUTES_BYTES {
+    if !is_file || repo.find_header(entry.object_id()).map_err(GitError::backend)?.size() > MAX_ATTRIBUTES_BYTES {
         return Ok(LinguistAttributes::default());
     }
     let blob = repo.find_blob(entry.object_id()).map_err(GitError::backend)?;

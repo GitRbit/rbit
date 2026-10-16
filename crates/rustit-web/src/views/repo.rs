@@ -6,11 +6,7 @@ use rustit_git::{CommitSummary, RefKind, RefSummary};
 
 use crate::{
     urls::RepoUrls,
-    views::{
-        components::Avatar,
-        insights::LanguageBar,
-        layout::Page,
-    },
+    views::{components::Avatar, insights::LanguageBar, layout::Page},
 };
 
 // ------------------------------------------------------------------ shared pieces

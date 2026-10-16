@@ -7,13 +7,13 @@
 //! Anonymous users may fetch public repositories. When access is missing the server
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.
 
+use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use async_compression::tokio::bufread::GzipDecoder;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
@@ -32,7 +32,12 @@ pub struct InfoRefsQuery {
 }
 
 /// `GET /{owner}/{repo}.git/info/refs?service=git-upload-pack|git-receive-pack`
-pub async fn info_refs(State(state): State<AppState>, Path((owner, repo)): Path<(String, String)>, Query(query): Query<InfoRefsQuery>, headers: HeaderMap) -> Response {
+pub async fn info_refs(
+    State(state): State<AppState>,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<InfoRefsQuery>,
+    headers: HeaderMap,
+) -> Response {
     let Some(service) = query.service.as_deref().and_then(Service::from_wire_name) else {
         return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
     };
@@ -42,10 +47,7 @@ pub async fn info_refs(State(state): State<AppState>, Path((owner, repo)): Path<
     };
 
     match state.transport.advertise_refs(service, &ctx.disk_path, git_protocol(&headers)).await {
-        Ok(body) => (
-            [(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())],
-            body,
-        )
+        Ok(body) => ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
             .into_response(),
         Err(error) => {
             tracing::error!(%error, %owner, %repo, "ref advertisement failed");
@@ -64,7 +66,13 @@ pub async fn receive_pack(state: State<AppState>, path: Path<(String, String)>, 
     run_service(state, path, headers, body, Service::ReceivePack).await
 }
 
-async fn run_service(State(state): State<AppState>, Path((owner, repo)): Path<(String, String)>, headers: HeaderMap, body: Body, service: Service) -> Response {
+async fn run_service(
+    State(state): State<AppState>,
+    Path((owner, repo)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Body,
+    service: Service,
+) -> Response {
     let ctx = match authorize(&state, &headers, &owner, &repo, service).await {
         Ok(ctx) => ctx,
         Err(denied) => return denied.into_response(),
@@ -130,9 +138,12 @@ enum Denied {
 impl IntoResponse for Denied {
     fn into_response(self) -> Response {
         match self {
-            Self::Challenge => {
-                (StatusCode::UNAUTHORIZED, [(header::WWW_AUTHENTICATE, "Basic realm=\"Rustit\", charset=\"UTF-8\"")], "authentication required").into_response()
-            }
+            Self::Challenge => (
+                StatusCode::UNAUTHORIZED,
+                [(header::WWW_AUTHENTICATE, "Basic realm=\"Rustit\", charset=\"UTF-8\"")],
+                "authentication required",
+            )
+                .into_response(),
             Self::Forbidden => (StatusCode::FORBIDDEN, "you do not have permission to push to this repository").into_response(),
             Self::Suspended => (StatusCode::FORBIDDEN, "this account has been suspended").into_response(),
             Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
@@ -213,7 +224,6 @@ fn basic_credentials(headers: &HeaderMap) -> Option<(String, String)> {
     let (login, password) = decoded.split_once(':')?;
     Some((login.to_owned(), password.to_owned()))
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -47,7 +47,13 @@ pub struct LastCommits {
 
 impl RepositoryReader {
     /// Finds the last commit for each of `entry_names` inside `directory` (empty for the root).
-    pub async fn last_commits(&self, revision: String, directory: String, entry_names: Vec<String>, limits: LastCommitLimits) -> Result<LastCommits, GitError> {
+    pub async fn last_commits(
+        &self,
+        revision: String,
+        directory: String,
+        entry_names: Vec<String>,
+        limits: LastCommitLimits,
+    ) -> Result<LastCommits, GitError> {
         self.with_repo(move |repo| {
             let started = Instant::now();
             let tip = resolve_commit(repo, &revision)?;
@@ -55,7 +61,8 @@ impl RepositoryReader {
             let mut unresolved: HashSet<String> = entry_names.into_iter().collect();
             let mut result = LastCommits::default();
 
-            let commits = repo.rev_walk([tip]).sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst)).all().map_err(GitError::backend)?;
+            let commits =
+                repo.rev_walk([tip]).sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst)).all().map_err(GitError::backend)?;
             for (visited, info) in commits.enumerate() {
                 if unresolved.is_empty() || visited == limits.max_commits {
                     break;

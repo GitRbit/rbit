@@ -74,7 +74,13 @@ pub struct SavedQuery {
 }
 
 /// `GET /{owner}/{repo}/settings`
-pub async fn show(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, Query(query): Query<SavedQuery>) -> WebResult<RepoSettingsPage> {
+pub async fn show(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<SavedQuery>,
+) -> WebResult<RepoSettingsPage> {
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
     Ok(settings_page(&state, &loaded, page).await?.saved(query.saved.is_some()))
 }
@@ -89,7 +95,13 @@ pub struct GeneralFormInput {
 }
 
 /// `POST /{owner}/{repo}/settings`: description, visibility and default branch.
-pub async fn update(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, Form(form): Form<GeneralFormInput>) -> WebResult<Response> {
+pub async fn update(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Form(form): Form<GeneralFormInput>,
+) -> WebResult<Response> {
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
     let result = match Visibility::parse(&form.visibility) {
         Some(visibility) => {
@@ -123,7 +135,13 @@ pub struct RenameFormInput {
 }
 
 /// `POST /{owner}/{repo}/settings/rename`: redirects to the settings under the new name.
-pub async fn rename(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, Form(form): Form<RenameFormInput>) -> WebResult<Response> {
+pub async fn rename(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Form(form): Form<RenameFormInput>,
+) -> WebResult<Response> {
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
     match state.services.repo_settings.rename(&loaded.ctx, &form.name).await {
         Ok(name) => Ok(Redirect::to(&format!("/{}/{name}/settings", loaded.ctx.repo.owner.name)).into_response()),
@@ -142,7 +160,13 @@ pub struct DeleteFormInput {
 }
 
 /// `POST /{owner}/{repo}/settings/delete`: redirects to the owner's profile.
-pub async fn delete(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, Form(form): Form<DeleteFormInput>) -> WebResult<Response> {
+pub async fn delete(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Form(form): Form<DeleteFormInput>,
+) -> WebResult<Response> {
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
     match state.services.repo_settings.delete(&loaded.ctx, &form.confirm).await {
         Ok(()) => Ok(Redirect::to(&format!("/{}", loaded.ctx.repo.owner.name)).into_response()),

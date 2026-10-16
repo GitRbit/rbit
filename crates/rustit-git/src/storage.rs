@@ -68,8 +68,15 @@ impl RepositoryStorage {
         tokio::task::spawn_blocking(move || -> Result<(), GitError> {
             let lock = path.join("HEAD.lock");
             let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&lock)?;
-            let written = std::io::Write::write_all(&mut file, format!("ref: {head_ref}
-").as_bytes()).and_then(|()| file.sync_all());
+            let written = std::io::Write::write_all(
+                &mut file,
+                format!(
+                    "ref: {head_ref}
+"
+                )
+                .as_bytes(),
+            )
+            .and_then(|()| file.sync_all());
             drop(file);
             if let Err(error) = written.and_then(|()| std::fs::rename(&lock, path.join("HEAD"))) {
                 let _ = std::fs::remove_file(&lock);
@@ -110,8 +117,11 @@ mod tests {
         let path = storage.create(AccountId(1), RepoId(2), "main").await.unwrap();
 
         storage.set_head(AccountId(1), RepoId(2), "release/1.x").await.unwrap();
-        assert_eq!(std::fs::read_to_string(path.join("HEAD")).unwrap(), "ref: refs/heads/release/1.x
-");
+        assert_eq!(
+            std::fs::read_to_string(path.join("HEAD")).unwrap(),
+            "ref: refs/heads/release/1.x
+"
+        );
         assert!(!path.join("HEAD.lock").exists());
     }
 
@@ -125,8 +135,11 @@ mod tests {
             let result = storage.set_head(AccountId(1), RepoId(2), bad).await;
             assert!(matches!(result, Err(GitError::InvalidBranchName(_))), "{bad:?} should be rejected");
         }
-        assert_eq!(std::fs::read_to_string(path.join("HEAD")).unwrap(), "ref: refs/heads/main
-");
+        assert_eq!(
+            std::fs::read_to_string(path.join("HEAD")).unwrap(),
+            "ref: refs/heads/main
+"
+        );
         assert!(matches!(storage.set_head(AccountId(1), RepoId(3), "main").await, Err(GitError::NotFound(_))));
     }
 }

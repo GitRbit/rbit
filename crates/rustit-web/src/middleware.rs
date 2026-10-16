@@ -11,7 +11,12 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use rustit_auth::SessionToken;
 
-use crate::{AppState, error::ErrorInfo, extract::Viewer, views::{errors::ErrorPage, layout::Page}};
+use crate::{
+    AppState,
+    error::ErrorInfo,
+    extract::Viewer,
+    views::{errors::ErrorPage, layout::Page},
+};
 
 pub const SESSION_COOKIE: &str = "rustit_session";
 

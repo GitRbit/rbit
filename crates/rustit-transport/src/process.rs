@@ -54,10 +54,7 @@ impl ProcessTransport {
                 command.env(key, value);
             }
         }
-        command
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", null_device())
-            .env("GIT_TERMINAL_PROMPT", "0");
+        command.env("GIT_CONFIG_NOSYSTEM", "1").env("GIT_CONFIG_GLOBAL", null_device()).env("GIT_TERMINAL_PROMPT", "0");
         if let Some(protocol) = protocol.filter(|p| is_safe_protocol_header(p)) {
             command.env("GIT_PROTOCOL", protocol);
         }

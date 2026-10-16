@@ -26,6 +26,9 @@ pub use changes::DiffLimits;
 pub use error::GitError;
 pub use languages::{LanguageShare, LanguageStats};
 pub use last_commit::{LastCommitLimits, LastCommits};
-pub use model::{BlobView, ChangeStatus, CommitDetail, CommitSummary, EntryKind, FileDiff, FileDiffBody, RefDetail, RefKind, RefSummary, TreeEntry, TreeView};
+pub use model::{
+    BlobView, ChangeStatus, CommitDetail, CommitSummary, EntryKind, FileDiff, FileDiffBody, RefDetail, RefKind, RefSummary, TreeEntry,
+    TreeView,
+};
 pub use reader::RepositoryReader;
 pub use storage::RepositoryStorage;

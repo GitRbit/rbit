@@ -274,10 +274,7 @@ pub struct ExpiryChoice {
 impl ExpiryChoice {
     /// One option per entry of `choices`, with `selected` preselected.
     pub fn list(choices: &[Option<u32>], selected: Option<u32>) -> Vec<Self> {
-        choices
-            .iter()
-            .map(|&days| Self { value: expiry_value(days), label: expiry_label(days), selected: days == selected })
-            .collect()
+        choices.iter().map(|&days| Self { value: expiry_value(days), label: expiry_label(days), selected: days == selected }).collect()
     }
 }
 
@@ -472,7 +469,12 @@ mod tests {
 
     #[test]
     fn profile_page_renders_values() {
-        let form = ProfileForm { display_name: "Alice".to_owned(), bio: "Hi <there>".to_owned(), website: String::new(), location: "Oxford".to_owned() };
+        let form = ProfileForm {
+            display_name: "Alice".to_owned(),
+            bio: "Hi <there>".to_owned(),
+            website: String::new(),
+            location: "Oxford".to_owned(),
+        };
         let html = ProfilePage::new(page(), &user(), form).saved(true).render().unwrap();
         assert!(html.contains("Profile updated."));
         assert!(html.contains("Hi &#60;there&#62;") || html.contains("Hi &lt;there&gt;"), "bio is escaped");

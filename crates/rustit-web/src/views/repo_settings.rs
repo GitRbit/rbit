@@ -263,7 +263,10 @@ mod tests {
     #[test]
     fn settings_page_renders_forms() {
         let general = GeneralForm { description: "Hi".to_owned(), is_private: true, branches: BranchOption::list(["main", "dev"], "dev") };
-        let html = RepoSettingsPage::new(page(), header(true), general).with_error(RepoSettingsForm::Delete, FormError::new("Nope.")).render().unwrap();
+        let html = RepoSettingsPage::new(page(), header(true), general)
+            .with_error(RepoSettingsForm::Delete, FormError::new("Nope."))
+            .render()
+            .unwrap();
         assert!(html.contains(r#"action="/alice/proj/settings/rename""#));
         assert!(html.contains(r#"action="/alice/proj/settings/delete""#));
         assert!(html.contains(r#"<option value="dev" selected>"#));

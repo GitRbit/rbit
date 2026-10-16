@@ -27,6 +27,8 @@ async fn main() -> anyhow::Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::run(config).await,
         Command::Migrate => serve::migrate(config).await,
-        Command::User { command: UserCommand::Create { username, email, admin } } => serve::create_user(config, username, email, admin).await,
+        Command::User { command: UserCommand::Create { username, email, admin } } => {
+            serve::create_user(config, username, email, admin).await
+        }
     }
 }

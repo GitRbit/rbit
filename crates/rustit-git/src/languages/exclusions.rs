@@ -2,7 +2,20 @@
 //! describe what a repository is written in. `.gitattributes` can override each of them.
 
 /// Directory names that hold third-party or build output at any depth.
-const VENDORED_DIRECTORIES: &[&str] = &["node_modules", "bower_components", "vendor", "vendors", "third_party", "third-party", "thirdparty", "3rdparty", "dist", "build", "Pods", "Carthage"];
+const VENDORED_DIRECTORIES: &[&str] = &[
+    "node_modules",
+    "bower_components",
+    "vendor",
+    "vendors",
+    "third_party",
+    "third-party",
+    "thirdparty",
+    "3rdparty",
+    "dist",
+    "build",
+    "Pods",
+    "Carthage",
+];
 
 /// File-name suffixes of minified or bundled assets.
 const VENDORED_SUFFIXES: &[&str] = &[".min.js", ".min.css", ".min.mjs", "-min.js", ".bundle.js"];
@@ -33,7 +46,8 @@ const GENERATED_FILENAMES: &[&str] = &[
 ];
 
 /// File-name suffixes of generated sources.
-const GENERATED_SUFFIXES: &[&str] = &[".pb.go", "_pb2.py", "_pb2_grpc.py", ".pb.cc", ".pb.h", ".designer.cs", ".g.dart", ".freezed.dart", ".js.map", ".css.map"];
+const GENERATED_SUFFIXES: &[&str] =
+    &[".pb.go", "_pb2.py", "_pb2_grpc.py", ".pb.cc", ".pb.h", ".designer.cs", ".g.dart", ".freezed.dart", ".js.map", ".css.map"];
 
 /// Directories holding documentation at the repository root.
 const ROOT_DOCUMENTATION_DIRECTORIES: &[&str] = &["docs", "doc", "Docs", "Doc"];

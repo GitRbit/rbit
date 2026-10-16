@@ -85,7 +85,11 @@ fn parse_role(value: &str) -> Result<OrgRole, StorageError> {
 
 /// `user`'s role in `org`, if they are a member. Shared with the repository store, which
 /// needs it for membership-aware access checks.
-pub(crate) async fn role_of<'e>(executor: impl SqliteExecutor<'e>, org: AccountId, user: AccountId) -> Result<Option<OrgRole>, StorageError> {
+pub(crate) async fn role_of<'e>(
+    executor: impl SqliteExecutor<'e>,
+    org: AccountId,
+    user: AccountId,
+) -> Result<Option<OrgRole>, StorageError> {
     let role: Option<String> = sqlx::query_scalar("SELECT role FROM org_members WHERE org_id = ? AND user_id = ?")
         .bind(org.0)
         .bind(user.0)
@@ -211,9 +215,7 @@ impl OrgStore {
         .bind(org.0)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter()
-            .map(|row| row.into_parts().map(|(user, role)| OrgMember { user, role }))
-            .collect()
+        rows.into_iter().map(|row| row.into_parts().map(|(user, role)| OrgMember { user, role })).collect()
     }
 
     /// Organisations `user` belongs to, by name.
@@ -226,9 +228,7 @@ impl OrgStore {
         .bind(user.0)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter()
-            .map(|row| row.into_parts().map(|(org, role)| OrgMembership { org, role }))
-            .collect()
+        rows.into_iter().map(|row| row.into_parts().map(|(org, role)| OrgMembership { org, role })).collect()
     }
 
     pub async fn role_of(&self, org: AccountId, user: AccountId) -> Result<Option<OrgRole>, StorageError> {

@@ -38,7 +38,13 @@ pub struct Language {
 /// Colour for languages Linguist publishes no colour for.
 pub const FALLBACK_COLOR: &str = "#8f8f8f";
 
-const fn language(name: &'static str, color: &'static str, kind: LanguageKind, extensions: &'static [&'static str], filenames: &'static [&'static str]) -> Language {
+const fn language(
+    name: &'static str,
+    color: &'static str,
+    kind: LanguageKind,
+    extensions: &'static [&'static str],
+    filenames: &'static [&'static str],
+) -> Language {
     Language { name, color, kind, extensions, filenames }
 }
 
@@ -97,7 +103,13 @@ pub static LANGUAGES: &[Language] = &[
     language("TSX", "#3178c6", Programming, &["tsx"], &[]),
     language("CoffeeScript", "#244776", Programming, &["coffee"], &[]),
     language("LiveScript", "#499886", Programming, &["ls"], &[]),
-    language("Ruby", "#701516", Programming, &["rb", "rake", "gemspec", "ru"], &["Rakefile", "Gemfile", "Vagrantfile", "Podfile", "Fastfile", "Brewfile", "Guardfile"]),
+    language(
+        "Ruby",
+        "#701516",
+        Programming,
+        &["rb", "rake", "gemspec", "ru"],
+        &["Rakefile", "Gemfile", "Vagrantfile", "Podfile", "Fastfile", "Brewfile", "Guardfile"],
+    ),
     language("PHP", "#4F5D95", Programming, &["php", "phtml", "php3", "php4", "php5"], &[]),
     language("Hack", "#878787", Programming, &["hack"], &[]),
     language("Perl", "#0298c3", Programming, &["pl", "pm"], &[]),
@@ -130,7 +142,13 @@ pub static LANGUAGES: &[Language] = &[
     language("Makefile", "#427819", Programming, &["mk", "mak"], &["Makefile", "makefile", "GNUmakefile"]),
     language("CMake", "#DA3434", Programming, &["cmake"], &["CMakeLists.txt"]),
     language("Meson", "#007800", Programming, &[], &["meson.build", "meson_options.txt", "meson.options"]),
-    language("Starlark", "#76d275", Programming, &["bzl", "star"], &["BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel"]),
+    language(
+        "Starlark",
+        "#76d275",
+        Programming,
+        &["bzl", "star"],
+        &["BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel"],
+    ),
     language("Just", "#384d54", Programming, &["just"], &["justfile", "Justfile", ".justfile"]),
     language("Dockerfile", "#384d54", Programming, &["dockerfile", "containerfile"], &["Dockerfile", "Containerfile"]),
     language("Earthly", "#2af0ff", Programming, &[], &["Earthfile"]),

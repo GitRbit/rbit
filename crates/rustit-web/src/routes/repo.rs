@@ -23,8 +23,8 @@ use crate::{
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
         layout::Page,
         repo::{
-            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView,
-            RefSwitcher, RepoHeader, TreePage, breadcrumbs,
+            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
+            TreePage, breadcrumbs,
         },
     },
 };
@@ -104,7 +104,12 @@ fn file_name(path: &str) -> &str {
 // ------------------------------------------------------------------ code tab
 
 /// `GET /{owner}/{repo}`: the default branch's root, or setup instructions when empty.
-pub async fn home(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>) -> WebResult<Response> {
+pub async fn home(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let Some(revision) = loaded.landing_revision() else {
         let header = loaded.header(&state, "code");
@@ -115,7 +120,12 @@ pub async fn home(State(state): State<AppState>, viewer: Viewer, page: Page, Pat
 }
 
 /// `GET /{owner}/{repo}/tree/{revision}/{path…}`
-pub async fn tree(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo, rest)): Path<(String, String, String)>) -> WebResult<TreePage> {
+pub async fn tree(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo, rest)): Path<(String, String, String)>,
+) -> WebResult<TreePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     render_tree(&state, loaded, page, revision, path).await
@@ -197,7 +207,11 @@ fn entry_commits_url(urls: &RepoUrls, commit_id: &str, path: &str) -> String {
 
 /// `GET /{owner}/{repo}/tree-commits/{revision}/{path…}`: the last commit of every entry
 /// in a directory, as out-of-band swaps into the rows of the tree page.
-pub async fn entry_commits(State(state): State<AppState>, viewer: Viewer, Path((owner, repo, rest)): Path<(String, String, String)>) -> WebResult<EntryCommitsFragment> {
+pub async fn entry_commits(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, rest)): Path<(String, String, String)>,
+) -> WebResult<EntryCommitsFragment> {
     let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.tree(revision.clone(), path.clone()).await.map_err(ServiceError::from)?;
@@ -208,13 +222,21 @@ pub async fn entry_commits(State(state): State<AppState>, viewer: Viewer, Path((
         .entries
         .iter()
         .enumerate()
-        .map(|(index, entry)| EntryCommitCell { slot_id: entry_commit_slot(index), commit: commits.get(&entry.name).map(|c| EntryCommit::new(c, &urls)) })
+        .map(|(index, entry)| EntryCommitCell {
+            slot_id: entry_commit_slot(index),
+            commit: commits.get(&entry.name).map(|c| EntryCommit::new(c, &urls)),
+        })
         .collect();
     Ok(EntryCommitsFragment { cells })
 }
 
 /// `GET /{owner}/{repo}/blob/{revision}/{path…}`
-pub async fn blob(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo, rest)): Path<(String, String, String)>) -> WebResult<BlobPage> {
+pub async fn blob(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo, rest)): Path<(String, String, String)>,
+) -> WebResult<BlobPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     if path.is_empty() {
@@ -264,7 +286,11 @@ pub async fn blob(State(state): State<AppState>, viewer: Viewer, page: Page, Pat
 ///
 /// Always served as `text/plain` or `application/octet-stream` with a sandboxing CSP, so
 /// a committed HTML or SVG file can never execute script in this origin.
-pub async fn raw(State(state): State<AppState>, viewer: Viewer, Path((owner, repo, rest)): Path<(String, String, String)>) -> WebResult<Response> {
+pub async fn raw(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, rest)): Path<(String, String, String)>,
+) -> WebResult<Response> {
     let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.blob(revision, path, MAX_RAW_BYTES).await.map_err(ServiceError::from)?;
@@ -291,7 +317,13 @@ pub struct PageQuery {
 }
 
 /// `GET /{owner}/{repo}/commits` — history of the default branch.
-pub async fn commits_default(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, Query(query): Query<PageQuery>) -> WebResult<Response> {
+pub async fn commits_default(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<PageQuery>,
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let Some(revision) = loaded.landing_revision() else {
         return Ok(Redirect::to(&loaded.urls.home()).into_response());
@@ -300,7 +332,13 @@ pub async fn commits_default(State(state): State<AppState>, viewer: Viewer, page
 }
 
 /// `GET /{owner}/{repo}/commits/{revision}`
-pub async fn commits(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo, rest)): Path<(String, String, String)>, Query(query): Query<PageQuery>) -> WebResult<CommitsPage> {
+pub async fn commits(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo, rest)): Path<(String, String, String)>,
+    Query(query): Query<PageQuery>,
+) -> WebResult<CommitsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, _) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     render_commits(&state, loaded, page, revision, query.page.unwrap_or(1)).await

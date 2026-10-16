@@ -124,10 +124,8 @@ impl AccountStore {
     /// Like [`Self::find_user`], but `None` for suspended users. Use it wherever a
     /// credential (session, token) is turned back into a user.
     pub async fn find_active_user(&self, id: AccountId) -> Result<Option<User>, StorageError> {
-        let row: Option<UserRow> = sqlx::query_as(select_user!("WHERE a.id = ? AND l.suspended_at IS NULL"))
-            .bind(id.0)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row: Option<UserRow> =
+            sqlx::query_as(select_user!("WHERE a.id = ? AND l.suspended_at IS NULL")).bind(id.0).fetch_optional(&self.pool).await?;
         Ok(row.map(UserRow::into_user_and_hash).transpose()?.map(|(user, _)| user))
     }
 
@@ -140,11 +138,10 @@ impl AccountStore {
     }
 
     pub async fn find_account_by_name(&self, name: &str) -> Result<Option<Account>, StorageError> {
-        let row: Option<AccountRow> =
-            sqlx::query_as("SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name = ?")
-                .bind(name)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<AccountRow> = sqlx::query_as("SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name = ?")
+            .bind(name)
+            .fetch_optional(&self.pool)
+            .await?;
         row.map(Account::try_from).transpose()
     }
 

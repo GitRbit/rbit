@@ -74,11 +74,8 @@ async fn profile_updates_round_trip() {
     let orgs = database.orgs();
     let acme = orgs.create(new_org("acme", &alice)).await.unwrap();
 
-    let update = OrgProfileUpdate {
-        display_name: None,
-        description: Some("Rockets".to_owned()),
-        website: Some("https://acme.example".to_owned()),
-    };
+    let update =
+        OrgProfileUpdate { display_name: None, description: Some("Rockets".to_owned()), website: Some("https://acme.example".to_owned()) };
     orgs.update_profile(acme.account.id, update).await.unwrap();
 
     let found = orgs.find(acme.account.id).await.unwrap().unwrap();

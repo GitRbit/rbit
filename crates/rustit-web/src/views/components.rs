@@ -57,10 +57,7 @@ pub struct RepoCard {
 impl RepoCard {
     /// Builds cards for a listing, attaching star counts from one batched lookup.
     pub fn list(repos: &[OwnedRepository], star_counts: &HashMap<RepoId, i64>) -> Vec<Self> {
-        repos
-            .iter()
-            .map(|repo| Self { star_count: star_counts.get(&repo.repo.id).copied().unwrap_or(0), ..Self::from(repo) })
-            .collect()
+        repos.iter().map(|repo| Self { star_count: star_counts.get(&repo.repo.id).copied().unwrap_or(0), ..Self::from(repo) }).collect()
     }
 }
 

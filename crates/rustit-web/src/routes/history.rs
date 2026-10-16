@@ -17,7 +17,12 @@ use crate::{
 };
 
 /// `GET /{owner}/{repo}/commit/{revision}`
-pub async fn commit(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo, revision)): Path<(String, String, String)>) -> WebResult<CommitPage> {
+pub async fn commit(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo, revision)): Path<(String, String, String)>,
+) -> WebResult<CommitPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let detail = loaded.ctx.reader.commit_detail(revision, DiffLimits::default()).await.map_err(ServiceError::from)?;
 
@@ -35,7 +40,13 @@ pub async fn tags(state: State<AppState>, viewer: Viewer, page: Page, path: Path
     refs(state, viewer, page, path, RefKind::Tag).await
 }
 
-async fn refs(State(state): State<AppState>, viewer: Viewer, page: Page, Path((owner, repo)): Path<(String, String)>, kind: RefKind) -> WebResult<RefsPage> {
+async fn refs(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    kind: RefKind,
+) -> WebResult<RefsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let details = loaded.ctx.reader.ref_details(kind).await.map_err(ServiceError::from)?;
 

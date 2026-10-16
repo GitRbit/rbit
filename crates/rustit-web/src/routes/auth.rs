@@ -53,7 +53,8 @@ pub async fn login_form(State(state): State<AppState>, viewer: Viewer, page: Pag
         return Ok(Redirect::to(&next).into_response());
     }
     let registration_open = state.services.accounts.registration_open().await?;
-    Ok(LoginPage { page: page.titled("Sign in"), error: FormError::default(), login: String::new(), next, registration_open }.into_response())
+    Ok(LoginPage { page: page.titled("Sign in"), error: FormError::default(), login: String::new(), next, registration_open }
+        .into_response())
 }
 
 pub async fn login(State(state): State<AppState>, jar: CookieJar, page: Page, Form(form): Form<LoginForm>) -> WebResult<Response> {
@@ -66,7 +67,8 @@ pub async fn login(State(state): State<AppState>, jar: CookieJar, page: Page, Fo
                 _ => "Incorrect username or password.",
             };
             let registration_open = state.services.accounts.registration_open().await?;
-            let page = LoginPage { page: page.titled("Sign in"), error: FormError::new(message), login: form.login, next, registration_open };
+            let page =
+                LoginPage { page: page.titled("Sign in"), error: FormError::new(message), login: form.login, next, registration_open };
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
         }
         Err(other) => Err(other.into()),

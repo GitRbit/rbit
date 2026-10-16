@@ -91,7 +91,12 @@ pub struct EntryCommit {
 
 impl EntryCommit {
     pub fn new(commit: &CommitSummary, urls: &RepoUrls) -> Self {
-        Self { summary: commit.summary.clone(), url: urls.commit(&commit.id), when: commit.authored_at.relative(), when_iso: commit.authored_at.iso8601() }
+        Self {
+            summary: commit.summary.clone(),
+            url: urls.commit(&commit.id),
+            when: commit.authored_at.relative(),
+            when_iso: commit.authored_at.iso8601(),
+        }
     }
 }
 
@@ -129,9 +134,17 @@ mod tests {
 
     #[test]
     fn fragment_is_only_out_of_band_cells() {
-        let commit = EntryCommit { summary: "Fix <bug>".into(), url: "/a/b/commit/0123".into(), when: "2 days ago".into(), when_iso: "2026-01-01T00:00:00Z".into() };
+        let commit = EntryCommit {
+            summary: "Fix <bug>".into(),
+            url: "/a/b/commit/0123".into(),
+            when: "2 days ago".into(),
+            when_iso: "2026-01-01T00:00:00Z".into(),
+        };
         let fragment = EntryCommitsFragment {
-            cells: vec![EntryCommitCell { slot_id: entry_commit_slot(0), commit: Some(commit) }, EntryCommitCell { slot_id: entry_commit_slot(1), commit: None }],
+            cells: vec![
+                EntryCommitCell { slot_id: entry_commit_slot(0), commit: Some(commit) },
+                EntryCommitCell { slot_id: entry_commit_slot(1), commit: None },
+            ],
         };
         let html = fragment.render().unwrap();
         assert_eq!(html.matches("hx-swap-oob=\"true\"").count(), 2);
