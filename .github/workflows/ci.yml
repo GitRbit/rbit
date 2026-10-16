@@ -9,10 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or pull request supersedes the running checks.
+# A newer push to the same pull request supersedes its running checks. Runs on `main` are
+# never cancelled, so every commit that lands there gets a complete result.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,7 +25,7 @@ jobs:
     name: Format and clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -42,7 +43,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
@@ -54,8 +55,8 @@ jobs:
     name: Front-end build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -63,7 +64,7 @@ jobs:
       - run: npm run build
       # Vendored scripts and generated icons are committed; the build must not change them.
       - run: git diff --exit-code -- crates/rustit-web/assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: app-css
           path: crates/rustit-web/assets/app.css
@@ -74,8 +75,8 @@ jobs:
     needs: assets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: app-css
           path: crates/rustit-web/assets
@@ -85,7 +86,7 @@ jobs:
           key: release
       - run: cargo build --release --locked --package rustit-server
       - run: ./target/release/rustit --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rustit-linux-x86_64
           path: target/release/rustit
