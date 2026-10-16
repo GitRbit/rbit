@@ -61,7 +61,12 @@ RestrictNamespaces=yes
 RestrictRealtime=yes
 LockPersonality=yes
 RemoveIPC=yes
-# Binding ports below 1024 is not needed: a reverse proxy listens on 80/443.
+# Binding ports below 1024 is not needed: a reverse proxy listens on 80/443 and the SSH
+# server defaults to 2222 (forward port 22 to it with a firewall rule). To bind the SSH
+# server to port 22 directly instead, grant exactly that capability in an override
+# (systemctl edit rustit):
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

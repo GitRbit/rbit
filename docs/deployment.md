@@ -30,9 +30,10 @@ production-minded values. The ones that matter most:
 ## Docker
 
 The [`Dockerfile`](../Dockerfile) builds the stylesheet with Node, compiles a release
-binary, and ships it on Debian slim with `git`, CA certificates and `tini`. The container
-runs as the unprivileged user `rustit` (uid 10001), keeps all data in the `/data` volume
-and has a `HEALTHCHECK` against `/healthz`.
+binary, and ships it on Debian 13 (trixie) slim with `git`, CA certificates and `tini`
+(about 75 MB compressed). The container runs as the unprivileged user `rustit`
+(uid 10001), keeps all data in the `/data` volume and has a `HEALTHCHECK` against
+`/healthz`.
 
 ```bash
 docker build -t rustit .
@@ -43,9 +44,16 @@ docker run -d --name rustit --restart unless-stopped \
   rustit
 ```
 
-The image sets `RUSTIT_SERVER__BIND=0.0.0.0:3000` (inside the container) and
-`RUSTIT_STORAGE__DATA_DIR=/data`. To use a file instead of environment variables, mount
-it read-only and point `RUSTIT_CONFIG` at it:
+The image sets `RUSTIT_SERVER__BIND=0.0.0.0:3000` and `RUSTIT_SSH__BIND=0.0.0.0:2222`
+(inside the container), `RUSTIT_STORAGE__DATA_DIR=/data` and `NO_COLOR=1` (plain log
+lines in `docker logs`). For Git over SSH add `-e RUSTIT_SSH__ENABLED=true` and
+`-e RUSTIT_SSH__PUBLIC_HOST=git.example.com`, publish the port (`-p 2222:2222`, or
+`-p 22:2222` when the host's own sshd listens elsewhere) and set
+`RUSTIT_SSH__PUBLIC_PORT` to the published port. The host key is generated in `/data/ssh`
+on first start.
+
+To use a file instead of environment variables, mount it read-only and point
+`RUSTIT_CONFIG` at it:
 
 ```yaml
 # compose.yaml
@@ -65,15 +73,26 @@ volumes:
   rustit-data:
 ```
 
-In a config file used with the image, keep `[storage] data_dir = "/data"` and
-`[server] bind = "0.0.0.0:3000"`; if you change the port, override the health check
-(`--health-cmd` / `healthcheck:`) to match.
+In a config file used with the image, keep `[storage] data_dir = "/data"`,
+`[server] bind = "0.0.0.0:3000"` and `[ssh] bind = "0.0.0.0:2222"`; if you change the HTTP
+port, override the health check (`--health-cmd` / `healthcheck:`) to match.
 
-Administrative commands run in the same container:
+Backups run in the live container:
 
 ```bash
-docker exec -it rustit rustit user create alice alice@example.com --admin
 docker exec rustit rustit backup --output /data/backups/$(date +%Y%m%d-%H%M%S)
+```
+
+`rustit user create` and `rustit migrate` need the server stopped: the running server
+holds an exclusive lock on `rustit.redb`, and these commands fail with
+`Database already open. Cannot acquire lock` while it runs. The first administrator is
+easiest to create by signing up in the browser (the first account becomes the
+administrator). To use the command line, run it in a one-off container on the same volume:
+
+```bash
+docker stop rustit
+docker run --rm -i -v rustit-data:/data rustit user create alice alice@example.com --admin
+docker start rustit
 ```
 
 ## systemd
@@ -93,10 +112,24 @@ sudo systemctl daemon-reload && sudo systemctl enable --now rustit
 journalctl -u rustit -f
 ```
 
-Run administrative commands as the service user so file ownership stays right:
+Run administrative commands as the service user so file ownership stays right.
+`user create` and `migrate` need the server stopped (it holds an exclusive lock on
+`rustit.redb`); `backup` runs while it serves:
 
 ```bash
+sudo systemctl stop rustit
 sudo -u rustit rustit --config /etc/rustit/rustit.toml user create alice alice@example.com --admin
+sudo systemctl start rustit
+```
+
+The sandbox gives the service no capabilities, so it cannot bind ports below 1024. Keep
+the SSH server on 2222 and forward port 22 to it with a firewall rule, or let it bind 22
+directly by granting only that capability in an override (`sudo systemctl edit rustit`):
+
+```ini
+[Service]
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 ```
 
 `SIGTERM` (what `systemctl stop` sends) shuts down gracefully: in-flight requests finish,
@@ -185,8 +218,10 @@ Get certificates with `certbot --nginx -d git.example.com` (or any ACME client).
 
 ### SSH
 
-The built-in SSH server (`[ssh] enabled = true`, port 2222 by default) is not proxied over
-HTTP. Expose its port directly (or forward port 22 to it with a firewall rule).
+The built-in SSH server (`[ssh] enabled = true`, `127.0.0.1:2222` by default) is not
+proxied over HTTP. Bind it to a public address (`bind = "0.0.0.0:2222"`) and expose the
+port directly, or forward port 22 to it with a firewall rule. Binding port 22 itself under
+systemd needs `CAP_NET_BIND_SERVICE` (see [systemd](#systemd)).
 
 ## Health checks
 
@@ -267,6 +302,7 @@ Schedule it with a systemd timer or cron, as the service user, and copy the resu
 machine (restic, borg, rsync, object storage):
 
 ```bash
+sudo install -d -o rustit -g rustit -m 0750 /var/backups/rustit   # once
 sudo -u rustit rustit --config /etc/rustit/rustit.toml backup \
   --output /var/backups/rustit/$(date +%Y%m%d-%H%M%S)
 ```
@@ -298,7 +334,9 @@ version is not supported (its database may have migrations the older binary does
 2. Replace the binary (or pull/rebuild the image).
 3. Restart. Database migrations are embedded in the binary and applied automatically at
    start-up, before the server accepts requests. To apply them separately (for example
-   in a deploy pipeline), run `rustit migrate`, which migrates and exits.
+   in a deploy pipeline), run `rustit migrate` while the server is stopped; it migrates
+   and exits.
 
 Migrations only move forward. To roll back, stop the new version, restore the backup
-taken in step 1 and start the old binary. Release notes call out anything else.
+taken in step 1 and start the old binary. The [changelog](../CHANGELOG.md) calls out
+anything else, such as the one-time sign-out when upgrading to milestone 1.
