@@ -33,17 +33,13 @@
       <span class="hidden shrink-0 text-ink-muted sm:inline">{{ hunk.commit.author }}</span>
       <time class="shrink-0 text-ink-faint" datetime="{{ hunk.commit.when_iso }}" title="{{ hunk.commit.when_iso }}">{{ hunk.commit.when }}</time>
     </div>
+    {#- Same line markup as repo/blob.html (lazily laid out, numbers drawn by CSS). -#}
     <div class="overflow-x-auto">
-      <table class="code-view w-full border-collapse">
-        <tbody>
-          {% for line in hunk.lines %}
-          <tr id="L{{ line.number }}">
-            <td class="line-number"><a href="#L{{ line.number }}" hx-boost="false">{{ line.number }}</a></td>
-            <td class="line-code">{{ line.html|safe }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="code-lines">
+        {%- for line in hunk.lines %}
+        <div class="code-line" id="L{{ line.number }}"><span class="line-number" data-line="{{ line.number }}"></span><span class="line-code">{{ line.html|safe }}</span></div>
+        {%- endfor %}
+      </div>
     </div>
   </div>
   {% endfor %}

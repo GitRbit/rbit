@@ -37,7 +37,7 @@ async fn show(
     Path((owner, repo, rest)): Path<(String, String, String)>,
 ) -> WebResult<BlamePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+    let (revision, path) = loaded.split(rest).await?;
     if path.is_empty() {
         return Err(WebError::NotFound);
     }
