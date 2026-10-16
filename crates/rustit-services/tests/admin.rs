@@ -5,8 +5,9 @@ use std::sync::Arc;
 
 use rustit_core::{Config, InstanceSettings, OrgCreationPolicy, RegistrationMode, TokenScope, User, Visibility};
 use rustit_services::{
-    CreateAccessToken, CreateRepository, ServiceError, Services, SignUp,
+    CreateAccessToken, CreateOrganization, CreateRepository, ServiceError, Services, SignUp,
     admin::{ListQuery, PAGE_SIZE},
+    instance::PublicCounts,
 };
 use rustit_storage::{Database, KvStore, NewUser};
 
@@ -304,4 +305,26 @@ async fn dashboard_reports_counts_and_versions() {
     assert!(dashboard.system.data_dir_bytes.is_some_and(|bytes| bytes > 0));
     // `git` is required by the test suite elsewhere too.
     assert!(dashboard.system.git_version.is_some_and(|version| version.chars().next().is_some_and(|c| c.is_ascii_digit())));
+}
+
+#[tokio::test]
+async fn public_counts_leave_out_private_repositories_and_suspended_users() {
+    let fixture = Fixture::new().await;
+    let empty = fixture.services.instance.public_counts().await.unwrap();
+    assert_eq!(empty, PublicCounts::default(), "a fresh instance counts nothing");
+
+    let root = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    fixture.user("bob", false).await;
+    fixture.services.admin.set_suspended(&root, alice.id(), true).await.unwrap();
+    let repositories = &fixture.services.repositories;
+    for (name, visibility) in [("open", Visibility::Public), ("also-open", Visibility::Public), ("secret", Visibility::Private)] {
+        let input = CreateRepository { name: name.to_owned(), description: String::new(), visibility };
+        repositories.create(&root, input).await.unwrap();
+    }
+    let org = CreateOrganization { name: "acme".to_owned(), ..CreateOrganization::default() };
+    fixture.services.orgs.create(&root, org).await.unwrap();
+
+    let counts = fixture.services.instance.public_counts().await.unwrap();
+    assert_eq!(counts, PublicCounts { public_repositories: 2, users: 2, organizations: 1 });
 }

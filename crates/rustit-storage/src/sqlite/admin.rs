@@ -38,6 +38,16 @@ pub struct InstanceCounts {
     pub access_tokens: i64,
 }
 
+/// Instance-wide counts that are safe to show anyone (the public front page): public
+/// repositories, active users and organisations. Nothing private is counted.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, sqlx::FromRow)]
+pub struct PublicCounts {
+    pub public_repositories: i64,
+    /// Users who are not suspended.
+    pub users: i64,
+    pub organizations: i64,
+}
+
 /// A user as listed in the administration panel.
 #[derive(Debug, Clone)]
 pub struct UserRecord {
@@ -172,6 +182,15 @@ impl AdminStore {
              (SELECT COUNT(*) FROM repositories WHERE visibility = 'public') AS public_repositories, \
              (SELECT COUNT(*) FROM repositories WHERE visibility = 'private') AS private_repositories, \
              (SELECT COUNT(*) FROM access_tokens) AS access_tokens",
+        )
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    /// The public subset of [`Self::counts`], in one statement, for the front page.
+    pub async fn public_counts(&self) -> Result<PublicCounts, StorageError> {
+        Ok(sqlx::query_as(
+            "SELECT              (SELECT COUNT(*) FROM repositories WHERE visibility = 'public') AS public_repositories,              (SELECT COUNT(*) FROM user_logins WHERE suspended_at IS NULL) AS users,              (SELECT COUNT(*) FROM accounts WHERE kind = 'organization') AS organizations",
         )
         .fetch_one(&self.pool)
         .await?)

@@ -7,7 +7,8 @@
 use std::sync::{Arc, RwLock};
 
 use rustit_core::{InstanceSettings, OrgCreationPolicy, RegistrationMode, User, Visibility};
-use rustit_storage::sqlite::instance::InstanceSettingsStore;
+pub use rustit_storage::sqlite::admin::PublicCounts;
+use rustit_storage::sqlite::{admin::AdminStore, instance::InstanceSettingsStore};
 
 use crate::{ServiceContext, ServiceError};
 
@@ -25,6 +26,7 @@ mod key {
 #[derive(Debug, Clone)]
 pub struct InstanceService {
     store: InstanceSettingsStore,
+    counts: AdminStore,
     settings: Arc<RwLock<InstanceSettings>>,
 }
 
@@ -36,12 +38,18 @@ impl InstanceService {
         for (key, value) in store.load().await? {
             apply_override(&mut settings, &key, &value);
         }
-        Ok(Self { store, settings: Arc::new(RwLock::new(settings)) })
+        Ok(Self { store, counts: ctx.database.admin(), settings: Arc::new(RwLock::new(settings)) })
     }
 
     /// A snapshot of the current settings. Cheap; safe to call on every request.
     pub fn current(&self) -> InstanceSettings {
         self.settings.read().map_or_else(|poisoned| poisoned.into_inner().clone(), |s| s.clone())
+    }
+
+    /// Public repositories, active users and organisations, for the front page. One cheap
+    /// query; it reveals nothing a visitor could not count by browsing.
+    pub async fn public_counts(&self) -> Result<PublicCounts, ServiceError> {
+        Ok(self.counts.public_counts().await?)
     }
 
     /// Persists `new` as the instance settings and makes it effective immediately.
