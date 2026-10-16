@@ -52,6 +52,11 @@ impl RepoPage {
         Ok(Self { ctx, urls, refs, stars })
     }
 
+    /// Branches then tags, each sorted by name.
+    pub(super) fn refs(&self) -> &[RefSummary] {
+        &self.refs
+    }
+
     pub(super) fn default_branch(&self) -> &str {
         &self.ctx.repo.repo.default_branch
     }

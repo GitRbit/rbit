@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-base font-semibold tracking-tight">Compare changes</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Pick a base and the branch, tag or commit to compare against it.</p>
+</div>
+
+<form method="get" action="{{ picker.action_url }}" class="box flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+  <div class="min-w-0 flex-1">
+    <label class="label" for="compare-base">Base</label>
+    <input class="input font-mono text-xs" id="compare-base" name="base" value="{{ picker.base }}" list="compare-refs" autocomplete="off" required>
+  </div>
+  <span class="hidden pb-2 text-ink-faint sm:block" aria-hidden="true">…</span>
+  <div class="min-w-0 flex-1">
+    <label class="label" for="compare-head">Compare</label>
+    <input class="input font-mono text-xs" id="compare-head" name="head" value="{{ picker.head }}" list="compare-refs" autocomplete="off" required>
+  </div>
+  <datalist id="compare-refs">
+    {% for option in picker.options %}<option value="{{ option.name }}">{% if option.is_tag %}tag{% else %}branch{% endif %}</option>{% endfor %}
+  </datalist>
+  <button type="submit" class="btn btn-primary">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}Compare</button>
+</form>
+
+{% if let Some(summary) = summary %}
+<section class="mt-6" aria-label="Comparison">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px]">
+    <span class="min-w-0 truncate font-mono text-xs"><span class="text-ink-muted">{{ summary.base }}</span> … <span class="text-ink">{{ summary.head }}</span></span>
+    <span class="badge">{{ summary.ahead_label }} ahead</span>
+    <span class="badge">{{ summary.behind_label }} behind</span>
+    {% if let Some(merge_base) = summary.merge_base %}
+    <span class="text-xs text-ink-muted">merge base <a class="font-mono text-ink hover:underline hover:underline-offset-4" href="{{ merge_base.url }}">{{ merge_base.short_id }}</a></span>
+    {% endif %}
+    <a href="{{ summary.swap_url }}" class="btn btn-ghost ml-auto h-7 px-2 text-xs sm:h-7">{% call ui::icon("transfer", "size-3.5") %}{% endcall %}Swap</a>
+  </div>
+
+  {% if summary.merge_base.is_none() %}
+  <p class="mt-4 rounded-(--radius-ui) border border-line bg-subtle px-4 py-2.5 text-[13px] text-ink-muted">These revisions have entirely different histories, so there is no diff to show.</p>
+  {% else if summary.ahead == 0 %}
+  <div class="box mt-4">{% call ui::empty_state("git-compare", "Nothing to compare", "Everything in the compared revision is already in the base.") %}{% endcall %}</div>
+  {% endif %}
+
+  {% if !summary.commits.is_empty() %}
+  <h2 class="mb-2 mt-6 text-xs font-medium text-ink-muted">Commits</h2>
+  <ol class="box">
+    {% for commit in summary.commits %}
+    <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+      {% call ui::avatar(commit.avatar, "size-6 text-[9px]") %}{% endcall %}
+      <div class="min-w-0 flex-1">
+        <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
+        <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
+      </div>
+      <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ commit.short_id }}</a>
+    </li>
+    {% endfor %}
+  </ol>
+  {% if summary.more_commits %}<p class="mt-2 text-xs text-ink-muted">Only the newest {{ summary.commits.len() }} commits are listed.</p>{% endif %}
+  {% endif %}
+
+  {% if !files.is_empty() %}
+  {% include "repo/file_diffs.html" %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

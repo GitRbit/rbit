@@ -40,23 +40,7 @@ impl RepositoryReader {
                 None => None,
             };
 
-            let options = gix::diff::Options::default().with_rewrites(Some(gix::diff::Rewrites::default()));
-            let changes = repo.diff_tree_to_tree(old_tree.as_ref(), Some(&new_tree), options).map_err(GitError::backend)?;
-
-            let mut files = Vec::new();
-            let mut budget = limits.max_total_lines;
-            let mut truncated = false;
-            for change in changes {
-                let Some((path, old_path, status, old, new)) = describe(change) else { continue };
-                if files.len() == limits.max_files {
-                    truncated = true;
-                    break;
-                }
-                files.push(file_diff(repo, path, old_path, status, old, new, &limits, &mut budget)?);
-            }
-
-            // Files skipped once the line budget ran out make the listing incomplete too.
-            let truncated = truncated || files.iter().any(|f| !f.stats_known || matches!(f.body, FileDiffBody::TooLarge));
+            let (files, truncated) = diff_trees(repo, old_tree.as_ref(), &new_tree, limits)?;
             let committer_name = commit.committer().map_err(GitError::backend)?.trim().name.to_str_lossy().into_owned();
             Ok(CommitDetail { commit: summarize(&commit)?, committer_name, files, truncated })
         })
@@ -85,6 +69,35 @@ impl RepositoryReader {
         })
         .await
     }
+}
+
+/// Every file that differs between `old_tree` (the empty tree when `None`) and
+/// `new_tree`, with renames detected, bounded by `limits`. The flag is true when files
+/// were omitted or not diffed.
+pub(crate) fn diff_trees(
+    repo: &gix::Repository,
+    old_tree: Option<&gix::Tree<'_>>,
+    new_tree: &gix::Tree<'_>,
+    limits: DiffLimits,
+) -> Result<(Vec<FileDiff>, bool), GitError> {
+    let options = gix::diff::Options::default().with_rewrites(Some(gix::diff::Rewrites::default()));
+    let changes = repo.diff_tree_to_tree(old_tree, Some(new_tree), options).map_err(GitError::backend)?;
+
+    let mut files = Vec::new();
+    let mut budget = limits.max_total_lines;
+    let mut truncated = false;
+    for change in changes {
+        let Some((path, old_path, status, old, new)) = describe(change) else { continue };
+        if files.len() == limits.max_files {
+            truncated = true;
+            break;
+        }
+        files.push(file_diff(repo, path, old_path, status, old, new, &limits, &mut budget)?);
+    }
+
+    // Files skipped once the line budget ran out make the listing incomplete too.
+    let truncated = truncated || files.iter().any(|f| !f.stats_known || matches!(f.body, FileDiffBody::TooLarge));
+    Ok((files, truncated))
 }
 
 /// Normalises gitoxide's change into (path, old path, status, old side, new side).

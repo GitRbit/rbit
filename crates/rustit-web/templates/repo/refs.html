@@ -29,6 +29,9 @@
           <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></span>
         </p>
       </div>
+      {% if let Some(url) = row.compare_url %}
+      <a href="{{ url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" title="Compare with the default branch">Compare</a>
+      {% endif %}
       {% if kind == "tag" %}
       <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download ZIP">zip</a>
       <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download tar.gz">tar.gz</a>

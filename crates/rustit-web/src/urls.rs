@@ -60,6 +60,11 @@ impl RepoUrls {
         format!("{}/tags", self.base)
     }
 
+    /// The comparison of `head` against `base`.
+    pub fn compare(&self, base: &str, head: &str) -> String {
+        format!("{}/compare/{}...{}", self.base, encode_path(base), encode_path(head))
+    }
+
     /// A source archive of `revision`; `extension` is `.zip` or `.tar.gz`.
     pub fn archive(&self, revision: &str, extension: &str) -> String {
         format!("{}/archive/{}{extension}", self.base, encode_path(revision))

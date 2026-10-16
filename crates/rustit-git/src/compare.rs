@@ -1,3 +1,98 @@
 //! Comparing two revisions: merge base, commits ahead and behind, and the diff.
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
+//!
+//! The comparison answers "what would merging `head` into `base` bring in": the commits
+//! reachable from `head` but not from `base`, and the diff from their merge base to
+//! `head` (so changes made on `base` meanwhile do not show up as reversions).
+
+use gix::{ObjectId, revision::walk::Sorting, traverse::commit::simple::CommitTimeOrder};
+
+use crate::{
+    CommitSummary, DiffLimits, FileDiff, GitError, RepositoryReader,
+    changes::diff_trees,
+    reader::{resolve_commit, summarize},
+};
+
+/// Commits counted at most when computing ahead/behind; beyond it the count is a lower bound.
+pub const MAX_COUNTED_COMMITS: usize = 10_000;
+
+#[derive(Debug, Clone)]
+pub struct Comparison {
+    pub base: CommitSummary,
+    pub head: CommitSummary,
+    /// The best common ancestor; `None` when the histories are unrelated.
+    pub merge_base: Option<String>,
+    /// Commits in `head` but not in `base` (at most [`MAX_COUNTED_COMMITS`]).
+    pub ahead: usize,
+    /// Commits in `base` but not in `head` (at most [`MAX_COUNTED_COMMITS`]).
+    pub behind: usize,
+    /// The newest of the commits ahead, newest first.
+    pub commits: Vec<CommitSummary>,
+    /// What `head` changed since the merge base; empty for unrelated histories.
+    pub files: Vec<FileDiff>,
+    /// Some files were omitted, or not diffed, because the comparison is very large.
+    pub truncated: bool,
+}
+
+impl Comparison {
+    pub fn additions(&self) -> usize {
+        self.files.iter().map(|f| f.additions).sum()
+    }
+
+    pub fn deletions(&self) -> usize {
+        self.files.iter().map(|f| f.deletions).sum()
+    }
+}
+
+impl RepositoryReader {
+    /// Compares `head` against `base` (branches, tags or commit ids), listing at most
+    /// `max_commits` of the commits ahead.
+    pub async fn compare(&self, base: String, head: String, limits: DiffLimits, max_commits: usize) -> Result<Comparison, GitError> {
+        self.with_repo(move |repo| {
+            let base_id = resolve_commit(repo, &base)?;
+            let head_id = resolve_commit(repo, &head)?;
+            let merge_base = repo.merge_base(base_id, head_id).map_err(GitError::backend)?.map(gix::Id::detach);
+
+            let only_in = |tip: ObjectId, hidden: ObjectId| -> Result<Vec<ObjectId>, GitError> {
+                repo.rev_walk([tip])
+                    .with_hidden([hidden])
+                    .sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst))
+                    .all()
+                    .map_err(GitError::backend)?
+                    .take(MAX_COUNTED_COMMITS)
+                    .map(|info| info.map(|info| info.id).map_err(GitError::backend))
+                    .collect()
+            };
+            let ahead = only_in(head_id, base_id)?;
+            let behind = only_in(base_id, head_id)?;
+            let commits = ahead
+                .iter()
+                .take(max_commits)
+                .map(|id| summarize(&repo.find_commit(*id).map_err(GitError::backend)?))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let head_commit = repo.find_commit(head_id).map_err(GitError::backend)?;
+            let (files, truncated) = match merge_base {
+                Some(merge_base) if merge_base != head_id => {
+                    let old_tree = repo.find_commit(merge_base).map_err(GitError::backend)?.tree().map_err(GitError::backend)?;
+                    let new_tree = head_commit.tree().map_err(GitError::backend)?;
+                    diff_trees(repo, Some(&old_tree), &new_tree, limits)?
+                }
+                _ => (Vec::new(), false),
+            };
+
+            Ok(Comparison {
+                base: summarize(&repo.find_commit(base_id).map_err(GitError::backend)?)?,
+                head: summarize(&head_commit)?,
+                merge_base: merge_base.map(|id| id.to_hex().to_string()),
+                ahead: ahead.len(),
+                behind: behind.len(),
+                commits,
+                files,
+                truncated,
+            })
+        })
+        .await
+    }
+}

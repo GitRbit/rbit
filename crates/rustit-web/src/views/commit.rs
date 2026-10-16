@@ -97,6 +97,11 @@ pub struct FileDiffView {
 }
 
 impl FileDiffView {
+    /// Views for `files`, linking each to its version at `commit_id`.
+    pub fn list(files: &[FileDiff], commit_id: &str, urls: &RepoUrls) -> Vec<Self> {
+        files.iter().enumerate().map(|(i, f)| Self::new(i, f, commit_id, urls)).collect()
+    }
+
     fn new(index: usize, file: &FileDiff, commit_id: &str, urls: &RepoUrls) -> Self {
         let status = match file.status {
             ChangeStatus::Added => "Added",
@@ -158,7 +163,7 @@ impl CommitPage {
                 .iter()
                 .map(|id| ParentLink { short_id: id[..7.min(id.len())].to_owned(), url: urls.commit(id) })
                 .collect(),
-            files: detail.files.iter().enumerate().map(|(i, f)| FileDiffView::new(i, f, &commit.id, urls)).collect(),
+            files: FileDiffView::list(&detail.files, &commit.id, urls),
             additions: detail.additions(),
             deletions: detail.deletions(),
             truncated: detail.truncated,

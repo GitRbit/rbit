@@ -23,6 +23,8 @@ pub struct RefRow {
     /// Source archives of the ref (shown for tags).
     pub zip_url: String,
     pub tar_url: String,
+    /// The branch compared against the default branch (other branches only).
+    pub compare_url: Option<String>,
 }
 
 impl RefRow {
@@ -32,12 +34,14 @@ impl RefRow {
             rustit_git::RefKind::Branch => format!("refs/heads/{}", detail.name),
             rustit_git::RefKind::Tag => format!("refs/tags/{}", detail.name),
         };
+        let is_default = detail.kind == rustit_git::RefKind::Branch && detail.name == default_branch;
         Self {
+            compare_url: (detail.kind == rustit_git::RefKind::Branch && !is_default).then(|| urls.compare(default_branch, &detail.name)),
             name: detail.name.clone(),
             url: urls.tree(&full_name, ""),
             zip_url: urls.archive(&detail.name, ".zip"),
             tar_url: urls.archive(&detail.name, ".tar.gz"),
-            is_default: detail.kind == rustit_git::RefKind::Branch && detail.name == default_branch,
+            is_default,
             commit: CommitView::new(&detail.commit, urls),
         }
     }
