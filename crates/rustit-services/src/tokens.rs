@@ -1,10 +1,15 @@
 //! Personal access tokens: creation, listing, revocation and Git credential checks.
+//!
+//! Creation and revocation are recorded in the security audit log.
 
 use rustit_auth::AccessTokenSecret;
 use rustit_core::{AccessToken, AccessTokenId, Timestamp, TokenScope, User};
 use rustit_storage::{AccessTokenStore, AccountStore, NewAccessToken};
 
-use crate::ServiceError;
+use crate::{
+    ServiceError,
+    audit::{AuditAction, AuditEntry, AuditService},
+};
 
 const MAX_NAME_LEN: usize = 64;
 const MAX_TOKENS_PER_USER: i64 = 50;
@@ -22,6 +27,7 @@ pub struct CreateAccessToken {
 pub struct AccessTokenService {
     store: AccessTokenStore,
     accounts: AccountStore,
+    audit: AuditService,
 }
 
 impl AccessTokenService {
@@ -29,7 +35,8 @@ impl AccessTokenService {
     pub const EXPIRY_CHOICES: &'static [Option<u32>] = &[Some(7), Some(30), Some(90), Some(365), None];
 
     pub(crate) fn new(store: AccessTokenStore, accounts: AccountStore) -> Self {
-        Self { store, accounts }
+        let audit = AuditService::from_store(accounts.audit_log());
+        Self { store, accounts, audit }
     }
 
     /// Returns the stored metadata and the plaintext secret (shown to the user exactly once).
@@ -66,6 +73,8 @@ impl AccessTokenService {
             .await?;
 
         tracing::info!(user = %owner.name(), token = token.id.0, scope = token.scope.as_str(), "access token created");
+        let detail = format!("{} scope", token.scope.as_str());
+        self.audit.record(AuditEntry::new(AuditAction::TokenCreated).by(owner).on(token.name.clone()).detail(detail)).await;
         Ok((token, secret.encode()))
     }
 
@@ -76,10 +85,18 @@ impl AccessTokenService {
 
     /// [`ServiceError::NotFound`] if the token doesn't exist or isn't the owner's.
     pub async fn revoke(&self, owner: &User, id: AccessTokenId) -> Result<(), ServiceError> {
+        let name = self.store.list_for_account(owner.id()).await?.into_iter().find(|token| token.id == id).map(|token| token.name);
         if !self.store.delete(owner.id(), id).await? {
             return Err(ServiceError::NotFound);
         }
         tracing::info!(user = %owner.name(), token = id.0, "access token revoked");
+        let entry = AuditEntry::new(AuditAction::TokenRevoked).by(owner);
+        self.audit
+            .record(match name {
+                Some(name) => entry.on(name),
+                None => entry,
+            })
+            .await;
         Ok(())
     }
 

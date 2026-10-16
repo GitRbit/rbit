@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use rustit_core::{Config, User};
+use rustit_core::{Config, InstanceSettings, RegistrationMode, TokenScope, User};
 use rustit_services::{
-    ServiceError, Services,
+    CreateAccessToken, ServiceError, Services, SignUp,
     admin::{ListQuery, PAGE_SIZE},
     audit::{AuditAction, AuditCategory, AuditEntry},
 };
@@ -103,4 +103,48 @@ async fn only_administrators_read_the_log_and_it_pages() {
     let second = audit.list(&admin, Some(AuditCategory::Tokens), &query("", 2)).await.unwrap();
     assert_eq!(second.items.len(), 1);
     assert!(second.items[0].id < first.items.last().unwrap().id);
+}
+
+#[tokio::test]
+async fn administrator_actions_and_tokens_are_recorded() {
+    let fixture = Fixture::new().await;
+    let admin = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    let services = &fixture.services;
+
+    let input = SignUp { username: "bob".to_owned(), email: "bob@example.com".to_owned(), password: "correct horse battery".to_owned() };
+    services.admin.create_user(&admin, input, false).await.unwrap();
+    services.admin.set_admin(&admin, alice.id(), true).await.unwrap();
+    services.admin.set_suspended(&admin, alice.id(), true).await.unwrap();
+    services.admin.set_suspended(&admin, alice.id(), false).await.unwrap();
+    let settings = InstanceSettings { registration: RegistrationMode::Closed, ..services.instance.current() };
+    services.admin.update_settings(&admin, settings.clone()).await.unwrap();
+    services.admin.update_settings(&admin, settings).await.unwrap(); // no change, no entry
+
+    let log = services.audit.list(&admin, Some(AuditCategory::Administration), &query("", 1)).await.unwrap();
+    let actions: Vec<_> = log.items.iter().map(|event| event.action).collect();
+    assert_eq!(
+        actions,
+        [
+            AuditAction::InstanceSettingsChanged,
+            AuditAction::UserUnsuspended,
+            AuditAction::UserSuspended,
+            AuditAction::AdminGranted,
+            AuditAction::UserCreated
+        ]
+    );
+    assert_eq!(log.items[0].detail, "registration: open → closed");
+    assert!(log.items.iter().all(|event| event.actor_id == Some(admin.id())));
+    assert_eq!(log.items[4].target_name.as_deref(), Some("bob"));
+
+    let (token, _) = services
+        .tokens
+        .create(&alice, CreateAccessToken { name: "laptop".to_owned(), scope: TokenScope::Write, expires_in_days: Some(30) })
+        .await
+        .unwrap();
+    services.tokens.revoke(&alice, token.id).await.unwrap();
+    let tokens = services.audit.list(&admin, Some(AuditCategory::Tokens), &query("", 1)).await.unwrap();
+    let actions: Vec<_> = tokens.items.iter().map(|event| (event.action, event.target_name.as_deref())).collect();
+    assert_eq!(actions, [(AuditAction::TokenRevoked, Some("laptop")), (AuditAction::TokenCreated, Some("laptop"))]);
+    assert_eq!(tokens.items[1].detail, "write scope");
 }

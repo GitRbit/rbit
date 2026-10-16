@@ -15,7 +15,10 @@ use rustit_core::{AccountId, InstanceSettings, OwnedRepository, RepoId, User};
 use rustit_storage::sqlite::admin::{AdminStore, ListFilter, Listing, Moderation};
 pub use rustit_storage::sqlite::admin::{InstanceCounts, OrgRecord, UserRecord};
 
-use crate::{InstanceService, ServiceContext, ServiceError, SignUp, accounts};
+use crate::{
+    InstanceService, ServiceContext, ServiceError, SignUp, accounts,
+    audit::{AuditAction, AuditEntry, AuditService},
+};
 
 /// Rows per page in administration listings.
 pub const PAGE_SIZE: u32 = 30;
@@ -113,13 +116,15 @@ pub struct AdminService {
     ctx: ServiceContext,
     instance: InstanceService,
     store: AdminStore,
+    audit: AuditService,
 }
 
 impl AdminService {
     pub(crate) fn new(ctx: ServiceContext, instance: InstanceService) -> Self {
         STARTED_AT.get_or_init(Instant::now);
         let store = ctx.database.admin();
-        Self { ctx, instance, store }
+        let audit = AuditService::from_store(ctx.database.audit());
+        Self { ctx, instance, store, audit }
     }
 
     // ------------------------------------------------------------------ dashboard
@@ -150,6 +155,21 @@ impl AdminService {
         })
     }
 
+    // ------------------------------------------------------------------ settings
+
+    /// Saves the runtime instance settings (see [`InstanceService::update`]) and records
+    /// what changed in the audit log. Use this rather than calling the instance service
+    /// directly from the administration panel.
+    pub async fn update_settings(&self, actor: &User, settings: InstanceSettings) -> Result<(), ServiceError> {
+        let before = self.instance.current();
+        self.instance.update(actor, settings).await?;
+        let changes = describe_changes(&before, &self.instance.current());
+        if !changes.is_empty() {
+            self.audit.record(AuditEntry::new(AuditAction::InstanceSettingsChanged).by(actor).detail(changes)).await;
+        }
+        Ok(())
+    }
+
     // ------------------------------------------------------------------ users
 
     pub async fn users(&self, actor: &User, query: &ListQuery) -> Result<Paged<UserRecord>, ServiceError> {
@@ -167,6 +187,8 @@ impl AdminService {
         require_admin(actor)?;
         let user = accounts::create_user(&self.ctx.config, &self.ctx.database.accounts(), input, Some(is_admin)).await?;
         tracing::info!(admin = %actor.name(), user = %user.name(), is_admin, "administrator created account");
+        let detail = if is_admin { "as an administrator" } else { "" };
+        self.audit.record(AuditEntry::new(AuditAction::UserCreated).by(actor).on(user.name().as_str()).detail(detail)).await;
         Ok(user)
     }
 
@@ -178,6 +200,8 @@ impl AdminService {
         }
         check_moderation(self.store.set_admin(id, is_admin).await?, &target, "demoted")?;
         tracing::info!(admin = %actor.name(), user = %target.user.name(), is_admin, "administrator rights changed");
+        let action = if is_admin { AuditAction::AdminGranted } else { AuditAction::AdminRevoked };
+        self.audit.record(AuditEntry::new(action).by(actor).on(target.user.name().as_str())).await;
         Ok(target)
     }
 
@@ -189,6 +213,8 @@ impl AdminService {
         }
         check_moderation(self.store.set_suspended(id, suspended).await?, &target, "suspended")?;
         tracing::info!(admin = %actor.name(), user = %target.user.name(), suspended, "user suspension changed");
+        let action = if suspended { AuditAction::UserSuspended } else { AuditAction::UserUnsuspended };
+        self.audit.record(AuditEntry::new(action).by(actor).on(target.user.name().as_str())).await;
         Ok(target)
     }
 
@@ -215,6 +241,7 @@ impl AdminService {
             self.remove_from_disk(id, repo).await;
         }
         tracing::info!(admin = %actor.name(), user = %target.user.name(), "user deleted");
+        self.audit.record(AuditEntry::new(AuditAction::UserDeleted).by(actor).on(target.user.name().as_str())).await;
         Ok(target)
     }
 
@@ -249,6 +276,7 @@ impl AdminService {
         }
         self.remove_from_disk(repo.owner.id, id).await;
         tracing::info!(admin = %actor.name(), repository = %repo.full_name(), "repository deleted");
+        self.audit.record(AuditEntry::new(AuditAction::RepositoryDeleted).by(actor).on(repo.full_name())).await;
         Ok(repo)
     }
 
@@ -259,6 +287,17 @@ impl AdminService {
             tracing::error!(%error, owner = owner.0, repo = repo.0, "failed to delete repository from disk");
         }
     }
+}
+
+/// e.g. `registration: open → closed; site name: Rustit → Forge`.
+fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> String {
+    let fields = [
+        ("site name", before.site_name.as_str(), after.site_name.as_str()),
+        ("registration", before.registration.as_str(), after.registration.as_str()),
+        ("organization creation", before.org_creation.as_str(), after.org_creation.as_str()),
+        ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
+    ];
+    fields.iter().filter(|(_, old, new)| old != new).map(|(name, old, new)| format!("{name}: {old} → {new}")).collect::<Vec<_>>().join("; ")
 }
 
 pub(crate) fn require_admin(actor: &User) -> Result<(), ServiceError> {
