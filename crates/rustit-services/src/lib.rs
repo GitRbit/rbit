@@ -93,15 +93,18 @@ impl Services {
             events: EventBus::new(),
         };
         let instance = InstanceService::load(&ctx).await?;
+        // Shared so recovery emails use the same delivery queue and the same rate limits.
+        let mail = MailService::new(ctx.clone());
+        let throttle = ThrottleService::new(ctx.clone());
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
             audit: AuditService::new(ctx.clone()),
             jobs: JobService::new(ctx.clone()),
-            mail: MailService::new(ctx.clone()),
-            recovery: RecoveryService::new(ctx.clone()),
+            mail: mail.clone(),
+            recovery: RecoveryService::builder(ctx.clone()).mail(mail).throttle(throttle.clone()).instance(instance.clone()).build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
-            throttle: ThrottleService::new(ctx.clone()),
+            throttle,
             two_factor: TwoFactorService::new(ctx.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
