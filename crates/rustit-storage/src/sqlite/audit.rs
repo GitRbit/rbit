@@ -18,11 +18,14 @@ pub enum AuditCategory {
     TwoFactor,
     Sessions,
     Tokens,
+    /// Collaborators, teams, transfers and webhooks (milestone 2).
+    RepositoryAccess,
     Administration,
 }
 
 impl AuditCategory {
-    pub const ALL: [Self; 5] = [Self::Authentication, Self::TwoFactor, Self::Sessions, Self::Tokens, Self::Administration];
+    pub const ALL: [Self; 6] =
+        [Self::Authentication, Self::TwoFactor, Self::Sessions, Self::Tokens, Self::RepositoryAccess, Self::Administration];
 
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -30,6 +33,7 @@ impl AuditCategory {
             Self::TwoFactor => "two_factor",
             Self::Sessions => "sessions",
             Self::Tokens => "tokens",
+            Self::RepositoryAccess => "repository_access",
             Self::Administration => "administration",
         }
     }
@@ -44,6 +48,7 @@ impl AuditCategory {
             Self::TwoFactor => "Two-factor",
             Self::Sessions => "Sessions",
             Self::Tokens => "Access tokens",
+            Self::RepositoryAccess => "Repository access",
             Self::Administration => "Administration",
         }
     }
@@ -76,10 +81,20 @@ pub enum AuditAction {
     PasswordSet,
     RepositoryDeleted,
     InstanceSettingsChanged,
+    CollaboratorAdded,
+    CollaboratorChanged,
+    CollaboratorRemoved,
+    TeamCreated,
+    TeamChanged,
+    TeamDeleted,
+    RepositoryTransferred,
+    WebhookCreated,
+    WebhookChanged,
+    WebhookDeleted,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 34] = [
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -104,6 +119,16 @@ impl AuditAction {
         Self::PasswordSet,
         Self::RepositoryDeleted,
         Self::InstanceSettingsChanged,
+        Self::CollaboratorAdded,
+        Self::CollaboratorChanged,
+        Self::CollaboratorRemoved,
+        Self::TeamCreated,
+        Self::TeamChanged,
+        Self::TeamDeleted,
+        Self::RepositoryTransferred,
+        Self::WebhookCreated,
+        Self::WebhookChanged,
+        Self::WebhookDeleted,
     ];
 
     /// Stable identifier stored in the database.
@@ -133,6 +158,16 @@ impl AuditAction {
             Self::PasswordSet => "password_set",
             Self::RepositoryDeleted => "repository_deleted",
             Self::InstanceSettingsChanged => "instance_settings_changed",
+            Self::CollaboratorAdded => "collaborator_added",
+            Self::CollaboratorChanged => "collaborator_changed",
+            Self::CollaboratorRemoved => "collaborator_removed",
+            Self::TeamCreated => "team_created",
+            Self::TeamChanged => "team_changed",
+            Self::TeamDeleted => "team_deleted",
+            Self::RepositoryTransferred => "repository_transferred",
+            Self::WebhookCreated => "webhook_created",
+            Self::WebhookChanged => "webhook_changed",
+            Self::WebhookDeleted => "webhook_deleted",
         }
     }
 
@@ -161,6 +196,16 @@ impl AuditAction {
             | Self::PasswordSet
             | Self::RepositoryDeleted
             | Self::InstanceSettingsChanged => AuditCategory::Administration,
+            Self::CollaboratorAdded
+            | Self::CollaboratorChanged
+            | Self::CollaboratorRemoved
+            | Self::TeamCreated
+            | Self::TeamChanged
+            | Self::TeamDeleted
+            | Self::RepositoryTransferred
+            | Self::WebhookCreated
+            | Self::WebhookChanged
+            | Self::WebhookDeleted => AuditCategory::RepositoryAccess,
         }
     }
 
@@ -191,6 +236,16 @@ impl AuditAction {
             Self::UserDeleted => "Deleted a user",
             Self::RepositoryDeleted => "Deleted a repository",
             Self::InstanceSettingsChanged => "Changed instance settings",
+            Self::CollaboratorAdded => "Added a collaborator",
+            Self::CollaboratorChanged => "Changed a collaborator's permission",
+            Self::CollaboratorRemoved => "Removed a collaborator",
+            Self::TeamCreated => "Created a team",
+            Self::TeamChanged => "Changed a team's members or repositories",
+            Self::TeamDeleted => "Deleted a team",
+            Self::RepositoryTransferred => "Transferred a repository",
+            Self::WebhookCreated => "Created a webhook",
+            Self::WebhookChanged => "Changed a webhook",
+            Self::WebhookDeleted => "Deleted a webhook",
         }
     }
 
