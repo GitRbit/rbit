@@ -10,3 +10,6 @@
 # Local runtime data (SQLite, redb, repositories)
 /data
 /rustit.toml
+
+# Agent worktrees (temporary checkouts of feature branches)
+/.claude/worktrees/
