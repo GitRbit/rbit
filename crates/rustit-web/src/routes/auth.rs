@@ -17,6 +17,7 @@ use serde::Deserialize;
 
 use crate::{
     AppState,
+    client_ip::Https,
     error::{WebError, WebResult},
     extract::Viewer,
     middleware::SESSION_COOKIE,
@@ -57,10 +58,16 @@ pub async fn login_form(State(state): State<AppState>, viewer: Viewer, page: Pag
         .into_response())
 }
 
-pub async fn login(State(state): State<AppState>, jar: CookieJar, page: Page, Form(form): Form<LoginForm>) -> WebResult<Response> {
+pub async fn login(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    https: Https,
+    page: Page,
+    Form(form): Form<LoginForm>,
+) -> WebResult<Response> {
     let next = safe_redirect_target(form.next.as_deref()).to_owned();
     match state.services.accounts.authenticate(&form.login, form.password).await {
-        Ok(user) => start_session(&state, jar, &user, &next).await,
+        Ok(user) => start_session(&state, jar, https, &user, &next).await,
         Err(error @ (ServiceError::InvalidCredentials | ServiceError::Forbidden)) => {
             let message = match error {
                 ServiceError::Forbidden => "This account has been suspended. Contact an administrator.",
@@ -82,10 +89,16 @@ pub async fn signup_form(State(state): State<AppState>, viewer: Viewer, page: Pa
     Ok(signup_page(&state, page, FormError::default(), String::new(), String::new()).await?.into_response())
 }
 
-pub async fn signup(State(state): State<AppState>, jar: CookieJar, page: Page, Form(form): Form<SignupForm>) -> WebResult<Response> {
+pub async fn signup(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    https: Https,
+    page: Page,
+    Form(form): Form<SignupForm>,
+) -> WebResult<Response> {
     let input = SignUp { username: form.username.clone(), email: form.email.clone(), password: form.password };
     match state.services.accounts.sign_up(input).await {
-        Ok(user) => start_session(&state, jar, &user, "/").await,
+        Ok(user) => start_session(&state, jar, https, &user, "/").await,
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_) | ServiceError::RegistrationClosed)) => {
             let page = signup_page(&state, page, FormError::from_message(&error.to_string()), form.username, form.email).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
@@ -113,13 +126,14 @@ async fn signup_page(state: &AppState, page: Page, error: FormError, username: S
     })
 }
 
-/// Issues the session cookie and redirects with `303 See Other`.
-async fn start_session(state: &AppState, jar: CookieJar, user: &User, next: &str) -> WebResult<Response> {
+/// Issues the session cookie and redirects with `303 See Other`. The cookie is `Secure`
+/// whenever the request arrived over HTTPS, directly or through a trusted proxy.
+async fn start_session(state: &AppState, jar: CookieJar, Https(https): Https, user: &User, next: &str) -> WebResult<Response> {
     let token = state.services.accounts.start_session(user).await?;
     let cookie = Cookie::build((SESSION_COOKIE, token.encode()))
         .http_only(true)
         .same_site(SameSite::Lax)
-        .secure(state.config.server.is_https())
+        .secure(https)
         .path("/")
         .max_age(time::Duration::seconds(state.services.accounts.session_lifetime_seconds()));
     Ok((jar.add(cookie), Redirect::to(next)).into_response())
