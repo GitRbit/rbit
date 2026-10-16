@@ -22,8 +22,8 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        "background_color": "#09090c",
-        "theme_color": "#7c3aed",
+        "background_color": "#000000",
+        "theme_color": "#000000",
         // PNGs (rendered from icon.svg by `npm run icons`) for platforms that ignore SVG
         // icons; the maskable one keeps the glyph inside the safe zone.
         "icons": [
