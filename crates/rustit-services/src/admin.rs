@@ -47,7 +47,7 @@ impl ListQuery {
         self.page.max(1)
     }
 
-    fn filter(&self) -> ListFilter<'_> {
+    pub(crate) fn filter(&self) -> ListFilter<'_> {
         ListFilter { search: self.search(), limit: i64::from(PAGE_SIZE), offset: i64::from(self.page() - 1) * i64::from(PAGE_SIZE) }
     }
 }
@@ -64,7 +64,7 @@ pub struct Paged<T> {
 }
 
 impl<T> Paged<T> {
-    fn new(listing: Listing<T>, query: &ListQuery) -> Self {
+    pub(crate) fn new(listing: Listing<T>, query: &ListQuery) -> Self {
         Self { items: listing.items, total: listing.total.try_into().unwrap_or(0), page: query.page(), per_page: PAGE_SIZE }
     }
 
@@ -261,7 +261,7 @@ impl AdminService {
     }
 }
 
-fn require_admin(actor: &User) -> Result<(), ServiceError> {
+pub(crate) fn require_admin(actor: &User) -> Result<(), ServiceError> {
     if actor.is_admin { Ok(()) } else { Err(ServiceError::Forbidden) }
 }
 
