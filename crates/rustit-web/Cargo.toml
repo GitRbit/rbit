@@ -38,6 +38,12 @@ serde_json.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tracing.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+
+[dev-dependencies]
+rustit-storage.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
