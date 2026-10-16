@@ -19,6 +19,7 @@ use crate::{
     render::{format_size, is_markdown, render_markdown},
     urls::{DocumentBase, RepoUrls, encode_path},
     views::{
+        collaborators::CollaboratorAccess,
         components::Avatar,
         forks::ForkedFrom,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
@@ -142,7 +143,7 @@ pub async fn home(
         let page = page.titled(loaded.ctx.repo.full_name());
         return Ok(EmptyRepoPage { page, header, default_branch: loaded.default_branch().to_owned() }.into_response());
     };
-    Ok(render_tree(&state, loaded, page, revision, String::new()).await?.into_response())
+    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new()).await?.into_response())
 }
 
 /// `GET /{owner}/{repo}/tree/{revision}/{path…}`
@@ -154,13 +155,24 @@ pub async fn tree(
 ) -> WebResult<TreePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
-    render_tree(&state, loaded, page, revision, path).await
+    render_tree(&state, &viewer, loaded, page, revision, path).await
 }
 
-async fn render_tree(state: &AppState, loaded: RepoPage, page: Page, revision: String, path: String) -> WebResult<TreePage> {
+async fn render_tree(
+    state: &AppState,
+    viewer: &Viewer,
+    loaded: RepoPage,
+    page: Page,
+    revision: String,
+    path: String,
+) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
-    let (view, languages, latest_release) =
-        tokio::join!(reader.tree(revision.clone(), path.clone()), language_bar(state, &loaded), latest_release(state, &loaded));
+    let (view, languages, latest_release, collaborator) = tokio::join!(
+        reader.tree(revision.clone(), path.clone()),
+        language_bar(state, &loaded),
+        latest_release(state, &loaded),
+        collaborator_access(state, viewer, &loaded)
+    );
     let view = view.map_err(ServiceError::from)?;
     let readme = reader
         .readme(revision.clone(), &view.entries, &path, state.services.repositories.max_render_bytes())
@@ -209,7 +221,21 @@ async fn render_tree(state: &AppState, loaded: RepoPage, page: Page, revision: S
         history_url: urls.commits(&revision),
         languages,
         latest_release,
+        collaborator,
     })
+}
+
+/// The viewer's collaborator grant, when they have one and do not administer the
+/// repository, so the sidebar can offer "Leave". Decoration too: failures are logged.
+async fn collaborator_access(state: &AppState, viewer: &Viewer, loaded: &RepoPage) -> Option<CollaboratorAccess> {
+    let user = viewer.user().filter(|_| !loaded.ctx.access.can_admin())?;
+    match state.services.collaborators.permission_of(user, &loaded.ctx).await {
+        Ok(permission) => permission.map(|permission| CollaboratorAccess::new(permission, &loaded.urls.home(), user.name().as_str())),
+        Err(error) => {
+            tracing::warn!(%error, repo = %loaded.ctx.repo.full_name(), "collaborator permission unavailable");
+            None
+        }
+    }
 }
 
 /// The sidebar language bar for the default branch. Insights are decoration: a failure

@@ -73,6 +73,15 @@
       </a>
     </section>
     {% endif %}
+    {% if let Some(collaborator) = collaborator %}
+    <section class="border-t border-line pt-5" aria-labelledby="your-access-title">
+      <h2 id="your-access-title" class="text-[13px] font-medium">Your access</h2>
+      <p class="mt-2 text-[13px] text-ink-muted">{{ collaborator.permission_label }} access as a collaborator.</p>
+      <form method="post" action="{{ collaborator.leave_url }}" class="mt-3">
+        <button class="btn" type="submit">Leave repository</button>
+      </form>
+    </section>
+    {% endif %}
     {% if let Some(languages) = languages %}
     <section class="border-t border-line pt-5" aria-labelledby="languages-title">
       <h2 id="languages-title" class="text-[13px] font-medium">Languages</h2>

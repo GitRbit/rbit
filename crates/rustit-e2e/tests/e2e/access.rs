@@ -52,9 +52,13 @@ async fn collaborators_get_exactly_their_permission() {
     assert!(!profile.contains("vault"), "the profile hides the repository from outsiders");
     reader.get("/").await.expect_contains(&["alice/</span>vault"]);
 
-    // Permissions change and collaborators leave on their own.
+    // Permissions change and collaborators leave on their own, from the repository's sidebar.
     alice.post(&format!("{page}/will/permission"), &[("permission", "read")]).await.expect_redirect(page);
     writer.get_basic("/alice/vault.git/info/refs?service=git-receive-pack", "will", &token).await.expect_status(StatusCode::FORBIDDEN);
+    let leave = format!("action=\"{page}/rita/remove\"");
+    reader.get("/alice/vault").await.expect_contains(&["Read access as a collaborator", &leave, "Leave repository"]);
+    let owner_view = alice.get("/alice/vault").await;
+    assert!(!owner_view.contains("Leave repository"), "the owner is not offered to leave");
     reader.post(&format!("{page}/rita/remove"), &[]).await.expect_redirect("/");
     reader.get("/alice/vault").await.expect_status(StatusCode::NOT_FOUND);
     alice.post(&format!("{page}/will/remove"), &[]).await.expect_redirect(page);

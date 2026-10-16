@@ -26,6 +26,22 @@ pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     }]
 }
 
+/// The repository sidebar's note for a collaborator who does not administer the
+/// repository, with a button to leave it (administrators leave on the collaborators page).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollaboratorAccess {
+    pub permission_label: &'static str,
+    /// `POST` target: the viewer's own row of the collaborators page.
+    pub leave_url: String,
+}
+
+impl CollaboratorAccess {
+    /// `home_url` is `/{owner}/{repo}`; `username` is the viewer's name.
+    pub fn new(permission: Permission, home_url: &str, username: &str) -> Self {
+        Self { permission_label: permission.label(), leave_url: format!("{home_url}/settings/collaborators/{username}/remove") }
+    }
+}
+
 /// One `<option>` of a permission picker.
 #[derive(Debug, Clone)]
 pub struct PermissionOption {
@@ -191,6 +207,13 @@ mod tests {
             bio: None,
             created_at: Timestamp(0),
         }
+    }
+
+    #[test]
+    fn collaborators_leave_through_their_own_row() {
+        let access = CollaboratorAccess::new(Permission::Write, "/acme/rocket", "will");
+        assert_eq!(access.permission_label, "Write");
+        assert_eq!(access.leave_url, "/acme/rocket/settings/collaborators/will/remove");
     }
 
     fn header() -> RepoHeader {

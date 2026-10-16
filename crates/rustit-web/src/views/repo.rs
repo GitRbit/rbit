@@ -6,7 +6,10 @@ use rustit_git::{CommitSummary, RefKind, RefSummary};
 
 use crate::{
     urls::RepoUrls,
-    views::{components::Avatar, forks::ForkedFrom, insights::LanguageBar, layout::Page, releases::LatestRelease},
+    views::{
+        collaborators::CollaboratorAccess, components::Avatar, forks::ForkedFrom, insights::LanguageBar, layout::Page,
+        releases::LatestRelease,
+    },
 };
 
 // ------------------------------------------------------------------ shared pieces
@@ -196,6 +199,8 @@ pub struct TreePage {
     pub languages: Option<LanguageBar>,
     /// The latest published release, for the sidebar.
     pub latest_release: Option<LatestRelease>,
+    /// Set when the viewer is a collaborator without admin rights, to offer leaving.
+    pub collaborator: Option<CollaboratorAccess>,
 }
 
 /// How a file's contents are presented.
