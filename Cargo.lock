@@ -3741,6 +3741,7 @@ name = "rustit-transport"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",
