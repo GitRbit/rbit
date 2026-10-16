@@ -6,6 +6,7 @@ mod accounts;
 mod harness;
 mod orgs;
 mod repositories;
+mod security;
 mod stars;
 mod tokens;
 mod visibility;
