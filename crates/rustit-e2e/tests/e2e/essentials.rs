@@ -56,9 +56,31 @@ async fn pull_mirrors_fetch_their_upstream() {
     wait_for(&alice, "/alice/copy/commits", &pushed[..7]).await;
 
     alice.post("/alice/copy/settings/mirror", &[("interval", "120")]).await.expect_redirect("/alice/copy/settings/mirror?saved=1");
+
+    // A mirror only changes by fetching: pushes are refused, even from its administrator.
+    let copy_url = server.git_url_as("alice", "copy", "alice", PASSWORD);
+    let advertisement = server.client().get_basic("/alice/copy.git/info/refs?service=git-receive-pack", "alice", PASSWORD).await;
+    advertisement.expect_status(StatusCode::FORBIDDEN).expect_contains(&[MIRROR_PUSH_REFUSED]);
+    let checkout = git.clone(&copy_url);
+    git.commit_file(&checkout, "local.txt", "local\n");
+    let refused = git.fails(&checkout, &["push", "--quiet", "origin", "main"]);
+    assert!(refused.contains(MIRROR_PUSH_REFUSED), "git shows why the push failed:\n{refused}");
+    // The push request itself is refused too, should a client skip the advertisement.
+    let pack = server
+        .client()
+        .post_basic("/alice/copy.git/git-receive-pack", "alice", PASSWORD, "application/x-git-receive-pack-request", b"0000".to_vec())
+        .await;
+    pack.expect_status(StatusCode::FORBIDDEN).expect_contains(&[MIRROR_PUSH_REFUSED]);
+    // Fetching still works.
+    git.ok(&checkout, &["fetch", "--quiet", "origin"]);
+
     alice.post("/alice/copy/settings/mirror/remove", &[]).await.expect_redirect("/alice/copy/settings");
     alice.get("/alice/copy/settings/mirror").await.expect_status(StatusCode::NOT_FOUND);
+    // An ordinary repository again: the push goes through.
+    git.ok(&checkout, &["push", "--quiet", "origin", "main"]);
 }
+
+const MIRROR_PUSH_REFUSED: &str = "This repository is a mirror; push to its upstream instead";
 
 #[tokio::test]
 async fn mirrors_refuse_private_addresses_by_default() {

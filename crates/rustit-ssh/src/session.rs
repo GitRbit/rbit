@@ -124,6 +124,13 @@ impl Connection {
                 SshIdentity::User { .. } => format!("you do not have permission to push to {full_name}"),
             });
         }
+        if command.service.is_write() {
+            match services.mirrors.is_mirror(ctx.repo.repo.id).await {
+                Ok(false) => {}
+                Ok(true) => return Err(rustit_services::mirrors::PUSH_REFUSED.to_owned()),
+                Err(error) => return Err(internal(&error)),
+            }
+        }
         Ok(ctx)
     }
 

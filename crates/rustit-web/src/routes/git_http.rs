@@ -10,6 +10,8 @@
 //! Credentials are throttled per client address and per login (`429` + `Retry-After`).
 //! Accounts with two-factor authentication must use a personal access token: their
 //! password is refused with an explanation Git prints (`fatal: remote error: …`).
+//! Pushes to pull mirrors are refused (`403`): a mirror only changes by fetching its
+//! upstream.
 
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
@@ -22,7 +24,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
 use rustit_core::{AccountId, TokenScope, User};
-use rustit_services::{RepoContext, ServiceError, ThrottleScope, two_factor::GitPasswordOutcome};
+use rustit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, two_factor::GitPasswordOutcome};
 use rustit_transport::Service;
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
@@ -150,6 +152,8 @@ enum Denied {
     RateLimited {
         retry_after_seconds: u64,
     },
+    /// A push to a pull mirror.
+    Mirror,
     NotFound,
     Internal,
 }
@@ -177,6 +181,7 @@ impl IntoResponse for Denied {
                 format!("too many authentication attempts; try again in {retry_after_seconds} seconds"),
             )
                 .into_response(),
+            Self::Mirror => (StatusCode::FORBIDDEN, mirrors::PUSH_REFUSED).into_response(),
             Self::NotFound => (StatusCode::NOT_FOUND, "repository not found").into_response(),
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
@@ -227,12 +232,20 @@ async fn authorize(
     if let Some(scope) = caller.as_ref().and_then(|caller| caller.token_scope) {
         ctx.access = scope.limit(ctx.access);
     }
-    if !service.is_write() || ctx.access.can_write() {
-        Ok((ctx, user.map(User::id)))
-    } else if caller.is_none() {
-        Err(Denied::Challenge)
-    } else {
-        Err(Denied::Forbidden)
+    if !service.is_write() {
+        return Ok((ctx, user.map(User::id)));
+    }
+    if !ctx.access.can_write() {
+        return Err(if caller.is_none() { Denied::Challenge } else { Denied::Forbidden });
+    }
+    // Checked after access, so only those who could otherwise push learn it is a mirror.
+    match state.services.mirrors.is_mirror(ctx.repo.repo.id).await {
+        Ok(false) => Ok((ctx, user.map(User::id))),
+        Ok(true) => Err(Denied::Mirror),
+        Err(error) => {
+            tracing::error!(%error, "git mirror check failed");
+            Err(Denied::Internal)
+        }
     }
 }
 
@@ -300,6 +313,14 @@ mod tests {
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/x-git-upload-pack-advertisement");
         let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], b"0014ERR use a token\n");
+    }
+
+    #[tokio::test]
+    async fn pushes_to_mirrors_are_forbidden_with_an_explanation() {
+        let response = Denied::Mirror.into_response();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_eq!(&body[..], mirrors::PUSH_REFUSED.as_bytes());
     }
 
     #[test]

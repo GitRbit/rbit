@@ -277,6 +277,13 @@ impl Client {
         Response::read(self.http.get(self.url(path)).basic_auth(login, Some(secret)).send().await).await
     }
 
+    /// `POST path` with HTTP Basic credentials and a raw body of `content_type`, as Git
+    /// sends its pack requests.
+    pub async fn post_basic(&self, path: &str, login: &str, secret: &str, content_type: &str, body: Vec<u8>) -> Response {
+        let request = self.http.post(self.url(path)).basic_auth(login, Some(secret)).header(header::CONTENT_TYPE, content_type).body(body);
+        Response::read(request.send().await).await
+    }
+
     /// `POST path` with an `application/x-www-form-urlencoded` body.
     pub async fn post(&self, path: &str, form: &[(&str, &str)]) -> Response {
         self.post_with(path, form, &[]).await

@@ -242,3 +242,37 @@ async fn clone_push_and_access_control_over_ssh() {
     let mut harness = harness;
     harness.server.take().unwrap().shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn pushes_to_mirrors_are_refused_over_ssh() {
+    if !openssh_available() {
+        return;
+    }
+    let harness = Harness::start().await;
+    let alice = harness.user("alice").await;
+    let repo = CreateRepository { name: "copy".to_owned(), description: String::new(), visibility: Visibility::Public };
+    let created = harness.services.repositories.create(&alice, repo).await.unwrap();
+    let (alice_key, alice_public) = harness.key("alice_key");
+    harness.services.ssh_keys.add_user_key(&alice, AddSshKey { title: String::new(), key: alice_public }).await.unwrap();
+
+    let work = harness.workdir("work");
+    assert_ok(&harness.git(&alice_key, &work, &["clone", "-q", &harness.url("alice/copy.git"), "copy"]).await);
+    let checkout = work.join("copy");
+    std::fs::write(checkout.join("README.md"), "# copy\n").unwrap();
+    assert_ok(&harness.git(&alice_key, &checkout, &["add", "README.md"]).await);
+    assert_ok(&harness.git(&alice_key, &checkout, &["commit", "-q", "-m", "Initial commit"]).await);
+
+    // Recorded directly: no fetch runs, since the background scheduler is not started.
+    harness.database.mirrors().create(created.repo.id, "https://example.com/upstream.git", 60).await.unwrap();
+    let refused = harness.git(&alice_key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await;
+    assert_refused(&refused, "This repository is a mirror; push to its upstream instead");
+    // Fetching from a mirror is fine.
+    assert_ok(&harness.git(&alice_key, &checkout, &["fetch", "-q", "origin"]).await);
+
+    // Once it stops mirroring it is an ordinary repository again.
+    harness.database.mirrors().delete(created.repo.id).await.unwrap();
+    assert_ok(&harness.git(&alice_key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
+
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}

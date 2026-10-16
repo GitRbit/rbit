@@ -17,8 +17,8 @@
 //!   error) is stored for the settings page; the next fetch is due an interval later.
 //! * Repository administrators change the interval, ask for an immediate fetch, or stop
 //!   mirroring (the repository then becomes an ordinary one).
-//! * Pushes to a mirror must be refused by the transports — see
-//!   [`MirrorService::is_mirror`].
+//! * Pushes to a mirror are refused by both transports (HTTP and SSH) with
+//!   [`PUSH_REFUSED`] — see [`MirrorService::is_mirror`].
 //!
 //! The scheduler ([`MirrorService::spawn_background`]) wakes every
 //! [`SCHEDULER_TICK`] or when a fetch is requested, runs at most [`MAX_CONCURRENT_FETCHES`]
@@ -71,6 +71,9 @@ pub struct CreateMirror {
     /// `None` for `[mirrors] default_interval_minutes`.
     pub interval_minutes: Option<u64>,
 }
+
+/// What a Git client is told when it pushes to a mirror.
+pub const PUSH_REFUSED: &str = "This repository is a mirror; push to its upstream instead";
 
 #[derive(Debug, Clone)]
 pub struct MirrorService {
