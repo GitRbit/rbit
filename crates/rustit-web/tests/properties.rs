@@ -1,10 +1,14 @@
 //! Property tests for the web layer's text handling: rendered Markdown never contains
-//! script, event handlers or script URLs whatever the input, and path encoding
-//! round-trips while keeping every segment URL-safe.
+//! script, event handlers or script URLs whatever the input, resolved relative links
+//! never leave the repository, and path encoding round-trips while keeping every
+//! segment URL-safe.
 
 use percent_encoding::percent_decode_str;
 use proptest::prelude::*;
-use rustit_web::{render::render_markdown, urls::encode_path};
+use rustit_web::{
+    render::render_markdown,
+    urls::{DocumentBase, RepoUrls, encode_path},
+};
 
 /// One parsed start tag: its lowercase name and `(name, value)` attributes.
 #[derive(Debug)]
@@ -113,16 +117,33 @@ proptest! {
 
     #[test]
     fn markdown_never_contains_script_or_event_handlers(source in hostile_markdown()) {
-        let html = render_markdown(&source);
-        let lower = html.to_ascii_lowercase();
-        prop_assert!(!lower.contains("<script"), "script tag in {:?}", html);
+        // With and without link resolution: the attribute filter must not reopen anything.
+        let base = DocumentBase::new(RepoUrls::new("alice", "proj"), "main", "docs");
+        for html in [render_markdown(&source, None), render_markdown(&source, Some(&base))] {
+            let lower = html.to_ascii_lowercase();
+            prop_assert!(!lower.contains("<script"), "script tag in {:?}", html);
+            for tag in start_tags(&html) {
+                prop_assert!(!matches!(tag.name.as_str(), "script" | "iframe" | "object" | "embed" | "style" | "svg" | "math"), "<{}> in {:?}", tag.name, html);
+                for (name, value) in &tag.attributes {
+                    prop_assert!(!name.starts_with("on"), "event handler {}= in {:?}", name, html);
+                    prop_assert!(name != "style", "inline style in {:?}", html);
+                    let value: String = decode_entities(value).chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
+                    prop_assert!(!value.to_ascii_lowercase().starts_with("javascript:"), "script URL in {:?}", html);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn resolved_links_never_leave_the_repository(target in "/?([.]{1,2}/|[a-z]{1,3}/|%2e%2e/){0,6}[a-z]{1,4}") {
+        let base = DocumentBase::new(RepoUrls::new("alice", "proj"), "main", "docs");
+        let html = render_markdown(&format!("[x]({target}) ![y]({target})"), Some(&base));
         for tag in start_tags(&html) {
-            prop_assert!(!matches!(tag.name.as_str(), "script" | "iframe" | "object" | "embed" | "style" | "svg" | "math"), "<{}> in {:?}", tag.name, html);
             for (name, value) in &tag.attributes {
-                prop_assert!(!name.starts_with("on"), "event handler {}= in {:?}", name, html);
-                prop_assert!(name != "style", "inline style in {:?}", html);
-                let value: String = decode_entities(value).chars().filter(|c| !c.is_ascii_whitespace() && !c.is_ascii_control()).collect();
-                prop_assert!(!value.to_ascii_lowercase().starts_with("javascript:"), "script URL in {:?}", html);
+                if name == "href" || name == "src" {
+                    prop_assert!(value.starts_with("/alice/proj/"), "{} escapes: {:?}", name, html);
+                    prop_assert!(!value.contains("/../") && !value.ends_with("/.."), "unnormalised {:?}", html);
+                }
             }
         }
     }

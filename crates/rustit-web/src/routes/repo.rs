@@ -8,7 +8,7 @@ use axum::{
     http::header,
     response::{IntoResponse, Redirect, Response},
 };
-use rustit_git::{EntryKind, RefKind, RefSummary};
+use rustit_git::{EntryKind, GitError, RefKind, RefSummary};
 use rustit_services::{RepoContext, ServiceError, StarSummary};
 use serde::Deserialize;
 
@@ -17,7 +17,7 @@ use crate::{
     error::{WebError, WebResult},
     extract::Viewer,
     render::{format_size, is_markdown, render_markdown},
-    urls::{RepoUrls, encode_path},
+    urls::{DocumentBase, RepoUrls, encode_path},
     views::{
         components::Avatar,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
@@ -142,7 +142,8 @@ async fn render_tree(state: &AppState, loaded: RepoPage, page: Page, revision: S
         .map_err(ServiceError::from)?
         .map(|(name, text)| {
             let is_markdown = is_markdown(&name);
-            let html = if is_markdown { render_markdown(&text) } else { escape(&text) };
+            let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), path.clone());
+            let html = if is_markdown { render_markdown(&text, Some(&base)) } else { escape(&text) };
             ReadmeView { name, html, is_markdown }
         });
 
@@ -231,20 +232,27 @@ pub async fn entry_commits(
     Ok(EntryCommitsFragment { cells })
 }
 
-/// `GET /{owner}/{repo}/blob/{revision}/{path…}`
+/// `GET /{owner}/{repo}/blob/{revision}/{path…}`. A directory path redirects to its
+/// tree page, so relative links in documents may name directories without a trailing `/`.
 pub async fn blob(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
-) -> WebResult<BlobPage> {
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     if path.is_empty() {
         return Err(WebError::NotFound);
     }
     let max_bytes = state.services.repositories.max_render_bytes();
-    let view = loaded.ctx.reader.blob(revision.clone(), path.clone(), max_bytes).await.map_err(ServiceError::from)?;
+    let view = match loaded.ctx.reader.blob(revision.clone(), path.clone(), max_bytes).await {
+        Ok(view) => view,
+        Err(GitError::NotFound(_)) if loaded.ctx.reader.tree(revision.clone(), path.clone()).await.is_ok() => {
+            return Ok(Redirect::to(&loaded.urls.tree(&revision, &path)).into_response());
+        }
+        Err(error) => return Err(ServiceError::from(error).into()),
+    };
 
     let name = file_name(&path).to_owned();
     let text = view.text().map(str::to_owned);
@@ -254,7 +262,10 @@ pub async fn blob(
     let content = match text {
         _ if view.data.is_none() => BlobContent::TooLarge,
         None => BlobContent::Binary,
-        Some(text) if is_markdown(&name) => BlobContent::Markdown(render_markdown(&text)),
+        Some(text) if is_markdown(&name) => {
+            let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), parent_path(&path));
+            BlobContent::Markdown(render_markdown(&text, Some(&base)))
+        }
         Some(text) => {
             // Highlighting is CPU-bound; keep it off the async workers.
             let highlighter_state = state.clone();
@@ -280,7 +291,8 @@ pub async fn blob(
         language,
         raw_url: urls.raw(&revision, &path),
         content,
-    })
+    }
+    .into_response())
 }
 
 /// `GET /{owner}/{repo}/raw/{revision}/{path…}`: the file's bytes.
