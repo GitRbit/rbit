@@ -72,6 +72,20 @@ mod tests {
         (read(16), read(20))
     }
 
+    #[tokio::test]
+    async fn service_worker_is_versioned_and_scoped_to_the_whole_site() {
+        let response = service_worker().await;
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-cache", "browsers must revalidate the worker on every update check");
+        assert_eq!(headers["service-worker-allowed"], "/");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let source = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!source.contains("__VERSION__"), "placeholder left in the served worker");
+        assert!(source.contains(&format!("\"{}\"", assets::build_version())));
+    }
+
     #[test]
     fn generated_icons_are_embedded_at_their_declared_sizes() {
         for (file, size) in [("icon-192.png", 192), ("icon-512.png", 512), ("icon-maskable-512.png", 512), ("apple-touch-icon.png", 180)] {
