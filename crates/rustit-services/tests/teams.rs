@@ -8,6 +8,7 @@ use rustit_core::{
 };
 use rustit_services::{
     CreateRepository, ServiceError, Services,
+    audit::AuditAction,
     orgs::CreateOrganization,
     teams::{TeamContext, TeamInput},
 };
@@ -216,6 +217,9 @@ async fn owners_change_the_base_permission() {
     assert!(matches!(orgs.set_base_permission(&fixture.eve, &fixture.acme, BasePermission::Write).await, Err(ServiceError::NotFound)));
     orgs.set_base_permission(&fixture.olga, &fixture.acme, BasePermission::Read).await.unwrap();
     assert_eq!(fixture.access(&fixture.bob, "rocket").await, RepoAccess::Read);
+    let audited = fixture.services.audit.recent_for(&fixture.olga, 20).await.unwrap();
+    let change = audited.iter().find(|event| event.action == AuditAction::OrgPermissionChanged).expect("the change is audited");
+    assert_eq!((change.target_name.as_deref(), change.detail.as_str()), (Some("acme"), "members: read"));
     orgs.set_base_permission(&fixture.root, &fixture.acme, BasePermission::Write).await.unwrap();
     assert_eq!(fixture.access(&fixture.bob, "rocket").await, RepoAccess::Write);
     assert_eq!(fixture.access(&fixture.olga, "rocket").await, RepoAccess::Admin, "owners always administer");

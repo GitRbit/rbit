@@ -91,10 +91,11 @@ pub enum AuditAction {
     WebhookCreated,
     WebhookChanged,
     WebhookDeleted,
+    OrgPermissionChanged,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 34] = [
+    pub const ALL: [Self; 35] = [
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -129,6 +130,7 @@ impl AuditAction {
         Self::WebhookCreated,
         Self::WebhookChanged,
         Self::WebhookDeleted,
+        Self::OrgPermissionChanged,
     ];
 
     /// Stable identifier stored in the database.
@@ -168,6 +170,7 @@ impl AuditAction {
             Self::WebhookCreated => "webhook_created",
             Self::WebhookChanged => "webhook_changed",
             Self::WebhookDeleted => "webhook_deleted",
+            Self::OrgPermissionChanged => "org_permission_changed",
         }
     }
 
@@ -205,7 +208,8 @@ impl AuditAction {
             | Self::RepositoryTransferred
             | Self::WebhookCreated
             | Self::WebhookChanged
-            | Self::WebhookDeleted => AuditCategory::RepositoryAccess,
+            | Self::WebhookDeleted
+            | Self::OrgPermissionChanged => AuditCategory::RepositoryAccess,
         }
     }
 
@@ -246,6 +250,7 @@ impl AuditAction {
             Self::WebhookCreated => "Created a webhook",
             Self::WebhookChanged => "Changed a webhook",
             Self::WebhookDeleted => "Deleted a webhook",
+            Self::OrgPermissionChanged => "Changed an organization's member permission",
         }
     }
 

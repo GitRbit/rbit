@@ -133,7 +133,7 @@ by the integrator from your report.
 Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
 `CollaboratorAdded`, `CollaboratorChanged`, `CollaboratorRemoved`, `TeamCreated`,
 `TeamChanged`, `TeamDeleted`, `RepositoryTransferred` (A); `WebhookCreated`,
-`WebhookChanged`, `WebhookDeleted` (W). Record them with
+`WebhookChanged`, `WebhookDeleted` (W); `OrgPermissionChanged` (integration). Record them with
 `AuditService::record(AuditEntry::new(action).by(actor).on(target))`.
 `ThrottleScope::ApiAuth` (presented tokens, per client address) and
 `ThrottleScope::ApiRequest` (authenticated requests, per account) exist for W.

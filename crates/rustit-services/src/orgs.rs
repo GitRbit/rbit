@@ -19,7 +19,10 @@ use rustit_storage::{
     sqlite::orgs::{MembershipChange, NewOrganization, OrgProfileUpdate},
 };
 
-use crate::{InstanceService, ServiceContext, ServiceError};
+use crate::{
+    InstanceService, ServiceContext, ServiceError,
+    audit::{AuditAction, AuditEntry, AuditService},
+};
 
 const MAX_DISPLAY_NAME_LEN: usize = 100;
 const MAX_DESCRIPTION_LEN: usize = 350;
@@ -61,11 +64,12 @@ impl OrgContext {
 pub struct OrgService {
     ctx: ServiceContext,
     instance: InstanceService,
+    audit: AuditService,
 }
 
 impl OrgService {
     pub(crate) fn new(ctx: ServiceContext, instance: InstanceService) -> Self {
-        Self { ctx, instance }
+        Self { audit: AuditService::new(ctx.clone()), ctx, instance }
     }
 
     /// Whether `actor` may create organisations under the current instance settings.
@@ -188,6 +192,8 @@ impl OrgService {
         self.require_manager(actor, org).await?;
         self.ctx.database.orgs().set_base_permission(org.account.id, permission).await?;
         tracing::info!(org = %org.name(), permission = permission.as_str(), by = %actor.name(), "organization base permission changed");
+        let entry = AuditEntry::new(AuditAction::OrgPermissionChanged).by(actor).on(org.name().as_str());
+        self.audit.record(entry.detail(format!("members: {}", permission.as_str()))).await;
         Ok(())
     }
 
