@@ -18,18 +18,31 @@
 
 /* ---------------------------------------------------------------- Tokens */
 
-:root {
-  color-scheme: light dark;
-
-  --canvas: light-dark(#ffffff, #000000);
-  --surface: light-dark(#ffffff, #0a0a0a);
-  --subtle: light-dark(#fafafa, #111111);
-  --hover: light-dark(#f2f2f2, #1a1a1a);
-  --line: light-dark(#ebebeb, #1f1f1f);
-  --line-strong: light-dark(#d4d4d4, #333333);
+/*
+ * The built-in Rustit themes. `data-theme` selects one: none (or "system") follows the
+ * OS, "light"/"dark" pin a scheme, and tinted themes (assets/themes/*.css, linked only
+ * while active) redefine the same tokens under `[data-theme="base16-…"]`. Selectors are
+ * scoped rather than root-only so a preview card carrying `data-theme` renders in that
+ * theme anywhere on the page.
+ *
+ * Two elevation levels: the page `--canvas` and containers `--surface`, separated by a
+ * `--line` that stays clearly visible (≥ 1.3:1 against the surface). Body text (`--ink`,
+ * `--ink-muted`) meets WCAG AA on every background; `--ink-faint` is for hints only.
+ * `src/themes/mod.rs` mirrors the two canvas colours for `<meta name="theme-color">`.
+ */
+:root,
+[data-theme="system"],
+[data-theme="light"],
+[data-theme="dark"] {
+  --canvas: light-dark(#f7f7f7, #000000);
+  --surface: light-dark(#ffffff, #0d0d0d);
+  --subtle: light-dark(#fafafa, #141414);
+  --hover: light-dark(#f0f0f0, #1c1c1c);
+  --line: light-dark(#e3e3e3, #2a2a2a);
+  --line-strong: light-dark(#cccccc, #3d3d3d);
   --ink: light-dark(#0a0a0a, #ededed);
-  --ink-muted: light-dark(#666666, #a1a1a1);
-  --ink-faint: light-dark(#8f8f8f, #6e6e6e);
+  --ink-muted: light-dark(#5c5c5c, #a3a3a3);
+  --ink-faint: light-dark(#787878, #7a7a7a);
   /* "Inverted" is the primary action: black on light, white on dark. */
   --inverted: light-dark(#0a0a0a, #ededed);
   --inverted-hover: light-dark(#383838, #cccccc);
@@ -40,7 +53,7 @@
   --danger-subtle: light-dark(#fff0f1, #1f0a0c);
   --warning: light-dark(#a35200, #f5a524);
 
-  --syntax-comment: light-dark(#8f8f8f, #6e6e6e);
+  --syntax-comment: light-dark(#787878, #7a7a7a);
   --syntax-keyword: light-dark(#c3195d, #ff4d8d);
   --syntax-string: light-dark(#107d32, #62c073);
   --syntax-number: light-dark(#0068d6, #52a8ff);
@@ -50,13 +63,21 @@
   --syntax-attribute: light-dark(#7820bc, #bf7af0);
 }
 
-:root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
+:root,
+[data-theme="system"] { color-scheme: light dark; }
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
 
 @theme {
   --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
 
+  --radius-ui: 6px;
+}
+
+/* `inline`: utilities read the semantic tokens where they are used (`var(--canvas)`), not a
+   copy resolved once on :root, so an element carrying `data-theme` recolours its subtree. */
+@theme inline {
   --color-canvas: var(--canvas);
   --color-surface: var(--surface);
   --color-subtle: var(--subtle);
@@ -73,8 +94,6 @@
   --color-danger: var(--danger);
   --color-danger-subtle: var(--danger-subtle);
   --color-warning: var(--warning);
-
-  --radius-ui: 6px;
 }
 
 /* ---------------------------------------------------------------- Base */
@@ -255,15 +274,16 @@
       uppercase leading-none;
   }
 
-  /* Eight neutral avatar tones, chosen by account id or author email (views::components::Avatar). */
-  .avatar-0 { background: light-dark(#f2f2f2, #1a1a1a); color: var(--ink); }
-  .avatar-1 { background: light-dark(#e6e6e6, #262626); color: var(--ink); }
-  .avatar-2 { background: light-dark(#d9d9d9, #333333); color: var(--ink); }
-  .avatar-3 { background: light-dark(#0a0a0a, #ededed); color: var(--inverted-ink); }
-  .avatar-4 { background: light-dark(#404040, #a1a1a1); color: var(--inverted-ink); }
-  .avatar-5 { background: light-dark(#fafafa, #111111); color: var(--ink-muted); }
-  .avatar-6 { background: light-dark(#262626, #d4d4d4); color: var(--inverted-ink); }
-  .avatar-7 { background: light-dark(#8f8f8f, #6e6e6e); color: #ffffff; }
+  /* Eight neutral avatar tones, chosen by account id or author email (views::components::Avatar).
+     Derived from the tokens, so every theme gets its own tinted greys. */
+  .avatar-0 { background: var(--hover); color: var(--ink); }
+  .avatar-1 { background: color-mix(in oklab, var(--ink) 12%, var(--surface)); color: var(--ink); }
+  .avatar-2 { background: color-mix(in oklab, var(--ink) 22%, var(--surface)); color: var(--ink); }
+  .avatar-3 { background: var(--inverted); color: var(--inverted-ink); }
+  .avatar-4 { background: color-mix(in oklab, var(--ink) 75%, var(--surface)); color: var(--inverted-ink); }
+  .avatar-5 { background: var(--subtle); color: var(--ink-muted); }
+  .avatar-6 { background: color-mix(in oklab, var(--ink) 88%, var(--surface)); color: var(--inverted-ink); }
+  .avatar-7 { background: var(--ink-muted); color: var(--surface); }
 
   .menu {
     @apply absolute z-40 mt-1.5 min-w-52 overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-1
