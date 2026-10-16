@@ -1,0 +1,799 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Rustit REST API",
+    "version": "1",
+    "summary": "Repositories, accounts, stars and webhooks of a Rustit instance.",
+    "description": "All requests and responses are JSON (UTF-8). Authenticate with a personal access token: `Authorization: Bearer rit_…` (`token rit_…` also works); cookies are never used. Anonymous requests may read public data.\n\nToken scopes: `read` allows GET only; `write` also allows changes that need write access (creating repositories, starring); `admin` also allows repository settings, webhooks and deletion. A token never grants more than its owner has.\n\nErrors are `{\"message\": \"…\"}`, with `errors: [{field, message}]` for 422. Anything the caller may not know exists answers 404; 403 means the caller can see it but may not do this.\n\nLists are paginated with `page` (1-based) and `per_page`, and answer with RFC 8288 `Link` headers (`first`, `prev`, `next`, `last`) and `X-Total-Count` (commit history has no total: its `Link` has no `last`).",
+    "license": { "name": "AGPL-3.0-or-later", "identifier": "AGPL-3.0-or-later" }
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{}, { "token": [] }],
+  "tags": [
+    { "name": "meta" },
+    { "name": "users" },
+    { "name": "organizations" },
+    { "name": "repositories" },
+    { "name": "git" },
+    { "name": "stars" },
+    { "name": "webhooks" }
+  ],
+  "paths": {
+    "/version": {
+      "get": {
+        "operationId": "getVersion",
+        "tags": ["meta"],
+        "summary": "The server version",
+        "responses": {
+          "200": { "description": "The version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": ["meta"],
+        "summary": "This document",
+        "responses": { "200": { "description": "The OpenAPI document", "content": { "application/json": { "schema": { "type": "object" } } } } }
+      }
+    },
+    "/user": {
+      "get": {
+        "operationId": "getAuthenticatedUser",
+        "tags": ["users"],
+        "summary": "The user the token belongs to",
+        "security": [{ "token": [] }],
+        "responses": {
+          "200": { "description": "The user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthenticatedUser" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/user/repos": {
+      "get": {
+        "operationId": "listMyRepositories",
+        "tags": ["repositories"],
+        "summary": "Repositories the user owns or reaches through organisations (at most 100)",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Repositories" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createMyRepository",
+        "tags": ["repositories"],
+        "summary": "Create a repository owned by the user (write scope)",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewRepository" } } } },
+        "responses": {
+          "201": { "$ref": "#/components/responses/CreatedRepository" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/user/starred": {
+      "get": {
+        "operationId": "listStarred",
+        "tags": ["stars"],
+        "summary": "Repositories the user starred, most recent first",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Repositories" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/user/starred/{owner}/{repo}": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "put": {
+        "operationId": "starRepository",
+        "tags": ["stars"],
+        "summary": "Star a repository (write scope)",
+        "security": [{ "token": [] }],
+        "responses": {
+          "204": { "description": "Starred" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "unstarRepository",
+        "tags": ["stars"],
+        "summary": "Remove a star (write scope)",
+        "security": [{ "token": [] }],
+        "responses": {
+          "204": { "description": "Not starred" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/users/{username}": {
+      "parameters": [{ "$ref": "#/components/parameters/username" }],
+      "get": {
+        "operationId": "getUser",
+        "tags": ["users"],
+        "summary": "A user's (or organisation's) public profile",
+        "responses": {
+          "200": { "description": "The profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Profile" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/users/{username}/repos": {
+      "parameters": [{ "$ref": "#/components/parameters/username" }],
+      "get": {
+        "operationId": "listUserRepositories",
+        "tags": ["repositories"],
+        "summary": "Repositories of an account that the caller may see",
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Repositories" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/orgs/{org}": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }],
+      "get": {
+        "operationId": "getOrganization",
+        "tags": ["organizations"],
+        "summary": "An organisation",
+        "responses": {
+          "200": { "description": "The organisation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Organization" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/orgs/{org}/members": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }],
+      "get": {
+        "operationId": "listOrganizationMembers",
+        "tags": ["organizations"],
+        "summary": "Members of an organisation, owners first",
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": {
+            "description": "One page of members",
+            "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Member" } } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/orgs/{org}/repos": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }],
+      "get": {
+        "operationId": "listOrganizationRepositories",
+        "tags": ["repositories"],
+        "summary": "Repositories of an organisation that the caller may see",
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Repositories" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "createOrganizationRepository",
+        "tags": ["repositories"],
+        "summary": "Create a repository in an organisation (members; write scope)",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NewRepository" } } } },
+        "responses": {
+          "201": { "$ref": "#/components/responses/CreatedRepository" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "get": {
+        "operationId": "getRepository",
+        "tags": ["repositories"],
+        "summary": "A repository, with the caller's permissions",
+        "responses": {
+          "200": { "description": "The repository", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Repository" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateRepository",
+        "tags": ["repositories"],
+        "summary": "Change name, description, visibility or default branch (administrators; admin scope)",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepositoryChanges" } } } },
+        "responses": {
+          "200": { "description": "The changed repository", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Repository" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRepository",
+        "tags": ["repositories"],
+        "summary": "Delete a repository permanently (administrators; admin scope)",
+        "security": [{ "token": [] }],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/branches": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "get": {
+        "operationId": "listBranches",
+        "tags": ["git"],
+        "summary": "Branches, by name",
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": {
+            "description": "One page of branches",
+            "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Branch" } } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/branches/{branch}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/owner" },
+        { "$ref": "#/components/parameters/repo" },
+        { "name": "branch", "in": "path", "required": true, "description": "The branch name; it may contain `/`.", "schema": { "type": "string" } }
+      ],
+      "get": {
+        "operationId": "getBranch",
+        "tags": ["git"],
+        "summary": "One branch",
+        "responses": {
+          "200": { "description": "The branch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Branch" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/tags": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "get": {
+        "operationId": "listTags",
+        "tags": ["git"],
+        "summary": "Tags, by name, with the commit each points at (annotated tags peeled)",
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": {
+            "description": "One page of tags",
+            "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/commits": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "get": {
+        "operationId": "listCommits",
+        "tags": ["git"],
+        "summary": "Commit history, newest first",
+        "parameters": [
+          { "name": "sha", "in": "query", "description": "Branch, tag or commit to start from; the default branch if omitted.", "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/page" },
+          { "$ref": "#/components/parameters/per_page" }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of commits. `Link` has `next` while there are more, and no `last`.",
+            "headers": { "Link": { "$ref": "#/components/headers/Link" } },
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Commit" } } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "The repository is empty", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/commits/{reference}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/owner" },
+        { "$ref": "#/components/parameters/repo" },
+        { "name": "reference", "in": "path", "required": true, "description": "A branch, tag or commit id; it may contain `/`.", "schema": { "type": "string" } }
+      ],
+      "get": {
+        "operationId": "getCommit",
+        "tags": ["git"],
+        "summary": "The commit a branch, tag or id names",
+        "responses": {
+          "200": { "description": "The commit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Commit" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }],
+      "get": {
+        "operationId": "listRepositoryHooks",
+        "tags": ["webhooks"],
+        "summary": "A repository's webhooks (administrators; admin scope)",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/Hooks" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "operationId": "createRepositoryHook",
+        "tags": ["webhooks"],
+        "summary": "Add a webhook; a ping is sent (administrators; admin scope; at most 20)",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
+        "responses": {
+          "201": { "$ref": "#/components/responses/CreatedHook" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/ValidationFailed" }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/hook" }],
+      "get": {
+        "operationId": "getRepositoryHook",
+        "tags": ["webhooks"],
+        "summary": "One webhook",
+        "security": [{ "token": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "operationId": "updateRepositoryHook",
+        "tags": ["webhooks"],
+        "summary": "Change a webhook; absent fields keep their value",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/ValidationFailed" } }
+      },
+      "delete": {
+        "operationId": "deleteRepositoryHook",
+        "tags": ["webhooks"],
+        "summary": "Delete a webhook and its delivery log",
+        "security": [{ "token": [] }],
+        "responses": { "204": { "description": "Deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks/{id}/pings": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/hook" }],
+      "post": {
+        "operationId": "pingRepositoryHook",
+        "tags": ["webhooks"],
+        "summary": "Queue a ping",
+        "security": [{ "token": [] }],
+        "responses": { "204": { "description": "Queued" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks/{id}/deliveries": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/hook" }],
+      "get": {
+        "operationId": "listRepositoryHookDeliveries",
+        "tags": ["webhooks"],
+        "summary": "A webhook's deliveries, newest first",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": { "200": { "$ref": "#/components/responses/Deliveries" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks/{id}/deliveries/{delivery}": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/hook" }, { "$ref": "#/components/parameters/delivery" }],
+      "get": {
+        "operationId": "getRepositoryHookDelivery",
+        "tags": ["webhooks"],
+        "summary": "One delivery with its request and response",
+        "security": [{ "token": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/DeliveryDetail" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/repos/{owner}/{repo}/hooks/{id}/deliveries/{delivery}/attempts": {
+      "parameters": [{ "$ref": "#/components/parameters/owner" }, { "$ref": "#/components/parameters/repo" }, { "$ref": "#/components/parameters/hook" }, { "$ref": "#/components/parameters/delivery" }],
+      "post": {
+        "operationId": "redeliverRepositoryHookDelivery",
+        "tags": ["webhooks"],
+        "summary": "Send a delivery again, as a new delivery with the same payload",
+        "security": [{ "token": [] }],
+        "responses": { "202": { "$ref": "#/components/responses/Redelivery" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/orgs/{org}/hooks": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }],
+      "get": {
+        "operationId": "listOrganizationHooks",
+        "tags": ["webhooks"],
+        "summary": "An organisation's webhooks, which fire for all its repositories (owners; admin scope)",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": { "200": { "$ref": "#/components/responses/Hooks" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "post": {
+        "operationId": "createOrganizationHook",
+        "tags": ["webhooks"],
+        "summary": "Add an organisation webhook; a ping is sent (owners; admin scope; at most 20)",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
+        "responses": { "201": { "$ref": "#/components/responses/CreatedHook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/ValidationFailed" } }
+      }
+    },
+    "/orgs/{org}/hooks/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }, { "$ref": "#/components/parameters/hook" }],
+      "get": {
+        "operationId": "getOrganizationHook",
+        "tags": ["webhooks"],
+        "summary": "One organisation webhook",
+        "security": [{ "token": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "operationId": "updateOrganizationHook",
+        "tags": ["webhooks"],
+        "summary": "Change an organisation webhook; absent fields keep their value",
+        "security": [{ "token": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/ValidationFailed" } }
+      },
+      "delete": {
+        "operationId": "deleteOrganizationHook",
+        "tags": ["webhooks"],
+        "summary": "Delete an organisation webhook and its delivery log",
+        "security": [{ "token": [] }],
+        "responses": { "204": { "description": "Deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/orgs/{org}/hooks/{id}/pings": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }, { "$ref": "#/components/parameters/hook" }],
+      "post": {
+        "operationId": "pingOrganizationHook",
+        "tags": ["webhooks"],
+        "summary": "Queue a ping",
+        "security": [{ "token": [] }],
+        "responses": { "204": { "description": "Queued" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/orgs/{org}/hooks/{id}/deliveries": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }, { "$ref": "#/components/parameters/hook" }],
+      "get": {
+        "operationId": "listOrganizationHookDeliveries",
+        "tags": ["webhooks"],
+        "summary": "An organisation webhook's deliveries, newest first",
+        "security": [{ "token": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
+        "responses": { "200": { "$ref": "#/components/responses/Deliveries" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/orgs/{org}/hooks/{id}/deliveries/{delivery}": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }, { "$ref": "#/components/parameters/hook" }, { "$ref": "#/components/parameters/delivery" }],
+      "get": {
+        "operationId": "getOrganizationHookDelivery",
+        "tags": ["webhooks"],
+        "summary": "One delivery with its request and response",
+        "security": [{ "token": [] }],
+        "responses": { "200": { "$ref": "#/components/responses/DeliveryDetail" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/orgs/{org}/hooks/{id}/deliveries/{delivery}/attempts": {
+      "parameters": [{ "$ref": "#/components/parameters/org" }, { "$ref": "#/components/parameters/hook" }, { "$ref": "#/components/parameters/delivery" }],
+      "post": {
+        "operationId": "redeliverOrganizationHookDelivery",
+        "tags": ["webhooks"],
+        "summary": "Send a delivery again, as a new delivery with the same payload",
+        "security": [{ "token": [] }],
+        "responses": { "202": { "$ref": "#/components/responses/Redelivery" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "token": { "type": "http", "scheme": "bearer", "description": "A personal access token (`rit_…`) from Settings → Access tokens." }
+    },
+    "parameters": {
+      "owner": { "name": "owner", "in": "path", "required": true, "description": "The owning user or organisation.", "schema": { "type": "string" } },
+      "repo": { "name": "repo", "in": "path", "required": true, "description": "The repository name.", "schema": { "type": "string" } },
+      "org": { "name": "org", "in": "path", "required": true, "schema": { "type": "string" } },
+      "username": { "name": "username", "in": "path", "required": true, "schema": { "type": "string" } },
+      "hook": { "name": "id", "in": "path", "required": true, "description": "The webhook id.", "schema": { "type": "integer" } },
+      "delivery": { "name": "delivery", "in": "path", "required": true, "description": "The delivery id.", "schema": { "type": "integer" } },
+      "page": { "name": "page", "in": "query", "description": "1-based page number.", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+      "per_page": { "name": "per_page", "in": "query", "description": "Items per page; the default and maximum come from `[api]` (30 and 100 unless configured).", "schema": { "type": "integer", "minimum": 1 } }
+    },
+    "headers": {
+      "Link": { "description": "RFC 8288 links to the `first`, `prev`, `next` and `last` pages, where they exist.", "schema": { "type": "string" } },
+      "X-Total-Count": { "description": "Items across all pages.", "schema": { "type": "integer" } }
+    },
+    "responses": {
+      "Unauthorized": { "description": "No or an invalid token (`WWW-Authenticate: Bearer`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Forbidden": { "description": "The caller may see this but not do it (or the token's scope is too narrow)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "It does not exist, or the caller may not know that it does", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Conflict": { "description": "A name is already taken", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ValidationFailed": { "description": "The input is invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } },
+      "Repositories": {
+        "description": "One page of repositories",
+        "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+        "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Repository" } } } }
+      },
+      "CreatedRepository": {
+        "description": "Created; `Location` is its API URL",
+        "headers": { "Location": { "schema": { "type": "string" } } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Repository" } } }
+      },
+      "Hooks": {
+        "description": "One page of webhooks",
+        "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+        "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Hook" } } } }
+      },
+      "Hook": { "description": "The webhook", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Hook" } } } },
+      "CreatedHook": {
+        "description": "Created; `Location` is its API URL",
+        "headers": { "Location": { "schema": { "type": "string" } } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Hook" } } }
+      },
+      "Deliveries": {
+        "description": "One page of deliveries",
+        "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
+        "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Delivery" } } } }
+      },
+      "DeliveryDetail": { "description": "The delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeliveryDetail" } } } },
+      "Redelivery": { "description": "Queued as a new delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Delivery" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["message"],
+        "properties": { "message": { "type": "string" } }
+      },
+      "ValidationError": {
+        "type": "object",
+        "required": ["message", "errors"],
+        "properties": {
+          "message": { "type": "string", "const": "Validation Failed" },
+          "errors": { "type": "array", "items": { "type": "object", "required": ["field", "message"], "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "required": ["version", "api"],
+        "properties": { "version": { "type": "string" }, "api": { "type": "string", "const": "v1" } }
+      },
+      "Account": {
+        "type": "object",
+        "required": ["id", "login", "name", "type", "html_url", "url"],
+        "properties": {
+          "id": { "type": "integer" },
+          "login": { "type": "string" },
+          "name": { "type": ["string", "null"], "description": "Display name." },
+          "type": { "type": "string", "enum": ["User", "Organization"] },
+          "html_url": { "type": "string", "format": "uri" },
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "AuthenticatedUser": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Account" },
+          {
+            "type": "object",
+            "required": ["email", "site_admin", "bio", "created_at"],
+            "properties": { "email": { "type": "string" }, "site_admin": { "type": "boolean" }, "bio": { "type": ["string", "null"] }, "created_at": { "type": "string", "format": "date-time" } }
+          }
+        ]
+      },
+      "Profile": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Account" },
+          {
+            "type": "object",
+            "required": ["bio", "blog", "location", "created_at"],
+            "properties": { "bio": { "type": ["string", "null"] }, "blog": { "type": ["string", "null"] }, "location": { "type": ["string", "null"] }, "created_at": { "type": "string", "format": "date-time" } }
+          }
+        ]
+      },
+      "Organization": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Account" },
+          {
+            "type": "object",
+            "required": ["description", "blog", "created_at"],
+            "properties": { "description": { "type": ["string", "null"] }, "blog": { "type": ["string", "null"] }, "created_at": { "type": "string", "format": "date-time" } }
+          }
+        ]
+      },
+      "Member": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Account" },
+          { "type": "object", "required": ["role"], "properties": { "role": { "type": "string", "enum": ["owner", "member"] } } }
+        ]
+      },
+      "Repository": {
+        "type": "object",
+        "required": ["id", "name", "full_name", "owner", "private", "visibility", "description", "fork", "default_branch", "html_url", "clone_url", "url", "created_at", "updated_at", "pushed_at"],
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "full_name": { "type": "string" },
+          "owner": { "$ref": "#/components/schemas/Account" },
+          "private": { "type": "boolean" },
+          "visibility": { "type": "string", "enum": ["public", "private"] },
+          "description": { "type": ["string", "null"] },
+          "fork": { "type": "boolean" },
+          "default_branch": { "type": "string" },
+          "html_url": { "type": "string", "format": "uri" },
+          "clone_url": { "type": "string", "format": "uri" },
+          "url": { "type": "string", "format": "uri" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "pushed_at": { "type": ["string", "null"], "format": "date-time" },
+          "permissions": {
+            "type": "object",
+            "description": "What the caller may do (single-repository responses only).",
+            "properties": { "admin": { "type": "boolean" }, "push": { "type": "boolean" }, "pull": { "type": "boolean" } }
+          }
+        }
+      },
+      "NewRepository": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "private": { "type": "boolean", "default": false },
+          "visibility": { "type": "string", "enum": ["public", "private"], "description": "Takes precedence over `private`." }
+        }
+      },
+      "RepositoryChanges": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": ["string", "null"], "description": "`null` clears it." },
+          "private": { "type": "boolean" },
+          "visibility": { "type": "string", "enum": ["public", "private"] },
+          "default_branch": { "type": "string", "description": "Must be an existing branch." }
+        }
+      },
+      "CommitPointer": {
+        "type": "object",
+        "required": ["sha", "url"],
+        "properties": { "sha": { "type": "string" }, "url": { "type": "string", "format": "uri" } }
+      },
+      "Branch": {
+        "type": "object",
+        "required": ["name", "commit", "protected"],
+        "properties": { "name": { "type": "string" }, "commit": { "$ref": "#/components/schemas/CommitPointer" }, "protected": { "type": "boolean" } }
+      },
+      "Tag": {
+        "type": "object",
+        "required": ["name", "commit"],
+        "properties": { "name": { "type": "string" }, "commit": { "$ref": "#/components/schemas/CommitPointer" } }
+      },
+      "Commit": {
+        "type": "object",
+        "required": ["sha", "url", "html_url", "commit", "parents"],
+        "properties": {
+          "sha": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "html_url": { "type": "string", "format": "uri" },
+          "commit": {
+            "type": "object",
+            "required": ["message", "author", "committer"],
+            "properties": {
+              "message": { "type": "string" },
+              "author": { "$ref": "#/components/schemas/Signature" },
+              "committer": { "$ref": "#/components/schemas/Signature" }
+            }
+          },
+          "parents": { "type": "array", "items": { "$ref": "#/components/schemas/CommitPointer" } }
+        }
+      },
+      "Signature": {
+        "type": "object",
+        "required": ["name", "email", "date"],
+        "properties": { "name": { "type": "string" }, "email": { "type": "string" }, "date": { "type": "string", "format": "date-time" } }
+      },
+      "Hook": {
+        "type": "object",
+        "required": ["id", "type", "name", "active", "events", "config", "created_at", "updated_at", "url", "last_response", "deliveries_url", "ping_url"],
+        "properties": {
+          "id": { "type": "integer" },
+          "type": { "type": "string", "enum": ["Repository", "Organization"] },
+          "name": { "type": "string", "const": "web" },
+          "active": { "type": "boolean" },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/HookEvent" } },
+          "config": {
+            "type": "object",
+            "required": ["url", "content_type", "insecure_ssl", "secret"],
+            "properties": {
+              "url": { "type": "string", "format": "uri" },
+              "content_type": { "type": "string", "const": "json" },
+              "insecure_ssl": { "type": "string", "const": "0" },
+              "secret": { "type": ["string", "null"], "description": "`********` when a secret is set; the value is never returned." }
+            }
+          },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "url": { "type": "string", "format": "uri" },
+          "deliveries_url": { "type": "string", "format": "uri" },
+          "ping_url": { "type": "string", "format": "uri" },
+          "last_response": {
+            "type": ["object", "null"],
+            "properties": { "status": { "$ref": "#/components/schemas/DeliveryStatus" }, "code": { "type": ["integer", "null"] }, "at": { "type": "string", "format": "date-time" } }
+          }
+        }
+      },
+      "HookEvent": { "type": "string", "enum": ["push", "repository", "release", "fork"] },
+      "HookBody": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "format": "uri", "description": "`http` or `https`, at most 2048 bytes, no credentials. Required when creating. Internal addresses are refused unless the instance allows them." },
+              "content_type": { "type": "string", "const": "json" },
+              "secret": { "type": ["string", "null"], "description": "Signs payloads (HMAC-SHA256). On update, absent keeps it and `\"\"` or `null` removes it." }
+            }
+          },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/HookEvent" }, "description": "Defaults to `[\"push\"]` when creating. `ping` is always sent on creation." },
+          "active": { "type": "boolean", "default": true }
+        }
+      },
+      "DeliveryStatus": { "type": "string", "enum": ["pending", "delivering", "succeeded", "failed"] },
+      "Delivery": {
+        "type": "object",
+        "required": ["id", "guid", "event", "action", "status", "status_code", "attempts", "delivered_at", "next_attempt_at", "duration_ms", "created_at", "url"],
+        "properties": {
+          "id": { "type": "integer" },
+          "guid": { "type": "string", "description": "Sent as `X-Rustit-Delivery` and `X-GitHub-Delivery`." },
+          "event": { "type": "string", "enum": ["push", "repository", "release", "fork", "ping"] },
+          "action": { "type": ["string", "null"] },
+          "status": { "$ref": "#/components/schemas/DeliveryStatus" },
+          "status_code": { "type": ["integer", "null"], "description": "HTTP status of the latest attempt." },
+          "attempts": { "type": "integer" },
+          "delivered_at": { "type": ["string", "null"], "format": "date-time", "description": "Time of the latest attempt." },
+          "next_attempt_at": { "type": ["string", "null"], "format": "date-time" },
+          "duration_ms": { "type": ["integer", "null"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "url": { "type": "string", "format": "uri" }
+        }
+      },
+      "DeliveryDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Delivery" },
+          {
+            "type": "object",
+            "required": ["request", "response", "error"],
+            "properties": {
+              "request": { "type": "object", "properties": { "headers": { "type": "object", "additionalProperties": { "type": "string" } }, "payload": {} } },
+              "response": {
+                "type": "object",
+                "properties": { "headers": { "type": "object", "additionalProperties": { "type": "string" } }, "payload": { "type": ["string", "null"], "description": "The first 64 KiB of the body." } }
+              },
+              "error": { "type": ["string", "null"], "description": "Why the latest attempt got no response." }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
