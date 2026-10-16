@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use rustit_core::{Account, AccountId, RepoId, Timestamp, repository::OwnedRepository};
 use sqlx::SqlitePool;
 
-use super::rows::{AccountRow, OwnedRepositoryRow};
+use super::{
+    repositories::readable_by,
+    rows::{AccountRow, OwnedRepositoryRow},
+};
 use crate::StorageError;
 
 /// An account that starred a repository, and when.
@@ -98,9 +101,8 @@ impl StarStore {
 
     /// Repositories starred by `account` that `viewer` may read, most recently starred first.
     ///
-    /// Readable means: public, or the viewer is a site admin, the owner, or a member of the
-    /// owning organisation (the rules of `rustit_auth::repo_access`, expressed in SQL so the
-    /// list can be filtered without loading every repository).
+    /// Readable follows `rustit_auth::policy::repo_access`, expressed in SQL by the shared
+    /// `readable_by!` predicate so the list can be filtered without loading every repository.
     pub async fn starred_by(
         &self,
         account: AccountId,
@@ -108,15 +110,15 @@ impl StarStore {
         viewer_is_admin: bool,
         limit: u32,
     ) -> Result<Vec<OwnedRepository>, StorageError> {
-        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(
+        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
              r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM stars s JOIN repositories r ON r.id = s.repo_id JOIN accounts o ON o.id = r.owner_id \
-             WHERE s.account_id = ?1 AND (r.visibility = 'public' OR ?3 OR r.owner_id = ?2 \
-                OR EXISTS (SELECT 1 FROM org_members m WHERE m.org_id = r.owner_id AND m.user_id = ?2)) \
-             ORDER BY s.created_at DESC, r.id DESC LIMIT ?4",
-        )
+             WHERE s.account_id = ?1 AND ",
+            readable_by!("?2", "?3"),
+            " ORDER BY s.created_at DESC, r.id DESC LIMIT ?4"
+        ))
         .bind(account.0)
         .bind(viewer.map(|id| id.0))
         .bind(viewer_is_admin)

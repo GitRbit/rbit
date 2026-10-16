@@ -1,12 +1,16 @@
 //! Repository lifecycle and permission-checked access.
 //!
-//! Access follows [`rustit_auth::repo_access`]: this service looks up the viewer's role in
-//! the owning organisation (if any) and lets the pure policy decide.
+//! Access follows [`rustit_auth::repo_access`]: this service looks up what the viewer was
+//! granted (organisation role and base permission, team grants, collaborator permission)
+//! in one query and lets the pure policy decide. Listings filter with the store's shared
+//! readable-by predicate, which expresses the same rules in SQL.
 
 use std::{path::PathBuf, sync::Arc};
 
-use rustit_auth::repo_access;
-use rustit_core::{Account, Config, OrgRole, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, repository::OwnedRepository};
+use rustit_auth::{policy::Grants, repo_access};
+use rustit_core::{
+    Account, Config, OrgRole, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, membership::Permission, repository::OwnedRepository,
+};
 use rustit_git::{RepositoryReader, RepositoryStorage};
 use rustit_storage::{NewRepository, RepositoryStore};
 
@@ -142,6 +146,13 @@ impl RepositoryService {
             return Err(error.into());
         }
 
+        // A member who is not an owner would otherwise depend on the organisation's base
+        // permission to reach the repository they just created (with `none`, not at all),
+        // so the creator administers it as a collaborator, as on other forges.
+        if owner.is_organization() && !actor.is_admin && self.store.org_role(owner.id, actor.id()).await? == Some(OrgRole::Member) {
+            self.store.grant_collaborator(repo.id, actor.id(), Permission::Admin).await?;
+        }
+
         tracing::info!(actor = %actor.name(), owner = %owner.name, repo = %repo.name, "repository created");
         self.events.publish(DomainEvent::RepositoryCreated { repo: repo.id, actor: actor.id() });
         Ok(OwnedRepository { owner, repo })
@@ -149,15 +160,7 @@ impl RepositoryService {
 
     /// Resolves and authorises the owner of a new repository (also used for forks).
     pub(crate) async fn owner_for_new_repository(&self, actor: &User, owner: &str) -> Result<Account, ServiceError> {
-        if owner.is_empty() || owner.eq_ignore_ascii_case(actor.name().as_str()) {
-            return Ok(actor.account.clone());
-        }
-        let not_allowed = || ServiceError::Invalid(format!("you cannot create repositories for {owner}"));
-        let account = self.store.find_owner(owner).await?.ok_or_else(not_allowed)?;
-        if !account.is_organization() {
-            return Err(not_allowed());
-        }
-        if actor.is_admin || self.store.org_role(account.id, actor.id()).await?.is_some() { Ok(account) } else { Err(not_allowed()) }
+        authorised_owner(&self.store, actor, owner).await
     }
 
     /// Loads `owner/name` for `viewer`. Repositories the viewer cannot read are reported
@@ -165,8 +168,8 @@ impl RepositoryService {
     pub async fn open(&self, viewer: Option<&User>, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
         let name = name.strip_suffix(".git").unwrap_or(name);
         let repo = self.store.find_by_path(owner, name).await?.ok_or(ServiceError::NotFound)?;
-        let role = self.viewer_role(viewer, &repo.owner).await?;
-        let access = repo_access(viewer, &repo, role);
+        let grants = viewer_grants(&self.store, viewer, &repo).await?;
+        let access = repo_access(viewer, &repo, &grants);
         if !access.can_read() {
             return Err(ServiceError::NotFound);
         }
@@ -175,27 +178,14 @@ impl RepositoryService {
         Ok(RepoContext { repo, access, reader, disk_path })
     }
 
-    /// The viewer's role in `owner` when it is an organisation. Skips the query when the
-    /// answer cannot change the outcome (anonymous viewers, site admins, user owners).
-    async fn viewer_role(&self, viewer: Option<&User>, owner: &Account) -> Result<Option<OrgRole>, ServiceError> {
-        match viewer {
-            Some(user) if owner.is_organization() && !user.is_admin => Ok(self.store.org_role(owner.id, user.id()).await?),
-            _ => Ok(None),
-        }
-    }
-
-    /// Repositories of `owner` that `viewer` may see: private ones only for the owner
-    /// themselves, members of an owning organisation, and site admins.
+    /// Repositories of `owner` that `viewer` may see.
     pub async fn list_for_owner(&self, viewer: Option<&User>, owner: &Account) -> Result<Vec<OwnedRepository>, ServiceError> {
-        let include_private = match viewer {
-            None => false,
-            Some(user) => user.is_admin || user.id() == owner.id || self.viewer_role(viewer, owner).await?.is_some(),
-        };
-        Ok(self.store.list_by_owner(owner.id, include_private).await?)
+        let is_admin = viewer.is_some_and(|user| user.is_admin);
+        Ok(self.store.list_by_owner(owner.id, viewer.map(User::id), is_admin).await?)
     }
 
-    /// The dashboard list: `user`'s own repositories and those of their organisations,
-    /// most recently updated first.
+    /// The dashboard list: `user`'s own repositories, those of their organisations and
+    /// those shared with them (each only if they may read it), most recently updated first.
     pub async fn list_for_dashboard(&self, user: &User) -> Result<Vec<OwnedRepository>, ServiceError> {
         Ok(self.store.list_for_member(user.id(), DASHBOARD_LIMIT).await?)
     }
@@ -221,6 +211,31 @@ impl RepositoryService {
     pub fn max_render_bytes(&self) -> usize {
         self.config.repository.max_render_bytes
     }
+}
+
+/// The account called `owner` if `actor` may put repositories there: themselves (also when
+/// `owner` is empty), or an organisation they belong to (site administrators: any
+/// organisation). Shared by repository creation, forks and transfers.
+pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owner: &str) -> Result<Account, ServiceError> {
+    if owner.is_empty() || owner.eq_ignore_ascii_case(actor.name().as_str()) {
+        return Ok(actor.account.clone());
+    }
+    let not_allowed = || ServiceError::Invalid(format!("you cannot create repositories for {owner}"));
+    let account = store.find_owner(owner).await?.ok_or_else(not_allowed)?;
+    if !account.is_organization() {
+        return Err(not_allowed());
+    }
+    if actor.is_admin || store.org_role(account.id, actor.id()).await?.is_some() { Ok(account) } else { Err(not_allowed()) }
+}
+
+/// What `viewer` was granted on `repo`, for [`repo_access`]. Skips the query when the
+/// answer cannot change the outcome (anonymous viewers, site admins, the personal owner).
+pub(crate) async fn viewer_grants(store: &RepositoryStore, viewer: Option<&User>, repo: &OwnedRepository) -> Result<Grants, ServiceError> {
+    let Some(user) = viewer.filter(|user| !user.is_admin && user.id() != repo.repo.owner_id) else {
+        return Ok(Grants::default());
+    };
+    let stored = store.grants(repo.repo.id, repo.repo.owner_id, user.id()).await?;
+    Ok(Grants { org_role: stored.org_role, org_base: stored.org_base.permission(), team: stored.team, collaborator: stored.collaborator })
 }
 
 #[cfg(test)]

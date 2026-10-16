@@ -2,8 +2,13 @@
 //!
 //! An organisation is a row in `accounts` (kind `organization`) plus an `org_profiles`
 //! row and its `org_members`. Row types live here rather than in `rows.rs`.
+//!
+//! Removing a member also removes them from the organisation's teams (a trigger from
+//! migration `0009` does it in the same transaction).
 
-use rustit_core::{AccountId, AccountKind, AccountName, OrgMember, OrgMembership, OrgRole, Organization, Timestamp};
+use rustit_core::{
+    AccountId, AccountKind, AccountName, OrgMember, OrgMembership, OrgRole, Organization, Timestamp, membership::BasePermission,
+};
 use sqlx::{SqliteExecutor, SqlitePool};
 
 use super::rows::AccountRow;
@@ -199,6 +204,30 @@ impl OrgStore {
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)
+    }
+
+    /// What every member of `org` gets on every repository of it.
+    pub async fn base_permission(&self, org: AccountId) -> Result<BasePermission, StorageError> {
+        let value: Option<String> = sqlx::query_scalar("SELECT member_permission FROM org_profiles WHERE account_id = ?")
+            .bind(org.0)
+            .fetch_optional(&self.pool)
+            .await?;
+        match value.as_deref() {
+            None => Ok(BasePermission::default()),
+            Some(value) => BasePermission::parse(value).ok_or_else(|| StorageError::Corrupt(format!("base permission: {value}"))),
+        }
+    }
+
+    pub async fn set_base_permission(&self, org: AccountId, permission: BasePermission) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO org_profiles (account_id, member_permission) VALUES (?1, ?2) \
+             ON CONFLICT (account_id) DO UPDATE SET member_permission = ?2",
+        )
+        .bind(org.0)
+        .bind(permission.as_str())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn count_repositories(&self, org: AccountId) -> Result<i64, StorageError> {
