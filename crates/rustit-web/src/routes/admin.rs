@@ -413,7 +413,7 @@ pub async fn update_settings(
     Form(form): Form<SettingsSubmission>,
 ) -> WebResult<Response> {
     let result = match form.parse() {
-        Ok(settings) => state.services.instance.update(&admin, settings).await,
+        Ok(settings) => state.services.admin.update_settings(&admin, settings).await,
         Err(error) => Err(error),
     };
     match result {
