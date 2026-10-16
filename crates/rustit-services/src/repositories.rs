@@ -10,7 +10,7 @@ use rustit_core::{Account, Config, OrgRole, RepoAccess, RepoId, RepoName, RepoSo
 use rustit_git::{RepositoryReader, RepositoryStorage};
 use rustit_storage::{NewRepository, RepositoryStore};
 
-use crate::ServiceError;
+use crate::{ServiceContext, ServiceError};
 
 const MAX_DESCRIPTION_LEN: usize = 350;
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
@@ -35,6 +35,26 @@ pub struct RepoContext {
     pub access: RepoAccess,
     pub reader: RepositoryReader,
     pub disk_path: PathBuf,
+}
+
+impl RepoContext {
+    /// Loads repository `id` for system work (background jobs), or `None` if it no
+    /// longer exists. See [`Self::for_system`].
+    pub(crate) async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {
+        let repo = ctx.database.admin().find_repository(id).await?;
+        Ok(repo.map(|repo| Self::for_system(repo, &ctx.repositories)))
+    }
+
+    /// A read-only context for system work on an already loaded repository.
+    ///
+    /// There is no viewer, so the context grants exactly [`RepoAccess::Read`]: jobs may
+    /// read Git data to warm caches, but anything that checks `access` for writing or
+    /// administration refuses. It is crate-private so no request handler can obtain one.
+    pub(crate) fn for_system(repo: OwnedRepository, storage: &RepositoryStorage) -> Self {
+        let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
+        let reader = RepositoryReader::new(disk_path.clone());
+        Self { repo, access: RepoAccess::Read, reader, disk_path }
+    }
 }
 
 /// Explore page input, exactly as requested (`?q=…&sort=…&page=…`).
