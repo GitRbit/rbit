@@ -1,0 +1,18 @@
+# Keep the build context small and free of local state and secrets.
+.git
+.github
+.claude
+target
+node_modules
+data
+rustit.toml
+*.redb
+*.db
+*.db-shm
+*.db-wal
+docs
+deploy
+Dockerfile
+.dockerignore
+# Generated in the image's Node stage.
+crates/rustit-web/assets/app.css
