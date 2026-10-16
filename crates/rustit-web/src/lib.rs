@@ -9,6 +9,7 @@
 //! * [`render`] — Markdown and syntax highlighting.
 //! * [`middleware`] — sessions, security headers, CSRF origin checks, error pages.
 //! * [`extract`] — request extractors (`Viewer`, `SignedIn`, `Page`).
+//! * [`themes`] — the colour theme catalog and the theme cookie.
 
 pub mod assets;
 pub mod client_ip;
@@ -19,6 +20,7 @@ pub mod middleware;
 pub mod render;
 pub mod routes;
 pub mod state;
+pub mod themes;
 pub mod urls;
 pub mod views;
 

@@ -8,7 +8,8 @@
     "build:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --minify",
     "watch:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --watch",
     "vendor": "node scripts/vendor.mjs",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "themes": "node scripts/themes.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
