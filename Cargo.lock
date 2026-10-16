@@ -3513,6 +3513,7 @@ name = "rustit-git"
 version = "0.1.0"
 dependencies = [
  "gix",
+ "proptest",
  "rustit-core",
  "similar",
  "tempfile",
@@ -3604,6 +3605,7 @@ dependencies = [
 name = "rustit-transport"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "thiserror",
  "tokio",
  "tracing",
@@ -3625,6 +3627,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mime_guess",
  "percent-encoding",
+ "proptest",
  "pulldown-cmark",
  "rust-embed",
  "rustit-auth",
