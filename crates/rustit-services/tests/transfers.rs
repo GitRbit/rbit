@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use rustit_core::{Config, OrgRole, RepoAccess, User, Visibility, membership::Permission};
+use rustit_core::{BasePermission, Config, OrgRole, Permission, RepoAccess, User, Visibility};
 use rustit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, orgs::CreateOrganization};
 use rustit_storage::{Database, KvStore, NewUser};
 
@@ -173,7 +173,7 @@ async fn transfers_drop_the_old_organisations_team_grants() {
     fixture.org(&olga, "beta").await;
     let acme = fixture.services.orgs.open(None, "acme").await.unwrap().org;
     fixture.services.orgs.add_member(&olga, &acme, "bob", OrgRole::Member).await.unwrap();
-    fixture.services.orgs.set_base_permission(&olga, &acme, rustit_core::membership::BasePermission::None).await.unwrap();
+    fixture.services.orgs.set_base_permission(&olga, &acme, BasePermission::None).await.unwrap();
     let ctx = fixture.repo(&olga, "acme", "rocket").await;
     let input = rustit_services::teams::TeamInput { name: "core".into(), description: String::new() };
     fixture.services.teams.create(&olga, &acme, input).await.unwrap();

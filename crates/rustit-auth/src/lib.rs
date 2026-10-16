@@ -17,7 +17,7 @@ pub mod totp;
 
 pub use access_token::AccessTokenSecret;
 pub use password::{PasswordError, Passwords};
-pub use policy::repo_access;
+pub use policy::{Grants, repo_access};
 pub use secret::TokenDigest;
 pub use session::SessionToken;
 pub use totp::{RecoveryCode, TotpSecret};

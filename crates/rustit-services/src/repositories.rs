@@ -11,9 +11,9 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use rustit_auth::{policy::Grants, repo_access};
+use rustit_auth::{Grants, repo_access};
 use rustit_core::{
-    Account, Config, OrgRole, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, membership::Permission, repository::OwnedRepository,
+    Account, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, repository::OwnedRepository,
 };
 use rustit_git::{RepositoryReader, RepositoryStorage};
 use rustit_storage::{NewRepository, RepositoryStore};

@@ -3,7 +3,7 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
-use rustit_core::{OrgMember, OrgRole, Organization, User, membership::BasePermission};
+use rustit_core::{BasePermission, OrgMember, OrgRole, Organization, User};
 use rustit_services::orgs::OrgContext;
 
 use crate::views::{

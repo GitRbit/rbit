@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use rustit_core::{User, membership::Permission};
+use rustit_core::{Permission, User};
 use rustit_services::{
     ServiceError,
     orgs::OrgContext,

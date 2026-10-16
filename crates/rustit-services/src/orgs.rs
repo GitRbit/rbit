@@ -11,9 +11,7 @@
 //!   is changed by owners. Leaving the organisation removes a member from its teams and
 //!   drops their collaborator entries on its repositories (enforced by the store).
 
-use rustit_core::{
-    AccountKind, AccountName, OrgCreationPolicy, OrgMember, OrgMembership, OrgRole, Organization, User, membership::BasePermission,
-};
+use rustit_core::{AccountKind, AccountName, BasePermission, OrgCreationPolicy, OrgMember, OrgMembership, OrgRole, Organization, User};
 use rustit_storage::{
     StorageError,
     sqlite::orgs::{MembershipChange, NewOrganization, OrgProfileUpdate},

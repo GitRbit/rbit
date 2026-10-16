@@ -25,6 +25,7 @@ pub use access_token::{AccessToken, AccessTokenId, TokenScope};
 pub use account::{Account, AccountId, AccountKind, User};
 pub use config::Config;
 pub use instance::{InstanceSettings, OrgCreationPolicy, RegistrationMode};
+pub use membership::{BasePermission, Permission, TeamName};
 pub use names::{AccountName, Email, NameError, RepoName};
 pub use org::{OrgMember, OrgMembership, OrgRole, Organization};
 pub use release::ReleaseId;
