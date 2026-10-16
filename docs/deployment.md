@@ -1,0 +1,304 @@
+# Deploying Rustit
+
+Rustit is one binary plus the `git` executable. All state lives in one data directory:
+
+| Path (under `data_dir`) | Contents | Back up? |
+|---|---|---|
+| `rustit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
+| `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
+| `rustit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
+
+Run it behind a reverse proxy that terminates TLS. The sections below cover
+[Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),
+[health checks](#health-checks), [metrics](#metrics), [background jobs](#background-jobs),
+[backups and restore](#backups) and [upgrades](#upgrades-and-migrations).
+
+## Configuration
+
+Settings come from built-in defaults, then a TOML file (`--config` or `RUSTIT_CONFIG`),
+then `RUSTIT_<SECTION>__<KEY>` environment variables (later sources win).
+[`deploy/rustit.example.toml`](../deploy/rustit.example.toml) lists every setting with
+production-minded values. The ones that matter most:
+
+- `server.public_url` — exactly what users type (`https://git.example.com`). It builds
+  clone URLs, decides whether cookies are `Secure`, and is the origin that form
+  submissions are checked against. A mismatch breaks sign-in.
+- `server.bind` — keep it on loopback (`127.0.0.1:3000`) behind a proxy.
+- `storage.data_dir` — the directory above.
+- `repository.git_binary` — the `git` used for smart HTTP, `git gc` and backups.
+
+## Docker
+
+The [`Dockerfile`](../Dockerfile) builds the stylesheet with Node, compiles a release
+binary, and ships it on Debian slim with `git`, CA certificates and `tini`. The container
+runs as the unprivileged user `rustit` (uid 10001), keeps all data in the `/data` volume
+and has a `HEALTHCHECK` against `/healthz`.
+
+```bash
+docker build -t rustit .
+docker run -d --name rustit --restart unless-stopped \
+  -p 127.0.0.1:3000:3000 \
+  -v rustit-data:/data \
+  -e RUSTIT_SERVER__PUBLIC_URL=https://git.example.com \
+  rustit
+```
+
+The image sets `RUSTIT_SERVER__BIND=0.0.0.0:3000` (inside the container) and
+`RUSTIT_STORAGE__DATA_DIR=/data`. To use a file instead of environment variables, mount
+it read-only and point `RUSTIT_CONFIG` at it:
+
+```yaml
+# compose.yaml
+services:
+  rustit:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+      # - "2222:2222"            # built-in SSH server, when [ssh] enabled = true
+    environment:
+      RUSTIT_CONFIG: /etc/rustit/rustit.toml
+    volumes:
+      - rustit-data:/data
+      - ./rustit.toml:/etc/rustit/rustit.toml:ro
+volumes:
+  rustit-data:
+```
+
+In a config file used with the image, keep `[storage] data_dir = "/data"` and
+`[server] bind = "0.0.0.0:3000"`; if you change the port, override the health check
+(`--health-cmd` / `healthcheck:`) to match.
+
+Administrative commands run in the same container:
+
+```bash
+docker exec -it rustit rustit user create alice alice@example.com --admin
+docker exec rustit rustit backup --output /data/backups/$(date +%Y%m%d-%H%M%S)
+```
+
+## systemd
+
+[`deploy/rustit.service`](../deploy/rustit.service) runs Rustit as a dedicated user with a
+systemd-managed state directory (`/var/lib/rustit`) and a strict sandbox: the file system
+is read-only except the data directory, no capabilities, restricted address families and
+system calls. Installation steps are at the top of the file; in short:
+
+```bash
+sudo useradd --system --home-dir /var/lib/rustit --shell /usr/sbin/nologin rustit
+sudo install -m 0755 target/release/rustit /usr/local/bin/rustit
+sudo install -d -m 0750 -o root -g rustit /etc/rustit
+sudo install -m 0640 -o root -g rustit deploy/rustit.example.toml /etc/rustit/rustit.toml
+sudo install -m 0644 deploy/rustit.service /etc/systemd/system/rustit.service
+sudo systemctl daemon-reload && sudo systemctl enable --now rustit
+journalctl -u rustit -f
+```
+
+Run administrative commands as the service user so file ownership stays right:
+
+```bash
+sudo -u rustit rustit --config /etc/rustit/rustit.toml user create alice alice@example.com --admin
+```
+
+`SIGTERM` (what `systemctl stop` sends) shuts down gracefully: in-flight requests finish,
+background jobs stop, and SQLite is flushed.
+
+## Reverse proxy and TLS
+
+The proxy terminates TLS and forwards to `127.0.0.1:3000`. Git pushes can be large and
+clones long-running, so do not cap request bodies and do not buffer Git traffic.
+
+### Trusted proxies
+
+Rustit uses the client address for rate limiting and the audit log. It only believes
+`X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` from addresses listed in
+`[security] trusted_proxies`. List exactly your proxy (for a proxy on the same host,
+`["127.0.0.1/32", "::1/128"]`), never a broad range: any client inside a trusted range can
+claim to be anyone. With no trusted proxies every request appears to come from the proxy,
+which makes per-IP rate limits apply to everyone at once.
+
+### Caddy
+
+Caddy obtains and renews certificates automatically and sets `X-Forwarded-For` and
+`X-Forwarded-Proto`.
+
+```caddyfile
+git.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000 {
+		# Stream packfiles instead of buffering them.
+		flush_interval -1
+	}
+	# Optional: keep metrics off the public internet entirely.
+	@metrics path /metrics
+	respond @metrics 404
+}
+```
+
+### nginx
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name git.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name git.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/git.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/git.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=63072000" always;
+
+    # Pushes can be arbitrarily large; Rustit streams them to git.
+    client_max_body_size 0;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Stream Git traffic in both directions; allow slow, long clones.
+        proxy_buffering         off;
+        proxy_request_buffering off;
+        proxy_read_timeout      1h;
+        proxy_send_timeout      1h;
+    }
+
+    # Optional: metrics only from the monitoring host.
+    location = /metrics {
+        allow 10.0.0.5;
+        deny all;
+        proxy_pass http://127.0.0.1:3000;
+    }
+}
+```
+
+Get certificates with `certbot --nginx -d git.example.com` (or any ACME client).
+
+### SSH
+
+The built-in SSH server (`[ssh] enabled = true`, port 2222 by default) is not proxied over
+HTTP. Expose its port directly (or forward port 22 to it with a firewall rule).
+
+## Health checks
+
+| Endpoint | Answers | Use for |
+|---|---|---|
+| `GET /healthz` | `{"status":"ok","database":"ok","kv":"ok"}`; **503** with `"error"` for the failing store when SQLite or redb cannot be read | liveness / container `HEALTHCHECK` |
+| `GET /readyz` | the same plus `"repositories"` (the repository directory is reachable) | load-balancer readiness |
+
+Both are uncached, unauthenticated and cheap (one trivial read per store, bounded by a
+3-second timeout).
+
+## Metrics
+
+With `[operations] metrics = true`, `GET /metrics` serves the Prometheus text format;
+otherwise it answers 404. Set `metrics_token` to require `Authorization: Bearer <token>`,
+or block `/metrics` at the proxy and scrape the loopback address.
+
+| Metric | Type | Labels |
+|---|---|---|
+| `rustit_http_requests_total` | counter | `method`, `route` (matched route template, e.g. `/{owner}/{repo}/blob/{*rest}`, or `unmatched`), `status` (`2xx`…`5xx`) |
+| `rustit_http_request_duration_seconds` | histogram | `method`, `route` — time until response headers; streamed Git bodies continue afterwards |
+| `rustit_git_operations_total` | counter | `service` (`upload-pack` = clone/fetch, `receive-pack` = push), `stage` (`advertise`, `exchange`), `status` |
+| `rustit_jobs_total` | counter | `job` (`warm_caches`, `git_gc`, `prune_insights_cache`), `outcome` (`ok`, `error`) |
+| `rustit_job_duration_seconds` | histogram | `job` |
+| `rustit_insights_cache_entries` | gauge | — (after each prune) |
+
+Labels never contain user-controlled values such as repository names or raw paths, so the
+number of series is bounded.
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: rustit
+    scheme: https
+    authorization:
+      credentials: replace-with-the-metrics-token
+    static_configs:
+      - targets: ["git.example.com"]
+```
+
+## Background jobs
+
+Rustit runs its own maintenance; no cron jobs are needed.
+
+- **After every push**, the language breakdown and the root directory's last-commit list
+  of the default branch are computed and cached (`warm_caches_on_push`).
+- **Every `maintenance_interval_minutes`** (default 6 h, ± 10 % jitter): `git gc --auto`
+  for every repository on the first run after start-up, afterwards only for repositories
+  pushed to since the previous run; then the insights cache is pruned to
+  `insights_cache_max_age_days` and `insights_cache_max_entries`. An idle instance does
+  nothing else.
+- At most `job_concurrency` jobs run at once. Expired sessions are purged hourly.
+
+## Backups
+
+`rustit backup --output DIR` writes a consistent backup to a **new** directory while the
+server keeps running:
+
+```text
+DIR/
+├── rustit.db                          SQLite snapshot (VACUUM INTO: one consistent read)
+├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
+└── manifest.json                      format, version, time, counts; written last
+```
+
+The repositories are mirrored through Git's pack protocol, which copies each repository's
+refs and every object they reach consistently even during a push or `git gc`. A
+repository created after the database snapshot is not included (it would be orphaned on
+restore anyway); one deleted in between is listed under `missing_repositories`.
+
+**The redb store (`rustit.redb`) is not backed up.** It holds only login sessions and
+caches. After a restore everyone signs in again and caches refill on demand.
+
+A backup is complete when `manifest.json` exists. The command exits non-zero, without a
+manifest, if any repository could not be copied.
+
+Schedule it with a systemd timer or cron, as the service user, and copy the result off the
+machine (restic, borg, rsync, object storage):
+
+```bash
+sudo -u rustit rustit --config /etc/rustit/rustit.toml backup \
+  --output /var/backups/rustit/$(date +%Y%m%d-%H%M%S)
+```
+
+### Restore
+
+The backup directory mirrors the data directory, so restoring is a copy:
+
+1. Stop Rustit: `sudo systemctl stop rustit` (or `docker stop rustit`).
+2. Move the current data directory aside: `sudo mv /var/lib/rustit /var/lib/rustit.old`.
+3. Copy the backup into place, excluding the manifest, and fix ownership:
+   ```bash
+   sudo mkdir -m 0750 /var/lib/rustit
+   sudo cp -a DIR/rustit.db DIR/repositories /var/lib/rustit/
+   sudo chown -R rustit:rustit /var/lib/rustit
+   ```
+   For Docker, copy into the volume, e.g.
+   `docker run --rm -v rustit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rustit.db /backup/repositories /data/ && chown -R 10001:10001 /data'`.
+4. Start Rustit. Pending migrations (if the backup came from an older version) run on
+   start-up; a fresh `rustit.redb` is created.
+5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.
+
+Restore onto the **same or a newer** Rustit version. Restoring a backup into an older
+version is not supported (its database may have migrations the older binary does not know).
+
+## Upgrades and migrations
+
+1. Take a backup (`rustit backup`).
+2. Replace the binary (or pull/rebuild the image).
+3. Restart. Database migrations are embedded in the binary and applied automatically at
+   start-up, before the server accepts requests. To apply them separately (for example
+   in a deploy pipeline), run `rustit migrate`, which migrates and exits.
+
+Migrations only move forward. To roll back, stop the new version, restore the backup
+taken in step 1 and start the old binary. Release notes call out anything else.
