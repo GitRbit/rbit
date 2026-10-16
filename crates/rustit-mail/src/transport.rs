@@ -154,7 +154,8 @@ impl Mailer for LogMailer {
             let subject = mail.subject.clone();
             let text = mail.text.clone();
             build_message(&self.from, mail)?;
-            tracing::info!(from = %self.from, %to, %subject, "email (log transport, not sent)\n{text}");
+            // Headers first and the body last, so the message reads naturally in the log.
+            tracing::info!("email not sent (log transport)\nFrom: {}\nTo: {to}\nSubject: {subject}\n\n{text}", self.from);
             Ok(())
         })
     }
