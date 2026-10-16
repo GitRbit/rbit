@@ -4342,6 +4342,7 @@ dependencies = [
  "rustit-core",
  "rustit-git",
  "rustit-services",
+ "rustit-ssh",
  "rustit-storage",
  "rustit-web",
  "serde",

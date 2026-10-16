@@ -15,6 +15,7 @@ rustit-core.workspace = true
 rustit-storage.workspace = true
 rustit-services.workspace = true
 rustit-web.workspace = true
+rustit-ssh.workspace = true
 
 anyhow.workspace = true
 axum.workspace = true
