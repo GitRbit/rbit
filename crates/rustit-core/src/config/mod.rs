@@ -13,7 +13,7 @@ use std::{net::SocketAddr, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-pub use mail::{MailConfig, MailTransport};
+pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use operations::OperationsConfig;
 pub use security::SecurityConfig;
 pub use ssh::SshConfig;
