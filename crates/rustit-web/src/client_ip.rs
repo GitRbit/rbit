@@ -15,9 +15,10 @@ use std::{
 
 use axum::{
     extract::{ConnectInfo, FromRequestParts},
-    http::{Extensions, HeaderMap, request::Parts},
+    http::{Extensions, HeaderMap, header, request::Parts},
 };
 use rustit_core::config::SecurityConfig;
+use rustit_services::accounts::ClientInfo;
 
 use crate::AppState;
 
@@ -41,6 +42,27 @@ impl FromRequestParts<AppState> for ClientIp {
     #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         Ok(Self::resolve(&parts.extensions, &parts.headers, &state.config.security))
+    }
+}
+
+/// The client's address and browser, recorded with new sessions and audit entries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Client(pub ClientInfo);
+
+impl Client {
+    pub fn ip(&self) -> Option<IpAddr> {
+        self.0.ip
+    }
+}
+
+impl FromRequestParts<AppState> for Client {
+    type Rejection = Infallible;
+
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let ClientIp(ip) = ClientIp::resolve(&parts.extensions, &parts.headers, &state.config.security);
+        let user_agent = parts.headers.get(header::USER_AGENT).and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
+        Ok(Self(ClientInfo { ip: Some(ip), user_agent }))
     }
 }
 

@@ -56,6 +56,12 @@ impl AccountStore {
         Self { pool }
     }
 
+    /// The security audit log in the same database, for services that were handed only
+    /// this store but must record what they do (sessions, access tokens).
+    pub fn audit_log(&self) -> super::audit::AuditStore {
+        super::audit::AuditStore::new(self.pool.clone())
+    }
+
     /// Creates the account and its login atomically.
     pub async fn create_user(&self, new: NewUser) -> Result<User, StorageError> {
         let now = Timestamp::now().seconds();

@@ -12,6 +12,7 @@ use axum::{
     http::request::Parts,
     response::{IntoResponse, Redirect, Response},
 };
+use rustit_auth::SessionToken;
 use rustit_core::User;
 
 use crate::{AppState, error::WebError, urls::encode_path, views::layout::Page};
@@ -31,6 +32,19 @@ impl<S: Send + Sync> FromRequestParts<S> for Viewer {
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         Ok(parts.extensions.get::<Self>().cloned().unwrap_or_default())
+    }
+}
+
+/// The session token of a signed-in request (set by the session middleware), so pages
+/// can mark "this device" and keep it when signing out everywhere else.
+#[derive(Debug, Clone)]
+pub struct CurrentSession(pub SessionToken);
+
+impl<S: Send + Sync> FromRequestParts<S> for CurrentSession {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts.extensions.get::<Self>().cloned().ok_or_else(|| Redirect::to("/login").into_response())
     }
 }
 

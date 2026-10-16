@@ -14,23 +14,48 @@ use rustit_auth::SessionToken;
 use crate::{
     AppState,
     error::ErrorInfo,
-    extract::Viewer,
+    extract::{CurrentSession, Viewer},
     views::{errors::ErrorPage, layout::Page},
 };
 
 pub const SESSION_COOKIE: &str = "rustit_session";
 
-/// Resolves the session cookie into a [`Viewer`] stored in the request extensions.
+/// Self-service password changes: the session making one survives it (see
+/// [`rustit_services::accounts::PasswordChangeGuard`]); every other session ends.
+const PASSWORD_CHANGE_PATH: &str = "/settings/account/password";
+
+/// Resolves the session cookie into a [`Viewer`] (and, for signed-in requests, the
+/// [`CurrentSession`]) stored in the request extensions.
 pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request: Request, next: Next) -> Response {
     let mut viewer = Viewer::default();
+    let mut current = None;
     if let Some(token) = jar.get(SESSION_COOKIE).and_then(|c| SessionToken::parse(c.value())) {
         match state.services.accounts.resume_session(&token).await {
-            Ok(user) => viewer = Viewer(user.map(Arc::new)),
+            Ok(Some(user)) => {
+                current = Some((user.id(), token));
+                viewer = Viewer(Some(Arc::new(user)));
+            }
+            Ok(None) => {}
             Err(error) => tracing::warn!(%error, "failed to resume session"),
         }
     }
     request.extensions_mut().insert(viewer);
-    next.run(request).await
+
+    let changes_password = request.method() == Method::POST && request.uri().path() == PASSWORD_CHANGE_PATH;
+    let guard = match &current {
+        Some((user, token)) if changes_password => Some(state.services.accounts.guard_password_change(*user, token)),
+        _ => None,
+    };
+    if let Some((_, token)) = current {
+        request.extensions_mut().insert(CurrentSession(token));
+    }
+
+    let response = next.run(request).await;
+    if let Some(guard) = guard {
+        // Settings forms redirect after success and re-render (422) after a failure.
+        guard.finish(response.status().is_redirection()).await;
+    }
+    response
 }
 
 /// Throttles abusive clients (per client address and per target account).
