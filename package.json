@@ -7,9 +7,11 @@
     "build": "npm run vendor && npm run build:css",
     "build:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --minify",
     "watch:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --watch",
-    "vendor": "node scripts/vendor.mjs"
+    "vendor": "node scripts/vendor.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "@tailwindcss/cli": "4.3.3",
     "@tailwindcss/typography": "0.5.20",
     "htmx.org": "2.0.11",
