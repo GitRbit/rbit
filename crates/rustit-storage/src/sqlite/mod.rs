@@ -9,6 +9,7 @@ pub mod forks;
 pub mod instance;
 pub mod mirrors;
 pub mod orgs;
+pub mod preferences;
 pub mod profiles;
 pub mod recovery;
 pub mod releases;
@@ -142,6 +143,12 @@ impl Database {
 
     pub fn mirrors(&self) -> mirrors::MirrorStore {
         mirrors::MirrorStore::new(self.pool.clone())
+    }
+
+    // Frontend wave (T).
+
+    pub fn preferences(&self) -> preferences::PreferenceStore {
+        preferences::PreferenceStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

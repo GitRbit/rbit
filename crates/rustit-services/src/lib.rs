@@ -18,6 +18,7 @@ pub mod jobs;
 pub mod mail;
 pub mod mirrors;
 pub mod orgs;
+pub mod preferences;
 pub mod profiles;
 pub mod pushes;
 pub mod recovery;
@@ -53,6 +54,7 @@ pub use jobs::JobService;
 pub use mail::MailService;
 pub use mirrors::MirrorService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
+pub use preferences::PreferenceService;
 pub use profiles::ProfileService;
 pub use pushes::{PendingPush, PushService};
 pub use recovery::RecoveryService;
@@ -111,6 +113,8 @@ pub struct Services {
     pub forks: ForkService,
     pub mirrors: MirrorService,
     pub releases: ReleaseService,
+    // Frontend wave: themes (T).
+    pub preferences: PreferenceService,
 }
 
 impl Services {
@@ -152,6 +156,7 @@ impl Services {
             forks: ForkService::new(ctx.clone(), repositories.clone()),
             mirrors: MirrorService::new(ctx.clone()),
             releases: ReleaseService::new(ctx.clone()),
+            preferences: PreferenceService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
