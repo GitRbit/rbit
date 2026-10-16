@@ -7,15 +7,20 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+# The harness in `src/lib.rs` is only used by this crate's tests, but it lives in the
+# library so every test module shares one copy; hence regular dependencies.
 [dependencies]
-
-[dev-dependencies]
 rustit-core.workspace = true
 rustit-services.workspace = true
 rustit-storage.workspace = true
 rustit-web.workspace = true
+axum.workspace = true
+reqwest.workspace = true
 tokio.workspace = true
 tempfile.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

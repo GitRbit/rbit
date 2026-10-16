@@ -83,6 +83,8 @@ metrics = "0.24"
 # Only the recorder and text renderer: `/metrics` is served by our own router.
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 # --- T: end-to-end tests ---
+reqwest = { version = "0.13", default-features = false, features = ["cookies", "form"] }
+proptest = "1"
 
 # Testing
 tempfile = "3"
