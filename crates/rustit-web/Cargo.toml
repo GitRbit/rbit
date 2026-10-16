@@ -42,6 +42,7 @@ metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 rustit-storage.workspace = true
 tempfile.workspace = true
 
