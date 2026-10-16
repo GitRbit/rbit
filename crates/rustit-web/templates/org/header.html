@@ -24,6 +24,11 @@
   <a class="tab" href="{{ header.members_url }}" {% if header.is_active("members") %}aria-current="page"{% endif %}>
     {% call ui::icon("users", "size-3.5") %}{% endcall %}Members{% if let Some(count) = header.member_count %}<span class="text-ink-faint">{{ count }}</span>{% endif %}
   </a>
+  {% if header.can_see_teams %}
+  <a class="tab" href="{{ header.teams_url }}" {% if header.is_active("teams") %}aria-current="page"{% endif %}>
+    {% call ui::icon("users", "size-3.5") %}{% endcall %}Teams
+  </a>
+  {% endif %}
   {% if header.can_manage %}
   <a class="tab" href="{{ header.settings_url }}" {% if header.is_active("settings") %}aria-current="page"{% endif %}>
     {% call ui::icon("settings", "size-3.5") %}{% endcall %}Settings

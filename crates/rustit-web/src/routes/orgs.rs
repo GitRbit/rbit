@@ -1,5 +1,6 @@
 //! Organisations: `/organizations/new`, the `/{org}` profile (via [`profile`]),
-//! `/{org}/members` and `/{org}/settings`.
+//! `/{org}/members` and `/{org}/settings` (profile, base permission, deletion). Team
+//! pages are in `routes::teams`.
 //!
 //! Its routes are merged into the page router, so they get sessions, CSRF protection,
 //! security headers and error pages automatically. Handlers stay thin: every rule
@@ -12,7 +13,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use rustit_core::{OrgRole, User};
+use rustit_core::{OrgRole, User, membership::BasePermission};
 use rustit_services::{
     ServiceError,
     orgs::{CreateOrganization, OrgContext, UpdateOrganization},
@@ -26,7 +27,10 @@ use crate::{
     views::{
         components::{FormError, RepoCard},
         layout::Page,
-        org::{AddMemberForm, MemberRow, MembersPage, NewOrgPage, OrgHeader, OrgProfileForm, OrgProfilePage, OrgSettingsPage, OrgTab},
+        org::{
+            AddMemberForm, BasePermissionOption, MemberRow, MembersPage, NewOrgPage, OrgHeader, OrgProfileForm, OrgProfilePage,
+            OrgSettingsPage, OrgTab,
+        },
     },
 };
 
@@ -41,6 +45,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/members/{member}/remove", post(remove_member))
         .route("/{owner}/settings", get(settings).post(save_settings))
         .route("/{owner}/settings/delete", post(delete))
+        .route("/{owner}/settings/permission", post(save_permission))
 }
 
 /// Maps validation failures to `Some(message)` (re-render with 422) and passes every
@@ -59,6 +64,13 @@ async fn header(state: &AppState, viewer: Option<&User>, ctx: &OrgContext, tab: 
     let members = state.services.orgs.members(&ctx.org).await?;
     let header = OrgHeader::new(ctx, tab).with_counts(Some(repos.len()), Some(members.len()));
     Ok((header, super::listing::repo_cards(state, &repos).await?))
+}
+
+/// Just the header (for pages that do not list repositories, such as the team pages).
+pub(super) async fn org_header(state: &AppState, viewer: Option<&User>, ctx: &OrgContext, tab: OrgTab) -> WebResult<OrgHeader> {
+    let repos = state.services.repositories.list_for_owner(viewer, &ctx.org.account).await?;
+    let members = state.services.orgs.members(&ctx.org).await?;
+    Ok(OrgHeader::new(ctx, tab).with_counts(Some(repos.len()), Some(members.len())))
 }
 
 // ------------------------------------------------------------------ creation
@@ -278,6 +290,7 @@ async fn managed(state: &AppState, user: &User, owner: &str) -> WebResult<OrgCon
 async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgContext, form: OrgProfileForm) -> WebResult<OrgSettingsPage> {
     let (header, repos) = header(state, Some(user), ctx, OrgTab::Settings).await?;
     let base = format!("/{}/settings", ctx.org.name());
+    let base_permission = state.services.orgs.base_permission(&ctx.org).await?;
     Ok(OrgSettingsPage {
         page: page.titled(format!("Settings · {}", ctx.org.label())),
         header,
@@ -287,8 +300,34 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
         repo_count: repos.len(),
         delete_url: format!("{base}/delete"),
         cards: crate::views::org::org_settings_cards(&base),
+        permission_url: format!("{base}/permission"),
+        base_permissions: BasePermissionOption::list(base_permission),
+        permission_error: FormError::default(),
         save_url: base,
     })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BasePermissionFormData {
+    permission: Option<String>,
+}
+
+/// `POST /{org}/settings/permission`: change what every member gets.
+pub async fn save_permission(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Path(owner): Path<String>,
+    Form(form): Form<BasePermissionFormData>,
+) -> WebResult<Response> {
+    let ctx = managed(&state, &user, &owner).await?;
+    let Some(permission) = form.permission.as_deref().and_then(BasePermission::parse) else {
+        let mut page = settings_page(&state, &user, page, &ctx, OrgProfileForm::from_org(&ctx.org)).await?;
+        page.permission_error = FormError::new("Choose a permission.");
+        return Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response());
+    };
+    state.services.orgs.set_base_permission(&user, &ctx.org, permission).await?;
+    Ok(Redirect::to(&format!("/{}/settings", ctx.org.name())).into_response())
 }
 
 /// `GET /{org}/settings`
@@ -367,6 +406,10 @@ mod tests {
             .merge(super::super::admin::routes())
             .merge(super::super::repo_settings::routes())
             .merge(super::super::stars::routes())
+            .merge(super::super::ssh_keys::routes())
+            .merge(super::super::collaborators::routes())
+            .merge(super::super::teams::routes())
+            .merge(super::super::transfer::routes())
             .merge(routes());
     }
 }

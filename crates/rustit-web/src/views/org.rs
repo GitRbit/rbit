@@ -1,8 +1,9 @@
-//! Organisation pages: profile, members, settings, creation.
+//! Organisation pages: profile, members, settings, creation. Team pages live in
+//! [`crate::views::teams`] and share [`OrgHeader`].
 
 use askama::Template;
 use askama_web::WebTemplate;
-use rustit_core::{OrgMember, OrgRole, Organization, User};
+use rustit_core::{OrgMember, OrgRole, Organization, User, membership::BasePermission};
 use rustit_services::orgs::OrgContext;
 
 use crate::views::{
@@ -18,6 +19,7 @@ use crate::views::{
 pub enum OrgTab {
     Repositories,
     Members,
+    Teams,
     Settings,
 }
 
@@ -34,11 +36,14 @@ pub struct OrgHeader {
     pub website_label: String,
     pub repos_url: String,
     pub members_url: String,
+    pub teams_url: String,
     pub settings_url: String,
     pub repo_count: Option<usize>,
     pub member_count: Option<usize>,
     /// Show the Settings tab (owners and site admins).
     pub can_manage: bool,
+    /// Show the Teams tab (members and site admins).
+    pub can_see_teams: bool,
     pub active: OrgTab,
 }
 
@@ -55,11 +60,13 @@ impl OrgHeader {
             website: org.website.clone(),
             website_label,
             members_url: format!("{base}/members"),
+            teams_url: format!("{base}/teams"),
             settings_url: format!("{base}/settings"),
             repos_url: base,
             repo_count: None,
             member_count: None,
             can_manage: ctx.can_manage,
+            can_see_teams: ctx.is_member() || ctx.can_manage,
             active,
         }
     }
@@ -75,6 +82,7 @@ impl OrgHeader {
         let current = match self.active {
             OrgTab::Repositories => "repositories",
             OrgTab::Members => "members",
+            OrgTab::Teams => "teams",
             OrgTab::Settings => "settings",
         };
         current == tab
@@ -198,6 +206,29 @@ pub struct OrgSettingsPage {
     pub delete_url: String,
     /// Links to settings sub-pages (teams, webhooks).
     pub cards: Vec<SettingsCard>,
+    /// Where the base permission form posts.
+    pub permission_url: String,
+    pub base_permissions: Vec<BasePermissionOption>,
+    pub permission_error: FormError,
+}
+
+/// One choice of the organisation base permission.
+#[derive(Debug, Clone)]
+pub struct BasePermissionOption {
+    pub value: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub selected: bool,
+}
+
+impl BasePermissionOption {
+    /// Every level, with `selected` preselected.
+    pub fn list(selected: BasePermission) -> Vec<Self> {
+        BasePermission::ALL
+            .into_iter()
+            .map(|base| Self { value: base.as_str(), label: base.label(), description: base.description(), selected: base == selected })
+            .collect()
+    }
 }
 
 /// The organisation settings sub-pages, in display order; `settings_url` is `/{org}/settings`.
@@ -223,6 +254,53 @@ pub struct NewOrgPage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ctx(role: Option<OrgRole>, can_manage: bool) -> OrgContext {
+        let account = rustit_core::Account {
+            id: rustit_core::AccountId(9),
+            kind: rustit_core::AccountKind::Organization,
+            name: "acme".parse().unwrap(),
+            display_name: None,
+            bio: None,
+            created_at: rustit_core::Timestamp(0),
+        };
+        OrgContext { org: Organization { account, description: None, website: None }, role, can_manage }
+    }
+
+    #[test]
+    fn teams_tab_is_for_members_and_managers() {
+        assert!(OrgHeader::new(&ctx(Some(OrgRole::Member), false), OrgTab::Teams).can_see_teams);
+        assert!(OrgHeader::new(&ctx(None, true), OrgTab::Teams).can_see_teams, "site admins");
+        assert!(!OrgHeader::new(&ctx(None, false), OrgTab::Repositories).can_see_teams);
+        let header = OrgHeader::new(&ctx(Some(OrgRole::Owner), true), OrgTab::Teams);
+        assert_eq!(header.teams_url, "/acme/teams");
+        assert!(header.is_active("teams"));
+    }
+
+    #[test]
+    fn settings_page_offers_the_base_permission() {
+        let header = OrgHeader::new(&ctx(Some(OrgRole::Owner), true), OrgTab::Settings);
+        let html = OrgSettingsPage {
+            page: Page { site_name: "Rustit".into(), title: None, viewer: None, path: "/acme/settings".into() },
+            header,
+            form: OrgProfileForm::default(),
+            error: FormError::default(),
+            delete_error: FormError::default(),
+            repo_count: 0,
+            save_url: "/acme/settings".into(),
+            delete_url: "/acme/settings/delete".into(),
+            cards: org_settings_cards("/acme/settings"),
+            permission_url: "/acme/settings/permission".into(),
+            base_permissions: BasePermissionOption::list(BasePermission::Read),
+            permission_error: FormError::default(),
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains(r#"action="/acme/settings/permission""#));
+        assert!(html.contains(r#"value="read" checked"#));
+        assert!(html.contains(r#"value="none""#) && html.contains(r#"value="write""#));
+        assert!(html.contains(r#"href="/acme/teams""#), "the Teams card and tab");
+    }
 
     #[test]
     fn websites_display_without_scheme() {

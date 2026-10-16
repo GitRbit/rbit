@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "org/nav_context.html" %}{% endblock %}
+{% block content %}
+{% include "org/header.html" %}
+
+<div class="mt-6 max-w-3xl">
+  <div class="mb-3 flex h-8 items-center justify-between gap-3">
+    <h2 class="text-[13px] font-medium text-ink-muted">Teams <span class="ml-1 text-ink-faint">{{ teams.len() }}</span></h2>
+    {% if can_manage %}
+    <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New team</a>
+    {% endif %}
+  </div>
+  <div class="box">
+    {% if teams.is_empty() %}
+    {% call ui::empty_state("users", "No teams yet", "Teams group members and give each group its own access to repositories.") %}{% endcall %}
+    {% else %}
+    <ul>
+      {% for team in teams %}
+      <li class="border-b border-line last:border-b-0">
+        <a href="{{ team.url }}" class="flex items-start gap-3 px-4 py-3 hover:bg-subtle">
+          {% call ui::icon("users", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{{ team.name }}</span>
+            {% if let Some(description) = team.description %}<span class="mt-0.5 block line-clamp-2 text-[13px] text-ink-muted">{{ description }}</span>{% endif %}
+          </span>
+          <span class="shrink-0 text-xs text-ink-faint">{{ team.counts }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

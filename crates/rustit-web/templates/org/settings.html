@@ -26,6 +26,33 @@
     </div>
   </form>
 
+  <form method="post" action="{{ permission_url }}" class="box mt-6" novalidate>
+    <div class="box-header">
+      <h2 class="text-[13px] font-medium">Member permission</h2>
+    </div>
+    <div class="p-4">
+      {% call ui::form_error(permission_error) %}{% endcall %}
+      <fieldset>
+        <legend class="label">What every member gets on every repository</legend>
+        <div class="box overflow-hidden">
+          {% for option in base_permissions %}
+          <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
+            <input type="radio" name="permission" class="mt-1 accent-(--ink)" value="{{ option.value }}" {% if option.selected %}checked{% endif %}>
+            <span>
+              <span class="block font-medium">{{ option.label }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <p class="hint">Teams and collaborators can add to this, never take away. Owners always administer every repository.</p>
+    </div>
+    <div class="flex justify-end border-t border-line px-4 py-3">
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save permission</button>
+    </div>
+  </form>
+
   {% for card in cards %}{% call ui::settings_card(card) %}{% endcall %}{% endfor %}
 
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
