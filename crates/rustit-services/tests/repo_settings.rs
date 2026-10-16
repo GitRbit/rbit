@@ -3,7 +3,7 @@
 use std::{path::Path, process::Command, sync::Arc};
 
 use rustit_core::{Config, User, Visibility};
-use rustit_services::{CreateRepository, RepoContext, ServiceError, Services, repo_settings::UpdateRepository};
+use rustit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, repo_settings::UpdateRepository};
 use rustit_storage::{Database, KvStore, NewUser};
 
 struct Fixture {
@@ -167,6 +167,23 @@ async fn delete_repository() {
     assert!(!repo.disk_path.exists());
     assert!(matches!(fixture.open(Some(&alice), "alice", "doomed").await, Err(ServiceError::NotFound)));
     assert!(fixture.services.stars.starred_by(Some(&bob), &bob.account).await.unwrap().is_empty(), "stars cascade");
+}
+
+#[tokio::test]
+async fn creating_and_deleting_repositories_publish_events() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let mut events = fixture.services.events.subscribe();
+
+    let repo = fixture.repo(&alice, "short-lived", Visibility::Private).await;
+    let id = repo.repo.repo.id;
+    assert_eq!(events.recv().await.unwrap(), DomainEvent::RepositoryCreated { repo: id, actor: alice.id() });
+
+    fixture.services.repo_settings.delete(&repo, "alice/short-lived").await.unwrap();
+    assert_eq!(
+        events.recv().await.unwrap(),
+        DomainEvent::RepositoryDeleted { repo: id, owner: alice.id(), full_name: "alice/short-lived".to_owned() }
+    );
 }
 
 #[tokio::test]

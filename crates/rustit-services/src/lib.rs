@@ -115,7 +115,7 @@ impl Services {
             profiles: ProfileService::new(ctx.clone()),
             pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
-            repositories: RepositoryService::new(config, database.repositories(), ctx.repositories.clone()),
+            repositories: RepositoryService::new(config, database.repositories(), ctx.repositories.clone(), ctx.events.clone()),
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
             events: ctx.events.clone(),

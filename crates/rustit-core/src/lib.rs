@@ -12,6 +12,7 @@ pub mod config;
 pub mod instance;
 pub mod names;
 pub mod org;
+pub mod release;
 pub mod repository;
 pub mod timestamp;
 
@@ -22,5 +23,6 @@ pub use config::Config;
 pub use instance::{InstanceSettings, OrgCreationPolicy, RegistrationMode};
 pub use names::{AccountName, Email, NameError, RepoName};
 pub use org::{OrgMember, OrgMembership, OrgRole, Organization};
+pub use release::ReleaseId;
 pub use repository::{OwnedRepository, RepoId, RepoSort, Repository, Visibility};
 pub use timestamp::Timestamp;

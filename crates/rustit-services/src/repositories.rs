@@ -10,7 +10,7 @@ use rustit_core::{Account, Config, OrgRole, RepoAccess, RepoId, RepoName, RepoSo
 use rustit_git::{RepositoryReader, RepositoryStorage};
 use rustit_storage::{NewRepository, RepositoryStore};
 
-use crate::{ServiceContext, ServiceError};
+use crate::{DomainEvent, EventBus, ServiceContext, ServiceError};
 
 const MAX_DESCRIPTION_LEN: usize = 350;
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
@@ -98,11 +98,12 @@ pub struct RepositoryService {
     config: Arc<Config>,
     store: RepositoryStore,
     storage: RepositoryStorage,
+    events: EventBus,
 }
 
 impl RepositoryService {
-    pub(crate) fn new(config: Arc<Config>, store: RepositoryStore, storage: RepositoryStorage) -> Self {
-        Self { config, store, storage }
+    pub(crate) fn new(config: Arc<Config>, store: RepositoryStore, storage: RepositoryStorage, events: EventBus) -> Self {
+        Self { config, store, storage, events }
     }
 
     /// Creates a repository owned by `actor` personally. See [`Self::create_in`].
@@ -142,6 +143,7 @@ impl RepositoryService {
         }
 
         tracing::info!(actor = %actor.name(), owner = %owner.name, repo = %repo.name, "repository created");
+        self.events.publish(DomainEvent::RepositoryCreated { repo: repo.id, actor: actor.id() });
         Ok(OwnedRepository { owner, repo })
     }
 

@@ -368,7 +368,13 @@ impl RecoveryService {
                 self.send_verification(&account, VerifyReason::Changed).await?;
                 self.notify_previous_address(&account, previous)
             }
-            DomainEvent::RepositoryPushed { .. } | DomainEvent::PasswordChanged { .. } => Ok(()),
+            DomainEvent::RepositoryPushed { .. }
+            | DomainEvent::RepositoryCreated { .. }
+            | DomainEvent::RepositoryDeleted { .. }
+            | DomainEvent::RepositoryTransferred { .. }
+            | DomainEvent::RepositoryForked { .. }
+            | DomainEvent::ReleasePublished { .. }
+            | DomainEvent::PasswordChanged { .. } => Ok(()),
         }
     }
 

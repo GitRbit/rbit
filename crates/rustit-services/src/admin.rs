@@ -239,8 +239,10 @@ impl AdminService {
 
         let repositories = self.store.repositories_owned_by(id).await?;
         check_moderation(self.store.delete_user(id).await?, &target, "deleted")?;
-        for repo in repositories {
+        for (repo, name) in repositories {
             self.remove_from_disk(id, repo).await;
+            let full_name = format!("{}/{name}", target.user.name());
+            self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo, owner: id, full_name });
         }
         tracing::info!(admin = %actor.name(), user = %target.user.name(), "user deleted");
         self.audit.record(AuditEntry::new(AuditAction::UserDeleted).by(actor).on(target.user.name().as_str())).await;
@@ -278,6 +280,7 @@ impl AdminService {
         }
         self.remove_from_disk(repo.owner.id, id).await;
         tracing::info!(admin = %actor.name(), repository = %repo.full_name(), "repository deleted");
+        self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo: id, owner: repo.owner.id, full_name: repo.full_name() });
         self.audit.record(AuditEntry::new(AuditAction::RepositoryDeleted).by(actor).on(repo.full_name())).await;
         Ok(repo)
     }

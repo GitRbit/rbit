@@ -7,7 +7,7 @@ use rustit_core::{RepoName, Visibility};
 use rustit_git::RefKind;
 use rustit_storage::sqlite::repo_settings::{RepoGeneralSettings, RepoSettingsStore};
 
-use crate::{RepoContext, ServiceContext, ServiceError};
+use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError};
 
 const MAX_DESCRIPTION_LEN: usize = 350;
 
@@ -110,6 +110,7 @@ impl RepoSettingsService {
         self.ctx.repositories.delete(current.owner_id, current.id).await?;
         self.store().delete(current.id).await?;
         tracing::info!(repo = %full_name, "repository deleted");
+        self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo: current.id, owner: current.owner_id, full_name });
         Ok(())
     }
 }

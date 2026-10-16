@@ -6,7 +6,7 @@
 //! blocks or fails: with no subscribers an event is simply dropped, and a subscriber that
 //! falls behind skips the oldest events rather than slowing producers down.
 
-use rustit_core::{AccountId, RepoId};
+use rustit_core::{AccountId, ReleaseId, RepoId};
 pub use rustit_git::RefUpdate;
 use tokio::sync::broadcast;
 
@@ -26,6 +26,24 @@ pub enum DomainEvent {
         /// refs could not be read; that is logged).
         updates: Vec<RefUpdate>,
     },
+    /// A repository was created (not by forking; see [`Self::RepositoryForked`]).
+    RepositoryCreated { repo: RepoId, actor: AccountId },
+    /// A repository was deleted, by an administrator of it or of the site. The row is
+    /// gone, so the event carries what subscribers still need to describe it.
+    RepositoryDeleted {
+        repo: RepoId,
+        owner: AccountId,
+        /// `owner/name` at the time of deletion.
+        full_name: String,
+    },
+    /// A repository moved to another owner. Published by the access workstream.
+    RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId },
+    /// `repo` was created as a fork of `parent`. Published by the repository essentials
+    /// workstream.
+    RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },
+    /// A release was published (created as non-draft, or a draft was published).
+    /// Published by the repository essentials workstream.
+    ReleasePublished { repo: RepoId, release: ReleaseId, actor: AccountId },
     /// An account was created, by sign-up or by an administrator.
     UserSignedUp { user: AccountId },
     /// A user's password was changed (by them, by a reset link, or by an administrator).

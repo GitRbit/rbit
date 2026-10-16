@@ -270,11 +270,11 @@ impl AdminStore {
         Ok(!guarded)
     }
 
-    /// `(owner, repository)` ids of every repository the account owns, for deleting them from disk.
-    pub async fn repositories_owned_by(&self, owner: AccountId) -> Result<Vec<RepoId>, StorageError> {
-        let ids: Vec<i64> =
-            sqlx::query_scalar("SELECT id FROM repositories WHERE owner_id = ? ORDER BY id").bind(owner.0).fetch_all(&self.pool).await?;
-        Ok(ids.into_iter().map(RepoId).collect())
+    /// Id and name of every repository the account owns, for deleting them from disk.
+    pub async fn repositories_owned_by(&self, owner: AccountId) -> Result<Vec<(RepoId, String)>, StorageError> {
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT id, name FROM repositories WHERE owner_id = ? ORDER BY id").bind(owner.0).fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|(id, name)| (RepoId(id), name)).collect())
     }
 
     /// Names of organisations whose only owner is `user`; deleting the user would orphan them.
