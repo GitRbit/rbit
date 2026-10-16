@@ -19,6 +19,12 @@ getrandom.workspace = true
 metrics.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
 ssh-key.workspace = true
+# W: webhook deliveries (signed JSON over HTTP(S), ring-backed rustls).
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

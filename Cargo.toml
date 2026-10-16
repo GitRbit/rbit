@@ -94,6 +94,9 @@ proptest = "1"
 # Milestone 2 wave A — each workstream adds its dependencies in its own block below.
 # --- A: access (collaborators, teams, transfer) ---
 # --- W: API & webhooks ---
+# The webhook client's TLS: rustls with the `ring` provider (as lettre and russh use), so
+# Windows builds need neither CMake nor NASM.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 # --- R: repository essentials (archives, releases, blame, compare, forks, mirrors) ---
 
 # Testing
