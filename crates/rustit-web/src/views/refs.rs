@@ -20,6 +20,9 @@ pub struct RefRow {
     pub url: String,
     pub is_default: bool,
     pub commit: CommitView,
+    /// Source archives of the ref (shown for tags).
+    pub zip_url: String,
+    pub tar_url: String,
 }
 
 impl RefRow {
@@ -32,6 +35,8 @@ impl RefRow {
         Self {
             name: detail.name.clone(),
             url: urls.tree(&full_name, ""),
+            zip_url: urls.archive(&detail.name, ".zip"),
+            tar_url: urls.archive(&detail.name, ".tar.gz"),
             is_default: detail.kind == rustit_git::RefKind::Branch && detail.name == default_branch,
             commit: CommitView::new(&detail.commit, urls),
         }

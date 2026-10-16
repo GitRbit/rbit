@@ -30,6 +30,8 @@ pub struct RepoHeader {
     pub commits_url: String,
     pub branches_url: String,
     pub tags_url: String,
+    /// "Download ZIP" in the Clone menu: the landing branch as a `.zip`.
+    pub zip_url: String,
     /// `/{owner}/{repo}/settings`, shown only when `can_admin`.
     pub settings_url: String,
     pub can_admin: bool,

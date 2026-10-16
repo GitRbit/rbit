@@ -33,6 +33,7 @@
         </div>
         <p class="mt-2 text-xs text-ink-faint">SSH needs a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
         {% endif %}
+        <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}Download ZIP</a>
       </div>
     </details>
   </div>

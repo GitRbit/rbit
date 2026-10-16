@@ -29,6 +29,10 @@
           <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></span>
         </p>
       </div>
+      {% if kind == "tag" %}
+      <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download ZIP">zip</a>
+      <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download tar.gz">tar.gz</a>
+      {% endif %}
       <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ row.commit.short_id }}</a>
     </li>
     {% endfor %}

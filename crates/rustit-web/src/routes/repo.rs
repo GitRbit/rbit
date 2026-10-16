@@ -77,6 +77,7 @@ impl RepoPage {
             commits_url: self.urls.commits(&landing),
             branches_url: self.urls.branches(),
             tags_url: self.urls.tags(),
+            zip_url: self.urls.archive(&landing, ".zip"),
             settings_url: format!("{}/settings", self.urls.home()),
             can_admin: self.ctx.access.can_admin(),
             star_count: self.stars.count,

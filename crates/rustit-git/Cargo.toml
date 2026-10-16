@@ -10,6 +10,7 @@ license.workspace = true
 rustit-core.workspace = true
 gix.workspace = true
 similar.workspace = true
+async-compression.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

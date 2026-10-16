@@ -55,6 +55,11 @@ impl RepoUrls {
     pub fn tags(&self) -> String {
         format!("{}/tags", self.base)
     }
+
+    /// A source archive of `revision`; `extension` is `.zip` or `.tar.gz`.
+    pub fn archive(&self, revision: &str, extension: &str) -> String {
+        format!("{}/archive/{}{extension}", self.base, encode_path(revision))
+    }
 }
 
 /// What a link inside a rendered document points at.
