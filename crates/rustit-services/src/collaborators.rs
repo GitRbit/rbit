@@ -1,17 +1,129 @@
 //! Repository collaborators: adding people to a repository with a permission level.
 //!
 //! Milestone 2 workstream A (access) owns this file.
+//!
+//! Rules:
+//! * Repository administrators add, change and remove collaborators. People are added
+//!   directly (no invitations in wave A); organisations and suspended users cannot be
+//!   added, nor can the personal owner of the repository.
+//! * A collaborator may always remove themselves.
+//! * Every change is recorded in the audit log ("Repository access").
+//!
+//! Every method takes a [`RepoContext`] from [`crate::RepositoryService::open`] for the
+//! acting user, so the caller has already proven the repository is visible to them.
 
-use crate::ServiceContext;
+use rustit_core::{
+    Account, AccountKind, User,
+    membership::{Collaborator, Permission, TeamGrant},
+};
+use rustit_storage::{StorageError, sqlite::collaborators::CollaboratorStore};
+
+use crate::{
+    AuditService, RepoContext, ServiceContext, ServiceError,
+    audit::{AuditAction, AuditEntry},
+};
+
+/// Everyone with direct or team access to a repository, for its collaborators page.
+#[derive(Debug, Clone, Default)]
+pub struct RepoCollaborators {
+    pub collaborators: Vec<Collaborator>,
+    /// Teams of the owning organisation granted the repository (read-only here; managed
+    /// on the team's page).
+    pub teams: Vec<TeamGrant>,
+}
 
 #[derive(Debug, Clone)]
 pub struct CollaboratorService {
-    #[expect(dead_code, reason = "stub until the workstream implements the service")]
     ctx: ServiceContext,
+    audit: AuditService,
 }
 
 impl CollaboratorService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self { ctx }
+        Self { audit: AuditService::new(ctx.clone()), ctx }
     }
+
+    fn store(&self) -> CollaboratorStore {
+        self.ctx.database.collaborators()
+    }
+
+    /// Collaborators and team grants of `repo`. Administrators only.
+    pub async fn list(&self, repo: &RepoContext) -> Result<RepoCollaborators, ServiceError> {
+        require_admin(repo)?;
+        let id = repo.repo.repo.id;
+        let teams = if repo.repo.owner.is_organization() { self.ctx.database.teams().grants_for_repository(id).await? } else { Vec::new() };
+        Ok(RepoCollaborators { collaborators: self.store().list(id).await?, teams })
+    }
+
+    /// Adds the user called `username` with `permission`.
+    pub async fn add(&self, actor: &User, repo: &RepoContext, username: &str, permission: Permission) -> Result<(), ServiceError> {
+        require_admin(repo)?;
+        let user = self.find_user(username).await?;
+        if user.id == repo.repo.repo.owner_id {
+            return Err(ServiceError::Invalid(format!("{} owns this repository", user.name)));
+        }
+        if self.ctx.database.accounts().is_suspended(user.id).await? {
+            return Err(ServiceError::Invalid(format!("{} is suspended and cannot be added", user.name)));
+        }
+        match self.store().add(repo.repo.repo.id, user.id, permission, actor.id()).await {
+            Ok(()) => {}
+            Err(StorageError::Conflict(_)) => return Err(ServiceError::Invalid(format!("{} is already a collaborator", user.name))),
+            Err(other) => return Err(other.into()),
+        }
+        tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, permission = permission.as_str(), by = %actor.name(), "collaborator added");
+        self.record(AuditAction::CollaboratorAdded, actor, repo, format!("{} ({permission})", user.name)).await;
+        Ok(())
+    }
+
+    /// Gives the collaborator called `username` a new permission.
+    pub async fn change(&self, actor: &User, repo: &RepoContext, username: &str, permission: Permission) -> Result<(), ServiceError> {
+        require_admin(repo)?;
+        let user = self.find_user(username).await?;
+        if !self.store().set_permission(repo.repo.repo.id, user.id, permission).await? {
+            return Err(ServiceError::Invalid(format!("{} is not a collaborator", user.name)));
+        }
+        tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, permission = permission.as_str(), by = %actor.name(), "collaborator changed");
+        self.record(AuditAction::CollaboratorChanged, actor, repo, format!("{} ({permission})", user.name)).await;
+        Ok(())
+    }
+
+    /// Removes the collaborator called `username`: administrators may remove anyone,
+    /// collaborators themselves.
+    pub async fn remove(&self, actor: &User, repo: &RepoContext, username: &str) -> Result<(), ServiceError> {
+        let user = self.find_user(username).await?;
+        if user.id != actor.id() {
+            require_admin(repo)?;
+        }
+        if !self.store().remove(repo.repo.repo.id, user.id).await? {
+            return Err(ServiceError::Invalid(format!("{} is not a collaborator", user.name)));
+        }
+        tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, by = %actor.name(), "collaborator removed");
+        self.record(AuditAction::CollaboratorRemoved, actor, repo, user.name.to_string()).await;
+        Ok(())
+    }
+
+    /// `actor`'s own collaborator permission on `repo`, if any (to offer "leave").
+    pub async fn permission_of(&self, actor: &User, repo: &RepoContext) -> Result<Option<Permission>, ServiceError> {
+        Ok(self.store().permission(repo.repo.repo.id, actor.id()).await?)
+    }
+
+    /// The user account called `username`; organisations cannot be collaborators.
+    async fn find_user(&self, username: &str) -> Result<Account, ServiceError> {
+        let username = username.trim();
+        if username.is_empty() {
+            return Err(ServiceError::Invalid("enter a username".to_owned()));
+        }
+        match self.ctx.database.accounts().find_account_by_name(username).await? {
+            Some(account) if account.kind == AccountKind::User => Ok(account),
+            _ => Err(ServiceError::Invalid(format!("there is no user called {username}"))),
+        }
+    }
+
+    async fn record(&self, action: AuditAction, actor: &User, repo: &RepoContext, detail: String) {
+        self.audit.record(AuditEntry::new(action).by(actor).on(repo.repo.full_name()).detail(detail)).await;
+    }
+}
+
+fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {
+    if repo.access.can_admin() { Ok(()) } else { Err(ServiceError::Forbidden) }
 }

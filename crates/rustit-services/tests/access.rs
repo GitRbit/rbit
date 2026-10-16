@@ -54,6 +54,10 @@ impl Fixture {
         self.services.repositories.create_in(actor, owner, input).await.unwrap().repo.id
     }
 
+    async fn open_as(&self, viewer: &User, owner: &str, name: &str) -> rustit_services::RepoContext {
+        self.services.repositories.open(Some(viewer), owner, name).await.unwrap()
+    }
+
     async fn access(&self, viewer: Option<&User>, owner: &str, name: &str) -> RepoAccess {
         match self.services.repositories.open(viewer, owner, name).await {
             Ok(ctx) => ctx.access,
@@ -213,4 +217,88 @@ async fn sql_listings_agree_with_the_policy() {
     assert_eq!(fixture.access(Some(&eve), "open", "priv").await, RepoAccess::None);
     let dashboard = names(&fixture.services.repositories.list_for_dashboard(&carol).await.unwrap());
     assert_eq!(dashboard, BTreeSet::from(["alice/priv".to_owned(), "closed/priv".to_owned()]), "shared repositories reach the dashboard");
+}
+
+fn invalid(result: Result<(), ServiceError>, needle: &str) {
+    match result {
+        Err(ServiceError::Invalid(message)) => assert!(message.contains(needle), "{message:?} should mention {needle:?}"),
+        other => panic!("expected a validation error mentioning {needle:?}, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn administrators_manage_collaborators() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let bob = fixture.user("bob", false).await;
+    let carol = fixture.user("carol", false).await;
+    let mallory = fixture.user("mallory", false).await;
+    let root = fixture.user("root", true).await;
+    fixture.repo(&alice, "", "project", Visibility::Private).await;
+    let collaborators = &fixture.services.collaborators;
+    let as_alice = fixture.open_as(&alice, "alice", "project").await;
+
+    collaborators.add(&alice, &as_alice, " bob ", Permission::Write).await.unwrap();
+    invalid(collaborators.add(&alice, &as_alice, "bob", Permission::Read).await, "already a collaborator");
+    invalid(collaborators.add(&alice, &as_alice, "alice", Permission::Read).await, "owns this repository");
+    invalid(collaborators.add(&alice, &as_alice, "ghost", Permission::Read).await, "no user called ghost");
+    invalid(collaborators.add(&alice, &as_alice, "", Permission::Read).await, "enter a username");
+    fixture.database.admin().set_suspended(mallory.id(), true).await.unwrap();
+    invalid(collaborators.add(&alice, &as_alice, "mallory", Permission::Read).await, "suspended");
+    let org = CreateOrganization { name: "acme".into(), ..CreateOrganization::default() };
+    fixture.services.orgs.create(&alice, org).await.unwrap();
+    invalid(collaborators.add(&alice, &as_alice, "acme", Permission::Read).await, "no user called acme");
+
+    // Bob can push but not administer: he can neither see nor change the collaborator list.
+    let as_bob = fixture.open_as(&bob, "alice", "project").await;
+    assert_eq!(as_bob.access, RepoAccess::Write);
+    assert!(matches!(collaborators.list(&as_bob).await, Err(ServiceError::Forbidden)));
+    assert!(matches!(collaborators.add(&bob, &as_bob, "carol", Permission::Admin).await, Err(ServiceError::Forbidden)));
+    assert_eq!(collaborators.permission_of(&bob, &as_bob).await.unwrap(), Some(Permission::Write));
+
+    // Promoted to admin, he may.
+    collaborators.change(&alice, &as_alice, "bob", Permission::Admin).await.unwrap();
+    let as_bob = fixture.open_as(&bob, "alice", "project").await;
+    assert_eq!(as_bob.access, RepoAccess::Admin);
+    collaborators.add(&bob, &as_bob, "carol", Permission::Read).await.unwrap();
+    invalid(collaborators.change(&alice, &as_alice, "root", Permission::Read).await, "not a collaborator");
+
+    let listed = collaborators.list(&as_alice).await.unwrap();
+    let rows: Vec<_> = listed.collaborators.iter().map(|c| (c.user.name.to_string(), c.permission)).collect();
+    assert_eq!(rows, [("bob".to_owned(), Permission::Admin), ("carol".to_owned(), Permission::Read)]);
+    assert!(listed.teams.is_empty(), "personal repositories have no teams");
+
+    // Carol (read) may not remove Bob, but may leave herself.
+    let as_carol = fixture.open_as(&carol, "alice", "project").await;
+    assert!(matches!(collaborators.remove(&carol, &as_carol, "bob").await, Err(ServiceError::Forbidden)));
+    collaborators.remove(&carol, &as_carol, "carol").await.unwrap();
+    assert_eq!(fixture.access(Some(&carol), "alice", "project").await, RepoAccess::None);
+    // Site admins administer everything anyway.
+    let as_root = fixture.open_as(&root, "alice", "project").await;
+    collaborators.remove(&root, &as_root, "bob").await.unwrap();
+    assert_eq!(fixture.access(Some(&bob), "alice", "project").await, RepoAccess::None);
+    invalid(collaborators.remove(&alice, &as_alice, "bob").await, "not a collaborator");
+
+    // Every change is audited.
+    let log = fixture.services.audit.list(&root, None, &rustit_services::admin::ListQuery::default()).await.unwrap();
+    let actions: Vec<_> = log.items.iter().map(|event| event.action.as_str()).collect();
+    for expected in ["collaborator_added", "collaborator_changed", "collaborator_removed"] {
+        assert!(actions.contains(&expected), "{expected} in {actions:?}");
+    }
+}
+
+#[tokio::test]
+async fn organisation_repositories_list_team_grants() {
+    let fixture = Fixture::new().await;
+    let olga = fixture.user("olga", false).await;
+    fixture.org(&olga, "acme", BasePermission::Write).await;
+    let rocket = fixture.repo(&olga, "acme", "rocket", Visibility::Private).await;
+    let acme = fixture.services.orgs.open(None, "acme").await.unwrap().org;
+    let team = fixture.database.teams().create(acme.account.id, &"core".parse().unwrap(), None).await.unwrap();
+    fixture.database.teams().set_repository(team.id, rocket, Permission::Write).await.unwrap();
+
+    let ctx = fixture.services.repositories.open(Some(&olga), "acme", "rocket").await.unwrap();
+    let listed = fixture.services.collaborators.list(&ctx).await.unwrap();
+    assert_eq!(listed.teams.len(), 1);
+    assert_eq!((listed.teams[0].team.name.as_str(), listed.teams[0].permission), ("core", Permission::Write));
 }

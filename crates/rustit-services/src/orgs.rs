@@ -7,8 +7,13 @@
 //! * An organisation always keeps at least one owner: the last owner can be neither
 //!   removed, demoted nor leave. The store enforces this atomically.
 //! * An organisation that still owns repositories cannot be deleted.
+//! * The base permission (what every member gets on every repository, `write` by default)
+//!   is changed by owners. Leaving the organisation removes a member from its teams and
+//!   drops their collaborator entries on its repositories (enforced by the store).
 
-use rustit_core::{AccountKind, AccountName, OrgCreationPolicy, OrgMember, OrgMembership, OrgRole, Organization, User};
+use rustit_core::{
+    AccountKind, AccountName, OrgCreationPolicy, OrgMember, OrgMembership, OrgRole, Organization, User, membership::BasePermission,
+};
 use rustit_storage::{
     StorageError,
     sqlite::orgs::{MembershipChange, NewOrganization, OrgProfileUpdate},
@@ -170,6 +175,19 @@ impl OrgService {
         };
         self.ctx.database.orgs().update_profile(org.account.id, update).await?;
         tracing::info!(org = %org.name(), by = %actor.name(), "organization profile updated");
+        Ok(())
+    }
+
+    /// What every member gets on every repository of `org` (before teams and collaborators).
+    pub async fn base_permission(&self, org: &Organization) -> Result<BasePermission, ServiceError> {
+        Ok(self.ctx.database.orgs().base_permission(org.account.id).await?)
+    }
+
+    /// Changes the base permission. Owners and site administrators only.
+    pub async fn set_base_permission(&self, actor: &User, org: &Organization, permission: BasePermission) -> Result<(), ServiceError> {
+        self.require_manager(actor, org).await?;
+        self.ctx.database.orgs().set_base_permission(org.account.id, permission).await?;
+        tracing::info!(org = %org.name(), permission = permission.as_str(), by = %actor.name(), "organization base permission changed");
         Ok(())
     }
 
