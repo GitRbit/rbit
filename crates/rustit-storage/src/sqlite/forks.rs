@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use rustit_core::{AccountId, RepoId, Timestamp, repository::OwnedRepository};
 use sqlx::SqlitePool;
 
-use super::rows::OwnedRepositoryRow;
+use super::{repositories::readable_by, rows::OwnedRepositoryRow};
 use crate::StorageError;
 
 /// Repository columns aliased like [`OwnedRepositoryRow`], for `r` joined with its owner `o`.
@@ -16,16 +16,6 @@ macro_rules! owned_repo_columns {
         "r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
          r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
          o.bio AS owner_bio, o.created_at AS owner_created_at"
-    };
-}
-
-/// Repositories `r` the viewer `?2` (site admin when `?3`) may read: public, owned by
-/// them, or owned by an organisation they belong to — the rules of
-/// `rustit_auth::repo_access` as of milestone 1, expressed in SQL like `StarStore::starred_by`.
-macro_rules! readable_by_viewer {
-    () => {
-        "(r.visibility = 'public' OR ?3 OR r.owner_id = ?2 \
-          OR EXISTS (SELECT 1 FROM org_members m WHERE m.org_id = r.owner_id AND m.user_id = ?2))"
     };
 }
 
@@ -76,11 +66,13 @@ impl ForkStore {
         Ok(forks.into_iter().map(RepoId).collect())
     }
 
-    /// Direct forks of `parent` that the viewer may read.
+    /// Direct forks of `parent` that the viewer may read (the shared [`readable_by!`]
+    /// rules, so collaborators and team members count). The viewer is bound at `?2`, the
+    /// site-administrator flag at `?3`.
     pub async fn count_readable(&self, parent: RepoId, viewer: Option<AccountId>, viewer_is_admin: bool) -> Result<u64, StorageError> {
         let count: i64 = sqlx::query_scalar(concat!(
             "SELECT COUNT(*) FROM repo_forks f JOIN repositories r ON r.id = f.repo_id WHERE f.parent_id = ?1 AND ",
-            readable_by_viewer!()
+            readable_by!("?2", "?3")
         ))
         .bind(parent.0)
         .bind(viewer.map(|id| id.0))
@@ -103,7 +95,7 @@ impl ForkStore {
             owned_repo_columns!(),
             " FROM repo_forks f JOIN repositories r ON r.id = f.repo_id JOIN accounts o ON o.id = r.owner_id \
              WHERE f.parent_id = ?1 AND ",
-            readable_by_viewer!(),
+            readable_by!("?2", "?3"),
             " ORDER BY f.created_at DESC, r.id DESC LIMIT ?4"
         ))
         .bind(parent.0)

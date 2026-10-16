@@ -4,6 +4,7 @@
 use rustit_core::{
     AccountId, OrgRole, RepoId, User, Visibility,
     membership::{BasePermission, Permission},
+    repository::OwnedRepository,
 };
 use rustit_storage::{
     Database, NewRepository, NewUser, StorageError,
@@ -73,6 +74,27 @@ async fn member_repositories_are_paged_with_a_total() {
     assert_eq!(seen.len(), 106, "pages do not overlap");
     assert!(seen.contains(&"bob/shared".to_owned()) && !seen.contains(&"bob/private".to_owned()));
     assert_eq!(store.count_for_member(bob.id()).await.unwrap(), 2);
+}
+
+#[tokio::test]
+async fn collaborators_see_private_forks_shared_with_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let alice = create_user(&database, "alice").await;
+    let bob = create_user(&database, "bob").await;
+    let carol = create_user(&database, "carol").await;
+    let parent = create_repo(&database, carol.id(), "lib").await;
+    let fork = create_repo(&database, bob.id(), "lib").await;
+    let forks = database.forks();
+    forks.record(fork, parent).await.unwrap();
+    database.collaborators().add(fork, alice.id(), Permission::Read, bob.id()).await.unwrap();
+
+    assert_eq!(forks.count_readable(parent, Some(alice.id()), false).await.unwrap(), 1, "a collaborator reads the private fork");
+    let listed = forks.list_readable(parent, Some(alice.id()), false, 10).await.unwrap();
+    assert_eq!(listed.iter().map(OwnedRepository::full_name).collect::<Vec<_>>(), ["bob/lib"]);
+    assert_eq!(forks.count_readable(parent, Some(carol.id()), false).await.unwrap(), 0, "owning the parent grants nothing on forks");
+    assert_eq!(forks.count_readable(parent, None, false).await.unwrap(), 0);
+    assert_eq!(forks.count_readable(parent, None, true).await.unwrap(), 1, "site administrators read everything");
 }
 
 #[tokio::test]
