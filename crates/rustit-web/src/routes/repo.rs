@@ -51,11 +51,11 @@ pub(super) struct RepoPage {
 
 impl RepoPage {
     pub(super) async fn load(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
-        let ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
+        let ctx = open_pinned(state, viewer, owner, repo).await?;
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
-        let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
         let forks = &state.services.forks;
-        let (stars, fork_count, parent, mirror) = tokio::join!(
+        let (refs, stars, fork_count, parent, mirror) = tokio::join!(
+            ctx.reader.refs(),
             state.services.stars.summary(ctx.repo.repo.id, viewer.user()),
             forks.count(viewer.user(), &ctx),
             forks.parent(viewer.user(), &ctx),
@@ -63,12 +63,23 @@ impl RepoPage {
         );
         let mirror_url = mirror?.map(|mirror| mirror.url.to_string());
         let forked_from = parent?.map(|parent| ForkedFrom { full_name: parent.full_name(), url: format!("/{}", parent.full_name()) });
+        let refs = refs.map_err(ServiceError::from)?;
         Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from, mirror_url })
     }
 
     /// Branches then tags, each sorted by name.
     pub(super) fn refs(&self) -> &[RefSummary] {
         &self.refs
+    }
+
+    /// Splits `"<revision>/<path>"` from a URL. Nearly every link names a branch or tag,
+    /// which the refs loaded for the page resolve without touching Git; anything else
+    /// (commit ids) goes through the reader's longest-prefix search.
+    pub(super) async fn split(&self, rest: String) -> WebResult<(String, String)> {
+        if let Some(split) = split_known_ref(&self.refs, &rest) {
+            return Ok(split);
+        }
+        Ok(self.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?)
     }
 
     pub(super) fn default_branch(&self) -> &str {
@@ -116,6 +127,26 @@ impl RepoPage {
     }
 }
 
+/// Opens `owner/repo` for `viewer` with a [pinned](rustit_git::RepositoryReader::pinned)
+/// reader: the handful of Git reads one page makes share a single opened repository,
+/// which is released when the request ends.
+pub(super) async fn open_pinned(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoContext> {
+    let mut ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
+    ctx.reader = ctx.reader.pinned();
+    Ok(ctx)
+}
+
+/// The longest branch or tag name that `combined` starts with (as a whole path
+/// segment), and the path after it. Same rule as
+/// [`rustit_git::RepositoryReader::split_revision_path`], restricted to known refs.
+fn split_known_ref(refs: &[RefSummary], combined: &str) -> Option<(String, String)> {
+    let combined = combined.trim_matches('/');
+    refs.iter()
+        .filter(|r| combined.strip_prefix(r.name.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('/')))
+        .max_by_key(|r| r.name.len())
+        .map(|r| (r.name.clone(), combined[r.name.len()..].trim_start_matches('/').to_owned()))
+}
+
 fn join_path(directory: &str, name: &str) -> String {
     if directory.is_empty() { name.to_owned() } else { format!("{directory}/{name}") }
 }
@@ -154,7 +185,7 @@ pub async fn tree(
     Path((owner, repo, rest)): Path<(String, String, String)>,
 ) -> WebResult<TreePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+    let (revision, path) = loaded.split(rest).await?;
     render_tree(&state, &viewer, loaded, page, revision, path).await
 }
 
@@ -167,23 +198,21 @@ async fn render_tree(
     path: String,
 ) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
-    let (view, languages, latest_release, collaborator) = tokio::join!(
-        reader.tree(revision.clone(), path.clone()),
-        language_bar(state, &loaded),
-        latest_release(state, &loaded),
-        collaborator_access(state, viewer, &loaded)
-    );
-    let view = view.map_err(ServiceError::from)?;
-    let readme = reader
-        .readme(revision.clone(), &view.entries, &path, state.services.repositories.max_render_bytes())
-        .await
-        .map_err(ServiceError::from)?
-        .map(|(name, text)| {
-            let is_markdown = is_markdown(&name);
-            let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), path.clone());
-            let html = if is_markdown { render_markdown(&text, Some(&base)) } else { escape(&text) };
-            ReadmeView { name, html, is_markdown }
-        });
+    // The README needs the listing; the sidebar needs neither, so they run alongside.
+    let listing = async {
+        let view = reader.tree(revision.clone(), path.clone()).await?;
+        let readme = reader.readme(view.commit.id.clone(), &view.entries, &path, state.services.repositories.max_render_bytes()).await?;
+        Ok::<_, rustit_git::GitError>((view, readme))
+    };
+    let (listing, languages, latest_release, collaborator) =
+        tokio::join!(listing, language_bar(state, &loaded), latest_release(state, &loaded), collaborator_access(state, viewer, &loaded));
+    let (view, readme) = listing.map_err(ServiceError::from)?;
+    let readme = readme.map(|(name, text)| {
+        let is_markdown = is_markdown(&name);
+        let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), path.clone());
+        let html = if is_markdown { render_markdown(&text, Some(&base)) } else { escape(&text) };
+        ReadmeView { name, html, is_markdown }
+    });
 
     let urls = &loaded.urls;
     let entries = view
@@ -278,7 +307,7 @@ pub async fn entry_commits(
     viewer: Viewer,
     Path((owner, repo, rest)): Path<(String, String, String)>,
 ) -> WebResult<EntryCommitsFragment> {
-    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.tree(revision.clone(), path.clone()).await.map_err(ServiceError::from)?;
     let commits = state.services.insights.last_commits(&ctx, &revision, &path, &view.entries).await?;
@@ -305,7 +334,7 @@ pub async fn blob(
     Path((owner, repo, rest)): Path<(String, String, String)>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (revision, path) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+    let (revision, path) = loaded.split(rest).await?;
     if path.is_empty() {
         return Err(WebError::NotFound);
     }
@@ -371,7 +400,7 @@ pub async fn raw(
     viewer: Viewer,
     Path((owner, repo, rest)): Path<(String, String, String)>,
 ) -> WebResult<Response> {
-    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let image_type = image_content_type(&path);
     let view = ctx.reader.blob(revision, path, MAX_RAW_BYTES).await.map_err(ServiceError::from)?;
@@ -425,7 +454,7 @@ pub async fn commits(
     Query(query): Query<PageQuery>,
 ) -> WebResult<CommitsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (revision, _) = loaded.ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+    let (revision, _) = loaded.split(rest).await?;
     render_commits(&state, loaded, page, revision, query.page.unwrap_or(1)).await
 }
 
@@ -469,4 +498,29 @@ fn image_content_type(path: &str) -> Option<&'static str> {
 
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+#[cfg(test)]
+mod tests {
+    use rustit_git::{RefKind, RefSummary};
+
+    use super::split_known_ref;
+
+    fn refs(names: &[&str]) -> Vec<RefSummary> {
+        names.iter().map(|name| RefSummary { name: (*name).to_owned(), kind: RefKind::Branch, target: String::new() }).collect()
+    }
+
+    #[test]
+    fn known_refs_split_at_the_longest_whole_segment() {
+        let refs = refs(&["main", "feature", "feature/login", "v1.0"]);
+        let split = |s: &str| split_known_ref(&refs, s);
+        assert_eq!(split("main"), Some(("main".into(), String::new())));
+        assert_eq!(split("main/src/lib.rs"), Some(("main".into(), "src/lib.rs".into())));
+        assert_eq!(split("/feature/login/src/"), Some(("feature/login".into(), "src".into())));
+        assert_eq!(split("feature/logout"), Some(("feature".into(), "logout".into())));
+        assert_eq!(split("v1.0/README.md"), Some(("v1.0".into(), "README.md".into())));
+        // Not a whole segment, or not a ref at all: left to the reader.
+        assert_eq!(split("mainline/src"), None);
+        assert_eq!(split("3f9a2c1/src"), None);
+    }
 }
