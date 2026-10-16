@@ -24,9 +24,13 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         "display": "standalone",
         "background_color": "#09090c",
         "theme_color": "#7c3aed",
+        // PNGs (rendered from icon.svg by `npm run icons`) for platforms that ignore SVG
+        // icons; the maskable one keeps the glyph inside the safe zone.
         "icons": [
             { "src": assets::url("icon.svg"), "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-            { "src": assets::url("icon.svg"), "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+            { "src": assets::url("icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any" },
+            { "src": assets::url("icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any" },
+            { "src": assets::url("icon-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
         ],
         "shortcuts": [
             { "name": "New repository", "url": "/new" },
@@ -55,4 +59,24 @@ pub async fn service_worker() -> Response {
 
 pub async fn offline(page: Page) -> OfflinePage {
     OfflinePage { page: page.titled("Offline") }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// PNG width and height from the IHDR chunk.
+    fn png_size(bytes: &[u8]) -> (u32, u32) {
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+        let read = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+        (read(16), read(20))
+    }
+
+    #[test]
+    fn generated_icons_are_embedded_at_their_declared_sizes() {
+        for (file, size) in [("icon-192.png", 192), ("icon-512.png", 512), ("icon-maskable-512.png", 512), ("apple-touch-icon.png", 180)] {
+            let bytes = assets::read(file).unwrap_or_else(|| panic!("{file} is missing; run `npm run icons`"));
+            assert_eq!(png_size(&bytes), (size, size), "{file}");
+        }
+    }
 }
