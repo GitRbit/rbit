@@ -61,6 +61,23 @@ async fn sign_in_and_out() {
 }
 
 #[tokio::test]
+async fn signing_out_revokes_the_session_on_the_server() {
+    let server = TestServer::start();
+    let browser = server.client();
+    let signed_up = browser.sign_up("alice").await;
+    let cookie = signed_up.header("set-cookie").and_then(|c| c.split(';').next()).expect("a session cookie").to_owned();
+
+    // The bare cookie works from anywhere while the session lives...
+    let elsewhere = server.client();
+    elsewhere.get_with("/settings/profile", &[("Cookie", &cookie)]).await.expect_status(StatusCode::OK);
+    // ...and not after signing out, even if a copy was kept.
+    browser.sign_out().await.expect_redirect("/");
+    elsewhere.get_with("/settings/profile", &[("Cookie", &cookie)]).await.expect_status(StatusCode::SEE_OTHER);
+    // Garbage cookies are ignored rather than failing the request.
+    elsewhere.get_with("/", &[("Cookie", "rustit_session=not-a-token")]).await.expect_status(StatusCode::OK);
+}
+
+#[tokio::test]
 async fn administrator_closes_and_reopens_registration() {
     let server = TestServer::start();
     let admin = server.sign_up("alice").await;
