@@ -224,6 +224,13 @@ impl RepositoryService {
         Ok(self.store.list_for_member(user.id(), DASHBOARD_LIMIT).await?)
     }
 
+    /// One page (`limit` repositories after skipping `offset`) of the same list as
+    /// [`Self::list_for_dashboard`], uncapped, with the total across all pages.
+    pub async fn page_for_member(&self, user: &User, limit: u32, offset: u32) -> Result<(Vec<OwnedRepository>, u64), ServiceError> {
+        let total = self.store.count_for_member(user.id()).await?;
+        Ok((self.store.page_for_member(user.id(), limit, offset).await?, total))
+    }
+
     pub async fn recent_public(&self, limit: u32) -> Result<Vec<OwnedRepository>, ServiceError> {
         Ok(self.store.list_recent_public(limit).await?)
     }

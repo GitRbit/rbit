@@ -53,7 +53,7 @@
       "get": {
         "operationId": "listMyRepositories",
         "tags": ["repositories"],
-        "summary": "Repositories the user owns or reaches through organisations (at most 100)",
+        "summary": "Repositories the user owns, reaches through organisations or collaborates on",
         "security": [{ "token": [] }],
         "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
         "responses": {

@@ -62,6 +62,19 @@ macro_rules! readable_by {
 }
 pub(crate) use readable_by;
 
+/// The `WHERE` clause of the member list: repositories `r` owned by user `?1`, by an
+/// organisation they belong to, or shared with them as a collaborator, each only if
+/// [`readable_by!`] lets them read it (site administrators get no extra rows here).
+macro_rules! member_repositories {
+    () => {
+        concat!(
+            "WHERE (r.owner_id = ?1 OR r.owner_id IN (SELECT org_id FROM org_members WHERE user_id = ?1) \
+             OR r.id IN (SELECT repo_id FROM collaborators WHERE user_id = ?1)) AND ",
+            readable_by!("?1", "0")
+        )
+    };
+}
+
 /// Explore filter: public repositories whose name or description matches the `LIKE`
 /// pattern `?1` (escape character `\`).
 macro_rules! public_matching {
@@ -178,17 +191,28 @@ impl RepositoryStore {
     /// recently updated first. (Team grants are on organisation repositories, so they are
     /// covered by the membership clause.)
     pub async fn list_for_member(&self, user: AccountId, limit: u32) -> Result<Vec<OwnedRepository>, StorageError> {
-        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!(
-            "WHERE (r.owner_id = ?1 OR r.owner_id IN (SELECT org_id FROM org_members WHERE user_id = ?1) \
-             OR r.id IN (SELECT repo_id FROM collaborators WHERE user_id = ?1)) AND ",
-            readable_by!("?1", "0"),
-            " ORDER BY r.updated_at DESC, r.id DESC LIMIT ?2"
-        ))
-        .bind(user.0)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+        self.page_for_member(user, limit, 0).await
+    }
+
+    /// One page of [`Self::list_for_member`]'s list, skipping `offset` repositories.
+    pub async fn page_for_member(&self, user: AccountId, limit: u32, offset: u32) -> Result<Vec<OwnedRepository>, StorageError> {
+        let rows: Vec<OwnedRepositoryRow> =
+            sqlx::query_as(select_owned_repo!(member_repositories!(), " ORDER BY r.updated_at DESC, r.id DESC LIMIT ?2 OFFSET ?3"))
+                .bind(user.0)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(&self.pool)
+                .await?;
         rows.into_iter().map(OwnedRepository::try_from).collect()
+    }
+
+    /// How many repositories [`Self::list_for_member`] lists in total.
+    pub async fn count_for_member(&self, user: AccountId) -> Result<u64, StorageError> {
+        let count: i64 = sqlx::query_scalar(concat!("SELECT COUNT(*) FROM repositories r ", member_repositories!()))
+            .bind(user.0)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(u64::try_from(count).unwrap_or_default())
     }
 
     /// Everything `viewer` was granted on repository `repo` (owned by `owner`), in one query.

@@ -67,11 +67,15 @@ async fn repository_values(state: &AppState, repos: &[&OwnedRepository]) -> ApiR
     Ok(repos.iter().map(|repo| json::repository(repo, None, forks.contains(&repo.repo.id), base)).collect())
 }
 
-/// `GET /user/repos`: repositories the caller owns or reaches through organisations.
+/// `GET /user/repos`: repositories the caller owns, reaches through organisations or
+/// collaborates on, paged in the database.
 pub async fn my_repositories(State(state): State<AppState>, caller: Caller, pager: Pager) -> ApiResult<Paged<Value>> {
     let user = caller.require_user()?;
-    let repos = state.services.repositories.list_for_dashboard(user).await?;
-    repositories(&state, &pager, &repos).await
+    let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
+    let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
+    let (repos, total) = state.services.repositories.page_for_member(user, limit, offset).await?;
+    let items = repository_values(&state, &repos.iter().collect::<Vec<_>>()).await?;
+    Ok(pager.paged(items, Some(total), false))
 }
 
 /// `GET /users/{username}/repos`

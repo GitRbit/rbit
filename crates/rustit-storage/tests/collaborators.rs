@@ -49,6 +49,33 @@ async fn create_repo(database: &Database, owner: AccountId, name: &str) -> RepoI
 }
 
 #[tokio::test]
+async fn member_repositories_are_paged_with_a_total() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let alice = create_user(&database, "alice").await;
+    let bob = create_user(&database, "bob").await;
+    for n in 0..105 {
+        create_repo(&database, alice.id(), &format!("repo-{n}")).await;
+    }
+    let shared = create_repo(&database, bob.id(), "shared").await;
+    create_repo(&database, bob.id(), "private").await;
+    database.collaborators().add(shared, alice.id(), Permission::Read, bob.id()).await.unwrap();
+    let store = database.repositories();
+
+    assert_eq!(store.count_for_member(alice.id()).await.unwrap(), 106, "own repositories plus the shared one, past 100");
+    let mut seen = Vec::new();
+    for offset in (0..120).step_by(50) {
+        seen.extend(store.page_for_member(alice.id(), 50, offset).await.unwrap().into_iter().map(|repo| repo.full_name()));
+    }
+    assert_eq!(seen.len(), 106);
+    seen.sort();
+    seen.dedup();
+    assert_eq!(seen.len(), 106, "pages do not overlap");
+    assert!(seen.contains(&"bob/shared".to_owned()) && !seen.contains(&"bob/private".to_owned()));
+    assert_eq!(store.count_for_member(bob.id()).await.unwrap(), 2);
+}
+
+#[tokio::test]
 async fn collaborators_are_added_changed_listed_and_removed() {
     let dir = tempfile::tempdir().unwrap();
     let database = open_database(&dir).await;
