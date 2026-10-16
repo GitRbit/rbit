@@ -61,6 +61,18 @@
       <p class="mt-2 text-[13px] text-ink-faint">No description.</p>
       {% endif %}
     </section>
+    {% if let Some(release) = latest_release %}
+    <section class="border-t border-line pt-5" aria-labelledby="latest-release-title">
+      <h2 id="latest-release-title" class="text-[13px] font-medium"><a href="{{ release.releases_url }}" class="hover:underline hover:underline-offset-4">Releases</a></h2>
+      <a href="{{ release.url }}" class="group mt-2 flex items-start gap-2 text-[13px]">
+        {% call ui::icon("tag", "mt-0.5 size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
+        <span class="min-w-0">
+          <span class="flex items-center gap-2"><span class="truncate font-medium group-hover:underline group-hover:underline-offset-4">{{ release.name }}</span><span class="badge">Latest</span></span>
+          <time class="block text-xs text-ink-faint" datetime="{{ release.when_iso }}">{{ release.when }}</time>
+        </span>
+      </a>
+    </section>
+    {% endif %}
     {% if let Some(languages) = languages %}
     <section class="border-t border-line pt-5" aria-labelledby="languages-title">
       <h2 id="languages-title" class="text-[13px] font-medium">Languages</h2>

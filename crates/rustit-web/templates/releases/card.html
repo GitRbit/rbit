@@ -1,0 +1,41 @@
+{% import "macros.html" as ui %}
+{#- One release inside a `.box`; expects `release: ReleaseCard` and `can_write: bool`. -#}
+<div class="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-line px-4 py-4 sm:px-5">
+  <div class="min-w-0 flex-1">
+    <h2 class="flex flex-wrap items-center gap-2 text-base font-semibold tracking-tight">
+      <a href="{{ release.url }}" class="min-w-0 break-words hover:underline hover:underline-offset-4">{{ release.name }}</a>
+      {% if release.is_draft %}<span class="badge">Draft</span>{% endif %}
+      {% if release.is_prerelease %}<span class="badge">Pre-release</span>{% endif %}
+      {% if release.is_latest %}<span class="badge">Latest</span>{% endif %}
+    </h2>
+    <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+      <a href="{{ release.tag_url }}" class="inline-flex items-center gap-1 font-mono hover:text-ink">{% call ui::icon("tag", "size-3") %}{% endcall %}{{ release.tag }}</a>
+      {% if let Some(author) = release.author %}<span>· <a href="/{{ author }}" class="hover:text-ink">{{ author }}</a></span>{% endif %}
+      <span>· {% if release.is_draft %}created{% endif %} <time datetime="{{ release.when_iso }}" title="{{ release.when_iso }}">{{ release.when }}</time></span>
+    </p>
+  </div>
+  {% if can_write %}<a href="{{ release.edit_url }}" class="btn h-7 shrink-0 px-2.5 text-xs sm:h-7">Edit</a>{% endif %}
+</div>
+{% if !release.notes_html.is_empty() %}
+<article class="prose-rustit border-b border-line px-4 py-5 sm:px-5">{{ release.notes_html|safe }}</article>
+{% endif %}
+<div class="px-4 py-3 sm:px-5">
+  <h3 class="mb-2 text-xs font-medium text-ink-muted">Downloads</h3>
+  <ul class="space-y-1.5 text-[13px]">
+    {% for asset in release.assets %}
+    <li class="flex min-w-0 items-center gap-2">
+      {% call ui::icon("package", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+      <a href="{{ asset.url }}" class="min-w-0 flex-1 truncate font-medium hover:underline hover:underline-offset-4" hx-boost="false" title="SHA-256 {{ asset.sha256 }}">{{ asset.name }}</a>
+      <span class="shrink-0 text-xs text-ink-faint">{{ asset.size }}</span>
+    </li>
+    {% endfor %}
+    <li class="flex items-center gap-2">
+      {% call ui::icon("archive", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+      <a href="{{ release.zip_url }}" class="hover:underline hover:underline-offset-4" hx-boost="false" download>Source code (zip)</a>
+    </li>
+    <li class="flex items-center gap-2">
+      {% call ui::icon("archive", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+      <a href="{{ release.tar_url }}" class="hover:underline hover:underline-offset-4" hx-boost="false" download>Source code (tar.gz)</a>
+    </li>
+  </ul>
+</div>

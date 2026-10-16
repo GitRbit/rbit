@@ -6,7 +6,7 @@ use rustit_git::{CommitSummary, RefKind, RefSummary};
 
 use crate::{
     urls::RepoUrls,
-    views::{components::Avatar, insights::LanguageBar, layout::Page},
+    views::{components::Avatar, insights::LanguageBar, layout::Page, releases::LatestRelease},
 };
 
 // ------------------------------------------------------------------ shared pieces
@@ -30,6 +30,7 @@ pub struct RepoHeader {
     pub commits_url: String,
     pub branches_url: String,
     pub tags_url: String,
+    pub releases_url: String,
     /// "Download ZIP" in the Clone menu: the landing branch as a `.zip`.
     pub zip_url: String,
     /// `/{owner}/{repo}/settings`, shown only when `can_admin`.
@@ -37,7 +38,8 @@ pub struct RepoHeader {
     pub can_admin: bool,
     pub star_count: i64,
     pub starred_by_viewer: bool,
-    /// `"code"`, `"commits"`, `"branches"` or `"tags"`; compared in `repo/subnav.html`.
+    /// `"code"`, `"commits"`, `"branches"`, `"tags"`, `"releases"` or `"settings"`;
+    /// compared in `repo/subnav.html`.
     pub active_tab: &'static str,
 }
 
@@ -183,6 +185,8 @@ pub struct TreePage {
     pub history_url: String,
     /// Language breakdown of the default branch; `None` when empty or unavailable.
     pub languages: Option<LanguageBar>,
+    /// The latest published release, for the sidebar.
+    pub latest_release: Option<LatestRelease>,
 }
 
 /// How a file's contents are presented.

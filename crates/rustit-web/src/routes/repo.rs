@@ -22,6 +22,7 @@ use crate::{
         components::Avatar,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
         layout::Page,
+        releases::LatestRelease,
         repo::{
             BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
             TreePage, breadcrumbs,
@@ -82,6 +83,7 @@ impl RepoPage {
             commits_url: self.urls.commits(&landing),
             branches_url: self.urls.branches(),
             tags_url: self.urls.tags(),
+            releases_url: self.urls.releases(),
             zip_url: self.urls.archive(&landing, ".zip"),
             settings_url: format!("{}/settings", self.urls.home()),
             can_admin: self.ctx.access.can_admin(),
@@ -140,7 +142,8 @@ pub async fn tree(
 
 async fn render_tree(state: &AppState, loaded: RepoPage, page: Page, revision: String, path: String) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
-    let (view, languages) = tokio::join!(reader.tree(revision.clone(), path.clone()), language_bar(state, &loaded));
+    let (view, languages, latest_release) =
+        tokio::join!(reader.tree(revision.clone(), path.clone()), language_bar(state, &loaded), latest_release(state, &loaded));
     let view = view.map_err(ServiceError::from)?;
     let readme = reader
         .readme(revision.clone(), &view.entries, &path, state.services.repositories.max_render_bytes())
@@ -188,6 +191,7 @@ async fn render_tree(state: &AppState, loaded: RepoPage, page: Page, revision: S
         readme,
         history_url: urls.commits(&revision),
         languages,
+        latest_release,
     })
 }
 
@@ -199,6 +203,17 @@ async fn language_bar(state: &AppState, loaded: &RepoPage) -> Option<LanguageBar
         Ok(breakdown) => LanguageBar::new(&breakdown),
         Err(error) => {
             tracing::warn!(%error, repo = %loaded.ctx.repo.full_name(), "language statistics unavailable");
+            None
+        }
+    }
+}
+
+/// The sidebar's latest release. Like insights it is decoration: failures are logged.
+async fn latest_release(state: &AppState, loaded: &RepoPage) -> Option<LatestRelease> {
+    match state.services.releases.latest(&loaded.ctx).await {
+        Ok(release) => release.map(|release| LatestRelease::new(&release, &loaded.urls)),
+        Err(error) => {
+            tracing::warn!(%error, repo = %loaded.ctx.repo.full_name(), "latest release unavailable");
             None
         }
     }

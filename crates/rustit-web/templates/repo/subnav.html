@@ -6,6 +6,7 @@
     <a class="tab" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
     <a class="tab" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
     <a class="tab" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
+    <a class="tab" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
     {% if header.can_admin %}
     <a class="tab" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
     {% endif %}

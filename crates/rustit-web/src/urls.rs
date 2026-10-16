@@ -60,6 +60,25 @@ impl RepoUrls {
         format!("{}/tags", self.base)
     }
 
+    pub fn releases(&self) -> String {
+        format!("{}/releases", self.base)
+    }
+
+    /// The release of `tag`.
+    pub fn release(&self, tag: &str) -> String {
+        format!("{}/releases/tag/{}", self.base, encode_path(tag))
+    }
+
+    /// `/releases/{id}/{action}` (`edit`, `delete`, `assets`, …).
+    pub fn release_action(&self, id: i64, action: &str) -> String {
+        format!("{}/releases/{id}/{action}", self.base)
+    }
+
+    /// File `name` attached to the release of `tag`.
+    pub fn release_download(&self, tag: &str, name: &str) -> String {
+        format!("{}/releases/download/{}/{}", self.base, encode_path(tag), encode_path(name))
+    }
+
     /// The comparison of `head` against `base`.
     pub fn compare(&self, base: &str, head: &str) -> String {
         format!("{}/compare/{}...{}", self.base, encode_path(base), encode_path(head))

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-2xl">
+  <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}New release{% else %}Edit release{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">A release describes an existing tag. Push the tag first, then pick it here.</p>
+
+  <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="release-tag">Tag</label>
+    <input class="input font-mono text-xs" id="release-tag" name="tag" value="{{ form.tag }}" list="release-tags" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    <datalist id="release-tags">
+      {% for tag in tags %}<option value="{{ tag }}"></option>{% endfor %}
+    </datalist>
+    {% if tags.is_empty() %}
+    <p class="hint">This repository has no tags yet. Create one with <code class="font-mono">git tag v1.0 &amp;&amp; git push origin v1.0</code>.</p>
+    {% else %}
+    <p class="hint">One of the repository's <a class="link" href="{{ tags_url }}">tags</a>.</p>
+    {% endif %}
+
+    <label class="label mt-5" for="release-name">Title <span class="font-normal text-ink-faint">optional, defaults to the tag</span></label>
+    <input class="input" id="release-name" name="name" value="{{ form.name }}" maxlength="255">
+
+    <label class="label mt-5" for="release-notes">Notes <span class="font-normal text-ink-faint">Markdown</span></label>
+    <textarea class="input h-64 resize-y py-2 font-mono text-xs" id="release-notes" name="notes" rows="12">{{ form.notes }}</textarea>
+
+    <label class="mt-5 flex cursor-pointer items-start gap-3">
+      <input type="checkbox" name="prerelease" value="on" class="mt-1 accent-(--ink)" {% if form.is_prerelease %}checked{% endif %}>
+      <span>
+        <span class="block font-medium">This is a pre-release</span>
+        <span class="block text-[13px] text-ink-muted">Marked as not ready for production; a full release is preferred as the latest.</span>
+      </span>
+    </label>
+
+    <div class="mt-8 flex flex-wrap items-center gap-2">
+      <button type="submit" name="action" value="publish" class="btn btn-primary">{% if is_published %}Save release{% else %}Publish release{% endif %}</button>
+      {% if !is_published %}<button type="submit" name="action" value="draft" class="btn">Save draft</button>{% endif %}
+      <a href="{{ cancel_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

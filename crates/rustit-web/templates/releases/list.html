@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 items-center gap-3">
+  <h1 class="text-[13px] font-medium text-ink-muted">Releases</h1>
+  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New release</a>{% endif %}
+</div>
+
+{% if releases.is_empty() %}
+<div class="box">
+  {% if can_write %}
+  {% call ui::empty_state("package", "No releases yet", "A release packages a tag with notes and files. Push a tag, then create a release for it.") %}{% endcall %}
+  {% else %}
+  {% call ui::empty_state("package", "No releases yet", "Releases mark versions of this project with notes and downloads.") %}{% endcall %}
+  {% endif %}
+</div>
+{% else %}
+<div class="space-y-6">
+  {% for release in releases %}
+  <section class="box overflow-hidden" aria-label="{{ release.name }}">
+    {% include "releases/card.html" %}
+  </section>
+  {% endfor %}
+</div>
+{% call ui::pagination(pagination) %}{% endcall %}
+{% endif %}
+{% endblock %}
