@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  {% call ui::logo("size-7") %}{% endcall %}
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">Sign in to {{ page.site_name }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Use your username or email address.</p>
+
+  <form method="post" action="/login" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <input type="hidden" name="next" value="{{ next }}">
+
+    <label class="label" for="login">Username or email</label>
+    <input class="input" id="login" name="login" value="{{ login }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+
+    <label class="label mt-4" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+
+    <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Continue</button>
+  </form>
+
+  {% if registration_open %}
+  <p class="mt-8 border-t border-line pt-6 text-[13px] text-ink-muted">Don't have an account? <a href="/signup" class="link">Sign up</a></p>
+  {% endif %}
+</section>
+{% endblock %}

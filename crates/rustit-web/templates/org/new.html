@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto max-w-xl">
+  <h1 class="text-xl font-semibold tracking-tight">New organization</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">An organization owns repositories on behalf of a team. You will be its first owner.</p>
+
+  <form method="post" action="/organizations/new" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="org-name">Name</label>
+    <input class="input" id="org-name" name="name" value="{{ name }}" maxlength="39" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required autofocus>
+    <p class="hint">Used in URLs. Letters, digits, “-”, “_” and “.”. Users and organizations share one namespace.</p>
+
+    <label class="label mt-5" for="org-display-name">Display name <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input" id="org-display-name" name="display_name" value="{{ display_name }}" maxlength="100">
+
+    <label class="label mt-5" for="org-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input" id="org-description" name="description" value="{{ description }}" maxlength="350">
+
+    <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
+      <a href="/" class="btn">Cancel</a>
+      <button class="btn btn-primary" type="submit">Create organization</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

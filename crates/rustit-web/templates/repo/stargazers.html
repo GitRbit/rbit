@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex h-8 items-center">
+  <h1 class="text-[13px] font-medium text-ink-muted">Stargazers <span class="ml-1 text-ink-faint">{{ header.star_count }}</span></h1>
+</div>
+
+<div class="box">
+  {% if stargazers.is_empty() %}
+  {% call ui::empty_state("user", "No stargazers yet", "People who star this repository appear here.") %}{% endcall %}
+  {% else %}
+  <ul>
+    {% for gazer in stargazers %}
+    <li class="border-b border-line last:border-b-0">
+      <a href="{{ gazer.url }}" class="flex items-center gap-3 px-4 py-3 hover:bg-subtle">
+        {% call ui::avatar(gazer.avatar, "size-8 text-[11px]") %}{% endcall %}
+        <span class="min-w-0 flex-1">
+          <span class="block truncate font-medium">{{ gazer.label }}</span>
+          {% if gazer.label != gazer.name %}<span class="block truncate text-xs text-ink-muted">{{ gazer.name }}</span>{% endif %}
+        </span>
+        <time class="shrink-0 text-xs text-ink-faint" datetime="{{ gazer.starred_iso }}">{{ gazer.starred }}</time>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{#- Path breadcrumbs; expects `breadcrumbs: Vec<Crumb>` where the last crumb is the current location. -#}
+<nav class="flex min-w-0 flex-wrap items-center gap-1 font-mono text-[13px]" aria-label="Path">
+  {% for crumb in breadcrumbs %}
+    {% if !loop.first %}<span class="text-ink-faint">/</span>{% endif %}
+    {% if loop.last %}
+    <span class="truncate text-ink" aria-current="page">{{ crumb.name }}</span>
+    {% else %}
+    <a href="{{ crumb.url }}" class="truncate text-ink-muted hover:text-ink">{{ crumb.name }}</a>
+    {% endif %}
+  {% endfor %}
+</nav>

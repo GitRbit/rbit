@@ -1,0 +1,307 @@
+//! Administration, instance settings and suspension against real, temporary SQLite,
+//! redb and on-disk repository stores.
+
+use std::sync::Arc;
+
+use rustit_core::{Config, InstanceSettings, OrgCreationPolicy, RegistrationMode, TokenScope, User, Visibility};
+use rustit_services::{
+    CreateAccessToken, CreateRepository, ServiceError, Services, SignUp,
+    admin::{ListQuery, PAGE_SIZE},
+};
+use rustit_storage::{Database, KvStore, NewUser};
+
+const PASSWORD: &str = "correct horse battery";
+
+struct Fixture {
+    dir: tempfile::TempDir,
+    database: Database,
+    kv: KvStore,
+    config: Arc<Config>,
+    services: Services,
+}
+
+impl Fixture {
+    async fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = dir.path().to_path_buf();
+        let config = Arc::new(config);
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+        Self { dir, database, kv, config, services }
+    }
+
+    /// Builds a second set of services over the same stores, as a restart would.
+    async fn restart(&self) -> Services {
+        Services::new(Arc::clone(&self.config), &self.database, &self.kv).await.unwrap()
+    }
+
+    /// Inserts a user directly (fast: no password hashing).
+    async fn user(&self, name: &str, is_admin: bool) -> User {
+        self.database
+            .accounts()
+            .create_user(NewUser {
+                name: name.parse().unwrap(),
+                email: format!("{name}@example.com").parse().unwrap(),
+                display_name: None,
+                password_hash: "not-a-real-hash".to_owned(),
+                is_admin,
+            })
+            .await
+            .unwrap()
+    }
+
+    /// Creates a user with a real password, so sign-in can be exercised.
+    async fn user_with_password(&self, name: &str) -> User {
+        let input = SignUp { username: name.to_owned(), email: format!("{name}@example.com"), password: PASSWORD.to_owned() };
+        self.services.accounts.create_user(input, Some(false)).await.unwrap()
+    }
+}
+
+#[allow(clippy::needless_pass_by_value)] // Reads best at call sites: `invalid(service.call().await)`.
+fn invalid<T: std::fmt::Debug>(result: Result<T, ServiceError>) -> bool {
+    matches!(result, Err(ServiceError::Invalid(_)))
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn forbidden<T: std::fmt::Debug>(result: Result<T, ServiceError>) -> bool {
+    matches!(result, Err(ServiceError::Forbidden))
+}
+
+fn settings(site_name: &str, registration: RegistrationMode) -> InstanceSettings {
+    InstanceSettings {
+        site_name: site_name.to_owned(),
+        registration,
+        org_creation: OrgCreationPolicy::AdminsOnly,
+        default_visibility: Visibility::Private,
+    }
+}
+
+// ---------------------------------------------------------------------- instance settings
+
+#[tokio::test]
+async fn instance_settings_persist_and_apply_immediately() {
+    let fixture = Fixture::new().await;
+    let admin = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    assert_eq!(fixture.services.instance.current(), InstanceSettings::defaults(&fixture.config));
+
+    assert!(forbidden(fixture.services.instance.update(&alice, settings("Mine", RegistrationMode::Open)).await));
+    assert!(invalid(fixture.services.instance.update(&admin, settings("   ", RegistrationMode::Open)).await));
+    assert!(invalid(fixture.services.instance.update(&admin, settings(&"x".repeat(51), RegistrationMode::Open)).await));
+
+    fixture.services.instance.update(&admin, settings("  Forge  ", RegistrationMode::Closed)).await.unwrap();
+    let expected = settings("Forge", RegistrationMode::Closed);
+    assert_eq!(fixture.services.instance.current(), expected);
+    assert_eq!(fixture.services.admin.dashboard(&admin).await.unwrap().settings, expected, "shared in-memory copy");
+    assert_eq!(fixture.restart().await.instance.current(), expected, "survives a restart");
+}
+
+#[tokio::test]
+async fn closed_registration_still_allows_the_first_account_and_admin_creation() {
+    let fixture = Fixture::new().await;
+    let mut config = (*fixture.config).clone();
+    config.server.open_registration = false;
+    let services = Services::new(Arc::new(config), &fixture.database, &fixture.kv).await.unwrap();
+    let signup = |name: &str| SignUp { username: name.to_owned(), email: format!("{name}@example.com"), password: PASSWORD.to_owned() };
+
+    assert!(services.accounts.registration_open().await.unwrap(), "bootstrap rule");
+    let first = services.accounts.sign_up(signup("root")).await.unwrap();
+    assert!(first.is_admin, "the first user administers the instance");
+
+    assert!(!services.accounts.registration_open().await.unwrap());
+    assert!(matches!(services.accounts.sign_up(signup("bob")).await, Err(ServiceError::RegistrationClosed)));
+
+    let bob = services.admin.create_user(&first, signup("bob"), false).await.unwrap();
+    assert!(!bob.is_admin);
+    assert!(forbidden(services.admin.create_user(&bob, signup("carol"), false).await));
+    assert!(invalid(services.admin.create_user(&first, SignUp { password: "short".to_owned(), ..signup("dave") }, false).await));
+
+    // Opening registration at runtime takes effect without a restart.
+    services.instance.update(&first, settings("Rustit", RegistrationMode::Open)).await.unwrap();
+    assert!(services.accounts.registration_open().await.unwrap());
+}
+
+// ---------------------------------------------------------------------- suspension
+
+#[tokio::test]
+async fn suspended_users_lose_every_kind_of_access() {
+    let fixture = Fixture::new().await;
+    let admin = fixture.user("root", true).await;
+    let alice = fixture.user_with_password("alice").await;
+    let accounts = &fixture.services.accounts;
+    let tokens = &fixture.services.tokens;
+
+    let session = accounts.start_session(&alice).await.unwrap();
+    let (_, secret) =
+        tokens.create(&alice, CreateAccessToken { name: "ci".to_owned(), scope: TokenScope::Write, expires_in_days: None }).await.unwrap();
+    assert!(accounts.resume_session(&session).await.unwrap().is_some());
+    assert!(tokens.authenticate(&secret).await.unwrap().is_some());
+
+    fixture.services.admin.set_suspended(&admin, alice.id(), true).await.unwrap();
+
+    assert!(accounts.is_suspended(alice.id()).await.unwrap());
+    assert!(forbidden(accounts.authenticate("alice", PASSWORD.to_owned()).await), "right password, suspended");
+    assert!(
+        matches!(accounts.authenticate("alice", "wrong password".to_owned()).await, Err(ServiceError::InvalidCredentials)),
+        "suspension is not revealed without the password"
+    );
+    assert!(accounts.resume_session(&session).await.unwrap().is_none());
+    assert!(tokens.authenticate(&secret).await.unwrap().is_none());
+
+    fixture.services.admin.set_suspended(&admin, alice.id(), false).await.unwrap();
+    assert!(accounts.authenticate("alice", PASSWORD.to_owned()).await.is_ok());
+    assert!(tokens.authenticate(&secret).await.unwrap().is_some());
+    assert!(accounts.resume_session(&session).await.unwrap().is_none(), "the old session was discarded");
+}
+
+// ---------------------------------------------------------------------- guard rails
+
+#[tokio::test]
+async fn admin_actions_require_a_site_admin() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let bob = fixture.user("bob", false).await;
+    let admin = &fixture.services.admin;
+
+    assert!(forbidden(admin.dashboard(&alice).await));
+    assert!(forbidden(admin.users(&alice, &ListQuery::default()).await));
+    assert!(forbidden(admin.organizations(&alice, &ListQuery::default()).await));
+    assert!(forbidden(admin.repositories(&alice, &ListQuery::default()).await));
+    assert!(forbidden(admin.set_admin(&alice, alice.id(), true).await));
+    assert!(forbidden(admin.set_suspended(&alice, bob.id(), true).await));
+    assert!(forbidden(admin.delete_user(&alice, bob.id(), "bob").await));
+}
+
+#[tokio::test]
+async fn admins_cannot_lock_themselves_or_the_instance_out() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let second = fixture.user("second", true).await;
+    let admin = &fixture.services.admin;
+
+    assert!(invalid(admin.set_admin(&root, root.id(), false).await));
+    assert!(invalid(admin.set_suspended(&root, root.id(), true).await));
+    assert!(invalid(admin.delete_user(&root, root.id(), "root").await));
+
+    // `second` demotes nobody yet; root demotes second, leaving root as the last admin.
+    admin.set_admin(&root, second.id(), false).await.unwrap();
+    // A stale session of `second` (still flagged admin in memory) can't remove the last admin.
+    for result in [
+        admin.set_admin(&second, root.id(), false).await.map(drop),
+        admin.set_suspended(&second, root.id(), true).await.map(drop),
+        admin.delete_user(&second, root.id(), "root").await.map(drop),
+    ] {
+        assert!(invalid(result));
+    }
+    let root_record = admin.user(&root, root.id()).await.unwrap();
+    assert!(root_record.user.is_admin && !root_record.is_suspended());
+
+    // A suspended admin doesn't count as active.
+    admin.set_admin(&root, second.id(), true).await.unwrap();
+    admin.set_suspended(&root, second.id(), true).await.unwrap();
+    assert!(invalid(admin.set_admin(&second, root.id(), false).await));
+    admin.set_suspended(&root, second.id(), false).await.unwrap();
+    admin.set_admin(&second, root.id(), false).await.unwrap();
+    assert!(!admin.user(&second, root.id()).await.unwrap().user.is_admin);
+
+    assert!(matches!(admin.set_admin(&second, rustit_core::AccountId(9999), true).await, Err(ServiceError::NotFound)));
+}
+
+// ---------------------------------------------------------------------- deletion
+
+#[tokio::test]
+async fn deleting_a_user_removes_their_repositories_from_disk() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    let repo = fixture
+        .services
+        .repositories
+        .create(&alice, CreateRepository { name: "notes".to_owned(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let path = fixture.config.storage.repositories_dir().join(alice.id().0.to_string()).join(format!("{}.git", repo.repo.id.0));
+    assert!(path.exists());
+
+    let admin = &fixture.services.admin;
+    assert!(invalid(admin.delete_user(&root, alice.id(), "Alice ").await), "confirmation must match exactly");
+    admin.delete_user(&root, alice.id(), "alice").await.unwrap();
+
+    assert!(!path.exists());
+    assert!(matches!(admin.user(&root, alice.id()).await, Err(ServiceError::NotFound)));
+    assert_eq!(admin.dashboard(&root).await.unwrap().counts.private_repositories, 0);
+    assert!(fixture.dir.path().exists());
+}
+
+#[tokio::test]
+async fn deleting_a_repository_requires_its_full_name() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let repo = fixture
+        .services
+        .repositories
+        .create(&root, CreateRepository { name: "site".to_owned(), description: String::new(), visibility: Visibility::Public })
+        .await
+        .unwrap();
+    let admin = &fixture.services.admin;
+
+    assert!(invalid(admin.delete_repository(&root, repo.repo.id, "site").await));
+    admin.delete_repository(&root, repo.repo.id, "root/site").await.unwrap();
+    assert!(matches!(admin.repository(&root, repo.repo.id).await, Err(ServiceError::NotFound)));
+    assert!(!fixture.config.storage.repositories_dir().join(root.id().0.to_string()).join(format!("{}.git", repo.repo.id.0)).exists());
+}
+
+// ---------------------------------------------------------------------- listings & dashboard
+
+#[tokio::test]
+async fn user_listing_searches_and_paginates() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    for n in 0..PAGE_SIZE + 5 {
+        fixture.user(&format!("user{n:02}"), false).await;
+    }
+    fixture.user("under_score", false).await;
+    let admin = &fixture.services.admin;
+
+    let first = admin.users(&root, &ListQuery::default()).await.unwrap();
+    assert_eq!(first.total, u64::from(PAGE_SIZE) + 7);
+    assert_eq!(first.items.len(), PAGE_SIZE as usize);
+    assert!(first.has_next() && !first.has_previous());
+
+    let second = admin.users(&root, &ListQuery { search: String::new(), page: 2 }).await.unwrap();
+    assert_eq!(second.items.len(), 7);
+    assert!(!second.has_next());
+
+    let found = admin.users(&root, &ListQuery { search: " USER1 ".to_owned(), page: 1 }).await.unwrap();
+    assert_eq!(found.total, 10, "case-insensitive substring of name");
+    let by_email = admin.users(&root, &ListQuery { search: "root@example".to_owned(), page: 1 }).await.unwrap();
+    assert_eq!(by_email.items.len(), 1);
+    let literal = admin.users(&root, &ListQuery { search: "_".to_owned(), page: 1 }).await.unwrap();
+    assert_eq!(literal.total, 1, "wildcards are matched literally");
+}
+
+#[tokio::test]
+async fn dashboard_reports_counts_and_versions() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    fixture.services.admin.set_suspended(&root, alice.id(), true).await.unwrap();
+    fixture
+        .services
+        .repositories
+        .create(&root, CreateRepository { name: "a".to_owned(), description: String::new(), visibility: Visibility::Public })
+        .await
+        .unwrap();
+
+    let dashboard = fixture.services.admin.dashboard(&root).await.unwrap();
+    let counts = dashboard.counts;
+    assert_eq!((counts.users, counts.admins, counts.suspended), (2, 1, 1));
+    assert_eq!((counts.public_repositories, counts.private_repositories, counts.organizations), (1, 0, 0));
+    assert_eq!(dashboard.system.rustit_version, env!("CARGO_PKG_VERSION"));
+    assert!(dashboard.system.sqlite_version.starts_with('3'));
+    assert!(dashboard.system.data_dir_bytes.is_some_and(|bytes| bytes > 0));
+    // `git` is required by the test suite elsewhere too.
+    assert!(dashboard.system.git_version.is_some_and(|version| version.chars().next().is_some_and(|c| c.is_ascii_digit())));
+}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  {% call ui::logo("size-7") %}{% endcall %}
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">Create your account</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Host your code on {{ page.site_name }}.</p>
+
+  {% if registration_open %}
+  <form method="post" action="/signup" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="username">Username</label>
+    <input class="input" id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
+    <p class="hint">Letters, digits, '-', '_' and '.'</p>
+
+    <label class="label mt-4" for="email">Email</label>
+    <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required>
+
+    <label class="label mt-4" for="password">Password</label>
+    <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
+    <p class="hint">At least {{ min_password_length }} characters.</p>
+
+    <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
+  </form>
+  {% else %}
+  <p class="box mt-8 px-4 py-6 text-[13px] text-ink-muted">Registration is closed on this server. Ask an administrator for an account.</p>
+  {% endif %}
+
+  <p class="mt-8 border-t border-line pt-6 text-[13px] text-ink-muted">Already have an account? <a href="/login" class="link">Sign in</a></p>
+</section>
+{% endblock %}

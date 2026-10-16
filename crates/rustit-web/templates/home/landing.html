@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="flex flex-col gap-6 border-b border-line pb-8 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{ page.site_name }}</h1>
+    <p class="mt-1.5 max-w-lg text-ink-muted">A self-hosted Git server. Browse public repositories below, or sign in to host your own.</p>
+  </div>
+  <div class="flex gap-2">
+    <a href="/login" class="btn">Sign in</a>
+    <a href="/signup" class="btn btn-primary">Create account</a>
+  </div>
+</section>
+
+<section class="mt-8">
+  <div class="mb-3 flex items-center justify-between">
+    <h2 class="text-[13px] font-medium text-ink-muted">Recently updated</h2>
+    <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">View all</a>
+  </div>
+  <div class="box">
+    {% if recent.is_empty() %}
+    {% call ui::empty_state("repo", "No public repositories yet", "Repositories made public on this server will appear here.") %}{% endcall %}
+    {% else %}
+    <ul>{% for repo in recent %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
+    {% endif %}
+  </div>
+</section>
+
+<section class="mt-8 grid gap-px overflow-hidden rounded-(--radius-ui) border border-line bg-line sm:grid-cols-3">
+  <div class="bg-surface p-4">
+    <p class="font-medium">Clone over HTTPS</p>
+    <p class="mt-1 text-[13px] text-ink-muted">Standard Git smart-HTTP with protocol v2. Works with every client.</p>
+  </div>
+  <div class="bg-surface p-4">
+    <p class="font-medium">One binary</p>
+    <p class="mt-1 text-[13px] text-ink-muted">SQLite, an embedded key/value store and plain bare repositories.</p>
+  </div>
+  <div class="bg-surface p-4">
+    <p class="font-medium">Installable</p>
+    <p class="mt-1 text-[13px] text-ink-muted">Responsive on any screen and installable as an app.</p>
+  </div>
+</section>
+{% endblock %}

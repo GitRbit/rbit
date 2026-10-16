@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="flex flex-col items-center py-20 text-center sm:py-28">
+  {% call ui::icon("wifi-off", "size-6 text-ink-muted") %}{% endcall %}
+  <h1 class="mt-4 font-medium">You're offline</h1>
+  <p class="mt-1.5 max-w-sm text-[13px] text-ink-muted">The server couldn't be reached. Check your connection and try again.</p>
+  <a href="/" class="btn btn-primary mt-8" hx-boost="false">Retry</a>
+</section>
+{% endblock %}

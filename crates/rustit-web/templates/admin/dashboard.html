@@ -1,0 +1,51 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+{% call admin::heading("Dashboard", "An overview of this instance.") %}{% endcall %}
+
+<ul class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+  {% for tile in tiles %}
+  <li>
+    <a href="{{ tile.url }}" class="box block h-full px-4 py-3 hover:border-line-strong">
+      <p class="text-xs text-ink-muted">{{ tile.label }}</p>
+      <p class="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{{ tile.value }}</p>
+      <p class="mt-1 truncate text-xs text-ink-faint">{{ tile.detail }}</p>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="mt-6 grid gap-6 lg:grid-cols-2">
+  <section class="box min-w-0" aria-labelledby="system-title">
+    <div class="box-header">
+      {% call ui::icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+      <h3 id="system-title" class="text-[13px] font-medium">System</h3>
+    </div>
+    <dl>
+      {% for row in system %}
+      <div class="row justify-between text-[13px]">
+        <dt class="shrink-0 text-ink-muted">{{ row.label }}</dt>
+        <dd class="min-w-0 truncate text-right {% if row.mono %}font-mono text-xs{% endif %}" title="{{ row.value }}">{{ row.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </section>
+
+  <section class="box min-w-0" aria-labelledby="settings-title">
+    <div class="box-header">
+      {% call ui::icon("globe", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+      <h3 id="settings-title" class="text-[13px] font-medium">Instance settings</h3>
+      <a href="/admin/settings" class="link ml-auto text-xs">Edit</a>
+    </div>
+    <dl>
+      {% for row in settings %}
+      <div class="row justify-between text-[13px]">
+        <dt class="shrink-0 text-ink-muted">{{ row.label }}</dt>
+        <dd class="min-w-0 truncate text-right" title="{{ row.value }}">{{ row.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+  </section>
+</div>
+{% endblock %}

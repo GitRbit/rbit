@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "org/nav_context.html" %}{% endblock %}
+{% block content %}
+{% include "org/header.html" %}
+
+<div class="mt-6 max-w-3xl">
+  {% if can_manage %}
+  <form method="post" action="{{ add_url }}" class="box mb-6" novalidate>
+    <div class="box-header">
+      <h2 class="text-[13px] font-medium">Add a member</h2>
+    </div>
+    <div class="p-4">
+      {% call ui::form_error(error) %}{% endcall %}
+      <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
+        <div>
+          <label class="label" for="member-username">Username</label>
+          <input class="input" id="member-username" name="username" value="{{ form.username }}" maxlength="39" autocapitalize="none" autocomplete="off" spellcheck="false" required>
+        </div>
+        <div>
+          <label class="label" for="member-role">Role</label>
+          <div class="relative">
+            <select class="input cursor-pointer appearance-none pr-9" id="member-role" name="role">
+              <option value="member" {% if !form.owner %}selected{% endif %}>Member</option>
+              <option value="owner" {% if form.owner %}selected{% endif %}>Owner</option>
+            </select>
+            {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+          </div>
+        </div>
+        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
+      </div>
+      <p class="hint">Members can push to every repository of the organization. Owners can also manage members and settings.</p>
+    </div>
+  </form>
+  {% else %}
+  {% call ui::form_error(error) %}{% endcall %}
+  {% endif %}
+
+  <div class="mb-3 flex h-8 items-center">
+    <h2 class="text-[13px] font-medium text-ink-muted">Members <span class="ml-1 text-ink-faint">{{ members.len() }}</span></h2>
+  </div>
+  <div class="box">
+    <ul>
+      {% for member in members %}
+      <li class="row flex-wrap gap-y-2 py-2.5">
+        <a href="{{ member.url }}" class="flex min-w-0 flex-1 items-center gap-3">
+          {% call ui::avatar(member.avatar, "size-8 text-[11px]") %}{% endcall %}
+          <span class="min-w-0">
+            <span class="block truncate font-medium">{{ member.label }}{% if member.is_viewer %} <span class="font-normal text-ink-faint">(you)</span>{% endif %}</span>
+            <span class="block truncate text-xs text-ink-muted">{{ member.name }}</span>
+          </span>
+        </a>
+        <span class="badge shrink-0">{{ member.role_label }}</span>
+        {% if can_manage || member.is_viewer %}
+        <div class="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
+          {% if can_manage %}
+          <form method="post" action="{{ member.role_url }}">
+            <input type="hidden" name="role" value="{{ member.other_role }}">
+            <button class="btn" type="submit" aria-label="{{ member.other_role_label }}: {{ member.name }}">{{ member.other_role_label }}</button>
+          </form>
+          {% endif %}
+          {% if member.is_viewer %}
+          <form method="post" action="{{ leave_url }}">
+            <button class="btn" type="submit">Leave</button>
+          </form>
+          {% else if can_manage %}
+          <form method="post" action="{{ member.remove_url }}">
+            <button class="btn" type="submit" aria-label="Remove {{ member.name }}">Remove</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

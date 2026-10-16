@@ -1,0 +1,11 @@
+# Normalise line endings to LF in the repository on every platform.
+* text=auto eol=lf
+
+# Binary assets.
+*.png binary
+*.ico binary
+
+# Third-party and generated files: excluded from diffs' noise and language statistics.
+crates/rustit-web/assets/vendor/** linguist-vendored -diff
+Cargo.lock linguist-generated
+package-lock.json linguist-generated -diff

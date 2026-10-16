@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl">
+  <h1 class="text-xl font-semibold tracking-tight">This repository is empty</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Push an existing project, or start a new one from the command line.</p>
+
+  <div class="mt-6 flex">
+    <input id="clone-url-setup" class="input rounded-r-none font-mono text-xs" value="{{ header.clone_url }}" readonly aria-label="Repository URL">
+    <button type="button" class="btn btn-icon -ml-px h-10 w-10 rounded-l-none sm:h-9 sm:w-9" data-copy="clone-url-setup" aria-label="Copy repository URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+  </div>
+
+  <div class="box mt-6 overflow-hidden">
+    <div class="box-header text-[13px] font-medium">Create a new repository</div>
+    <pre class="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-6 text-ink-muted"><code><span class="select-none text-ink-faint">$ </span>git init -b {{ default_branch }}
+<span class="select-none text-ink-faint">$ </span>echo "# {{ header.name }}" &gt; README.md
+<span class="select-none text-ink-faint">$ </span>git add README.md
+<span class="select-none text-ink-faint">$ </span>git commit -m "Initial commit"
+<span class="select-none text-ink-faint">$ </span>git remote add origin {{ header.clone_url }}
+<span class="select-none text-ink-faint">$ </span>git push -u origin {{ default_branch }}</code></pre>
+  </div>
+
+  <div class="box mt-4 overflow-hidden">
+    <div class="box-header text-[13px] font-medium">Push an existing repository</div>
+    <pre class="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-6 text-ink-muted"><code><span class="select-none text-ink-faint">$ </span>git remote add origin {{ header.clone_url }}
+<span class="select-none text-ink-faint">$ </span>git push -u origin {{ default_branch }}</code></pre>
+  </div>
+</section>
+{% endblock %}

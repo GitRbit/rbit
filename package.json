@@ -1,0 +1,18 @@
+{
+  "name": "rustit-web-assets",
+  "private": true,
+  "description": "Build-time front-end tooling for Rustit. Nothing here runs in production.",
+  "type": "module",
+  "scripts": {
+    "build": "npm run vendor && npm run build:css",
+    "build:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --minify",
+    "watch:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --watch",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@tailwindcss/typography": "0.5.20",
+    "htmx.org": "2.0.11",
+    "tailwindcss": "4.3.3"
+  }
+}

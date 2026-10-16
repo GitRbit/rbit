@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex h-8 items-center">
+  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ rows.len() }}</span></h1>
+</div>
+
+<div class="box">
+  {% if rows.is_empty() %}
+  {% if kind == "branch" %}
+  {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+  {% else %}
+  {% call ui::empty_state("tag", "No tags yet", "Tags mark releases and other important points in history.") %}{% endcall %}
+  {% endif %}
+  {% else %}
+  <ul>
+    {% for row in rows %}
+    <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+      {% if kind == "branch" %}{% call ui::icon("branch", "size-4 shrink-0 text-ink-faint") %}{% endcall %}{% else %}{% call ui::icon("tag", "size-4 shrink-0 text-ink-faint") %}{% endcall %}{% endif %}
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.name }}</a>
+          {% if row.is_default %}<span class="badge">default</span>{% endif %}
+        </div>
+        <p class="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+          <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>
+          <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></span>
+        </p>
+      </div>
+      <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ row.commit.short_id }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

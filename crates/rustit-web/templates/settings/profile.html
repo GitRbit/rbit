@@ -1,0 +1,44 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+<h2 class="text-xl font-semibold tracking-tight">Profile</h2>
+<p class="mt-1 text-[13px] text-ink-muted">Shown on <a class="link" href="/{{ username }}">your profile page</a> and next to your activity. Everything here is public and optional.</p>
+
+{% if saved %}
+<p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
+  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Profile updated.
+</p>
+{% endif %}
+
+<form method="post" action="/settings/profile" class="box mt-6" novalidate>
+  <div class="box-header">
+    {% call ui::avatar(avatar, "size-6 text-[10px]") %}{% endcall %}
+    <h3 class="min-w-0 truncate text-[13px] font-medium">{{ username }}</h3>
+  </div>
+  <div class="p-4">
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="display-name">Display name</label>
+    <input class="input" id="display-name" name="display_name" value="{{ form.display_name }}" maxlength="80" autocomplete="name">
+    <p class="hint">Shown instead of your username where there is room.</p>
+
+    <label class="label mt-5" for="bio">Bio</label>
+    <textarea class="input h-24 resize-y py-2 sm:h-24" id="bio" name="bio" maxlength="300" rows="3">{{ form.bio }}</textarea>
+    <p class="hint">Up to 300 characters.</p>
+
+    <div class="mt-5 grid gap-5 sm:grid-cols-2">
+      <div>
+        <label class="label" for="website">Website</label>
+        <input class="input" id="website" name="website" type="url" value="{{ form.website }}" maxlength="200" placeholder="https://" autocomplete="url" inputmode="url" spellcheck="false">
+      </div>
+      <div>
+        <label class="label" for="location">Location</label>
+        <input class="input" id="location" name="location" value="{{ form.location }}" maxlength="80">
+      </div>
+    </div>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Save profile</button>
+  </div>
+</form>
+{% endblock %}

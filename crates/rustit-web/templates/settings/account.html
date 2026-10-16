@@ -1,0 +1,53 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+<h2 class="text-xl font-semibold tracking-tight">Account</h2>
+<p class="mt-1 text-[13px] text-ink-muted">How you sign in. Both changes ask for your current password.</p>
+
+<form method="post" action="/settings/account/email" class="box mt-6" novalidate>
+  <div class="box-header">
+    <h3 class="text-[13px] font-medium">Email address</h3>
+  </div>
+  <div class="p-4">
+    {% call ui::form_error(email_error) %}{% endcall %}
+    {% if self.saved_email() %}
+    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Email address updated.</p>
+    {% endif %}
+
+    <label class="label" for="email">Email</label>
+    <input class="input" id="email" name="email" type="email" value="{{ email }}" maxlength="254" autocomplete="email" spellcheck="false" required>
+    <p class="hint">You can sign in with this address or your username. Currently <span class="text-ink-muted">{{ current_email }}</span>.</p>
+
+    <label class="label mt-5" for="email-password">Current password</label>
+    <input class="input" id="email-password" name="current_password" type="password" autocomplete="current-password" required>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Update email</button>
+  </div>
+</form>
+
+<form method="post" action="/settings/account/password" class="box mt-6" novalidate>
+  <div class="box-header">
+    <h3 class="text-[13px] font-medium">Password</h3>
+  </div>
+  <div class="p-4">
+    {% call ui::form_error(password_error) %}{% endcall %}
+    {% if self.saved_password() %}
+    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Password changed.</p>
+    {% endif %}
+
+    <label class="label" for="current-password">Current password</label>
+    <input class="input" id="current-password" name="current_password" type="password" autocomplete="current-password" required>
+
+    <label class="label mt-5" for="new-password">New password</label>
+    <input class="input" id="new-password" name="new_password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" maxlength="256" required>
+    <p class="hint">At least {{ min_password_length }} characters. A few unrelated words make a strong, memorable password.</p>
+
+    <label class="label mt-5" for="confirm-password">Confirm new password</label>
+    <input class="input" id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" maxlength="256" required>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Change password</button>
+  </div>
+</form>
+{% endblock %}

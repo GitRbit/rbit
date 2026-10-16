@@ -1,0 +1,402 @@
+/*
+ * Rustit design system — monochrome minimal. Tailwind CSS v4, CSS-first configuration.
+ *
+ * Principles
+ *   - Black and white do the work. Colour appears only to communicate state
+ *     (success, danger, warning) and in syntax highlighting.
+ *   - Hairline (1px) borders instead of shadows; 6px radius everywhere.
+ *   - Dense, calm typography: 14px base, medium weights, tight headings.
+ *
+ * Every colour is a semantic token defined once with `light-dark()`, so components never
+ * need `dark:` variants. The scheme follows the OS unless `data-theme` on <html> pins it.
+ */
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@source "../templates";
+@source "../src";
+
+/* ---------------------------------------------------------------- Tokens */
+
+:root {
+  color-scheme: light dark;
+
+  --canvas: light-dark(#ffffff, #000000);
+  --surface: light-dark(#ffffff, #0a0a0a);
+  --subtle: light-dark(#fafafa, #111111);
+  --hover: light-dark(#f2f2f2, #1a1a1a);
+  --line: light-dark(#ebebeb, #1f1f1f);
+  --line-strong: light-dark(#d4d4d4, #333333);
+  --ink: light-dark(#0a0a0a, #ededed);
+  --ink-muted: light-dark(#666666, #a1a1a1);
+  --ink-faint: light-dark(#8f8f8f, #6e6e6e);
+  /* "Inverted" is the primary action: black on light, white on dark. */
+  --inverted: light-dark(#0a0a0a, #ededed);
+  --inverted-hover: light-dark(#383838, #cccccc);
+  --inverted-ink: light-dark(#ffffff, #0a0a0a);
+
+  --success: light-dark(#107d32, #3ecf6e);
+  --danger: light-dark(#d8182f, #ff5a67);
+  --danger-subtle: light-dark(#fff0f1, #1f0a0c);
+  --warning: light-dark(#a35200, #f5a524);
+
+  --syntax-comment: light-dark(#8f8f8f, #6e6e6e);
+  --syntax-keyword: light-dark(#c3195d, #ff4d8d);
+  --syntax-string: light-dark(#107d32, #62c073);
+  --syntax-number: light-dark(#0068d6, #52a8ff);
+  --syntax-function: light-dark(#7820bc, #bf7af0);
+  --syntax-type: light-dark(#0068d6, #52a8ff);
+  --syntax-tag: light-dark(#107d32, #62c073);
+  --syntax-attribute: light-dark(#7820bc, #bf7af0);
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+@theme {
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-inverted: var(--inverted);
+  --color-inverted-hover: var(--inverted-hover);
+  --color-inverted-ink: var(--inverted-ink);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+
+  --radius-ui: 6px;
+}
+
+/* ---------------------------------------------------------------- Base */
+
+@layer base {
+  html {
+    /* Always reserve the scrollbar's width so short and long pages share one layout width. */
+    scrollbar-gutter: stable;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-sm text-ink antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ink;
+  }
+
+  ::selection {
+    @apply bg-inverted text-inverted-ink;
+  }
+
+  a {
+    @apply transition-colors duration-100;
+  }
+}
+
+/* ---------------------------------------------------------------- Components */
+
+@layer components {
+  /* Bordered container. */
+  .box {
+    @apply rounded-(--radius-ui) border border-line bg-surface;
+  }
+
+  .box-header {
+    @apply flex min-h-11 items-center gap-3 border-b border-line bg-subtle px-4;
+  }
+
+  /* Buttons: 36px on touch screens, 32px from `sm` up. */
+  .btn {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-(--radius-ui) border
+      border-line bg-surface px-3 text-[13px] font-medium text-ink transition-colors duration-100 select-none
+      hover:border-line-strong hover:bg-hover disabled:pointer-events-none disabled:opacity-50 sm:h-8;
+  }
+
+  .btn-primary {
+    @apply border-inverted bg-inverted text-inverted-ink hover:border-inverted-hover hover:bg-inverted-hover;
+  }
+
+  /* Destructive actions: red text and border, a faint red wash on hover. */
+  .btn-danger {
+    @apply border-danger/40 text-danger hover:border-danger hover:bg-danger-subtle;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-ink-muted hover:border-transparent hover:bg-hover hover:text-ink;
+  }
+
+  .btn-icon {
+    @apply w-9 px-0 sm:w-8;
+  }
+
+  .btn-lg {
+    @apply h-10 px-4 text-sm sm:h-10;
+  }
+
+  .input {
+    @apply block h-10 w-full rounded-(--radius-ui) border border-line bg-surface px-3 text-sm text-ink transition-colors
+      duration-100 placeholder:text-ink-faint hover:border-line-strong focus:border-ink focus:outline-none sm:h-9;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-ink;
+  }
+
+  .hint {
+    @apply mt-1.5 text-xs text-ink-faint;
+  }
+
+  .badge {
+    @apply inline-flex h-5 items-center gap-1 rounded-full border border-line px-2 text-[11px] font-medium text-ink-muted;
+  }
+
+  .link {
+    @apply text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink;
+  }
+
+  .kbd {
+    @apply rounded border border-line bg-subtle px-1.5 font-mono text-[11px] text-ink-muted;
+  }
+
+  /* Underline tabs (sub-navigation). */
+  .tab {
+    @apply relative inline-flex h-11 shrink-0 items-center gap-1.5 px-1 text-[13px] text-ink-muted transition-colors
+      duration-100 hover:text-ink;
+  }
+
+  .tab[aria-current="page"] {
+    @apply text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-ink;
+  }
+
+  /* Rows of a list or table inside a .box. */
+  /* Horizontally scrollable tab rows: no scrollbar, and on narrow screens a soft fade
+     at the right edge so cut-off tabs read as "more to scroll" rather than clipped. */
+  .scroll-tabs {
+    @apply overflow-x-auto;
+    scrollbar-width: none;
+  }
+
+  @media (width < 48rem) {
+    .scroll-tabs {
+      mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    }
+  }
+
+  .row {
+    @apply flex min-h-10 items-center gap-3 border-b border-line px-4 last:border-b-0;
+  }
+
+  .row-link {
+    @apply hover:bg-subtle;
+  }
+
+  .avatar {
+    @apply inline-flex shrink-0 select-none items-center justify-center rounded-full border border-line font-medium
+      uppercase leading-none;
+  }
+
+  /* Eight neutral avatar tones, chosen by account id or author email (views::components::Avatar). */
+  .avatar-0 { background: light-dark(#f2f2f2, #1a1a1a); color: var(--ink); }
+  .avatar-1 { background: light-dark(#e6e6e6, #262626); color: var(--ink); }
+  .avatar-2 { background: light-dark(#d9d9d9, #333333); color: var(--ink); }
+  .avatar-3 { background: light-dark(#0a0a0a, #ededed); color: var(--inverted-ink); }
+  .avatar-4 { background: light-dark(#404040, #a1a1a1); color: var(--inverted-ink); }
+  .avatar-5 { background: light-dark(#fafafa, #111111); color: var(--ink-muted); }
+  .avatar-6 { background: light-dark(#262626, #d4d4d4); color: var(--inverted-ink); }
+  .avatar-7 { background: light-dark(#8f8f8f, #6e6e6e); color: #ffffff; }
+
+  .menu {
+    @apply absolute z-40 mt-1.5 min-w-52 overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-1
+      shadow-[0_4px_16px_rgb(0_0_0/0.08)];
+  }
+
+  .menu-item {
+    @apply flex h-9 w-full items-center gap-2 rounded px-2.5 text-[13px] text-ink hover:bg-hover sm:h-8;
+  }
+
+  .menu-label {
+    @apply px-2.5 pb-1 pt-2 text-[11px] font-medium text-ink-faint;
+  }
+
+  .menu-divider {
+    @apply -mx-1 my-1 h-px bg-line;
+  }
+
+  /* <details> based dropdowns: no JavaScript required. */
+  details > summary {
+    list-style: none;
+  }
+
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Source code viewer. */
+  .code-view {
+    @apply font-mono text-[12.5px] leading-5;
+    tab-size: 4;
+  }
+
+  .code-view td.line-number {
+    @apply w-1 select-none pl-4 pr-3 text-right align-top text-ink-faint;
+  }
+
+  .code-view td.line-number a:hover {
+    @apply text-ink;
+  }
+
+  .code-view td.line-code {
+    @apply whitespace-pre pl-3 pr-6;
+  }
+
+  .code-view tr:first-child td {
+    @apply pt-3;
+  }
+
+  .code-view tr:last-child td {
+    @apply pb-3;
+  }
+
+  .code-view tr:target {
+    @apply bg-hover;
+  }
+
+  /* Unified diff: old/new line numbers, then the line with its +/- sign. */
+  .diff-view {
+    @apply font-mono text-[12.5px] leading-5;
+    tab-size: 4;
+  }
+
+  .diff-view td.num {
+    @apply w-1 select-none px-2 text-right align-top text-ink-faint;
+  }
+
+  .diff-view td.num + td.num {
+    @apply pr-3;
+  }
+
+  .diff-view td.code {
+    @apply whitespace-pre pr-6;
+  }
+
+  .diff-view .sign {
+    @apply inline-block w-5 select-none pl-1.5 text-ink-faint;
+  }
+
+  .diff-view tr.diff-add {
+    background: color-mix(in oklab, var(--success) 11%, transparent);
+  }
+
+  .diff-view tr.diff-add .sign,
+  .diff-view tr.diff-add td.num {
+    color: var(--success);
+  }
+
+  .diff-view tr.diff-del {
+    background: color-mix(in oklab, var(--danger) 11%, transparent);
+  }
+
+  .diff-view tr.diff-del .sign,
+  .diff-view tr.diff-del td.num {
+    color: var(--danger);
+  }
+
+  .diff-view tr.diff-hunk td {
+    @apply bg-subtle py-1 text-ink-faint;
+  }
+
+  .diff-view tr.diff-eof td {
+    @apply text-[11px] text-ink-faint italic;
+  }
+
+  .diff-view tr.diff-hunk td.code {
+    @apply pl-1.5;
+  }
+
+  .prose-rustit {
+    @apply prose prose-sm max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold
+      prose-headings:tracking-tight prose-h1:text-2xl prose-h2:border-b prose-h2:border-line prose-h2:pb-2
+      prose-a:font-normal prose-a:underline-offset-4 prose-pre:rounded-(--radius-ui) prose-pre:border
+      prose-pre:border-line prose-pre:bg-subtle prose-pre:text-ink prose-code:font-normal prose-code:before:content-none
+      prose-code:after:content-none prose-img:inline prose-img:my-0;
+    --tw-prose-body: var(--ink);
+    --tw-prose-headings: var(--ink);
+    --tw-prose-bold: var(--ink);
+    --tw-prose-links: var(--ink);
+    --tw-prose-code: var(--ink);
+    --tw-prose-quotes: var(--ink-muted);
+    --tw-prose-quote-borders: var(--line-strong);
+    --tw-prose-hr: var(--line);
+    --tw-prose-bullets: var(--ink-faint);
+    --tw-prose-counters: var(--ink-faint);
+    --tw-prose-th-borders: var(--line-strong);
+    --tw-prose-td-borders: var(--line);
+  }
+
+  .prose-rustit :not(pre) > code {
+    @apply rounded border border-line bg-subtle px-1 py-0.5 text-[0.85em];
+  }
+}
+
+/* ---------------------------------------------------------------- Syntax highlighting */
+
+.hl-comment { color: var(--syntax-comment); }
+.hl-string, .hl-markup.hl-raw { color: var(--syntax-string); }
+.hl-constant.hl-numeric, .hl-constant.hl-language, .hl-constant.hl-character { color: var(--syntax-number); }
+.hl-keyword, .hl-storage { color: var(--syntax-keyword); }
+.hl-entity.hl-name.hl-function, .hl-support.hl-function, .hl-meta.hl-function-call { color: var(--syntax-function); }
+.hl-entity.hl-name.hl-type, .hl-entity.hl-name.hl-class, .hl-support.hl-type, .hl-support.hl-class,
+.hl-storage.hl-type { color: var(--syntax-type); }
+.hl-entity.hl-name.hl-tag { color: var(--syntax-tag); }
+.hl-entity.hl-other.hl-attribute-name { color: var(--syntax-attribute); }
+.hl-markup.hl-heading { color: var(--ink); font-weight: 600; }
+.hl-markup.hl-bold { font-weight: 600; }
+.hl-markup.hl-italic { font-style: italic; }
+.hl-invalid { color: var(--danger); }
+
+/* ---------------------------------------------------------------- Scheme-dependent visibility */
+
+/* `.when-dark` / `.when-light` show content only in that colour scheme (e.g. theme toggle icons). */
+.when-dark { display: none; }
+:root[data-theme="dark"] .when-dark { display: inline; }
+:root[data-theme="dark"] .when-light { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .when-dark { display: inline; }
+  :root:not([data-theme="light"]) .when-light { display: none; }
+}
+
+/* ---------------------------------------------------------------- htmx progress bar */
+
+#page-progress {
+  opacity: 0;
+}
+
+.htmx-request #page-progress,
+#page-progress.htmx-request {
+  opacity: 1;
+  animation: page-progress 1s ease-in-out infinite;
+}
+
+@keyframes page-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

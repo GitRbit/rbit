@@ -1,0 +1,12 @@
+# Rust
+/target
+
+# Front-end tooling (build-time only)
+/node_modules
+
+# Generated stylesheet: run `npm run build:css`
+/crates/rustit-web/assets/app.css
+
+# Local runtime data (SQLite, redb, repositories)
+/data
+/rustit.toml

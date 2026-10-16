@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto max-w-xl">
+  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">A repository holds a project's files and their complete history.</p>
+
+  <form method="post" action="/new" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+
+    {% if owners.len() > 1 %}
+    <div class="grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
+      <div>
+        <label class="label" for="owner">Owner</label>
+        <div class="relative">
+          <select class="input cursor-pointer appearance-none pr-9" id="owner" name="owner">
+            {% for owner in owners %}
+            <option value="{{ owner.name }}" {% if owner.selected %}selected{% endif %}>{{ owner.name }}</option>
+            {% endfor %}
+          </select>
+          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        </div>
+      </div>
+      <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
+      <div>
+        <label class="label" for="name">Name</label>
+        <input class="input" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required autofocus>
+      </div>
+    </div>
+    {% else if let Some(owner) = selected_owner() %}
+    <label class="label" for="name">Name</label>
+    <div class="flex h-10 items-center rounded-(--radius-ui) border border-line focus-within:border-ink hover:border-line-strong sm:h-9">
+      <span class="flex h-full shrink-0 items-center gap-2 border-r border-line bg-subtle px-3 text-ink-muted">
+        {% call ui::avatar(owner.avatar, "size-4 text-[8px]") %}{% endcall %}{{ owner.name }}
+      </span>
+      <span class="px-2 text-ink-faint">/</span>
+      <input type="hidden" name="owner" value="{{ owner.name }}">
+      <input class="h-full min-w-0 flex-1 bg-transparent pr-3 text-sm focus:outline-none" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required autofocus>
+    </div>
+    {% endif %}
+
+    <label class="label mt-5" for="description">Description <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input" id="description" name="description" value="{{ description }}" maxlength="350">
+
+    <fieldset class="mt-6">
+      <legend class="label">Visibility</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Public</span>
+            <span class="block text-[13px] text-ink-muted">Anyone can see and clone this repository.</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Private</span>
+            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
+      <a href="/" class="btn">Cancel</a>
+      <button class="btn btn-primary" type="submit">Create repository</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

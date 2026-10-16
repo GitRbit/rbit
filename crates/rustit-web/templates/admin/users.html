@@ -1,0 +1,73 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+{% call admin::heading("Users", "Everyone with an account on this instance.") %}{% endcall %}
+{% call ui::form_error(error) %}{% endcall %}
+
+<div class="mb-3 flex flex-wrap items-center gap-2">
+  {% call admin::search(listing, "Search by username, name or email") %}{% endcall %}
+  <a href="/admin/users/new" class="btn btn-primary h-10 sm:h-9">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New user</a>
+</div>
+
+<div class="box">
+  {% if users.is_empty() %}
+  {% call ui::empty_state("user", "No users found", "Try a different search.") %}{% endcall %}
+  {% else %}
+  <table class="w-full text-left text-[13px]">
+    <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
+      <tr>
+        <th scope="col" class="h-9 px-4 font-medium">User</th>
+        <th scope="col" class="hidden px-4 font-medium md:table-cell">Repositories</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Joined</th>
+        <th scope="col" class="w-px px-4"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr class="border-b border-line last:border-b-0">
+        <td class="max-w-0 px-4 py-2.5">
+          <div class="flex min-w-0 items-center gap-3">
+            {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
+            <div class="min-w-0">
+              <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <a href="{{ user.profile_url }}" class="truncate font-medium hover:underline">{{ user.name }}</a>
+                {% if user.is_admin %}<span class="badge">Admin</span>{% endif %}
+                {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">Suspended</span>{% endif %}
+                {% if user.is_self %}<span class="badge">You</span>{% endif %}
+              </div>
+              <p class="truncate text-xs text-ink-muted">{% if user.has_display_name %}{{ user.label }} · {% endif %}{{ user.email }}</p>
+            </div>
+          </div>
+        </td>
+        <td class="hidden px-4 tabular-nums text-ink-muted md:table-cell">{{ user.repositories }}</td>
+        <td class="hidden whitespace-nowrap px-4 text-ink-muted lg:table-cell"><time datetime="{{ user.joined_iso }}">{{ user.joined }}</time></td>
+        <td class="px-4 py-2.5 text-right">
+          {% if !user.is_self %}
+          <details class="relative inline-block text-left" data-menu>
+            <summary class="btn btn-ghost btn-icon" aria-label="Actions for {{ user.name }}" title="Actions">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
+            <div class="menu right-0 w-52">
+              {% if user.is_admin %}
+              <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Remove administrator</button></form>
+              {% else %}
+              <form method="post" action="{{ user.promote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Make administrator</button></form>
+              {% endif %}
+              {% if user.is_suspended %}
+              <form method="post" action="{{ user.unsuspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Lift suspension</button></form>
+              {% else %}
+              <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">Suspend</button></form>
+              {% endif %}
+              <div class="menu-divider"></div>
+              <a class="menu-item text-danger" href="{{ user.delete_url }}">Delete…</a>
+            </div>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% call admin::pager(listing) %}{% endcall %}
+{% endblock %}

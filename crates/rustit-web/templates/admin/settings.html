@@ -1,0 +1,89 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+<div class="max-w-2xl">
+{% call admin::heading("Settings", "Changes apply immediately to the whole instance.") %}{% endcall %}
+
+{% if saved %}
+<div role="status" class="mb-5 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
+  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}
+  <span>Settings saved.</span>
+</div>
+{% endif %}
+
+<form method="post" action="/admin/settings" class="box" novalidate>
+  <div class="p-4">
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="site-name">Site name</label>
+    <input class="input sm:max-w-80" id="site-name" name="site_name" value="{{ form.site_name }}" maxlength="{{ site_name_max_len }}" autocomplete="off" required>
+    <p class="hint">Shown in the header, page titles and when installed as an app.</p>
+
+    <fieldset class="mt-6">
+      <legend class="label">Registration</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="registration" value="open" class="mt-1 accent-(--ink)" {% if form.registration_open %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Open</span>
+            <span class="block text-[13px] text-ink-muted">Anyone can create an account from the sign-up page.</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="registration" value="closed" class="mt-1 accent-(--ink)" {% if !form.registration_open %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Closed</span>
+            <span class="block text-[13px] text-ink-muted">Only administrators can create accounts.</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="mt-6">
+      <legend class="label">Who can create organizations</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="org_creation" value="any_user" class="mt-1 accent-(--ink)" {% if !form.admins_only_orgs %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Any user</span>
+            <span class="block text-[13px] text-ink-muted">Every signed-in user can create organizations.</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="org_creation" value="admins_only" class="mt-1 accent-(--ink)" {% if form.admins_only_orgs %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Administrators only</span>
+            <span class="block text-[13px] text-ink-muted">Users can still be added to existing organizations.</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset class="mt-6">
+      <legend class="label">Default repository visibility</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="default_visibility" value="public" class="mt-1 accent-(--ink)" {% if !form.private_by_default %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Public</span>
+            <span class="block text-[13px] text-ink-muted">New repositories are visible to everyone unless changed.</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="default_visibility" value="private" class="mt-1 accent-(--ink)" {% if form.private_by_default %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Private</span>
+            <span class="block text-[13px] text-ink-muted">New repositories start private; owners can still make them public.</span>
+          </span>
+        </label>
+      </div>
+      <p class="hint">Preselected on the new repository form.</p>
+    </fieldset>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Save settings</button>
+  </div>
+</form>
+</div>
+{% endblock %}

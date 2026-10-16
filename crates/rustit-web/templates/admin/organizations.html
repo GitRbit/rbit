@@ -1,0 +1,46 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+{% call admin::heading("Organizations", "Shared namespaces and their members.") %}{% endcall %}
+
+<div class="mb-3 flex flex-wrap items-center gap-2">
+  {% call admin::search(listing, "Search by name") %}{% endcall %}
+</div>
+
+<div class="box">
+  {% if orgs.is_empty() %}
+  {% call ui::empty_state("globe", "No organizations found", "Organizations will be listed here once they exist.") %}{% endcall %}
+  {% else %}
+  <table class="w-full text-left text-[13px]">
+    <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
+      <tr>
+        <th scope="col" class="h-9 px-4 font-medium">Organization</th>
+        <th scope="col" class="px-4 text-right font-medium sm:text-left">Members</th>
+        <th scope="col" class="hidden px-4 font-medium sm:table-cell">Repositories</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for org in orgs %}
+      <tr class="border-b border-line last:border-b-0">
+        <td class="max-w-0 px-4 py-2.5">
+          <div class="flex min-w-0 items-center gap-3">
+            {% call ui::avatar(org.avatar, "size-8 text-[11px]") %}{% endcall %}
+            <div class="min-w-0">
+              <a href="{{ org.url }}" class="block truncate font-medium hover:underline">{{ org.name }}</a>
+              {% if org.has_display_name %}<p class="truncate text-xs text-ink-muted">{{ org.label }}</p>{% endif %}
+            </div>
+          </div>
+        </td>
+        <td class="px-4 text-right tabular-nums text-ink-muted sm:text-left">{{ org.members }}</td>
+        <td class="hidden px-4 tabular-nums text-ink-muted sm:table-cell">{{ org.repositories }}</td>
+        <td class="hidden whitespace-nowrap px-4 text-ink-muted lg:table-cell"><time datetime="{{ org.created_iso }}">{{ org.created }}</time></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% call admin::pager(listing) %}{% endcall %}
+{% endblock %}

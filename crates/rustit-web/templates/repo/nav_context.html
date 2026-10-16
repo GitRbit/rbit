@@ -1,0 +1,7 @@
+{% import "macros.html" as ui %}
+{#- `owner / repo` breadcrumb in the top bar; expects a `header: RepoHeader` field. -#}
+<span class="text-ink-faint">/</span>
+<a href="/{{ header.owner }}" class="hidden truncate text-ink-muted hover:text-ink sm:inline">{{ header.owner }}</a>
+<span class="hidden text-ink-faint sm:inline">/</span>
+<a href="{{ header.home_url }}" class="truncate font-medium">{{ header.name }}</a>
+{% if header.is_private %}<span class="badge">Private</span>{% endif %}

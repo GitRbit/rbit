@@ -1,0 +1,21 @@
+[package]
+name = "rustit-git"
+description = "Git repository storage and read model for Rustit, built on gitoxide."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rustit-core.workspace = true
+gix.workspace = true
+similar.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

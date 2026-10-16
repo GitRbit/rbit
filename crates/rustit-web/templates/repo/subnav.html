@@ -1,0 +1,31 @@
+{% import "macros.html" as ui %}
+{#- Repository tabs, star button and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
+<div class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
+  <nav class="-mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
+    <a class="tab" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
+    <a class="tab" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
+    <a class="tab" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
+    <a class="tab" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
+    {% if header.can_admin %}
+    <a class="tab" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
+    {% endif %}
+  </nav>
+
+  <div class="ml-auto flex shrink-0 items-center gap-2">
+    {% let star = header.star_button(page.is_signed_in(), page.path.as_str()) %}
+    {% include "repo/star_button.html" %}
+
+    <details class="relative" data-menu>
+      <summary class="btn h-8 cursor-pointer sm:h-7">
+        Clone{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
+      </summary>
+      <div class="menu right-0 w-[min(24rem,calc(100vw-2rem))] p-3">
+        <p class="mb-2 text-xs font-medium text-ink-muted">HTTPS</p>
+        <div class="flex">
+          <input id="clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
+          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+        </div>
+      </div>
+    </details>
+  </div>
+</div>

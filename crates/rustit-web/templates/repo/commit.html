@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<header class="box overflow-hidden">
+  <div class="px-4 py-4 sm:px-5">
+    <h1 class="text-base font-semibold tracking-tight text-pretty">{{ commit.summary }}</h1>
+    {% if let Some(body) = body %}
+    <pre class="mt-3 whitespace-pre-wrap font-mono text-[12.5px] leading-5 text-ink-muted">{{ body }}</pre>
+    {% endif %}
+  </div>
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-subtle px-4 py-2.5 text-[13px] sm:px-5">
+    {% call ui::avatar(commit.avatar, "size-5 text-[9px]") %}{% endcall %}
+    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">committed</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
+    {% if let Some(committer) = committer %}<span class="text-ink-muted">· committed by {{ committer }}</span>{% endif %}
+    <div class="ml-auto flex items-center gap-3 font-mono text-xs text-ink-muted">
+      {% if !parents.is_empty() %}
+      <span>{% if parents.len() == 1 %}parent{% else %}parents{% endif %}
+        {% for parent in parents %}<a href="{{ parent.url }}" class="text-ink hover:underline hover:underline-offset-4">{{ parent.short_id }}</a>{% if !loop.last %} + {% endif %}{% endfor %}
+      </span>
+      {% endif %}
+      <span title="{{ commit.id }}">commit <span class="text-ink">{{ commit.short_id }}</span></span>
+      <a href="{{ commit.browse_url }}" class="btn h-7 px-2 font-sans sm:h-7">Browse files</a>
+    </div>
+  </div>
+</header>
+
+<div class="mb-3 mt-8 flex items-center gap-3 text-[13px]">
+  <span class="text-ink-muted"><span class="font-medium text-ink">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</span>
+  <span class="font-mono text-xs text-success">+{{ additions }}</span>
+  <span class="font-mono text-xs text-danger">−{{ deletions }}</span>
+</div>
+
+{% if truncated %}
+<p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-4 py-2.5 text-[13px] text-ink-muted">This commit is very large, so some diffs are not shown. Clone the repository to see the full change.</p>
+{% endif %}
+
+{% if files.len() > 1 %}
+<nav class="box mb-6" aria-label="Changed files">
+  <ul>
+    {% for file in files %}
+    <li class="border-b border-line last:border-b-0">
+      <a href="#{{ file.anchor }}" hx-boost="false" class="flex items-center gap-3 px-4 py-2 font-mono text-xs hover:bg-subtle">
+        <span class="w-16 shrink-0 font-sans text-[11px] text-ink-faint">{{ file.status }}</span>
+        <span class="min-w-0 flex-1 truncate">{{ file.path }}</span>
+        {% if file.stats_known %}
+        <span class="shrink-0 text-success">+{{ file.additions }}</span>
+        <span class="shrink-0 text-danger">−{{ file.deletions }}</span>
+        {% else %}
+        <span class="shrink-0 text-ink-faint">—</span>
+        {% endif %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}
+
+<div class="space-y-4">
+  {% for file in files %}
+  <details id="{{ file.anchor }}" class="box group scroll-mt-28 overflow-hidden" open>
+    <summary class="box-header cursor-pointer select-none gap-2 border-b-0 group-open:border-b">
+      {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
+      <span class="min-w-0 flex-1 truncate font-mono text-xs">
+        {% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}
+      </span>
+      <span class="badge hidden sm:inline-flex">{{ file.status }}</span>
+      {% if file.stats_known %}
+      <span class="font-mono text-xs text-success">+{{ file.additions }}</span>
+      <span class="font-mono text-xs text-danger">−{{ file.deletions }}</span>
+      {% endif %}
+    </summary>
+    {% if let Some(url) = file.view_url %}
+    <div class="flex justify-end border-b border-line px-3 py-1"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">View file</a></div>
+    {% endif %}
+    {% match file.body %}
+    {% when DiffBodyView::Text(hunks) %}
+    <div class="overflow-x-auto">
+      <table class="diff-view w-full border-collapse">
+        {% for hunk in hunks %}
+        <tbody>
+          <tr class="diff-hunk"><td class="num" colspan="2"></td><td class="code">{{ hunk.header }}</td></tr>
+          {% for line in hunk.lines %}
+          <tr class="diff-{{ line.kind }}">
+            <td class="num">{{ line.old_number }}</td>
+            <td class="num">{{ line.new_number }}</td>
+            <td class="code"><span class="sign">{{ line.sign }}</span>{{ line.text }}</td>
+          </tr>
+          {% if line.missing_newline %}
+          <tr class="diff-eof"><td class="num" colspan="2"></td><td class="code"><span class="sign"></span>No newline at end of file</td></tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+    {% when DiffBodyView::Binary %}
+    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Binary file not shown.</p>
+    {% when DiffBodyView::TooLarge %}
+    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Diff too large to display.</p>
+    {% when DiffBodyView::Submodule { old, new } %}
+    <p class="px-4 py-6 text-center font-mono text-xs text-ink-muted">Submodule commit {{ old }} → {{ new }}</p>
+    {% when DiffBodyView::NoContentChanges %}
+    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">No content changes.</p>
+    {% endmatch %}
+  </details>
+  {% endfor %}
+</div>
+{% endblock %}

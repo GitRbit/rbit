@@ -1,0 +1,20 @@
+{% import "macros.html" as ui %}
+{#- Star toggle and count; expects a `star: StarButton`. Replaced in place by htmx after a toggle. -#}
+<div id="star-button" class="flex shrink-0">
+  {% if star.is_signed_in %}
+  <form method="post" action="{{ star.action_url }}" hx-post="{{ star.action_url }}" hx-target="#star-button" hx-swap="outerHTML" class="flex">
+    <input type="hidden" name="action" value="{{ star.next_action() }}">
+    <input type="hidden" name="next" value="{{ star.return_to }}">
+    <button type="submit" class="btn h-8 rounded-r-none px-2.5 sm:h-7" aria-pressed="{{ star.starred }}" title="{% if star.starred %}Unstar this repository{% else %}Star this repository{% endif %}">
+      {% if star.starred %}{% call ui::icon("star", "size-3.5 fill-current") %}{% endcall %}{% else %}{% call ui::icon("star", "size-3.5 text-ink-muted") %}{% endcall %}{% endif %}
+      <span class="hidden sm:inline">{% if star.starred %}Starred{% else %}Star{% endif %}</span>
+    </button>
+  </form>
+  {% else %}
+  <a class="btn h-8 rounded-r-none px-2.5 sm:h-7" href="{{ star.login_url }}" title="Sign in to star this repository">
+    {% call ui::icon("star", "size-3.5 text-ink-muted") %}{% endcall %}
+    <span class="hidden sm:inline">Star</span>
+  </a>
+  {% endif %}
+  <a class="btn -ml-px h-8 rounded-l-none px-2 tabular-nums sm:h-7" href="{{ star.stargazers_url }}" title="Stargazers" aria-label="{{ star.count }} {% if star.count == 1 %}stargazer{% else %}stargazers{% endif %}">{{ star.count }}</a>
+</div>

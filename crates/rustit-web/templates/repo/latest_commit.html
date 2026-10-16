@@ -1,0 +1,9 @@
+{% import "macros.html" as ui %}
+{#- Most recent commit, used as the header of the file box; expects a `latest: CommitView` field. -#}
+<div class="box-header text-[13px]">
+  {% call ui::avatar(latest.avatar, "size-5 text-[9px]") %}{% endcall %}
+  <span class="shrink-0 font-medium">{{ latest.author }}</span>
+  <a href="{{ latest.url }}" class="min-w-0 flex-1 truncate text-ink-muted hover:text-ink" title="{{ latest.summary }}">{{ latest.summary }}</a>
+  <a href="{{ latest.url }}" class="hidden shrink-0 font-mono text-xs text-ink-faint hover:text-ink sm:inline">{{ latest.short_id }}</a>
+  <time class="shrink-0 text-xs text-ink-faint" datetime="{{ latest.when_iso }}" title="{{ latest.when_iso }}">{{ latest.when }}</time>
+</div>

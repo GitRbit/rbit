@@ -1,0 +1,95 @@
+{% import "macros.html" as ui %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ page.document_title() }}</title>
+  <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":20,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="{{ page.asset("icon.svg") }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="{{ page.asset("icon.svg") }}">
+  <link rel="stylesheet" href="{{ page.asset("app.css") }}">
+  <script src="{{ page.asset("theme.js") }}"></script>
+  <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
+  <script src="{{ page.asset("app.js") }}" type="module"></script>
+</head>
+<body hx-boost="true" class="flex min-h-dvh flex-col">
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
+
+  <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-px overflow-hidden" aria-hidden="true">
+    <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
+  </div>
+
+  <header class="sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <nav class="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-5") %}{% endcall %}</a>
+      <div class="flex min-w-0 items-center gap-2 text-[13px]">
+        {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
+      </div>
+
+      <div class="ml-auto flex items-center gap-1">
+        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
+        <button type="button" class="btn btn-ghost btn-icon" data-theme-toggle aria-label="Toggle colour theme" title="Toggle theme">
+          {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
+          {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
+        </button>
+
+        {% if let Some(user) = page.viewer %}
+        <a href="/new" class="btn btn-ghost btn-icon" aria-label="New repository" title="New repository">
+          {% call ui::icon("plus", "size-4") %}{% endcall %}
+        </a>
+        <details class="relative ml-1" data-menu>
+          <summary class="flex cursor-pointer rounded-full" aria-label="Account menu">
+            {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
+          </summary>
+          <div class="menu right-0 w-56">
+            <div class="px-2.5 py-2">
+              <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
+              <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+            </div>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/">Dashboard</a>
+            <a class="menu-item" href="/{{ user.name }}">Profile</a>
+            <a class="menu-item" href="/new">New repository</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">New organization</a>{% endif %}
+            <a class="menu-item" href="/settings">Settings</a>
+            <a class="menu-item sm:hidden" href="/explore">Explore</a>
+            {% if user.is_admin %}
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/admin">Site administration</a>
+            {% endif %}
+            <div class="menu-divider"></div>
+            <form method="post" action="/logout">
+              <button class="menu-item text-ink-muted" type="submit">Sign out</button>
+            </form>
+          </div>
+        </details>
+        {% else %}
+        <a href="/login" class="btn btn-ghost">Sign in</a>
+        <a href="/signup" class="btn btn-primary">Sign up</a>
+        {% endif %}
+      </div>
+    </nav>
+    {% block subnav %}{% endblock %}
+  </header>
+
+  <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-line">
+    <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
+      <span class="flex items-center gap-2">{% call ui::logo("size-3.5") %}{% endcall %}{{ page.site_name }}</span>
+      <nav class="flex gap-4" aria-label="Footer">
+        <a href="/explore" class="hover:text-ink">Explore</a>
+        <a href="/healthz" class="hover:text-ink" hx-boost="false">Status</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

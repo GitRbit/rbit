@@ -1,0 +1,32 @@
+{% import "macros.html" as ui %}
+{#- Organisation title block and tabs; expects a `header: OrgHeader` field. -#}
+<header class="flex items-start gap-4 pb-5">
+  {% call ui::avatar(header.avatar, "size-14 rounded-(--radius-ui) text-lg") %}{% endcall %}
+  <div class="min-w-0 flex-1">
+    <div class="flex min-w-0 items-center gap-2">
+      <h1 class="truncate text-xl font-semibold tracking-tight">{{ header.label }}</h1>
+      <span class="badge shrink-0">Organization</span>
+    </div>
+    <p class="text-[13px] text-ink-muted">{{ header.name }}</p>
+    {% if let Some(description) = header.description %}<p class="mt-2 max-w-2xl text-[13px]">{{ description }}</p>{% endif %}
+    {% if let Some(website) = header.website %}
+    <a href="{{ website }}" class="mt-2 inline-flex max-w-full items-center gap-1.5 text-[13px] text-ink-muted hover:text-ink" rel="nofollow ugc noopener" hx-boost="false">
+      {% call ui::icon("link", "size-3.5 shrink-0") %}{% endcall %}<span class="truncate">{{ header.website_label }}</span>
+    </a>
+    {% endif %}
+  </div>
+</header>
+
+<nav class="-mx-4 flex gap-5 scroll-tabs border-b border-line px-4 sm:mx-0 sm:px-0" aria-label="Organization">
+  <a class="tab" href="{{ header.repos_url }}" {% if header.is_active("repositories") %}aria-current="page"{% endif %}>
+    {% call ui::icon("repo", "size-3.5") %}{% endcall %}Repositories{% if let Some(count) = header.repo_count %}<span class="text-ink-faint">{{ count }}</span>{% endif %}
+  </a>
+  <a class="tab" href="{{ header.members_url }}" {% if header.is_active("members") %}aria-current="page"{% endif %}>
+    {% call ui::icon("users", "size-3.5") %}{% endcall %}Members{% if let Some(count) = header.member_count %}<span class="text-ink-faint">{{ count }}</span>{% endif %}
+  </a>
+  {% if header.can_manage %}
+  <a class="tab" href="{{ header.settings_url }}" {% if header.is_active("settings") %}aria-current="page"{% endif %}>
+    {% call ui::icon("settings", "size-3.5") %}{% endcall %}Settings
+  </a>
+  {% endif %}
+</nav>

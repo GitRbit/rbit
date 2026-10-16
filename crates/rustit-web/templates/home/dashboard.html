@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+  <section>
+    <div class="mb-3 flex h-8 items-center justify-between">
+      <h1 class="text-[13px] font-medium text-ink-muted">Repositories</h1>
+      <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New</a>
+    </div>
+    <div class="box">
+      {% if repos.is_empty() %}
+      {% call ui::empty_state("repo", "No repositories yet", "Create a repository to start hosting code on this server.") %}{% endcall %}
+      <div class="-mt-8 flex justify-center pb-10"><a href="/new" class="btn">Create repository</a></div>
+      {% else %}
+      <ul>{% for repo in repos %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
+      {% endif %}
+    </div>
+  </section>
+
+  <aside class="flex flex-col gap-8">
+    <section aria-labelledby="orgs-title">
+      <div class="mb-3 flex h-8 items-center justify-between">
+        <h2 id="orgs-title" class="text-[13px] font-medium text-ink-muted">Organizations</h2>
+        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New</a>{% endif %}
+      </div>
+      <div class="box">
+        {% if orgs.is_empty() %}
+        <p class="px-4 py-6 text-center text-[13px] text-ink-muted">
+          You are not a member of any organization.
+          {% if can_create_org %}<a href="/organizations/new" class="link">Create one</a> to share repositories with a team.{% endif %}
+        </p>
+        {% else %}
+        <ul>
+          {% for org in orgs %}
+          <li class="border-b border-line last:border-b-0">
+            <a href="{{ org.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
+              {% call ui::avatar(org.avatar, "size-5 rounded text-[9px]") %}{% endcall %}
+              <span class="min-w-0 flex-1 truncate text-[13px]">{{ org.label }}</span>
+              <span class="shrink-0 text-xs text-ink-faint">{{ org.role_label }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </section>
+
+    <section aria-labelledby="recent-title">
+      <div class="mb-3 flex h-8 items-center">
+        <h2 id="recent-title" class="text-[13px] font-medium text-ink-muted">Recently updated</h2>
+      </div>
+      <div class="box">
+        {% if recent.is_empty() %}
+        <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Nothing public yet.</p>
+        {% else %}
+        <ul>
+          {% for repo in recent %}
+          <li class="border-b border-line last:border-b-0">
+            <a href="{{ repo.url }}" class="flex items-center gap-2.5 px-4 py-2.5 hover:bg-subtle">
+              {% call ui::avatar(repo.owner_avatar, "size-5 text-[9px]") %}{% endcall %}
+              <span class="truncate text-[13px]"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+[package]
+name = "rustit-services"
+description = "Application use-cases for Rustit, combining storage, Git and authentication behind HTTP-agnostic APIs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rustit-core.workspace = true
+rustit-storage.workspace = true
+rustit-auth.workspace = true
+rustit-git.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

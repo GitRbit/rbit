@@ -1,0 +1,10 @@
+{#- Out-of-band cells for the file table: each replaces the empty slot with the same id in
+    repo/tree.html. The trigger element itself is replaced by nothing. -#}
+{% for cell in cells %}
+<span id="{{ cell.slot_id }}" class="contents" hx-swap-oob="true">
+  {%- if let Some(commit) = cell.commit %}
+  <a href="{{ commit.url }}" class="relative z-10 hidden min-w-0 flex-1 truncate text-[13px] text-ink-muted hover:text-ink hover:underline hover:underline-offset-4 md:block" title="{{ commit.summary }}">{{ commit.summary }}</a>
+  <time class="ml-auto shrink-0 text-xs text-ink-faint" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time>
+  {%- endif %}
+</span>
+{% endfor %}
