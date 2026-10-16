@@ -67,7 +67,7 @@ Settings**.
 |---|---|
 | `rustit serve` | Run the web (and SSH, if enabled) server — the default |
 | `rustit migrate` | Apply database migrations and exit |
-| `rustit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, manifest) |
+| `rustit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, manifest) |
 | `rustit user create <name> <email> [--admin]` | Create an account (password read from stdin) |
 
 ## Development

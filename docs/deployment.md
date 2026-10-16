@@ -6,6 +6,7 @@ Rustit is one binary plus the `git` executable. All state lives in one data dire
 |---|---|---|
 | `rustit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
 | `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
+| `attachments/<repo-id>/<asset-id>` | Files attached to releases | **Yes** (not `attachments/tmp`) |
 | `rustit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
@@ -277,6 +278,7 @@ server keeps running:
 DIR/
 ├── rustit.db                          SQLite snapshot (VACUUM INTO: one consistent read)
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
+├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 └── manifest.json                      format, version, time, counts; written last
 ```
 
@@ -284,6 +286,11 @@ The repositories are mirrored through Git's pack protocol, which copies each rep
 refs and every object they reach consistently even during a push or `git gc`. A
 repository created after the database snapshot is not included (it would be orphaned on
 restore anyway); one deleted in between is listed under `missing_repositories`.
+
+Release files are copied as they are: a file is renamed into place only once its upload
+is complete and never changes afterwards. Uploads still in progress (`attachments/tmp`)
+are skipped, and a file whose release was deleted after the snapshot is listed under
+`missing_attachments`.
 
 **The redb store (`rustit.redb`) is not backed up.** It holds only login sessions and
 caches. After a restore everyone signs in again and caches refill on demand.
@@ -309,11 +316,11 @@ The backup directory mirrors the data directory, so restoring is a copy:
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
    sudo mkdir -m 0750 /var/lib/rustit
-   sudo cp -a DIR/rustit.db DIR/repositories /var/lib/rustit/
+   sudo cp -a DIR/rustit.db DIR/repositories DIR/attachments /var/lib/rustit/
    sudo chown -R rustit:rustit /var/lib/rustit
    ```
    For Docker, copy into the volume, e.g.
-   `docker run --rm -v rustit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rustit.db /backup/repositories /data/ && chown -R 10001:10001 /data'`.
+   `docker run --rm -v rustit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rustit.db /backup/repositories /backup/attachments /data/ && chown -R 10001:10001 /data'`.
 4. Start Rustit. Pending migrations (if the backup came from an older version) run on
    start-up; a fresh `rustit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.
