@@ -6,6 +6,7 @@ use rustit_auth::Passwords;
 use rustit_core::{AccountId, Email, User};
 use rustit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
+use crate::audit::{AuditAction, AuditEntry, AuditService};
 use crate::{DomainEvent, ServiceContext, ServiceError};
 
 const MAX_DISPLAY_NAME_LEN: usize = 80;
@@ -93,6 +94,7 @@ impl ProfileService {
         let hash = Passwords::hash(new_password).await?;
         self.store().set_password_hash(user.id(), &hash).await?;
         tracing::info!(user = %user.name(), "password changed");
+        AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::PasswordChanged).by(user)).await;
         self.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
         Ok(())
     }

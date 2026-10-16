@@ -29,6 +29,7 @@ use rustit_mail::{
 use rustit_storage::sqlite::recovery::{NewEmailToken, RecoveryAccount, RecoveryStore, TokenPurpose};
 use tokio::sync::broadcast::error::RecvError;
 
+use crate::audit::{AuditAction, AuditEntry, AuditService};
 use crate::{DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
 /// How long a password-reset link works.
@@ -140,6 +141,10 @@ impl RecoveryService {
         RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None }
     }
 
+    fn audit(&self) -> AuditService {
+        AuditService::new(self.ctx.clone())
+    }
+
     fn store(&self) -> RecoveryStore {
         self.ctx.database.recovery()
     }
@@ -197,6 +202,7 @@ impl RecoveryService {
         store.mark_verified(account.id, &record.email, Timestamp::now()).await?;
 
         tracing::info!(user = %account.name, "password reset by email link");
+        self.audit().record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str())).await;
         self.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
         Ok(())
     }
@@ -296,6 +302,7 @@ impl RecoveryService {
         }
         self.send_reset(&account).await?;
         tracing::info!(admin = %actor.name(), user = %account.name, "administrator sent a password reset");
+        self.audit().record(AuditEntry::new(AuditAction::PasswordResetSent).by(actor).on(account.name.as_str())).await;
         Ok(account.email)
     }
 
@@ -313,6 +320,7 @@ impl RecoveryService {
         self.store().revoke_all(account.id, TokenPurpose::Reset).await?;
 
         tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
+        self.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(actor).on(account.name.as_str())).await;
         self.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
         Ok(())
     }

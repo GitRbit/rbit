@@ -148,3 +148,17 @@ async fn administrator_actions_and_tokens_are_recorded() {
     assert_eq!(actions, [(AuditAction::TokenRevoked, Some("laptop")), (AuditAction::TokenCreated, Some("laptop"))]);
     assert_eq!(tokens.items[1].detail, "write scope");
 }
+
+#[tokio::test]
+async fn administrator_password_actions_are_audited() {
+    let fixture = Fixture::new().await;
+    let admin = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+
+    fixture.services.recovery.admin_set_password(&admin, alice.id(), "a brand new passphrase".to_owned()).await.unwrap();
+
+    let events = fixture.services.audit.list(&admin, Some(AuditCategory::Administration), &query("", 1)).await.unwrap();
+    let event = events.items.iter().find(|event| event.action == AuditAction::PasswordSet).expect("password change recorded");
+    assert_eq!(event.actor_name.as_deref(), Some("root"));
+    assert_eq!(event.target_name.as_deref(), Some("alice"));
+}

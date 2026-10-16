@@ -62,6 +62,8 @@ pub enum AuditAction {
     SessionRevoked,
     OtherSessionsRevoked,
     SessionsRevokedAfterPasswordChange,
+    PasswordChanged,
+    PasswordReset,
     TokenCreated,
     TokenRevoked,
     UserCreated,
@@ -70,12 +72,14 @@ pub enum AuditAction {
     UserSuspended,
     UserUnsuspended,
     UserDeleted,
+    PasswordResetSent,
+    PasswordSet,
     RepositoryDeleted,
     InstanceSettingsChanged,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 24] = [
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -86,6 +90,8 @@ impl AuditAction {
         Self::SessionRevoked,
         Self::OtherSessionsRevoked,
         Self::SessionsRevokedAfterPasswordChange,
+        Self::PasswordChanged,
+        Self::PasswordReset,
         Self::TokenCreated,
         Self::TokenRevoked,
         Self::UserCreated,
@@ -94,6 +100,8 @@ impl AuditAction {
         Self::UserSuspended,
         Self::UserUnsuspended,
         Self::UserDeleted,
+        Self::PasswordResetSent,
+        Self::PasswordSet,
         Self::RepositoryDeleted,
         Self::InstanceSettingsChanged,
     ];
@@ -111,6 +119,8 @@ impl AuditAction {
             Self::SessionRevoked => "session_revoked",
             Self::OtherSessionsRevoked => "other_sessions_revoked",
             Self::SessionsRevokedAfterPasswordChange => "sessions_revoked_password_change",
+            Self::PasswordChanged => "password_changed",
+            Self::PasswordReset => "password_reset",
             Self::TokenCreated => "token_created",
             Self::TokenRevoked => "token_revoked",
             Self::UserCreated => "user_created",
@@ -119,6 +129,8 @@ impl AuditAction {
             Self::UserSuspended => "user_suspended",
             Self::UserUnsuspended => "user_unsuspended",
             Self::UserDeleted => "user_deleted",
+            Self::PasswordResetSent => "password_reset_sent",
+            Self::PasswordSet => "password_set",
             Self::RepositoryDeleted => "repository_deleted",
             Self::InstanceSettingsChanged => "instance_settings_changed",
         }
@@ -130,7 +142,12 @@ impl AuditAction {
 
     pub const fn category(self) -> AuditCategory {
         match self {
-            Self::SignIn | Self::SignInFailed | Self::TwoFactorFailed | Self::RecoveryCodeUsed => AuditCategory::Authentication,
+            Self::SignIn
+            | Self::SignInFailed
+            | Self::TwoFactorFailed
+            | Self::RecoveryCodeUsed
+            | Self::PasswordChanged
+            | Self::PasswordReset => AuditCategory::Authentication,
             Self::TwoFactorEnabled | Self::TwoFactorDisabled | Self::RecoveryCodesRegenerated => AuditCategory::TwoFactor,
             Self::SessionRevoked | Self::OtherSessionsRevoked | Self::SessionsRevokedAfterPasswordChange => AuditCategory::Sessions,
             Self::TokenCreated | Self::TokenRevoked => AuditCategory::Tokens,
@@ -140,6 +157,8 @@ impl AuditAction {
             | Self::UserSuspended
             | Self::UserUnsuspended
             | Self::UserDeleted
+            | Self::PasswordResetSent
+            | Self::PasswordSet
             | Self::RepositoryDeleted
             | Self::InstanceSettingsChanged => AuditCategory::Administration,
         }
@@ -158,6 +177,10 @@ impl AuditAction {
             Self::SessionRevoked => "Revoked a session",
             Self::OtherSessionsRevoked => "Signed out other sessions",
             Self::SessionsRevokedAfterPasswordChange => "Sessions ended after a password change",
+            Self::PasswordChanged => "Changed password",
+            Self::PasswordReset => "Reset password by email link",
+            Self::PasswordResetSent => "Sent a password reset email",
+            Self::PasswordSet => "Set a user's password",
             Self::TokenCreated => "Created an access token",
             Self::TokenRevoked => "Revoked an access token",
             Self::UserCreated => "Created a user",
