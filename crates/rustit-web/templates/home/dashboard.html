@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<script type="module" src="{{ page.asset("filter.js") }}"></script>
 
 <header class="mb-6 flex items-center gap-3">
   {% if let Some(user) = page.viewer %}

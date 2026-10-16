@@ -4,6 +4,12 @@
 // Theme menu and gallery: instant switching, live previews, filtering.
 import "./theme-picker.js";
 
+// Preloading, partial swaps, progress and focus for boosted navigation.
+import "./nav.js";
+
+// Instant list filters (dashboard repository list).
+import "./filter.js";
+
 async function copyToClipboard(button) {
   const source = document.getElementById(button.dataset.copy);
   const text = source?.value ?? source?.textContent ?? "";
