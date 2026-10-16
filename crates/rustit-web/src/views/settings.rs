@@ -135,6 +135,8 @@ impl ProfilePage {
 pub enum AccountForm {
     Email,
     Password,
+    /// "Resend verification email".
+    Verification,
 }
 
 impl AccountForm {
@@ -143,6 +145,7 @@ impl AccountForm {
         match self {
             Self::Email => "email",
             Self::Password => "password",
+            Self::Verification => "verification",
         }
     }
 
@@ -150,7 +153,29 @@ impl AccountForm {
         match value {
             "email" => Some(Self::Email),
             "password" => Some(Self::Password),
+            "verification" => Some(Self::Verification),
             _ => None,
+        }
+    }
+}
+
+/// Whether the current address is verified, and whether a link can be (re)sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EmailVerification {
+    Verified,
+    /// Not verified; a new link can be requested.
+    Pending,
+    /// Not verified, and the server can't send email.
+    #[default]
+    Unavailable,
+}
+
+impl EmailVerification {
+    pub const fn new(verified: bool, email_available: bool) -> Self {
+        match (verified, email_available) {
+            (true, _) => Self::Verified,
+            (false, true) => Self::Pending,
+            (false, false) => Self::Unavailable,
         }
     }
 }
@@ -165,6 +190,8 @@ pub struct AccountPage {
     pub email: String,
     pub email_error: FormError,
     pub password_error: FormError,
+    pub verification_error: FormError,
+    pub verification: EmailVerification,
     pub min_password_length: usize,
     /// The form whose change just succeeded, for the confirmation notice.
     pub saved: Option<AccountForm>,
@@ -179,9 +206,17 @@ impl AccountPage {
             email: user.email.as_str().to_owned(),
             email_error: FormError::default(),
             password_error: FormError::default(),
+            verification_error: FormError::default(),
+            verification: EmailVerification::default(),
             min_password_length,
             saved: None,
         }
+    }
+
+    #[must_use]
+    pub fn verification(mut self, verification: EmailVerification) -> Self {
+        self.verification = verification;
+        self
     }
 
     /// Re-renders with `error` shown above `form`; the email field keeps `submitted_email`.
@@ -190,6 +225,7 @@ impl AccountPage {
         match form {
             AccountForm::Email => self.email_error = error,
             AccountForm::Password => self.password_error = error,
+            AccountForm::Verification => self.verification_error = error,
         }
         if let Some(email) = submitted_email {
             self.email = email;
@@ -209,6 +245,18 @@ impl AccountPage {
 
     pub fn saved_password(&self) -> bool {
         self.saved == Some(AccountForm::Password)
+    }
+
+    pub fn sent_verification(&self) -> bool {
+        self.saved == Some(AccountForm::Verification)
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.verification == EmailVerification::Verified
+    }
+
+    pub fn can_resend(&self) -> bool {
+        self.verification == EmailVerification::Pending
     }
 }
 
@@ -488,8 +536,42 @@ mod tests {
     }
 
     #[test]
+    fn account_page_shows_verification_status() {
+        let html = AccountPage::new(page(), &user(), 10).verification(EmailVerification::Verified).render().unwrap();
+        assert!(html.contains(">Verified<"));
+        assert!(!html.contains("/settings/account/verify"));
+
+        let html = AccountPage::new(page(), &user(), 10).verification(EmailVerification::Pending).render().unwrap();
+        assert!(html.contains(">Unverified<"));
+        assert!(html.contains(r#"action="/settings/account/verify""#));
+        assert!(html.contains("Resend verification email"));
+
+        let html = AccountPage::new(page(), &user(), 10)
+            .verification(EmailVerification::Pending)
+            .saved(Some(AccountForm::Verification))
+            .render()
+            .unwrap();
+        assert!(html.contains("Verification email sent."));
+
+        let html = AccountPage::new(page(), &user(), 10)
+            .verification(EmailVerification::Pending)
+            .with_error(AccountForm::Verification, FormError::new("Too many attempts."), None)
+            .render()
+            .unwrap();
+        assert!(html.contains("Too many attempts."));
+
+        let html = AccountPage::new(page(), &user(), 10).verification(EmailVerification::Unavailable).render().unwrap();
+        assert!(html.contains("Email is not available on this server"));
+        assert!(!html.contains("/settings/account/verify"));
+
+        assert_eq!(EmailVerification::new(true, false), EmailVerification::Verified);
+        assert_eq!(EmailVerification::new(false, true), EmailVerification::Pending);
+        assert_eq!(EmailVerification::new(false, false), EmailVerification::Unavailable);
+    }
+
+    #[test]
     fn account_form_keys_round_trip() {
-        for form in [AccountForm::Email, AccountForm::Password] {
+        for form in [AccountForm::Email, AccountForm::Password, AccountForm::Verification] {
             assert_eq!(AccountForm::parse(form.key()), Some(form));
         }
         assert_eq!(AccountForm::parse("tokens"), None);

@@ -4,6 +4,35 @@
 <h2 class="text-xl font-semibold tracking-tight">Account</h2>
 <p class="mt-1 text-[13px] text-ink-muted">How you sign in. Both changes ask for your current password.</p>
 
+<section class="box mt-6" aria-labelledby="verification-heading">
+  <div class="p-4">
+    {% call ui::form_error(verification_error) %}{% endcall %}
+    {% if self.sent_verification() %}
+    <p role="status" class="mb-4 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Verification email sent. Check your inbox.</p>
+    {% endif %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h3 id="verification-heading" class="flex flex-wrap items-center gap-2 text-[13px] font-medium">
+          <span class="truncate">{{ current_email }}</span>
+          {% if self.is_verified() %}<span class="badge">Verified</span>{% else %}<span class="badge border-warning/40 text-warning">Unverified</span>{% endif %}
+        </h3>
+        <p class="mt-1 text-xs text-ink-muted">
+          {%- match verification -%}
+          {%- when EmailVerification::Verified -%}You have confirmed that this address is yours.
+          {%- when EmailVerification::Pending -%}Confirm the address with the link we emailed you.
+          {%- when EmailVerification::Unavailable -%}Email is not available on this server, so the address can't be verified.
+          {%- endmatch -%}
+        </p>
+      </div>
+      {% if self.can_resend() %}
+      <form method="post" action="/settings/account/verify" class="w-full sm:w-auto">
+        <button class="btn w-full sm:w-auto" type="submit">Resend verification email</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
 <form method="post" action="/settings/account/email" class="box mt-6" novalidate>
   <div class="box-header">
     <h3 class="text-[13px] font-medium">Email address</h3>

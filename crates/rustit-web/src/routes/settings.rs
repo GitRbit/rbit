@@ -15,11 +15,13 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::SignedIn,
+    routes::recovery::form_error_response,
     views::{
         components::FormError,
         layout::Page,
         settings::{
-            AccountForm, AccountPage, CreatedToken, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage, parse_expiry,
+            AccountForm, AccountPage, CreatedToken, EmailVerification, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage,
+            parse_expiry,
         },
     },
 };
@@ -34,6 +36,7 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/account", get(account))
         .route("/settings/account/email", post(change_email))
         .route("/settings/account/password", post(change_password))
+        .route("/settings/account/verify", post(resend_verification))
         .route("/settings/tokens", get(tokens).post(create_token))
         .route("/settings/tokens/{id}/revoke", post(revoke_token))
 }
@@ -119,9 +122,28 @@ pub struct PasswordFormInput {
 }
 
 /// `GET /settings/account`
-pub async fn account(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page, Query(query): Query<SavedQuery>) -> AccountPage {
+pub async fn account(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Query(query): Query<SavedQuery>,
+) -> WebResult<AccountPage> {
     let saved = query.saved.as_deref().and_then(AccountForm::parse);
-    AccountPage::new(page, &user, state.config.security.min_password_length).saved(saved)
+    Ok(account_page(&state, &user, page).await?.saved(saved))
+}
+
+/// The account page with the address's verification status.
+async fn account_page(state: &AppState, user: &User, page: Page) -> WebResult<AccountPage> {
+    let recovery = &state.services.recovery;
+    let status = recovery.email_status(user).await?;
+    let verification = EmailVerification::new(status.is_verified(), recovery.email_available());
+    Ok(AccountPage::new(page, user, state.config.security.min_password_length).verification(verification))
+}
+
+/// `POST /settings/account/verify`: emails a new verification link.
+pub async fn resend_verification(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page) -> WebResult<Response> {
+    let result = state.services.recovery.resend_verification(&user).await;
+    account_result(&state, &user, page, AccountForm::Verification, result, None).await
 }
 
 /// `POST /settings/account/email`
@@ -132,7 +154,7 @@ pub async fn change_email(
     Form(form): Form<EmailFormInput>,
 ) -> WebResult<Response> {
     let result = state.services.profiles.change_email(&user, form.current_password, &form.email).await;
-    account_result(&state, &user, page, AccountForm::Email, result.map(drop), Some(form.email))
+    account_result(&state, &user, page, AccountForm::Email, result.map(drop), Some(form.email)).await
 }
 
 /// `POST /settings/account/password`
@@ -147,12 +169,12 @@ pub async fn change_password(
     } else {
         Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
     };
-    account_result(&state, &user, page, AccountForm::Password, result, None)
+    account_result(&state, &user, page, AccountForm::Password, result, None).await
 }
 
 /// Redirects after a successful change, or re-renders the account page with the error
-/// shown above `form`.
-fn account_result(
+/// shown above `form` (429 with `Retry-After` when rate limited, 422 otherwise).
+async fn account_result(
     state: &AppState,
     user: &User,
     page: Page,
@@ -160,19 +182,14 @@ fn account_result(
     result: Result<(), ServiceError>,
     submitted_email: Option<String>,
 ) -> WebResult<Response> {
-    let message = match result {
+    let error = match result {
         Ok(()) => return Ok(Redirect::to(&format!("{}?saved={}", SettingsSection::Account.url(), form.key())).into_response()),
-        Err(ServiceError::Invalid(message)) => message,
-        Err(ServiceError::InvalidCredentials) => "current password is incorrect".to_owned(),
-        Err(conflict @ ServiceError::Conflict(_)) => conflict.to_string(),
+        Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_) | ServiceError::RateLimited { .. })) => error,
+        Err(ServiceError::InvalidCredentials) => ServiceError::Invalid("current password is incorrect".to_owned()),
         Err(other) => return Err(other.into()),
     };
-    let page = AccountPage::new(page, user, state.config.security.min_password_length).with_error(
-        form,
-        FormError::from_message(&message),
-        submitted_email,
-    );
-    Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+    let page = account_page(state, user, page).await?.with_error(form, FormError::from_message(&error.to_string()), submitted_email);
+    Ok(form_error_response(&error, page))
 }
 
 // ------------------------------------------------------------------ access tokens
