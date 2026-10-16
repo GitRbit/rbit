@@ -53,7 +53,11 @@ RUN groupadd --system --gid 10001 rustit \
 
 COPY --from=build /out/rustit /usr/local/bin/rustit
 
+# Both listeners bind every interface inside the container; publish them with -p. The SSH
+# server only starts with RUSTIT_SSH__ENABLED=true; its built-in default bind is loopback,
+# which a published port cannot reach.
 ENV RUSTIT_SERVER__BIND=0.0.0.0:3000 \
+    RUSTIT_SSH__BIND=0.0.0.0:2222 \
     RUSTIT_STORAGE__DATA_DIR=/data \
     RUST_LOG=info
 
