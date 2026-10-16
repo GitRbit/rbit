@@ -127,10 +127,6 @@ impl RecoveryServiceBuilder {
 }
 
 impl RecoveryService {
-    pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self::builder(ctx).build()
-    }
-
     pub fn builder(ctx: ServiceContext) -> RecoveryServiceBuilder {
         RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None }
     }
