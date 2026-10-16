@@ -272,6 +272,11 @@ impl Client {
         Response::read(request.send().await).await
     }
 
+    /// `GET path` with HTTP Basic credentials, as Git sends them.
+    pub async fn get_basic(&self, path: &str, login: &str, secret: &str) -> Response {
+        Response::read(self.http.get(self.url(path)).basic_auth(login, Some(secret)).send().await).await
+    }
+
     /// `POST path` with an `application/x-www-form-urlencoded` body.
     pub async fn post(&self, path: &str, form: &[(&str, &str)]) -> Response {
         self.post_with(path, form, &[]).await

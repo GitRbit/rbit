@@ -2,4 +2,5 @@
 //! drives it over HTTP and with the real `git` CLI. One test binary keeps link times
 //! down; each area is a module.
 
+mod accounts;
 mod harness;
