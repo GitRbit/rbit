@@ -304,8 +304,10 @@ pub async fn blob(
 
 /// `GET /{owner}/{repo}/raw/{revision}/{path…}`: the file's bytes.
 ///
-/// Always served as `text/plain` or `application/octet-stream` with a sandboxing CSP, so
-/// a committed HTML or SVG file can never execute script in this origin.
+/// Served as `text/plain` or `application/octet-stream`, except common image types (so
+/// README images display), always with a sandboxing CSP and `nosniff`: a committed HTML
+/// file is never rendered, and an SVG opened directly cannot run script in this origin
+/// (as an `<img>` it never can).
 pub async fn raw(
     State(state): State<AppState>,
     viewer: Viewer,
@@ -313,11 +315,16 @@ pub async fn raw(
 ) -> WebResult<Response> {
     let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+    let image_type = image_content_type(&path);
     let view = ctx.reader.blob(revision, path, MAX_RAW_BYTES).await.map_err(ServiceError::from)?;
     let Some(data) = view.data else {
         return Err(WebError::BadRequest("file is too large to download through the web interface; clone the repository instead".into()));
     };
-    let content_type = if view.is_binary { "application/octet-stream" } else { "text/plain; charset=utf-8" };
+    let content_type = match image_type {
+        Some(image) => image,
+        None if view.is_binary => "application/octet-stream",
+        None => "text/plain; charset=utf-8",
+    };
     Ok((
         [
             (header::CONTENT_TYPE, content_type),
@@ -383,6 +390,22 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
         days: CommitDay::group(commits),
         newer_url: (page_number > 1).then(|| format!("{base}?page={}", page_number - 1)),
         older_url: has_older.then(|| format!("{base}?page={}", page_number + 1)),
+    })
+}
+
+/// The image media type for `path`'s extension, for the types browsers display in `<img>`.
+fn image_content_type(path: &str) -> Option<&'static str> {
+    let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+    Some(match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
+        "ico" => "image/x-icon",
+        "svg" => "image/svg+xml",
+        _ => return None,
     })
 }
 
