@@ -231,7 +231,7 @@ async fn deleting_releases_and_repositories_removes_their_files() {
     let second = releases.create(&repo, &alice, input("v2", false)).await.unwrap();
     releases.upload_asset(&repo, &alice, second.id, "b.txt", "text/plain", &b"b"[..]).await.unwrap();
     assert!(repo_dir.exists());
-    fixture.services.repo_settings.delete(&repo, "alice/demo").await.unwrap();
+    fixture.services.repo_settings.delete(&alice, &repo, "alice/demo").await.unwrap();
 
     let deadline = Instant::now() + Duration::from_secs(10);
     while repo_dir.exists() {

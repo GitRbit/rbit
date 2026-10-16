@@ -168,7 +168,9 @@ pub async fn delete(
     Form(form): Form<DeleteFormInput>,
 ) -> WebResult<Response> {
     let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
-    match state.services.repo_settings.delete(&loaded.ctx, &form.confirm).await {
+    // Administrators are always signed in; `load_for_admin` answered 404 otherwise.
+    let user = viewer.user().ok_or(WebError::NotFound)?;
+    match state.services.repo_settings.delete(user, &loaded.ctx, &form.confirm).await {
         Ok(()) => Ok(Redirect::to(&format!("/{}", loaded.ctx.repo.owner.name)).into_response()),
         Err(ServiceError::Invalid(message)) => {
             let settings = settings_page(&state, &loaded, page).await?;

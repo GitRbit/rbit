@@ -35,9 +35,11 @@ pub enum DomainEvent {
         owner: AccountId,
         /// `owner/name` at the time of deletion.
         full_name: String,
+        /// The user who deleted it (for an account deletion, the site administrator).
+        actor: AccountId,
     },
-    /// A repository moved to another owner. Published by the access workstream.
-    RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId },
+    /// A repository moved to another owner, by `actor`.
+    RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId, actor: AccountId },
     /// `repo` was created as a fork of `parent`. Published by the repository essentials
     /// workstream.
     RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },

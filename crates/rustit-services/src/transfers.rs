@@ -86,7 +86,12 @@ impl TransferService {
 
         let moved = OwnedRepository { repo: Repository { owner_id: target.id, ..current.clone() }, owner: target };
         tracing::info!(repo = %full_name, to = %moved.full_name(), by = %actor.name(), "repository transferred");
-        self.ctx.events.publish(DomainEvent::RepositoryTransferred { repo: current.id, from: current.owner_id, to: moved.owner.id });
+        self.ctx.events.publish(DomainEvent::RepositoryTransferred {
+            repo: current.id,
+            from: current.owner_id,
+            to: moved.owner.id,
+            actor: actor.id(),
+        });
         self.audit
             .record(AuditEntry::new(AuditAction::RepositoryTransferred).by(actor).on(full_name).detail(format!("to {}", moved.full_name())))
             .await;

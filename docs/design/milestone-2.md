@@ -48,8 +48,8 @@ pub enum DomainEvent {
     // Published by PushService::complete for HTTP and SSH pushes.
     RepositoryPushed { repo: RepoId, pusher: Option<AccountId>, updates: Vec<RefUpdate> },
     RepositoryCreated { repo: RepoId, actor: AccountId },          // RepositoryService::create_in
-    RepositoryDeleted { repo: RepoId, owner: AccountId, full_name: String }, // settings + admin
-    RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId },  // A publishes
+    RepositoryDeleted { repo: RepoId, owner: AccountId, full_name: String, actor: AccountId }, // settings + admin
+    RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId, actor: AccountId },  // A publishes
     RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },     // R publishes
     ReleasePublished { repo: RepoId, release: ReleaseId, actor: AccountId }, // R publishes
     UserSignedUp { user: AccountId },

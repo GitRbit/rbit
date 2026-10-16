@@ -3,7 +3,7 @@
 //! Workstream D owns this file. Every method takes a [`RepoContext`] obtained from
 //! [`crate::RepositoryService::open`] for the acting user, and requires admin access.
 
-use rustit_core::{RepoName, Visibility};
+use rustit_core::{RepoName, User, Visibility};
 use rustit_git::RefKind;
 use rustit_storage::sqlite::repo_settings::{RepoGeneralSettings, RepoSettingsStore};
 
@@ -95,12 +95,13 @@ impl RepoSettingsService {
     }
 
     /// Permanently deletes the repository: its bare repository on disk, then its metadata
-    /// (stars cascade). `confirmation` must be the full `owner/name`.
+    /// (stars cascade). `confirmation` must be the full `owner/name`; `actor` is the
+    /// administrator doing it (the access check itself is `repo`'s).
     ///
     /// Disk first: if that fails nothing is lost from the database and the deletion can
     /// simply be retried; if the database step fails afterwards, a retry still succeeds
     /// because removing an already-missing directory is not an error.
-    pub async fn delete(&self, repo: &RepoContext, confirmation: &str) -> Result<(), ServiceError> {
+    pub async fn delete(&self, actor: &User, repo: &RepoContext, confirmation: &str) -> Result<(), ServiceError> {
         require_admin(repo)?;
         let full_name = repo.repo.full_name();
         if confirmation.trim() != full_name {
@@ -110,7 +111,7 @@ impl RepoSettingsService {
         self.ctx.repositories.delete(current.owner_id, current.id).await?;
         self.store().delete(current.id).await?;
         tracing::info!(repo = %full_name, "repository deleted");
-        self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo: current.id, owner: current.owner_id, full_name });
+        self.ctx.events.publish(DomainEvent::RepositoryDeleted { repo: current.id, owner: current.owner_id, full_name, actor: actor.id() });
         Ok(())
     }
 }

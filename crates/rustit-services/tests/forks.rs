@@ -128,7 +128,7 @@ async fn deleting_the_parent_keeps_the_fork() {
     let as_bob = fixture.services.repositories.open(Some(&bob), "alice", "demo").await.unwrap();
     fixture.services.forks.fork(&bob, &as_bob, ForkInput::default()).await.unwrap();
 
-    fixture.services.repo_settings.delete(&parent, "alice/demo").await.unwrap();
+    fixture.services.repo_settings.delete(&alice, &parent, "alice/demo").await.unwrap();
     let fork = fixture.services.repositories.open(Some(&bob), "bob", "demo").await.unwrap();
     assert!(fixture.services.forks.parent(Some(&bob), &fork).await.unwrap().is_none());
     assert!(!fork.reader.is_empty().await.unwrap(), "the fork's history survives");

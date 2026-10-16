@@ -88,7 +88,8 @@ pub async fn delete(State(state): State<AppState>, caller: Caller, Path((owner, 
     let ctx = caller.open_repo(&state, &owner, &name).await?;
     caller.require(TokenScope::Admin)?;
     require_admin(&ctx)?;
-    state.services.repo_settings.delete(&ctx, &ctx.repo.full_name()).await?;
+    let user = caller.require_user()?;
+    state.services.repo_settings.delete(user, &ctx, &ctx.repo.full_name()).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

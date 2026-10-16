@@ -159,11 +159,11 @@ async fn delete_repository() {
     fixture.services.stars.star(&bob, &fixture.open(Some(&bob), "alice", "doomed").await.unwrap()).await.unwrap();
     assert!(repo.disk_path.exists());
 
-    let wrong = fixture.services.repo_settings.delete(&repo, "doomed").await;
+    let wrong = fixture.services.repo_settings.delete(&alice, &repo, "doomed").await;
     assert!(matches!(wrong, Err(ServiceError::Invalid(_))));
     assert!(repo.disk_path.exists());
 
-    fixture.services.repo_settings.delete(&repo, "alice/doomed").await.unwrap();
+    fixture.services.repo_settings.delete(&alice, &repo, "alice/doomed").await.unwrap();
     assert!(!repo.disk_path.exists());
     assert!(matches!(fixture.open(Some(&alice), "alice", "doomed").await, Err(ServiceError::NotFound)));
     assert!(fixture.services.stars.starred_by(Some(&bob), &bob.account).await.unwrap().is_empty(), "stars cascade");
@@ -179,10 +179,10 @@ async fn creating_and_deleting_repositories_publish_events() {
     let id = repo.repo.repo.id;
     assert_eq!(events.recv().await.unwrap(), DomainEvent::RepositoryCreated { repo: id, actor: alice.id() });
 
-    fixture.services.repo_settings.delete(&repo, "alice/short-lived").await.unwrap();
+    fixture.services.repo_settings.delete(&alice, &repo, "alice/short-lived").await.unwrap();
     assert_eq!(
         events.recv().await.unwrap(),
-        DomainEvent::RepositoryDeleted { repo: id, owner: alice.id(), full_name: "alice/short-lived".to_owned() }
+        DomainEvent::RepositoryDeleted { repo: id, owner: alice.id(), full_name: "alice/short-lived".to_owned(), actor: alice.id() }
     );
 }
 
@@ -199,7 +199,7 @@ async fn only_admins_change_settings() {
     assert!(!as_bob.access.can_admin());
     assert!(matches!(settings.update(&as_bob, general("", Visibility::Private, None)).await, Err(ServiceError::Forbidden)));
     assert!(matches!(settings.rename(&as_bob, "mine").await, Err(ServiceError::Forbidden)));
-    assert!(matches!(settings.delete(&as_bob, "alice/project").await, Err(ServiceError::Forbidden)));
+    assert!(matches!(settings.delete(&bob, &as_bob, "alice/project").await, Err(ServiceError::Forbidden)));
 
     let as_root = fixture.open(Some(&root), "alice", "project").await.unwrap();
     settings.update(&as_root, general("Moderated", Visibility::Public, None)).await.unwrap();

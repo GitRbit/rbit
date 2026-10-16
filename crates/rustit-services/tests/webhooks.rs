@@ -347,9 +347,10 @@ async fn organisation_hooks_fire_for_its_repositories_in_the_background() {
 
     // Deleting reaches the organisation's hook although the repository's own are gone.
     let admin = fixture.services.repositories.open(Some(&alice), "acme", "tools").await.unwrap();
-    fixture.services.repo_settings.delete(&admin, "acme/tools").await.unwrap();
+    fixture.services.repo_settings.delete(&alice, &admin, "acme/tools").await.unwrap();
     let deleted = receiver.wait_for(3).await[2].json();
     assert_eq!((deleted["action"].as_str(), deleted["repository"]["id"].as_i64()), (Some("deleted"), Some(created.repo.repo.id.0)));
+    assert_eq!(deleted["sender"]["login"], "alice", "the deleting user is the sender");
 
     tokio::time::timeout(Duration::from_secs(12), fixture.services.shutdown()).await.unwrap();
 }

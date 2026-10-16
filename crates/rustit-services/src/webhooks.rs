@@ -395,22 +395,24 @@ impl WebhookService {
                     payloads::with_organization(payloads::repository_event("created", &repository, sender.as_ref(), &base), &owned, &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
-            DomainEvent::RepositoryDeleted { repo, owner, full_name } => {
+            DomainEvent::RepositoryDeleted { repo, owner, full_name, actor } => {
                 // The repository's own hooks went with it; only its organisation's remain.
                 let Some(org) = self.inner.ctx.database.orgs().find(*owner).await? else { return Ok(0) };
                 let hooks = store.subscribed(None, &[*owner], WebhookEvent::Repository).await?;
+                let sender = self.account(*actor).await?;
                 let repository = payloads::deleted_repository(repo.0, full_name, Some(&org.account), &base);
-                let mut payload = payloads::repository_event("deleted", &repository, None, &base);
+                let mut payload = payloads::repository_event("deleted", &repository, sender.as_ref(), &base);
                 payload["organization"] = payloads::account(&org.account, &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
-            DomainEvent::RepositoryTransferred { repo, from, to: _ } => {
+            DomainEvent::RepositoryTransferred { repo, from, to: _, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let Some(previous) = self.account(*from).await? else { return Ok(0) };
                 let mut orgs = org_of(&owned.owner);
                 orgs.extend(org_of(&previous));
                 let hooks = store.subscribed(Some(*repo), &orgs, WebhookEvent::Repository).await?;
-                let payload = payloads::transferred(&owned, &previous, None, &base);
+                let sender = self.account(*actor).await?;
+                let payload = payloads::transferred(&owned, &previous, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
             DomainEvent::RepositoryForked { repo, parent, actor } => {

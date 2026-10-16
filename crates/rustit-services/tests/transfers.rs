@@ -82,7 +82,7 @@ async fn admins_move_repositories_to_their_organisations() {
     assert_eq!(moved.repo.id, ctx.repo.repo.id);
     assert_eq!(
         events.recv().await.unwrap(),
-        DomainEvent::RepositoryTransferred { repo: ctx.repo.repo.id, from: alice.id(), to: moved.owner.id }
+        DomainEvent::RepositoryTransferred { repo: ctx.repo.repo.id, from: alice.id(), to: moved.owner.id, actor: alice.id() }
     );
 
     let reopened = fixture.open(&alice, "acme", "rocket").await;
