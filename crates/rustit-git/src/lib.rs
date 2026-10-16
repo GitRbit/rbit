@@ -6,6 +6,7 @@
 //! * [`RepositoryReader`] — a read model (refs, trees, blobs, history) over one repository.
 //! * Insights derived from history: [`languages`] (language breakdown) and
 //!   [`last_commit`] (the last commit that changed each directory entry).
+//! * [`Maintenance`] — housekeeping (`git gc --auto`) delegated to the `git` executable.
 //!
 //! gitoxide is synchronous, so every async method here runs its work on Tokio's
 //! blocking pool. Repositories are opened with *isolated* options: no system or global
@@ -17,6 +18,7 @@ pub mod diff;
 pub mod error;
 pub mod languages;
 pub mod last_commit;
+pub mod maintenance;
 pub mod model;
 pub mod reader;
 pub mod revision;
@@ -26,6 +28,7 @@ pub use changes::DiffLimits;
 pub use error::GitError;
 pub use languages::{LanguageShare, LanguageStats};
 pub use last_commit::{LastCommitLimits, LastCommits};
+pub use maintenance::{Maintenance, MaintenanceError};
 pub use model::{
     BlobView, ChangeStatus, CommitDetail, CommitSummary, EntryKind, FileDiff, FileDiffBody, RefDetail, RefKind, RefSummary, TreeEntry,
     TreeView,
