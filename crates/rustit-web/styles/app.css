@@ -449,19 +449,40 @@
 
 /* ---------------------------------------------------------------- htmx progress bar */
 
+/* Shown while a navigation is in flight (`nav-busy` on <html>, set by nav.js) or while an
+   element using it as its hx-indicator is busy. It fades in only after 150 ms, so fast
+   (and preloaded) navigations show nothing at all, and it hides instantly. Fixed and
+   out of flow: it never shifts the layout. */
 #page-progress {
   opacity: 0;
+  transition: opacity 0s;
 }
 
-.htmx-request #page-progress,
+.nav-busy #page-progress,
 #page-progress.htmx-request {
   opacity: 1;
-  animation: page-progress 1s ease-in-out infinite;
+  transition: opacity 0.2s ease-out 150ms;
+  animation: page-progress 1.1s ease-in-out infinite;
 }
 
 @keyframes page-progress {
   from { transform: translateX(-100%); }
-  to { transform: translateX(300%); }
+  to { transform: translateX(400%); }
+}
+
+/* Focus moves to <main> after a navigation (for screen readers); no ring for that. */
+#main:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A still bar across the whole width instead of a sweeping one. */
+  .nav-busy #page-progress,
+  #page-progress.htmx-request {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

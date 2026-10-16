@@ -3,6 +3,14 @@
 import { copyFileSync, mkdirSync } from "node:fs";
 
 const target = "crates/rustit-web/assets/vendor";
+const files = [
+  ["node_modules/htmx.org/dist/htmx.min.js", "htmx.min.js"],
+  // Hover/touch preloading for boosted links (enabled on <body>, configured by nav.js).
+  ["node_modules/htmx-ext-preload/dist/preload.min.js", "htmx-preload.min.js"],
+];
+
 mkdirSync(target, { recursive: true });
-copyFileSync("node_modules/htmx.org/dist/htmx.min.js", `${target}/htmx.min.js`);
-console.log(`vendored htmx.min.js -> ${target}`);
+for (const [source, name] of files) {
+  copyFileSync(source, `${target}/${name}`);
+  console.log(`vendored ${name} -> ${target}`);
+}

@@ -6,7 +6,8 @@
 {% if let Some(upstream) = header.mirror_url %}
 <p class="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
 {% endif %}
-<div class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
+{#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository. -#}
+<div id="repo-subnav" data-repo-scope="{{ header.home_url }}" class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
   <nav class="-mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
     <a class="tab" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
     <a class="tab" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>

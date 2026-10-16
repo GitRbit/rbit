@@ -24,12 +24,15 @@
   {%- endif %}
   <script src="{{ page.asset("theme.js") }}"></script>
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
+  <script src="{{ page.asset("vendor/htmx-preload.min.js") }}" defer></script>
+  {#- Own tags rather than imports from app.js: module imports would skip the content hash. -#}
+  <script src="{{ page.asset("nav.js") }}" type="module"></script>
   <script src="{{ page.asset("app.js") }}" type="module"></script>
 </head>
-<body hx-boost="true" class="flex min-h-dvh flex-col">
+<body hx-boost="true" hx-ext="preload" class="flex min-h-dvh flex-col">
   <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
 
-  <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-px overflow-hidden" aria-hidden="true">
+  <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
     <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
   </div>
 
