@@ -13,9 +13,11 @@
 
 use rustit_core::{RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
 use rustit_git::RepositoryReader;
+/// The stored keys, re-exported so callers need not depend on the storage layer.
+pub use rustit_storage::sqlite::ssh_keys::{DeployKey, DeployKeyId, SshKey, SshKeyId};
 use rustit_storage::{
     StorageError,
-    sqlite::ssh_keys::{DeployKey, DeployKeyId, KeyHolder, NewPublicKey, SshKey, SshKeyId, SshKeyStore},
+    sqlite::ssh_keys::{KeyHolder, NewPublicKey, SshKeyStore},
 };
 use ssh_key::{HashAlg, PublicKey, public::KeyData};
 

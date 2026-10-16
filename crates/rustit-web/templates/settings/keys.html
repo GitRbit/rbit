@@ -1,0 +1,62 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+<h2 class="text-xl font-semibold tracking-tight">SSH keys</h2>
+<p class="mt-1 text-[13px] text-ink-muted">Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually <span class="font-mono text-ink">~/.ssh/id_ed25519.pub</span>.</p>
+
+<form method="post" action="/settings/keys" class="box mt-6" novalidate>
+  <div class="box-header">
+    <h3 class="text-[13px] font-medium">New SSH key</h3>
+  </div>
+  <div class="p-4">
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <label class="label" for="key-title">Title <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="e.g. Work laptop" autocomplete="off">
+    <p class="hint">Defaults to the key's comment.</p>
+
+    <label class="label mt-5" for="key-value">Key</label>
+    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+    <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono">sk-…</span>). Create one with <span class="font-mono">ssh-keygen -t ed25519</span>.</p>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Add key</button>
+  </div>
+</form>
+
+<section class="mt-6" aria-labelledby="keys-title">
+  <div class="mb-3 flex h-8 items-center justify-between">
+    <h3 id="keys-title" class="text-[13px] font-medium text-ink-muted">Your keys</h3>
+    {% if !keys.is_empty() %}<span class="text-xs text-ink-faint">{{ keys.len() }}</span>{% endif %}
+  </div>
+  <div class="box">
+    {% if keys.is_empty() %}
+    {% call ui::empty_state("terminal", "No SSH keys", "Add a public key to use Git over SSH.") %}{% endcall %}
+    {% else %}
+    <ul>
+      {% for key in keys %}
+      <li class="row items-start gap-3 py-3 sm:items-center">
+        <div class="min-w-0 flex-1">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate font-medium">{{ key.title }}</span>
+            <span class="badge">{{ key.type_label }}</span>
+          </div>
+          <p class="mt-1 break-all font-mono text-xs text-ink">{{ key.fingerprint }}</p>
+          <p class="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
+            <time datetime="{{ key.added_iso }}">{{ key.added }}</time>
+            <span>{{ key.last_used }}</span>
+          </p>
+        </div>
+        <form method="post" action="{{ key.delete_url }}" class="shrink-0">
+          <button class="btn" type="submit" aria-label="Delete {{ key.title }}">Delete</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% if let Some(command) = test_command %}
+  <p class="hint mt-3">Check that a key works with <span class="font-mono text-ink">{{ command }}</span>.</p>
+  {% endif %}
+</section>
+{% endblock %}
