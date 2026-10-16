@@ -36,6 +36,10 @@ pub enum ThrottleScope {
     GitAuth,
     /// SSH authentication attempts (keyed by client address).
     SshAuth,
+    /// Access tokens presented to the REST API (keyed by client address); invalid ones cost extra.
+    ApiAuth,
+    /// Authenticated REST API requests (keyed by account), so one script cannot monopolise the instance.
+    ApiRequest,
 }
 
 /// A budget: `burst` units, refilled one per `refill`; failures cost `failure_cost` more.
@@ -87,8 +91,11 @@ impl Bucket {
             // Three emails, then one every ten minutes.
             Self::Scope(ThrottleScope::EmailRequest) => Limit::new(3, 600, 0),
             // A clone or push is 2–3 authenticated requests; wrong passwords cost 11 requests' worth.
-            Self::Scope(ThrottleScope::GitAuth) => Limit::new(30, 4, 10),
+            // API tokens get the same budget: a valid token costs one request, an invalid one eleven.
+            Self::Scope(ThrottleScope::GitAuth | ThrottleScope::ApiAuth) => Limit::new(30, 4, 10),
             Self::Scope(ThrottleScope::SshAuth) => Limit::new(20, 3, 5),
+            // 300 requests at once, then one per second (3,600 an hour) per account.
+            Self::Scope(ThrottleScope::ApiRequest) => Limit::new(300, 1, 0),
             // Generous: a person clicking around never notices, a script hammering forms does.
             Self::UnsafeRequest => Limit::new(60, 1, 0),
         }

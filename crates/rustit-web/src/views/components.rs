@@ -120,6 +120,17 @@ impl Pagination {
 #[derive(Debug, Clone, Default)]
 pub struct FormError(pub Option<String>);
 
+/// A link to a settings sub-page, rendered by the `ui::settings_card` macro.
+#[derive(Debug, Clone)]
+pub struct SettingsCard {
+    pub url: String,
+    /// One of the icons `ui::settings_card` knows: `server`, `users`, `webhook`,
+    /// `refresh`, `transfer`; anything else shows the generic settings icon.
+    pub icon: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+}
+
 impl FormError {
     pub fn new(message: impl Into<String>) -> Self {
         Self(Some(message.into()))

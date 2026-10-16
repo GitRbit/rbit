@@ -6,24 +6,32 @@
 
 pub mod accounts;
 pub mod admin;
+pub mod archives;
 pub mod audit;
+pub mod collaborators;
 pub mod error;
 pub mod events;
+pub mod forks;
 pub mod insights;
 pub mod instance;
 pub mod jobs;
 pub mod mail;
+pub mod mirrors;
 pub mod orgs;
 pub mod profiles;
 pub mod pushes;
 pub mod recovery;
+pub mod releases;
 pub mod repo_settings;
 pub mod repositories;
 pub mod ssh_keys;
 pub mod stars;
+pub mod teams;
 pub mod throttle;
 pub mod tokens;
+pub mod transfers;
 pub mod two_factor;
+pub mod webhooks;
 
 use std::sync::Arc;
 
@@ -33,24 +41,32 @@ use rustit_storage::{Database, KvStore};
 
 pub use accounts::{AccountService, SignUp};
 pub use admin::AdminService;
+pub use archives::ArchiveService;
 pub use audit::AuditService;
+pub use collaborators::CollaboratorService;
 pub use error::ServiceError;
 pub use events::{DomainEvent, EventBus};
+pub use forks::ForkService;
 pub use insights::InsightsService;
 pub use instance::InstanceService;
 pub use jobs::JobService;
 pub use mail::MailService;
+pub use mirrors::MirrorService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
 pub use profiles::ProfileService;
 pub use pushes::{PendingPush, PushService};
 pub use recovery::RecoveryService;
+pub use releases::ReleaseService;
 pub use repo_settings::RepoSettingsService;
 pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
 pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
+pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
 pub use tokens::{AccessTokenService, CreateAccessToken};
+pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
+pub use webhooks::WebhookService;
 
 /// The infrastructure every service is built from. Cheap to clone (all handles are `Arc`s).
 #[derive(Debug, Clone)]
@@ -84,6 +100,17 @@ pub struct Services {
     pub throttle: ThrottleService,
     pub tokens: AccessTokenService,
     pub two_factor: TwoFactorService,
+    // Milestone 2 wave A: access (A).
+    pub collaborators: CollaboratorService,
+    pub teams: TeamService,
+    pub transfers: TransferService,
+    // API & webhooks (W).
+    pub webhooks: WebhookService,
+    // Repository essentials (R).
+    pub archives: ArchiveService,
+    pub forks: ForkService,
+    pub mirrors: MirrorService,
+    pub releases: ReleaseService,
 }
 
 impl Services {
@@ -99,6 +126,8 @@ impl Services {
         // Shared so recovery emails use the same delivery queue and the same rate limits.
         let mail = MailService::new(ctx.clone());
         let throttle = ThrottleService::new(ctx.clone());
+        let repositories =
+            RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
@@ -115,7 +144,15 @@ impl Services {
             profiles: ProfileService::new(ctx.clone()),
             pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
-            repositories: RepositoryService::new(config, database.repositories(), ctx.repositories.clone(), ctx.events.clone()),
+            collaborators: CollaboratorService::new(ctx.clone()),
+            teams: TeamService::new(ctx.clone()),
+            transfers: TransferService::new(ctx.clone()),
+            webhooks: WebhookService::new(ctx.clone()),
+            archives: ArchiveService::new(ctx.clone()),
+            forks: ForkService::new(ctx.clone(), repositories.clone()),
+            mirrors: MirrorService::new(ctx.clone()),
+            releases: ReleaseService::new(ctx.clone()),
+            repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
             events: ctx.events.clone(),
@@ -127,5 +164,15 @@ impl Services {
     pub fn spawn_background(&self) {
         self.jobs.spawn_background();
         self.recovery.spawn_background();
+        self.webhooks.spawn_background();
+        self.releases.spawn_background();
+        self.mirrors.spawn_background();
+    }
+
+    /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up)
+    /// and waits, bounded, for it to finish. Call during graceful shutdown, before closing
+    /// the stores.
+    pub async fn shutdown(&self) {
+        tokio::join!(self.jobs.shutdown(), self.webhooks.shutdown(), self.releases.shutdown(), self.mirrors.shutdown());
     }
 }

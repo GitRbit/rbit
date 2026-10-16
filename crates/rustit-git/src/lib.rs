@@ -15,15 +15,21 @@
 //! Git configuration is consulted, which keeps behaviour deterministic and closes a
 //! class of configuration-injection attacks.
 
+pub mod archive;
+pub mod blame;
 pub mod changes;
+pub mod compare;
 pub mod diff;
 pub mod error;
+pub mod fork;
 pub mod languages;
 pub mod last_commit;
 pub mod maintenance;
+pub mod mirror;
 pub mod model;
 pub mod push;
 pub mod reader;
+pub mod relocate;
 pub mod revision;
 pub mod storage;
 

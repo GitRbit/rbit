@@ -9,9 +9,12 @@ use rustit_services::{StarSummary, stars::Stargazer};
 use crate::{
     urls::encode_path,
     views::{
-        components::{Avatar, FormError},
+        collaborators,
+        components::{Avatar, FormError, SettingsCard},
         layout::Page,
+        mirrors,
         repo::RepoHeader,
+        transfer, webhooks,
     },
 };
 
@@ -66,12 +69,32 @@ pub struct RepoSettingsPage {
     pub delete_error: FormError,
     /// Set after a successful save (`?saved=1`).
     pub saved: bool,
+    /// Links to settings sub-pages (deploy keys, and those milestone 2 workstreams add).
+    pub cards: Vec<SettingsCard>,
+    /// Links shown in the danger zone above the delete form.
+    pub danger_cards: Vec<SettingsCard>,
+}
+
+/// The settings sub-pages, in display order. Each feature area contributes its own.
+fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
+    let mut cards = vec![SettingsCard {
+        url: format!("{}/keys", header.settings_url),
+        icon: "server",
+        title: "Deploy keys",
+        description: "SSH keys that give a server or CI job access to this repository only.",
+    }];
+    cards.extend(collaborators::repo_settings_cards(header));
+    cards.extend(webhooks::repo_settings_cards(header));
+    cards.extend(mirrors::repo_settings_cards(header));
+    cards
 }
 
 impl RepoSettingsPage {
     pub fn new(page: Page, header: RepoHeader, general: GeneralForm) -> Self {
         let settings_url = header.settings_url.clone();
         Self {
+            cards: settings_cards(&header),
+            danger_cards: transfer::danger_zone_cards(&header),
             page: page.titled(format!("Settings · {}/{}", header.owner, header.name)),
             name: header.name.clone(),
             full_name: format!("{}/{}", header.owner, header.name),
@@ -272,6 +295,8 @@ mod tests {
         assert!(html.contains(r#"action="/alice/proj/settings/delete""#));
         assert!(html.contains(r#"<option value="dev" selected>"#));
         assert!(html.contains("Nope."));
+        assert!(html.contains(r#"href="/alice/proj/settings/keys""#), "settings sub-pages are linked as cards");
+        assert!(html.contains("Deploy keys"));
     }
 
     #[test]

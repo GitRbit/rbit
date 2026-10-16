@@ -4,19 +4,27 @@
 //! Each `[section]` of the TOML file is one struct. Larger areas live in their own
 //! submodule so they can evolve independently.
 
+mod api;
 mod mail;
+mod mirrors;
 mod operations;
+mod releases;
 mod security;
 mod ssh;
+mod webhooks;
 
 use std::{net::SocketAddr, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+pub use api::ApiConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
+pub use mirrors::MirrorConfig;
 pub use operations::OperationsConfig;
+pub use releases::ReleaseConfig;
 pub use security::{ProxyNetwork, ProxyNetworkError, SecurityConfig};
 pub use ssh::SshConfig;
+pub use webhooks::WebhookConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -28,6 +36,10 @@ pub struct Config {
     pub mail: MailConfig,
     pub ssh: SshConfig,
     pub operations: OperationsConfig,
+    pub api: ApiConfig,
+    pub webhooks: WebhookConfig,
+    pub releases: ReleaseConfig,
+    pub mirrors: MirrorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +102,11 @@ impl StorageConfig {
 
     pub fn repositories_dir(&self) -> PathBuf {
         self.data_dir.join("repositories")
+    }
+
+    /// Files attached to releases: `<attachments_dir>/<repo_id>/<asset_id>`.
+    pub fn attachments_dir(&self) -> PathBuf {
+        self.data_dir.join("attachments")
     }
 }
 

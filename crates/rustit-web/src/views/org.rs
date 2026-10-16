@@ -6,8 +6,9 @@ use rustit_core::{OrgMember, OrgRole, Organization, User};
 use rustit_services::orgs::OrgContext;
 
 use crate::views::{
-    components::{Avatar, FormError, RepoCard},
+    components::{Avatar, FormError, RepoCard, SettingsCard},
     layout::Page,
+    teams, webhooks,
 };
 
 // ------------------------------------------------------------------ shared pieces
@@ -195,6 +196,15 @@ pub struct OrgSettingsPage {
     pub repo_count: usize,
     pub save_url: String,
     pub delete_url: String,
+    /// Links to settings sub-pages (teams, webhooks).
+    pub cards: Vec<SettingsCard>,
+}
+
+/// The organisation settings sub-pages, in display order; `settings_url` is `/{org}/settings`.
+pub fn org_settings_cards(settings_url: &str) -> Vec<SettingsCard> {
+    let mut cards = teams::org_settings_cards(settings_url);
+    cards.extend(webhooks::org_settings_cards(settings_url));
+    cards
 }
 
 // ------------------------------------------------------------------ creation

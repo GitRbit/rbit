@@ -147,8 +147,8 @@ impl RepositoryService {
         Ok(OwnedRepository { owner, repo })
     }
 
-    /// Resolves and authorises the owner of a new repository.
-    async fn owner_for_new_repository(&self, actor: &User, owner: &str) -> Result<Account, ServiceError> {
+    /// Resolves and authorises the owner of a new repository (also used for forks).
+    pub(crate) async fn owner_for_new_repository(&self, actor: &User, owner: &str) -> Result<Account, ServiceError> {
         if owner.is_empty() || owner.eq_ignore_ascii_case(actor.name().as_str()) {
             return Ok(actor.account.clone());
         }

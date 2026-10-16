@@ -91,6 +91,11 @@ metrics-exporter-prometheus = { version = "0.18", default-features = false }
 reqwest = { version = "0.13", default-features = false, features = ["cookies", "form"] }
 proptest = "1"
 
+# Milestone 2 wave A — each workstream adds its dependencies in its own block below.
+# --- A: access (collaborators, teams, transfer) ---
+# --- W: API & webhooks ---
+# --- R: repository essentials (archives, releases, blame, compare, forks, mirrors) ---
+
 # Testing
 tempfile = "3"
 

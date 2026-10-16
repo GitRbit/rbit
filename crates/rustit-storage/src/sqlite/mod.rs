@@ -4,16 +4,22 @@ mod access_tokens;
 mod accounts;
 pub mod admin;
 pub mod audit;
+pub mod collaborators;
+pub mod forks;
 pub mod instance;
+pub mod mirrors;
 pub mod orgs;
 pub mod profiles;
 pub mod recovery;
+pub mod releases;
 pub mod repo_settings;
 mod repositories;
 mod rows;
 pub mod ssh_keys;
 pub mod stars;
+pub mod teams;
 pub mod two_factor;
+pub mod webhooks;
 
 use std::{path::Path, str::FromStr, time::Duration};
 
@@ -110,6 +116,32 @@ impl Database {
 
     pub fn stars(&self) -> stars::StarStore {
         stars::StarStore::new(self.pool.clone())
+    }
+
+    // Milestone 2 wave A.
+
+    pub fn collaborators(&self) -> collaborators::CollaboratorStore {
+        collaborators::CollaboratorStore::new(self.pool.clone())
+    }
+
+    pub fn teams(&self) -> teams::TeamStore {
+        teams::TeamStore::new(self.pool.clone())
+    }
+
+    pub fn webhooks(&self) -> webhooks::WebhookStore {
+        webhooks::WebhookStore::new(self.pool.clone())
+    }
+
+    pub fn releases(&self) -> releases::ReleaseStore {
+        releases::ReleaseStore::new(self.pool.clone())
+    }
+
+    pub fn forks(&self) -> forks::ForkStore {
+        forks::ForkStore::new(self.pool.clone())
+    }
+
+    pub fn mirrors(&self) -> mirrors::MirrorStore {
+        mirrors::MirrorStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

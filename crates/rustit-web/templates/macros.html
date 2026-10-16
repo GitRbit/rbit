@@ -83,8 +83,44 @@
 <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>
 {%- else if name == "server" -%}
 <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
+{%- else if name == "git-fork" -%}
+<circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/>
+{%- else if name == "git-compare" -%}
+<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/>
+{%- else if name == "package" -%}
+<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7"/><path d="m7.5 4.27 9 5.15"/>
+{%- else if name == "webhook" -%}
+<path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>
+{%- else if name == "archive" -%}
+<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>
+{%- else if name == "upload" -%}
+<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+{%- else if name == "trash" -%}
+<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+{%- else if name == "transfer" -%}
+<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+{%- else if name == "refresh" -%}
+<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
 {%- endif -%}
 </svg>
+{% endmacro %}
+
+{#- A link to a settings sub-page; `card` is a `components::SettingsCard`. -#}
+{% macro settings_card(card) %}
+<a href="{{ card.url }}" class="box mt-6 flex items-center gap-3 px-4 py-3 hover:bg-subtle">
+  {%- if card.icon == "server" -%}{% call icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- else if card.icon == "users" -%}{% call icon("users", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- else if card.icon == "webhook" -%}{% call icon("webhook", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- else if card.icon == "refresh" -%}{% call icon("refresh", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- else if card.icon == "transfer" -%}{% call icon("transfer", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- else -%}{% call icon("settings", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+  {%- endif %}
+  <span class="min-w-0 flex-1">
+    <span class="block text-[13px] font-medium">{{ card.title }}</span>
+    <span class="block text-[13px] text-ink-muted">{{ card.description }}</span>
+  </span>
+  {% call icon("chevron-right", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
+</a>
 {% endmacro %}
 
 {#- The Rustit mark, drawn in currentColor so it inverts with the theme. -#}

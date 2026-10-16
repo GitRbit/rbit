@@ -2,16 +2,24 @@
 
 mod account;
 mod admin;
+mod api;
+mod archives;
 mod audit;
 mod auth;
+mod blame;
+mod collaborators;
+mod compare;
+mod forks;
 mod git_http;
 mod history;
 mod home;
 mod listing;
+mod mirrors;
 mod ops;
 mod orgs;
 mod pwa;
 mod recovery;
+mod releases;
 mod repo;
 mod repo_create;
 mod repo_settings;
@@ -19,6 +27,9 @@ mod security;
 mod settings;
 mod ssh_keys;
 mod stars;
+mod teams;
+mod transfer;
+mod webhooks;
 
 use std::time::Duration;
 
@@ -47,6 +58,10 @@ pub fn router(state: AppState) -> Router {
         // Git traffic is merged without compression or timeouts: packfiles are already
         // compressed and large clones legitimately take minutes.
         .merge(git_routes())
+        // Milestone 2: the REST API and large downloads/uploads bring their own layers.
+        .merge(api::routes())
+        .merge(archives::routes(&state))
+        .merge(releases::file_routes(&state))
         .layer(from_fn(crate::metrics::track))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -84,6 +99,16 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(audit::routes())
         .merge(recovery::routes())
         .merge(ssh_keys::routes())
+        // Milestone 2 wave A.
+        .merge(collaborators::routes())
+        .merge(teams::routes())
+        .merge(transfer::routes())
+        .merge(webhooks::routes())
+        .merge(releases::routes())
+        .merge(blame::routes())
+        .merge(compare::routes())
+        .merge(forks::routes())
+        .merge(mirrors::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

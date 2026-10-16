@@ -10,11 +10,14 @@ pub mod access_token;
 pub mod account;
 pub mod config;
 pub mod instance;
+pub mod membership;
+pub mod mirror;
 pub mod names;
 pub mod org;
 pub mod release;
 pub mod repository;
 pub mod timestamp;
+pub mod webhook;
 
 pub use access::RepoAccess;
 pub use access_token::{AccessToken, AccessTokenId, TokenScope};

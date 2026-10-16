@@ -54,7 +54,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
 ];
 
 /// Second-level paths reserved under `/{owner}/`.
-const RESERVED_REPO_NAMES: &[&str] = &["followers", "members", "people", "repositories", "settings", "stars"];
+const RESERVED_REPO_NAMES: &[&str] = &["followers", "members", "people", "repositories", "settings", "stars", "teams"];
 
 /// Shared rule for "slug" style names: `[A-Za-z0-9._-]`, alphanumeric at both ends,
 /// and never a Git-meaningful suffix such as `.git` or `.lock`.
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn organisation_pages_are_reserved_repository_names() {
-        for name in ["members", "People", "settings"] {
+        for name in ["members", "People", "settings", "teams"] {
             assert!(matches!(name.parse::<RepoName>(), Err(NameError::Reserved { .. })), "{name}");
         }
     }

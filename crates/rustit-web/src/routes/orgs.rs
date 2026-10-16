@@ -286,6 +286,7 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
         delete_error: FormError::default(),
         repo_count: repos.len(),
         delete_url: format!("{base}/delete"),
+        cards: crate::views::org::org_settings_cards(&base),
         save_url: base,
     })
 }
