@@ -1,0 +1,9 @@
+Hi {{ m.username }},
+
+The email address of your {{ m.site_name }} account was just changed to {{ m.new_address }}. This address will no longer receive messages about the account.
+
+If you made this change, there is nothing else to do.
+
+If you didn't, someone else may have access to your account. Contact an administrator of {{ m.site_name }} straight away.
+
+{% include "footer.txt" %}

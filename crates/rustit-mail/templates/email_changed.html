@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+{% import "parts.html" as mail %}
+{% block title %}Your email address was changed{% endblock %}
+{% block body %}
+{% call mail::heading("Your email address was changed") %}{% endcall %}
+<p style="margin:0 0 12px">Hi {{ m.username }},</p>
+<p style="margin:0 0 12px">The email address of your {{ m.site_name }} account was just changed to <strong>{{ m.new_address }}</strong>. This address will no longer receive messages about the account.</p>
+<p style="margin:0 0 12px">If you made this change, there is nothing else to do.</p>
+<p style="margin:0">If you didn't, someone else may have access to your account. Contact an administrator of {{ m.site_name }} straight away.</p>
+{% endblock %}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{% block title %}{% endblock %}</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;color:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px">
+<tr><td style="padding-bottom:24px;font-size:13px;font-weight:600">{{ m.site_name }}</td></tr>
+<tr><td style="border:1px solid #ebebeb;border-radius:6px;padding:24px">
+{% block body %}{% endblock %}
+</td></tr>
+<tr><td style="padding-top:24px;font-size:12px;color:#8f8f8f">
+You received this email because of an account on <a href="{{ m.base_url }}" style="color:#666666">{{ m.site_name }}</a>.
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

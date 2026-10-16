@@ -8,9 +8,14 @@ license.workspace = true
 
 [dependencies]
 rustit-core.workspace = true
+askama.workspace = true
+lettre.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -76,6 +76,7 @@ mimalloc = "0.1"
 # Milestone 1 — each workstream adds its dependencies in its own block below.
 # --- S: security (rate limiting, TOTP) ---
 # --- E: email & recovery ---
+lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1-rustls-tls"] }
 # --- H: SSH ---
 # --- O: operations (metrics, jobs) ---
 metrics = "0.24"
