@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  {% call ui::logo("size-7") %}{% endcall %}
+
+  {% if let Some(problem) = problem %}
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">{{ problem.title() }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ problem.message() }}</p>
+  {% if problem.is_invalid() %}
+  {% if email_available %}
+  <a href="/password/forgot" class="btn btn-primary btn-lg mt-8 w-full">Request a new link</a>
+  {% else %}
+  <p class="box mt-8 px-4 py-6 text-[13px] text-ink-muted">Email is not available on this server, so a new link can't be sent. Ask an administrator to set a new password for you.</p>
+  {% endif %}
+  {% endif %}
+  {% else %}
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">Choose a new password</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">For <span class="font-medium text-ink">{{ username }}</span>. You'll sign in with it from now on.</p>
+
+  <form method="post" action="{{ action }}" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden readonly>
+
+    <label class="label" for="new-password">New password</label>
+    <input class="input" id="new-password" name="new_password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" maxlength="256" required autofocus>
+    <p class="hint">At least {{ min_password_length }} characters.</p>
+
+    <label class="label mt-4" for="confirm-password">Confirm new password</label>
+    <input class="input" id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" maxlength="256" required>
+
+    <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Change password</button>
+  </form>
+  {% endif %}
+
+  <p class="mt-8 border-t border-line pt-6 text-[13px] text-ink-muted"><a href="/login" class="link">Back to sign in</a></p>
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  {% call ui::logo("size-7") %}{% endcall %}
+  <h1 class="mt-6 flex items-center gap-2 text-xl font-semibold tracking-tight">{% call ui::icon("check", "size-5 shrink-0 text-success") %}{% endcall %}Password changed</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Your new password is set. Use it the next time you sign in.</p>
+  <a href="/login" class="btn btn-primary btn-lg mt-8 w-full">Sign in</a>
+</section>
+{% endblock %}

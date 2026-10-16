@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto w-full max-w-[22rem] py-8 sm:py-16">
+  {% call ui::logo("size-7") %}{% endcall %}
+
+  {% if let Some(address) = verified_address %}
+  <h1 class="mt-6 flex items-center gap-2 text-xl font-semibold tracking-tight">{% call ui::icon("check", "size-5 shrink-0 text-success") %}{% endcall %}Email address verified</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Thanks for confirming <span class="font-medium text-ink break-all">{{ address }}</span>.</p>
+  {% else %}
+  <h1 class="mt-6 text-xl font-semibold tracking-tight">This link has expired</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Verification links work once, expire after two days and stop working when the address changes. Sign in and send a new one from your account settings.</p>
+  {% endif %}
+
+  <a href="{{ self.continue_url() }}" class="btn btn-primary btn-lg mt-8 w-full">{{ self.continue_label() }}</a>
+</section>
+{% endblock %}
