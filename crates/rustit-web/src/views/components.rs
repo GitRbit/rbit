@@ -8,7 +8,7 @@ use rustit_core::{Account, OrgMembership, RepoId, repository::OwnedRepository};
 const AVATAR_PALETTE_SIZE: u64 = 8;
 
 /// A generated avatar: initials on a stable gradient.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Avatar {
     pub initials: String,
     pub palette: u64,

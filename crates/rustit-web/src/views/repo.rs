@@ -12,7 +12,10 @@ use crate::{
 // ------------------------------------------------------------------ shared pieces
 
 /// Title block and tabs shown at the top of every repository page.
-#[derive(Debug, Clone)]
+///
+/// `Default` exists so tests can build one with `..RepoHeader::default()` and keep
+/// compiling when fields are added.
+#[derive(Debug, Clone, Default)]
 pub struct RepoHeader {
     pub owner: String,
     pub name: String,

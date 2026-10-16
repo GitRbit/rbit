@@ -242,11 +242,8 @@ mod tests {
         RepoHeader {
             owner: "alice".to_owned(),
             name: "proj".to_owned(),
-            description: None,
-            is_private: false,
             owner_avatar: Avatar { initials: "A".to_owned(), palette: 0 },
             clone_url: "http://localhost/alice/proj.git".to_owned(),
-            ssh_clone_url: None,
             home_url: "/alice/proj".to_owned(),
             commits_url: "/alice/proj/commits/main".to_owned(),
             branches_url: "/alice/proj/branches".to_owned(),
@@ -256,6 +253,7 @@ mod tests {
             star_count: 2,
             starred_by_viewer: false,
             active_tab: "stargazers",
+            ..RepoHeader::default()
         }
     }
 
