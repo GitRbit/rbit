@@ -3,6 +3,7 @@
 //! ```toml
 //! [ssh]
 //! enabled = true
+//! # Defaults to 127.0.0.1:2222; listen on all interfaces to accept remote clients.
 //! bind = "0.0.0.0:2222"
 //! # What clone URLs show; defaults to the host of `server.public_url` and the bind port.
 //! public_host = "git.example.com"
