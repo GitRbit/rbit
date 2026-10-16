@@ -272,7 +272,7 @@ impl Services {
     /// audited. Enrolled users get a pending second step instead of a session.
     pub async fn sign_in(&self, login: &str, password: String, client: &ClientInfo) -> Result<SignInOutcome, ServiceError> {
         let (ip, login) = (ip_key(client), login.trim());
-        self.throttle.check(ThrottleScope::SignIn, &ip)?;
+        self.throttle.check_client(ThrottleScope::SignIn, &ip)?;
         self.throttle.check(ThrottleScope::SignIn, login)?;
 
         let user = match self.accounts.authenticate(login, password).await {
@@ -280,7 +280,7 @@ impl Services {
             Err(error) => {
                 let reason = match &error {
                     ServiceError::InvalidCredentials => {
-                        self.throttle.record_failure(ThrottleScope::SignIn, &ip);
+                        self.throttle.record_client_failure(ThrottleScope::SignIn, &ip);
                         self.throttle.record_failure(ThrottleScope::SignIn, login);
                         "wrong username or password"
                     }
@@ -291,7 +291,7 @@ impl Services {
                 return Err(error);
             }
         };
-        self.throttle.reset(ThrottleScope::SignIn, &ip);
+        self.throttle.reset_client(ThrottleScope::SignIn, &ip);
         self.throttle.reset(ThrottleScope::SignIn, login);
 
         if self.two_factor.is_enabled(user.id()).await? {
@@ -411,13 +411,13 @@ impl Services {
         client: &ClientInfo,
     ) -> Result<GitPasswordOutcome, ServiceError> {
         let (ip, login) = (ip_key(client), login.trim());
-        self.throttle.check(ThrottleScope::GitAuth, &ip)?;
+        self.throttle.check_client(ThrottleScope::GitAuth, &ip)?;
         self.throttle.check(ThrottleScope::GitAuth, login)?;
         let user = match self.accounts.authenticate(login, password).await {
             Ok(user) => user,
             Err(error) => {
                 if matches!(error, ServiceError::InvalidCredentials) {
-                    self.throttle.record_failure(ThrottleScope::GitAuth, &ip);
+                    self.throttle.record_client_failure(ThrottleScope::GitAuth, &ip);
                     self.throttle.record_failure(ThrottleScope::GitAuth, login);
                 }
                 return Err(error);

@@ -248,14 +248,14 @@ async fn authenticate(state: &AppState, client: &Client, headers: &HeaderMap) ->
     if AccessTokenSecret::looks_like_token(&password) {
         // Tokens are unguessable, but a client spraying them still spends its budget.
         let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
-        if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check(ThrottleScope::GitAuth, &ip) {
+        if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check_client(ThrottleScope::GitAuth, &ip) {
             return Err(Denied::RateLimited { retry_after_seconds });
         }
         // The token identifies its owner on its own; Git's username is ignored.
         return match state.services.tokens.authenticate(&password).await {
             Ok(Some((user, scope))) => Ok(Some(GitCaller { user, token_scope: Some(scope) })),
             Ok(None) => {
-                state.services.throttle.record_failure(ThrottleScope::GitAuth, &ip);
+                state.services.throttle.record_client_failure(ThrottleScope::GitAuth, &ip);
                 Err(Denied::Challenge)
             }
             Err(error) => {

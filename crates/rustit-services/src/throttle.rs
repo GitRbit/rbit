@@ -61,13 +61,23 @@ impl Limit {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Bucket {
     Scope(ThrottleScope),
+    /// A scope keyed by client address: many people can share one (offices, carrier NAT,
+    /// a proxy that is not listed as trusted), so it gets [`CLIENT_FACTOR`] times the budget.
+    Client(ThrottleScope),
     /// Any state-changing request to the web UI, keyed by client address.
     UnsafeRequest,
 }
 
+/// How much larger per-address budgets are than per-account ones.
+const CLIENT_FACTOR: u32 = 5;
+
 impl Bucket {
-    const fn limit(self) -> Limit {
+    fn limit(self) -> Limit {
         match self {
+            Self::Client(scope) => {
+                let limit = Self::Scope(scope).limit();
+                Limit { burst: limit.burst * CLIENT_FACTOR, refill: limit.refill / CLIENT_FACTOR, failure_cost: limit.failure_cost }
+            }
             // ~7 wrong passwords in quick succession, then one a minute.
             Self::Scope(ThrottleScope::SignIn) => Limit::new(20, 20, 2),
             // Five accounts per address, then one every ten minutes.
@@ -124,6 +134,24 @@ impl ThrottleService {
     pub fn reset(&self, scope: ThrottleScope, key: &str) {
         if self.enabled {
             self.lock().remove(&(Bucket::Scope(scope), bucket_key(key)));
+        }
+    }
+
+    /// Like [`Self::check`], for a key that is a client address: the budget is larger,
+    /// because one address can stand for many people.
+    pub fn check_client(&self, scope: ThrottleScope, address: &str) -> Result<(), ServiceError> {
+        self.spend(Bucket::Client(scope), address, Instant::now())
+    }
+
+    /// Like [`Self::record_failure`], for a client address.
+    pub fn record_client_failure(&self, scope: ThrottleScope, address: &str) {
+        self.penalise(Bucket::Client(scope), address, Instant::now());
+    }
+
+    /// Like [`Self::reset`], for a client address.
+    pub fn reset_client(&self, scope: ThrottleScope, address: &str) {
+        if self.enabled {
+            self.lock().remove(&(Bucket::Client(scope), bucket_key(address)));
         }
     }
 
@@ -258,6 +286,21 @@ mod tests {
         assert!(throttle.spend(sign_up, "203.0.113.7", now).is_err());
         throttle.spend(SIGN_IN, "203.0.113.7", now).unwrap();
         throttle.spend(Bucket::UnsafeRequest, "203.0.113.7", now).unwrap();
+    }
+
+    #[test]
+    fn client_addresses_get_a_larger_budget() {
+        let throttle = ThrottleService::with_enabled(true);
+        let now = Instant::now();
+        let client = Bucket::Client(ThrottleScope::SignIn);
+        assert_eq!(client.limit().burst, SIGN_IN.limit().burst * CLIENT_FACTOR);
+        for _ in 0..client.limit().burst {
+            throttle.spend(client, "203.0.113.7", now).unwrap();
+        }
+        assert_eq!(retry_after(throttle.spend(client, "203.0.113.7", now)), Some(4));
+        throttle.check(ThrottleScope::SignIn, "203.0.113.7").unwrap();
+        throttle.reset_client(ThrottleScope::SignIn, "203.0.113.7");
+        throttle.check_client(ThrottleScope::SignIn, "203.0.113.7").unwrap();
     }
 
     #[test]
