@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use operations::OperationsConfig;
-pub use security::SecurityConfig;
+pub use security::{ProxyNetwork, ProxyNetworkError, SecurityConfig};
 pub use ssh::SshConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
