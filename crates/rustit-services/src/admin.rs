@@ -16,7 +16,7 @@ use rustit_storage::sqlite::admin::{AdminStore, ListFilter, Listing, Moderation}
 pub use rustit_storage::sqlite::admin::{InstanceCounts, OrgRecord, UserRecord};
 
 use crate::{
-    InstanceService, ServiceContext, ServiceError, SignUp, accounts,
+    DomainEvent, InstanceService, ServiceContext, ServiceError, SignUp, accounts,
     audit::{AuditAction, AuditEntry, AuditService},
 };
 
@@ -187,6 +187,8 @@ impl AdminService {
         require_admin(actor)?;
         let user = accounts::create_user(&self.ctx.config, &self.ctx.database.accounts(), input, Some(is_admin)).await?;
         tracing::info!(admin = %actor.name(), user = %user.name(), is_admin, "administrator created account");
+        // Subscribers (e.g. email verification) treat every new account the same way.
+        self.ctx.events.publish(DomainEvent::UserSignedUp { user: user.id() });
         let detail = if is_admin { "as an administrator" } else { "" };
         self.audit.record(AuditEntry::new(AuditAction::UserCreated).by(actor).on(user.name().as_str()).detail(detail)).await;
         Ok(user)
