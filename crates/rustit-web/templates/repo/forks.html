@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 items-center gap-3">
+  <h1 class="text-[13px] font-medium text-ink-muted">Forks <span class="ml-1 text-ink-faint">{{ forks.len() }}</span></h1>
+  {% if let Some(url) = fork_url %}<a href="{{ url }}" class="btn ml-auto">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}Fork</a>{% endif %}
+</div>
+
+<div class="box">
+  {% if forks.is_empty() %}
+  {% call ui::empty_state("git-fork", "No forks yet", "Forks are copies of this repository that others work on independently.") %}{% endcall %}
+  {% else %}
+  <ul>
+    {% for repo in forks %}
+    {% call ui::repo_row(repo) %}{% endcall %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

@@ -6,7 +6,7 @@ use rustit_git::{CommitSummary, RefKind, RefSummary};
 
 use crate::{
     urls::RepoUrls,
-    views::{components::Avatar, insights::LanguageBar, layout::Page, releases::LatestRelease},
+    views::{components::Avatar, forks::ForkedFrom, insights::LanguageBar, layout::Page, releases::LatestRelease},
 };
 
 // ------------------------------------------------------------------ shared pieces
@@ -38,6 +38,13 @@ pub struct RepoHeader {
     pub can_admin: bool,
     pub star_count: i64,
     pub starred_by_viewer: bool,
+    /// Forks the viewer may read.
+    pub fork_count: u64,
+    /// The fork form (anonymous viewers are sent to sign in first).
+    pub fork_url: String,
+    pub forks_url: String,
+    /// The parent, when this is a fork of a repository the viewer may read.
+    pub forked_from: Option<ForkedFrom>,
     /// `"code"`, `"commits"`, `"branches"`, `"tags"`, `"releases"` or `"settings"`;
     /// compared in `repo/subnav.html`.
     pub active_tab: &'static str,

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-xl">
+  <h1 class="text-xl font-semibold tracking-tight">Fork {{ header.owner }}/{{ header.name }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">A fork is your own copy of the repository's branches and tags. It keeps the original's visibility{% if header.is_private %} — this one stays private{% endif %}.</p>
+
+  <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <div class="grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
+      <div>
+        <label class="label" for="fork-owner">Owner</label>
+        <div class="relative">
+          <select class="input cursor-pointer appearance-none pr-9" id="fork-owner" name="owner">
+            {% for owner in owners %}
+            <option value="{{ owner.name }}" {% if owner.selected %}selected{% endif %}>{{ owner.name }}</option>
+            {% endfor %}
+          </select>
+          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        </div>
+      </div>
+      <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
+      <div>
+        <label class="label" for="fork-name">Name</label>
+        <input class="input" id="fork-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
+      </div>
+    </div>
+    <div class="mt-8 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-primary">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}Create fork</button>
+      <a href="{{ header.home_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

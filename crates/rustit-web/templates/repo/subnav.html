@@ -1,5 +1,8 @@
 {% import "macros.html" as ui %}
-{#- Repository tabs, star button and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
+{#- Repository tabs, star and fork buttons and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
+{% if let Some(parent) = header.forked_from %}
+<p class="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
+{% endif %}
 <div class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
   <nav class="-mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
     <a class="tab" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
@@ -15,6 +18,11 @@
   <div class="ml-auto flex shrink-0 items-center gap-2">
     {% let star = header.star_button(page.is_signed_in(), page.path.as_str()) %}
     {% include "repo/star_button.html" %}
+
+    <div class="flex shrink-0">
+      <a class="btn h-8 rounded-r-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="Fork this repository">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">Fork</span></a>
+      <a class="btn -ml-px h-8 rounded-l-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="Forks" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
+    </div>
 
     <details class="relative" data-menu>
       <summary class="btn h-8 cursor-pointer sm:h-7">

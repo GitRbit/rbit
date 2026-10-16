@@ -20,6 +20,7 @@ use crate::{
     urls::{DocumentBase, RepoUrls, encode_path},
     views::{
         components::Avatar,
+        forks::ForkedFrom,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
         layout::Page,
         releases::LatestRelease,
@@ -42,6 +43,8 @@ pub(super) struct RepoPage {
     pub(super) urls: RepoUrls,
     refs: Vec<RefSummary>,
     stars: StarSummary,
+    fork_count: u64,
+    forked_from: Option<ForkedFrom>,
 }
 
 impl RepoPage {
@@ -49,8 +52,14 @@ impl RepoPage {
         let ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
         let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
-        let stars = state.services.stars.summary(ctx.repo.repo.id, viewer.user()).await?;
-        Ok(Self { ctx, urls, refs, stars })
+        let forks = &state.services.forks;
+        let (stars, fork_count, parent) = tokio::join!(
+            state.services.stars.summary(ctx.repo.repo.id, viewer.user()),
+            forks.count(viewer.user(), &ctx),
+            forks.parent(viewer.user(), &ctx),
+        );
+        let forked_from = parent?.map(|parent| ForkedFrom { full_name: parent.full_name(), url: format!("/{}", parent.full_name()) });
+        Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from })
     }
 
     /// Branches then tags, each sorted by name.
@@ -89,6 +98,10 @@ impl RepoPage {
             can_admin: self.ctx.access.can_admin(),
             star_count: self.stars.count,
             starred_by_viewer: self.stars.starred_by_viewer,
+            fork_count: self.fork_count,
+            fork_url: format!("{}/fork", self.urls.home()),
+            forks_url: format!("{}/forks", self.urls.home()),
+            forked_from: self.forked_from.clone(),
             active_tab,
         }
     }

@@ -41,7 +41,7 @@ pub struct NewRepoForm {
 
 /// The viewer first, then their organisations; `selected` (case-insensitive) is marked,
 /// falling back to the viewer.
-async fn owner_options(state: &AppState, user: &User, selected: &str) -> WebResult<Vec<OwnerOption>> {
+pub(super) async fn owner_options(state: &AppState, user: &User, selected: &str) -> WebResult<Vec<OwnerOption>> {
     let memberships = state.services.orgs.memberships(user).await?;
     let mut owners = vec![OwnerOption { name: user.name().to_string(), avatar: Avatar::for_account(&user.account), selected: false }];
     owners.extend(memberships.iter().map(|m| OwnerOption {
