@@ -24,7 +24,7 @@ use russh::{
     keys::PublicKey,
     server::{Auth, ChannelOpenHandle, Handler, Msg, Session},
 };
-use rustit_services::{DomainEvent, RepoContext, ServiceError, ThrottleScope, ssh_keys::SshIdentity};
+use rustit_services::{RepoContext, ServiceError, ThrottleScope, ssh_keys::SshIdentity};
 use rustit_transport::is_safe_protocol_header;
 use tokio::{
     io::{AsyncWriteExt, duplex},
@@ -322,6 +322,15 @@ async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand
 
     let started = Instant::now();
     let service = command.service;
+    let pending = if service.is_write() {
+        let pusher = match &identity {
+            SshIdentity::User { user, .. } => Some(user.id()),
+            SshIdentity::Deploy { .. } => None,
+        };
+        Some(shared.services.pushes.begin(&ctx, pusher).await)
+    } else {
+        None
+    };
     let exchange = shared.transport.serve_interactive(service, &ctx.disk_path, protocol.as_deref(), input, stdout, &mut stderr);
     let status = match tokio::time::timeout(shared.config.ssh.max_session(), exchange).await {
         Ok(Ok(status)) => status.code().and_then(|code| u32::try_from(code).ok()).unwrap_or(FAILURE),
@@ -339,12 +348,8 @@ async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand
     drop(pump);
     let _ = stderr.flush().await;
 
-    if service.is_write() && status == 0 {
-        let repo = ctx.repo.repo.id;
-        if let Err(error) = shared.services.repositories.record_push(repo).await {
-            tracing::warn!(%error, "failed to record push");
-        }
-        shared.services.events.publish(DomainEvent::RepositoryPushed { repo });
+    if let Some(pending) = pending.filter(|_| status == 0) {
+        shared.services.pushes.complete(pending).await;
     }
 
     let _ = writer.exit_status(status).await;

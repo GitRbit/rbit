@@ -176,7 +176,7 @@ impl JobService {
                 event = events.recv() => event,
             };
             match event {
-                Ok(DomainEvent::RepositoryPushed { repo }) => {
+                Ok(DomainEvent::RepositoryPushed { repo, .. }) => {
                     self.note_push(repo);
                     if warm {
                         self.queue_warm(repo);
@@ -442,7 +442,7 @@ mod tests {
         let fixture = fixture(|_| {}).await;
         push_commit(&fixture.disk_path);
         fixture.services.jobs.spawn_background();
-        fixture.services.events.publish(DomainEvent::RepositoryPushed { repo: fixture.repo });
+        fixture.services.events.publish(DomainEvent::RepositoryPushed { repo: fixture.repo, pusher: None, updates: Vec::new() });
 
         let cache = fixture.kv.insights();
         let deadline = Instant::now() + Duration::from_secs(20);

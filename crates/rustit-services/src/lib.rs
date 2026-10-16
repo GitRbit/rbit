@@ -15,6 +15,7 @@ pub mod jobs;
 pub mod mail;
 pub mod orgs;
 pub mod profiles;
+pub mod pushes;
 pub mod recovery;
 pub mod repo_settings;
 pub mod repositories;
@@ -41,6 +42,7 @@ pub use jobs::JobService;
 pub use mail::MailService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
 pub use profiles::ProfileService;
+pub use pushes::{PendingPush, PushService};
 pub use recovery::RecoveryService;
 pub use repo_settings::RepoSettingsService;
 pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
@@ -73,6 +75,7 @@ pub struct Services {
     pub mail: MailService,
     pub orgs: OrgService,
     pub profiles: ProfileService,
+    pub pushes: PushService,
     pub recovery: RecoveryService,
     pub repo_settings: RepoSettingsService,
     pub repositories: RepositoryService,
@@ -110,6 +113,7 @@ impl Services {
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
             profiles: ProfileService::new(ctx.clone()),
+            pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
             repositories: RepositoryService::new(config, database.repositories(), ctx.repositories.clone()),
             stars: StarService::new(ctx.clone()),

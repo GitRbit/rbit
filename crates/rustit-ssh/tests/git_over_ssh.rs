@@ -204,7 +204,10 @@ async fn clone_push_and_access_control_over_ssh() {
     assert_ok(&harness.git(&alice_key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
     let ctx = harness.services.repositories.open(Some(&alice), "alice", "project").await.unwrap();
     let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
-    assert_eq!(event, DomainEvent::RepositoryPushed { repo: ctx.repo.repo.id });
+    let DomainEvent::RepositoryPushed { repo, pusher, updates } = event else { panic!("expected a push event, got {event:?}") };
+    assert_eq!((repo, pusher), (ctx.repo.repo.id, Some(alice.id())));
+    let refs: Vec<&str> = updates.iter().map(|update| update.name.as_str()).collect();
+    assert_eq!(refs, ["refs/heads/main"], "the push reports its ref update");
     assert!(ctx.repo.repo.pushed_at.is_some(), "the push is recorded");
 
     // Clone it back, spelling the path without the leading slash's URL form and without `.git`.

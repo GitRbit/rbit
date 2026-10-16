@@ -21,8 +21,8 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
-use rustit_core::{TokenScope, User};
-use rustit_services::{DomainEvent, RepoContext, ServiceError, ThrottleScope, two_factor::GitPasswordOutcome};
+use rustit_core::{AccountId, TokenScope, User};
+use rustit_services::{RepoContext, ServiceError, ThrottleScope, two_factor::GitPasswordOutcome};
 use rustit_transport::Service;
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
@@ -47,7 +47,7 @@ pub async fn info_refs(
         return (StatusCode::FORBIDDEN, "the dumb HTTP protocol is not supported; please upgrade git").into_response();
     };
     let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
-        Ok(ctx) => ctx,
+        Ok((ctx, _)) => ctx,
         // The advertisement is the first request of every operation, so the message reaches the user.
         Err(Denied::TokenRequired) => return remote_error(service, TOKEN_REQUIRED),
         Err(denied) => return denied.into_response(),
@@ -87,11 +87,13 @@ async fn run_service(
     body: Body,
     service: Service,
 ) -> Response {
-    let ctx = match authorize(&state, &client, &headers, &owner, &repo, service).await {
-        Ok(ctx) => ctx,
+    let (ctx, pusher) = match authorize(&state, &client, &headers, &owner, &repo, service).await {
+        Ok(authorized) => authorized,
         Err(denied) => return denied.into_response(),
     };
 
+    // Taken before git starts, so the push's ref updates can be reported afterwards.
+    let pending = if service.is_write() { Some(state.services.pushes.begin(&ctx, pusher).await) } else { None };
     let request = request_reader(&headers, body);
     let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), request) {
         Ok(session) => session,
@@ -101,18 +103,12 @@ async fn run_service(
         }
     };
 
-    if service.is_write() {
-        let repositories = state.services.repositories.clone();
-        let events = state.services.events.clone();
-        let repo_id = ctx.repo.repo.id;
+    if let Some(pending) = pending {
+        let recorder = state.services.pushes.clone();
         tokio::spawn(async move {
-            if !session_succeeded(session.completion).await {
-                return;
+            if session_succeeded(session.completion).await {
+                recorder.complete(pending).await;
             }
-            if let Err(error) = repositories.record_push(repo_id).await {
-                tracing::warn!(%error, "failed to record push");
-            }
-            events.publish(DomainEvent::RepositoryPushed { repo: repo_id });
         });
     }
 
@@ -205,6 +201,7 @@ struct GitCaller {
 }
 
 /// Resolves credentials and checks that they grant `service` on the repository.
+/// Returns the repository and the authenticated account, if any.
 async fn authorize(
     state: &AppState,
     client: &Client,
@@ -212,7 +209,7 @@ async fn authorize(
     owner: &str,
     repo: &str,
     service: Service,
-) -> Result<RepoContext, Denied> {
+) -> Result<(RepoContext, Option<AccountId>), Denied> {
     let caller = authenticate(state, client, headers).await?;
     let user = caller.as_ref().map(|caller| &caller.user);
 
@@ -231,7 +228,7 @@ async fn authorize(
         ctx.access = scope.limit(ctx.access);
     }
     if !service.is_write() || ctx.access.can_write() {
-        Ok(ctx)
+        Ok((ctx, user.map(User::id)))
     } else if caller.is_none() {
         Err(Denied::Challenge)
     } else {

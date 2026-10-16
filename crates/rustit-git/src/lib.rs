@@ -7,6 +7,8 @@
 //! * Insights derived from history: [`languages`] (language breakdown) and
 //!   [`last_commit`] (the last commit that changed each directory entry).
 //! * [`Maintenance`] — housekeeping (`git gc --auto`) delegated to the `git` executable.
+//! * [`push`] — what a push changed: [`RefSnapshot`]s, [`RefUpdate`]s and the commits
+//!   an update introduced.
 //!
 //! gitoxide is synchronous, so every async method here runs its work on Tokio's
 //! blocking pool. Repositories are opened with *isolated* options: no system or global
@@ -20,6 +22,7 @@ pub mod languages;
 pub mod last_commit;
 pub mod maintenance;
 pub mod model;
+pub mod push;
 pub mod reader;
 pub mod revision;
 pub mod storage;
@@ -33,5 +36,6 @@ pub use model::{
     BlobView, ChangeStatus, CommitDetail, CommitSummary, EntryKind, FileDiff, FileDiffBody, RefDetail, RefKind, RefSummary, TreeEntry,
     TreeView,
 };
+pub use push::{RefSnapshot, RefUpdate};
 pub use reader::RepositoryReader;
 pub use storage::RepositoryStorage;

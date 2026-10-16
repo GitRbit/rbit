@@ -215,11 +215,6 @@ impl RepositoryService {
         Ok(results)
     }
 
-    /// Called after a successful push.
-    pub async fn record_push(&self, id: RepoId) -> Result<(), ServiceError> {
-        Ok(self.store.mark_pushed(id).await?)
-    }
-
     /// The largest file size rendered inline in the browser.
     pub fn max_render_bytes(&self) -> usize {
         self.config.repository.max_render_bytes

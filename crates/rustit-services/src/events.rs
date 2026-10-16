@@ -7,6 +7,7 @@
 //! falls behind skips the oldest events rather than slowing producers down.
 
 use rustit_core::{AccountId, RepoId};
+pub use rustit_git::RefUpdate;
 use tokio::sync::broadcast;
 
 /// Events buffered per subscriber before the oldest are skipped.
@@ -16,8 +17,15 @@ const CHANNEL_CAPACITY: usize = 1024;
 /// subscribers always read current state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainEvent {
-    /// New objects or ref updates were accepted by a push (HTTP or SSH).
-    RepositoryPushed { repo: RepoId },
+    /// A push (HTTP or SSH) was accepted. Published by [`crate::PushService::complete`].
+    RepositoryPushed {
+        repo: RepoId,
+        /// The account that pushed; `None` for deploy keys.
+        pusher: Option<AccountId>,
+        /// The refs the push changed, ordered by name. Empty when nothing changed (or the
+        /// refs could not be read; that is logged).
+        updates: Vec<RefUpdate>,
+    },
     /// An account was created, by sign-up or by an administrator.
     UserSignedUp { user: AccountId },
     /// A user's password was changed (by them, by a reset link, or by an administrator).
@@ -65,12 +73,13 @@ mod tests {
         bus.publish(DomainEvent::UserSignedUp { user: AccountId(1) });
 
         let mut subscriber = bus.subscribe();
-        bus.publish(DomainEvent::RepositoryPushed { repo: RepoId(7) });
-        assert_eq!(subscriber.recv().await.unwrap(), DomainEvent::RepositoryPushed { repo: RepoId(7) });
+        let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), pusher: Some(AccountId(1)), updates: Vec::new() };
+        bus.publish(pushed.clone());
+        assert_eq!(subscriber.recv().await.unwrap(), pushed);
     }
 
     #[test]
     fn publishing_without_subscribers_is_harmless() {
-        EventBus::new().publish(DomainEvent::RepositoryPushed { repo: RepoId(1) });
+        EventBus::new().publish(DomainEvent::UserSignedUp { user: AccountId(1) });
     }
 }
