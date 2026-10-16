@@ -116,6 +116,55 @@
     @apply flex min-h-11 items-center gap-3 border-b border-line bg-subtle px-4;
   }
 
+  /* Section title inside a .box-header. */
+  .box-title {
+    @apply text-[13px] font-medium text-ink;
+  }
+
+  /* A padded container with an even hairline border on every side: the surface of a
+     single-purpose page (sign in, recovery, errors) set apart from the canvas. */
+  .card {
+    @apply rounded-(--radius-ui) border border-line-strong bg-surface p-5 sm:p-7;
+  }
+
+  /* Bordered square holding an icon or the logo, e.g. above a page title. */
+  .tile {
+    @apply grid size-10 shrink-0 place-items-center rounded-(--radius-ui) border border-line bg-surface text-ink;
+  }
+
+  /* Single-form pages: a narrow centred column with a heading, a .card and an aside. */
+  .auth-shell {
+    @apply mx-auto flex w-full max-w-[24rem] flex-col py-4 sm:py-12;
+  }
+
+  .auth-head {
+    @apply mb-6 flex flex-col items-center text-center;
+  }
+
+  .auth-title {
+    @apply mt-5 text-xl font-semibold tracking-tight text-balance;
+  }
+
+  .auth-lede {
+    @apply mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance;
+  }
+
+  /* The "Don't have an account? / Already have one?" line under an auth card. */
+  .auth-aside {
+    @apply mt-3 rounded-(--radius-ui) border border-line px-4 py-3.5 text-center text-[13px] text-ink-muted;
+  }
+
+  /* A list narrowed by an instant filter (assets/filter.js hides rows): the last row
+     still showing drops its divider so it never doubles the container's border. */
+  .filter-list > li:not([hidden]):not(:has(~ li:not([hidden]))) {
+    @apply border-b-0;
+  }
+
+  /* A neutral or success message; errors use the `form_error` macro. */
+  .notice {
+    @apply flex items-start gap-2.5 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2.5 text-[13px] text-ink-muted;
+  }
+
   /* Buttons: 36px on touch screens, 32px from `sm` up. */
   .btn {
     @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-(--radius-ui) border
@@ -145,8 +194,8 @@
   }
 
   .input {
-    @apply block h-10 w-full rounded-(--radius-ui) border border-line bg-surface px-3 text-sm text-ink transition-colors
-      duration-100 placeholder:text-ink-faint hover:border-line-strong focus:border-ink focus:outline-none sm:h-9;
+    @apply block h-10 w-full rounded-(--radius-ui) border border-line-strong bg-surface px-3 text-sm text-ink transition-colors
+      duration-100 placeholder:text-ink-faint hover:border-ink-faint focus:border-ink focus:outline-none sm:h-9;
   }
 
   .label {

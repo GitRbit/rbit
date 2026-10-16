@@ -1,16 +1,15 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="flex flex-col items-center py-20 text-center sm:py-28">
-  <p class="flex items-center gap-4 text-ink-muted">
-    <span class="font-mono text-xl text-ink">{{ info.status.as_u16() }}</span>
-    <span class="h-6 w-px bg-line-strong"></span>
-    <span>{{ info.title }}</span>
-  </p>
-  <p class="mt-4 max-w-sm text-[13px] text-ink-muted">{{ info.message }}</p>
-  <div class="mt-8 flex gap-2">
-    <a href="/" class="btn btn-primary">Go home</a>
-    <a href="/explore" class="btn">Explore</a>
+<section class="auth-shell sm:py-20">
+  <div class="card flex flex-col items-center text-center">
+    <span class="tile font-mono text-[13px] font-medium">{{ info.status.as_u16() }}</span>
+    <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.title }}</h1>
+    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ info.message }}</p>
+    <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+      <a href="/" class="btn btn-primary">Go home</a>
+      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}Explore</a>
+    </div>
   </div>
 </section>
 {% endblock %}
