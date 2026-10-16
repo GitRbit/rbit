@@ -13,7 +13,8 @@ use rustit_auth::SessionToken;
 
 use crate::{
     AppState,
-    error::ErrorInfo,
+    client_ip::ClientIp,
+    error::{ErrorInfo, WebError},
     extract::{CurrentSession, Viewer},
     views::{errors::ErrorPage, layout::Page},
 };
@@ -58,13 +59,38 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
     response
 }
 
-/// Throttles abusive clients (per client address and per target account).
+/// Throttles state-changing requests (form posts) per client address. Reads are never
+/// limited here; sign-in, sign-up, two-factor codes and Git credentials have their own,
+/// stricter budgets in the services.
 ///
-/// Milestone 1 workstream S implements this; until then it lets every request through.
-#[allow(clippy::unused_async)] // TODO(workstream S): remove once limits are enforced.
+/// This layer sits outside the session and error-page layers, so it renders the error
+/// page itself (with anonymous chrome: the session has not been resolved yet).
 pub async fn rate_limit(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    let _ = &state;
-    next.run(request).await
+    if !is_unsafe(request.method()) {
+        return next.run(request).await;
+    }
+    let ClientIp(ip) = ClientIp::resolve(request.extensions(), request.headers(), &state.config.security);
+    match state.services.throttle.check_unsafe_request(&ip.to_canonical().to_string()) {
+        Ok(()) => next.run(request).await,
+        Err(error) => {
+            tracing::warn!(%ip, path = %request.uri().path(), "rate limited");
+            let response = WebError::from(error).into_response();
+            let Some(info) = response.extensions().get::<ErrorInfo>().cloned() else {
+                return response;
+            };
+            let page = Page::new(&state, None, request.uri().path()).titled(info.title);
+            let (mut parts, _) = response.into_parts();
+            let rendered = ErrorPage { page, info }.into_response();
+            if let Some(content_type) = rendered.headers().get(header::CONTENT_TYPE) {
+                parts.headers.insert(header::CONTENT_TYPE, content_type.clone());
+            }
+            Response::from_parts(parts, rendered.into_body())
+        }
+    }
+}
+
+fn is_unsafe(method: &Method) -> bool {
+    !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS)
 }
 
 /// Rejects cross-site state-changing requests.
@@ -73,7 +99,7 @@ pub async fn rate_limit(State(state): State<AppState>, request: Request, next: N
 /// the request came from another site it is refused. Non-browser clients (git, curl)
 /// send neither and authenticate without cookies, so they are unaffected.
 pub async fn csrf_origin_check(request: Request, next: Next) -> Response {
-    let unsafe_method = !matches!(*request.method(), Method::GET | Method::HEAD | Method::OPTIONS);
+    let unsafe_method = is_unsafe(request.method());
     if unsafe_method && is_cross_site(request.headers()) {
         tracing::warn!(path = %request.uri().path(), "blocked cross-site request");
         return (StatusCode::FORBIDDEN, "cross-site request blocked").into_response();
