@@ -24,17 +24,16 @@
 
   {% match content %}
   {% when BlobContent::Code(lines) %}
+  {#- One block per line rather than a table, so lines off screen skip layout
+      (`content-visibility`, see app.css); a long file lays out as fast as a short one.
+      No <a> per line either: the number is drawn by CSS from `data-line` (never copied
+      with the code) and nav.js turns a click into `#L…`. -#}
   <div class="overflow-x-auto">
-    <table class="code-view w-full border-collapse">
-      <tbody>
-        {% for line in lines %}
-        <tr id="L{{ loop.index }}">
-          <td class="line-number"><a href="#L{{ loop.index }}" hx-boost="false">{{ loop.index }}</a></td>
-          <td class="line-code">{{ line|safe }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="code-lines">
+      {%- for line in lines %}
+      <div class="code-line" id="L{{ loop.index }}"><span class="line-number" data-line="{{ loop.index }}"></span><span class="line-code">{{ line|safe }}</span></div>
+      {%- endfor %}
+    </div>
   </div>
   {% when BlobContent::Markdown(html) %}
   <article class="prose-rustit px-5 py-6 sm:px-8">{{ html|safe }}</article>

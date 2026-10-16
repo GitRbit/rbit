@@ -120,6 +120,83 @@ document.addEventListener("htmx:afterSwap", (event) => {
   event.detail.elt?.removeAttribute?.("hx-select-oob");
 });
 
+// ---------------------------------------------------------------- leaving large pages
+
+// Leaving a large file or diff is costly in two htmx steps: the history snapshot clones
+// and serialises the whole page, and the swap walks every outgoing element to clean it
+// up (one event each; highlighted code has tens of thousands of spans). For such pages
+// the snapshot is skipped (going back refetches, usually a 304) and the code and diff
+// tables, which hold no htmx state, are dropped before htmx walks them. Both happen in
+// the same task as the swap, so nothing is painted in between.
+const LARGE_PAGE_ELEMENTS = 4000;
+const HEAVY_CONTENT = ".code-lines, .diff-view";
+const NO_SNAPSHOT_ID = "nav-no-snapshot";
+
+const isLargePage = () => document.getElementsByTagName("*").length >= LARGE_PAGE_ELEMENTS;
+
+function skipSnapshot() {
+  if (document.getElementById(NO_SNAPSHOT_ID)) return;
+  const marker = document.createElement("template");
+  marker.id = NO_SNAPSHOT_ID;
+  marker.setAttribute("hx-history", "false");
+  document.body.append(marker);
+}
+
+function dropHeavyContent() {
+  for (const element of document.querySelectorAll(HEAVY_CONTENT)) element.remove();
+}
+
+// Links and forms: the response is in hand and is about to be swapped in.
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const detail = event.detail;
+  if (!detail.requestConfig?.boosted || !detail.shouldSwap || !isLargePage()) return;
+  skipSnapshot();
+  dropHeavyContent();
+});
+
+// Back/forward: htmx snapshots the page first, then swaps in the cached or refetched
+// one. This listener is registered before htmx's own, so it runs first; the content is
+// only dropped once the replacement is in hand.
+let leavingLargePage = false;
+addEventListener("popstate", (event) => {
+  leavingLargePage = Boolean(event.state?.htmx) && isLargePage();
+  if (leavingLargePage) skipSnapshot();
+});
+for (const name of ["htmx:historyCacheHit", "htmx:historyCacheMissLoad"]) {
+  document.addEventListener(name, () => {
+    if (leavingLargePage) dropHeavyContent();
+    leavingLargePage = false;
+  });
+}
+
+const removeMarker = () => document.getElementById(NO_SNAPSHOT_ID)?.remove();
+document.addEventListener("htmx:afterSwap", removeMarker);
+document.addEventListener("htmx:historyRestore", removeMarker);
+
+// ---------------------------------------------------------------- history cache
+
+// htmx re-serialises its whole sessionStorage cache on every navigation, so one large
+// snapshot slows every later navigation. Any that still get through are dropped (htmx
+// stores an unreachable placeholder instead).
+const MAX_SNAPSHOT_CHARS = 200_000;
+
+document.addEventListener("htmx:historyItemCreated", (event) => {
+  const item = event.detail.item;
+  if (item.content.length > MAX_SNAPSHOT_CHARS) {
+    item.content = "";
+    item.url = "\u0000too-large";
+  }
+});
+
+// ---------------------------------------------------------------- line links
+
+// The file viewer's line numbers are plain cells (see repo/blob.html); a click links to
+// the line like an `<a href="#L12">` would.
+document.addEventListener("click", (event) => {
+  const cell = event.target instanceof Element ? event.target.closest(".code-line .line-number[data-line]") : null;
+  if (cell) location.hash = `L${cell.dataset.line}`;
+});
+
 // ---------------------------------------------------------------- focus
 
 // After a boosted navigation, move focus to the new content so keyboard and screen

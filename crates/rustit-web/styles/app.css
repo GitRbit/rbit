@@ -475,6 +475,56 @@
   outline: none;
 }
 
+/* ---------------------------------------------------------------- Large documents */
+
+/* Each changed file of a diff (repo/file_diffs.html: commits, compare) is laid out only when scrolled near;
+   `auto` remembers its real height once it has been rendered. */
+.diff-file {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 24rem;
+}
+
+/* ---------------------------------------------------------------- File viewer lines */
+
+/* One block per line (repo/blob.html). Lines off screen skip layout and paint until
+   scrolled near (`content-visibility`), so a file of thousands of lines appears as
+   fast as a short one, on a full load and on an htmx swap alike. */
+.code-lines {
+  @apply min-w-full py-3 font-mono text-[12.5px] leading-5;
+  width: max-content;
+  tab-size: 4;
+}
+
+.code-line {
+  display: flex;
+  min-height: 1.25rem;
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1.25rem;
+  /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
+  scroll-margin-top: 8rem;
+}
+
+.code-line:target {
+  @apply bg-hover;
+}
+
+/* Drawn from `data-line`, so it is never copied with the code; nav.js handles clicks. */
+.code-line .line-number {
+  @apply w-14 shrink-0 cursor-pointer select-none pr-3 text-right text-ink-faint;
+}
+
+.code-line .line-number::before {
+  content: attr(data-line);
+}
+
+.code-line .line-number:hover {
+  @apply text-ink;
+}
+
+.code-line .line-code {
+  @apply whitespace-pre pl-3 pr-6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* A still bar across the whole width instead of a sweeping one. */
   .nav-busy #page-progress,
