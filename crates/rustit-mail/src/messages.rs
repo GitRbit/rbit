@@ -100,7 +100,18 @@ templates!(PasswordReset, text = PasswordResetText, html = PasswordResetHtml);
 
 // ------------------------------------------------------------------ verification
 
-/// Sent after sign-up and after an address change: a link that confirms the address.
+/// Why a verification link is being sent; only the opening sentence differs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyReason {
+    /// The account was just created.
+    SignUp,
+    /// The address replaced an earlier one.
+    Changed,
+    /// The user asked for another link.
+    Requested,
+}
+
+/// Sent after sign-up, after an address change or on request: a link that confirms the address.
 #[derive(Debug, Clone)]
 pub struct VerifyEmail {
     pub site_name: String,
@@ -109,13 +120,23 @@ pub struct VerifyEmail {
     pub link: String,
     /// e.g. `2 days`.
     pub valid_for: String,
-    /// The address replaced an earlier one (wording differs from a brand-new account).
-    pub is_change: bool,
+    pub reason: VerifyReason,
 }
 
 impl VerifyEmail {
     fn subject(&self) -> String {
         format!("Confirm your email address for {}", self.site_name)
+    }
+
+    /// The opening sentence, which leads into the link.
+    pub fn introduction(&self) -> String {
+        match self.reason {
+            VerifyReason::SignUp => format!("Welcome to {}! Confirm that this email address belongs to you:", self.site_name),
+            VerifyReason::Changed => {
+                format!("You set a new email address for your {} account. Confirm that it belongs to you:", self.site_name)
+            }
+            VerifyReason::Requested => format!("Confirm that this email address belongs to your {} account:", self.site_name),
+        }
     }
 }
 
@@ -223,19 +244,25 @@ mod tests {
             username: "alice".to_owned(),
             link: "https://git.example.com/email/verify/tok".to_owned(),
             valid_for: "2 days".to_owned(),
-            is_change: false,
+            reason: VerifyReason::SignUp,
         };
         let mail = Mail::render(to(), &message).unwrap();
         assert_eq!(mail.subject, "Confirm your email address for Forge <&>");
-        assert!(mail.text.contains("Welcome to"));
+        assert!(mail.text.contains("Welcome to Forge <&>!"));
+        assert!(mail.text.contains("Hi alice,\n\nWelcome to"), "no stray blank lines: {:?}", mail.text);
         assert!(mail.links().contains(&"https://git.example.com/email/verify/tok"));
         assert!(mail.html.contains(r#"href="https://git.example.com/email/verify/tok""#));
         assert_well_formed(&mail);
 
-        message.is_change = true;
+        message.reason = VerifyReason::Changed;
         let mail = Mail::render(to(), &message).unwrap();
         assert!(!mail.text.contains("Welcome to"));
         assert!(mail.text.contains("new email address"));
+        assert!(mail.html.contains("new email address"));
+
+        message.reason = VerifyReason::Requested;
+        let mail = Mail::render(to(), &message).unwrap();
+        assert!(mail.text.contains("belongs to your Forge <&> account"));
     }
 
     #[test]

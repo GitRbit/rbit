@@ -4,12 +4,8 @@
 {% block body %}
 {% call mail::heading("Confirm your email address") %}{% endcall %}
 <p style="margin:0 0 12px">Hi {{ m.username }},</p>
-{% if m.is_change %}
-<p style="margin:0">You set a new email address for your {{ m.site_name }} account. Confirm that it belongs to you:</p>
-{% else %}
-<p style="margin:0">Welcome to {{ m.site_name }}! Confirm that this email address belongs to you:</p>
-{% endif %}
+<p style="margin:0">{{ m.introduction() }}</p>
 {% call mail::button(m.link, "Confirm email address") %}{% endcall %}
 {% call mail::fallback_link(m.link) %}{% endcall %}
-<p style="margin:0;color:#666666">The link expires in {{ m.valid_for }}. If you didn't sign up or change your address, you can ignore this email.</p>
+<p style="margin:0;color:#666666">The link expires in {{ m.valid_for }}. If you didn't create an account or change your address, you can ignore this email.</p>
 {% endblock %}

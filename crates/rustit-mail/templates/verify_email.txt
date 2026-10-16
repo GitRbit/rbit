@@ -1,13 +1,9 @@
 Hi {{ m.username }},
 
-{% if m.is_change -%}
-You set a new email address for your {{ m.site_name }} account. Confirm that it belongs to you:
-{%- else -%}
-Welcome to {{ m.site_name }}! Confirm that this email address belongs to you:
-{%- endif %}
+{{ m.introduction() }}
 
 {{ m.link }}
 
-The link expires in {{ m.valid_for }}. If you didn't sign up or change your address, you can ignore this email.
+The link expires in {{ m.valid_for }}. If you didn't create an account or change your address, you can ignore this email.
 
 {% include "footer.txt" %}
