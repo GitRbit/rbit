@@ -1,0 +1,21 @@
+[package]
+name = "rustit-e2e"
+description = "End-to-end and Git compatibility tests: a real server, a real HTTP client and the real git CLI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+rustit-core.workspace = true
+rustit-services.workspace = true
+rustit-storage.workspace = true
+rustit-web.workspace = true
+tokio.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

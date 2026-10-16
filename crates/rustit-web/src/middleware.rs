@@ -33,6 +33,15 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
     next.run(request).await
 }
 
+/// Throttles abusive clients (per client address and per target account).
+///
+/// Milestone 1 workstream S implements this; until then it lets every request through.
+#[allow(clippy::unused_async)] // TODO(workstream S): remove once limits are enforced.
+pub async fn rate_limit(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let _ = &state;
+    next.run(request).await
+}
+
 /// Rejects cross-site state-changing requests.
 ///
 /// Browsers send `Sec-Fetch-Site` (modern) or `Origin` on unsafe methods; if either says

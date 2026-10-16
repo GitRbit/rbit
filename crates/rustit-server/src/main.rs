@@ -6,9 +6,11 @@
 //! rustit user create <name> <email> [--admin]  # create an account (password from stdin)
 //! ```
 
+mod backup;
 mod cli;
 mod config;
 mod serve;
+mod ssh;
 mod telemetry;
 
 use clap::Parser;
@@ -27,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::run(config).await,
         Command::Migrate => serve::migrate(config).await,
+        Command::Backup { output } => backup::run(config, output).await,
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await
         }

@@ -13,7 +13,10 @@
     <label class="label" for="login">Username or email</label>
     <input class="input" id="login" name="login" value="{{ login }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 
-    <label class="label mt-4" for="password">Password</label>
+    <div class="mt-4 mb-1.5 flex items-center justify-between gap-3">
+      <label class="label mb-0" for="password">Password</label>
+      <a href="/password/forgot" class="text-xs text-ink-muted hover:text-ink">Forgot password?</a>
+    </div>
     <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
 
     <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Continue</button>

@@ -6,16 +6,23 @@
 
 pub mod accounts;
 pub mod admin;
+pub mod audit;
 pub mod error;
 pub mod events;
 pub mod insights;
 pub mod instance;
+pub mod jobs;
+pub mod mail;
 pub mod orgs;
 pub mod profiles;
+pub mod recovery;
 pub mod repo_settings;
 pub mod repositories;
+pub mod ssh_keys;
 pub mod stars;
+pub mod throttle;
 pub mod tokens;
+pub mod two_factor;
 
 use std::sync::Arc;
 
@@ -25,16 +32,23 @@ use rustit_storage::{Database, KvStore};
 
 pub use accounts::{AccountService, SignUp};
 pub use admin::AdminService;
+pub use audit::AuditService;
 pub use error::ServiceError;
 pub use events::{DomainEvent, EventBus};
 pub use insights::InsightsService;
 pub use instance::InstanceService;
+pub use jobs::JobService;
+pub use mail::MailService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
 pub use profiles::ProfileService;
+pub use recovery::RecoveryService;
 pub use repo_settings::RepoSettingsService;
 pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
+pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
+pub use throttle::{ThrottleScope, ThrottleService};
 pub use tokens::{AccessTokenService, CreateAccessToken};
+pub use two_factor::TwoFactorService;
 
 /// The infrastructure every service is built from. Cheap to clone (all handles are `Arc`s).
 #[derive(Debug, Clone)]
@@ -51,15 +65,22 @@ pub struct ServiceContext {
 pub struct Services {
     pub accounts: AccountService,
     pub admin: AdminService,
+    pub audit: AuditService,
     pub events: EventBus,
     pub insights: InsightsService,
     pub instance: InstanceService,
+    pub jobs: JobService,
+    pub mail: MailService,
     pub orgs: OrgService,
     pub profiles: ProfileService,
+    pub recovery: RecoveryService,
     pub repo_settings: RepoSettingsService,
     pub repositories: RepositoryService,
+    pub ssh_keys: SshKeyService,
     pub stars: StarService,
+    pub throttle: ThrottleService,
     pub tokens: AccessTokenService,
+    pub two_factor: TwoFactorService,
 }
 
 impl Services {
@@ -75,6 +96,13 @@ impl Services {
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
+            audit: AuditService::new(ctx.clone()),
+            jobs: JobService::new(ctx.clone()),
+            mail: MailService::new(ctx.clone()),
+            recovery: RecoveryService::new(ctx.clone()),
+            ssh_keys: SshKeyService::new(ctx.clone()),
+            throttle: ThrottleService::new(ctx.clone()),
+            two_factor: TwoFactorService::new(ctx.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
@@ -86,5 +114,11 @@ impl Services {
             events: ctx.events.clone(),
             instance,
         })
+    }
+
+    /// Starts background subscribers and periodic work. Call once, after start-up.
+    pub fn spawn_background(&self) {
+        self.jobs.spawn_background();
+        self.recovery.spawn_background();
     }
 }

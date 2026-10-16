@@ -27,6 +27,10 @@ pub enum ServiceError {
     #[error("you do not have permission to do that")]
     Forbidden,
 
+    /// Too many attempts from this client or against this account; retry later.
+    #[error("too many attempts; try again in {retry_after_seconds} seconds")]
+    RateLimited { retry_after_seconds: u64 },
+
     /// Anything unexpected. Logged in full, shown to users generically.
     #[error("internal error: {0}")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),

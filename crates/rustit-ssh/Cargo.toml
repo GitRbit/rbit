@@ -1,0 +1,16 @@
+[package]
+name = "rustit-ssh"
+description = "Built-in SSH server for Git over SSH (russh)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rustit-core.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -18,6 +18,8 @@ pub enum WebError {
     Forbidden,
     #[error("{0}")]
     BadRequest(String),
+    #[error("too many requests; try again in {retry_after_seconds} seconds")]
+    TooManyRequests { retry_after_seconds: u64 },
     #[error("internal error")]
     Internal(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -40,6 +42,7 @@ impl WebError {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Forbidden => StatusCode::FORBIDDEN,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::TooManyRequests { .. } => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -49,6 +52,7 @@ impl WebError {
             Self::NotFound => "Page not found",
             Self::Forbidden => "Access denied",
             Self::BadRequest(_) => "Bad request",
+            Self::TooManyRequests { .. } => "Slow down",
             Self::Internal(_) => "Something went wrong",
         }
     }
@@ -59,6 +63,7 @@ impl From<ServiceError> for WebError {
         match error {
             ServiceError::NotFound => Self::NotFound,
             ServiceError::Forbidden => Self::Forbidden,
+            ServiceError::RateLimited { retry_after_seconds } => Self::TooManyRequests { retry_after_seconds },
             ServiceError::Internal(source) => Self::Internal(source),
             other => Self::BadRequest(other.to_string()),
         }
@@ -75,8 +80,15 @@ impl IntoResponse for WebError {
             Self::NotFound => "The page you were looking for doesn't exist, or you don't have access to it.".to_owned(),
             other => other.to_string(),
         };
+        let retry_after = match &self {
+            Self::TooManyRequests { retry_after_seconds } => Some(*retry_after_seconds),
+            _ => None,
+        };
         let info = ErrorInfo { status: self.status(), title: self.title(), message };
         let mut response = (info.status, info.message.clone()).into_response();
+        if let Some(seconds) = retry_after {
+            response.headers_mut().insert(axum::http::header::RETRY_AFTER, axum::http::HeaderValue::from(seconds));
+        }
         response.extensions_mut().insert(info);
         response
     }

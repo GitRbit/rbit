@@ -34,12 +34,17 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
 
     spawn_session_purger(storage.kv.clone());
+    services.spawn_background();
+    crate::ssh::start(&config, &services);
 
     let app = rustit_web::router(AppState::new(Arc::clone(&config), services));
     let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "Rustit is listening");
 
-    axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await.context("server error")?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .context("server error")?;
 
     tracing::info!("shutting down");
     storage.database.close().await;

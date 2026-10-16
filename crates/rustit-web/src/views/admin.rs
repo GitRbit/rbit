@@ -23,10 +23,11 @@ pub enum AdminSection {
     Organizations,
     Repositories,
     Settings,
+    AuditLog,
 }
 
 impl AdminSection {
-    const ALL: [Self; 5] = [Self::Dashboard, Self::Users, Self::Organizations, Self::Repositories, Self::Settings];
+    const ALL: [Self; 6] = [Self::Dashboard, Self::Users, Self::Organizations, Self::Repositories, Self::Settings, Self::AuditLog];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -35,6 +36,7 @@ impl AdminSection {
             Self::Organizations => "Organizations",
             Self::Repositories => "Repositories",
             Self::Settings => "Settings",
+            Self::AuditLog => "Audit log",
         }
     }
 
@@ -45,6 +47,7 @@ impl AdminSection {
             Self::Organizations => "/admin/organizations",
             Self::Repositories => "/admin/repositories",
             Self::Settings => "/admin/settings",
+            Self::AuditLog => "/admin/audit",
         }
     }
 
@@ -609,7 +612,7 @@ mod tests {
     #[test]
     fn nav_marks_active_section() {
         let nav = AdminSection::Users.nav();
-        assert_eq!(nav.len(), 5);
+        assert_eq!(nav.len(), AdminSection::ALL.len());
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         assert_eq!(nav.iter().find(|link| link.is_active).map(|link| link.url), Some("/admin/users"));
     }

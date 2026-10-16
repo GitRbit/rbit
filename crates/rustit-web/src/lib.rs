@@ -11,8 +11,10 @@
 //! * [`extract`] — request extractors (`Viewer`, `SignedIn`, `Page`).
 
 pub mod assets;
+pub mod client_ip;
 pub mod error;
 pub mod extract;
+pub mod metrics;
 pub mod middleware;
 pub mod render;
 pub mod routes;

@@ -6,7 +6,7 @@ use rustit_auth::Passwords;
 use rustit_core::{AccountId, Email, User};
 use rustit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
-use crate::{ServiceContext, ServiceError};
+use crate::{DomainEvent, ServiceContext, ServiceError};
 
 const MAX_DISPLAY_NAME_LEN: usize = 80;
 const MAX_BIO_LEN: usize = 300;
@@ -82,6 +82,7 @@ impl ProfileService {
         self.verify_password(user, current_password).await?;
         self.store().set_email(user.id(), &email).await?;
         tracing::info!(user = %user.name(), "email changed");
+        self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
         Ok(email)
     }
 
@@ -92,6 +93,7 @@ impl ProfileService {
         let hash = Passwords::hash(new_password).await?;
         self.store().set_password_hash(user.id(), &hash).await?;
         tracing::info!(user = %user.name(), "password changed");
+        self.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
         Ok(())
     }
 

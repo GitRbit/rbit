@@ -20,6 +20,10 @@ pub enum DomainEvent {
     RepositoryPushed { repo: RepoId },
     /// An account was created, by sign-up or by an administrator.
     UserSignedUp { user: AccountId },
+    /// A user's password was changed (by them, by a reset link, or by an administrator).
+    PasswordChanged { user: AccountId },
+    /// A user's email address was changed; `previous` is the old address.
+    EmailChanged { user: AccountId, previous: String },
 }
 
 #[derive(Debug, Clone)]

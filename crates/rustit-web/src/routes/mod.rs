@@ -2,23 +2,29 @@
 
 mod account;
 mod admin;
+mod audit;
 mod auth;
 mod git_http;
 mod history;
 mod home;
 mod listing;
+mod ops;
 mod orgs;
 mod pwa;
+mod recovery;
 mod repo;
 mod repo_create;
 mod repo_settings;
+mod security;
 mod settings;
+mod ssh_keys;
 mod stars;
 
 use std::time::Duration;
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::StatusCode,
     middleware::{from_fn, from_fn_with_state},
     routing::{get, post},
@@ -30,6 +36,9 @@ use crate::{AppState, assets, error::WebError, middleware};
 /// HTML pages must render quickly; anything slower is a bug worth surfacing.
 const PAGE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Upper bound for buffered request bodies on HTML routes (Git traffic streams instead).
+const MAX_FORM_BYTES: usize = 1024 * 1024;
+
 /// Builds the complete application router.
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -38,6 +47,7 @@ pub fn router(state: AppState) -> Router {
         // Git traffic is merged without compression or timeouts: packfiles are already
         // compressed and large clones legitimately take minutes.
         .merge(git_routes())
+        .layer(from_fn(crate::metrics::track))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -70,13 +80,20 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(admin::routes())
         .merge(repo_settings::routes())
         .merge(stars::routes())
+        .merge(security::routes())
+        .merge(audit::routes())
+        .merge(recovery::routes())
+        .merge(ssh_keys::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))
+        .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))
         .layer(from_fn(middleware::security_headers))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, PAGE_TIMEOUT))
         .layer(CompressionLayer::new())
+        // Forms are small; this bounds memory per request for every extractor that buffers.
+        .layer(DefaultBodyLimit::max(MAX_FORM_BYTES))
 }
 
 fn static_routes() -> Router<AppState> {
@@ -84,7 +101,7 @@ fn static_routes() -> Router<AppState> {
         .route("/assets/{*path}", get(assets::serve))
         .route("/manifest.webmanifest", get(pwa::manifest))
         .route("/sw.js", get(pwa::service_worker))
-        .route("/healthz", get(|| async { "ok" }))
+        .merge(ops::routes())
         .layer(CompressionLayer::new())
 }
 

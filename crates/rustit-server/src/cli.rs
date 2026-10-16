@@ -22,6 +22,12 @@ pub enum Command {
     Serve,
     /// Apply pending database migrations, then exit.
     Migrate,
+    /// Write a consistent backup of all data to a new directory.
+    Backup {
+        /// Directory to create; it must not exist yet.
+        #[arg(long, short)]
+        output: PathBuf,
+    },
     /// Manage user accounts.
     User {
         #[command(subcommand)]

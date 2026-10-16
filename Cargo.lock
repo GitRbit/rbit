@@ -2984,6 +2984,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustit-e2e"
+version = "0.1.0"
+dependencies = [
+ "rustit-core",
+ "rustit-services",
+ "rustit-storage",
+ "rustit-web",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "rustit-git"
 version = "0.1.0"
 dependencies = [
@@ -2991,6 +3003,16 @@ dependencies = [
  "rustit-core",
  "similar",
  "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rustit-mail"
+version = "0.1.0"
+dependencies = [
+ "rustit-core",
  "thiserror",
  "tokio",
  "tracing",
@@ -3023,6 +3045,16 @@ dependencies = [
  "rustit-git",
  "rustit-storage",
  "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rustit-ssh"
+version = "0.1.0"
+dependencies = [
+ "rustit-core",
  "thiserror",
  "tokio",
  "tracing",

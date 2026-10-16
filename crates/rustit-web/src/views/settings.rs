@@ -24,17 +24,21 @@ const NEVER_EXPIRES: &str = "never";
 pub enum SettingsSection {
     Profile,
     Account,
+    Security,
+    SshKeys,
     AccessTokens,
 }
 
 impl SettingsSection {
     /// Navigation order. New sections slot in here.
-    const ALL: [Self; 3] = [Self::Profile, Self::Account, Self::AccessTokens];
+    const ALL: [Self; 5] = [Self::Profile, Self::Account, Self::Security, Self::SshKeys, Self::AccessTokens];
 
     const fn label(self) -> &'static str {
         match self {
             Self::Profile => "Profile",
             Self::Account => "Account",
+            Self::Security => "Security",
+            Self::SshKeys => "SSH keys",
             Self::AccessTokens => "Access tokens",
         }
     }
@@ -44,6 +48,8 @@ impl SettingsSection {
         match self {
             Self::Profile => "/settings/profile",
             Self::Account => "/settings/account",
+            Self::Security => "/settings/security",
+            Self::SshKeys => "/settings/keys",
             Self::AccessTokens => "/settings/tokens",
         }
     }
@@ -426,10 +432,10 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Access tokens"]);
+        assert_eq!(labels, ["Profile", "Account", "Security", "SSH keys", "Access tokens"]);
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
-        assert!(nav[2].is_active);
-        assert_eq!(nav[2].url, "/settings/tokens");
+        let active = nav.iter().find(|link| link.is_active).unwrap();
+        assert_eq!(active.url, "/settings/tokens");
         assert!(SettingsSection::Profile.nav()[0].is_active);
     }
 

@@ -3,13 +3,17 @@
 mod access_tokens;
 mod accounts;
 pub mod admin;
+pub mod audit;
 pub mod instance;
 pub mod orgs;
 pub mod profiles;
+pub mod recovery;
 pub mod repo_settings;
 mod repositories;
 mod rows;
+pub mod ssh_keys;
 pub mod stars;
+pub mod two_factor;
 
 use std::{path::Path, str::FromStr, time::Duration};
 
@@ -66,6 +70,22 @@ impl Database {
 
     pub fn access_tokens(&self) -> AccessTokenStore {
         AccessTokenStore::new(self.pool.clone())
+    }
+
+    pub fn audit(&self) -> audit::AuditStore {
+        audit::AuditStore::new(self.pool.clone())
+    }
+
+    pub fn recovery(&self) -> recovery::RecoveryStore {
+        recovery::RecoveryStore::new(self.pool.clone())
+    }
+
+    pub fn ssh_keys(&self) -> ssh_keys::SshKeyStore {
+        ssh_keys::SshKeyStore::new(self.pool.clone())
+    }
+
+    pub fn two_factor(&self) -> two_factor::TwoFactorStore {
+        two_factor::TwoFactorStore::new(self.pool.clone())
     }
 
     pub fn admin(&self) -> admin::AdminStore {

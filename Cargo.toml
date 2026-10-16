@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rustit-core", "crates/rustit-storage", "crates/rustit-auth", "crates/rustit-git", "crates/rustit-transport", "crates/rustit-services", "crates/rustit-web", "crates/rustit-server"]
+members = ["crates/rustit-core", "crates/rustit-storage", "crates/rustit-auth", "crates/rustit-git", "crates/rustit-transport", "crates/rustit-services", "crates/rustit-web", "crates/rustit-server", "crates/rustit-ssh", "crates/rustit-mail", "crates/rustit-e2e"]
 default-members = ["crates/rustit-server"]
 
 [workspace.package]
@@ -19,6 +19,8 @@ rustit-git = { path = "crates/rustit-git" }
 rustit-transport = { path = "crates/rustit-transport" }
 rustit-services = { path = "crates/rustit-services" }
 rustit-web = { path = "crates/rustit-web" }
+rustit-ssh = { path = "crates/rustit-ssh" }
+rustit-mail = { path = "crates/rustit-mail" }
 
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }
@@ -70,6 +72,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 time = { version = "0.3", features = ["formatting", "macros"] }
 mimalloc = "0.1"
+
+# Milestone 1 — each workstream adds its dependencies in its own block below.
+# --- S: security (rate limiting, TOTP) ---
+# --- E: email & recovery ---
+# --- H: SSH ---
+# --- O: operations (metrics, jobs) ---
+# --- T: end-to-end tests ---
 
 # Testing
 tempfile = "3"
