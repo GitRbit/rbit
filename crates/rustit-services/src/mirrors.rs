@@ -8,7 +8,7 @@
 //!   upstream ([`rustit_core::mirror::MirrorUrl`]: no credentials) — when
 //!   `[mirrors] enabled`. The interval is at least `min_interval_minutes`.
 //! * Before every fetch the upstream host is resolved and each address must be public
-//!   ([`is_public_address`]) unless `allow_private_addresses`; the fetch itself refuses
+//!   (not [`is_internal_address`]) unless `allow_private_addresses`; the fetch itself refuses
 //!   redirects (see [`rustit_git::mirror`]). Git resolves the name again when it
 //!   connects, so a DNS answer that changes in between is not caught; disabling
 //!   redirects and checking right before the fetch keeps that window small.
@@ -37,7 +37,8 @@ use std::{
 
 use rustit_core::{
     RepoId, Timestamp, User, Visibility,
-    mirror::{Mirror, MirrorUrl, is_public_address},
+    mirror::{Mirror, MirrorUrl},
+    network::is_internal_address,
     repository::OwnedRepository,
 };
 use rustit_git::{
@@ -155,7 +156,7 @@ impl MirrorService {
         if addresses.is_empty() {
             return Err(ServiceError::Invalid(format!("cannot resolve {}", url.host())));
         }
-        if addresses.iter().any(|address| !is_public_address(*address)) {
+        if addresses.iter().any(|address| is_internal_address(*address)) {
             return Err(ServiceError::Invalid(format!("{} is not a public address; mirrors can only fetch from the internet", url.host())));
         }
         Ok(())

@@ -13,6 +13,7 @@ pub mod instance;
 pub mod membership;
 pub mod mirror;
 pub mod names;
+pub mod network;
 pub mod org;
 pub mod release;
 pub mod repository;

@@ -5,14 +5,11 @@
 //! A mirror is an ordinary repository with a [`Mirror`] row: Rustit fetches the
 //! upstream's branches and tags on a schedule and nobody pushes to it. Upstreams are
 //! `http`/`https` URLs without credentials ([`MirrorUrl`]); before every fetch the host's
-//! addresses are checked with [`is_public_address`] unless the instance allows private
-//! addresses, so a mirror cannot be used to probe the server's internal network.
+//! addresses are checked with [`crate::network::is_internal_address`] unless the instance
+//! allows private addresses, so a mirror cannot be used to probe the server's internal
+//! network.
 
-use std::{
-    fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    str::FromStr,
-};
+use std::{fmt, str::FromStr};
 
 use crate::{RepoId, Timestamp};
 
@@ -122,58 +119,6 @@ impl FromStr for MirrorUrl {
     }
 }
 
-/// Whether `address` is a public unicast address a mirror may fetch from: not loopback,
-/// private (RFC 1918), shared/CGNAT (`100.64/10`), link-local, unique-local (`fc00::/7`),
-/// multicast, unspecified, broadcast, documentation or benchmarking ranges, and the
-/// same for IPv4-mapped and IPv4-compatible IPv6 addresses.
-pub fn is_public_address(address: IpAddr) -> bool {
-    match address {
-        IpAddr::V4(v4) => is_public_v4(v4),
-        IpAddr::V6(v6) => match v6.to_ipv4_mapped().or_else(|| compatible_v4(v6)) {
-            Some(v4) => is_public_v4(v4),
-            None => is_public_v6(v6),
-        },
-    }
-}
-
-fn is_public_v4(v4: Ipv4Addr) -> bool {
-    let [a, b, c, _] = v4.octets();
-    !(v4.is_private()
-        || v4.is_loopback()
-        || v4.is_link_local()
-        || v4.is_multicast()
-        || v4.is_broadcast()
-        || v4.is_unspecified()
-        || v4.is_documentation()
-        || a == 0
-        || (a == 100 && (64..128).contains(&b))
-        || (a == 192 && b == 0 && c == 0)
-        || (a == 198 && (b == 18 || b == 19))
-        || a >= 240)
-}
-
-fn is_public_v6(v6: Ipv6Addr) -> bool {
-    let first = v6.segments()[0];
-    !(v6.is_loopback()
-        || v6.is_unspecified()
-        || v6.is_multicast()
-        || (first & 0xfe00) == 0xfc00
-        || (first & 0xffc0) == 0xfe80
-        || (first == 0x2001 && v6.segments()[1] == 0x0db8)
-        || (first == 0x0064 && v6.segments()[1] == 0xff9b))
-}
-
-/// The deprecated IPv4-compatible form `::a.b.c.d` (excluding `::` and `::1`).
-fn compatible_v4(v6: Ipv6Addr) -> Option<Ipv4Addr> {
-    let segments = v6.segments();
-    if segments[..6].iter().all(|s| *s == 0) && !(segments[6] == 0 && segments[7] <= 1) {
-        let [.., a, b, c, d] = v6.octets();
-        Some(Ipv4Addr::new(a, b, c, d))
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,38 +145,5 @@ mod tests {
             assert_eq!(input.parse::<MirrorUrl>(), Err(error), "{input}");
         }
         assert_eq!(format!("https://e.com/{}", "a".repeat(2048)).parse::<MirrorUrl>(), Err(MirrorUrlError::TooLong));
-    }
-
-    #[test]
-    fn only_public_addresses_are_allowed() {
-        for public in ["93.184.216.34", "1.1.1.1", "2606:4700::1111", "::ffff:8.8.8.8"] {
-            assert!(is_public_address(public.parse().unwrap()), "{public}");
-        }
-        for private in [
-            "127.0.0.1",
-            "10.1.2.3",
-            "172.16.0.1",
-            "192.168.1.1",
-            "100.64.0.1",
-            "169.254.169.254",
-            "0.0.0.0",
-            "255.255.255.255",
-            "224.0.0.1",
-            "192.0.2.1",
-            "198.18.0.1",
-            "::1",
-            "::",
-            "fc00::1",
-            "fd12:3456::1",
-            "fe80::1",
-            "ff02::1",
-            "2001:db8::1",
-            "::ffff:127.0.0.1",
-            "::ffff:10.0.0.1",
-            "::127.0.0.1",
-            "64:ff9b::a00:1",
-        ] {
-            assert!(!is_public_address(private.parse().unwrap()), "{private}");
-        }
     }
 }
