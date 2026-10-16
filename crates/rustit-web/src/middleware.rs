@@ -16,6 +16,7 @@ use crate::{
     client_ip::ClientIp,
     error::{ErrorInfo, WebError},
     extract::{CurrentSession, Viewer},
+    themes::Theme,
     views::{errors::ErrorPage, layout::Page},
 };
 
@@ -78,7 +79,7 @@ pub async fn rate_limit(State(state): State<AppState>, request: Request, next: N
             let Some(info) = response.extensions().get::<ErrorInfo>().cloned() else {
                 return response;
             };
-            let page = Page::new(&state, None, request.uri().path()).titled(info.title);
+            let page = Page::new(&state, None, request.uri().path()).with_theme(Theme::from_headers(request.headers())).titled(info.title);
             let (mut parts, _) = response.into_parts();
             let rendered = ErrorPage { page, info }.into_response();
             if let Some(content_type) = rendered.headers().get(header::CONTENT_TYPE) {
@@ -151,6 +152,7 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
     let query = request.uri().query().map(str::to_owned);
+    let theme = Theme::from_headers(request.headers());
     let response = next.run(request).await;
 
     let Some(info) = response.extensions().get::<ErrorInfo>().cloned() else {
@@ -161,7 +163,7 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     {
         return moved_permanently(&method, &location);
     }
-    let page = Page::new(&state, viewer.user(), &path).titled(info.title);
+    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).titled(info.title);
     (info.status, ErrorPage { page, info }).into_response()
 }
 

@@ -22,8 +22,9 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        "background_color": "#000000",
-        "theme_color": "#000000",
+        // The splash screen before first paint. No theme_color: the page's own theme-color
+        // meta tags (light, dark or the chosen theme) apply from there on.
+        "background_color": crate::themes::LIGHT_CANVAS,
         // PNGs (rendered from icon.svg by `npm run icons`) for platforms that ignore SVG
         // icons; the maskable one keeps the glyph inside the safe zone.
         "icons": [
