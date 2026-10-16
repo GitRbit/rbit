@@ -45,6 +45,8 @@ pub struct RepoHeader {
     pub forks_url: String,
     /// The parent, when this is a fork of a repository the viewer may read.
     pub forked_from: Option<ForkedFrom>,
+    /// The upstream URL, when this repository is a pull mirror.
+    pub mirror_url: Option<String>,
     /// `"code"`, `"commits"`, `"branches"`, `"tags"`, `"releases"` or `"settings"`;
     /// compared in `repo/subnav.html`.
     pub active_tab: &'static str,

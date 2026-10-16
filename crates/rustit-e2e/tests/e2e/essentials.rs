@@ -1,8 +1,76 @@
-//! Archives, releases, blame, compare, forks and README links, end to end.
+//! Archives, releases, blame, compare, forks, pull mirrors and README links, end to end.
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
 
-use rustit_e2e::{Git, PASSWORD, Sample, StatusCode, TestServer};
+use std::time::{Duration, Instant};
+
+use rustit_e2e::{Client, Git, PASSWORD, Sample, StatusCode, TestServer};
+
+/// Polls `path` until its body contains `needle` (mirror fetches run in the background).
+async fn wait_for(client: &Client, path: &str, needle: &str) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if client.get(path).await.contains(needle) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "{needle:?} never appeared on {path}");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+#[tokio::test]
+async fn pull_mirrors_fetch_their_upstream() {
+    let server = TestServer::start_with(|config| config.mirrors.allow_private_addresses = true);
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "upstream", "public").await;
+    let sample = git.sample();
+    git.push_sample(&sample, &server.git_url_as("alice", "upstream", "alice", PASSWORD));
+
+    let upstream = server.git_url("alice", "upstream");
+    let too_often = alice.post("/new/mirror", &[("owner", "alice"), ("url", &upstream), ("name", "copy"), ("interval", "1")]).await;
+    too_often.expect_status(StatusCode::UNPROCESSABLE_ENTITY).expect_contains(&["The interval must be between"]);
+    // The name defaults to the upstream's, which alice already uses.
+    let taken = alice.post("/new/mirror", &[("owner", "alice"), ("url", &upstream), ("name", ""), ("interval", "60")]).await;
+    taken.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    alice
+        .post("/new/mirror", &[("owner", "alice"), ("url", &upstream), ("name", "copy"), ("visibility", "public"), ("interval", "60")])
+        .await
+        .expect_redirect("/alice/copy");
+
+    // The first fetch runs in the background and brings every branch and tag.
+    wait_for(&alice, "/alice/copy/branches", "feature").await;
+    alice.get("/alice/copy/tags").await.expect_contains(&[Sample::TAG]);
+    alice.get("/alice/copy").await.expect_contains(&["mirror of", &upstream]);
+    let settings = alice.get("/alice/copy/settings/mirror").await;
+    settings.expect_status(StatusCode::OK).expect_contains(&[&upstream, ">OK<"]);
+    alice.get("/alice/copy/settings").await.expect_contains(&["href=\"/alice/copy/settings/mirror\""]);
+    alice.get("/alice/upstream/settings/mirror").await.expect_status(StatusCode::NOT_FOUND);
+    let bob = server.sign_up("bob").await;
+    bob.get("/alice/copy/settings/mirror").await.expect_status(StatusCode::NOT_FOUND);
+
+    // New upstream work arrives with "Fetch now".
+    let pushed = git.commit_file(&sample.dir, "later.txt", "later\n");
+    git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "upstream", "alice", PASSWORD), "main"]);
+    alice.post("/alice/copy/settings/mirror/sync", &[]).await.expect_redirect("/alice/copy/settings/mirror?queued=1");
+    wait_for(&alice, "/alice/copy/commits", &pushed[..7]).await;
+
+    alice.post("/alice/copy/settings/mirror", &[("interval", "120")]).await.expect_redirect("/alice/copy/settings/mirror?saved=1");
+    alice.post("/alice/copy/settings/mirror/remove", &[]).await.expect_redirect("/alice/copy/settings");
+    alice.get("/alice/copy/settings/mirror").await.expect_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn mirrors_refuse_private_addresses_by_default() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let local = server.git_url("alice", "anything");
+    for url in [local.as_str(), "http://169.254.169.254/latest", "https://user:pw@example.com/x.git", "file:///etc/passwd"] {
+        let refused = alice.post("/new/mirror", &[("owner", "alice"), ("url", url), ("name", "m"), ("interval", "60")]).await;
+        refused.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    alice.get("/alice/m").await.expect_status(StatusCode::NOT_FOUND);
+}
 
 #[tokio::test]
 async fn readme_links_resolve_into_the_repository() {

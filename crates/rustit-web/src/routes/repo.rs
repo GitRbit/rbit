@@ -45,6 +45,7 @@ pub(super) struct RepoPage {
     stars: StarSummary,
     fork_count: u64,
     forked_from: Option<ForkedFrom>,
+    mirror_url: Option<String>,
 }
 
 impl RepoPage {
@@ -53,13 +54,15 @@ impl RepoPage {
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
         let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
         let forks = &state.services.forks;
-        let (stars, fork_count, parent) = tokio::join!(
+        let (stars, fork_count, parent, mirror) = tokio::join!(
             state.services.stars.summary(ctx.repo.repo.id, viewer.user()),
             forks.count(viewer.user(), &ctx),
             forks.parent(viewer.user(), &ctx),
+            state.services.mirrors.find(&ctx),
         );
+        let mirror_url = mirror?.map(|mirror| mirror.url.to_string());
         let forked_from = parent?.map(|parent| ForkedFrom { full_name: parent.full_name(), url: format!("/{}", parent.full_name()) });
-        Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from })
+        Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from, mirror_url })
     }
 
     /// Branches then tags, each sorted by name.
@@ -102,6 +105,7 @@ impl RepoPage {
             fork_url: format!("{}/fork", self.urls.home()),
             forks_url: format!("{}/forks", self.urls.home()),
             forked_from: self.forked_from.clone(),
+            mirror_url: self.mirror_url.clone(),
             active_tab,
         }
     }
