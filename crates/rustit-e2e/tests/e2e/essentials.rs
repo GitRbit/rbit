@@ -217,6 +217,37 @@ async fn a_published_release_appears_on_the_releases_tab() {
 }
 
 #[tokio::test]
+async fn release_files_are_uploaded_by_writers_and_downloaded_by_readers() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "app", "public").await;
+    git.push_sample(&git.sample(), &server.git_url_as("alice", "app", "alice", PASSWORD));
+    alice
+        .post("/alice/app/releases/new", &[("tag", Sample::TAG), ("name", "First"), ("notes", ""), ("action", "publish")])
+        .await
+        .expect_redirect("/alice/app/releases/tag/v1.0");
+
+    let contents = b"release notes in a file\n".to_vec();
+    let refused = bob.post_file("/alice/app/releases/1/assets", "file", "notes.txt", "text/plain", contents.clone()).await;
+    refused.expect_status(StatusCode::NOT_FOUND);
+    let uploaded = alice.post_file("/alice/app/releases/1/assets", "file", "release notes.txt", "text/plain", contents).await;
+    uploaded.expect_status(StatusCode::SEE_OTHER);
+    assert!(uploaded.location().is_some_and(|to| to.starts_with("/alice/app/releases/tag/v1.0?uploaded=")), "{:?}", uploaded.location());
+    let link = "href=\"/alice/app/releases/download/v1.0/release%20notes.txt\"";
+    server.client().get("/alice/app/releases/tag/v1.0").await.expect_contains(&["release notes.txt", link]);
+
+    let download = server.client().get("/alice/app/releases/download/v1.0/release%20notes.txt").await;
+    download.expect_status(StatusCode::OK);
+    assert_eq!(download.body, "release notes in a file\n");
+    assert_eq!(download.header("content-type"), Some("application/octet-stream"));
+    assert_eq!(download.header("content-disposition"), Some("attachment; filename*=UTF-8''release%20notes%2Etxt"));
+    let again = alice.post_file("/alice/app/releases/1/assets", "file", "release notes.txt", "text/plain", b"twice".to_vec()).await;
+    again.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
 async fn blame_and_compare_pages_render() {
     let server = TestServer::start();
     let git = Git::new();

@@ -33,7 +33,7 @@ use std::{
 pub use reqwest::StatusCode;
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
-    redirect,
+    multipart, redirect,
 };
 use rustit_core::Config;
 use rustit_services::Services;
@@ -298,6 +298,14 @@ impl Client {
         Response::read(request.send().await).await
     }
 
+    /// `POST path` as `multipart/form-data` with a single file field, as a browser sends
+    /// an `<input type="file" name="{field}">`.
+    pub async fn post_file(&self, path: &str, field: &str, file_name: &str, content_type: &str, contents: Vec<u8>) -> Response {
+        let part = multipart::Part::bytes(contents).file_name(file_name.to_owned()).mime_str(content_type).expect("a valid content type");
+        let form = multipart::Form::new().part(field.to_owned(), part);
+        Response::read(self.http.post(self.url(path)).multipart(form).send().await).await
+    }
+
     /// Submits the sign-up form for `username` with [`PASSWORD`].
     pub async fn sign_up(&self, username: &str) -> Response {
         let email = format!("{username}@example.test");
@@ -322,7 +330,7 @@ impl Client {
             .expect_redirect(&format!("/{owner}/{name}"));
     }
 
-    /// Creates a personal access token (`scope` is `read` or `write`) that never expires
+    /// Creates a personal access token (`scope` is `read`, `write` or `admin`) that never expires
     /// and returns its secret, scraped from the one page that shows it.
     pub async fn create_token(&self, name: &str, scope: &str) -> String {
         let page = self.post("/settings/tokens", &[("name", name), ("scope", scope), ("expires", "never")]).await;
