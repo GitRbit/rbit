@@ -1,6 +1,6 @@
 //! Administration panel pages (`/admin/…`) and their view models.
 
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 
 use askama::Template;
 use askama_web::WebTemplate;
@@ -238,6 +238,7 @@ fn settings_summary(settings: &InstanceSettings) -> Vec<InfoRow> {
 #[allow(clippy::struct_excessive_bools)] // Independent display flags, not a state machine.
 #[derive(Debug, Clone)]
 pub struct UserRow {
+    pub id: AccountId,
     pub name: String,
     pub label: String,
     pub has_display_name: bool,
@@ -246,6 +247,8 @@ pub struct UserRow {
     pub avatar: Avatar,
     pub is_admin: bool,
     pub is_suspended: bool,
+    /// The user has confirmed their email address.
+    pub is_verified: bool,
     /// The row is the viewing administrator (self-targeted actions are hidden).
     pub is_self: bool,
     pub repositories: String,
@@ -256,6 +259,10 @@ pub struct UserRow {
     pub suspend_url: String,
     pub unsuspend_url: String,
     pub delete_url: String,
+    /// `POST`: emails the user a password-reset link.
+    pub send_reset_url: String,
+    /// `GET`/`POST`: sets the user's password directly.
+    pub password_url: String,
 }
 
 impl UserRow {
@@ -263,6 +270,7 @@ impl UserRow {
         let user = &record.user;
         let base = format!("/admin/users/{}", user.id().0);
         Self {
+            id: user.id(),
             name: user.name().to_string(),
             label: user.account.label().to_owned(),
             has_display_name: user.account.display_name.as_deref().is_some_and(|name| !name.is_empty()),
@@ -271,6 +279,7 @@ impl UserRow {
             avatar: Avatar::for_account(&user.account),
             is_admin: user.is_admin,
             is_suspended: record.is_suspended(),
+            is_verified: false,
             is_self: user.id() == viewer,
             repositories: count(record.repository_count),
             joined: user.account.created_at.date(),
@@ -280,7 +289,42 @@ impl UserRow {
             suspend_url: format!("{base}/suspend"),
             unsuspend_url: format!("{base}/unsuspend"),
             delete_url: format!("{base}/delete"),
+            send_reset_url: format!("{base}/password-reset"),
+            password_url: format!("{base}/password"),
         }
+    }
+}
+
+/// A confirmation shown above the users table after an action (`?notice=…`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsersNotice {
+    ResetSent,
+    PasswordSet,
+}
+
+impl UsersNotice {
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::ResetSent => "reset-sent",
+            Self::PasswordSet => "password-set",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        [Self::ResetSent, Self::PasswordSet].into_iter().find(|notice| notice.key() == value)
+    }
+
+    pub const fn message(self) -> &'static str {
+        match self {
+            Self::ResetSent => "Password reset email sent.",
+            Self::PasswordSet => "Password updated.",
+        }
+    }
+
+    /// `listing` (a URL from [`listing_url`]) with this notice appended.
+    pub fn url(self, listing: &str) -> String {
+        let separator = if listing.contains('?') { '&' } else { '?' };
+        format!("{listing}{separator}notice={}", self.key())
     }
 }
 
@@ -290,8 +334,11 @@ pub struct UsersPage {
     pub page: Page,
     pub admin_nav: Vec<AdminLink>,
     pub error: FormError,
+    pub notice: Option<UsersNotice>,
     pub listing: Listing,
     pub users: Vec<UserRow>,
+    /// Whether "Send password reset" can be offered.
+    pub email_available: bool,
 }
 
 impl UsersPage {
@@ -300,8 +347,58 @@ impl UsersPage {
             page: page.titled("Users · Administration"),
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
+            notice: None,
             listing: Listing::new(AdminSection::Users, search, paged),
             users: paged.items.iter().map(|record| UserRow::new(record, viewer.id())).collect(),
+            email_available: false,
+        }
+    }
+
+    /// Marks the users in `verified`, and records whether reset emails can be sent.
+    #[must_use]
+    pub fn with_email(mut self, verified: &HashSet<AccountId>, email_available: bool) -> Self {
+        for row in &mut self.users {
+            row.is_verified = verified.contains(&row.id);
+        }
+        self.email_available = email_available;
+        self
+    }
+
+    #[must_use]
+    pub fn with_error(mut self, error: FormError) -> Self {
+        self.error = error;
+        self
+    }
+
+    #[must_use]
+    pub fn with_notice(mut self, notice: Option<UsersNotice>) -> Self {
+        self.notice = notice;
+        self
+    }
+}
+
+/// `/admin/users/{id}/password`: sets a user's password directly.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "admin/set_password.html")]
+pub struct SetPasswordPage {
+    pub page: Page,
+    pub admin_nav: Vec<AdminLink>,
+    pub error: FormError,
+    pub user: UserRow,
+    pub min_password_length: usize,
+    pub email_available: bool,
+}
+
+impl SetPasswordPage {
+    pub fn new(page: Page, viewer: &User, record: &UserRecord, min_password_length: usize, email_available: bool) -> Self {
+        let user = UserRow::new(record, viewer.id());
+        Self {
+            page: page.titled(format!("Set password for {} · Administration", user.name)),
+            admin_nav: AdminSection::Users.nav(),
+            error: FormError::default(),
+            user,
+            min_password_length,
+            email_available,
         }
     }
 
@@ -607,6 +704,83 @@ mod tests {
     fn listing_urls_encode_search_and_skip_defaults() {
         assert_eq!(listing_url("/admin/users", "", 1), "/admin/users");
         assert_eq!(listing_url("/admin/users", "a b&c", 2), "/admin/users?q=a%20b%26c&page=2");
+    }
+
+    fn user(id: i64, name: &str, is_admin: bool) -> User {
+        User {
+            account: rustit_core::Account {
+                id: AccountId(id),
+                kind: rustit_core::AccountKind::User,
+                name: name.parse().unwrap(),
+                display_name: None,
+                bio: None,
+                created_at: rustit_core::Timestamp(1_792_022_400),
+            },
+            email: format!("{name}@example.com").parse().unwrap(),
+            is_admin,
+        }
+    }
+
+    fn record(user: User, suspended: bool) -> UserRecord {
+        UserRecord { user, suspended_at: suspended.then_some(rustit_core::Timestamp(1)), repository_count: 0 }
+    }
+
+    fn page() -> Page {
+        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/admin/users".to_owned() }
+    }
+
+    #[test]
+    fn users_page_shows_verification_and_password_actions() {
+        let admin = user(1, "root", true);
+        let paged = Paged {
+            items: vec![record(admin.clone(), false), record(user(2, "alice", false), false), record(user(3, "bob", false), true)],
+            total: 3,
+            page: 1,
+            per_page: 30,
+        };
+        let verified = HashSet::from([AccountId(2)]);
+
+        let html = UsersPage::new(page(), &admin, "", &paged)
+            .with_email(&verified, true)
+            .with_notice(Some(UsersNotice::ResetSent))
+            .render()
+            .unwrap();
+        assert_eq!(html.matches(">Verified<").count(), 1);
+        assert!(html.contains("Password reset email sent."));
+        assert!(html.contains(r#"action="/admin/users/2/password-reset""#));
+        assert!(!html.contains(r#"action="/admin/users/3/password-reset""#), "not offered for suspended users");
+        assert!(html.contains(r#"href="/admin/users/2/password""#) && html.contains(r#"href="/admin/users/3/password""#));
+        assert!(!html.contains("/admin/users/1/password"), "no self-targeted actions");
+
+        let html = UsersPage::new(page(), &admin, "", &paged).with_email(&verified, false).render().unwrap();
+        assert!(!html.contains("password-reset"), "no reset emails without email");
+        assert!(html.contains(r#"href="/admin/users/2/password""#));
+    }
+
+    #[test]
+    fn users_notices_round_trip() {
+        for notice in [UsersNotice::ResetSent, UsersNotice::PasswordSet] {
+            assert_eq!(UsersNotice::parse(notice.key()), Some(notice));
+        }
+        assert_eq!(UsersNotice::parse("other"), None);
+        assert_eq!(UsersNotice::PasswordSet.url("/admin/users"), "/admin/users?notice=password-set");
+        assert_eq!(UsersNotice::ResetSent.url("/admin/users?q=alice"), "/admin/users?q=alice&notice=reset-sent");
+    }
+
+    #[test]
+    fn set_password_page_renders() {
+        let admin = user(1, "root", true);
+        let html = SetPasswordPage::new(page(), &admin, &record(user(2, "alice", false), false), 12, true)
+            .with_error(FormError::new("The new passwords do not match."))
+            .render()
+            .unwrap();
+        assert!(html.contains(r#"action="/admin/users/2/password""#));
+        assert!(html.contains(r#"minlength="12""#));
+        assert!(html.contains("The new passwords do not match."));
+        assert!(html.contains("send a password reset"));
+
+        let html = SetPasswordPage::new(page(), &admin, &record(user(2, "alice", false), false), 12, false).render().unwrap();
+        assert!(!html.contains("send a password reset"));
     }
 
     #[test]

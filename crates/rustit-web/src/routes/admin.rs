@@ -12,7 +12,10 @@ use axum::{
     routing::{get, post},
 };
 use rustit_core::{AccountId, InstanceSettings, OrgCreationPolicy, RegistrationMode, RepoId, User, Visibility};
-use rustit_services::{ServiceError, SignUp, admin::ListQuery};
+use rustit_services::{
+    ServiceError, SignUp,
+    admin::{ListQuery, UserRecord},
+};
 use serde::Deserialize;
 
 use crate::{
@@ -22,7 +25,7 @@ use crate::{
     views::{
         admin::{
             AdminSection, DashboardPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage, RepositoriesPage,
-            SettingsForm, SettingsPage, UsersPage, listing_url,
+            SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
         },
         components::FormError,
         layout::Page,
@@ -37,6 +40,8 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/users/new", get(new_user_form).post(create_user))
         .route("/admin/users/{id}/{action}", post(moderate_user))
         .route("/admin/users/{id}/delete", get(delete_user_form).post(delete_user))
+        .route("/admin/users/{id}/password", get(set_password_form).post(set_password))
+        .route("/admin/users/{id}/password-reset", post(send_password_reset))
         .route("/admin/organizations", get(organizations))
         .route("/admin/repositories", get(repositories))
         .route("/admin/repositories/{id}/delete", get(delete_repository_form).post(delete_repository))
@@ -48,6 +53,9 @@ pub fn routes() -> Router<AppState> {
 pub struct ListParams {
     q: Option<String>,
     page: Option<String>,
+    /// A confirmation to show (users list only).
+    #[serde(default)]
+    notice: Option<String>,
 }
 
 impl ListParams {
@@ -78,12 +86,89 @@ pub async fn users(
     page: Page,
     Query(params): Query<ListParams>,
 ) -> WebResult<UsersPage> {
-    users_page(&state, &admin, page, &params.query()).await
+    let notice = params.notice.as_deref().and_then(UsersNotice::parse);
+    Ok(users_page(&state, &admin, page, &params.query()).await?.with_notice(notice))
 }
 
 async fn users_page(state: &AppState, admin: &User, page: Page, query: &ListQuery) -> WebResult<UsersPage> {
     let paged = state.services.admin.users(admin, query).await?;
-    Ok(UsersPage::new(page, admin, query.search(), &paged))
+    let recovery = &state.services.recovery;
+    let ids: Vec<AccountId> = paged.items.iter().map(|record| record.user.id()).collect();
+    let verified = recovery.verified_among(admin, &ids).await?;
+    Ok(UsersPage::new(page, admin, query.search(), &paged).with_email(&verified, recovery.email_available()))
+}
+
+/// `POST /admin/users/{id}/password-reset`: emails the user a reset link.
+pub async fn send_password_reset(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Path(id): Path<String>,
+    Form(form): Form<ModerationForm>,
+) -> WebResult<Response> {
+    let id = AccountId(parse_id(&id)?);
+    let query = ListParams { q: Some(form.q), page: form.page, notice: None }.query();
+    match state.services.recovery.admin_send_password_reset(&admin, id).await {
+        Ok(_) => {
+            let listing = listing_url(AdminSection::Users.url(), query.search(), query.page());
+            Ok(Redirect::to(&UsersNotice::ResetSent.url(&listing)).into_response())
+        }
+        Err(ServiceError::Invalid(message)) => {
+            let page = users_page(&state, &admin, page, &query).await?.with_error(FormError::from_message(&message));
+            Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+        }
+        Err(other) => Err(other.into()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetPasswordForm {
+    #[serde(default)]
+    new_password: String,
+    #[serde(default)]
+    confirm_password: String,
+}
+
+/// `GET /admin/users/{id}/password`
+pub async fn set_password_form(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Path(id): Path<String>,
+) -> WebResult<SetPasswordPage> {
+    let record = state.services.admin.user(&admin, AccountId(parse_id(&id)?)).await?;
+    Ok(set_password_page(&state, &admin, page, &record))
+}
+
+fn set_password_page(state: &AppState, admin: &User, page: Page, record: &UserRecord) -> SetPasswordPage {
+    SetPasswordPage::new(page, admin, record, state.config.security.min_password_length, state.services.recovery.email_available())
+}
+
+/// `POST /admin/users/{id}/password`
+pub async fn set_password(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Path(id): Path<String>,
+    Form(form): Form<SetPasswordForm>,
+) -> WebResult<Response> {
+    let record = state.services.admin.user(&admin, AccountId(parse_id(&id)?)).await?;
+    let result = if form.new_password == form.confirm_password {
+        state.services.recovery.admin_set_password(&admin, record.user.id(), form.new_password).await
+    } else {
+        Err(ServiceError::Invalid("the new passwords do not match".to_owned()))
+    };
+    match result {
+        Ok(()) => {
+            let listing = listing_url(AdminSection::Users.url(), record.user.name().as_str(), 1);
+            Ok(Redirect::to(&UsersNotice::PasswordSet.url(&listing)).into_response())
+        }
+        Err(ServiceError::Invalid(message)) => {
+            let page = set_password_page(&state, &admin, page, &record).with_error(FormError::from_message(&message));
+            Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+        }
+        Err(other) => Err(other.into()),
+    }
 }
 
 /// Hidden fields that bring an action back to the listing page it was taken on.
@@ -112,7 +197,7 @@ pub async fn moderate_user(
         _ => return Err(WebError::NotFound),
     };
 
-    let query = ListParams { q: Some(form.q), page: form.page }.query();
+    let query = ListParams { q: Some(form.q), page: form.page, notice: None }.query();
     match result {
         Ok(_) => Ok(Redirect::to(&listing_url(AdminSection::Users.url(), query.search(), query.page())).into_response()),
         Err(ServiceError::Invalid(message)) => {
@@ -347,9 +432,9 @@ mod tests {
 
     #[test]
     fn list_params_are_lenient() {
-        let params = ListParams { q: Some(" alice ".to_owned()), page: Some("x".to_owned()) };
+        let params = ListParams { q: Some(" alice ".to_owned()), page: Some("x".to_owned()), notice: None };
         assert_eq!(params.query(), ListQuery { search: " alice ".to_owned(), page: 1 });
-        assert_eq!(ListParams { q: None, page: Some("3".to_owned()) }.query().page(), 3);
+        assert_eq!(ListParams { q: None, page: Some("3".to_owned()), notice: None }.query().page(), 3);
         assert_eq!(ListParams::default().query().page(), 1);
     }
 

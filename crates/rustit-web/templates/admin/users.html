@@ -4,6 +4,9 @@
 {% block admin_content %}
 {% call admin::heading("Users", "Everyone with an account on this instance.") %}{% endcall %}
 {% call ui::form_error(error) %}{% endcall %}
+{% if let Some(notice) = notice %}
+<p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ notice.message() }}</p>
+{% endif %}
 
 <div class="mb-3 flex flex-wrap items-center gap-2">
   {% call admin::search(listing, "Search by username, name or email") %}{% endcall %}
@@ -34,6 +37,7 @@
                 <a href="{{ user.profile_url }}" class="truncate font-medium hover:underline">{{ user.name }}</a>
                 {% if user.is_admin %}<span class="badge">Admin</span>{% endif %}
                 {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">Suspended</span>{% endif %}
+                {% if user.is_verified %}<span class="badge" title="Email address verified">Verified</span>{% endif %}
                 {% if user.is_self %}<span class="badge">You</span>{% endif %}
               </div>
               <p class="truncate text-xs text-ink-muted">{% if user.has_display_name %}{{ user.label }} · {% endif %}{{ user.email }}</p>
@@ -57,6 +61,11 @@
               {% else %}
               <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">Suspend</button></form>
               {% endif %}
+              <div class="menu-divider"></div>
+              {% if email_available && !user.is_suspended %}
+              <form method="post" action="{{ user.send_reset_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Send password reset</button></form>
+              {% endif %}
+              <a class="menu-item" href="{{ user.password_url }}">Set password…</a>
               <div class="menu-divider"></div>
               <a class="menu-item text-danger" href="{{ user.delete_url }}">Delete…</a>
             </div>
