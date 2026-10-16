@@ -63,13 +63,15 @@ pub fn router(state: AppState) -> Router {
         .merge(api::routes())
         .merge(archives::routes(&state))
         .merge(releases::file_routes(&state))
+        // Before any route: a hover preload must never reach a side-effecting handler.
+        .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
-/// Server-rendered HTML. Layers run outermost-first: security headers → CSRF check →
-/// session resolution → error-page rendering → handler.
+/// Server-rendered HTML. Layers run outermost-first: compression → timeout → cache headers →
+/// security headers → CSRF check → session resolution → error-page rendering → handler.
 fn page_routes(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/", get(home::index))
@@ -118,6 +120,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))
         .layer(from_fn(middleware::security_headers))
+        // Inside compression, so ETags are computed over the uncompressed page.
+        .layer(from_fn(middleware::html_caching))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, PAGE_TIMEOUT))
         .layer(CompressionLayer::new())
         // Forms are small; this bounds memory per request for every extractor that buffers.

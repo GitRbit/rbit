@@ -201,9 +201,215 @@ fn moved_permanently(method: &Method, location: &str) -> Response {
     (status, [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))]).into_response()
 }
 
+// ------------------------------------------------------------------ navigation caching
+
+/// Sent by the htmx preload extension on hover/touch preloads (see `assets/nav.js`).
+pub const PRELOAD_HEADER: &str = "hx-preloaded";
+
+/// Sent by `assets/nav.js` on every htmx request: a per-page-load value that changes
+/// after any state-changing request. HTML responses vary on it, so a page preloaded
+/// before a form post is never served from the browser cache after it.
+pub const NAV_EPOCH_HEADER: &str = "rustit-nav-epoch";
+
+/// How long a preloaded page stays fresh in the browser cache: long enough to cover the
+/// gap between hovering a link and clicking it, short enough that it can't go stale.
+pub const PRELOAD_MAX_AGE_SECONDS: u32 = 10;
+
+/// Paths a preload must never reach because a `GET` there has side effects, consumes a
+/// secret, or is a download or Git traffic. `nav.js` skips these links too; this is the
+/// authoritative check.
+fn is_unsafe_to_preload(path: &str) -> bool {
+    const PREFIXES: [&str; 7] =
+        ["/logout", "/settings/security/two-factor", "/email/verify/", "/password/reset/", "/api/", "/assets/", "/sw.js"];
+    const EXACT: [&str; 3] = ["/healthz", "/readyz", "/metrics"];
+    // `/{owner}/{repo}/{area}/…`: downloads and smart-HTTP endpoints.
+    const REPO_AREAS: [&str; 5] = ["raw", "archive", "info", "git-upload-pack", "git-receive-pack"];
+    let segments: Vec<&str> = path.split('/').collect();
+    let repo_area = segments.get(3).copied().unwrap_or_default();
+    PREFIXES.iter().any(|prefix| path.starts_with(prefix))
+        || EXACT.contains(&path)
+        || REPO_AREAS.contains(&repo_area)
+        || (repo_area == "releases" && segments.get(4) == Some(&"download"))
+        || segments.get(2).is_some_and(|repo| repo.to_ascii_lowercase().ends_with(".git"))
+}
+
+/// Answers preloads of [unsafe](is_unsafe_to_preload) paths with an empty, uncacheable
+/// `204` before any handler runs, so hovering a link can never trigger a side effect.
+/// The real click then goes to the network as usual.
+pub async fn preload_guard(request: Request, next: Next) -> Response {
+    if request.headers().contains_key(PRELOAD_HEADER) && is_unsafe_to_preload(request.uri().path()) {
+        return (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "no-store")]).into_response();
+    }
+    next.run(request).await
+}
+
+/// Cache headers for server-rendered HTML.
+///
+/// * Every page is `private` (it may show the viewer's own data) and must be
+///   revalidated (`no-cache`), with a weak `ETag` so a revisit costs a `304`.
+/// * A page fetched by a hover preload is instead fresh for
+///   [`PRELOAD_MAX_AGE_SECONDS`], so the click that follows is answered from the
+///   browser cache without a round trip.
+/// * `Vary` keeps htmx requests (and each navigation epoch) apart from full page loads.
+///
+/// Handlers that set their own `Cache-Control` (e.g. `no-store` for secrets) keep it.
+pub async fn html_caching(request: Request, next: Next) -> Response {
+    let is_read = matches!(*request.method(), Method::GET | Method::HEAD);
+    let preloaded = request.headers().contains_key(PRELOAD_HEADER);
+    let if_none_match = request.headers().get(header::IF_NONE_MATCH).cloned();
+    let response = next.run(request).await;
+
+    let is_html = response.headers().get(header::CONTENT_TYPE).is_some_and(|v| v.as_bytes().starts_with(b"text/html"));
+    if !is_read || !is_html {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    append_vary(&mut parts.headers, "HX-Request, Rustit-Nav-Epoch");
+    if parts.status != StatusCode::OK || parts.headers.contains_key(header::CACHE_CONTROL) || parts.headers.contains_key(header::SET_COOKIE)
+    {
+        return Response::from_parts(parts, body);
+    }
+
+    // Pages are rendered into memory, so collecting the body costs nothing extra.
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "failed to read the response body").into_response();
+    };
+    let etag = weak_etag(&bytes);
+    let cache_control = if preloaded { format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}") } else { "private, no-cache".to_owned() };
+    parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_str(&cache_control).unwrap_or(HeaderValue::from_static("no-cache")));
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        parts.headers.insert(header::ETAG, value);
+    }
+
+    if if_none_match.is_some_and(|tags| etag_matches(&tags, &etag)) {
+        parts.status = StatusCode::NOT_MODIFIED;
+        parts.headers.remove(header::CONTENT_TYPE);
+        parts.headers.remove(header::CONTENT_LENGTH);
+        return Response::from_parts(parts, axum::body::Body::empty());
+    }
+    Response::from_parts(parts, axum::body::Body::from(bytes))
+}
+
+fn weak_etag(body: &[u8]) -> String {
+    use std::fmt::Write;
+
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(body);
+    let mut etag = String::from("W/\"");
+    for byte in digest.iter().take(10) {
+        let _ = write!(etag, "{byte:02x}");
+    }
+    etag.push('"');
+    etag
+}
+
+/// `If-None-Match` uses weak comparison: `W/"x"` matches `"x"` and `W/"x"`.
+fn etag_matches(header_value: &HeaderValue, etag: &str) -> bool {
+    let bare = etag.trim_start_matches("W/");
+    header_value.to_str().is_ok_and(|tags| tags.split(',').map(str::trim).any(|tag| tag == "*" || tag.trim_start_matches("W/") == bare))
+}
+
+fn append_vary(headers: &mut HeaderMap, names: &str) {
+    let combined = match headers.get(header::VARY).and_then(|v| v.to_str().ok()) {
+        Some(existing) if !existing.is_empty() => format!("{existing}, {names}"),
+        _ => names.to_owned(),
+    };
+    if let Ok(value) = HeaderValue::from_str(&combined) {
+        headers.insert(header::VARY, value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use axum::{Router, body::Body, middleware::from_fn, routing::get};
+    use tower::ServiceExt;
+
     use super::*;
+
+    fn app() -> Router {
+        Router::new()
+            .route("/page", get(|| async { axum::response::Html("<p>hello</p>") }))
+            .route("/secret", get(|| async { ([(header::CACHE_CONTROL, "no-store")], axum::response::Html("<p>token</p>")) }))
+            .route("/settings/security/two-factor", get(|| async { axum::response::Html("<p>new secret</p>") }))
+            .route("/o/r/raw/main/file", get(|| async { "bytes" }))
+            .layer(from_fn(html_caching))
+            .layer(from_fn(preload_guard))
+    }
+
+    async fn send(path: &str, headers: &[(&str, &str)]) -> Response {
+        let mut request = Request::builder().uri(path);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        app().oneshot(request.body(Body::empty()).unwrap()).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn pages_are_private_revalidated_and_vary_on_htmx_headers() {
+        let response = send("/page", &[]).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache");
+        assert_eq!(response.headers()[header::VARY], "HX-Request, Rustit-Nav-Epoch");
+        assert!(response.headers()[header::ETAG].to_str().unwrap().starts_with("W/\""));
+    }
+
+    #[tokio::test]
+    async fn preloaded_pages_are_briefly_fresh() {
+        let response = send("/page", &[("HX-Request", "true"), ("HX-Preloaded", "true")]).await;
+        assert_eq!(response.headers()[header::CACHE_CONTROL], format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}"));
+    }
+
+    #[tokio::test]
+    async fn matching_etags_get_not_modified() {
+        let etag = send("/page", &[]).await.headers()[header::ETAG].to_str().unwrap().to_owned();
+        let response = send("/page", &[("If-None-Match", &etag)]).await;
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[header::ETAG], etag.as_str());
+        assert!(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().is_empty());
+
+        let response = send("/page", &[("If-None-Match", "W/\"something-else\"")]).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn handler_cache_control_is_kept_even_for_preloads() {
+        let response = send("/secret", &[("HX-Preloaded", "true")]).await;
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert!(response.headers().get(header::ETAG).is_none());
+    }
+
+    #[tokio::test]
+    async fn side_effecting_paths_are_never_preloaded() {
+        for path in ["/settings/security/two-factor", "/o/r/raw/main/file"] {
+            let response = send(path, &[("HX-Preloaded", "true")]).await;
+            assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            // Without the preload header the request goes through.
+            assert_eq!(send(path, &[]).await.status(), StatusCode::OK, "{path}");
+        }
+    }
+
+    #[test]
+    fn unsafe_preload_paths() {
+        for path in [
+            "/logout",
+            "/email/verify/abc",
+            "/password/reset/abc",
+            "/a/b/raw/main/x",
+            "/a/b/archive/main.zip",
+            "/a/b.git/info/refs",
+            "/a/b/git-upload-pack",
+            "/healthz",
+            "/api/v1/user",
+        ] {
+            assert!(is_unsafe_to_preload(path), "{path}");
+        }
+        for path in
+            ["/", "/explore", "/a/b", "/a/b/tree/main/src", "/a/b/blob/main/raw/archive.rs", "/a/b/commits/main", "/settings/security"]
+        {
+            assert!(!is_unsafe_to_preload(path), "{path}");
+        }
+    }
 
     #[test]
     fn repository_paths_split_into_owner_repo_and_rest() {
