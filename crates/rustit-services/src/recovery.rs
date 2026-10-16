@@ -45,11 +45,20 @@ pub const EMAIL_UNAVAILABLE: &str = "email is not available on this server";
 pub trait RequestThrottle: fmt::Debug + Send + Sync {
     /// Fails with [`ServiceError::RateLimited`] when `key` has exhausted its budget in `scope`.
     fn check(&self, scope: ThrottleScope, key: &str) -> Result<(), ServiceError>;
+
+    /// Like [`Self::check`], for a key that is a client address (a larger, shared budget).
+    fn check_client(&self, scope: ThrottleScope, address: &str) -> Result<(), ServiceError> {
+        self.check(scope, address)
+    }
 }
 
 impl RequestThrottle for ThrottleService {
     fn check(&self, scope: ThrottleScope, key: &str) -> Result<(), ServiceError> {
         ThrottleService::check(self, scope, key)
+    }
+
+    fn check_client(&self, scope: ThrottleScope, address: &str) -> Result<(), ServiceError> {
+        ThrottleService::check_client(self, scope, address)
     }
 }
 
@@ -150,7 +159,7 @@ impl RecoveryService {
         if !self.email_available() {
             return Err(ServiceError::Invalid(EMAIL_UNAVAILABLE.to_owned()));
         }
-        self.throttle.check(ThrottleScope::EmailRequest, client_key)?;
+        self.throttle.check_client(ThrottleScope::EmailRequest, client_key)?;
         let email: Email = address.trim().parse().map_err(|_| ServiceError::Invalid("enter a valid email address".to_owned()))?;
         self.throttle.check(ThrottleScope::EmailRequest, &recipient_key(&email))?;
 

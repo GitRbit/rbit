@@ -81,7 +81,7 @@ impl Connection {
     }
 
     fn is_throttled(&self) -> bool {
-        self.shared.services.throttle.check(ThrottleScope::SshAuth, &self.throttle_key()).is_err()
+        self.shared.services.throttle.check_client(ThrottleScope::SshAuth, &self.throttle_key()).is_err()
     }
 
     /// Who holds `key`, if anyone (suspended users count as no one).
@@ -170,7 +170,7 @@ impl Handler for Connection {
         if self.identify(key).await.is_some() {
             Ok(Auth::Accept)
         } else {
-            self.shared.services.throttle.record_failure(ThrottleScope::SshAuth, &self.throttle_key());
+            self.shared.services.throttle.record_client_failure(ThrottleScope::SshAuth, &self.throttle_key());
             Ok(Auth::reject())
         }
     }
@@ -182,10 +182,10 @@ impl Handler for Connection {
             return Ok(Auth::reject());
         }
         let Some(identity) = self.identify(key).await else {
-            self.shared.services.throttle.record_failure(ThrottleScope::SshAuth, &self.throttle_key());
+            self.shared.services.throttle.record_client_failure(ThrottleScope::SshAuth, &self.throttle_key());
             return Ok(Auth::reject());
         };
-        self.shared.services.throttle.reset(ThrottleScope::SshAuth, &self.throttle_key());
+        self.shared.services.throttle.reset_client(ThrottleScope::SshAuth, &self.throttle_key());
         self.shared.services.ssh_keys.record_use(&identity).await;
         match &identity {
             SshIdentity::User { user: account, .. } => {

@@ -46,7 +46,7 @@ pub(crate) struct Shared {
 impl Shared {
     /// Admits a new connection from `ip` if the limits allow it.
     fn admit(self: &Arc<Self>, ip: IpAddr) -> Option<ConnectionSlot> {
-        if self.services.throttle.check(ThrottleScope::SshAuth, &ip.to_string()).is_err() {
+        if self.services.throttle.check_client(ThrottleScope::SshAuth, &ip.to_string()).is_err() {
             tracing::debug!(%ip, "SSH connection refused: too many failed attempts");
             return None;
         }
