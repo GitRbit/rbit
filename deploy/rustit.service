@@ -32,6 +32,8 @@ StateDirectoryMode=0750
 WorkingDirectory=/var/lib/rustit
 Environment=RUSTIT_STORAGE__DATA_DIR=/var/lib/rustit
 Environment=RUST_LOG=info
+# journald stores log lines verbatim; keep ANSI colour codes out of them.
+Environment=NO_COLOR=1
 # Git writes temporary files; give it a private /tmp.
 PrivateTmp=yes
 UMask=0027

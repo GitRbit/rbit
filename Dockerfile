@@ -55,11 +55,12 @@ COPY --from=build /out/rustit /usr/local/bin/rustit
 
 # Both listeners bind every interface inside the container; publish them with -p. The SSH
 # server only starts with RUSTIT_SSH__ENABLED=true; its built-in default bind is loopback,
-# which a published port cannot reach.
+# which a published port cannot reach. NO_COLOR keeps `docker logs` free of ANSI escapes.
 ENV RUSTIT_SERVER__BIND=0.0.0.0:3000 \
     RUSTIT_SSH__BIND=0.0.0.0:2222 \
     RUSTIT_STORAGE__DATA_DIR=/data \
-    RUST_LOG=info
+    RUST_LOG=info \
+    NO_COLOR=1
 
 USER rustit:rustit
 WORKDIR /data
