@@ -11,7 +11,8 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design,
+[docs/HANDOFF.md](docs/HANDOFF.md) for the current state and next steps, and
 [docs/deployment.md](docs/deployment.md) for running it in production.
 
 ## Quick start
