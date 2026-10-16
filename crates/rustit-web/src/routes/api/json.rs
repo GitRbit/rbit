@@ -74,9 +74,10 @@ pub fn member(member: &OrgMember, base_url: &str) -> Value {
     value
 }
 
-/// A repository; `access` adds GitHub's `permissions` object when known.
-pub fn repository(repo: &OwnedRepository, access: Option<RepoAccess>, base_url: &str) -> Value {
-    let mut value = payloads::repository(repo, base_url, false);
+/// A repository; `access` adds GitHub's `permissions` object when known, `fork` is
+/// whether it was created as a fork.
+pub fn repository(repo: &OwnedRepository, access: Option<RepoAccess>, fork: bool, base_url: &str) -> Value {
+    let mut value = payloads::repository(repo, base_url, fork);
     if let Some(access) = access {
         value["permissions"] = json!({ "admin": access.can_admin(), "push": access.can_write(), "pull": access.can_read() });
     }

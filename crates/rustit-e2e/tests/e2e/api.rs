@@ -412,6 +412,28 @@ async fn repositories_branches_commits_and_stars_through_the_api() {
 }
 
 #[tokio::test]
+async fn forks_name_their_parent_through_the_api() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "lib", "public").await;
+    git.push_sample(&git.sample(), &server.git_url_as("alice", "lib", "alice", PASSWORD));
+    bob.post("/alice/lib/fork", &[("owner", "bob"), ("name", "")]).await.expect_redirect("/bob/lib");
+    let api = Api::new(&server, None);
+
+    let fork = api.get("/repos/bob/lib").await;
+    let fork = fork.expect(StatusCode::OK);
+    assert_eq!(fork["fork"], true);
+    assert_eq!((fork["parent"]["full_name"].as_str(), fork["parent"]["fork"].as_bool()), (Some("alice/lib"), Some(false)));
+    let parent = api.get("/repos/alice/lib").await;
+    let parent = parent.expect(StatusCode::OK);
+    assert_eq!(parent["fork"], false);
+    assert!(parent.get("parent").is_none(), "only forks have a parent");
+    assert_eq!(api.get("/users/bob/repos").await.expect(StatusCode::OK)[0]["fork"], true, "lists carry the flag too");
+}
+
+#[tokio::test]
 async fn a_hook_created_through_the_api_receives_a_signed_push() {
     let server = server_for_webhooks();
     let git = Git::new();

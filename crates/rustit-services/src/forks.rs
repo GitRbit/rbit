@@ -15,7 +15,9 @@
 //! * Forking publishes [`DomainEvent::RepositoryForked`] — not `RepositoryCreated`.
 //! * Deleting the parent leaves its forks intact; they simply lose their parent.
 
-use rustit_core::{RepoName, User, repository::OwnedRepository};
+use std::collections::HashSet;
+
+use rustit_core::{RepoId, RepoName, User, repository::OwnedRepository};
 use rustit_git::fork::fork_repository;
 use rustit_storage::NewRepository;
 
@@ -102,6 +104,17 @@ impl ForkService {
             Err(ServiceError::NotFound) => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    /// Which of `repos` are forks, for the `fork` flag of API and webhook JSON. A fork
+    /// stays a fork after its parent is deleted.
+    pub async fn forks_among(&self, repos: &[RepoId]) -> Result<HashSet<RepoId>, ServiceError> {
+        Ok(self.ctx.database.forks().forks_among(repos).await?)
+    }
+
+    /// Whether `repo` was created as a fork.
+    pub async fn is_fork(&self, repo: RepoId) -> Result<bool, ServiceError> {
+        Ok(self.forks_among(&[repo]).await?.contains(&repo))
     }
 
     /// How many forks of `repo` the viewer may read.

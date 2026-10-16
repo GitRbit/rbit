@@ -6,7 +6,7 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use rustit_core::{TokenScope, Visibility};
+use rustit_core::{TokenScope, Visibility, repository::OwnedRepository};
 use rustit_services::CreateRepository;
 use serde::Deserialize;
 use serde_json::Value;
@@ -52,16 +52,26 @@ pub async fn members(State(state): State<AppState>, caller: Caller, pager: Pager
     Ok(pager.page_of(members.iter().map(|member| json::member(member, base)).collect()))
 }
 
-fn repositories(state: &AppState, pager: &Pager, repos: &[rustit_core::repository::OwnedRepository]) -> Paged<Value> {
+/// One page of a complete list of repositories.
+async fn repositories(state: &AppState, pager: &Pager, repos: &[OwnedRepository]) -> ApiResult<Paged<Value>> {
+    let page: Vec<&OwnedRepository> = repos.iter().skip(pager.offset()).take(pager.limit()).collect();
+    let items = repository_values(state, &page).await?;
+    Ok(pager.paged(items, Some(u64::try_from(repos.len()).unwrap_or(u64::MAX)), false))
+}
+
+/// List entries (no `permissions`), with their `fork` flags read in one query.
+async fn repository_values(state: &AppState, repos: &[&OwnedRepository]) -> ApiResult<Vec<Value>> {
     let base = state.config.server.base_url();
-    pager.page_of(repos.iter().map(|repo| json::repository(repo, None, base)).collect())
+    let ids: Vec<_> = repos.iter().map(|repo| repo.repo.id).collect();
+    let forks = state.services.forks.forks_among(&ids).await?;
+    Ok(repos.iter().map(|repo| json::repository(repo, None, forks.contains(&repo.repo.id), base)).collect())
 }
 
 /// `GET /user/repos`: repositories the caller owns or reaches through organisations.
 pub async fn my_repositories(State(state): State<AppState>, caller: Caller, pager: Pager) -> ApiResult<Paged<Value>> {
     let user = caller.require_user()?;
     let repos = state.services.repositories.list_for_dashboard(user).await?;
-    Ok(repositories(&state, &pager, &repos))
+    repositories(&state, &pager, &repos).await
 }
 
 /// `GET /users/{username}/repos`
@@ -73,7 +83,7 @@ pub async fn user_repositories(
 ) -> ApiResult<Paged<Value>> {
     let account = state.services.accounts.find_account(&name).await?;
     let repos = state.services.repositories.list_for_owner(caller.user(), &account).await?;
-    Ok(repositories(&state, &pager, &repos))
+    repositories(&state, &pager, &repos).await
 }
 
 /// `GET /orgs/{org}/repos`
@@ -85,7 +95,7 @@ pub async fn org_repositories(
 ) -> ApiResult<Paged<Value>> {
     let ctx = state.services.orgs.open(caller.user(), &name).await?;
     let repos = state.services.repositories.list_for_owner(caller.user(), &ctx.org.account).await?;
-    Ok(repositories(&state, &pager, &repos))
+    repositories(&state, &pager, &repos).await
 }
 
 /// The body of `POST /user/repos` and `POST /orgs/{org}/repos`.
@@ -114,8 +124,8 @@ impl NewRepository {
 }
 
 /// `201 Created` with the repository and its `Location`.
-fn created(state: &AppState, repo: &rustit_core::repository::OwnedRepository) -> Response {
-    let value = json::repository(repo, Some(rustit_core::RepoAccess::Admin), state.config.server.base_url());
+fn created(state: &AppState, repo: &OwnedRepository) -> Response {
+    let value = json::repository(repo, Some(rustit_core::RepoAccess::Admin), false, state.config.server.base_url());
     let location = value["url"].as_str().unwrap_or_default().to_owned();
     (StatusCode::CREATED, [(header::LOCATION, location)], Json(value)).into_response()
 }
@@ -152,7 +162,7 @@ pub async fn create_for_org(
 pub async fn starred(State(state): State<AppState>, caller: Caller, pager: Pager) -> ApiResult<Paged<Value>> {
     let user = caller.require_user()?;
     let repos = state.services.stars.starred_by(Some(user), &user.account).await?;
-    Ok(repositories(&state, &pager, &repos))
+    repositories(&state, &pager, &repos).await
 }
 
 /// `PUT /user/starred/{owner}/{repo}`

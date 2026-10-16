@@ -35,7 +35,7 @@ use std::{
 };
 
 use rustit_core::{
-    Account, AccountId, RepoId, Timestamp, User,
+    Account, AccountId, ReleaseId, RepoId, Timestamp, User,
     repository::OwnedRepository,
     webhook::{Delivery, DeliveryId, Webhook, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
@@ -103,10 +103,11 @@ impl HookTarget<'_> {
         }
     }
 
-    /// `repository` or `organization`, as `ping` payloads name what the hook is on.
-    fn ping_context(&self, base_url: &str) -> (&'static str, Value) {
+    /// `repository` or `organization`, as `ping` payloads name what the hook is on;
+    /// `fork` is the repository's fork flag.
+    fn ping_context(&self, base_url: &str, fork: bool) -> (&'static str, Value) {
         match self {
-            Self::Repository(repo) => ("repository", payloads::repository(&repo.repo, base_url, false)),
+            Self::Repository(repo) => ("repository", payloads::repository(&repo.repo, base_url, fork)),
             Self::Organization(org) => ("organization", payloads::account(&org.org.account, base_url)),
         }
     }
@@ -314,8 +315,12 @@ impl WebhookService {
 
     async fn queue_ping(&self, actor: &User, target: HookTarget<'_>, hook: &Webhook) -> Result<DeliveryId, ServiceError> {
         let base = self.base_url();
+        let fork = match &target {
+            HookTarget::Repository(repo) => self.is_fork(repo.repo.repo.id).await?,
+            HookTarget::Organization(_) => false,
+        };
         let hook_json = payloads::hook(hook, &target.hook_api_url(base, hook.id));
-        let payload = payloads::ping(&hook_json, hook.id.0, Some(target.ping_context(base)), Some(&actor.account), base);
+        let payload = payloads::ping(&hook_json, hook.id.0, Some(target.ping_context(base, fork)), Some(&actor.account), base);
         let ids = self.queue(vec![hook.id], WebhookEvent::Ping, &payload).await?;
         ids.first().copied().ok_or(ServiceError::NotFound)
     }
@@ -354,6 +359,7 @@ impl WebhookService {
                     Some(id) => self.account(*id).await?,
                     None => None,
                 };
+                let fork = self.is_fork(*repo).await?;
                 let reader = self.inner.ctx.repositories.reader(owned.repo.owner_id, owned.repo.id);
                 let snapshot = reader.ref_snapshot().await.ok();
                 let mut queued = 0;
@@ -379,6 +385,7 @@ impl WebhookService {
                         commits: &commits,
                         total: commits.len(),
                         pusher: pusher.as_ref(),
+                        fork,
                         base_url: &base,
                     }
                     .to_json();
@@ -412,21 +419,22 @@ impl WebhookService {
                 orgs.extend(org_of(&previous));
                 let hooks = store.subscribed(Some(*repo), &orgs, WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
-                let payload = payloads::transferred(&owned, &previous, sender.as_ref(), &base);
+                let payload = payloads::transferred(&owned, self.is_fork(*repo).await?, &previous, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
             DomainEvent::RepositoryForked { repo, parent, actor } => {
                 let (Some(forkee), Some(origin)) = (self.repository(*repo).await?, self.repository(*parent).await?) else { return Ok(0) };
                 let hooks = store.subscribed(Some(*parent), &org_of(&origin.owner), WebhookEvent::Fork).await?;
                 let sender = self.account(*actor).await?;
-                let payload = payloads::fork(&forkee, &origin, sender.as_ref(), &base);
+                let payload = payloads::fork(&forkee, &origin, self.is_fork(*parent).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Fork, &payload).await?.len()
             }
             DomainEvent::ReleasePublished { repo, release, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = store.subscribed(Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
+                let Some(release) = self.release_json(&owned, *release, &base).await? else { return Ok(0) };
                 let sender = self.account(*actor).await?;
-                let payload = payloads::release_published(release.0, &owned, sender.as_ref(), &base);
+                let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
             _ => 0,
@@ -436,6 +444,32 @@ impl WebhookService {
 
     async fn repository(&self, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {
         Ok(self.inner.ctx.database.admin().find_repository(id).await?)
+    }
+
+    /// Whether `repo` was created as a fork (the `fork` flag of repository objects).
+    async fn is_fork(&self, repo: RepoId) -> Result<bool, ServiceError> {
+        Ok(self.inner.ctx.database.forks().forks_among(&[repo]).await?.contains(&repo))
+    }
+
+    /// Release `id` of `repo` with its files, author and uploaders, as payloads embed it;
+    /// `None` if it was deleted before the event was handled.
+    async fn release_json(&self, repo: &OwnedRepository, id: ReleaseId, base: &str) -> Result<Option<Value>, ServiceError> {
+        let store = self.inner.ctx.database.releases();
+        let Some(release) = store.find(repo.repo.id, id).await? else { return Ok(None) };
+        let assets = store.assets(id).await?;
+        let author = match &release.author {
+            Some(author) => self.account(author.id).await?,
+            None => None,
+        };
+        let mut uploaders: Vec<Account> = Vec::new();
+        for uploader in assets.iter().filter_map(|asset| asset.uploader_id) {
+            if !uploaders.iter().any(|known| known.id == uploader)
+                && let Some(account) = self.account(uploader).await?
+            {
+                uploaders.push(account);
+            }
+        }
+        Ok(Some(payloads::release(&release, &assets, author.as_ref(), &uploaders, repo, base)))
     }
 
     /// A user or organisation by id.

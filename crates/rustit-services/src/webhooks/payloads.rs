@@ -5,13 +5,24 @@
 //! UTC timestamps, absolute `html_url`s built from `server.public_url`, and explicit
 //! `null` rather than missing fields.
 
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use rustit_core::{
     Account, AccountKind, Timestamp,
+    release::{Release, ReleaseAsset},
     repository::OwnedRepository,
     webhook::{Webhook, WebhookEvent, WebhookOwner},
 };
 use rustit_git::{CommitSummary, RefUpdate};
 use serde_json::{Value, json};
+
+/// Characters escaped inside one URL path segment (the web crate's `urls` uses the same set).
+const SEGMENT: &AsciiSet =
+    &CONTROLS.add(b' ').add(b'"').add(b'#').add(b'%').add(b'<').add(b'>').add(b'?').add(b'`').add(b'{').add(b'}').add(b'/');
+
+/// Encodes a slash-separated path (a tag name may contain `/`), keeping the slashes.
+fn encode_path(path: &str) -> String {
+    path.split('/').map(|segment| utf8_percent_encode(segment, SEGMENT).to_string()).collect::<Vec<_>>().join("/")
+}
 
 /// The all-zero object id GitHub sends for a ref's missing side.
 pub const NULL_SHA: &str = "0000000000000000000000000000000000000000";
@@ -108,6 +119,8 @@ pub struct PushPayload<'a> {
     pub total: usize,
     /// The account that pushed; `None` for deploy keys and mirrors.
     pub pusher: Option<&'a Account>,
+    /// Whether the repository is a fork (its `fork` flag).
+    pub fork: bool,
     pub base_url: &'a str,
 }
 
@@ -142,7 +155,7 @@ impl PushPayload<'_> {
             "total_commits": self.total,
             "head_commit": head_commit.map(|commit| push_commit(commit, &html_url)),
             "pusher": pusher,
-            "repository": repository(self.repo, self.base_url, false),
+            "repository": repository(self.repo, self.base_url, self.fork),
             "sender": self.pusher.map(|who| account(who, self.base_url)),
         });
         if let Some(org) = organization(self.repo, self.base_url) {
@@ -179,12 +192,12 @@ pub fn deleted_repository(id: i64, full_name: &str, owner: Option<&Account>, bas
 }
 
 /// A `repository` payload with `action: transferred`, naming the previous owner.
-pub fn transferred(repo: &OwnedRepository, from: &Account, sender: Option<&Account>, base_url: &str) -> Value {
+pub fn transferred(repo: &OwnedRepository, fork: bool, from: &Account, sender: Option<&Account>, base_url: &str) -> Value {
     let key = match from.kind {
         AccountKind::User => "user",
         AccountKind::Organization => "organization",
     };
-    let mut payload = repository_event("transferred", &repository(repo, base_url, false), sender, base_url);
+    let mut payload = repository_event("transferred", &repository(repo, base_url, fork), sender, base_url);
     payload["changes"] = json!({ "owner": { "from": { key: account(from, base_url) } } });
     with_organization(payload, repo, base_url)
 }
@@ -197,22 +210,75 @@ pub fn with_organization(mut payload: Value, repo: &OwnedRepository, base_url: &
     payload
 }
 
-/// A `fork` payload: `forkee` is the new repository, `repository` the one forked.
-pub fn fork(forkee: &OwnedRepository, parent: &OwnedRepository, sender: Option<&Account>, base_url: &str) -> Value {
+/// A `fork` payload: `forkee` is the new repository, `repository` the one forked
+/// (`parent_is_fork` when that one is itself a fork).
+pub fn fork(forkee: &OwnedRepository, parent: &OwnedRepository, parent_is_fork: bool, sender: Option<&Account>, base_url: &str) -> Value {
     let payload = json!({
         "forkee": repository(forkee, base_url, true),
-        "repository": repository(parent, base_url, false),
+        "repository": repository(parent, base_url, parent_is_fork),
         "sender": sender.map(|who| account(who, base_url)),
     });
     with_organization(payload, parent, base_url)
 }
 
-/// A `release` payload (`action: published`).
-pub fn release_published(release_id: i64, repo: &OwnedRepository, sender: Option<&Account>, base_url: &str) -> Value {
+/// A release with its files, in GitHub's release shape. `author` is the creator's
+/// account and `uploaders` the accounts that uploaded files, as far as they still exist.
+///
+/// Rustit's API has no release endpoints, so GitHub's API links (`url`, `assets_url`,
+/// `upload_url`) are absent; `html_url`, the archive links and every asset's
+/// `browser_download_url` point at the web interface.
+pub fn release(
+    release: &Release,
+    assets: &[ReleaseAsset],
+    author: Option<&Account>,
+    uploaders: &[Account],
+    repo: &OwnedRepository,
+    base_url: &str,
+) -> Value {
+    let html = format!("{base_url}/{}", repo.full_name());
+    let tag = encode_path(&release.tag_name);
+    let assets: Vec<Value> = assets
+        .iter()
+        .map(|asset| {
+            let uploader = uploaders.iter().find(|who| Some(who.id) == asset.uploader_id);
+            json!({
+                "id": asset.id.0,
+                "name": asset.name,
+                "label": null,
+                "state": "uploaded",
+                "content_type": asset.content_type,
+                "size": asset.size,
+                "download_count": asset.download_count,
+                "created_at": timestamp(asset.created_at),
+                "updated_at": timestamp(asset.created_at),
+                "browser_download_url": format!("{html}/releases/download/{tag}/{}", encode_path(&asset.name)),
+                "uploader": uploader.map(|who| account(who, base_url)),
+            })
+        })
+        .collect();
+    json!({
+        "id": release.id.0,
+        "tag_name": release.tag_name,
+        "name": release.name,
+        "body": release.notes,
+        "draft": release.is_draft,
+        "prerelease": release.is_prerelease,
+        "created_at": timestamp(release.created_at),
+        "published_at": optional_timestamp(release.published_at),
+        "author": author.map(|who| account(who, base_url)),
+        "html_url": format!("{html}/releases/tag/{tag}"),
+        "tarball_url": format!("{html}/archive/{tag}.tar.gz"),
+        "zipball_url": format!("{html}/archive/{tag}.zip"),
+        "assets": assets,
+    })
+}
+
+/// A `release` payload (`action: published`); `release` is a [`release`] object.
+pub fn release_published(release: &Value, repo: &OwnedRepository, fork: bool, sender: Option<&Account>, base_url: &str) -> Value {
     let payload = json!({
         "action": "published",
-        "release": { "id": release_id },
-        "repository": repository(repo, base_url, false),
+        "release": release,
+        "repository": repository(repo, base_url, fork),
         "sender": sender.map(|who| account(who, base_url)),
     });
     with_organization(payload, repo, base_url)
@@ -283,7 +349,7 @@ pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use rustit_core::{AccountId, RepoId, Repository, Visibility};
+    use rustit_core::{AccountId, ReleaseId, RepoId, Repository, Visibility, release::ReleaseAssetId};
 
     use super::*;
 
@@ -370,9 +436,16 @@ mod tests {
         let update = RefUpdate { name: "refs/heads/main".to_owned(), before: Some("a".repeat(40)), after: Some("c".repeat(40)) };
         let commits = [commit('c', "Third"), commit('b', "Second")];
         let pusher = user();
-        let payload =
-            PushPayload { repo: &repo(org()), update: &update, commits: &commits, total: 2, pusher: Some(&pusher), base_url: BASE }
-                .to_json();
+        let payload = PushPayload {
+            repo: &repo(org()),
+            update: &update,
+            commits: &commits,
+            total: 2,
+            pusher: Some(&pusher),
+            fork: false,
+            base_url: BASE,
+        }
+        .to_json();
 
         assert_eq!(payload["ref"], "refs/heads/main");
         assert_eq!(payload["before"], "a".repeat(40));
@@ -395,7 +468,9 @@ mod tests {
     #[test]
     fn created_and_deleted_refs_use_the_null_sha() {
         let created = RefUpdate { name: "refs/tags/v1".to_owned(), before: None, after: Some("c".repeat(40)) };
-        let payload = PushPayload { repo: &repo(user()), update: &created, commits: &[], total: 0, pusher: None, base_url: BASE }.to_json();
+        let payload =
+            PushPayload { repo: &repo(user()), update: &created, commits: &[], total: 0, pusher: None, fork: false, base_url: BASE }
+                .to_json();
         assert_eq!(payload["before"], NULL_SHA);
         assert_eq!(payload["created"], true);
         assert_eq!(payload["head_commit"], Value::Null);
@@ -404,7 +479,9 @@ mod tests {
         assert!(payload.get("organization").is_none(), "personal repositories have no organisation");
 
         let deleted = RefUpdate { name: "refs/heads/old".to_owned(), before: Some("a".repeat(40)), after: None };
-        let payload = PushPayload { repo: &repo(user()), update: &deleted, commits: &[], total: 0, pusher: None, base_url: BASE }.to_json();
+        let payload =
+            PushPayload { repo: &repo(user()), update: &deleted, commits: &[], total: 0, pusher: None, fork: false, base_url: BASE }
+                .to_json();
         assert_eq!((payload["after"].as_str(), payload["deleted"].as_bool()), (Some(NULL_SHA), Some(true)));
         assert_eq!(payload["compare"], "https://git.example.com/ada/tools");
     }
@@ -414,7 +491,8 @@ mod tests {
         let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some("0".repeat(40)) };
         let commits: Vec<_> = (0..25).map(|_| commit('0', "Work")).collect();
         let payload =
-            PushPayload { repo: &repo(user()), update: &update, commits: &commits, total: 31, pusher: None, base_url: BASE }.to_json();
+            PushPayload { repo: &repo(user()), update: &update, commits: &commits, total: 31, pusher: None, fork: false, base_url: BASE }
+                .to_json();
         assert_eq!(payload["commits"].as_array().unwrap().len(), MAX_PUSH_COMMITS);
         assert_eq!(payload["total_commits"], 31);
     }
@@ -426,7 +504,7 @@ mod tests {
         assert_eq!((created["action"].as_str(), created["sender"]["login"].as_str()), (Some("created"), Some("ada")));
         assert_eq!(created["organization"]["login"], "acme");
 
-        let moved = transferred(&repo(org()), &user(), Some(&user()), BASE);
+        let moved = transferred(&repo(org()), false, &user(), Some(&user()), BASE);
         assert_eq!(moved["action"], "transferred");
         assert_eq!(moved["changes"]["owner"]["from"]["user"]["login"], "ada");
 
@@ -434,13 +512,59 @@ mod tests {
         assert_eq!((gone["repository"]["name"].as_str(), gone["repository"]["owner"]["login"].as_str()), (Some("tools"), Some("acme")));
         assert_eq!(gone["sender"], Value::Null);
 
-        let forked = fork(&repo(user()), &repo(org()), Some(&user()), BASE);
+        let forked = fork(&repo(user()), &repo(org()), false, Some(&user()), BASE);
         assert_eq!((forked["forkee"]["fork"].as_bool(), forked["repository"]["fork"].as_bool()), (Some(true), Some(false)));
+        let forked_fork = fork(&repo(user()), &repo(org()), true, None, BASE);
+        assert_eq!(forked_fork["repository"]["fork"], true, "a fork of a fork says so");
         assert_eq!(forked["forkee"]["full_name"], "ada/tools");
 
-        let release = release_published(9, &repo(org()), None, BASE);
+        let release = release_published(&json!({ "id": 9 }), &repo(org()), false, None, BASE);
         assert_eq!((release["action"].as_str(), release["release"]["id"].as_i64()), (Some("published"), Some(9)));
         assert_eq!(action_of(WebhookEvent::Release, &release).as_deref(), Some("published"));
         assert_eq!(action_of(WebhookEvent::Push, &release), None);
+    }
+
+    #[test]
+    fn releases_have_github_fields() {
+        let published = Release {
+            id: ReleaseId(9),
+            repo_id: RepoId(7),
+            tag_name: "release/1.0".to_owned(),
+            name: "One point oh".to_owned(),
+            notes: "Notes".to_owned(),
+            is_draft: false,
+            is_prerelease: true,
+            author: None,
+            created_at: Timestamp(1_792_022_400),
+            updated_at: Timestamp(1_792_022_400),
+            published_at: Some(Timestamp(1_792_022_460)),
+        };
+        let asset = ReleaseAsset {
+            id: ReleaseAssetId(4),
+            release_id: published.id,
+            repo_id: RepoId(7),
+            name: "app 1.zip".to_owned(),
+            size: 12,
+            content_type: "application/zip".to_owned(),
+            sha256: [0; 32],
+            download_count: 3,
+            uploader_id: Some(AccountId(1)),
+            created_at: Timestamp(1_792_022_400),
+        };
+        let value = release(&published, &[asset], None, &[user()], &repo(org()), BASE);
+        assert_eq!(value["id"], 9);
+        assert_eq!(value["tag_name"], "release/1.0");
+        assert_eq!(value["name"], "One point oh");
+        assert_eq!(value["body"], "Notes");
+        assert_eq!((value["draft"].as_bool(), value["prerelease"].as_bool()), (Some(false), Some(true)));
+        assert_eq!(value["published_at"], "2026-10-15T00:01:00Z");
+        assert_eq!(value["author"], Value::Null, "explicit null once the author is gone");
+        assert_eq!(value["html_url"], "https://git.example.com/acme/tools/releases/tag/release/1.0");
+        assert_eq!(value["zipball_url"], "https://git.example.com/acme/tools/archive/release/1.0.zip");
+        let file = &value["assets"][0];
+        assert_eq!((file["id"].as_i64(), file["name"].as_str(), file["size"].as_u64()), (Some(4), Some("app 1.zip"), Some(12)));
+        assert_eq!((file["download_count"].as_u64(), file["state"].as_str()), (Some(3), Some("uploaded")));
+        assert_eq!(file["uploader"]["login"], "ada");
+        assert_eq!(file["browser_download_url"], "https://git.example.com/acme/tools/releases/download/release/1.0/app%201.zip");
     }
 }

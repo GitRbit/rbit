@@ -2,6 +2,8 @@
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file. Keep row types here rather than in `rows.rs`.
 
+use std::collections::HashSet;
+
 use rustit_core::{AccountId, RepoId, Timestamp, repository::OwnedRepository};
 use sqlx::SqlitePool;
 
@@ -59,6 +61,19 @@ impl ForkStore {
         .fetch_optional(&self.pool)
         .await?;
         row.map(OwnedRepository::try_from).transpose()
+    }
+
+    /// Which of `repos` were created as forks (whether or not their parent still exists).
+    pub async fn forks_among(&self, repos: &[RepoId]) -> Result<HashSet<RepoId>, StorageError> {
+        if repos.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let ids = format!("[{}]", repos.iter().map(|id| id.0.to_string()).collect::<Vec<_>>().join(","));
+        let forks: Vec<i64> = sqlx::query_scalar("SELECT repo_id FROM repo_forks WHERE repo_id IN (SELECT value FROM json_each(?))")
+            .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(forks.into_iter().map(RepoId).collect())
     }
 
     /// Direct forks of `parent` that the viewer may read.

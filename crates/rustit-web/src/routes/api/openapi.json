@@ -650,6 +650,10 @@
             "type": "object",
             "description": "What the caller may do (single-repository responses only).",
             "properties": { "admin": { "type": "boolean" }, "push": { "type": "boolean" }, "pull": { "type": "boolean" } }
+          },
+          "parent": {
+            "$ref": "#/components/schemas/Repository",
+            "description": "The repository this fork was created from (single-repository responses of forks only; absent when the caller may not read it or it was deleted)."
           }
         }
       },

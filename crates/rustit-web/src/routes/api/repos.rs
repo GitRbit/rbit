@@ -30,7 +30,21 @@ fn urls(state: &AppState, ctx: &RepoContext) -> (String, String) {
 /// `GET /repos/{owner}/{repo}`
 pub async fn show(State(state): State<AppState>, caller: Caller, Path((owner, name)): Path<(String, String)>) -> ApiResult<Json<Value>> {
     let ctx = caller.open_repo(&state, &owner, &name).await?;
-    Ok(Json(json::repository(&ctx.repo, Some(ctx.access), state.config.server.base_url())))
+    Ok(Json(detail(&state, &caller, &ctx).await?))
+}
+
+/// The full repository object of single-repository responses: with `permissions` and,
+/// for a fork, GitHub's `parent` (omitted when the caller may not read the parent or it
+/// was deleted).
+async fn detail(state: &AppState, caller: &Caller, ctx: &RepoContext) -> ApiResult<Value> {
+    let forks = &state.services.forks;
+    let base = state.config.server.base_url();
+    let fork = forks.is_fork(ctx.repo.repo.id).await?;
+    let mut value = json::repository(&ctx.repo, Some(ctx.access), fork, base);
+    if fork && let Some(parent) = forks.parent(caller.user(), ctx).await? {
+        value["parent"] = json::repository(&parent, None, forks.is_fork(parent.repo.id).await?, base);
+    }
+    Ok(value)
 }
 
 /// The body of `PATCH /repos/{owner}/{repo}`; absent fields keep their value.
@@ -80,7 +94,7 @@ pub async fn update(
         final_name = settings.rename(&ctx, &new_name).await.map_err(|error| ApiError::service(error, "name"))?.to_string();
     }
     let ctx = caller.open_repo(&state, ctx.repo.owner.name.as_str(), &final_name).await?;
-    Ok(Json(json::repository(&ctx.repo, Some(ctx.access), state.config.server.base_url())))
+    Ok(Json(detail(&state, &caller, &ctx).await?))
 }
 
 /// `DELETE /repos/{owner}/{repo}`: administrators with the `admin` scope.

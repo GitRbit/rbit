@@ -16,7 +16,9 @@ use rustit_core::{
 use rustit_services::{
     CreateRepository, DomainEvent, RepoContext, ServiceError, Services,
     events::RefUpdate,
+    forks::ForkInput,
     orgs::CreateOrganization,
+    releases::ReleaseInput,
     webhooks::{HookTarget, MAX_HOOKS_PER_OWNER, WebhookInput, delivery::signature},
 };
 use rustit_storage::{
@@ -405,6 +407,55 @@ async fn management_is_validated_scoped_bounded_and_audited() {
     }
     let details: Vec<String> = fixture.services.audit.recent_for(&alice, 50).await.unwrap().into_iter().map(|event| event.detail).collect();
     assert!(details.iter().all(|detail| !detail.contains("https://")), "audit entries name the host, not the URL");
+}
+
+#[tokio::test]
+async fn release_payloads_describe_the_release_and_forks_say_so() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let parent = fixture.repo(&alice, "alice", "demo").await;
+    push_two_commits(&parent);
+    let input_fork = ForkInput { owner: String::new(), name: "copy".to_owned() };
+    fixture.services.forks.fork(&alice, &parent, input_fork).await.unwrap();
+    let repo = fixture.services.repositories.open(Some(&alice), "alice", "copy").await.unwrap();
+    let receiver = Receiver::start(&[]).await;
+    let webhooks = &fixture.services.webhooks;
+    webhooks.create(&alice, HookTarget::Repository(&repo), input(&receiver.url, &["release"], None)).await.unwrap();
+
+    let releases = &fixture.services.releases;
+    let release_input = ReleaseInput {
+        tag_name: "v1.0".to_owned(),
+        name: "First".to_owned(),
+        notes: "Hello".to_owned(),
+        is_draft: false,
+        is_prerelease: true,
+        target: "main".to_owned(),
+    };
+    let release = releases.create(&repo, &alice, release_input).await.unwrap();
+    releases.upload_asset(&repo, &alice, release.id, "app.tar.gz", "application/gzip", &b"bytes"[..]).await.unwrap();
+    let event = DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: release.id, actor: alice.id() };
+    assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
+    webhooks.deliver_due(far_future()).await.unwrap();
+
+    let requests = receiver.wait_for(2).await;
+    let of = |event: &str| requests.iter().find(|request| request.header("X-Rustit-Event") == Some(event)).unwrap().json();
+    let ping = of("ping");
+    assert_eq!(ping["repository"]["fork"], true, "the repository object knows it is a fork");
+    let payload = of("release");
+    assert_eq!(payload["action"], "published");
+    assert_eq!(payload["repository"]["fork"], true);
+    let release_json = &payload["release"];
+    assert_eq!(release_json["id"], release.id.0);
+    assert_eq!(release_json["tag_name"], "v1.0");
+    assert_eq!((release_json["name"].as_str(), release_json["body"].as_str()), (Some("First"), Some("Hello")));
+    assert_eq!((release_json["draft"].as_bool(), release_json["prerelease"].as_bool()), (Some(false), Some(true)));
+    assert!(release_json["published_at"].is_string());
+    assert_eq!(release_json["author"]["login"], "alice");
+    assert_eq!(release_json["html_url"], "https://git.example.com/alice/copy/releases/tag/v1.0");
+    let asset = &release_json["assets"][0];
+    assert_eq!((asset["name"].as_str(), asset["size"].as_u64()), (Some("app.tar.gz"), Some(5)));
+    assert_eq!(asset["uploader"]["login"], "alice");
+    assert_eq!(asset["browser_download_url"], "https://git.example.com/alice/copy/releases/download/v1.0/app.tar.gz");
 }
 
 #[tokio::test]
