@@ -13,5 +13,6 @@ mod orgs;
 mod repositories;
 mod security;
 mod stars;
+mod themes;
 mod tokens;
 mod visibility;

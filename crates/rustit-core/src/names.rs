@@ -49,6 +49,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
     "settings",
     "signup",
     "sw.js",
+    "themes",
     "user",
     "users",
 ];

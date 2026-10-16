@@ -456,7 +456,13 @@ mod tests {
     use super::*;
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: SECURITY_URL.to_owned() }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: SECURITY_URL.to_owned(),
+            theme: crate::themes::Theme::System,
+        }
     }
 
     fn session(id: &str, agent: &str, is_current: bool) -> ActiveSession {

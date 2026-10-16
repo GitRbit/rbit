@@ -726,7 +726,13 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/admin/users".to_owned() }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: "/admin/users".to_owned(),
+            theme: crate::themes::Theme::System,
+        }
     }
 
     #[test]

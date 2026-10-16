@@ -15,7 +15,7 @@ use axum::{
 use rustit_auth::SessionToken;
 use rustit_core::User;
 
-use crate::{AppState, error::WebError, urls::encode_path, views::layout::Page};
+use crate::{AppState, error::WebError, themes::Theme, urls::encode_path, views::layout::Page};
 
 /// The user making the request, if signed in.
 #[derive(Debug, Clone, Default)]
@@ -84,6 +84,6 @@ impl FromRequestParts<AppState> for Page {
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let viewer = Viewer::from_request_parts(parts, state).await?;
-        Ok(Page::new(state, viewer.user(), parts.uri.path()))
+        Ok(Page::new(state, viewer.user(), parts.uri.path()).with_theme(Theme::from_headers(&parts.headers)))
     }
 }

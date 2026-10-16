@@ -29,5 +29,6 @@ pub mod security;
 pub mod settings;
 pub mod ssh_keys;
 pub mod teams;
+pub mod themes;
 pub mod transfer;
 pub mod webhooks;

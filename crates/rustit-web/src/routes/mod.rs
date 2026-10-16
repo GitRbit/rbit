@@ -28,6 +28,7 @@ mod settings;
 mod ssh_keys;
 mod stars;
 mod teams;
+mod themes;
 mod transfer;
 mod webhooks;
 
@@ -109,6 +110,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(compare::routes())
         .merge(forks::routes())
         .merge(mirrors::routes())
+        // Frontend wave: themes (T).
+        .merge(themes::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

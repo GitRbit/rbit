@@ -436,14 +436,15 @@
 
 /* ---------------------------------------------------------------- Scheme-dependent visibility */
 
-/* `.when-dark` / `.when-light` show content only in that colour scheme (e.g. theme toggle icons). */
+/* `.when-dark` / `.when-light` show content only in that colour scheme (e.g. theme menu icons).
+   `data-scheme` on <html> is the pinned theme's variant; without it the OS decides. */
 .when-dark { display: none; }
-:root[data-theme="dark"] .when-dark { display: inline; }
-:root[data-theme="dark"] .when-light { display: none; }
+:root[data-scheme="dark"] .when-dark { display: inline; }
+:root[data-scheme="dark"] .when-light { display: none; }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .when-dark { display: inline; }
-  :root:not([data-theme="light"]) .when-light { display: none; }
+  :root:not([data-scheme]) .when-dark { display: inline; }
+  :root:not([data-scheme]) .when-light { display: none; }
 }
 
 /* ---------------------------------------------------------------- htmx progress bar */
@@ -469,3 +470,101 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------- Themes */
+
+/* Header theme menu: a check marks the active built-in theme. */
+.theme-option[aria-pressed="false"] .theme-check { visibility: hidden; }
+
+/* Gallery variant filter: a small segmented control. */
+.theme-segment {
+  @apply inline-flex h-10 shrink-0 items-center gap-0.5 rounded-(--radius-ui) border border-line bg-surface p-0.5 sm:h-9;
+}
+
+.theme-segment a {
+  @apply inline-flex h-full items-center rounded px-3 text-[13px] text-ink-muted transition-colors duration-100 hover:text-ink;
+}
+
+.theme-segment a[aria-current] {
+  @apply bg-hover font-medium text-ink;
+}
+
+.theme-family + .theme-family { @apply mt-8; }
+
+.theme-family-title {
+  @apply mb-3 flex items-baseline gap-2 text-[13px] font-semibold tracking-tight text-ink;
+}
+
+.theme-family-title span { @apply text-[11px] font-normal text-ink-faint; }
+
+.theme-grid {
+  @apply grid gap-3;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+}
+
+@media (width >= 40rem) {
+  .theme-grid { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+}
+
+/* The frame belongs to the page's theme, everything inside to the card's own. Off-screen
+   cards skip layout and paint entirely, so hundreds of previews cost little. */
+.theme-item {
+  @apply rounded-(--radius-ui) border border-line transition-colors duration-100 hover:border-line-strong;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 8.25rem;
+}
+
+.theme-item:has([aria-pressed="true"]) {
+  @apply border-ink;
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.theme-item:has(:focus-visible) {
+  @apply outline-2 outline-offset-2 outline-ink;
+}
+
+.theme-card {
+  @apply block w-full cursor-pointer overflow-hidden rounded-[5px] bg-canvas text-left text-ink;
+}
+
+.theme-card:focus-visible { outline: none; }
+
+/* The live preview: a page, a bordered container with a header row, two lines of code, and
+   the scheme's accents. Text comes from `content` so each card stays a handful of nodes. */
+.tp { @apply block px-2.5 pt-2.5; }
+.tp i { font-style: normal; }
+
+.tp-box {
+  @apply block overflow-hidden rounded border border-line bg-surface font-mono text-[10px] leading-4;
+}
+
+.tp-h {
+  @apply flex h-5 items-center justify-between border-b border-line bg-subtle px-1.5 font-sans text-ink-muted;
+}
+
+.tp-h::before { content: "main.rs"; }
+
+.tp-h::after {
+  @apply rounded-sm bg-inverted px-1 text-[9px] font-medium leading-3.5 text-inverted-ink;
+  content: "Star";
+}
+
+.tp-a, .tp-b { @apply block overflow-hidden whitespace-pre px-1.5; }
+.tp-a { @apply pt-1; }
+.tp-b { @apply pb-1; }
+.tp-a::before { content: "fn "; color: var(--syntax-keyword); }
+.tp-a::after { content: "main()"; color: var(--syntax-function); }
+.tp-b::before { content: '  "hello"'; color: var(--syntax-string); }
+.tp-b::after { content: " // 42"; color: var(--syntax-comment); }
+
+.tp-sw {
+  @apply my-2.5 block h-1 rounded-full;
+  background: linear-gradient(90deg, var(--danger) 0 16.66%, var(--warning) 0 33.33%, var(--success) 0 50%,
+    var(--syntax-attribute) 0 66.66%, var(--syntax-function) 0 83.33%, var(--syntax-keyword) 0);
+}
+
+.theme-name {
+  @apply block truncate border-t border-line bg-surface px-2.5 py-2 text-xs font-medium;
+}
+
+.theme-card[aria-pressed="true"] .theme-name::before { content: "✓ "; }

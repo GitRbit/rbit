@@ -129,7 +129,13 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/alice/rocket/settings/transfer".to_owned() }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: "/alice/rocket/settings/transfer".to_owned(),
+            theme: crate::themes::Theme::System,
+        }
     }
 
     #[test]

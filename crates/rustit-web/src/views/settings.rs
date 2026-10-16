@@ -24,6 +24,7 @@ const NEVER_EXPIRES: &str = "never";
 pub enum SettingsSection {
     Profile,
     Account,
+    Appearance,
     Security,
     SshKeys,
     AccessTokens,
@@ -31,12 +32,13 @@ pub enum SettingsSection {
 
 impl SettingsSection {
     /// Navigation order. New sections slot in here.
-    const ALL: [Self; 5] = [Self::Profile, Self::Account, Self::Security, Self::SshKeys, Self::AccessTokens];
+    const ALL: [Self; 6] = [Self::Profile, Self::Account, Self::Appearance, Self::Security, Self::SshKeys, Self::AccessTokens];
 
     const fn label(self) -> &'static str {
         match self {
             Self::Profile => "Profile",
             Self::Account => "Account",
+            Self::Appearance => "Appearance",
             Self::Security => "Security",
             Self::SshKeys => "SSH keys",
             Self::AccessTokens => "Access tokens",
@@ -48,6 +50,7 @@ impl SettingsSection {
         match self {
             Self::Profile => "/settings/profile",
             Self::Account => "/settings/account",
+            Self::Appearance => "/settings/appearance",
             Self::Security => "/settings/security",
             Self::SshKeys => "/settings/keys",
             Self::AccessTokens => "/settings/tokens",
@@ -480,7 +483,7 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Security", "SSH keys", "Access tokens"]);
+        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens"]);
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         let active = nav.iter().find(|link| link.is_active).unwrap();
         assert_eq!(active.url, "/settings/tokens");
@@ -503,7 +506,13 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/settings/account".to_owned() }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: "/settings/account".to_owned(),
+            theme: crate::themes::Theme::System,
+        }
     }
 
     #[test]

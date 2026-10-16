@@ -1,19 +1,27 @@
 {% import "macros.html" as ui %}
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{{ page.document_title() }}</title>
   <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  {%- if let Some(color) = page.theme.theme_color() %}
+  <meta name="theme-color" content="{{ color }}">
+  <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
+  {%- else %}
+  <meta name="theme-color" content="{{ crate::themes::LIGHT_CANVAS }}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{ crate::themes::DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
+  {%- endif %}
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":20,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="{{ page.asset("icon.svg") }}" type="image/svg+xml">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ page.asset("apple-touch-icon.png") }}">
   <link rel="stylesheet" href="{{ page.asset("app.css") }}">
+  {%- if let Some(href) = page.theme.stylesheet() %}
+  <link rel="stylesheet" href="{{ href }}" data-theme-stylesheet>
+  {%- endif %}
   <script src="{{ page.asset("theme.js") }}"></script>
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
   <script src="{{ page.asset("app.js") }}" type="module"></script>
@@ -34,10 +42,28 @@
 
       <div class="ml-auto flex items-center gap-1">
         <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
-        <button type="button" class="btn btn-ghost btn-icon" data-theme-toggle aria-label="Toggle colour theme" title="Toggle theme">
-          {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
-          {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
-        </button>
+        {%- if !page.is_signed_in() %}
+        <a href="/explore" class="btn btn-ghost btn-icon sm:hidden" aria-label="Explore" title="Explore">{% call ui::icon("compass", "size-4") %}{% endcall %}</a>
+        {%- endif %}
+        <details class="relative" data-menu>
+          <summary class="btn btn-ghost btn-icon" aria-label="Theme" title="Theme">
+            {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
+            {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
+          </summary>
+          <div class="menu right-0 w-52">
+            <p class="menu-label">Theme</p>
+            <form method="post" action="/themes" data-theme-form>
+              <input type="hidden" name="next" value="{{ page.path }}">
+              {%- for option in page.theme_options() %}
+              <button class="menu-item theme-option" type="submit" name="theme" value="{{ option.slug }}" aria-pressed="{{ option.is_current }}">
+                {{ option.label }}{% call ui::icon("check", "theme-check ml-auto size-3.5") %}{% endcall %}
+              </button>
+              {%- endfor %}
+            </form>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/themes">{% if page.theme.is_tinted() %}<span class="min-w-0 truncate">{{ page.theme.name() }}</span><span class="ml-auto shrink-0 text-ink-faint">All…</span>{% else %}All themes…{% endif %}</a>
+          </div>
+        </details>
 
         {% if let Some(user) = page.viewer %}
         <a href="/new" class="btn btn-ghost btn-icon" aria-label="New repository" title="New repository">

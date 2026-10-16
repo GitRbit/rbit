@@ -1,23 +1,8 @@
 // Progressive enhancements. Every page works without this file.
 // Behaviour is attached with event delegation, so it keeps working after htmx swaps.
 
-const THEME_KEY = "rustit-theme";
-
-function currentTheme() {
-  const pinned = document.documentElement.dataset.theme;
-  if (pinned) return pinned;
-  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function toggleTheme() {
-  const next = currentTheme() === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  try {
-    localStorage.setItem(THEME_KEY, next);
-  } catch {
-    /* ignore: theme simply won't persist */
-  }
-}
+// Theme menu and gallery: instant switching, live previews, filtering.
+import "./theme-picker.js";
 
 async function copyToClipboard(button) {
   const source = document.getElementById(button.dataset.copy);
@@ -39,11 +24,6 @@ async function copyToClipboard(button) {
 document.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   if (!target) return;
-
-  if (target.closest("[data-theme-toggle]")) {
-    toggleTheme();
-    return;
-  }
 
   const copyButton = target.closest("[data-copy]");
   if (copyButton) {

@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::SignedIn,
-    routes::recovery::form_error_response,
+    routes::{recovery::form_error_response, themes::GalleryQuery},
     views::{
         components::FormError,
         layout::Page,
@@ -23,6 +23,7 @@ use crate::{
             AccountForm, AccountPage, CreatedToken, EmailVerification, ProfileForm, ProfilePage, SettingsSection, TokenForm, TokensPage,
             parse_expiry,
         },
+        themes::{AppearancePage, VariantFilter},
     },
 };
 
@@ -34,6 +35,7 @@ pub fn routes() -> Router<AppState> {
         .route("/settings", get(index))
         .route("/settings/profile", get(profile).post(update_profile))
         .route("/settings/account", get(account))
+        .route("/settings/appearance", get(appearance))
         .route("/settings/account/email", post(change_email))
         .route("/settings/account/password", post(change_password))
         .route("/settings/account/verify", post(resend_verification))
@@ -99,6 +101,13 @@ pub async fn update_profile(
         }
         Err(other) => Err(other.into()),
     }
+}
+
+// ------------------------------------------------------------------ appearance
+
+/// `GET /settings/appearance`: the theme gallery inside the settings layout.
+pub async fn appearance(SignedIn(_): SignedIn, page: Page, Query(query): Query<GalleryQuery>) -> AppearancePage {
+    AppearancePage::new(page, VariantFilter::parse(query.variant.as_deref()), query.q.as_deref())
 }
 
 // ------------------------------------------------------------------ account

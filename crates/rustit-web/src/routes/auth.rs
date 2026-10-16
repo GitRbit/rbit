@@ -27,6 +27,7 @@ use crate::{
     error::{WebError, WebResult},
     extract::Viewer,
     middleware::SESSION_COOKIE,
+    themes::Theme,
     urls::safe_redirect_target,
     views::{
         auth::{LoginPage, SignupPage},
@@ -159,7 +160,8 @@ async fn signup_page(state: &AppState, page: Page, error: FormError, username: S
 }
 
 /// Issues the session cookie and redirects with `303 See Other`. The cookie is `Secure`
-/// whenever the request arrived over HTTPS, directly or through a trusted proxy.
+/// whenever the request arrived over HTTPS, directly or through a trusted proxy. The
+/// user's stored theme, if any, comes along as the theme cookie.
 pub(crate) async fn start_session(
     state: &AppState,
     jar: CookieJar,
@@ -175,7 +177,20 @@ pub(crate) async fn start_session(
         .secure(https)
         .path("/")
         .max_age(time::Duration::seconds(state.services.accounts.session_lifetime_seconds()));
-    Ok((jar.add(cookie), Redirect::to(next)).into_response())
+    let jar = jar.add(cookie);
+    // The user's theme follows them: restore it on this device. A failure here must not
+    // block signing in; the device simply keeps its current theme.
+    let jar = match state.services.preferences.theme(user).await {
+        Ok(stored) => match stored.as_deref().and_then(Theme::parse) {
+            Some(theme) => jar.add(theme.cookie(https)),
+            None => jar,
+        },
+        Err(error) => {
+            tracing::warn!(%error, "could not load the stored theme");
+            jar
+        }
+    };
+    Ok((jar, Redirect::to(next)).into_response())
 }
 
 /// A re-rendered form with `429 Too Many Requests` and `Retry-After`.

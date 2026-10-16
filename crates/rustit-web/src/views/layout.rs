@@ -2,7 +2,7 @@
 
 use rustit_core::User;
 
-use crate::{AppState, assets, views::components::Avatar};
+use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
@@ -12,6 +12,16 @@ pub struct Page {
     pub viewer: Option<NavUser>,
     /// Request path, used to highlight the active navigation item.
     pub path: String,
+    /// The visitor's colour theme (from the `rustit-theme` cookie), rendered into `<html>`.
+    pub theme: Theme,
+}
+
+/// One entry of the header's theme menu.
+#[derive(Debug, Clone)]
+pub struct ThemeOption {
+    pub slug: &'static str,
+    pub label: &'static str,
+    pub is_current: bool,
 }
 
 /// The signed-in user as shown in the top bar.
@@ -38,7 +48,28 @@ impl Page {
                 can_create_org: state.services.orgs.can_create(user),
             }),
             path: path.to_owned(),
+            theme: Theme::default(),
         }
+    }
+
+    /// The page rendered in `theme`.
+    #[must_use]
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = theme;
+        self
+    }
+
+    /// System / Light / Dark for the header menu, with the active one marked.
+    pub fn theme_options(&self) -> [ThemeOption; 3] {
+        Theme::BUILT_IN.map(|theme| ThemeOption {
+            slug: theme.slug(),
+            label: match theme {
+                Theme::Light => "Light",
+                Theme::Dark => "Dark",
+                _ => "System",
+            },
+            is_current: theme == self.theme,
+        })
     }
 
     #[must_use]

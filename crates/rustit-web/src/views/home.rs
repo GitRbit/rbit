@@ -189,7 +189,7 @@ mod tests {
     use super::*;
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/".to_owned() }
+        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/".to_owned(), theme: crate::themes::Theme::System }
     }
 
     fn landing(public_repositories: i64, users: i64, organizations: i64) -> LandingPage {

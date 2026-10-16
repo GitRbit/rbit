@@ -281,7 +281,13 @@ mod tests {
     fn settings_page_offers_the_base_permission() {
         let header = OrgHeader::new(&ctx(Some(OrgRole::Owner), true), OrgTab::Settings);
         let html = OrgSettingsPage {
-            page: Page { site_name: "Rustit".into(), title: None, viewer: None, path: "/acme/settings".into() },
+            page: Page {
+                site_name: "Rustit".into(),
+                title: None,
+                viewer: None,
+                path: "/acme/settings".into(),
+                theme: crate::themes::Theme::System,
+            },
             header,
             form: OrgProfileForm::default(),
             error: FormError::default(),
