@@ -468,6 +468,20 @@ fn describe_session(record: &SessionRecord) -> String {
     }
 }
 
+/// Creates a user with only the relational database, for the `rustit user create`
+/// command: it needs neither the key/value store (which a running server holds
+/// exclusively) nor background services. Nothing in that process listens for
+/// events, so none is published. `is_admin = None` applies the "first user is
+/// admin" rule.
+pub async fn create_user_offline(
+    config: &Config,
+    accounts: &AccountStore,
+    input: SignUp,
+    is_admin: Option<bool>,
+) -> Result<User, ServiceError> {
+    create_user(config, accounts, input, is_admin).await
+}
+
 /// Validates and stores a new user. Shared by sign-up, the CLI and the admin panel.
 pub(crate) async fn create_user(
     config: &Config,

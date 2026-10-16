@@ -83,16 +83,12 @@ Backups run in the live container:
 docker exec rustit rustit backup --output /data/backups/$(date +%Y%m%d-%H%M%S)
 ```
 
-`rustit user create` and `rustit migrate` need the server stopped: the running server
-holds an exclusive lock on `rustit.redb`, and these commands fail with
-`Database already open. Cannot acquire lock` while it runs. The first administrator is
-easiest to create by signing up in the browser (the first account becomes the
-administrator). To use the command line, run it in a one-off container on the same volume:
+`rustit user create` works while the server runs (it only needs the SQLite database).
+The first administrator is also easy to create by signing up in the browser (the first
+account becomes the administrator):
 
 ```bash
-docker stop rustit
-docker run --rm -i -v rustit-data:/data rustit user create alice alice@example.com --admin
-docker start rustit
+docker exec -i rustit rustit user create alice alice@example.com --admin
 ```
 
 ## systemd
@@ -113,13 +109,10 @@ journalctl -u rustit -f
 ```
 
 Run administrative commands as the service user so file ownership stays right.
-`user create` and `migrate` need the server stopped (it holds an exclusive lock on
-`rustit.redb`); `backup` runs while it serves:
+`user create` and `backup` run while the server serves:
 
 ```bash
-sudo systemctl stop rustit
 sudo -u rustit rustit --config /etc/rustit/rustit.toml user create alice alice@example.com --admin
-sudo systemctl start rustit
 ```
 
 The sandbox gives the service no capabilities, so it cannot bind ports below 1024. Keep
