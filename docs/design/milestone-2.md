@@ -28,7 +28,7 @@ added in wave B once the services exist on `main`), LFS, a JavaScript SPA.
 
 | | Workstream | Scope | Migrations |
 |---|---|---|---|
-| **A** | Access | Permission levels, collaborators, organisation teams and base permission, exhaustive `repo_access` policy, repository transfer | `0009`, `0010` |
+| **A** | Access | Permission levels, collaborators, organisation teams and base permission, exhaustive `repo_access` policy, repository transfer | `0009` (redirects: `0016`) |
 | **W** | API & webhooks | `/api/v1` (token scopes, pagination, errors, OpenAPI), repository and organisation webhooks with HMAC signatures, a persistent delivery queue with retries and a delivery log | `0011`, `0012` |
 | **R** | Repository essentials | README relative links and images, `zip`/`tar.gz` archives, releases (notes; attached files as stretch), blame, compare, forks; pull mirrors as stretch | `0013`, `0014`, `0015` |
 
@@ -200,7 +200,8 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
    grants of the old organisation; if the database step fails, move the directory back.
    Collaborators, stars, forks, releases and webhooks stay (they reference the id).
    Publish `RepositoryTransferred` and audit it. **Stretch:** redirects from the old
-   `owner/name` (and from renames) to the new location, in `0010`.
+   `owner/name` (and from renames) to the new location — done after wave A in `0016`
+   (`0010` was already taken by `0010_preferences.sql`).
 
 ### Migrations
 
@@ -211,7 +212,10 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
   CASCADE, user_id CASCADE, PK)`; `team_repositories(team_id CASCADE, repo_id CASCADE,
   permission CHECK, PK)`; `org_profiles.member_permission TEXT NOT NULL DEFAULT 'write'
   CHECK IN ('none','read','write')`; indexes for "repositories shared with user".
-- `0010`: reserved for the redirect stretch goal.
+- `0016_repo_redirects.sql` (moved from the reserved `0010`, which `0010_preferences.sql`
+  already used): `repo_redirects(owner_id → accounts CASCADE, name NOCASE, repo_id →
+  repositories CASCADE, created_at, PK (owner_id, name))`, kept by triggers on
+  `repositories`: leaving a location records it, arriving at one removes its redirect.
 
 ### Files A owns
 
@@ -221,7 +225,7 @@ Stubs marked ★ already exist on `main`.
 - auth: `rustit-auth/src/policy.rs`
 - git: `rustit-git/src/relocate.rs★`
 - storage: `rustit-storage/src/sqlite/{collaborators.rs★,teams.rs★,repositories.rs,orgs.rs,stars.rs}`,
-  `rustit-storage/migrations/0009_*.sql`, `0010_*.sql`, new `rustit-storage/tests/{collaborators,teams}.rs`
+  `rustit-storage/migrations/0009_*.sql`, new `rustit-storage/tests/{collaborators,teams}.rs`
 - services: `rustit-services/src/{collaborators.rs★,teams.rs★,transfers.rs★,repositories.rs,orgs.rs}`,
   new `rustit-services/tests/{access,teams,transfers}.rs`, `rustit-services/tests/orgs.rs`
 - web: `rustit-web/src/routes/{collaborators.rs★,teams.rs★,transfer.rs★,orgs.rs}`,
@@ -562,4 +566,5 @@ example configuration.
 | **Branch protection** | Rules per branch pattern (no force-push, required reviews, restricted pushers using A's permissions) enforced in HTTP and SSH receive paths as a pre-receive check, UI under repository settings. |
 | **API (continued)** | Endpoints for collaborators, teams, releases (incl. asset upload), forks, issues and pull requests; webhook events for them. |
 
-Reserved for wave B: migrations `0016`–`0030` (allocated per workstream in its contract).
+Reserved for wave B: migrations `0017`–`0030` (allocated per workstream in its contract;
+`0016` holds the repository redirects).

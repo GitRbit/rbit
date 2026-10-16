@@ -2,7 +2,7 @@
 
 use std::{path::Path, process::Command, sync::Arc};
 
-use rustit_core::{Config, User, Visibility};
+use rustit_core::{Config, User, Visibility, membership::Permission};
 use rustit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, repo_settings::UpdateRepository};
 use rustit_storage::{Database, KvStore, NewUser};
 
@@ -203,6 +203,40 @@ async fn only_admins_change_settings() {
 
     let as_root = fixture.open(Some(&root), "alice", "project").await.unwrap();
     settings.update(&as_root, general("Moderated", Visibility::Public, None)).await.unwrap();
+}
+
+#[tokio::test]
+async fn old_names_resolve_only_for_readers() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let bob = fixture.user("bob", false).await;
+    let carol = fixture.user("carol", false).await;
+    let root = fixture.user("root", true).await;
+    let repo = fixture.repo(&alice, "secret", Visibility::Private).await;
+    fixture.database.repositories().grant_collaborator(repo.repo.repo.id, carol.id(), Permission::Read).await.unwrap();
+    fixture.services.repo_settings.rename(&repo, "hidden").await.unwrap();
+    let repositories = &fixture.services.repositories;
+
+    // `open` matches the current name only; the Git transports follow old ones.
+    assert!(matches!(fixture.open(Some(&alice), "alice", "secret").await, Err(ServiceError::NotFound)));
+    for reader in [&alice, &carol, &root] {
+        let moved = repositories.moved_to(Some(reader), "alice", "secret").await.unwrap().unwrap();
+        assert_eq!(moved.full_name(), "alice/hidden", "{} may read it", reader.name());
+        let followed = repositories.open_following_renames(Some(reader), "alice", "secret.git").await.unwrap();
+        assert_eq!(followed.repo.repo.id, repo.repo.repo.id);
+    }
+    for outsider in [Some(&bob), None] {
+        assert!(repositories.moved_to(outsider, "alice", "secret").await.unwrap().is_none());
+        assert!(matches!(repositories.open_following_renames(outsider, "alice", "secret").await, Err(ServiceError::NotFound)));
+    }
+    assert!(repositories.moved_to(Some(&alice), "alice", "hidden").await.unwrap().is_none(), "the current name has not moved");
+    assert!(repositories.moved_to(Some(&alice), "alice", "unknown").await.unwrap().is_none());
+
+    // A new repository at the old name wins over it.
+    let newcomer = fixture.repo(&alice, "secret", Visibility::Private).await;
+    assert!(repositories.moved_to(Some(&alice), "alice", "secret").await.unwrap().is_none());
+    let followed = repositories.open_following_renames(Some(&alice), "alice", "secret").await.unwrap();
+    assert_eq!(followed.repo.repo.id, newcomer.repo.repo.id);
 }
 
 // ------------------------------------------------------------------ stars

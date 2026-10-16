@@ -109,7 +109,7 @@ impl Connection {
                     Ok(true) => return Err("this account has been suspended".to_owned()),
                     Err(error) => return Err(internal(&error)),
                 }
-                services.repositories.open(Some(user), &command.owner, &command.repo).await
+                services.repositories.open_following_renames(Some(user), &command.owner, &command.repo).await
             }
             SshIdentity::Deploy { .. } => services.ssh_keys.open_for_deploy_key(identity, &command.owner, &command.repo).await,
         };

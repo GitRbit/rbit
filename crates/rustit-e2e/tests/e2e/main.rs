@@ -10,6 +10,7 @@ mod edge;
 mod essentials;
 mod harness;
 mod orgs;
+mod redirects;
 mod repositories;
 mod security;
 mod stars;

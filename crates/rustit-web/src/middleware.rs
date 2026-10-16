@@ -142,14 +142,87 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
 
 /// Replaces bare error responses produced by [`crate::error::WebError`] with the full
 /// error page, rendered with the current user's navigation.
+///
+/// A "not found" under `/{owner}/{repo}/…` where `owner/repo` is an old name of a
+/// repository the viewer may read (it was renamed or transferred) becomes a redirect to
+/// the same path under the current name instead; see [`moved_repository_location`].
 pub async fn error_pages(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let viewer = request.extensions().get::<Viewer>().cloned().unwrap_or_default();
+    let method = request.method().clone();
     let path = request.uri().path().to_owned();
+    let query = request.uri().query().map(str::to_owned);
     let response = next.run(request).await;
 
     let Some(info) = response.extensions().get::<ErrorInfo>().cloned() else {
         return response;
     };
+    if info.status == StatusCode::NOT_FOUND
+        && let Some(location) = moved_repository_location(&state, &viewer, &path, query.as_deref()).await
+    {
+        return moved_permanently(&method, &location);
+    }
     let page = Page::new(&state, viewer.user(), &path).titled(info.title);
     (info.status, ErrorPage { page, info }).into_response()
+}
+
+/// `path` (and `query`) rewritten to the current name of the repository its first two
+/// segments used to name, if the viewer may read that repository.
+async fn moved_repository_location(state: &AppState, viewer: &Viewer, path: &str, query: Option<&str>) -> Option<String> {
+    let (owner, repo, rest) = split_repo_path(path)?;
+    let moved = match state.services.repositories.moved_to(viewer.user(), owner, repo).await {
+        Ok(moved) => moved?,
+        Err(error) => {
+            tracing::error!(%error, "repository redirect lookup failed");
+            return None;
+        }
+    };
+    let mut location = format!("/{}{rest}", moved.full_name());
+    if let Some(query) = query {
+        location.push('?');
+        location.push_str(query);
+    }
+    Some(location)
+}
+
+/// `/{owner}/{repo}{rest}` → `(owner, repo, rest)`, where `rest` is empty or starts with `/`.
+fn split_repo_path(path: &str) -> Option<(&str, &str, &str)> {
+    let (owner, after_owner) = path.strip_prefix('/')?.split_once('/')?;
+    let (repo, rest) = after_owner.find('/').map_or((after_owner, ""), |slash| after_owner.split_at(slash));
+    (!owner.is_empty() && !repo.is_empty()).then_some((owner, repo, rest))
+}
+
+/// `301` for reads, `308` (which keeps the method and body) for everything else. Not
+/// cacheable: a new repository can take the old name at any time, and then wins.
+fn moved_permanently(method: &Method, location: &str) -> Response {
+    let status = if matches!(*method, Method::GET | Method::HEAD) { StatusCode::MOVED_PERMANENTLY } else { StatusCode::PERMANENT_REDIRECT };
+    let Ok(location) = HeaderValue::from_str(location) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    (status, [(header::LOCATION, location), (header::CACHE_CONTROL, HeaderValue::from_static("no-store"))]).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repository_paths_split_into_owner_repo_and_rest() {
+        assert_eq!(split_repo_path("/alice/demo"), Some(("alice", "demo", "")));
+        assert_eq!(split_repo_path("/alice/demo/"), Some(("alice", "demo", "/")));
+        assert_eq!(split_repo_path("/alice/demo/blob/main/src/lib.rs"), Some(("alice", "demo", "/blob/main/src/lib.rs")));
+        assert_eq!(split_repo_path("/alice"), None);
+        assert_eq!(split_repo_path("/alice/"), None);
+        assert_eq!(split_repo_path("//demo"), None);
+        assert_eq!(split_repo_path("alice/demo"), None);
+    }
+
+    #[test]
+    fn moves_keep_the_method() {
+        let read = moved_permanently(&Method::GET, "/bob/demo/tree/main?x=1");
+        assert_eq!(read.status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(read.headers()[header::LOCATION], "/bob/demo/tree/main?x=1");
+        assert_eq!(read.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(moved_permanently(&Method::HEAD, "/bob/demo").status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(moved_permanently(&Method::POST, "/bob/demo/star").status(), StatusCode::PERMANENT_REDIRECT);
+    }
 }

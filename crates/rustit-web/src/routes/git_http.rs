@@ -10,6 +10,8 @@
 //! Credentials are throttled per client address and per login (`429` + `Retry-After`).
 //! Accounts with two-factor authentication must use a personal access token: their
 //! password is refused with an explanation Git prints (`fatal: remote error: …`).
+//! A repository's old `owner/name` from before a rename or transfer is served as the
+//! repository itself, so remotes configured with it keep working.
 //! Pushes to pull mirrors are refused (`403`): a mirror only changes by fetching its
 //! upstream.
 
@@ -218,7 +220,8 @@ async fn authorize(
     let caller = authenticate(state, client, headers).await?;
     let user = caller.as_ref().map(|caller| &caller.user);
 
-    let mut ctx = match state.services.repositories.open(user, owner, repo).await {
+    // An old name from before a rename or transfer keeps working, so existing clones do.
+    let mut ctx = match state.services.repositories.open_following_renames(user, owner, repo).await {
         Ok(ctx) => ctx,
         // Anonymous visitors get a credential prompt instead of a definitive answer.
         Err(ServiceError::NotFound) if user.is_none() => return Err(Denied::Challenge),

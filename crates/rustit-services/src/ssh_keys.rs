@@ -223,14 +223,19 @@ impl SshKeyService {
 
     /// Opens `owner/name` for a deploy key. The key reaches only its own repository
     /// (anything else is [`ServiceError::NotFound`]) with read access, or write access
-    /// when it was added with write permission. User keys go through
-    /// [`crate::RepositoryService::open`] instead, exactly like HTTP.
+    /// when it was added with write permission. Like the user path
+    /// ([`crate::RepositoryService::open_following_renames`], exactly as HTTP), an old
+    /// name of the repository from before a rename or transfer still reaches it.
     pub async fn open_for_deploy_key(&self, identity: &SshIdentity, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
         let SshIdentity::Deploy { repo: key_repo, read_only, .. } = identity else {
             return Err(ServiceError::NotFound);
         };
         let name = name.strip_suffix(".git").unwrap_or(name);
-        let repo = self.ctx.database.repositories().find_by_path(owner, name).await?.ok_or(ServiceError::NotFound)?;
+        let store = self.ctx.database.repositories();
+        let repo = match store.find_by_path(owner, name).await? {
+            Some(repo) => repo,
+            None => store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
+        };
         if repo.repo.id != key_repo.repo.id {
             return Err(ServiceError::NotFound);
         }

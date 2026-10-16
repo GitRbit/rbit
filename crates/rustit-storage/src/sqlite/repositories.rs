@@ -142,6 +142,20 @@ impl RepositoryStore {
         row.map(OwnedRepository::try_from).transpose()
     }
 
+    /// The repository that used to be called `owner/name` before a rename or transfer, at
+    /// its current location. `None` when the old name was never used, or a repository
+    /// exists there now (the `0016` triggers drop a redirect when its name is taken).
+    pub async fn find_by_old_path(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, StorageError> {
+        let row: Option<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!(
+            "JOIN repo_redirects rr ON rr.repo_id = r.id JOIN accounts ro ON ro.id = rr.owner_id WHERE ro.name = ? AND rr.name = ?"
+        ))
+        .bind(owner)
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(OwnedRepository::try_from).transpose()
+    }
+
     /// Repositories owned by `owner` that `viewer` may read, most recently updated first.
     pub async fn list_by_owner(
         &self,

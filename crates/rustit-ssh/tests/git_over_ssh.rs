@@ -244,6 +244,55 @@ async fn clone_push_and_access_control_over_ssh() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn old_names_of_renamed_repositories_keep_working_over_ssh() {
+    if !openssh_available() {
+        return;
+    }
+    let harness = Harness::start().await;
+    let alice = harness.user("alice").await;
+    let bob = harness.user("bob").await;
+    let repo = CreateRepository { name: "before".to_owned(), description: String::new(), visibility: Visibility::Private };
+    harness.services.repositories.create(&alice, repo).await.unwrap();
+    let (alice_key, alice_public) = harness.key("alice_key");
+    let (bob_key, bob_public) = harness.key("bob_key");
+    let (deploy_key, deploy_public) = harness.key("deploy_key");
+    harness.services.ssh_keys.add_user_key(&alice, AddSshKey { title: String::new(), key: alice_public }).await.unwrap();
+    harness.services.ssh_keys.add_user_key(&bob, AddSshKey { title: String::new(), key: bob_public }).await.unwrap();
+    let ctx = harness.services.repositories.open(Some(&alice), "alice", "before").await.unwrap();
+    let input = AddDeployKey { title: "ci".to_owned(), key: deploy_public, allow_write: false };
+    harness.services.ssh_keys.add_deploy_key(&alice, &ctx, input).await.unwrap();
+
+    let work = harness.workdir("work");
+    assert_ok(&harness.git(&alice_key, &work, &["clone", "-q", &harness.url("alice/before.git"), "project"]).await);
+    let checkout = work.join("project");
+    std::fs::write(checkout.join("README.md"), "# project\n").unwrap();
+    assert_ok(&harness.git(&alice_key, &checkout, &["add", "README.md"]).await);
+    assert_ok(&harness.git(&alice_key, &checkout, &["commit", "-q", "-m", "Initial commit"]).await);
+    harness.services.repo_settings.rename(&ctx, "after").await.unwrap();
+
+    // The remote still says `alice/before`: pushing and cloning there reach `alice/after`.
+    assert_ok(&harness.git(&alice_key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
+    let copy = harness.workdir("copy");
+    assert_ok(&harness.git(&alice_key, &copy, &["clone", "-q", &harness.url("alice/before"), "again"]).await);
+    assert_eq!(std::fs::read_to_string(copy.join("again").join("README.md")).unwrap(), "# project\n");
+    assert_ok(&harness.git(&deploy_key, &copy, &["clone", "-q", &harness.url("alice/before.git"), "ci"]).await);
+    // Someone who cannot read the repository learns nothing from its old name.
+    assert_refused(&harness.git(&bob_key, &copy, &["clone", &harness.url("alice/before.git"), "bob"]).await, "not found");
+
+    // A new repository at the old name takes precedence.
+    let newcomer = CreateRepository { name: "before".to_owned(), description: String::new(), visibility: Visibility::Private };
+    harness.services.repositories.create(&alice, newcomer).await.unwrap();
+    let fresh = harness.workdir("fresh");
+    assert_ok(&harness.git(&alice_key, &fresh, &["clone", "-q", &harness.url("alice/before.git"), "new"]).await);
+    assert!(!fresh.join("new").join("README.md").exists(), "the new, empty repository is served");
+    // The deploy key belongs to the renamed repository, not the newcomer.
+    assert_refused(&harness.git(&deploy_key, &fresh, &["clone", &harness.url("alice/before.git"), "ci"]).await, "not found");
+
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn pushes_to_mirrors_are_refused_over_ssh() {
     if !openssh_available() {
         return;

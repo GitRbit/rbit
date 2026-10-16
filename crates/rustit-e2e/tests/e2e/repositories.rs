@@ -98,13 +98,15 @@ async fn renamed_repository_clones_at_its_new_url_and_deleted_one_is_gone() {
 
     alice.post("/alice/before/settings/rename", &[("name", "after")]).await.expect_redirect("/alice/after/settings");
     alice.get("/alice/after").await.expect_status(StatusCode::OK).expect_contains(&["Sample project"]);
-    alice.get("/alice/before").await.expect_status(StatusCode::NOT_FOUND);
+    // The old name redirects (see `redirects.rs` for the details).
+    alice.get("/alice/before").await.expect_status(StatusCode::MOVED_PERMANENTLY);
     let clone = git.clone(&server.git_url("alice", "after"));
     assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
     git.ok(&clone, &["push", "--quiet", &server.git_url_as("alice", "after", "alice", PASSWORD), "HEAD:refs/heads/renamed"]);
 
-    // The old name is free again.
+    // The old name is free again, and the new repository wins over the redirect.
     alice.create_repo("alice", "before", "public").await;
+    alice.get("/alice/before").await.expect_status(StatusCode::OK);
 
     // Deleting requires typing the full name.
     alice.post("/alice/after/settings/delete", &[("confirm", "after")]).await.expect_status(StatusCode::UNPROCESSABLE_ENTITY);

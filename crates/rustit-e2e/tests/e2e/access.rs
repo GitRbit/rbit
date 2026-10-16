@@ -156,10 +156,11 @@ async fn transferred_repositories_clone_from_their_new_address() {
 
     alice.post(transfer, &[("new_owner", "acme"), ("confirm", "alice/demo")]).await.expect_redirect("/acme/demo");
     alice.get("/acme/demo").await.expect_status(StatusCode::OK).expect_contains(&["Sample project"]);
-    alice.get("/alice/demo").await.expect_status(StatusCode::NOT_FOUND);
     let clone = git.clone(&server.git_url_as("acme", "demo", "alice", PASSWORD));
     assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
-    git.clone_fails(&server.git_url_as("alice", "demo", "alice", PASSWORD));
+    // The old location redirects for those who may read the repository (`redirects.rs`).
+    alice.get("/alice/demo").await.expect_status(StatusCode::MOVED_PERMANENTLY);
+    bob.get("/alice/demo").await.expect_status(StatusCode::NOT_FOUND);
     bob.get("/acme/demo").await.expect_status(StatusCode::NOT_FOUND);
     alice.get("/acme").await.expect_contains(&["demo"]);
 }
