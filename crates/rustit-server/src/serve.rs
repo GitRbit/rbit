@@ -37,6 +37,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     services.spawn_background();
     crate::ssh::start(&config, &services);
 
+    let jobs = services.jobs.clone();
     let app = rustit_web::router(AppState::new(Arc::clone(&config), services));
     let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "Rustit is listening");
@@ -47,6 +48,8 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         .context("server error")?;
 
     tracing::info!("shutting down");
+    // Stop background work before closing the stores it writes to.
+    jobs.shutdown().await;
     storage.database.close().await;
     Ok(())
 }
