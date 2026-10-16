@@ -24,6 +24,9 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     telemetry::init();
+    // Before anything can open a TLS connection (webhook deliveries, mail, mirror checks):
+    // every rustls user in the process then agrees on `ring`, whatever its features.
+    rustit_services::webhooks::delivery::install_crypto_provider();
     let config = config::load(cli.config.as_deref())?;
 
     match cli.command.unwrap_or(Command::Serve) {
