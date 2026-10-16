@@ -5,3 +5,4 @@
 mod accounts;
 mod harness;
 mod repositories;
+mod visibility;
