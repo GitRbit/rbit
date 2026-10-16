@@ -68,6 +68,9 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+# A filtered system call fails with EPERM, which surfaces as an ordinary error, instead of
+# killing the process with SIGSYS and dropping every connection at once.
+SystemCallErrorNumber=EPERM
 # MemoryDenyWriteExecute is deliberately not set: it is fine for Rustit itself but some
 # git builds (PCRE JIT for `git grep`) need writable+executable memory.
 
