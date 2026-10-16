@@ -22,4 +22,8 @@ pub enum MailError {
 
     #[error("SMTP delivery failed: {0}")]
     Smtp(#[from] lettre::transport::smtp::Error),
+
+    /// The transport did not accept the message in time.
+    #[error("delivery timed out after {seconds} seconds")]
+    Timeout { seconds: u64 },
 }

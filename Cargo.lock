@@ -3372,6 +3372,7 @@ dependencies = [
  "rustit-auth",
  "rustit-core",
  "rustit-git",
+ "rustit-mail",
  "rustit-storage",
  "tempfile",
  "thiserror",

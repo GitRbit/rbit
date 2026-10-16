@@ -11,6 +11,7 @@ rustit-core.workspace = true
 rustit-storage.workspace = true
 rustit-auth.workspace = true
 rustit-git.workspace = true
+rustit-mail.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
