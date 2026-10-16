@@ -536,8 +536,23 @@ impl Git {
     /// Clones `url` into a fresh directory and returns its path; panics on failure.
     #[track_caller]
     pub fn clone(&self, url: &str) -> PathBuf {
+        self.clone_with(url, &[], &[])
+    }
+
+    /// Clones `url` with `config` (`key=value`, passed as `git -c`) and extra `git clone`
+    /// `options` into a fresh directory; panics on failure.
+    #[track_caller]
+    pub fn clone_with(&self, url: &str, config: &[&str], options: &[&str]) -> PathBuf {
         let target = self.fresh_path("clone");
-        self.ok(self.root.path(), &["clone", "--quiet", url, &target.to_string_lossy()]);
+        let target_arg = target.to_string_lossy().into_owned();
+        let mut args = Vec::new();
+        for setting in config {
+            args.extend(["-c", setting]);
+        }
+        args.extend(["clone", "--quiet"]);
+        args.extend(options);
+        args.extend([url, target_arg.as_str()]);
+        self.ok(self.root.path(), &args);
         target
     }
 

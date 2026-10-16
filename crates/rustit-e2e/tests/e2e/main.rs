@@ -3,6 +3,7 @@
 //! down; each area is a module.
 
 mod accounts;
+mod compatibility;
 mod harness;
 mod orgs;
 mod repositories;
