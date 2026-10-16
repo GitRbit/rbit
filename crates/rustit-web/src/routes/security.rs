@@ -4,13 +4,14 @@
 
 use axum::{
     Form, Router,
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{Path, Query, State},
+    http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
 };
 use axum_extra::extract::{CookieJar, cookie::Cookie};
 use rustit_auth::SessionToken;
+use rustit_core::User;
 use rustit_services::ServiceError;
 use serde::Deserialize;
 
@@ -19,12 +20,198 @@ use crate::{
     AppState,
     client_ip::{Client, Https},
     error::WebResult,
+    extract::{CurrentSession, SignedIn},
     urls::safe_redirect_target,
-    views::{auth::TwoFactorLoginPage, components::FormError, layout::Page},
+    views::{
+        auth::TwoFactorLoginPage,
+        components::FormError,
+        layout::Page,
+        security::{Overview, RecoveryCodes, SECURITY_URL, SecurityNotice, SecurityPage, SecurityView, Setup},
+    },
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route(TWO_FACTOR_PATH, get(two_factor_form).post(two_factor))
+    Router::new()
+        .route(TWO_FACTOR_PATH, get(two_factor_form).post(two_factor))
+        .route(SECURITY_URL, get(overview))
+        .route("/settings/security/two-factor", get(setup).post(confirm_setup))
+        .route("/settings/security/two-factor/cancel", post(cancel_setup))
+        .route("/settings/security/two-factor/disable", post(disable))
+        .route("/settings/security/recovery-codes", post(regenerate_codes))
+        .route("/settings/security/sessions/revoke-others", post(revoke_other_sessions))
+        .route("/settings/security/sessions/{id}/revoke", post(revoke_session))
+}
+
+/// Entries of "Recent activity" on the overview.
+const RECENT_ACTIVITY: u8 = 10;
+
+// ------------------------------------------------------------------ /settings/security
+
+#[derive(Debug, Deserialize)]
+pub struct SavedQuery {
+    saved: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CodeForm {
+    #[serde(default)]
+    code: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PasswordAndCodeForm {
+    #[serde(default)]
+    password: String,
+    #[serde(default)]
+    code: String,
+}
+
+/// Security pages are personal and may show secrets: never cache them.
+fn no_store(response: impl IntoResponse) -> Response {
+    ([(header::CACHE_CONTROL, "no-store")], response).into_response()
+}
+
+async fn overview_model(state: &AppState, user: &User, current: &CurrentSession) -> WebResult<Overview> {
+    let status = state.services.two_factor.status(user).await?;
+    let sessions = state.services.accounts.sessions(user, Some(&current.0)).await?;
+    let activity = state.services.audit.recent_for(user, RECENT_ACTIVITY).await?;
+    Ok(Overview::new(status, &sessions, &activity))
+}
+
+/// `GET /settings/security`
+pub async fn overview(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    current: CurrentSession,
+    page: Page,
+    Query(query): Query<SavedQuery>,
+) -> WebResult<Response> {
+    let mut overview = overview_model(&state, &user, &current).await?;
+    overview.notice = query.saved.as_deref().and_then(SecurityNotice::parse);
+    Ok(no_store(SecurityPage::new(page, SecurityView::Overview(overview))))
+}
+
+/// `GET /settings/security/two-factor`: starts (or resumes) enrolment.
+pub async fn setup(State(state): State<AppState>, SignedIn(user): SignedIn, page: Page) -> WebResult<Response> {
+    if state.services.two_factor.is_enabled(user.id()).await? {
+        return Ok(Redirect::to(SECURITY_URL).into_response());
+    }
+    let enrolment = state.services.two_factor.begin_enrolment(&user, &page.site_name).await?;
+    Ok(no_store(SecurityPage::new(page, SecurityView::Setup(Setup::new(&enrolment, FormError::default())))))
+}
+
+/// `POST /settings/security/two-factor`: confirms enrolment and shows the recovery codes
+/// once (not a redirect: they are never stored in a readable form).
+pub async fn confirm_setup(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    client: Client,
+    page: Page,
+    Form(form): Form<CodeForm>,
+) -> WebResult<Response> {
+    let (status, message) = match state.services.confirm_two_factor(&user, &form.code, &client.0).await {
+        Ok(codes) => {
+            let view = SecurityView::RecoveryCodes(RecoveryCodes { codes, just_enabled: true });
+            return Ok(no_store(SecurityPage::new(page, view)));
+        }
+        Err(ServiceError::InvalidCredentials) => {
+            (StatusCode::UNPROCESSABLE_ENTITY, "That code didn't match. Check the time on your device and try the next code.".to_owned())
+        }
+        Err(ServiceError::RateLimited { retry_after_seconds }) => (StatusCode::TOO_MANY_REQUESTS, slow_down("code", retry_after_seconds)),
+        Err(ServiceError::Invalid(message)) => (StatusCode::UNPROCESSABLE_ENTITY, FormError::from_message(&message).0.unwrap_or_default()),
+        Err(other) => return Err(other.into()),
+    };
+    let enrolment = state.services.two_factor.begin_enrolment(&user, &page.site_name).await?;
+    let page = SecurityPage::new(page, SecurityView::Setup(Setup::new(&enrolment, FormError::new(message))));
+    Ok((status, no_store(page)).into_response())
+}
+
+/// `POST /settings/security/two-factor/cancel`
+pub async fn cancel_setup(State(state): State<AppState>, SignedIn(user): SignedIn) -> WebResult<Redirect> {
+    state.services.two_factor.cancel_enrolment(&user).await?;
+    Ok(Redirect::to(&SecurityNotice::SetupCancelled.url()))
+}
+
+/// Which overview form a password-and-code error belongs to.
+#[derive(Debug, Clone, Copy)]
+enum SensitiveForm {
+    Disable,
+    Regenerate,
+}
+
+/// Re-renders the overview with `error` above `form`.
+async fn overview_with_error(
+    state: &AppState,
+    user: &User,
+    current: &CurrentSession,
+    page: Page,
+    form: SensitiveForm,
+    error: ServiceError,
+) -> WebResult<Response> {
+    let (status, message) = match error {
+        ServiceError::InvalidCredentials => (StatusCode::UNPROCESSABLE_ENTITY, "Incorrect password or code.".to_owned()),
+        ServiceError::RateLimited { retry_after_seconds } => (StatusCode::TOO_MANY_REQUESTS, slow_down("code", retry_after_seconds)),
+        ServiceError::Invalid(message) => (StatusCode::UNPROCESSABLE_ENTITY, FormError::from_message(&message).0.unwrap_or_default()),
+        other => return Err(other.into()),
+    };
+    let mut overview = overview_model(state, user, current).await?;
+    match form {
+        SensitiveForm::Disable => overview.disable_error = FormError::new(message),
+        SensitiveForm::Regenerate => overview.regenerate_error = FormError::new(message),
+    }
+    Ok((status, no_store(SecurityPage::new(page, SecurityView::Overview(overview)))).into_response())
+}
+
+/// `POST /settings/security/two-factor/disable`
+pub async fn disable(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    current: CurrentSession,
+    client: Client,
+    page: Page,
+    Form(form): Form<PasswordAndCodeForm>,
+) -> WebResult<Response> {
+    match state.services.disable_two_factor(&user, form.password, &form.code, &client.0).await {
+        Ok(()) => Ok(Redirect::to(&SecurityNotice::TwoFactorDisabled.url()).into_response()),
+        Err(error) => overview_with_error(&state, &user, &current, page, SensitiveForm::Disable, error).await,
+    }
+}
+
+/// `POST /settings/security/recovery-codes`: replaces the codes and shows them once.
+pub async fn regenerate_codes(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    current: CurrentSession,
+    client: Client,
+    page: Page,
+    Form(form): Form<PasswordAndCodeForm>,
+) -> WebResult<Response> {
+    match state.services.regenerate_recovery_codes(&user, form.password, &form.code, &client.0).await {
+        Ok(codes) => Ok(no_store(SecurityPage::new(page, SecurityView::RecoveryCodes(RecoveryCodes { codes, just_enabled: false })))),
+        Err(error) => overview_with_error(&state, &user, &current, page, SensitiveForm::Regenerate, error).await,
+    }
+}
+
+/// `POST /settings/security/sessions/{id}/revoke`
+pub async fn revoke_session(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    client: Client,
+    Path(id): Path<String>,
+) -> WebResult<Redirect> {
+    state.services.accounts.revoke_session(&user, &id, &client.0).await?;
+    Ok(Redirect::to(&SecurityNotice::SessionRevoked.url()))
+}
+
+/// `POST /settings/security/sessions/revoke-others`
+pub async fn revoke_other_sessions(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    current: CurrentSession,
+    client: Client,
+) -> WebResult<Redirect> {
+    state.services.accounts.revoke_other_sessions(&user, &current.0, &client.0).await?;
+    Ok(Redirect::to(&SecurityNotice::OtherSessionsRevoked.url()))
 }
 
 // ------------------------------------------------------------------ sign-in second step
