@@ -42,6 +42,8 @@ pub mod tokens;
 pub mod transfers;
 pub mod two_factor;
 pub mod webhooks;
+// Milestone 3: editing files in the browser (E).
+pub mod edits;
 
 use std::sync::Arc;
 
@@ -86,6 +88,8 @@ pub use tokens::{AccessTokenService, CreateAccessToken};
 pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
 pub use webhooks::WebhookService;
+// Milestone 3: editing files in the browser (E).
+pub use edits::EditService;
 
 /// The infrastructure every service is built from. Cheap to clone (all handles are `Arc`s).
 #[derive(Debug, Clone)]
@@ -146,6 +150,8 @@ pub struct Services {
     pub statuses: StatusService,
     // Milestone 3: email notifications (N).
     pub notification_email: NotificationEmailService,
+    // Milestone 3: editing files in the browser (E).
+    pub edits: EditService,
 }
 
 impl Services {
@@ -205,6 +211,8 @@ impl Services {
             statuses: StatusService::new(ctx.clone()),
             // Milestone 3: email notifications (N).
             notification_email,
+            // Milestone 3: editing files in the browser (E).
+            edits: EditService::new(ctx.clone(), ProtectionService::new(ctx.clone()), PushService::new(ctx.clone())),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),

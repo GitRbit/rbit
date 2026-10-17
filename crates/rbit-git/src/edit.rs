@@ -48,7 +48,7 @@ use rbit_core::{Timestamp, file_edit::FilePath, pull::CommitIdentity};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    GitError,
+    GitError, RepositoryLease,
     merge::{Git, MergeEnvironment, MergeError, Signature, expect_success, failure, hand_over},
     overlay::{MERGES_DIR, Overlay},
     pull_refs::{branch_ref, validate_id},
@@ -67,6 +67,11 @@ impl BlobId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+/// Whether `name` is a valid branch name (what `refs/heads/<name>` allows, and not an option).
+pub fn is_valid_branch_name(name: &str) -> bool {
+    branch_ref(name).is_ok()
 }
 
 /// One change of a web edit.
@@ -170,6 +175,14 @@ impl EditWorkspace {
     pub async fn open(env: &MergeEnvironment, repo: &Path) -> Result<Self, EditError> {
         let scratch = Overlay::create_in(&env.tmp_dir.join(MERGES_DIR), &[repo]).await?;
         Ok(Self { scratch, binary: env.git_binary.clone(), repo: repo.to_owned(), timeout: env.timeout })
+    }
+
+    /// Keeps `lease` (on the repository) until the workspace is dropped, so the repository
+    /// is not moved while the workspace reads its objects.
+    #[must_use]
+    pub fn holding(mut self, lease: RepositoryLease) -> Self {
+        self.scratch = self.scratch.holding(lease);
+        self
     }
 
     fn git(&self) -> Git<'_> {

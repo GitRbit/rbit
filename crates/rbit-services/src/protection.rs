@@ -273,6 +273,18 @@ impl ProtectionService {
         Ok(protection::may_delete(&rules, &pusher, branch))
     }
 
+    /// Why `actor` may not add commits to the existing `branch` directly, or `None` when
+    /// they may: the decision a push updating it gets, without auditing a bypass (E's
+    /// editor uses it to offer committing to a new branch instead; the commit itself goes
+    /// through [`Self::check_push`]). `repo` is opened for the actor.
+    pub async fn branch_update_refusal(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<Option<String>, ServiceError> {
+        let rules = self.rules(repo).await?;
+        let pusher = self.pusher(repo, &rules, actor, repo.access).await?;
+        let update = RefUpdate { name: format!("refs/heads/{branch}"), before: Some(String::new()), after: Some(String::new()) };
+        let decision = protection::decide_push(&rules, &pusher, &[update]);
+        Ok(decision.verdict.refusals.into_iter().next().map(|refusal| refusal.reason))
+    }
+
     /// The names of the repository's existing branches that some rule protects.
     pub async fn protected_branches(&self, repo: &RepoContext) -> Result<Vec<String>, ServiceError> {
         let rules = self.rules(repo).await?;
