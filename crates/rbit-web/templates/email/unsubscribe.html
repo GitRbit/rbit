@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="auth-shell">
+  {% match state %}
+  {% when UnsubscribeState::Confirm with { username } %}
+  <header class="auth-head">
+    <span class="tile">{% call ui::icon("bell", "size-5") %}{% endcall %}</span>
+    <h1 class="auth-title">Stop notification emails</h1>
+  </header>
+
+  <div class="card">
+    <p class="text-[13px] text-ink-muted">Turn off notification emails for <span class="font-medium text-ink break-all">{{ username }}</span>? Notifications keep appearing in the inbox.</p>
+    <form method="post" action="{{ action }}">
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Turn off notification emails</button>
+    </form>
+  </div>
+  {% when UnsubscribeState::Done with { username } %}
+  <header class="auth-head">
+    <span class="tile text-success">{% call ui::icon("check", "size-5") %}{% endcall %}</span>
+    <h1 class="auth-title">Notification emails are off</h1>
+  </header>
+
+  <div class="card">
+    <p class="text-[13px] text-ink-muted"><span class="font-medium text-ink break-all">{{ username }}</span> will no longer receive notification emails. You can turn them back on at any time.</p>
+    <a href="{{ settings_url }}" class="btn btn-lg mt-6 w-full">Notification settings</a>
+  </div>
+  {% when UnsubscribeState::Invalid %}
+  <header class="auth-head">
+    <span class="tile">{% call ui::icon("alert", "size-5") %}{% endcall %}</span>
+    <h1 class="auth-title">This link is not valid</h1>
+  </header>
+
+  <div class="card">
+    <p class="text-[13px] text-ink-muted">The link may be incomplete. Sign in to choose which notifications are emailed to you.</p>
+    <a href="{{ settings_url }}" class="btn btn-primary btn-lg mt-6 w-full">Notification settings</a>
+  </div>
+  {% endmatch %}
+</section>
+{% endblock %}

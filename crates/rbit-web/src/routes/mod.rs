@@ -18,6 +18,7 @@ mod labels;
 mod listing;
 mod milestones;
 mod mirrors;
+mod notification_email;
 mod notifications;
 mod ops;
 mod orgs;
@@ -129,6 +130,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(notifications::routes())
         .merge(pulls::routes())
         .merge(protection::routes())
+        // Milestone 3: email notifications (N).
+        .merge(notification_email::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

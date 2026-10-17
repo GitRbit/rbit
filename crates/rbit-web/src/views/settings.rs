@@ -26,11 +26,14 @@ pub enum SettingsSection {
     Security,
     SshKeys,
     AccessTokens,
+    // Milestone 3: email notifications (N).
+    Notifications,
 }
 
 impl SettingsSection {
     /// Navigation order. New sections slot in here.
-    const ALL: [Self; 6] = [Self::Profile, Self::Account, Self::Appearance, Self::Security, Self::SshKeys, Self::AccessTokens];
+    const ALL: [Self; 7] =
+        [Self::Profile, Self::Account, Self::Appearance, Self::Security, Self::SshKeys, Self::AccessTokens, Self::Notifications];
 
     const fn label(self) -> &'static str {
         match self {
@@ -40,6 +43,7 @@ impl SettingsSection {
             Self::Security => "Security",
             Self::SshKeys => "SSH keys",
             Self::AccessTokens => "Access tokens",
+            Self::Notifications => "Notifications",
         }
     }
 
@@ -52,6 +56,7 @@ impl SettingsSection {
             Self::Security => "/settings/security",
             Self::SshKeys => "/settings/keys",
             Self::AccessTokens => "/settings/tokens",
+            Self::Notifications => rbit_services::notification_email::SETTINGS_PATH,
         }
     }
 
@@ -532,7 +537,7 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens"]);
+        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens", "Notifications"]);
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         let active = nav.iter().find(|link| link.is_active).unwrap();
         assert_eq!(active.url, "/settings/tokens");

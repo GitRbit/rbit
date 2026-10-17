@@ -11,6 +11,7 @@ mod edge;
 mod essentials;
 mod harness;
 mod issues;
+mod notification_email;
 mod orgs;
 mod protection;
 mod pulls;

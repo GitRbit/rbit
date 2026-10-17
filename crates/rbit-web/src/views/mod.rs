@@ -21,6 +21,7 @@ pub mod labels;
 pub mod layout;
 pub mod milestones;
 pub mod mirrors;
+pub mod notification_email;
 pub mod notifications;
 pub mod org;
 pub mod protection;

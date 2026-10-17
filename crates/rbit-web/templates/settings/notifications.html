@@ -1,0 +1,49 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+<h2 class="text-xl font-semibold tracking-tight">Notifications</h2>
+<p class="mt-1 text-[13px] text-ink-muted">Everything still appears in <a class="link" href="/notifications">your inbox</a>. Choose what is also sent to your email address.</p>
+
+{% if saved %}
+<p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
+  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Preferences saved.
+</p>
+{% endif %}
+
+{% if !available %}
+<p class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px] text-ink-muted">
+  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0") %}{% endcall %}Email is not available on this server, so notifications only appear in your inbox.
+</p>
+{% else if !verified %}
+<p class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-warning/40 px-3 py-2.5 text-[13px]">
+  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-warning") %}{% endcall %}<span>Verify <span class="font-medium break-all">{{ address }}</span> in <a class="link" href="/settings/account">account settings</a> to receive notification emails.</span>
+</p>
+{% endif %}
+
+<form method="post" action="/settings/notifications" class="box mt-6" novalidate>
+  <div class="box-header">
+    <h3 class="text-[13px] font-medium">Email</h3>
+  </div>
+  <div class="p-4">
+    {% call ui::form_error(error) %}{% endcall %}
+    <fieldset>
+      <legend class="label">Send to <span class="break-all text-ink-muted">{{ address }}</span></legend>
+      <div class="box overflow-hidden">
+        {% for option in options %}
+        <label class="flex cursor-pointer items-start gap-3 {% if !loop.last %}border-b border-line {% endif %}px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="email" value="{{ option.value }}" class="mt-1 accent-(--ink)" {% if option.checked %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{{ option.label }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <p class="hint">Every email has a link that turns them off in one click.</p>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3">
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">Save preferences</button>
+  </div>
+</form>
+{% endblock %}

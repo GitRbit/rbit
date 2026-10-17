@@ -107,13 +107,23 @@ fn is_unsafe(method: &Method) -> bool {
 /// Browsers send `Sec-Fetch-Site` (modern) or `Origin` on unsafe methods; if either says
 /// the request came from another site it is refused. Non-browser clients (git, curl)
 /// send neither and authenticate without cookies, so they are unaffected.
+///
+/// The one exemption is the one-click unsubscribe link of notification emails
+/// ([`is_one_click_unsubscribe`]).
 pub async fn csrf_origin_check(request: Request, next: Next) -> Response {
     let unsafe_method = is_unsafe(request.method());
-    if unsafe_method && is_cross_site(request.headers()) {
+    if unsafe_method && is_cross_site(request.headers()) && !is_one_click_unsubscribe(request.uri().path()) {
         tracing::warn!(path = %request.uri().path(), "blocked cross-site request");
         return (StatusCode::FORBIDDEN, "cross-site request blocked").into_response();
     }
     next.run(request).await
+}
+
+/// Milestone 3 (N): `POST /email/unsubscribe/{token}`, which mail clients send from their
+/// own origin (RFC 8058). It needs no session: the signed token is the authorisation, and
+/// all it can do is turn notification emails off for the account it names.
+fn is_one_click_unsubscribe(path: &str) -> bool {
+    path.strip_prefix(rbit_services::notification_email::UNSUBSCRIBE_PATH).is_some_and(|token| !token.is_empty() && !token.contains('/'))
 }
 
 fn is_cross_site(headers: &HeaderMap) -> bool {
@@ -445,5 +455,13 @@ mod tests {
         assert_eq!(read.headers()[header::CACHE_CONTROL], "no-store");
         assert_eq!(moved_permanently(&Method::HEAD, "/bob/demo").status(), StatusCode::MOVED_PERMANENTLY);
         assert_eq!(moved_permanently(&Method::POST, "/bob/demo/star").status(), StatusCode::PERMANENT_REDIRECT);
+    }
+
+    #[test]
+    fn only_the_unsubscribe_link_skips_the_cross_site_check() {
+        assert!(is_one_click_unsubscribe("/email/unsubscribe/2.abcdef"));
+        for path in ["/email/unsubscribe/", "/email/unsubscribe", "/email/unsubscribe/2/x", "/settings/notifications", "/email/verify/x"] {
+            assert!(!is_one_click_unsubscribe(path), "{path}");
+        }
     }
 }
