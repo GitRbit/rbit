@@ -1,8 +1,8 @@
 # Rbit — Handoff
 
-**As of 2026-10-16, `main` @ `208ee4f` (plus the documentation and upgrade-test commits
-on top).** Everything below is what the next person (or agent team) needs to pick this up
-without re-reading the history.
+**As of 2026-10-17, `main` @ `17ecacf` plus the wave B integration commits on top
+(Protected badge, documentation). Milestone 2 is complete.** Everything below is what
+the next person (or agent team) needs to pick this up without re-reading the history.
 
 ## 1. Where things stand
 
@@ -13,14 +13,16 @@ without re-reading the history.
 | **Milestone 1 — safe to self-host** (rate limiting, 2FA, sessions, audit log, email recovery, SSH, jobs, metrics, backups, deployment, CI, e2e tests) | ✅ Done, merged |
 | Frontend wave (landing page and dashboard, live explore search, theme gallery with ~500 schemes, stored preferences) | ✅ Done, merged |
 | **Milestone 2 wave A** — access (collaborators, teams, base permission, transfer, old-name redirects), REST API `/api/v1` + signed webhooks, repository essentials (README links, archives, blame, compare, releases with files, forks, pull mirrors) | ✅ Done, merged and integrated |
-| Milestone 2 wave B — issues, pull requests, branch protection | ⏭️ Next — contract in [design/milestone-2b.md](design/milestone-2b.md), see §5 |
+| **Milestone 2 wave B** — shared issue timeline, issues (labels, milestones, assignees, references, search, in-app notifications), pull requests (fork network, reviews, line comments, mergeability, merge/squash/rebase), branch protection (push gate over HTTP and SSH, merge rules), REST endpoints and webhooks | ✅ Done, merged and integrated |
+| Alongside wave B (the user's work) — rename to **Rbit**, passkeys (WebAuthn, migration `0032`), diff file tree, modal theme picker, live dev server (`npm run dev`) | ✅ Done, on `main` |
+| Next milestone | ⏭️ Not started — see §5 |
 
 Quality gate on `main`, exactly as CI runs it:
 
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace          # 618 tests, 0 failing, 0 ignored
+cargo test --workspace          # 874 tests, 0 failing, 0 ignored
 npm ci && npm run build         # vendored htmx + Tailwind CSS
 ```
 
@@ -29,7 +31,10 @@ users, an organisation, repositories, an SSH key and audit entries) migrated wit
 `rbit migrate` through `0016` — integrity and foreign-key checks clean, organisation
 base permission `write`, all triggers present — and the server then served the
 repositories, the organisation, releases, archives and the API from it.
-`crates/rbit-storage/tests/upgrade.rs` repeats that upgrade on every test run. Earlier
+`crates/rbit-storage/tests/upgrade.rs` repeats that upgrade on every test run, now through
+`0032`, and checks that wave B's tables exist and start empty. Wave B is covered end to
+end by `crates/rbit-e2e/tests/e2e/{timeline,issues,pulls,protection}.rs` (real `git` over
+HTTP); the SSH protection scenarios are in `crates/rbit-ssh/tests/protection.rs`. Earlier
 (milestone 1): SSH key added in the UI then `ssh -T`/clone/push/re-clone with OpenSSH,
 password-reset email (log transport), security settings, audit log, `/healthz`,
 `/readyz`, `/metrics`; the Docker image and the systemd unit were run (see `5635638`).
@@ -40,12 +45,23 @@ service workers — ignore failures there).
 
 1. **CI has never run on GitHub:** nothing is pushed anywhere and there is no remote
    configured yet. Push a branch to run `.github/workflows/ci.yml` (Linux + Windows).
-2. **Release notes:** [CHANGELOG.md](../CHANGELOG.md) has the wave A upgrade notes
-   (migrations `0009`–`0016`, backup format 2, the new outbound requests, proxy body
-   limits for uploads, the newly reserved names `themes` and `teams`) and still carries
-   milestone 1's one-time sign-out (`sessions_v2`) for instances upgrading from before it.
-3. Wave A left API endpoints for collaborators, teams, releases and forks out on purpose;
-   wave B moved them to a later wave (see the contract's out-of-scope list).
+2. **Release notes:** [CHANGELOG.md](../CHANGELOG.md) has the wave B upgrade notes
+   (migrations `0017`–`0024`, `refs/pull/*` reserved, the force-push side effect,
+   `<data_dir>/tmp` excluded from backups, `[issues]`/`[pulls]`), the rename and passkeys
+   notes, wave A's, and milestone 1's one-time sign-out (`sessions_v2`).
+3. **Not yet recorded as verified by hand:** upgrading a real wave A database through
+   `0024` with `rbit migrate` (the upgrade test covers a synthetic milestone 1 one), and the
+   cross-workstream scenario the contract sketches as `tests/e2e/workflow.rs` (protected
+   `main` with one approval, a fork PR whose body says "Fixes #1", squash merge, the issue
+   closed via the PR, a notification and both webhooks). Its parts are tested separately
+   in `pulls.rs`, `issues.rs` and `protection.rs`.
+4. **Wave B stretch items not built:** resolving review threads (migration `0023` stays
+   spare), a base-branch picker on the PR page (the `…/pull/{n}/base` route and the
+   `BaseChanged` event exist), cross-repository dashboards (`/issues`, `/pulls`; the names
+   are reserved), a Markdown preview tab, and redirects for renamed *accounts* (only
+   repositories redirect).
+5. API endpoints for collaborators, teams, releases and forks are still missing (moved out
+   of wave B; migrations `0026`–`0031` were reserved for them).
 
 Known, accepted limitations (documented, not bugs): tags that point at trees/blobs are
 not listed; URL revisions accept names and ids but not expressions like `v1.0~1`;
@@ -78,9 +94,10 @@ on stdin). Production setup: [deployment.md](deployment.md) and
 ## 4. How this codebase is worked on
 
 **Read first:** [ARCHITECTURE.md](ARCHITECTURE.md) (design, schema, routes, events, API
-and webhooks, security model, design system), then [design/milestone-2.md](design/milestone-2.md)
-(wave A — its rules section holds the house rules) and
-[design/milestone-2b.md](design/milestone-2b.md) (wave B, the next contract).
+and webhooks, the push gate and merges, security model, design system), then
+[design/milestone-2.md](design/milestone-2.md) (wave A — its rules section holds the house
+rules) and [design/milestone-2b.md](design/milestone-2b.md) (wave B, including its "P0 as
+built" and "T0 as built" sections — the model for refining a contract while agents run).
 
 **Standards (non-negotiable)**
 - Layering: `web → services → (storage, git, auth, mail) → core`. Handlers are thin;
@@ -108,9 +125,14 @@ and webhooks, security model, design system), then [design/milestone-2.md](desig
 2. Launch one agent per workstream in its **own git worktree** (they land under
    `.claude/worktrees/`, which is gitignored). Each owns a disjoint file set and commits
    atomically on its branch; requests for files it doesn't own go in its report.
+   **Branch every agent from the integrator's current base** (the commit with the
+   stubs and contract), never from an older `main`: an agent started from a stale base
+   rebuilds what the stubs provide and conflicts everywhere.
 3. As each finishes: rebase its branch onto `main` *inside its worktree*, resolve, verify
    (fmt, clippy `-D warnings`, full tests), fast-forward `main`, remove the worktree.
 4. Apply the agents' integration requests yourself as separate small commits.
+5. When shared code is refined while workstreams run (wave B's P0 and T0), record "as
+   built" notes in the contract so every agent builds on the same facts.
 
 **Gotchas learned the hard way**
 - Rebases conflict almost only in `Cargo.lock` (take `main`'s side, run `cargo metadata`)
@@ -128,35 +150,40 @@ and webhooks, security model, design system), then [design/milestone-2.md](desig
 - Tests that build fixtures use the real `git` CLI; SSH tests need the OpenSSH client and
   skip without it. Argon2 is slow in debug builds — sign in sparingly in e2e tests.
 - A running dev server locks `target/debug/rbit.exe`; stop it before `cargo build`.
+  `npm run dev` (`scripts/dev.mjs`) avoids that: it builds into `target/live` and serves
+  `./data-live`. On Windows never run two dev servers on the same target or data
+  directory (the executable and the SQLite/redb files are locked).
+- Run the quality gates **one after another**, not in parallel: concurrent `cargo`
+  builds and the e2e suite starve the machine and make the live server unresponsive.
+- Renames: rebasing a branch across a directory rename (`rustit-*` → `rbit-*`) needs
+  `git -c merge.directoryRenames=true rebase …`; even then, **new subfolders** a branch
+  created inside a renamed directory are not moved automatically — look for files left
+  under the old path after the rebase and move them by hand.
 
-## 5. Next: Milestone 2 wave B — issues, pull requests, branch protection
+## 5. Next milestone (suggested)
 
-Goal: the collaboration layer that makes Rbit competitive with Gitea/Forgejo, in two
-waves because pull requests reuse the issue timeline and comments.
+Milestone 2 is done: wave A ([design/milestone-2.md](design/milestone-2.md)) and wave B
+([design/milestone-2b.md](design/milestone-2b.md)) are merged and integrated.
 
-**Wave A is done** ([design/milestone-2.md](design/milestone-2.md)), merged and integrated:
-
-| Workstream | Delivered |
+| Wave B step | Delivered |
 |---|---|
-| **Access** | `Permission`/`BasePermission`, collaborators, teams, organisation base permission (default `write`), the exhaustive `repo_access(viewer, repo, &Grants)` policy and one readable-by SQL predicate, repository transfer; integration: old-name redirects (`0016`), a Leave button for collaborators, audited base-permission changes. |
-| **API & webhooks** | `/api/v1` (token scopes incl. `admin`, pagination, JSON errors, throttling, OpenAPI from one route table), repository and organisation webhooks with HMAC signatures, a SQLite delivery queue with backoff, a delivery log and redelivery, the shared internal-address classifier (`rbit_core::network`). |
-| **Repository essentials** | Markdown relative links and images, archives, blame, compare, releases with uploads and downloads, forks, pull mirrors (pushes refused over HTTP and SSH); integration: release files in `rbit backup` (format 2). |
+| **P0 + T0** (integrator) | Stubs, events, the push-gate glue in both receive paths (SSH receive-pack in two steps); the shared thread core: one number sequence per repository for issues and PRs, comments, the timeline (`issue_events`), `issue_permissions`, `TimelineService`, generic routes and timeline views (`0017`). |
+| **B — Branch protection** | Rules per pattern, the in-process push gate over HTTP and SSH (all-or-nothing refusals in git's report format, `receive.denyNonFastForwards`, `refs/pull/*` reserved), merge rules for PRs, settings UI, the Protected badge, REST endpoints (`0024`). |
+| **I — Issues** | Labels, milestones, assignees, references and closing keywords, FTS5 search and filters, in-app notifications, `issues`/`issue_comment` webhooks, REST endpoints (`0018`–`0020`). |
+| **P — Pull requests** | Fork networks and overlay compares, `refs/pull/{n}/head`, line comments and reviews, the mergeability worker, merge/squash/rebase via `merge-tree` + `commit-tree` and an `update-ref` lease, `pull_request`/`pull_request_review` webhooks, REST endpoints (`0021`, `0022`). |
 
-Migrations `0009`–`0016` are on `main` and covered by the upgrade test
-(`crates/rbit-storage/tests/upgrade.rs`); [ARCHITECTURE.md](ARCHITECTURE.md) documents the
-schema, routes, events, API and webhooks.
+Candidates for milestone 3, roughly by value — write a contract like
+`design/milestone-2b.md` first and pre-wire it as in §4:
 
-**Wave B** ([design/milestone-2b.md](design/milestone-2b.md)) — read its sequencing first:
-
-| Step | Who | Scope |
-|---|---|---|
-| **P0** | integrator, on `main` | Pre-wire stubs, events, the push gate in both receive paths (HTTP + SSH), config, navigation, icons, CSS |
-| **T0** | integrator, on `main` | The shared issue/timeline core (migration `0017`, store, service, generic routes, timeline views); frozen once I and P start |
-| **B** | agent, after P0 | Branch protection: rules per pattern, a pre-receive gate in HTTP **and** SSH, merge requirements for P, settings UI, REST endpoints |
-| **I** | agent, after T0 | Issues: labels, milestones, assignees, references (`#12`, `fixes #12`), search, in-app notifications, webhooks and REST endpoints |
-| **P** | agent, after T0 | Pull requests: cross-fork compare, `refs/pull/N/head`, line comments, reviews, merge strategies on a temporary worktree, webhooks and REST endpoints |
-
-Wave B reserves migrations `0017`–`0031`. Launch the agents as in §4.
+1. **Actions / CI integration**: a commit status API (a runner protocol later) feeding the
+   existing required-checks placeholder (`ChecksStatus` in `rbit_core::pull`, shown as "No
+   status checks" in the merge box), plus a "require checks" protection flag.
+2. **API continuation**: collaborators, teams, releases and forks (migrations
+   `0026`–`0031` were reserved for this).
+3. **Email notifications** on top of the in-app inbox (the `MailService` seam exists;
+   per-user settings, digests).
+4. **gitoxide transport** for `receive-pack` behind a config switch (see §6).
+5. The wave B stretch items of §2.
 
 ## 6. Decisions on record
 
@@ -175,3 +202,10 @@ Wave B reserves migrations `0017`–`0031`. Launch the agents as in §4.
   SQLite or redb, and are always downloaded as attachments.
 - Old repository names are kept by SQLite triggers (`repo_redirects`), so every code path
   that renames, transfers, creates, forks or mirrors stays correct without remembering to.
+- Issues and pull requests are one table with one number sequence and one timeline; pull
+  requests add a row keyed by the issue id. Only `sqlite/issues.rs` writes the core tables.
+- Branch protection is enforced in-process (no `pre-receive` executable): git runs without
+  hooks, and the tests boot the server in-process.
+- Merges never check files out (`merge-tree --write-tree` + `commit-tree` in a scratch
+  repository) and reach the base branch through one `update-ref` compare-and-swap, not
+  `receive-pack`; protection for merges is `check_merge`.

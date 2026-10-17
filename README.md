@@ -12,8 +12,14 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
   with redirects from old names.
 - **Repository essentials**: releases with attached files, `.zip`/`.tar.gz` archives, blame, compare, forks,
   pull mirrors, README relative links and images.
-- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1) and HMAC-signed webhooks with a persistent,
-  retrying delivery queue.
+- **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
+  GitHub-style filters, and an in-app notification inbox.
+- **Pull requests**: within a repository or across forks, line comments, reviews and review requests,
+  mergeability checks, and merging by merge commit, squash or rebase.
+- **Branch protection**: no force pushes or deletion, required pull requests and approvals, restricted
+  pushers — enforced over HTTPS and SSH and for merges.
+- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1) and HMAC-signed, GitHub-shaped webhooks
+  (push, issues, pull requests, reviews, …) with a persistent, retrying delivery queue.
 - **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
@@ -76,6 +82,8 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[webhooks]` | Outgoing deliveries | `enabled`, `allow_private_addresses`, `timeout_seconds`, `max_attempts`, `concurrency`, `delivery_retention_days` |
 | `[releases]` | Release files | `max_asset_bytes`, `max_assets_per_release`, `upload_timeout_seconds` |
 | `[mirrors]` | Pull mirrors | `enabled`, `default_interval_minutes`, `min_interval_minutes`, `fetch_timeout_seconds`, `allow_private_addresses` |
+| `[issues]` | Issues and notifications | `scan_commit_limit`, `notifications`, `notification_retention_days` |
+| `[pulls]` | Pull requests | `merge_timeout_seconds`, `max_concurrent_merges`, `mergeability_concurrency`, `max_commits`, `noreply_domain` |
 
 Site name, registration, who may create organisations and the default repository
 visibility can also be changed at runtime by administrators under **Site administration →
