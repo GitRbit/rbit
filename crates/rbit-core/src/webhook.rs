@@ -40,13 +40,15 @@ pub enum WebhookEvent {
     PullRequest,
     /// A pull request review was submitted, edited or dismissed (wave B, P).
     PullRequestReview,
+    /// A repository collaborator was added, changed permission or removed (milestone 3, A).
+    Member,
     /// Sent once when a hook is created (and on request) to check the receiver.
     Ping,
 }
 
 impl WebhookEvent {
     /// The events a hook can subscribe to, in display order. `ping` is always sent.
-    pub const SUBSCRIBABLE: [Self; 8] = [
+    pub const SUBSCRIBABLE: [Self; 9] = [
         Self::Push,
         Self::Repository,
         Self::Release,
@@ -55,6 +57,7 @@ impl WebhookEvent {
         Self::IssueComment,
         Self::PullRequest,
         Self::PullRequestReview,
+        Self::Member,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -67,6 +70,7 @@ impl WebhookEvent {
             Self::IssueComment => "issue_comment",
             Self::PullRequest => "pull_request",
             Self::PullRequestReview => "pull_request_review",
+            Self::Member => "member",
             Self::Ping => "ping",
         }
     }
@@ -85,6 +89,7 @@ impl WebhookEvent {
             Self::IssueComment => "Issue comments",
             Self::PullRequest => "Pull requests",
             Self::PullRequestReview => "Pull request reviews",
+            Self::Member => "Collaborators",
             Self::Ping => "Pings",
         }
     }
@@ -99,6 +104,7 @@ impl WebhookEvent {
             Self::IssueComment => "Comments on issues and pull requests created, edited or deleted.",
             Self::PullRequest => "Pull requests opened, updated, closed, merged, labeled, assigned or given reviewers.",
             Self::PullRequestReview => "Pull request reviews submitted, edited or dismissed.",
+            Self::Member => "Collaborators added, removed or given another permission.",
             Self::Ping => "Sent when the webhook is created.",
         }
     }
@@ -363,6 +369,7 @@ mod tests {
         }
         assert_eq!(WebhookEvent::parse("issues"), Some(WebhookEvent::Issues));
         assert_eq!(WebhookEvent::parse("pull_request_review"), Some(WebhookEvent::PullRequestReview));
+        assert_eq!(WebhookEvent::parse("member"), Some(WebhookEvent::Member));
         assert_eq!(WebhookEvent::parse("pull_request_review_comment"), None, "out of scope in wave B");
         assert_eq!(WebhookEvent::parse("Push"), None);
         assert!(!WebhookEvent::SUBSCRIBABLE.contains(&WebhookEvent::Ping), "ping is implicit");

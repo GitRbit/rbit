@@ -7,7 +7,8 @@
 //!   directly (no invitations in wave A); organisations and suspended users cannot be
 //!   added, nor can the personal owner of the repository.
 //! * A collaborator may always remove themselves.
-//! * Every change is recorded in the audit log ("Repository access").
+//! * Every change is recorded in the audit log ("Repository access") and published as
+//!   [`DomainEvent::CollaboratorChanged`] (the `member` webhook).
 //! * Administrators may ask what access anyone has ([`CollaboratorService::access_of`]),
 //!   from every grant at once — the same policy every check uses.
 //!
@@ -22,8 +23,9 @@ use rbit_core::{
 use rbit_storage::{StorageError, sqlite::collaborators::CollaboratorStore};
 
 use crate::{
-    AuditService, RepoContext, ServiceContext, ServiceError,
+    AuditService, DomainEvent, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry},
+    events::CollaboratorChange,
     repositories::viewer_grants,
 };
 
@@ -76,6 +78,7 @@ impl CollaboratorService {
         }
         tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, permission = permission.as_str(), by = %actor.name(), "collaborator added");
         self.record(AuditAction::CollaboratorAdded, actor, repo, format!("{} ({permission})", user.name)).await;
+        self.publish(actor, repo, &user, CollaboratorChange::Added(permission));
         Ok(())
     }
 
@@ -83,11 +86,16 @@ impl CollaboratorService {
     pub async fn change(&self, actor: &User, repo: &RepoContext, username: &str, permission: Permission) -> Result<(), ServiceError> {
         require_admin(repo)?;
         let user = self.find_user(username).await?;
+        let not_collaborator = || ServiceError::Invalid(format!("{} is not a collaborator", user.name));
+        let from = self.store().permission(repo.repo.repo.id, user.id).await?.ok_or_else(not_collaborator)?;
         if !self.store().set_permission(repo.repo.repo.id, user.id, permission).await? {
-            return Err(ServiceError::Invalid(format!("{} is not a collaborator", user.name)));
+            return Err(not_collaborator());
         }
         tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, permission = permission.as_str(), by = %actor.name(), "collaborator changed");
         self.record(AuditAction::CollaboratorChanged, actor, repo, format!("{} ({permission})", user.name)).await;
+        if from != permission {
+            self.publish(actor, repo, &user, CollaboratorChange::Changed { from, to: permission });
+        }
         Ok(())
     }
 
@@ -103,6 +111,7 @@ impl CollaboratorService {
         }
         tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, by = %actor.name(), "collaborator removed");
         self.record(AuditAction::CollaboratorRemoved, actor, repo, user.name.to_string()).await;
+        self.publish(actor, repo, &user, CollaboratorChange::Removed);
         Ok(())
     }
 
@@ -145,6 +154,10 @@ impl CollaboratorService {
             Some(account) if account.kind == AccountKind::User => Ok(account),
             _ => Err(ServiceError::Invalid(format!("there is no user called {username}"))),
         }
+    }
+
+    fn publish(&self, actor: &User, repo: &RepoContext, user: &Account, change: CollaboratorChange) {
+        self.ctx.events.publish(DomainEvent::CollaboratorChanged { repo: repo.repo.repo.id, user: user.id, actor: actor.id(), change });
     }
 
     async fn record(&self, action: AuditAction, actor: &User, repo: &RepoContext, detail: String) {

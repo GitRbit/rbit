@@ -11,11 +11,12 @@ use std::{
 
 use rbit_core::{
     Config, OrgRole, Timestamp, User, Visibility,
+    membership::Permission,
     webhook::{DeliveryStatus, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
 use rbit_services::{
     CreateRepository, DomainEvent, RepoContext, ServiceError, Services,
-    events::RefUpdate,
+    events::{CollaboratorChange, RefUpdate},
     forks::ForkInput,
     orgs::CreateOrganization,
     releases::ReleaseInput,
@@ -626,4 +627,54 @@ async fn disabled_webhooks_queue_nothing_in_the_background() {
     let log = fixture.services.webhooks.deliveries(HookTarget::Organization(&ctx), hook.id, 1, 10).await.unwrap();
     assert_eq!(log.deliveries.iter().map(|delivery| delivery.event).collect::<Vec<_>>(), [WebhookEvent::Ping], "only the ping, never sent");
     fixture.services.shutdown().await;
+}
+
+#[tokio::test]
+async fn member_payloads_follow_collaborator_changes() {
+    let fixture = Fixture::new(|_| {}).await;
+    let olga = fixture.user("olga").await;
+    let bob = fixture.user("bob").await;
+    let org = CreateOrganization { name: "acme".into(), ..CreateOrganization::default() };
+    fixture.services.orgs.create(&olga, org).await.unwrap();
+    let repo = fixture.repo(&olga, "acme", "rocket").await;
+    let receiver = Receiver::start(&[]).await;
+    let webhooks = &fixture.services.webhooks;
+    webhooks.create(&olga, HookTarget::Repository(&repo), input(&receiver.url, &["member"], None)).await.unwrap();
+
+    let mut events = fixture.services.events.subscribe();
+    let collaborators = &fixture.services.collaborators;
+    collaborators.add(&olga, &repo, "bob", Permission::Read).await.unwrap();
+    collaborators.change(&olga, &repo, "bob", Permission::Read).await.unwrap();
+    collaborators.change(&olga, &repo, "bob", Permission::Write).await.unwrap();
+    let as_bob = fixture.services.repositories.open(Some(&bob), "acme", "rocket").await.unwrap();
+    collaborators.remove(&bob, &as_bob, "bob").await.unwrap();
+
+    let mut changes = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        if let DomainEvent::CollaboratorChanged { change, .. } = &event {
+            changes.push(*change);
+            assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
+        }
+    }
+    let edited = CollaboratorChange::Changed { from: Permission::Read, to: Permission::Write };
+    assert_eq!(changes, [CollaboratorChange::Added(Permission::Read), edited, CollaboratorChange::Removed], "no event without a change");
+    webhooks.deliver_due(far_future()).await.unwrap();
+
+    let requests = receiver.wait_for(4).await;
+    let members: Vec<Value> =
+        requests.iter().filter(|request| request.header("X-GitHub-Event") == Some("member")).map(Received::json).collect();
+    let actions: Vec<_> = members.iter().map(|payload| payload["action"].as_str().unwrap_or_default().to_owned()).collect();
+    assert_eq!(actions, ["added", "edited", "removed"]);
+    assert_eq!((members[0]["member"]["login"].as_str(), members[0]["sender"]["login"].as_str()), (Some("bob"), Some("olga")));
+    assert_eq!(members[0]["changes"]["permission"]["to"], "read");
+    assert_eq!(
+        (members[1]["changes"]["permission"]["from"].as_str(), members[1]["changes"]["permission"]["to"].as_str()),
+        (Some("read"), Some("write"))
+    );
+    assert_eq!(
+        (members[2]["sender"]["login"].as_str(), members[2]["repository"]["full_name"].as_str()),
+        (Some("bob"), Some("acme/rocket"))
+    );
+    assert_eq!(members[2]["organization"]["login"], "acme");
+    assert!(members.iter().all(|payload| !payload.to_string().contains("@example.com")), "no email addresses");
 }

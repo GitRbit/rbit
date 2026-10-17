@@ -291,6 +291,34 @@ pub fn release_published(release: &Value, repo: &OwnedRepository, fork: bool, se
     with_organization(payload, repo, base_url)
 }
 
+/// A `member` payload: `action` is `added`, `edited` or `removed`; `changes` carries
+/// GitHub's `permission` (`to` when added, `from` and `to` when edited, plus the older
+/// `old_permission.from`).
+pub fn member(
+    action: &str,
+    permission: (Option<&str>, Option<&str>),
+    member: &Account,
+    repo: &OwnedRepository,
+    fork: bool,
+    sender: Option<&Account>,
+    base_url: &str,
+) -> Value {
+    let mut payload = json!({
+        "action": action,
+        "member": account(member, base_url),
+        "repository": repository(repo, base_url, fork),
+        "sender": sender.map(|who| account(who, base_url)),
+    });
+    match permission {
+        (None, Some(to)) => payload["changes"] = json!({ "permission": { "to": to } }),
+        (Some(from), Some(to)) => {
+            payload["changes"] = json!({ "permission": { "from": from, "to": to }, "old_permission": { "from": from } });
+        }
+        _ => {}
+    }
+    with_organization(payload, repo, base_url)
+}
+
 /// A hook, as the API returns it and `ping` payloads embed it. Never includes the secret.
 pub fn hook(hook: &Webhook, api_url: &str) -> Value {
     let events: Vec<&str> = hook.events.iter().map(|event| event.as_str()).collect();
@@ -355,7 +383,8 @@ pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
         | WebhookEvent::Issues
         | WebhookEvent::IssueComment
         | WebhookEvent::PullRequest
-        | WebhookEvent::PullRequestReview => payload.get("action").and_then(Value::as_str).map(str::to_owned),
+        | WebhookEvent::PullRequestReview
+        | WebhookEvent::Member => payload.get("action").and_then(Value::as_str).map(str::to_owned),
     }
 }
 
@@ -534,6 +563,16 @@ mod tests {
         assert_eq!((release["action"].as_str(), release["release"]["id"].as_i64()), (Some("published"), Some(9)));
         assert_eq!(action_of(WebhookEvent::Release, &release).as_deref(), Some("published"));
         assert_eq!(action_of(WebhookEvent::Push, &release), None);
+
+        let added = member("added", (None, Some("write")), &user(), &repo(org()), false, Some(&user()), BASE);
+        assert_eq!((added["action"].as_str(), added["member"]["login"].as_str()), (Some("added"), Some("ada")));
+        assert_eq!(added["changes"], json!({ "permission": { "to": "write" } }));
+        assert_eq!(added["organization"]["login"], "acme");
+        assert_eq!(action_of(WebhookEvent::Member, &added).as_deref(), Some("added"));
+        let edited = member("edited", (Some("write"), Some("admin")), &user(), &repo(org()), false, None, BASE);
+        assert_eq!(edited["changes"], json!({ "permission": { "from": "write", "to": "admin" }, "old_permission": { "from": "write" } }));
+        let removed = member("removed", (None, None), &user(), &repo(user()), false, None, BASE);
+        assert!(removed.get("changes").is_none() && removed.get("organization").is_none());
     }
 
     #[test]

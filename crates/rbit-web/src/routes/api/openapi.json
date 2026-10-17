@@ -766,7 +766,7 @@
           }
         }
       },
-      "HookEvent": { "type": "string", "enum": ["push", "repository", "release", "fork", "issues", "issue_comment", "pull_request", "pull_request_review"] },
+      "HookEvent": { "type": "string", "enum": ["push", "repository", "release", "fork", "issues", "issue_comment", "pull_request", "pull_request_review", "member"] },
       "HookBody": {
         "type": "object",
         "properties": {

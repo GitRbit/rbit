@@ -21,6 +21,7 @@ use std::sync::{
 use rbit_core::{
     AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
     issue::{CommentAction, IssueAction, ReviewAction},
+    membership::Permission,
     webhook::WebhookId,
 };
 pub use rbit_git::RefUpdate;
@@ -91,6 +92,29 @@ pub enum DomainEvent {
     },
     /// A pull request review was submitted, edited or dismissed. Published by P.
     PullRequestReview { repo: RepoId, pull: IssueId, number: IssueNumber, review: ReviewId, actor: AccountId, action: ReviewAction },
+    /// A repository collaborator was added, given another permission or removed, by
+    /// `actor` (the collaborator themselves when they left). Published by
+    /// [`crate::CollaboratorService`] (milestone 3, A).
+    CollaboratorChanged { repo: RepoId, user: AccountId, actor: AccountId, change: CollaboratorChange },
+}
+
+/// What happened to a collaborator ([`DomainEvent::CollaboratorChanged`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CollaboratorChange {
+    Added(Permission),
+    Changed { from: Permission, to: Permission },
+    Removed,
+}
+
+impl CollaboratorChange {
+    /// GitHub's `member` webhook action.
+    pub const fn action(self) -> &'static str {
+        match self {
+            Self::Added(_) => "added",
+            Self::Changed { .. } => "edited",
+            Self::Removed => "removed",
+        }
+    }
 }
 
 /// An event with the point at which it was published, for subscribers that must know what

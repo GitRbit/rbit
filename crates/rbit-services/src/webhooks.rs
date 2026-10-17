@@ -55,6 +55,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     DomainEvent, OrgContext, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
+    events::CollaboratorChange,
     events::Published,
 };
 
@@ -468,6 +469,9 @@ impl WebhookService {
                 let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
+            DomainEvent::CollaboratorChanged { repo, user, actor, change } => {
+                self.queue_payload(self.member_payload(*repo, *user, *actor, *change, &base).await?, newest).await?
+            }
             DomainEvent::Issue { .. } | DomainEvent::IssueComment { .. } | DomainEvent::PullRequestReview { .. } => {
                 self.queue_payload(self.workflow_payload(event, &base).await?, newest).await?
             }
@@ -489,6 +493,27 @@ impl WebhookService {
             }
             _ => Ok(None),
         }
+    }
+
+    /// The `member` payload of a collaborator change; `None` once the repository or the
+    /// collaborator is gone.
+    async fn member_payload(
+        &self,
+        repo: RepoId,
+        user: AccountId,
+        actor: AccountId,
+        change: CollaboratorChange,
+        base: &str,
+    ) -> Result<Option<HookPayload>, ServiceError> {
+        let (Some(owned), Some(member)) = (self.repository(repo).await?, self.account(user).await?) else { return Ok(None) };
+        let sender = self.account(actor).await?;
+        let permission = match change {
+            CollaboratorChange::Added(to) => (None, Some(to.as_str())),
+            CollaboratorChange::Changed { from, to } => (Some(from.as_str()), Some(to.as_str())),
+            CollaboratorChange::Removed => (None, None),
+        };
+        let body = payloads::member(change.action(), permission, &member, &owned, self.is_fork(repo).await?, sender.as_ref(), base);
+        Ok(Some(HookPayload { repo: owned, event: WebhookEvent::Member, body }))
     }
 
     /// Queues `payload` (if any) for the hooks of its repository and organisation that

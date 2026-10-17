@@ -377,7 +377,8 @@ impl RecoveryService {
             | DomainEvent::PasswordChanged { .. }
             | DomainEvent::Issue { .. }
             | DomainEvent::IssueComment { .. }
-            | DomainEvent::PullRequestReview { .. } => Ok(()),
+            | DomainEvent::PullRequestReview { .. }
+            | DomainEvent::CollaboratorChanged { .. } => Ok(()),
         }
     }
 
