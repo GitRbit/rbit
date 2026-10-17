@@ -313,6 +313,21 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
     Response::from_parts(parts, axum::body::Body::from(bytes))
 }
 
+/// `Cache-Control` of a response fully determined by the commit ids in its URL.
+pub const PINNED_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
+
+/// Lets the browser keep `response` for a year without asking again, when it is fully
+/// determined by commit ids in its URL (deferred-slot fragments) and the repository is
+/// readable anonymously. Fragments of private repositories keep [`html_caching`]'s
+/// revalidation, so a shared browser never serves one account's private fragment to the
+/// next. Handlers call this; `html_caching` leaves a response with `Cache-Control` alone.
+pub fn cache_pinned(mut response: Response, readable_anonymously: bool) -> Response {
+    if readable_anonymously && response.status() == StatusCode::OK {
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(PINNED_CACHE_CONTROL));
+    }
+    response
+}
+
 fn weak_etag(body: &[u8]) -> String {
     use std::fmt::Write;
 
@@ -348,6 +363,23 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    #[tokio::test]
+    async fn pinned_fragments_are_immutable_only_when_public() {
+        let fragment = |public: bool| async move { cache_pinned(axum::response::Html("<span>1</span>").into_response(), public) };
+        let app = Router::new()
+            .route("/public", get(move || fragment(true)))
+            .route("/private", get(move || fragment(false)))
+            .layer(from_fn(html_caching));
+        let get = |path: &str| Request::builder().uri(path).body(Body::empty()).unwrap();
+
+        let public = app.clone().oneshot(get("/public")).await.unwrap();
+        assert_eq!(public.headers()[header::CACHE_CONTROL], PINNED_CACHE_CONTROL);
+        assert!(public.headers()[header::VARY].to_str().unwrap().contains("HX-Request"));
+        let private = app.oneshot(get("/private")).await.unwrap();
+        assert_eq!(private.headers()[header::CACHE_CONTROL], "private, no-cache");
+        assert!(private.headers().contains_key(header::ETAG), "revalidated");
+    }
 
     fn app() -> Router {
         Router::new()

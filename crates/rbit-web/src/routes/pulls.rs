@@ -599,7 +599,11 @@ async fn counts(
         ServiceError::Internal(_) => WebError::from(error),
         _ => WebError::NotFound,
     })?;
-    Ok(PullCountsFragment { counts: PullCountsView::known(counts.ahead, counts.files) }.into_response())
+    let public = ctx.repo().repo.repo.visibility.is_public();
+    Ok(crate::middleware::cache_pinned(
+        PullCountsFragment { counts: PullCountsView::known(counts.ahead, counts.files) }.into_response(),
+        public,
+    ))
 }
 
 // ------------------------------------------------------------------ forms
