@@ -1,26 +1,26 @@
 [workspace]
 resolver = "3"
-members = ["crates/rustit-core", "crates/rustit-storage", "crates/rustit-auth", "crates/rustit-git", "crates/rustit-transport", "crates/rustit-services", "crates/rustit-web", "crates/rustit-server", "crates/rustit-ssh", "crates/rustit-mail", "crates/rustit-e2e"]
-default-members = ["crates/rustit-server"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e"]
+default-members = ["crates/rbit-server"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/rustit/rustit"
+repository = "https://github.com/rbit/rbit"
 
 [workspace.dependencies]
 # Internal crates
-rustit-core = { path = "crates/rustit-core" }
-rustit-storage = { path = "crates/rustit-storage" }
-rustit-auth = { path = "crates/rustit-auth" }
-rustit-git = { path = "crates/rustit-git" }
-rustit-transport = { path = "crates/rustit-transport" }
-rustit-services = { path = "crates/rustit-services" }
-rustit-web = { path = "crates/rustit-web" }
-rustit-ssh = { path = "crates/rustit-ssh" }
-rustit-mail = { path = "crates/rustit-mail" }
+rbit-core = { path = "crates/rbit-core" }
+rbit-storage = { path = "crates/rbit-storage" }
+rbit-auth = { path = "crates/rbit-auth" }
+rbit-git = { path = "crates/rbit-git" }
+rbit-transport = { path = "crates/rbit-transport" }
+rbit-services = { path = "crates/rbit-services" }
+rbit-web = { path = "crates/rbit-web" }
+rbit-ssh = { path = "crates/rbit-ssh" }
+rbit-mail = { path = "crates/rbit-mail" }
 
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }
@@ -78,6 +78,10 @@ mimalloc = "0.1"
 hmac = "0.13"
 sha1 = "0.11"
 qrcode = { version = "0.14", default-features = false }
+# Passkey signatures (ES256, EdDSA, RS256); all three are already in the tree through SSH.
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
+ed25519-dalek = { version = "3.0", default-features = false }
+rsa = { version = "=0.10.0-rc.18", default-features = false, features = ["std"] }
 # --- E: email & recovery ---
 lettre = { version = "0.11.23", default-features = false, features = ["builder", "hostname", "smtp-transport", "tokio1-rustls-tls"] }
 # --- H: SSH ---

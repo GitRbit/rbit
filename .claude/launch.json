@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "rustit",
+      "name": "rbit",
       "runtimeExecutable": "cargo",
       "runtimeArgs": [
         "run",
@@ -12,7 +12,7 @@
       "port": 3000
     },
     {
-      "name": "rustit-live",
+      "name": "rbit-live",
       "runtimeExecutable": "node",
       "runtimeArgs": [
         "scripts/dev.mjs"

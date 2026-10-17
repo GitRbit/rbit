@@ -63,11 +63,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Vendored scripts and generated icons are committed; the build must not change them.
-      - run: git diff --exit-code -- crates/rustit-web/assets
+      - run: git diff --exit-code -- crates/rbit-web/assets
       - uses: actions/upload-artifact@v7
         with:
           name: app-css
-          path: crates/rustit-web/assets/app.css
+          path: crates/rbit-web/assets/app.css
           retention-days: 1
 
   release:
@@ -79,15 +79,15 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: app-css
-          path: crates/rustit-web/assets
+          path: crates/rbit-web/assets
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           key: release
-      - run: cargo build --release --locked --package rustit-server
-      - run: ./target/release/rustit --version
+      - run: cargo build --release --locked --package rbit-server
+      - run: ./target/release/rbit --version
       - uses: actions/upload-artifact@v7
         with:
-          name: rustit-linux-x86_64
-          path: target/release/rustit
+          name: rbit-linux-x86_64
+          path: target/release/rbit
           retention-days: 7

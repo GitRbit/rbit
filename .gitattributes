@@ -6,8 +6,8 @@
 *.ico binary
 
 # Third-party and generated files: excluded from diffs' noise and language statistics.
-crates/rustit-web/assets/vendor/** linguist-vendored -diff
-crates/rustit-web/assets/themes/** linguist-generated -diff
-crates/rustit-web/src/themes/catalog.rs linguist-generated
+crates/rbit-web/assets/vendor/** linguist-vendored -diff
+crates/rbit-web/assets/themes/** linguist-generated -diff
+crates/rbit-web/src/themes/catalog.rs linguist-generated
 Cargo.lock linguist-generated
 package-lock.json linguist-generated -diff

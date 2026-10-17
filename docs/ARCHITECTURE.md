@@ -1,6 +1,6 @@
-# Rustit — Architecture & Design
+# Rbit — Architecture & Design
 
-Rustit is a self-hosted Git forge written in Rust. It competes with Gitea, Forgejo and
+Rbit is a self-hosted Git forge written in Rust. It competes with Gitea, Forgejo and
 GitLab CE on three axes: **raw speed**, **operational simplicity** (one static binary, no
 external services), and **a modern, mobile-first interface**.
 
@@ -26,7 +26,7 @@ When the code and this document disagree, fix one of them.
 ## 2. Workspace layout
 
 ```
-Rustit/
+Rbit/
 ├── Cargo.toml                 # workspace: shared deps, lints, release profile
 ├── rustfmt.toml               # formatting standard (checked in CI)
 ├── package.json               # Tailwind v4 CLI, htmx, icon rendering (build-time only)
@@ -34,31 +34,31 @@ Rustit/
 ├── .github/workflows/ci.yml   # fmt, clippy -D warnings, tests (Linux + Windows), builds
 ├── docs/                      # ARCHITECTURE.md, deployment.md, design/ (per-phase contracts)
 └── crates/
-    ├── rustit-core/           # Domain model and configuration. No I/O, no async.
-    ├── rustit-storage/        # SQLite (relational) + redb (key/value) persistence
-    ├── rustit-auth/           # Passwords, session/token secrets, TOTP, permission rules
-    ├── rustit-git/            # Repository read model, diffs, languages, maintenance (gitoxide)
-    ├── rustit-transport/      # Git smart protocol: stateless (HTTP) and interactive (SSH)
-    ├── rustit-services/       # Application use-cases, domain events, background jobs
-    ├── rustit-mail/           # Email rendering (Askama) and delivery (SMTP, log)
-    ├── rustit-ssh/            # Built-in SSH server (russh) for Git over SSH
-    ├── rustit-web/            # Axum router, handlers, Askama templates, assets, metrics
-    ├── rustit-server/         # The `rustit` binary: CLI, config, wiring, backups, shutdown
-    └── rustit-e2e/            # End-to-end and Git compatibility tests (test-only)
+    ├── rbit-core/           # Domain model and configuration. No I/O, no async.
+    ├── rbit-storage/        # SQLite (relational) + redb (key/value) persistence
+    ├── rbit-auth/           # Passwords, session/token secrets, TOTP, passkeys, permission rules
+    ├── rbit-git/            # Repository read model, diffs, languages, maintenance (gitoxide)
+    ├── rbit-transport/      # Git smart protocol: stateless (HTTP) and interactive (SSH)
+    ├── rbit-services/       # Application use-cases, domain events, background jobs
+    ├── rbit-mail/           # Email rendering (Askama) and delivery (SMTP, log)
+    ├── rbit-ssh/            # Built-in SSH server (russh) for Git over SSH
+    ├── rbit-web/            # Axum router, handlers, Askama templates, assets, metrics
+    ├── rbit-server/         # The `rbit` binary: CLI, config, wiring, backups, shutdown
+    └── rbit-e2e/            # End-to-end and Git compatibility tests (test-only)
 ```
 
 ### Dependency graph
 
 ```
-                    rustit-server (bin)
+                    rbit-server (bin)
                    ┌────────┴─────────┐
-              rustit-web          rustit-ssh
+              rbit-web          rbit-ssh
                    └────────┬─────────┘
-             rustit-services ─────── rustit-transport
+             rbit-services ─────── rbit-transport
      ┌──────────┬───────┼─────────┬────────────┐
-rustit-storage rustit-auth rustit-git rustit-mail
+rbit-storage rbit-auth rbit-git rbit-mail
      └──────────┴───────┬─────────┴────────────┘
-                    rustit-core
+                    rbit-core
 ```
 
 Each crate exposes a small, documented public API from `lib.rs`; internals live in
@@ -66,7 +66,7 @@ sub-modules grouped by concept (e.g. `storage::sqlite::repositories::users`).
 
 ### Crate responsibilities
 
-**`rustit-core`** — Validated value types (`Username`, `RepoName`, `Email`, `BranchName`,
+**`rbit-core`** — Validated value types (`Username`, `RepoName`, `Email`, `BranchName`,
 `TeamName`, `WebhookUrl`, `MirrorUrl`), domain entities (`User`, `Repository`,
 `Visibility`, `Release`, `Webhook`), the `RepoAccess` permission lattice with the grant
 levels `Permission` (`read`/`write`/`admin`) and `BasePermission` (`none`/`read`/`write`),
@@ -74,16 +74,18 @@ levels `Permission` (`read`/`write`/`admin`) and `BasePermission` (`none`/`read`
 reach, shared by webhooks and mirrors), and the shared `Config` model. Pure Rust, trivially
 unit-testable.
 
-**`rustit-storage`**
+**`rbit-storage`**
 - `sqlite/` — `sqlx` pool (WAL, foreign keys, busy timeout), embedded migrations, and one
   *store* per aggregate (`UserStore`, `RepositoryStore`). Stores map rows ↔ domain types.
 - `kv/` — a `redb` database with typed table definitions. Used for sessions and derived,
   rebuildable data (caches). Everything in redb can be lost without losing user data.
 
-**`rustit-auth`** — `PasswordHasher` (Argon2id, OWASP parameters), `SessionToken` and
+**`rbit-auth`** — `PasswordHasher` (Argon2id, OWASP parameters), `SessionToken` and
 `AccessTokenSecret` (256-bit random, only SHA-256 digests are persisted), TOTP (RFC 6238,
-own implementation verified against the RFC test vectors) with recovery codes, and the
-pure `repo_access(viewer, repo, &Grants)` policy (who may read, write or administer a
+own implementation verified against the RFC test vectors) with recovery codes, a minimal
+WebAuthn relying party for passkeys (`webauthn`: no attestation, ES256/EdDSA/RS256, a small
+CBOR/COSE reader; origin, RP ID, challenge, user presence, signature and counter checked on
+every ceremony), and the pure `repo_access(viewer, repo, &Grants)` policy (who may read, write or administer a
 repository). Callers look up `Grants` — the viewer's organisation role, the organisation's
 base permission, the best team grant and the collaborator permission — in one query, and
 the policy takes the **maximum** of the public baseline, site admin, owner, organisation
@@ -91,7 +93,7 @@ role, base permission, team and collaborator grants; nothing lowers access below
 public baseline. It is tested exhaustively against an independent reference table, and
 the SQL listings use one readable-by predicate that a test checks against the policy.
 
-**`rustit-git`** — `RepositoryStorage` (where bare repos live on disk, creation, deletion,
+**`rbit-git`** — `RepositoryStorage` (where bare repos live on disk, creation, deletion,
 `relocate` for transfers) and `RepositoryReader` (refs, trees, blobs, commit history, ref
 snapshots, `new_commits`, blame, compare/merge base) built on **gitoxide** (`gix`), plus
 `archive` (`git archive`, streamed), `fork` (`git clone --bare --local`, branches and tags
@@ -99,21 +101,21 @@ only) and `mirror` (`git fetch --prune` of branches and tags, no redirects, no p
 credential helpers). Repos are always opened with *isolated* options: no system/global
 config, no hooks executed on read; every `git` process gets a scrubbed environment.
 
-**`rustit-transport`** — The Git smart protocol. `ProcessTransport` runs
+**`rbit-transport`** — The Git smart protocol. `ProcessTransport` runs
 `git upload-pack/receive-pack` with a scrubbed environment in two modes: *stateless*
 (`--stateless-rpc`, for HTTP `info/refs` and POSTs) and *interactive* (one bidirectional
 conversation with exit status, for SSH). Both stream; pack data is never buffered. A
 pure-Rust gitoxide transport could replace it without touching callers.
 
-**`rustit-ssh`** — The built-in SSH server (russh): public-key authentication against user
+**`rbit-ssh`** — The built-in SSH server (russh): public-key authentication against user
 SSH keys and repository deploy keys, strictly parsed `git-upload-pack` / `git-receive-pack`
 exec requests, the same authorisation as HTTP, connection limits, throttled failures, and
 no shells, PTYs or forwarding. The Ed25519 host key is generated on first start.
 
-**`rustit-mail`** — A `Mailer` trait with SMTP (lettre over rustls), log and disabled
+**`rbit-mail`** — A `Mailer` trait with SMTP (lettre over rustls), log and disabled
 transports; every message is rendered from Askama templates with text and HTML parts.
 
-**`rustit-services`** — Use-cases with business rules, one service per area, all built from
+**`rbit-services`** — Use-cases with business rules, one service per area, all built from
 a shared `ServiceContext` (config, database, key/value store, repository storage):
 `AccountService` (sign-up, sign-in, sessions, suspension), `RepositoryService` (create,
 membership-aware access, listings, explore search), `OrgService` (organisations, members,
@@ -148,9 +150,9 @@ before and after `receive-pack` (it runs without hooks). This is the only layer 
 combines storage, git and auth. It is HTTP-agnostic: the web pages, the REST API, CLI
 admin commands and background jobs all reuse it.
 
-**`rustit-web`** — Axum 0.8 application:
+**`rbit-web`** — Axum 0.8 application:
 ```
-rustit-web/src/
+rbit-web/src/
 ├── lib.rs              # build_router()
 ├── state.rs            # AppState (cheaply cloneable Arc)
 ├── error.rs            # WebError → status page / HTMX-friendly response
@@ -166,8 +168,8 @@ rustit-web/src/
 └── templates/          # *.html (Askama), organised by area
 ```
 
-**`rustit-server`** — `clap` CLI (`serve`, `migrate`, `backup`, `user create`), layered
-config (`figment`: defaults → TOML file → `RUSTIT_*` env), tracing and metrics setup, the
+**`rbit-server`** — `clap` CLI (`serve`, `migrate`, `backup`, `user create`), layered
+config (`figment`: defaults → TOML file → `RBIT_*` env), tracing and metrics setup, the
 SSH server and background jobs, graceful shutdown.
 
 ---
@@ -186,8 +188,8 @@ SSH server and background jobs, graceful shutdown.
 
 ```
 <data_dir>/
-├── rustit.db            # SQLite (+ -wal, -shm)
-├── rustit.redb          # redb key/value store
+├── rbit.db            # SQLite (+ -wal, -shm)
+├── rbit.redb          # redb key/value store
 ├── repositories/
 │   └── <owner_id>/<repo_id>.git   # bare repositories, addressed by immutable IDs
 └── attachments/
@@ -197,7 +199,7 @@ SSH server and background jobs, graceful shutdown.
 
 Repositories are addressed by numeric IDs, not names, so renaming a user or repository
 is a single SQL update — no filesystem moves, no path-traversal surface. A transfer moves
-the directory to the new owner's folder (`rustit_git::relocate`, a same-filesystem
+the directory to the new owner's folder (`rbit_git::relocate`, a same-filesystem
 rename) before the owner changes in SQL, and moves it back if the database step fails.
 
 Release files never use a user-supplied name on disk and do not depend on the owner, so
@@ -273,7 +275,7 @@ only) keep `repo_redirects` right for every way a repository arrives at or leave
 location: leaving `owner/name` records it as a redirect, arriving there removes any
 redirect from it, so an existing repository always wins over an old name.
 
-**Migrations** live in `crates/rustit-storage/migrations/` and are embedded in the binary:
+**Migrations** live in `crates/rbit-storage/migrations/` and are embedded in the binary:
 
 | | Milestone 1 | | Milestone 2 wave A |
 |---|---|---|---|
@@ -285,18 +287,20 @@ redirect from it, so an existing repository always wins over an old name.
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` |
 | `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) |
+| | | `0032` | `passkeys` (WebAuthn credentials as a second factor) |
 
-`crates/rustit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
+`crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
 that every row survives and the new defaults and triggers apply to old rows. Wave B
-reserves `0017`–`0031` ([design/milestone-2b.md](design/milestone-2b.md)).
+reserves `0017`–`0031` ([design/milestone-2b.md](design/milestone-2b.md)); `0032` was taken
+by passkeys while that range is unfilled (sqlx applies missing lower versions in order).
 
 Secrets (passwords, sessions, tokens, recovery codes, email links) are only ever stored
 hashed — with one documented exception: **webhook secrets** are stored as given, because
 signing a delivery with HMAC needs the raw value (see §5).
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
-(`/rustit` can be either). Timestamps are Unix seconds (`INTEGER`).
+(`/rbit` can be either). Timestamps are Unix seconds (`INTEGER`).
 
 ### 3.4 redb tables
 
@@ -317,18 +321,18 @@ and served from memory by `InstanceService` (a synchronous snapshot per request)
 
 ### 3.6 Backups
 
-`rustit backup --output DIR` (in `rustit-server`) writes a directory that mirrors the data
+`rbit backup --output DIR` (in `rbit-server`) writes a directory that mirrors the data
 directory, so restoring is a copy:
 
 ```
 DIR/
-├── rustit.db                      # SQLite, written with VACUUM INTO (one read transaction)
+├── rbit.db                      # SQLite, written with VACUUM INTO (one read transaction)
 ├── repositories/<owner>/<id>.git  # git clone --mirror --no-local of every repository in that snapshot
 ├── attachments/<repo>/<asset>     # every release file listed in that snapshot (not attachments/tmp)
 └── manifest.json                  # written last; its presence marks a complete backup
 ```
 
-The manifest records `format` (currently **2**; 1 had no `attachments/`), the Rustit
+The manifest records `format` (currently **2**; 1 had no `attachments/`), the Rbit
 version, the time, and counts (accounts, repositories, attachments) plus the ids of
 repositories and attachments that disappeared between the snapshot and the copy. Release
 files are written once and never changed, so a plain copy is consistent. redb is not
@@ -354,7 +358,7 @@ TCP → hyper → tower layers:
         → rate_limit (unsafe requests, per client address) → session → error pages
         → extractors → handler → service → view model → Askama
 
-SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/receive-pack
+SSH (separate listener, rbit-ssh): public-key auth → exec git-upload-pack/receive-pack
 ```
 
 **Old names redirect.** When a page answers 404 and its first two path segments name a
@@ -394,7 +398,7 @@ New second-level paths under `/{owner}/` are reserved repository names.
 
 ### 4.2 REST API (`/api/v1`)
 
-`rustit-web/src/routes/api/` is merged outside the page router with its own layers:
+`rbit-web/src/routes/api/` is merged outside the page router with its own layers:
 1 MiB bodies, a 30 s timeout, gzip, `X-Content-Type-Options: nosniff`, `Cache-Control:
 no-store`. Every handler goes through the same services as the pages.
 
@@ -445,9 +449,9 @@ organisation; changes are audited.
   `repository` (`created`, `deleted`, `transferred`), `release` (`published`), `fork`,
   `ping` (`zen`, `hook_id`, `hook`); all with `sender`, and with `repository` (and
   `organization` for organisation-owned repositories) where one applies.
-- **Headers** — `User-Agent: Rustit-Hookshot/<version>`, `X-Rustit-Event`,
-  `X-Rustit-Delivery` (random id), `X-Rustit-Hook-Id` and GitHub's `X-GitHub-Event`,
-  `X-GitHub-Delivery`, `X-GitHub-Hook-ID`. With a secret: `X-Rustit-Signature-256` and
+- **Headers** — `User-Agent: Rbit-Hookshot/<version>`, `X-Rbit-Event`,
+  `X-Rbit-Delivery` (random id), `X-Rbit-Hook-Id` and GitHub's `X-GitHub-Event`,
+  `X-GitHub-Delivery`, `X-GitHub-Hook-ID`. With a secret: `X-Rbit-Signature-256` and
   `X-Hub-Signature-256`, both `sha256=<lower-case hex HMAC-SHA256 of the body>`.
 - **Delivery queue** — persisted in `webhook_deliveries`, so a restart loses nothing. The
   `DomainEvent` subscriber only inserts `pending` rows; a worker claims due rows
@@ -460,9 +464,9 @@ organisation; changes are audited.
   duration and error. A daily task drops finished deliveries older than
   `delivery_retention_days`. With `[webhooks] enabled = false` hooks can be configured but
   nothing is queued or sent. Each attempt increments
-  `rustit_webhook_attempts_total{outcome}` (`succeeded`, `retrying`, `failed`).
+  `rbit_webhook_attempts_total{outcome}` (`succeeded`, `retrying`, `failed`).
 - **SSRF** — unless `allow_private_addresses`, every address a target resolves to must pass
-  `rustit_core::network::is_internal_address`: loopback, private (RFC 1918), shared/CGNAT
+  `rbit_core::network::is_internal_address`: loopback, private (RFC 1918), shared/CGNAT
   (`100.64.0.0/10`), link-local, unique-local (`fc00::/7`), multicast, unspecified,
   broadcast, reserved, documentation and benchmarking ranges are refused, and IPv6 forms
   embedding an IPv4 address (mapped, compatible, NAT64, 6to4) are judged by that address.
@@ -489,7 +493,7 @@ organisation; changes are audited.
 | Git config injection | Repos opened with isolated gix options; transport processes run with a scrubbed environment and `GIT_CONFIG_NOSYSTEM=1`. |
 | Enumeration | Private repositories return **404**, never 403, to unauthorised viewers — in pages and in the API. Old-name redirects are only issued to viewers who may read the repository. |
 | Headers | `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`, `Permissions-Policy`. |
-| Two-factor | TOTP (RFC 6238, ±1 step, each code accepted once), confirmed at enrolment; 10 single-use recovery codes stored hashed; disabling requires password + code. Enrolled accounts must use access tokens for Git over HTTP. |
+| Two-factor | Passkeys / security keys (WebAuthn, bound to `server.public_url`; single-use challenges, signature counters must advance) and/or TOTP (RFC 6238, ±1 step, each code accepted once, confirmed at enrolment). 10 single-use recovery codes stored hashed, shared by all factors and removed with the last one. Removing a factor or regenerating codes requires the password plus a code or passkey. Enrolled accounts must use access tokens for Git over HTTP. |
 | Brute force | `ThrottleService` budgets per scope (sign-in, sign-up, 2FA, Git auth, SSH auth, email requests) keyed by account and by client address (larger shared budget); failures cost extra, success resets; 429 with `Retry-After`. Form posts are limited per address. |
 | Client address | `X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` are honoured only from `[security] trusted_proxies`. |
 | Sessions | Listed per account; revoke one or all others; all other sessions end when the password changes. |
@@ -530,15 +534,18 @@ themes, and `base16-…` / `base24-…` are ~500 [tinted-theming](https://github
 schemes mapped onto the same tokens by `npm run themes <schemes-checkout>` (generated,
 committed: `assets/themes/*.css`, `src/themes/catalog.rs`, `assets/themes/LICENSE.txt`).
 Theme selectors are scoped (`[data-theme="…"]`), so gallery preview cards render in their
-own theme. The choice lives in the `rustit-theme` cookie, which the server reads to render
+own theme. The choice lives in the `rbit-theme` cookie, which the server reads to render
 the attribute and the single ~600-byte theme stylesheet into the first byte of HTML — no
 flash, no blocking script. Signed-in users' choices are also stored (`user_preferences`)
 and restored into the cookie on sign-in. `/themes` (and Settings → Appearance) is the
-gallery: by family and variant, searchable, live preview on hover, plain-form fallback.
+gallery: by family and variant, searchable, live preview on hover, plain-form fallback. The header's
+sun/moon flips light/dark in one click: the generator pairs each scheme with its sibling of
+the other variant in the same family (Gruvbox dark, hard ↔ light, hard; Catppuccin Latte ↔
+Mocha), falling back to Rbit Light/Dark; the palette menu beside it picks any theme.
 
 **Components** (`styles/app.css`): `.box`, `.box-header`, `.row`, `.btn` (`-primary`,
 `-ghost`, `-danger`, `-icon`), `.input`, `.label`, `.hint`, `.badge`, `.tab`, `.menu`,
-`.code-lines`, `.diff-view`, `.prose-rustit`. Icons and shared fragments are Askama macros in
+`.code-lines`, `.diff-view`, `.prose-rbit`. Icons and shared fragments are Askama macros in
 `templates/macros.html` — never add another `macros.html` inside a template subfolder
 (Askama resolves imports relative to the importing template first).
 
@@ -592,7 +599,7 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
 - **REST API** — new resources add rows to `api::table()` and paths to `openapi.json`; the
   route/document test keeps them in step.
 - **Feature crates** — new areas (issues, pull requests, CI, packages) arrive as new
-  crates (`rustit-issues`, …) contributing services and a `Router` that `rustit-web` merges.
+  crates (`rbit-issues`, …) contributing services and a `Router` that `rbit-web` merges.
 
 ---
 

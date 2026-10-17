@@ -1,0 +1,83 @@
+# systemd unit for Rbit. Install:
+#
+#   sudo useradd --system --home-dir /var/lib/rbit --shell /usr/sbin/nologin rbit
+#   sudo install -m 0755 rbit /usr/local/bin/rbit
+#   sudo install -d -m 0750 -o root -g rbit /etc/rbit
+#   sudo install -m 0640 -o root -g rbit deploy/rbit.example.toml /etc/rbit/rbit.toml
+#   sudo install -m 0644 deploy/rbit.service /etc/systemd/system/rbit.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now rbit
+#
+# Logs: journalctl -u rbit -f. The data directory (/var/lib/rbit) is created by
+# systemd (StateDirectory) and owned by the rbit user.
+
+[Unit]
+Description=Rbit self-hosted Git platform
+Documentation=https://github.com/rbit/rbit/blob/main/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=rbit
+Group=rbit
+ExecStart=/usr/local/bin/rbit --config /etc/rbit/rbit.toml serve
+Restart=on-failure
+RestartSec=5s
+# Graceful shutdown: finish requests, stop background jobs, flush SQLite.
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+StateDirectory=rbit
+StateDirectoryMode=0750
+WorkingDirectory=/var/lib/rbit
+Environment=RBIT_STORAGE__DATA_DIR=/var/lib/rbit
+Environment=RUST_LOG=info
+# journald stores log lines verbatim; keep ANSI colour codes out of them.
+Environment=NO_COLOR=1
+# Git writes temporary files; give it a private /tmp.
+PrivateTmp=yes
+UMask=0027
+
+# Packfiles and many concurrent connections need file descriptors.
+LimitNOFILE=65536
+
+# --- Hardening -------------------------------------------------------------------
+# Everything is read-only except the data directory (and the private /tmp).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/rbit
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
+# Binding ports below 1024 is not needed: a reverse proxy listens on 80/443 and the SSH
+# server defaults to 2222 (forward port 22 to it with a firewall rule). To bind the SSH
+# server to port 22 directly instead, grant exactly that capability in an override
+# (systemctl edit rbit):
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# A filtered system call fails with EPERM, which surfaces as an ordinary error, instead of
+# killing the process with SIGSYS and dropping every connection at once.
+SystemCallErrorNumber=EPERM
+# MemoryDenyWriteExecute is deliberately not set: it is fine for Rbit itself but some
+# git builds (PCRE JIT for `git grep`) need writable+executable memory.
+
+[Install]
+WantedBy=multi-user.target

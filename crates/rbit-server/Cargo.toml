@@ -1,0 +1,40 @@
+[package]
+name = "rbit-server"
+description = "The `rbit` binary: a self-hosted Git platform."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rbit"
+path = "src/main.rs"
+
+[dependencies]
+rbit-core.workspace = true
+rbit-storage.workspace = true
+rbit-services.workspace = true
+rbit-web.workspace = true
+rbit-ssh.workspace = true
+
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+figment.workspace = true
+mimalloc.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rbit-git.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+rbit-services.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

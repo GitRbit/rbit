@@ -1,0 +1,49 @@
+{% extends "webhooks/layout.html" %}
+{% import "macros.html" as ui %}
+{% block hooks_content %}
+<div class="mt-1 flex items-start justify-between gap-4">
+  <div class="min-w-0">
+    <h1 class="text-xl font-semibold tracking-tight">Webhooks</h1>
+    <p class="mt-1 text-[13px] text-ink-muted">Rbit sends a signed <span class="font-mono text-ink">POST</span> with a JSON payload to each URL when the events it subscribes to happen in <span class="text-ink">{{ frame.name }}</span>{% if frame.org.is_some() %} or any of its repositories{% endif %}.</p>
+  </div>
+  {% if can_add %}
+  <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add webhook</a>
+  {% endif %}
+</div>
+{% if !can_add %}
+<p class="mt-4 text-[13px] text-ink-muted">This {{ frame.kind() }} has the maximum of {{ max_hooks }} webhooks. Delete one to add another.</p>
+{% endif %}
+
+<div class="box mt-6">
+  {% if hooks.is_empty() %}
+  {% call ui::empty_state("webhook", "No webhooks", "Add a webhook to notify a CI server, a chat bot or any other service about pushes, releases and more.") %}{% endcall %}
+  {% else %}
+  <ul>
+    {% for hook in hooks %}
+    <li class="border-b border-line last:border-b-0">
+      <a href="{{ hook.edit_url }}" class="flex items-start gap-3 px-4 py-3 hover:bg-subtle">
+        {% call ui::icon("webhook", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
+        <span class="min-w-0 flex-1">
+          <span class="flex min-w-0 items-center gap-2">
+            <span class="truncate font-medium">{{ hook.host }}</span>
+            {% if !hook.active %}<span class="badge">Inactive</span>{% endif %}
+          </span>
+          <span class="mt-0.5 block truncate font-mono text-xs text-ink-muted">{{ hook.url }}</span>
+          <span class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+            <span>{{ hook.events }}</span>
+            {% if let Some(last) = hook.last %}
+            <span class="badge {{ last.class }}">{{ last.label }}</span>
+            <time datetime="{{ hook.last_iso }}">{{ hook.last_at }}</time>
+            {% else %}
+            <span>No deliveries yet</span>
+            {% endif %}
+          </span>
+        </span>
+        {% call ui::icon("chevron-right", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}

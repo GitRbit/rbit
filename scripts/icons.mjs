@@ -1,4 +1,4 @@
-// Renders the PWA / home-screen PNG icons from crates/rustit-web/assets/icon.svg.
+// Renders the PWA / home-screen PNG icons from crates/rbit-web/assets/icon.svg.
 // The PNGs are committed so `cargo build` works without Node; rerun after changing the SVG:
 //
 //   npm run icons
@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { Resvg } from "@resvg/resvg-js";
 
-const assets = "crates/rustit-web/assets";
+const assets = "crates/rbit-web/assets";
 const source = readFileSync(`${assets}/icon.svg`, "utf8");
 
 const background = source.match(/<rect[^>]*fill="([^"]+)"/)?.[1];

@@ -1,13 +1,13 @@
 {
-  "name": "rustit-web-assets",
+  "name": "rbit-web-assets",
   "private": true,
-  "description": "Build-time front-end tooling for Rustit. Nothing here runs in production.",
+  "description": "Build-time front-end tooling for Rbit. Nothing here runs in production.",
   "type": "module",
   "scripts": {
     "build": "npm run vendor && npm run build:css",
     "dev": "node scripts/dev.mjs",
-    "build:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --minify",
-    "watch:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --watch",
+    "build:css": "tailwindcss -i crates/rbit-web/styles/app.css -o crates/rbit-web/assets/app.css --minify",
+    "watch:css": "tailwindcss -i crates/rbit-web/styles/app.css -o crates/rbit-web/assets/app.css --watch",
     "vendor": "node scripts/vendor.mjs",
     "icons": "node scripts/icons.mjs",
     "themes": "node scripts/themes.mjs"

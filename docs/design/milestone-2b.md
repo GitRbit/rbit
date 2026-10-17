@@ -30,7 +30,7 @@ with explicit `ON DELETE`.
 1. Anyone who can read a repository can report and discuss problems; writers triage them
    with labels, milestones and assignees; commits close issues.
 2. Changes arrive as pull requests, also from forks, are reviewed line by line and are
-   merged by Rustit itself, safely, with the strategy the merger picks.
+   merged by Rbit itself, safely, with the strategy the merger picks.
 3. Important branches cannot be rewritten, deleted or pushed to by the wrong people, no
    matter which transport is used.
 4. Everything above is visible to automation: REST endpoints and GitHub-shaped webhooks.
@@ -48,7 +48,7 @@ wave), GraphQL, project boards.
 ## Sequencing
 
 ```
-I1 (integration agent, in flight: mirror push refusal + old-name redirects in git_http.rs / rustit-ssh)
+I1 (integration agent, in flight: mirror push refusal + old-name redirects in git_http.rs / rbit-ssh)
  └─► P0  pre-wire: stubs, events, push-gate glue (HTTP + SSH), config, nav, icons, CSS      (integrator)
       ├─► B  starts immediately (needs only P0)
       └─► T0 timeline core: migration 0017, store, service, generic routes, timeline views (integrator)
@@ -126,7 +126,7 @@ transaction), so a deleted issue's number is never reused. **Only
 and reference `issues(id)` by foreign key; I and P keep their own data in their own tables
 keyed by `issue_id`.
 
-#### Core types — `rustit-core/src/issue.rs` (lands in P0, so events can use it)
+#### Core types — `rbit-core/src/issue.rs` (lands in P0, so events can use it)
 
 ```rust
 pub struct IssueId(pub i64);  pub struct CommentId(pub i64);  pub struct EventId(pub i64);
@@ -178,7 +178,7 @@ pub enum TimelineEvent {
     // P
     HeadPushed { before: String, after: String, count: u32, forced: bool },
     BaseChanged { from: String, to: String },
-    Merged { commit: String, strategy: Option<MergeStrategy> },   // None: merged outside Rustit
+    Merged { commit: String, strategy: Option<MergeStrategy> },   // None: merged outside Rbit
     ReviewRequested { reviewer: AccountId }, ReviewRequestRemoved { reviewer: AccountId },
     ReviewDismissed { review: ReviewId, reviewer: Option<AccountId> },
     HeadRefDeleted { branch: String },
@@ -209,7 +209,7 @@ Permission rules (the `issue_permissions` table T0 tests exhaustively over viewe
 
 Token scopes are already folded into `access` by callers (`TokenScope::limit`).
 
-#### Store — `rustit-storage/src/sqlite/issues.rs`, `Database::issues() -> IssueStore`
+#### Store — `rbit-storage/src/sqlite/issues.rs`, `Database::issues() -> IssueStore`
 
 ```rust
 pub struct NewIssue { pub repo: RepoId, pub kind: IssueKind, pub title: IssueTitle, pub body: IssueText, pub author: AccountId, pub at: Timestamp }
@@ -244,7 +244,7 @@ impl IssueStore {
 `comment_count` and `updated_at` are maintained in the same transaction as the comment
 change.
 
-#### Service — `rustit-services/src/timeline.rs`, `Services::timeline: TimelineService`
+#### Service — `rbit-services/src/timeline.rs`, `Services::timeline: TimelineService`
 
 ```rust
 pub struct IssueContext { pub repo: RepoContext, pub issue: Issue, pub author: Option<Account>, pub permissions: IssuePermissions }
@@ -285,7 +285,7 @@ consume `ThrottleScope::Content` for the actor (429 + `Retry-After` when exhaust
 `set_state` refuses `StateReason::Merged` (only P's merge produces it) and, for
 `Reopen` of a `kind = Pull`, first calls the hook `pulls::lifecycle::check_reopen`.
 
-#### Generic routes — `rustit-web/src/routes/timeline.rs` (T0)
+#### Generic routes — `rbit-web/src/routes/timeline.rs` (T0)
 
 Page router, HTML forms, Origin-checked, 303 to the canonical page
 (`/{owner}/{repo}/issues/{n}` or `/{owner}/{repo}/pull/{n}` by kind) plus an anchor:
@@ -304,7 +304,7 @@ PR pages post to these same URLs (they use the shared number). Anchors:
 
 #### Timeline views (T0)
 
-`rustit-web/src/views/timeline.rs` and `templates/timeline/{item,comment,event,comment_form,state_badge}.html`.
+`rbit-web/src/views/timeline.rs` and `templates/timeline/{item,comment,event,comment_form,state_badge}.html`.
 `TimelineItemView` renders one entry; `timeline/item.html` expects `item: TimelineItemView`
 so P can interleave its reviews with core items in its own loop. Every `TimelineEvent`
 variant, including I's and P's, has its sentence written by T0 from this contract
@@ -316,7 +316,7 @@ same fragment).
 
 Deleted accounts appear as **ghost** (no link, neutral avatar).
 
-### 2. Domain events (P0, `rustit_services::events`)
+### 2. Domain events (P0, `rbit_services::events`)
 
 ```rust
 DomainEvent::Issue {
@@ -327,7 +327,7 @@ DomainEvent::Issue {
 DomainEvent::IssueComment { repo: RepoId, issue: IssueId, number: IssueNumber, kind: IssueKind, comment: CommentId, actor: AccountId, action: CommentAction }
 DomainEvent::PullRequestReview { repo: RepoId, pull: IssueId, number: IssueNumber, review: ReviewId, actor: AccountId, action: ReviewAction }
 
-// rustit-core/src/issue.rs
+// rbit-core/src/issue.rs
 pub enum IssueAction {
     Opened,                                                        // I (issues), P (pulls)
     Edited { previous_title: Option<String>, previous_body: Option<String>, previous_base: Option<String> },
@@ -353,22 +353,22 @@ those to P's `pull_request` payloads. Subscribers keep ignoring variants they do
 
 | Function | Owner | Called by | Stub |
 |---|---|---|---|
-| `rustit_web::render::references::render_issue_markdown(source, &RefContext) -> String`, `RefContext { base: DocumentBase, owner, repo, refs: ReferenceSet }` | I | T0 timeline views, I, P | `render_markdown(source, Some(&ctx.base))` |
+| `rbit_web::render::references::render_issue_markdown(source, &RefContext) -> String`, `RefContext { base: DocumentBase, owner, repo, refs: ReferenceSet }` | I | T0 timeline views, I, P | `render_markdown(source, Some(&ctx.base))` |
 | `ReferenceService::resolve(&self, repo: &RepoContext, texts: &[&str]) -> Result<ReferenceSet, ServiceError>` (`Services::references`; existing `#N` and `@name` among the texts, one batch query each) | I | T0 views, P | `ReferenceSet::default()` |
 | `IssueService::metadata(&self, issues: &[IssueId]) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError>` (`labels`, `assignees`, `milestone`) | I | P (lists, payloads, API) | empty map |
 | `views::issues::sidebar(&AppState, &IssueContext, Option<&User>) -> IssueSidebar` + `templates/issues/sidebar.html` | I | P's PR page | `IssueSidebar::default()`, template renders nothing |
 | `NotificationService::has_unread(&self, user: AccountId) -> Result<bool, ServiceError>` | I | `Page` extractor | `Ok(false)` |
 | `NotificationService::mark_thread_read(&self, user: AccountId, issue: IssueId)` | I | I's issue page, P's PR page | no-op |
-| `rustit_services::issues::hooks::payload(&ServiceContext, &DomainEvent, base_url) -> Result<Option<HookPayload>, ServiceError>` | I | `WebhookService::handle_event` | `Ok(None)` |
-| `rustit_services::issues::json::{issue, label, milestone}` | I | P (embedded objects) | minimal objects from core fields |
-| `rustit_services::pulls::hooks::payload(…)` (same signature) | P | `WebhookService::handle_event` | `Ok(None)` |
-| `rustit_services::pulls::lifecycle::check_reopen(&ServiceContext, &Issue) -> Result<(), ServiceError>` | P | `TimelineService::set_state` | `Ok(())` |
+| `rbit_services::issues::hooks::payload(&ServiceContext, &DomainEvent, base_url) -> Result<Option<HookPayload>, ServiceError>` | I | `WebhookService::handle_event` | `Ok(None)` |
+| `rbit_services::issues::json::{issue, label, milestone}` | I | P (embedded objects) | minimal objects from core fields |
+| `rbit_services::pulls::hooks::payload(…)` (same signature) | P | `WebhookService::handle_event` | `Ok(None)` |
+| `rbit_services::pulls::lifecycle::check_reopen(&ServiceContext, &Issue) -> Result<(), ServiceError>` | P | `TimelineService::set_state` | `Ok(())` |
 | `ProtectionService::check_push(&self, &RepoContext, &PushActor, &[RefUpdate]) -> Result<PushVerdict, ServiceError>` | B | push-gate glue (HTTP + SSH) | `PushVerdict::allow()` |
 | `ProtectionService::check_merge(&self, &RepoContext, merger: &User, branch: &str) -> Result<MergeRules, ServiceError>` | B | P's merge | `MergeRules::unprotected()` |
 | `ProtectionService::may_delete_branch(&self, &RepoContext, actor: &User, branch: &str) -> Result<bool, ServiceError>` | B | P ("delete head branch") | `Ok(true)` |
 | `ProtectionService::protected_branches(&self, &RepoContext) -> Result<Vec<String>, ServiceError>` (names among existing branches) | B | branches page badges | `Ok(vec![])` |
-| `rustit_transport::receive::intercept(input, CommandLimits) -> Result<Intercept<R>, ReceiveError>` | B | push-gate glue | `Ok(Intercept::Unread(input))` |
-| `rustit_transport::receive::refusal(&CommandList, &[Refusal]) -> Vec<u8>` | B | push-gate glue | empty report |
+| `rbit_transport::receive::intercept(input, CommandLimits) -> Result<Intercept<R>, ReceiveError>` | B | push-gate glue | `Ok(Intercept::Unread(input))` |
+| `rbit_transport::receive::refusal(&CommandList, &[Refusal]) -> Vec<u8>` | B | push-gate glue | empty report |
 
 ```rust
 pub struct HookPayload { pub repo: OwnedRepository, pub event: WebhookEvent, pub body: serde_json::Value }
@@ -389,7 +389,7 @@ pub struct MergeRules {
 
 ### 4. The push gate (P0 glue, B's logic)
 
-`git receive-pack` runs without hooks, and Rustit's tests boot the server in-process, so a
+`git receive-pack` runs without hooks, and Rbit's tests boot the server in-process, so a
 `pre-receive` hook executable is not an option. The gate is in-process instead:
 
 1. **Read the command list before git sees it.** The client's request starts with
@@ -407,7 +407,7 @@ pub struct MergeRules {
    does not start git, and answers `receive::refusal(...)`: `unpack ok`, then
    `ng <ref> <reason>` for every refused ref and `ng <ref> push declined: another ref in
    this push was refused` for the others, honouring `report-status` / `report-status-v2`
-   and `side-band-64k` / `side-band` (with a band-2 `Rustit: …` explanation per refusal).
+   and `side-band-64k` / `side-band` (with a band-2 `Rbit: …` explanation per refusal).
    Clients that requested no `report-status` get HTTP 403 with a text body, or over SSH a
    stderr message and exit status 1. The client then prints
    `! [remote rejected] main -> main (protected branch: force pushes are not allowed)`.
@@ -451,7 +451,7 @@ green with the stub (`Intercept::Unread`).
 
 ### 5. Webhooks (P0 dispatch, payloads by I and P)
 
-`rustit_core::webhook::WebhookEvent` gains `Issues` (`issues`), `IssueComment`
+`rbit_core::webhook::WebhookEvent` gains `Issues` (`issues`), `IssueComment`
 (`issue_comment`), `PullRequest` (`pull_request`), `PullRequestReview`
 (`pull_request_review`), all in `SUBSCRIBABLE` with labels and descriptions; the webhook
 form lists them. `WebhookService::handle_event` gains:
@@ -549,7 +549,7 @@ paths or schema names.
 4. **Assignees**: at most 10 per issue; only users with `Write` access to the repository
    (owner, collaborators, organisation owners, members whose base permission or team grant
    is `write`/`admin`) — `IssueService::assignable(repo, query)` lists them (≤ 100).
-5. **References and mentions** (`rustit-core/src/references.rs`, pure):
+5. **References and mentions** (`rbit-core/src/references.rs`, pure):
    - `#12` → this repository; `owner/repo#12` → another repository; `@name` → a user.
      Ignored inside code spans, code blocks and link text (scan only pulldown-cmark text
      events). Closing keywords: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`,
@@ -574,7 +574,7 @@ paths or schema names.
      the default branch (`Issue { kind: Pull, action: Closed { reason: Merged } }`), closing
      keywords in the PR's body close the referenced issues with `Closed { pull: Some(n) }`.
 6. **Search and filters.** One query box (default `is:open is:issue`), parsed by
-   `rustit-core/src/issue_query.rs` (pure): `is:open|closed|issue|pr|merged|draft|locked`,
+   `rbit-core/src/issue_query.rs` (pure): `is:open|closed|issue|pr|merged|draft|locked`,
    `author:name`, `assignee:name|@me`, `no:assignee`, `label:name` (repeatable, AND;
    quoted names), `-label:name`, `no:label`, `milestone:"title"`, `no:milestone`,
    `sort:created-desc|created-asc|updated-desc|updated-asc|comments-desc`, free text
@@ -658,19 +658,19 @@ paths or schema names.
 
 Stubs marked ★ exist on `main` after P0.
 
-- core: `rustit-core/src/{references.rs★,issue_query.rs★,config/issues.rs★}`
-- storage: `rustit-storage/src/sqlite/{issue_meta.rs★,issue_search.rs★,notifications.rs★}`,
-  `rustit-storage/migrations/0018_*.sql`, `0019_*.sql`, `0020_*.sql`, new
-  `rustit-storage/tests/{issue_meta,issue_search,notifications}.rs`
-- services: `rustit-services/src/{issues.rs★,issues/**★,references.rs★,notifications.rs★}`,
-  new `rustit-services/tests/{issues,references,notifications}*.rs`
-- web: `rustit-web/src/routes/{issues.rs★,labels.rs★,milestones.rs★,notifications.rs★}`,
-  `rustit-web/src/routes/api/{issues.rs★,notifications.rs★}`,
-  `rustit-web/src/routes/api/openapi/{issues,notifications}.json★`,
-  `rustit-web/src/views/{issues.rs★,labels.rs★,milestones.rs★,notifications.rs★}`,
-  `rustit-web/src/render/{references.rs★,markdown.rs}`, `rustit-web/tests/properties.rs`
-  (Markdown cases), `rustit-web/templates/{issues,notifications}/**★`
-- e2e: `rustit-e2e/tests/e2e/issues.rs★`
+- core: `rbit-core/src/{references.rs★,issue_query.rs★,config/issues.rs★}`
+- storage: `rbit-storage/src/sqlite/{issue_meta.rs★,issue_search.rs★,notifications.rs★}`,
+  `rbit-storage/migrations/0018_*.sql`, `0019_*.sql`, `0020_*.sql`, new
+  `rbit-storage/tests/{issue_meta,issue_search,notifications}.rs`
+- services: `rbit-services/src/{issues.rs★,issues/**★,references.rs★,notifications.rs★}`,
+  new `rbit-services/tests/{issues,references,notifications}*.rs`
+- web: `rbit-web/src/routes/{issues.rs★,labels.rs★,milestones.rs★,notifications.rs★}`,
+  `rbit-web/src/routes/api/{issues.rs★,notifications.rs★}`,
+  `rbit-web/src/routes/api/openapi/{issues,notifications}.json★`,
+  `rbit-web/src/views/{issues.rs★,labels.rs★,milestones.rs★,notifications.rs★}`,
+  `rbit-web/src/render/{references.rs★,markdown.rs}`, `rbit-web/tests/properties.rs`
+  (Markdown cases), `rbit-web/templates/{issues,notifications}/**★`
+- e2e: `rbit-e2e/tests/e2e/issues.rs★`
 
 ### Tests expected
 
@@ -702,7 +702,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
    fork, between siblings). `/{owner}/{repo}/compare/{base}...{head}` accepts
    `head` as `branch`, `owner:branch` (that owner's repository in the network) or
    `owner/name:branch`; the page gains base and head repository pickers. Cross-repository
-   compare and checks read through an **object overlay** (`rustit-git/src/overlay.rs`): a
+   compare and checks read through an **object overlay** (`rbit-git/src/overlay.rs`): a
    throw-away bare repository under `<tmp_dir>/overlays/<random>` whose
    `objects/info/alternates` lists both repositories' object directories, so nothing is
    written to either repository before a PR exists; dropped (and swept at start-up) after use.
@@ -737,7 +737,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
    - head branch deleted: record `HeadRefDeleted`; the PR stays open but cannot be merged
      until the branch is pushed again;
    - base branch moved: mark open PRs into it unknown; if a PR's head is now an ancestor of
-     the base tip, it was **merged outside Rustit**: mark it merged (`merged_by` = pusher,
+     the base tip, it was **merged outside Rbit**: mark it merged (`merged_by` = pusher,
      strategy `NULL`), record `Merged { strategy: None }`, close it with reason `Merged`.
 5. **Mergeability.** A bounded worker (`mergeability_concurrency`) computes, for open
    non-draft PRs with `mergeable = 'unknown'`, a trial merge of head into base on a
@@ -779,7 +779,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
 8. **Merging** (`POST /{owner}/{repo}/pull/{n}/merge`: strategy, commit title and message
    for merge/squash, the expected head id, "delete head branch"): needs `Write` on the base
    repository and all requirements. Serialised per base repository (a per-repository async
-   mutex; at most `max_concurrent_merges` overall). `rustit-git/src/merge.rs` runs it on a
+   mutex; at most `max_concurrent_merges` overall). `rbit-git/src/merge.rs` runs it on a
    **temporary worktree**:
    1. `git clone --shared --no-checkout --no-tags <base repo> <tmp_dir>/merges/<random>`
       (objects through alternates, nothing copied), `checkout --detach <base tip>`;
@@ -806,7 +806,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
    -c rerere.enabled=false -c gc.auto=0 -c maintenance.auto=false -c core.fsmonitor=false`,
    `--no-verify` on commits, `--end-of-options` before revisions, revisions as full ids or
    `refs/heads/<validated name>`, never options from user input. Identities: name = display
-   name (or username), email = `<username>@<noreply_domain>` — Rustit never writes a real
+   name (or username), email = `<username>@<noreply_domain>` — Rbit never writes a real
    email address into a commit. Fixed `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` from the
    service clock. `merge_timeout_seconds` bounds the whole merge (`kill_on_drop`). The
    temporary directory is removed on every exit path (a guard) and swept at start-up;
@@ -865,19 +865,19 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
 
 ### Files P owns
 
-- core: `rustit-core/src/{pull.rs★,config/pulls.rs★}`
-- git: `rustit-git/src/{merge.rs★,overlay.rs★,pull_refs.rs★,compare.rs,diff.rs}` (the last
-  two additively), new `rustit-git/tests/{merge,overlay}.rs`
-- storage: `rustit-storage/src/sqlite/{pulls.rs★,reviews.rs★,forks.rs}`,
-  `rustit-storage/migrations/0021_*.sql`, `0022_*.sql`, `0023_*.sql`, new storage tests
-- services: `rustit-services/src/{pulls.rs★,pulls/**★,forks.rs}` (`forks.rs` additively:
-  network queries), new `rustit-services/tests/pulls*.rs`
-- web: `rustit-web/src/routes/{pulls.rs★,compare.rs}`, `rustit-web/src/routes/api/pulls.rs★`,
-  `rustit-web/src/routes/api/openapi/pulls.json★`,
-  `rustit-web/src/views/{pulls.rs★,compare.rs,commit.rs}` (`commit.rs` additively: optional
-  fields with defaults), `rustit-web/templates/pulls/**★`,
-  `rustit-web/templates/repo/{compare.html,file_diffs.html}`
-- e2e: `rustit-e2e/tests/e2e/pulls.rs★`
+- core: `rbit-core/src/{pull.rs★,config/pulls.rs★}`
+- git: `rbit-git/src/{merge.rs★,overlay.rs★,pull_refs.rs★,compare.rs,diff.rs}` (the last
+  two additively), new `rbit-git/tests/{merge,overlay}.rs`
+- storage: `rbit-storage/src/sqlite/{pulls.rs★,reviews.rs★,forks.rs}`,
+  `rbit-storage/migrations/0021_*.sql`, `0022_*.sql`, `0023_*.sql`, new storage tests
+- services: `rbit-services/src/{pulls.rs★,pulls/**★,forks.rs}` (`forks.rs` additively:
+  network queries), new `rbit-services/tests/pulls*.rs`
+- web: `rbit-web/src/routes/{pulls.rs★,compare.rs}`, `rbit-web/src/routes/api/pulls.rs★`,
+  `rbit-web/src/routes/api/openapi/pulls.json★`,
+  `rbit-web/src/views/{pulls.rs★,compare.rs,commit.rs}` (`commit.rs` additively: optional
+  fields with defaults), `rbit-web/templates/pulls/**★`,
+  `rbit-web/templates/repo/{compare.html,file_diffs.html}`
+- e2e: `rbit-e2e/tests/e2e/pulls.rs★`
 
 ### Tests expected
 
@@ -890,7 +890,7 @@ conflict, timeout and panic, no hooks executed (a hook planted in the fixture ne
 follows head pushes and survives fork deletion; approval counting table (latest review per
 reviewer, stale with and without `dismiss_stale_approvals`, dismissed, non-writer, own PR,
 changes requested); requirements evaluation against `MergeRules` values (P tests with
-hand-built `MergeRules`, since B's logic is not on its branch); "merged outside Rustit"
+hand-built `MergeRules`, since B's logic is not on its branch); "merged outside Rbit"
 detection; reopen preconditions; payload shapes; API handler tests; view render tests;
 e2e: fork a repository, push a branch to the fork, open a PR to the parent in the UI,
 leave a line comment, request changes, push a fix (timeline shows the push, the comment
@@ -920,11 +920,11 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
 2. **Combination:** every matching rule applies; the strictest value wins (any denial
    denies, the highest approval count, restrictions intersect: a pusher must be allowed by
    every restricting rule).
-3. **Push decisions** (`check_push`, pure core in `rustit-core/src/protection.rs`,
+3. **Push decisions** (`check_push`, pure core in `rbit-core/src/protection.rs`,
    exhaustively tested over rule flags × actor (anonymous/deploy key/reader/writer/admin
    with and without bypass, listed user, team member) × update kind (create,
    fast-forward-or-unknown update, delete) × reserved refs):
-   - any update of `refs/pull/*` by a client: refused ("refs/pull/ is managed by Rustit");
+   - any update of `refs/pull/*` by a client: refused ("refs/pull/ is managed by Rbit");
    - delete with `deny_deletion`: refused ("protected branch: deleting it is not allowed");
    - pusher not allowed by `restrict_pushers` (deploy keys never are): refused, also for
      creation ("protected branch: you are not allowed to push to it");
@@ -936,7 +936,7 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
      rule); each bypass that changed the outcome is audited as `BranchProtectionBypassed`
      with the ref in the detail.
    Refusal texts never list who is allowed.
-4. **Protocol** (`rustit-transport/src/receive.rs`): `intercept`, `Replay`, `drain`,
+4. **Protocol** (`rbit-transport/src/receive.rs`): `intercept`, `Replay`, `drain`,
    `refusal` and `CommandList` as in shared contract §4 (capabilities from the first
    command line, `shallow` lines passed through, malformed or oversized input →
    `ReceiveError`, no allocation proportional to the pack).
@@ -970,16 +970,16 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
 
 ### Files B owns
 
-- core: `rustit-core/src/protection.rs★`
-- transport: `rustit-transport/src/receive.rs★`, new `rustit-transport/tests/receive.rs`
-- storage: `rustit-storage/src/sqlite/protection.rs★`, `rustit-storage/migrations/0024_*.sql`,
-  `0025_*.sql`, new `rustit-storage/tests/protection.rs`
-- services: `rustit-services/src/protection.rs★`, new `rustit-services/tests/protection.rs`
-- web: `rustit-web/src/routes/{protection.rs★,api/protection.rs★}`,
-  `rustit-web/src/routes/api/openapi/protection.json★`,
-  `rustit-web/src/views/{protection.rs★,refs.rs}`, `rustit-web/templates/protection/**★`,
-  `rustit-web/templates/repo/refs.html`
-- e2e: `rustit-e2e/tests/e2e/protection.rs★`
+- core: `rbit-core/src/protection.rs★`
+- transport: `rbit-transport/src/receive.rs★`, new `rbit-transport/tests/receive.rs`
+- storage: `rbit-storage/src/sqlite/protection.rs★`, `rbit-storage/migrations/0024_*.sql`,
+  `0025_*.sql`, new `rbit-storage/tests/protection.rs`
+- services: `rbit-services/src/protection.rs★`, new `rbit-services/tests/protection.rs`
+- web: `rbit-web/src/routes/{protection.rs★,api/protection.rs★}`,
+  `rbit-web/src/routes/api/openapi/protection.json★`,
+  `rbit-web/src/views/{protection.rs★,refs.rs}`, `rbit-web/templates/protection/**★`,
+  `rbit-web/templates/repo/refs.html`
+- e2e: `rbit-e2e/tests/e2e/protection.rs★`
 
 ### Tests expected
 
@@ -1012,7 +1012,7 @@ it; a push to a pull mirror is still refused by I1's check first.
 - **Markdown** always goes through `render_issue_markdown` (ammonia last). Label colours
   appear only as an SVG `fill` on a dot (validated `#rrggbb`), progress bars as SVG
   `width` attributes: **no inline `style=`, no inline scripts**.
-- **Privacy:** no email address in any page, payload, API object or Rustit-made commit;
+- **Privacy:** no email address in any page, payload, API object or Rbit-made commit;
   notifications only for users who can read the repository; mentions never reveal whether
   a user can read it; cross-references shown only to viewers of the source; refusal
   messages never list allowed pushers.
@@ -1051,12 +1051,12 @@ are legible in every theme.
 
 As in [milestone 2](milestone-2.md#rules-all-workstreams), with this ownership update.
 **Integrator files** now also include everything wave A created that is not reassigned
-above — in particular `rustit-core/src/{issue.rs,webhook.rs}`,
-`rustit-services/src/{timeline.rs,webhooks.rs,webhooks/**}`,
-`rustit-storage/src/sqlite/issues.rs`, `rustit-transport/src/{lib.rs,process.rs}`,
-`rustit-web/src/routes/{timeline.rs,api/mod.rs,api/openapi.json,repo.rs}`,
-`rustit-web/src/views/{timeline.rs,repo.rs}`, `rustit-web/src/urls.rs`,
-`rustit-web/templates/{timeline/**,repo/subnav.html}` and the rest of
+above — in particular `rbit-core/src/{issue.rs,webhook.rs}`,
+`rbit-services/src/{timeline.rs,webhooks.rs,webhooks/**}`,
+`rbit-storage/src/sqlite/issues.rs`, `rbit-transport/src/{lib.rs,process.rs}`,
+`rbit-web/src/routes/{timeline.rs,api/mod.rs,api/openapi.json,repo.rs}`,
+`rbit-web/src/views/{timeline.rs,repo.rs}`, `rbit-web/src/urls.rs`,
+`rbit-web/templates/{timeline/**,repo/subnav.html}` and the rest of
 `templates/repo/**`. Requests for these go in your final report with the exact change.
 Only `sqlite/issues.rs` writes the T0 tables. Use only the hook signatures of §3 across
 workstreams; never call another workstream's internals.
@@ -1065,21 +1065,21 @@ workstreams; never call another workstream's internals.
 
 Merge order: **B** (independent), then **I** and **P** in either order. After each:
 rebase in its worktree, full gate, fast-forward, apply its integration requests as small
-commits. After all three, the integrator adds `rustit-e2e/tests/e2e/workflow.rs`: `main`
+commits. After all three, the integrator adds `rbit-e2e/tests/e2e/workflow.rs`: `main`
 protected with `require_pull_request` and one approval; direct pushes refused over HTTP
 and SSH; a PR from a fork whose body says "Fixes #1" is approved by a writer and
 squash-merged; issue #1 closes with "closed via #2"; the issue author has an unread
 notification; `pull_request` (`closed`, `merged: true`) and `issues` (`closed`) webhooks
 are delivered. Then: verify an upgrade from a wave A database through `0024`, exclude
-`tmp/` from `rustit backup`, update `docs/ARCHITECTURE.md` (schema, routes, events, the
-push gate) and `deploy/rustit.example.toml`.
+`tmp/` from `rbit backup`, update `docs/ARCHITECTURE.md` (schema, routes, events, the
+push gate) and `deploy/rbit.example.toml`.
 
 ---
 
 ## P0 pre-wire checklist (integrator, on `main` after I1)
 
 Core and storage
-- [x] `rustit-core/src/issue.rs` complete (types, `TimelineEvent`, `IssueAction`,
+- [x] `rbit-core/src/issue.rs` complete (types, `TimelineEvent`, `IssueAction`,
       `CommentAction`, `ReviewAction`, `issue_permissions` with exhaustive tests); stub
       modules `references.rs`, `issue_query.rs`, `pull.rs`, `protection.rs`;
       `config/{issues,pulls}.rs` with defaults; `StorageConfig::tmp_dir()`; reserved account
@@ -1099,11 +1099,11 @@ Services
 - [x] `WebhookService::handle_event` dispatch to `issues::hooks` / `pulls::hooks`.
 
 Git and transport
-- [x] Stub `rustit-git/src/{merge.rs,overlay.rs,pull_refs.rs}`; `rustit-transport/src/receive.rs`
+- [x] Stub `rbit-git/src/{merge.rs,overlay.rs,pull_refs.rs}`; `rbit-transport/src/receive.rs`
       (`Intercept`, `Replay` complete, `CommandList`, `CommandLimits`, `Refusal`,
       `ReceiveError`, stub `intercept`/`refusal`, real `drain`).
 - [x] `ProcessTransport` receive entry points take `ReceiveOptions`; stderr exposed for SSH.
-- [x] Push-gate glue in `routes/git_http.rs` and `rustit-ssh/src/session.rs` (after I1's
+- [x] Push-gate glue in `routes/git_http.rs` and `rbit-ssh/src/session.rs` (after I1's
       checks); SSH receive-pack in two steps; existing transport e2e tests green.
 
 Web
@@ -1123,13 +1123,13 @@ Web
 P0 is done. These details differ from, or pin down, the sections above; they are
 binding like the rest of this document.
 
-- **`RefUpdate` lives in `rustit_core::ref_update`** (re-exported unchanged as
-  `rustit_git::RefUpdate` and `rustit_services::events::RefUpdate`), so
-  `rustit-transport` (which now depends on `rustit-core` only) can return it from
+- **`RefUpdate` lives in `rbit_core::ref_update`** (re-exported unchanged as
+  `rbit_git::RefUpdate` and `rbit_services::events::RefUpdate`), so
+  `rbit-transport` (which now depends on `rbit-core` only) can return it from
   `CommandList::updates()`.
-- **The push-gate types live in `rustit_core::protection`**: `Refusal`, `PushActor`,
+- **The push-gate types live in `rbit_core::protection`**: `Refusal`, `PushActor`,
   `PushVerdict` (`allow()`, `is_refused()`) and `MergeRules` (`unprotected()`,
-  `is_protected()`). `rustit_services::protection` and `rustit_transport::receive`
+  `is_protected()`). `rbit_services::protection` and `rbit_transport::receive`
   re-export them; B may add its pure decision functions next to them.
 - **`receive.rs` extras:** `PushCommand { old, new, name }` (`update()`), `ZERO_ID`;
   `CommandList::{new, commands, updates, capabilities, has_capability, shallow, is_empty,
@@ -1159,9 +1159,9 @@ binding like the rest of this document.
   can_edit, can_delete }`** joins `issue_permissions`: editing your own comment needs
   `can_comment` (a locked thread freezes readers' comments), deleting needs ownership
   with `can_comment`, or `can_moderate`.
-- **`IssueContext`** is declared in P0 (`rustit_services::timeline`, re-exported at the
+- **`IssueContext`** is declared in P0 (`rbit_services::timeline`, re-exported at the
   crate root), because the sidebar hook takes it; T0 adds `TimelineService` to that file.
-- **Hook shapes:** `HookPayload` is defined in `rustit_services::webhooks`;
+- **Hook shapes:** `HookPayload` is defined in `rbit_services::webhooks`;
   `ReferenceSet` is an empty struct I fills; `IssueMetadata { labels: Vec<LabelSnapshot>,
   assignees: Vec<Account>, milestone: Option<MilestoneRef { id, title }> }`;
   `issues::json::{issue(&Issue, &OwnedRepository, base_url), label(&LabelSnapshot, ..),

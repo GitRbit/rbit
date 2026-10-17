@@ -1,0 +1,121 @@
+# Rbit configuration for a production instance.
+#
+# Copy to /etc/rbit/rbit.toml (the systemd unit's default) and adjust. Every key is
+# optional; omitted keys keep their built-in defaults. Any key can also be set with an
+# environment variable: RBIT_<SECTION>__<KEY>, e.g. RBIT_SERVER__PUBLIC_URL.
+# Environment variables win over this file.
+
+[server]
+# Listen on loopback only and let the reverse proxy (Caddy, nginx) terminate TLS.
+bind = "127.0.0.1:3000"
+# The address users type. Used for clone URLs, secure cookies (https://…) and the
+# cross-site request check, so it must match what the browser sees exactly.
+public_url = "https://git.example.com"
+site_name = "Rbit"
+# Default for the runtime "registration" setting (administrators can change it in /admin).
+open_registration = false
+
+[storage]
+# SQLite database, redb store and bare repositories all live here. Back it up with
+# `rbit backup --output DIR` (see docs/deployment.md).
+data_dir = "/var/lib/rbit"
+
+[security]
+session_lifetime_days = 30
+min_password_length = 12
+# Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
+# the reverse proxy's address; anything broader lets clients spoof their IP address.
+# trusted_proxies = ["127.0.0.1/32", "::1/128"]
+# Throttle sign-in, sign-up, 2FA, Git credentials, email requests and form posts.
+rate_limit = true
+
+[repository]
+default_branch = "main"
+# The git executable used for smart HTTP, `git gc` and backups.
+git_binary = "/usr/bin/git"
+max_render_bytes = 1048576
+
+[mail]
+# "disabled" (password reset and verification explain that email is unavailable),
+# "log" (development) or "smtp" (see the [mail] reference for the relay settings).
+transport = "disabled"
+# from_address = "git@example.com"
+# from_name = ""                  # blank: the site name
+# smtp_host = "smtp.example.com"
+# smtp_port = 587                 # default 587 (starttls/none) or 465 (tls)
+# smtp_security = "starttls"      # "starttls" (required), "tls" or "none"
+# smtp_username = "rbit"
+# smtp_password = "…"             # prefer RBIT_MAIL__SMTP_PASSWORD in the environment
+# timeout_seconds = 30
+
+[ssh]
+# Built-in SSH server for git@… clone URLs.
+enabled = false
+bind = "0.0.0.0:2222"
+# Host and port shown in clone URLs (port 22 gives git@host:owner/repo.git).
+# public_host = "git.example.com"
+# public_port = 22
+# host_key_path = "/var/lib/rbit/ssh/host_ed25519"   # generated on first start
+# max_connections = 256
+# max_connections_per_ip = 16
+# auth_timeout_seconds = 30
+# idle_timeout_seconds = 300
+# max_session_seconds = 3600
+
+[operations]
+# Prometheus metrics at /metrics. Keep the endpoint private: set a token, or block
+# /metrics at the reverse proxy and scrape the loopback address directly.
+metrics = false
+# metrics_token = "replace-with-a-long-random-string"
+# Warm language and last-commit caches right after each push.
+warm_caches_on_push = true
+# `git gc --auto` for repositories pushed to since the last run, then cache pruning.
+# 0 disables periodic maintenance.
+maintenance_interval_minutes = 360
+# Background jobs (cache warming, git gc) running at the same time.
+job_concurrency = 2
+# Insights cache limits (redb). Pruned entries are recomputed on demand. 0 = no limit.
+insights_cache_max_age_days = 30
+insights_cache_max_entries = 50000
+
+[api]
+# The REST API under /api/v1, authenticated with personal access tokens. When off, every
+# /api path answers 404.
+enabled = true
+# Items per page when a request does not send ?per_page=, and the most it may ask for.
+default_page_size = 30
+max_page_size = 100
+
+[webhooks]
+# Send webhook deliveries. When off, hooks can still be configured but nothing is sent.
+enabled = true
+# Refuse targets that resolve to loopback, private, link-local, unique-local and other
+# internal addresses. Only enable this if repository admins may probe your network.
+allow_private_addresses = false
+# Upper bound for one attempt (connect, send, read the response).
+timeout_seconds = 10
+# Attempts per delivery, including the first (retries after ~10 s, 1 min, 10 min, 1 h, 6 h).
+max_attempts = 5
+# Deliveries in flight at once across the instance.
+concurrency = 4
+# Days the delivery log keeps requests and responses.
+delivery_retention_days = 14
+
+[releases]
+# Files attached to releases live in <data_dir>/attachments (included in backups).
+# Largest attached file, in bytes (512 MiB). Raise the reverse proxy's body limit to match.
+max_asset_bytes = 536870912
+max_assets_per_release = 50
+# Upper bound for one upload; uploads are exempt from the 30-second page timeout.
+upload_timeout_seconds = 3600
+
+[mirrors]
+# Allow pull mirrors (repositories fetched from an http(s) upstream on a schedule).
+enabled = true
+# Fetch interval for new mirrors, and the shortest interval a mirror may use.
+default_interval_minutes = 480
+min_interval_minutes = 10
+# Upper bound for one fetch.
+fetch_timeout_seconds = 900
+# Refuse upstreams on loopback, private, link-local and other internal addresses.
+allow_private_addresses = false

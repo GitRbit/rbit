@@ -19,7 +19,7 @@ two workstreams edit the same file.
 
 ## Runtime instance settings
 
-The TOML/env config (`rustit_core::Config`) supplies *defaults*. Admins override them at
+The TOML/env config (`rbit_core::Config`) supplies *defaults*. Admins override them at
 runtime; overrides live in SQLite (`instance_settings` key/value table) and are cached in
 memory by `InstanceService` (`Arc<RwLock<InstanceSettings>>`), so reads are synchronous and
 lock-cheap and every page can use them.
@@ -65,36 +65,36 @@ Pre-wired stubs (created by the integrator) are marked ★. A workstream may edi
 files; anything else is requested from the integrator.
 
 **A — Insights (languages, last commit per entry)**
-`rustit-git/src/lib.rs`, `rustit-git/src/languages/**`, `rustit-git/src/last_commit.rs`,
-`rustit-storage/src/kv/**`, `rustit-services/src/insights.rs`★,
-`rustit-web/src/routes/repo.rs`, `rustit-web/src/views/repo.rs`, `rustit-web/src/views/insights.rs`★,
+`rbit-git/src/lib.rs`, `rbit-git/src/languages/**`, `rbit-git/src/last_commit.rs`,
+`rbit-storage/src/kv/**`, `rbit-services/src/insights.rs`★,
+`rbit-web/src/routes/repo.rs`, `rbit-web/src/views/repo.rs`, `rbit-web/src/views/insights.rs`★,
 `templates/repo/tree.html`, `templates/repo/latest_commit.html`.
 
 **B — Organisations**
-`rustit-core/src/{names.rs,account.rs,repository.rs}`, `rustit-auth/src/policy.rs`,
-`rustit-storage/src/sqlite/{orgs.rs★,repositories.rs}`, migration 0003,
-`rustit-services/src/{orgs.rs★,repositories.rs}`,
-`rustit-web/src/routes/{orgs.rs★,account.rs,home.rs,repo_create.rs★}`,
-`rustit-web/src/views/{org.rs★,account.rs,home.rs,components.rs}`,
+`rbit-core/src/{names.rs,account.rs,repository.rs}`, `rbit-auth/src/policy.rs`,
+`rbit-storage/src/sqlite/{orgs.rs★,repositories.rs}`, migration 0003,
+`rbit-services/src/{orgs.rs★,repositories.rs}`,
+`rbit-web/src/routes/{orgs.rs★,account.rs,home.rs,repo_create.rs★}`,
+`rbit-web/src/views/{org.rs★,account.rs,home.rs,components.rs}`,
 `templates/org/**`, `templates/account/**`, `templates/home/**`, `templates/repo/new.html`, `templates/macros.html`.
 
 **C — Administration & instance settings**
-`rustit-core/src/config.rs`, `rustit-core/src/instance.rs`★,
-`rustit-storage/src/sqlite/{instance.rs★,accounts.rs,admin.rs★}`, migration 0004,
-`rustit-services/src/{instance.rs★,admin.rs★,accounts.rs,tokens.rs}`,
-`rustit-web/src/{extract.rs,middleware.rs}`, `rustit-web/src/views/{layout.rs,admin.rs★}`,
-`rustit-web/src/routes/{admin.rs★,auth.rs,git_http.rs}`, `templates/admin/**`, `templates/auth/**`.
+`rbit-core/src/config.rs`, `rbit-core/src/instance.rs`★,
+`rbit-storage/src/sqlite/{instance.rs★,accounts.rs,admin.rs★}`, migration 0004,
+`rbit-services/src/{instance.rs★,admin.rs★,accounts.rs,tokens.rs}`,
+`rbit-web/src/{extract.rs,middleware.rs}`, `rbit-web/src/views/{layout.rs,admin.rs★}`,
+`rbit-web/src/routes/{admin.rs★,auth.rs,git_http.rs}`, `templates/admin/**`, `templates/auth/**`.
 
 **D — User settings, repository settings, stars**
-`rustit-git/src/storage.rs`, `rustit-storage/src/sqlite/{profiles.rs★,repo_settings.rs★,stars.rs★}`, migration 0005,
-`rustit-services/src/{profiles.rs★,repo_settings.rs★,stars.rs★}`,
-`rustit-web/src/routes/{settings.rs,repo_settings.rs★,stars.rs★}`,
-`rustit-web/src/views/{settings.rs,repo_settings.rs★}`,
+`rbit-git/src/storage.rs`, `rbit-storage/src/sqlite/{profiles.rs★,repo_settings.rs★,stars.rs★}`, migration 0005,
+`rbit-services/src/{profiles.rs★,repo_settings.rs★,stars.rs★}`,
+`rbit-web/src/routes/{settings.rs,repo_settings.rs★,stars.rs★}`,
+`rbit-web/src/views/{settings.rs,repo_settings.rs★}`,
 `templates/settings/**`, `templates/repo/{settings*.html,subnav.html,nav_context.html}`.
 
-**Integrator (not a workstream):** `Cargo.toml`s, `rustit-services/src/lib.rs`,
-`rustit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs}`, `rustit-web/src/routes/mod.rs`,
-`rustit-web/src/views/mod.rs`, `templates/base.html`, `styles/app.css`, `docs/ARCHITECTURE.md`.
+**Integrator (not a workstream):** `Cargo.toml`s, `rbit-services/src/lib.rs`,
+`rbit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs}`, `rbit-web/src/routes/mod.rs`,
+`rbit-web/src/views/mod.rs`, `templates/base.html`, `styles/app.css`, `docs/ARCHITECTURE.md`.
 Workstreams put new row types in their own store files, not `rows.rs`. If a workstream
 needs a new CSS component it describes it in its report; the integrator adds it.
 

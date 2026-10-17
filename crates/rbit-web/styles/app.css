@@ -1,0 +1,900 @@
+/*
+ * Rbit design system — monochrome minimal. Tailwind CSS v4, CSS-first configuration.
+ *
+ * Principles
+ *   - Black and white do the work. Colour appears only to communicate state
+ *     (success, danger, warning) and in syntax highlighting.
+ *   - Hairline (1px) borders instead of shadows; 6px radius everywhere.
+ *   - Dense, calm typography: 14px base, medium weights, tight headings.
+ *
+ * Every colour is a semantic token defined once with `light-dark()`, so components never
+ * need `dark:` variants. The scheme follows the OS unless `data-theme` on <html> pins it.
+ */
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@source "../templates";
+@source "../src";
+
+/* ---------------------------------------------------------------- Tokens */
+
+/*
+ * The built-in Rbit themes. `data-theme` selects one: none (or "system") follows the
+ * OS, "light"/"dark" pin a scheme, and tinted themes (assets/themes/*.css, linked only
+ * while active) redefine the same tokens under `[data-theme="base16-…"]`. Selectors are
+ * scoped rather than root-only so a preview card carrying `data-theme` renders in that
+ * theme anywhere on the page.
+ *
+ * Two elevation levels: the page `--canvas` and containers `--surface`, separated by a
+ * `--line` that stays clearly visible (≥ 1.3:1 against the surface). Body text (`--ink`,
+ * `--ink-muted`) meets WCAG AA on every background; `--ink-faint` is for hints only.
+ * `src/themes/mod.rs` mirrors the two canvas colours for `<meta name="theme-color">`.
+ */
+:root,
+[data-theme="system"],
+[data-theme="light"],
+[data-theme="dark"] {
+  --canvas: light-dark(#f7f7f7, #000000);
+  --surface: light-dark(#ffffff, #0d0d0d);
+  --subtle: light-dark(#fafafa, #141414);
+  --hover: light-dark(#f0f0f0, #1c1c1c);
+  --line: light-dark(#e3e3e3, #2a2a2a);
+  --line-strong: light-dark(#cccccc, #3d3d3d);
+  --ink: light-dark(#0a0a0a, #ededed);
+  --ink-muted: light-dark(#5c5c5c, #a3a3a3);
+  --ink-faint: light-dark(#787878, #7a7a7a);
+  /* "Inverted" is the primary action: black on light, white on dark. */
+  --inverted: light-dark(#0a0a0a, #ededed);
+  --inverted-hover: light-dark(#383838, #cccccc);
+  --inverted-ink: light-dark(#ffffff, #0a0a0a);
+
+  --success: light-dark(#107d32, #3ecf6e);
+  --danger: light-dark(#d8182f, #ff5a67);
+  --danger-subtle: light-dark(#fff0f1, #1f0a0c);
+  --warning: light-dark(#a35200, #f5a524);
+
+  --syntax-comment: light-dark(#787878, #7a7a7a);
+  --syntax-keyword: light-dark(#c3195d, #ff4d8d);
+  --syntax-string: light-dark(#107d32, #62c073);
+  --syntax-number: light-dark(#0068d6, #52a8ff);
+  --syntax-function: light-dark(#7820bc, #bf7af0);
+  --syntax-type: light-dark(#0068d6, #52a8ff);
+  --syntax-tag: light-dark(#107d32, #62c073);
+  --syntax-attribute: light-dark(#7820bc, #bf7af0);
+}
+
+:root,
+[data-theme="system"] { color-scheme: light dark; }
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
+@theme {
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
+
+  --radius-ui: 6px;
+}
+
+/* `inline`: utilities read the semantic tokens where they are used (`var(--canvas)`), not a
+   copy resolved once on :root, so an element carrying `data-theme` recolours its subtree. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-inverted: var(--inverted);
+  --color-inverted-hover: var(--inverted-hover);
+  --color-inverted-ink: var(--inverted-ink);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-warning: var(--warning);
+}
+
+/* ---------------------------------------------------------------- Base */
+
+@layer base {
+  html {
+    /* Always reserve the scrollbar's width so short and long pages share one layout width. */
+    scrollbar-gutter: stable;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-sm text-ink antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ink;
+  }
+
+  ::selection {
+    @apply bg-inverted text-inverted-ink;
+  }
+
+  /* Scrollbars: a thin thumb in the line colour on a clear track, darkening while
+     hovered, so they recolour with every theme. `scrollbar-color` is inherited; the
+     `::-webkit-scrollbar` rules serve browsers without the standard properties (Safari)
+     and are ignored by those that have them. */
+  html {
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  * {
+    scrollbar-width: thin;
+  }
+
+  *:hover {
+    scrollbar-color: var(--ink-faint) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background: var(--line-strong) padding-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-faint);
+  }
+
+  a {
+    @apply transition-colors duration-100;
+  }
+}
+
+/* ---------------------------------------------------------------- Components */
+
+@layer components {
+  /* Bordered container. */
+  .box {
+    @apply rounded-(--radius-ui) border border-line bg-surface;
+  }
+
+  .box-header {
+    @apply flex min-h-11 items-center gap-3 border-b border-line bg-subtle px-4;
+  }
+
+  /* Section title inside a .box-header. */
+  .box-title {
+    @apply text-[13px] font-medium text-ink;
+  }
+
+  /* A padded container with an even hairline border on every side: the surface of a
+     single-purpose page (sign in, recovery, errors) set apart from the canvas. */
+  .card {
+    @apply rounded-(--radius-ui) border border-line-strong bg-surface p-5 sm:p-7;
+  }
+
+  /* Bordered square holding an icon or the logo, e.g. above a page title. */
+  .tile {
+    @apply grid size-10 shrink-0 place-items-center rounded-(--radius-ui) border border-line bg-surface text-ink;
+  }
+
+  /* Single-form pages: a narrow centred column with a heading, a .card and an aside. */
+  .auth-shell {
+    @apply mx-auto flex w-full max-w-[24rem] flex-col py-4 sm:py-12;
+  }
+
+  .auth-head {
+    @apply mb-6 flex flex-col items-center text-center;
+  }
+
+  .auth-title {
+    @apply mt-5 text-xl font-semibold tracking-tight text-balance;
+  }
+
+  .auth-lede {
+    @apply mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance;
+  }
+
+  /* The "Don't have an account? / Already have one?" line under an auth card. */
+  .auth-aside {
+    @apply mt-3 rounded-(--radius-ui) border border-line px-4 py-3.5 text-center text-[13px] text-ink-muted;
+  }
+
+  /* A list narrowed by an instant filter (assets/filter.js hides rows): the last row
+     still showing drops its divider so it never doubles the container's border. */
+  .filter-list > li:not([hidden]):not(:has(~ li:not([hidden]))) {
+    @apply border-b-0;
+  }
+
+  /* A neutral or success message; errors use the `form_error` macro. */
+  .notice {
+    @apply flex items-start gap-2.5 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2.5 text-[13px] text-ink-muted;
+  }
+
+  /* Buttons: 36px on touch screens, 32px from `sm` up. */
+  .btn {
+    @apply inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-(--radius-ui) border
+      border-line bg-surface px-3 text-[13px] font-medium text-ink transition-colors duration-100 select-none
+      hover:border-line-strong hover:bg-hover disabled:pointer-events-none disabled:opacity-50 sm:h-8;
+  }
+
+  .btn-primary {
+    @apply border-inverted bg-inverted text-inverted-ink hover:border-inverted-hover hover:bg-inverted-hover;
+  }
+
+  /* Destructive actions: red text and border, a faint red wash on hover. */
+  .btn-danger {
+    @apply border-danger/40 text-danger hover:border-danger hover:bg-danger-subtle;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-ink-muted hover:border-transparent hover:bg-hover hover:text-ink;
+  }
+
+  .btn-icon {
+    @apply w-9 px-0 sm:w-8;
+  }
+
+  .btn-lg {
+    @apply h-10 px-4 text-sm sm:h-10;
+  }
+
+  .input {
+    @apply block h-10 w-full rounded-(--radius-ui) border border-line-strong bg-surface px-3 text-sm text-ink transition-colors
+      duration-100 placeholder:text-ink-faint hover:border-ink-faint focus:border-ink focus:outline-none sm:h-9;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-ink;
+  }
+
+  .hint {
+    @apply mt-1.5 text-xs text-ink-faint;
+  }
+
+  .badge {
+    @apply inline-flex h-5 items-center gap-1 rounded-full border border-line px-2 text-[11px] font-medium text-ink-muted;
+  }
+
+  .link {
+    @apply text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink;
+  }
+
+  .kbd {
+    @apply rounded border border-line bg-subtle px-1.5 font-mono text-[11px] text-ink-muted;
+  }
+
+  /* Underline tabs (sub-navigation). */
+  .tab {
+    @apply relative inline-flex h-11 shrink-0 items-center gap-1.5 px-1 text-[13px] text-ink-muted transition-colors
+      duration-100 hover:text-ink;
+  }
+
+  .tab[aria-current="page"] {
+    @apply text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-ink;
+  }
+
+  /* Rows of a list or table inside a .box. */
+  /* Horizontally scrollable tab rows: no scrollbar, and on narrow screens a soft fade
+     at the right edge so cut-off tabs read as "more to scroll" rather than clipped. */
+  .scroll-tabs {
+    @apply overflow-x-auto;
+    scrollbar-width: none;
+  }
+
+  @media (width < 48rem) {
+    .scroll-tabs {
+      mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    }
+  }
+
+  .row {
+    @apply flex min-h-10 items-center gap-3 border-b border-line px-4 last:border-b-0;
+  }
+
+  .row-link {
+    @apply hover:bg-subtle;
+  }
+
+  .avatar {
+    @apply inline-flex shrink-0 select-none items-center justify-center rounded-full border border-line font-medium
+      uppercase leading-none;
+  }
+
+  /* Eight neutral avatar tones, chosen by account id or author email (views::components::Avatar).
+     Derived from the tokens, so every theme gets its own tinted greys. */
+  .avatar-0 { background: var(--hover); color: var(--ink); }
+  .avatar-1 { background: color-mix(in oklab, var(--ink) 12%, var(--surface)); color: var(--ink); }
+  .avatar-2 { background: color-mix(in oklab, var(--ink) 22%, var(--surface)); color: var(--ink); }
+  .avatar-3 { background: var(--inverted); color: var(--inverted-ink); }
+  .avatar-4 { background: color-mix(in oklab, var(--ink) 75%, var(--surface)); color: var(--inverted-ink); }
+  .avatar-5 { background: var(--subtle); color: var(--ink-muted); }
+  .avatar-6 { background: color-mix(in oklab, var(--ink) 88%, var(--surface)); color: var(--inverted-ink); }
+  .avatar-7 { background: var(--ink-muted); color: var(--surface); }
+
+  .menu {
+    @apply absolute z-40 mt-1.5 min-w-52 overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-1
+      shadow-[0_4px_16px_rgb(0_0_0/0.08)];
+  }
+
+  .menu-item {
+    @apply flex h-9 w-full items-center gap-2 rounded px-2.5 text-[13px] text-ink hover:bg-hover sm:h-8;
+  }
+
+  .menu-label {
+    @apply px-2.5 pb-1 pt-2 text-[11px] font-medium text-ink-faint;
+  }
+
+  .menu-divider {
+    @apply -mx-1 my-1 h-px bg-line;
+  }
+
+  /* <details> based dropdowns: no JavaScript required. */
+  details > summary {
+    list-style: none;
+  }
+
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Unified diff: old/new line numbers, then the line with its +/- sign. */
+  .diff-view {
+    @apply font-mono text-[12.5px] leading-5;
+    tab-size: 4;
+  }
+
+  .diff-view td.num {
+    @apply w-1 select-none px-2 text-right align-top text-ink-faint;
+  }
+
+  .diff-view td.num + td.num {
+    @apply pr-3;
+  }
+
+  .diff-view td.code {
+    @apply whitespace-pre pr-6;
+  }
+
+  .diff-view .sign {
+    @apply inline-block w-5 select-none pl-1.5 text-ink-faint;
+  }
+
+  .diff-view tr.diff-add {
+    background: color-mix(in oklab, var(--success) 11%, transparent);
+  }
+
+  .diff-view tr.diff-add .sign,
+  .diff-view tr.diff-add td.num {
+    color: var(--success);
+  }
+
+  .diff-view tr.diff-del {
+    background: color-mix(in oklab, var(--danger) 11%, transparent);
+  }
+
+  .diff-view tr.diff-del .sign,
+  .diff-view tr.diff-del td.num {
+    color: var(--danger);
+  }
+
+  .diff-view tr.diff-hunk td {
+    @apply bg-subtle py-1 text-ink-faint;
+  }
+
+  .diff-view tr.diff-eof td {
+    @apply text-[11px] text-ink-faint italic;
+  }
+
+  .diff-view tr.diff-hunk td.code {
+    @apply pl-1.5;
+  }
+
+  .prose-rbit {
+    @apply prose prose-sm max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold
+      prose-headings:tracking-tight prose-h1:text-2xl prose-h2:border-b prose-h2:border-line prose-h2:pb-2
+      prose-a:font-normal prose-a:underline-offset-4 prose-pre:rounded-(--radius-ui) prose-pre:border
+      prose-pre:border-line prose-pre:bg-subtle prose-pre:text-ink prose-code:font-normal prose-code:before:content-none
+      prose-code:after:content-none prose-img:inline prose-img:my-0;
+    --tw-prose-body: var(--ink);
+    --tw-prose-headings: var(--ink);
+    --tw-prose-bold: var(--ink);
+    --tw-prose-links: var(--ink);
+    --tw-prose-code: var(--ink);
+    --tw-prose-quotes: var(--ink-muted);
+    --tw-prose-quote-borders: var(--line-strong);
+    --tw-prose-hr: var(--line);
+    --tw-prose-bullets: var(--ink-faint);
+    --tw-prose-counters: var(--ink-faint);
+    --tw-prose-th-borders: var(--line-strong);
+    --tw-prose-td-borders: var(--line);
+  }
+
+  .prose-rbit :not(pre) > code {
+    @apply rounded border border-line bg-subtle px-1 py-0.5 text-[0.85em];
+  }
+
+  /* ------------------------------------------------ Issues and pull requests (wave B) */
+
+  /* Thread state, beside a title: open, closed, merged, draft. Colour only from tokens. */
+  .state-badge {
+    @apply inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap;
+  }
+
+  .state-badge-open {
+    border-color: color-mix(in oklab, var(--success) 45%, transparent);
+    background: color-mix(in oklab, var(--success) 9%, var(--surface));
+    color: var(--success);
+  }
+
+  .state-badge-closed {
+    @apply border-line bg-subtle text-ink-muted;
+  }
+
+  .state-badge-merged {
+    @apply border-inverted bg-inverted text-inverted-ink;
+  }
+
+  .state-badge-draft {
+    @apply border-dashed border-ink-faint bg-transparent text-ink-faint;
+  }
+
+  /* A label: ink on surface with the label's colour only as an SVG dot (`fill`), so it is
+     legible in every theme. */
+  .label-chip {
+    @apply inline-flex h-5 max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 text-[11px]
+      font-medium text-ink;
+  }
+
+  .label-chip > svg {
+    @apply size-2 shrink-0;
+  }
+
+  /* The conversation: items on a vertical rule. */
+  .timeline {
+    @apply relative flex flex-col gap-4;
+  }
+
+  .timeline::before {
+    content: "";
+    @apply absolute inset-y-0 left-4 w-px bg-line;
+  }
+
+  .timeline-item {
+    @apply relative flex min-w-0 gap-3;
+  }
+
+  /* A small event row ("alice added the bug label"): icon in a circle on the rule. */
+  .timeline-event {
+    @apply relative flex min-h-8 min-w-0 items-center gap-2 pl-1 text-[13px] text-ink-muted;
+  }
+
+  .timeline-badge {
+    @apply relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-line bg-canvas
+      text-ink-muted;
+  }
+
+  /* The unread indicator on the header's bell. */
+  .notification-dot {
+    @apply pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full border border-canvas bg-inverted;
+  }
+
+  /* A review comment thread inside a diff table row. */
+  .diff-comment {
+    @apply border-y border-line bg-subtle px-3 py-3 font-sans text-[13px] whitespace-normal text-ink;
+  }
+}
+
+/* ---------------------------------------------------------------- Syntax highlighting */
+
+.hl-comment { color: var(--syntax-comment); }
+.hl-string, .hl-markup.hl-raw { color: var(--syntax-string); }
+.hl-constant.hl-numeric, .hl-constant.hl-language, .hl-constant.hl-character { color: var(--syntax-number); }
+.hl-keyword, .hl-storage { color: var(--syntax-keyword); }
+.hl-entity.hl-name.hl-function, .hl-support.hl-function, .hl-meta.hl-function-call { color: var(--syntax-function); }
+.hl-entity.hl-name.hl-type, .hl-entity.hl-name.hl-class, .hl-support.hl-type, .hl-support.hl-class,
+.hl-storage.hl-type { color: var(--syntax-type); }
+.hl-entity.hl-name.hl-tag { color: var(--syntax-tag); }
+.hl-entity.hl-other.hl-attribute-name { color: var(--syntax-attribute); }
+.hl-markup.hl-heading { color: var(--ink); font-weight: 600; }
+.hl-markup.hl-bold { font-weight: 600; }
+.hl-markup.hl-italic { font-style: italic; }
+.hl-invalid { color: var(--danger); }
+
+/* ---------------------------------------------------------------- Scheme-dependent visibility */
+
+/* `.when-dark` / `.when-light` show content only in that colour scheme (e.g. theme menu icons).
+   `data-scheme` on <html> is the pinned theme's variant; without it the OS decides. */
+.when-dark { display: none; }
+:root[data-scheme="dark"] .when-dark { display: inline; }
+:root[data-scheme="dark"] .when-light { display: none; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-scheme]) .when-dark { display: inline; }
+  :root:not([data-scheme]) .when-light { display: none; }
+}
+
+/* ---------------------------------------------------------------- htmx progress bar */
+
+/* Shown while a navigation is in flight (`nav-busy` on <html>, set by nav.js) or while an
+   element using it as its hx-indicator is busy. It fades in only after 150 ms, so fast
+   (and preloaded) navigations show nothing at all, and it hides instantly. Fixed and
+   out of flow: it never shifts the layout. */
+#page-progress {
+  opacity: 0;
+  transition: opacity 0s;
+}
+
+.nav-busy #page-progress,
+#page-progress.htmx-request {
+  opacity: 1;
+  transition: opacity 0.2s ease-out 150ms;
+  animation: page-progress 1.1s ease-in-out infinite;
+}
+
+@keyframes page-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(400%); }
+}
+
+/* Focus moves to <main> after a navigation (for screen readers); no ring for that. */
+#main:focus {
+  outline: none;
+}
+
+/* ---------------------------------------------------------------- Diffs */
+
+/* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and
+   the file tree stick: just below the sticky top bar and tabs, whose height diff.js keeps
+   in `--header-height` (the fallback fits the bar plus repository tabs). */
+.diff-layout {
+  --diff-top: var(--header-height, 6.25rem);
+  --diff-tree-indent: 14px;
+}
+
+.diff-toolbar {
+  @apply mb-3 flex min-h-8 items-center gap-3;
+}
+
+.diff-columns {
+  @apply grid grid-cols-1 items-start gap-4;
+}
+
+/* The file tree: above the diffs on small screens once opened, a sticky column beside
+   them on large ones unless hidden (`data-sidebar` on the layout, set by diff.js). */
+.diff-sidebar {
+  @apply hidden max-h-80 min-h-0 flex-col overflow-hidden;
+}
+
+.diff-layout[data-sidebar-mobile="open"] .diff-sidebar {
+  @apply flex;
+}
+
+@media (width >= 64rem) {
+  .diff-columns.has-tree {
+    grid-template-columns: 16.5rem minmax(0, 1fr);
+  }
+
+  .diff-layout[data-sidebar="hidden"] .diff-columns.has-tree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .diff-sidebar {
+    @apply sticky flex;
+    top: calc(var(--diff-top) + 0.75rem);
+    max-height: calc(100dvh - var(--diff-top) - 1.5rem);
+  }
+
+  .diff-layout[data-sidebar="hidden"] .diff-sidebar {
+    @apply hidden;
+  }
+}
+
+.diff-filter {
+  @apply shrink-0 border-b border-line p-2;
+}
+
+.diff-filter-input {
+  @apply block h-8 w-full rounded-(--radius-ui) border border-line bg-surface pl-8 pr-12 text-[13px] text-ink
+    transition-colors placeholder:text-ink-faint hover:border-line-strong focus:border-ink focus:outline-none;
+}
+
+.diff-filter-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.diff-filter-count {
+  @apply pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 font-mono text-[11px] text-ink-faint tabular-nums;
+}
+
+.diff-tree {
+  @apply min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5;
+}
+
+.diff-tree-row[data-depth="1"] { --depth: 1; }
+.diff-tree-row[data-depth="2"] { --depth: 2; }
+.diff-tree-row[data-depth="3"] { --depth: 3; }
+.diff-tree-row[data-depth="4"] { --depth: 4; }
+.diff-tree-row[data-depth="5"] { --depth: 5; }
+.diff-tree-row[data-depth="6"] { --depth: 6; }
+.diff-tree-row[data-depth="7"] { --depth: 7; }
+.diff-tree-row[data-depth="8"] { --depth: 8; }
+.diff-tree-row[data-depth="9"] { --depth: 9; }
+.diff-tree-row:not([data-depth="0"], [data-depth="1"], [data-depth="2"], [data-depth="3"], [data-depth="4"],
+  [data-depth="5"], [data-depth="6"], [data-depth="7"], [data-depth="8"], [data-depth="9"]) { --depth: 10; }
+
+/* One row per folder or file. Indent guides run down from each ancestor folder's chevron. */
+.diff-tree-item {
+  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-colors
+    hover:bg-hover hover:text-ink;
+  padding-left: calc(0.375rem + var(--depth, 0) * var(--diff-tree-indent));
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 5.5px,
+    var(--line) 5.5px 6.5px,
+    transparent 6.5px var(--diff-tree-indent)
+  );
+  background-position: 0.375rem 0;
+  background-size: calc(var(--depth, 0) * var(--diff-tree-indent)) 100%;
+  background-repeat: no-repeat;
+}
+
+/* The file whose header is stuck at the top of the diffs. */
+.diff-tree-item[aria-current="true"] {
+  @apply bg-hover font-medium text-ink;
+}
+
+.diff-tree-chevron {
+  @apply rotate-90 transition-transform duration-150;
+}
+
+.diff-tree-closed,
+.diff-tree-item[aria-expanded="false"] .diff-tree-open {
+  @apply hidden;
+}
+
+.diff-tree-item[aria-expanded="false"] .diff-tree-closed {
+  @apply block;
+}
+
+.diff-tree-item[aria-expanded="false"] .diff-tree-chevron {
+  @apply rotate-0;
+}
+
+/* A file's change type: a small square in its status colour with a glyph inside. */
+.status-mark {
+  @apply grid size-3.5 shrink-0 place-items-center rounded-[3px] border font-mono text-[10px] leading-none font-bold;
+  border-color: color-mix(in oklab, currentColor 55%, transparent);
+  background: color-mix(in oklab, currentColor 10%, transparent);
+}
+
+.status-mark::before { content: "•"; }
+.status-added { color: var(--success); }
+.status-added::before { content: "+"; }
+.status-deleted { color: var(--danger); }
+.status-deleted::before { content: "−"; }
+.status-modified { color: var(--warning); }
+.status-renamed,
+.status-copied { color: var(--ink-muted); }
+.status-renamed::before { content: "→"; }
+.status-copied::before { content: "⧉"; font-weight: 400; }
+
+/* Each changed file. `clip` rather than `hidden` keeps the rounded corners without making
+   the box a scroll container, which would stop the header from sticking. Open files are
+   laid out only when scrolled near; `auto` remembers a file's real height once rendered
+   (only while open, so a collapsed file never keeps its expanded height). */
+.diff-file {
+  overflow: clip;
+  scroll-margin-top: var(--diff-top);
+}
+
+.diff-file[open] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 24rem;
+}
+
+.diff-file-header {
+  @apply sticky z-10 flex min-h-10 cursor-pointer select-none items-center gap-2.5 bg-subtle pl-3 pr-1.5
+    transition-colors hover:bg-hover;
+  top: var(--diff-top);
+}
+
+.diff-file[open] > .diff-file-header {
+  @apply border-b border-line;
+}
+
+.diff-file-action {
+  @apply inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded text-xs text-ink-muted transition-colors
+    hover:bg-canvas hover:text-ink;
+}
+
+.diff-file-action .copy-done,
+.diff-file-action[data-copied] .copy-idle {
+  @apply hidden;
+}
+
+.diff-file-action[data-copied] .copy-done {
+  @apply block;
+}
+
+/* Five blocks splitting the changed lines into additions and deletions. */
+.diffstat {
+  @apply hidden shrink-0 gap-px sm:flex;
+}
+
+.diffstat > span {
+  @apply size-2 rounded-[1px];
+}
+
+.diffstat-add { background: var(--success); }
+.diffstat-del { background: var(--danger); }
+.diffstat-none { background: var(--line-strong); }
+
+.diff-placeholder {
+  @apply px-4 py-6 text-center text-[13px] text-ink-muted;
+}
+
+/* ---------------------------------------------------------------- File viewer lines */
+
+/* One block per line (repo/blob.html). Lines off screen skip layout and paint until
+   scrolled near (`content-visibility`), so a file of thousands of lines appears as
+   fast as a short one, on a full load and on an htmx swap alike. */
+.code-lines {
+  @apply min-w-full py-3 font-mono text-[12.5px] leading-5;
+  width: max-content;
+  tab-size: 4;
+}
+
+.code-line {
+  display: flex;
+  min-height: 1.25rem;
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1.25rem;
+  /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
+  scroll-margin-top: 8rem;
+}
+
+.code-line:target {
+  @apply bg-hover;
+}
+
+/* Drawn from `data-line`, so it is never copied with the code; nav.js handles clicks. */
+.code-line .line-number {
+  @apply w-14 shrink-0 cursor-pointer select-none pr-3 text-right text-ink-faint;
+}
+
+.code-line .line-number::before {
+  content: attr(data-line);
+}
+
+.code-line .line-number:hover {
+  @apply text-ink;
+}
+
+.code-line .line-code {
+  @apply whitespace-pre pl-3 pr-6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A still bar across the whole width instead of a sweeping one. */
+  .nav-busy #page-progress,
+  #page-progress.htmx-request {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------- Themes */
+
+/* Header theme menu: a check marks the active built-in theme. */
+.theme-option[aria-pressed="false"] .theme-check { visibility: hidden; }
+
+/* Gallery variant filter: a small segmented control. */
+.theme-segment {
+  @apply inline-flex h-10 shrink-0 items-center gap-0.5 rounded-(--radius-ui) border border-line bg-surface p-0.5 sm:h-9;
+}
+
+.theme-segment a {
+  @apply inline-flex h-full items-center rounded px-3 text-[13px] text-ink-muted transition-colors duration-100 hover:text-ink;
+}
+
+.theme-segment a[aria-current] {
+  @apply bg-hover font-medium text-ink;
+}
+
+.theme-family + .theme-family { @apply mt-8; }
+
+.theme-family-title {
+  @apply mb-3 flex items-baseline gap-2 text-[13px] font-semibold tracking-tight text-ink;
+}
+
+.theme-family-title span { @apply text-[11px] font-normal text-ink-faint; }
+
+.theme-grid {
+  @apply grid gap-3;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+}
+
+@media (width >= 40rem) {
+  .theme-grid { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+}
+
+/* The frame belongs to the page's theme, everything inside to the card's own. Off-screen
+   cards skip layout and paint entirely, so hundreds of previews cost little. */
+.theme-item {
+  @apply rounded-(--radius-ui) border border-line transition-colors duration-100 hover:border-line-strong;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 8.25rem;
+}
+
+.theme-item:has([aria-pressed="true"]) {
+  @apply border-ink;
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.theme-item:has(:focus-visible) {
+  @apply outline-2 outline-offset-2 outline-ink;
+}
+
+.theme-card {
+  @apply block w-full cursor-pointer overflow-hidden rounded-[5px] bg-canvas text-left text-ink;
+}
+
+.theme-card:focus-visible { outline: none; }
+
+/* The live preview: a page, a bordered container with a header row, two lines of code, and
+   the scheme's accents. Text comes from `content` so each card stays a handful of nodes. */
+.tp { @apply block px-2.5 pt-2.5; }
+.tp i { font-style: normal; }
+
+.tp-box {
+  @apply block overflow-hidden rounded border border-line bg-surface font-mono text-[10px] leading-4;
+}
+
+.tp-h {
+  @apply flex h-5 items-center justify-between border-b border-line bg-subtle px-1.5 font-sans text-ink-muted;
+}
+
+.tp-h::before { content: "main.rs"; }
+
+.tp-h::after {
+  @apply rounded-sm bg-inverted px-1 text-[9px] font-medium leading-3.5 text-inverted-ink;
+  content: "Star";
+}
+
+.tp-a, .tp-b { @apply block overflow-hidden whitespace-pre px-1.5; }
+.tp-a { @apply pt-1; }
+.tp-b { @apply pb-1; }
+.tp-a::before { content: "fn "; color: var(--syntax-keyword); }
+.tp-a::after { content: "main()"; color: var(--syntax-function); }
+.tp-b::before { content: '  "hello"'; color: var(--syntax-string); }
+.tp-b::after { content: " // 42"; color: var(--syntax-comment); }
+
+.tp-sw {
+  @apply my-2.5 block h-1 rounded-full;
+  background: linear-gradient(90deg, var(--danger) 0 16.66%, var(--warning) 0 33.33%, var(--success) 0 50%,
+    var(--syntax-attribute) 0 66.66%, var(--syntax-function) 0 83.33%, var(--syntax-keyword) 0);
+}
+
+.theme-name {
+  @apply block truncate border-t border-line bg-surface px-2.5 py-2 text-xs font-medium;
+}
+
+.theme-card[aria-pressed="true"] .theme-name::before { content: "✓ "; }

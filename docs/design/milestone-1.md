@@ -1,6 +1,6 @@
 # Milestone 1 — Safe to self-host
 
-The working contract for hardening Rustit for real use. Five workstreams are built in
+The working contract for hardening Rbit for real use. Five workstreams are built in
 parallel, each on its **own branch in its own git worktree**, each owning a disjoint set of
 files. Shared registration points (services, stores, routes, views, crates, config
 sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
@@ -28,7 +28,7 @@ sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
   with filtering and pagination.
 
 ### E — Email & recovery
-- `rustit-mail` crate: a `Mailer` trait with SMTP (lettre, rustls) and log transports;
+- `rbit-mail` crate: a `Mailer` trait with SMTP (lettre, rustls) and log transports;
   messages rendered from Askama templates (text + HTML).
 - `[mail]` config: SMTP host/port/security (starttls, tls, none)/credentials, from address.
 - Password reset (`/password/forgot`, `/password/reset/{token}`): one-hour single-use
@@ -42,10 +42,10 @@ sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
 - With `transport = "disabled"`, every flow explains that email is unavailable.
 
 ### H — SSH
-- `rustit-ssh` crate (russh): public-key auth only; Ed25519 host key generated on first
+- `rbit-ssh` crate (russh): public-key auth only; Ed25519 host key generated on first
   start under the data directory; `git-upload-pack` / `git-receive-pack` exec requests
   (`'owner/repo.git'`, strictly parsed); bidirectional streaming to the git process
-  (non-stateless mode — extend `rustit-transport`); the same authorisation as HTTP;
+  (non-stateless mode — extend `rbit-transport`); the same authorisation as HTTP;
   `RepositoryPushed` on successful pushes; suspended users refused; `ThrottleScope::SshAuth`.
 - SSH keys (`/settings/keys`) and deploy keys (`/{owner}/{repo}/settings/keys`, read-only or
   read-write): OpenSSH format, Ed25519/ECDSA/RSA ≥ 2048/security keys, SHA256 fingerprints,
@@ -61,7 +61,7 @@ sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
   histograms, Git operations, job runs. `/metrics` in Prometheus format behind
   `[operations] metrics` and an optional bearer token. `/healthz` checks SQLite and redb
   (503 on failure).
-- `rustit backup --output DIR`: SQLite `VACUUM INTO`, repository copies, a manifest; restore
+- `rbit backup --output DIR`: SQLite `VACUUM INTO`, repository copies, a manifest; restore
   documented.
 - Deployment: multi-stage `Dockerfile` (non-root, `git` installed, healthcheck),
   `.dockerignore`, hardened systemd unit, example config, `docs/deployment.md` (reverse
@@ -72,7 +72,7 @@ sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
   and `apple-touch-icon`.
 
 ### T — End-to-end and compatibility tests
-- `rustit-e2e`: boot the full application on `127.0.0.1:0` with a temporary data directory;
+- `rbit-e2e`: boot the full application on `127.0.0.1:0` with a temporary data directory;
   drive it with an HTTP client (cookies, `Origin` header) and the real `git` CLI.
 - Flows: sign-up/first admin, sign-in/out, create/browse/rename/delete repositories,
   HTTP clone and push, private repositories invisible (web 404, Git 401/404), token scopes,
@@ -84,7 +84,7 @@ sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.
 ## Contracts (stable APIs other workstreams rely on)
 
 ```rust
-// rustit_services::throttle — S implements, E/H call.
+// rbit_services::throttle — S implements, E/H call.
 pub enum ThrottleScope { SignIn, SignUp, TwoFactor, EmailRequest, GitAuth, SshAuth }
 impl ThrottleService {
     pub fn check(&self, scope: ThrottleScope, key: &str) -> Result<(), ServiceError>; // RateLimited
@@ -92,7 +92,7 @@ impl ThrottleService {
     pub fn reset(&self, scope: ThrottleScope, key: &str);
 }
 
-// rustit_services::events — subscribe with `services.events.subscribe()`.
+// rbit_services::events — subscribe with `services.events.subscribe()`.
 pub enum DomainEvent {
     RepositoryPushed { repo: RepoId },                      // HTTP today; SSH adds
     UserSignedUp { user: AccountId },
@@ -116,35 +116,35 @@ pub enum DomainEvent {
 
 Stubs marked ★ already exist.
 
-**S** `rustit-core/src/config/security.rs`, `rustit-auth/src/**` (new `totp.rs`, …),
-`rustit-storage/src/kv/{sessions.rs,mod.rs}`, `rustit-storage/src/sqlite/{two_factor.rs★,audit.rs★,accounts.rs}`,
-`rustit-services/src/{throttle.rs★,two_factor.rs★,audit.rs★,accounts.rs,admin.rs,tokens.rs}`,
-`rustit-web/src/{client_ip.rs★,middleware.rs,extract.rs}`,
-`rustit-web/src/routes/{security.rs★,audit.rs★,auth.rs,git_http.rs}`, `rustit-web/src/views/{security.rs★,auth.rs}`,
+**S** `rbit-core/src/config/security.rs`, `rbit-auth/src/**` (new `totp.rs`, …),
+`rbit-storage/src/kv/{sessions.rs,mod.rs}`, `rbit-storage/src/sqlite/{two_factor.rs★,audit.rs★,accounts.rs}`,
+`rbit-services/src/{throttle.rs★,two_factor.rs★,audit.rs★,accounts.rs,admin.rs,tokens.rs}`,
+`rbit-web/src/{client_ip.rs★,middleware.rs,extract.rs}`,
+`rbit-web/src/routes/{security.rs★,audit.rs★,auth.rs,git_http.rs}`, `rbit-web/src/views/{security.rs★,auth.rs}`,
 `templates/auth/**`, `templates/settings/security.html`, `templates/admin/audit.html`.
 
-**E** `rustit-core/src/config/mail.rs`, `rustit-mail/**`★, `rustit-storage/src/sqlite/{recovery.rs★,profiles.rs}`,
-`rustit-services/src/{mail.rs★,recovery.rs★,profiles.rs}`,
-`rustit-web/src/routes/{recovery.rs★,settings.rs,admin.rs}`, `rustit-web/src/views/{recovery.rs★,settings.rs,admin.rs}`,
+**E** `rbit-core/src/config/mail.rs`, `rbit-mail/**`★, `rbit-storage/src/sqlite/{recovery.rs★,profiles.rs}`,
+`rbit-services/src/{mail.rs★,recovery.rs★,profiles.rs}`,
+`rbit-web/src/routes/{recovery.rs★,settings.rs,admin.rs}`, `rbit-web/src/views/{recovery.rs★,settings.rs,admin.rs}`,
 `templates/recovery/**`, `templates/settings/{account.html,profile.html}`, `templates/admin/{users.html,new_user.html}` (and new admin templates it adds).
 
-**H** `rustit-core/src/config/ssh.rs`, `rustit-ssh/**`★, `rustit-transport/**`,
-`rustit-storage/src/sqlite/ssh_keys.rs★`, `rustit-services/src/ssh_keys.rs★`,
-`rustit-web/src/routes/{ssh_keys.rs★,repo.rs}`, `rustit-web/src/views/{ssh_keys.rs★,repo.rs}`,
+**H** `rbit-core/src/config/ssh.rs`, `rbit-ssh/**`★, `rbit-transport/**`,
+`rbit-storage/src/sqlite/ssh_keys.rs★`, `rbit-services/src/ssh_keys.rs★`,
+`rbit-web/src/routes/{ssh_keys.rs★,repo.rs}`, `rbit-web/src/views/{ssh_keys.rs★,repo.rs}`,
 `templates/settings/keys.html`, `templates/repo/{subnav.html,empty.html,settings.html,deploy_keys.html}`,
-`rustit-server/src/ssh.rs★`.
+`rbit-server/src/ssh.rs★`.
 
-**O** `rustit-core/src/config/operations.rs`, `rustit-git/src/{lib.rs,maintenance.rs}`,
-`rustit-storage/src/kv/insights.rs`, `rustit-services/src/{jobs.rs★,repositories.rs,insights.rs}`,
-`rustit-web/src/{metrics.rs★,routes/ops.rs★,routes/pwa.rs}`, `templates/base.html`,
-`rustit-server/src/{backup.rs★,telemetry.rs}`, `Dockerfile`, `.dockerignore`, `deploy/**`,
-`docs/deployment.md`, `.github/**`, `scripts/**`, `package.json`, `crates/rustit-web/assets/*.png`.
+**O** `rbit-core/src/config/operations.rs`, `rbit-git/src/{lib.rs,maintenance.rs}`,
+`rbit-storage/src/kv/insights.rs`, `rbit-services/src/{jobs.rs★,repositories.rs,insights.rs}`,
+`rbit-web/src/{metrics.rs★,routes/ops.rs★,routes/pwa.rs}`, `templates/base.html`,
+`rbit-server/src/{backup.rs★,telemetry.rs}`, `Dockerfile`, `.dockerignore`, `deploy/**`,
+`docs/deployment.md`, `.github/**`, `scripts/**`, `package.json`, `crates/rbit-web/assets/*.png`.
 
-**T** `rustit-e2e/**`★ and new `tests/properties.rs` files in any crate (new files only).
+**T** `rbit-e2e/**`★ and new `tests/properties.rs` files in any crate (new files only).
 
-**Integrator (not a workstream):** `rustit-services/src/{lib.rs,events.rs,error.rs}`,
-`rustit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs}`, `rustit-web/src/{lib.rs,error.rs,routes/mod.rs,views/mod.rs}`,
-`rustit-server/src/{main.rs,cli.rs,serve.rs}`, `rustit-core/src/config/mod.rs`, `styles/app.css`,
+**Integrator (not a workstream):** `rbit-services/src/{lib.rs,events.rs,error.rs}`,
+`rbit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs}`, `rbit-web/src/{lib.rs,error.rs,routes/mod.rs,views/mod.rs}`,
+`rbit-server/src/{main.rs,cli.rs,serve.rs}`, `rbit-core/src/config/mod.rs`, `styles/app.css`,
 `templates/macros.html`, `docs/ARCHITECTURE.md`, `README.md`.
 
 **Cargo.toml (workspace):** add dependencies only inside your workstream's labelled block.

@@ -1,11 +1,11 @@
-# Rustit
+# Rbit
 
 A fast, self-hosted Git platform written in Rust — one binary, no external services.
 
 - **Axum + Askama + htmx**: compiled server-side templates, SPA-like navigation without a JS framework.
 - **SQLite + redb + bare Git repositories**: relational data, hot key/value data, and Git's own storage format.
 - **Git over HTTPS and SSH**: smart HTTP (protocol v2) and a built-in SSH server with user and deploy keys.
-- **Secure by default**: Argon2id passwords, TOTP two-factor authentication, rate limiting, hashed session
+- **Secure by default**: Argon2id passwords, two-factor authentication with passkeys or TOTP, rate limiting, hashed session
   and token secrets, strict CSP, origin-checked forms, an audit log.
 - **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
 - **Collaboration**: collaborators and organisation teams with read/write/admin permissions, repository transfer
@@ -58,10 +58,10 @@ curl -H "Authorization: Bearer rit_…" http://localhost:3000/api/v1/user
 
 ## Configuration
 
-Settings come from built-in defaults, then an optional TOML file (`--config rustit.toml`),
-then `RUSTIT_*` environment variables (nested keys use `__`, e.g.
-`RUSTIT_SERVER__PUBLIC_URL`). Every key is optional. A fully commented production example
-lives in [deploy/rustit.example.toml](deploy/rustit.example.toml).
+Settings come from built-in defaults, then an optional TOML file (`--config rbit.toml`),
+then `RBIT_*` environment variables (nested keys use `__`, e.g.
+`RBIT_SERVER__PUBLIC_URL`). Every key is optional. A fully commented production example
+lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 
 | Section | Purpose | Key settings |
 |---|---|---|
@@ -85,10 +85,10 @@ Settings**.
 
 | Command | Purpose |
 |---|---|
-| `rustit serve` | Run the web (and SSH, if enabled) server — the default |
-| `rustit migrate` | Apply database migrations and exit |
-| `rustit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, manifest) |
-| `rustit user create <name> <email> [--admin]` | Create an account (password read from stdin) |
+| `rbit serve` | Run the web (and SSH, if enabled) server — the default |
+| `rbit migrate` | Apply database migrations and exit |
+| `rbit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, manifest) |
+| `rbit user create <name> <email> [--admin]` | Create an account (password read from stdin) |
 
 ## Development
 
@@ -99,21 +99,21 @@ cargo clippy --workspace --all-targets # pedantic lints are enabled workspace-wi
 cargo fmt --all                        # rustfmt.toml pins the style
 ```
 
-The end-to-end suite (`crates/rustit-e2e`) boots real servers on ephemeral ports and drives
+The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports and drives
 them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH client.
 
 ## Workspace
 
 | Crate | Responsibility |
 |---|---|
-| `rustit-core` | Domain types, validated names, permissions, configuration |
-| `rustit-storage` | SQLite (sqlx) and redb persistence |
-| `rustit-auth` | Password hashing, session and token secrets, TOTP, access policy |
-| `rustit-git` | Repository storage, read model, diffs, blame, compare, archives, forks, mirrors, languages, maintenance (gitoxide) |
-| `rustit-transport` | Git smart protocol: stateless (HTTP) and interactive (SSH) modes |
-| `rustit-services` | Application use-cases, domain events, background jobs, webhook delivery |
-| `rustit-mail` | Email rendering and delivery (SMTP, log) |
-| `rustit-ssh` | Built-in SSH server for Git over SSH |
-| `rustit-web` | Routes, REST API, templates, themes, assets, metrics |
-| `rustit-server` | The `rustit` binary: CLI, configuration, backups |
-| `rustit-e2e` | End-to-end and Git compatibility tests (test-only) |
+| `rbit-core` | Domain types, validated names, permissions, configuration |
+| `rbit-storage` | SQLite (sqlx) and redb persistence |
+| `rbit-auth` | Password hashing, session and token secrets, TOTP, passkeys (WebAuthn), access policy |
+| `rbit-git` | Repository storage, read model, diffs, blame, compare, archives, forks, mirrors, languages, maintenance (gitoxide) |
+| `rbit-transport` | Git smart protocol: stateless (HTTP) and interactive (SSH) modes |
+| `rbit-services` | Application use-cases, domain events, background jobs, webhook delivery |
+| `rbit-mail` | Email rendering and delivery (SMTP, log) |
+| `rbit-ssh` | Built-in SSH server for Git over SSH |
+| `rbit-web` | Routes, REST API, templates, themes, assets, metrics |
+| `rbit-server` | The `rbit` binary: CLI, configuration, backups |
+| `rbit-e2e` | End-to-end and Git compatibility tests (test-only) |

@@ -1,0 +1,20 @@
+[package]
+name = "rbit-transport"
+description = "Git wire protocol (smart HTTP and SSH) for Rbit, independent of any web framework."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 #
-# Rustit container image: one static-ish binary plus `git`, running as an unprivileged user.
+# Rbit container image: one static-ish binary plus `git`, running as an unprivileged user.
 #
-#   docker build -t rustit .
-#   docker run -d --name rustit -p 3000:3000 -v rustit-data:/data \
-#     -e RUSTIT_SERVER__PUBLIC_URL=https://git.example.com rustit
+#   docker build -t rbit .
+#   docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \
+#     -e RBIT_SERVER__PUBLIC_URL=https://git.example.com rbit
 #
-# Configuration comes from RUSTIT_* environment variables or a TOML file mounted into the
-# container and passed with RUSTIT_CONFIG=/path/to/rustit.toml. See docs/deployment.md.
+# Configuration comes from RBIT_* environment variables or a TOML file mounted into the
+# container and passed with RBIT_CONFIG=/path/to/rbit.toml. See docs/deployment.md.
 
 ARG RUST_VERSION=1
 ARG NODE_VERSION=24
@@ -20,22 +20,22 @@ FROM node:${NODE_VERSION}-${DEBIAN_RELEASE}-slim AS assets
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts --no-audit --no-fund
-COPY crates/rustit-web/styles crates/rustit-web/styles
-COPY crates/rustit-web/templates crates/rustit-web/templates
-COPY crates/rustit-web/src crates/rustit-web/src
-RUN mkdir -p crates/rustit-web/assets && npm run build:css
+COPY crates/rbit-web/styles crates/rbit-web/styles
+COPY crates/rbit-web/templates crates/rbit-web/templates
+COPY crates/rbit-web/src crates/rbit-web/src
+RUN mkdir -p crates/rbit-web/assets && npm run build:css
 
 # ---------------------------------------------------------------- 2. release build
 FROM rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS build
 WORKDIR /src
 COPY . .
 # Assets are embedded into the binary at compile time, so the CSS must exist first.
-COPY --from=assets /src/crates/rustit-web/assets/app.css crates/rustit-web/assets/app.css
+COPY --from=assets /src/crates/rbit-web/assets/app.css crates/rbit-web/assets/app.css
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked --package rustit-server \
-    && install -D -m 0755 target/release/rustit /out/rustit
+    cargo build --release --locked --package rbit-server \
+    && install -D -m 0755 target/release/rbit /out/rbit
 
 # ---------------------------------------------------------------- 3. runtime
 FROM debian:${DEBIAN_RELEASE}-slim AS runtime
@@ -47,22 +47,22 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git tini curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system --gid 10001 rustit \
-    && useradd --system --uid 10001 --gid rustit --home-dir /data --shell /usr/sbin/nologin rustit \
-    && install -d -o rustit -g rustit -m 0750 /data
+RUN groupadd --system --gid 10001 rbit \
+    && useradd --system --uid 10001 --gid rbit --home-dir /data --shell /usr/sbin/nologin rbit \
+    && install -d -o rbit -g rbit -m 0750 /data
 
-COPY --from=build /out/rustit /usr/local/bin/rustit
+COPY --from=build /out/rbit /usr/local/bin/rbit
 
 # Both listeners bind every interface inside the container; publish them with -p. The SSH
-# server only starts with RUSTIT_SSH__ENABLED=true; its built-in default bind is loopback,
+# server only starts with RBIT_SSH__ENABLED=true; its built-in default bind is loopback,
 # which a published port cannot reach. NO_COLOR keeps `docker logs` free of ANSI escapes.
-ENV RUSTIT_SERVER__BIND=0.0.0.0:3000 \
-    RUSTIT_SSH__BIND=0.0.0.0:2222 \
-    RUSTIT_STORAGE__DATA_DIR=/data \
+ENV RBIT_SERVER__BIND=0.0.0.0:3000 \
+    RBIT_SSH__BIND=0.0.0.0:2222 \
+    RBIT_STORAGE__DATA_DIR=/data \
     RUST_LOG=info \
     NO_COLOR=1
 
-USER rustit:rustit
+USER rbit:rbit
 WORKDIR /data
 VOLUME ["/data"]
 # 3000: HTTP. 2222: the built-in SSH server, when [ssh] enabled = true.
@@ -74,5 +74,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["curl", "--fail", "--silent", "--show-error", "--max-time", "4", "http://127.0.0.1:3000/healthz"]
 
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/rustit"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/rbit"]
 CMD ["serve"]

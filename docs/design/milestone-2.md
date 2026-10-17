@@ -1,6 +1,6 @@
 # Milestone 2 — A real forge
 
-The working contract for the collaboration layer that makes Rustit competitive with
+The working contract for the collaboration layer that makes Rbit competitive with
 Gitea and Forgejo. It ships in two waves, because pull requests reuse the issue
 timeline and comments:
 
@@ -16,7 +16,7 @@ timeline and comments:
 
 1. People other than the owner can work on a repository with exactly the access they
    need — collaborators, organisation teams — and repositories can change hands.
-2. Rustit can be automated: a versioned, documented REST API and signed webhooks.
+2. Rbit can be automated: a versioned, documented REST API and signed webhooks.
 3. Repositories feel complete: working README links and images, downloads, releases,
    blame, branch comparison and forks.
 
@@ -41,7 +41,7 @@ explicit `ON DELETE` behaviour.
 
 ## Shared contracts (already on `main`)
 
-### Domain events (`rustit_services::events`)
+### Domain events (`rbit_services::events`)
 
 ```rust
 pub enum DomainEvent {
@@ -57,7 +57,7 @@ pub enum DomainEvent {
     EmailChanged { user: AccountId, previous: String },
 }
 
-// rustit_git::push (re-exported as rustit_services::events::RefUpdate)
+// rbit_git::push (re-exported as rbit_services::events::RefUpdate)
 pub struct RefUpdate { pub name: String /* refs/heads/main */, pub before: Option<String>, pub after: Option<String> }
 impl RefUpdate { fn is_created(); fn is_deleted(); fn branch() -> Option<&str>; fn tag() -> Option<&str> }
 impl RepositoryReader {
@@ -130,7 +130,7 @@ by the integrator from your report.
 
 ### Audit log and throttling
 
-Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
+Declared in `rbit-storage/src/sqlite/audit.rs` (category "Repository access"):
 `CollaboratorAdded`, `CollaboratorChanged`, `CollaboratorRemoved`, `TeamCreated`,
 `TeamChanged`, `TeamDeleted`, `RepositoryTransferred` (A); `WebhookCreated`,
 `WebhookChanged`, `WebhookDeleted` (W); `OrgPermissionChanged` (integration). Record them with
@@ -144,7 +144,7 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
 
 ### Scope
 
-1. **Permission levels.** `rustit_core::membership::Permission { Read, Write, Admin }`
+1. **Permission levels.** `rbit_core::membership::Permission { Read, Write, Admin }`
    with `as_str`/`parse`/`label`/`ALL` and `access() -> RepoAccess`. Used by
    collaborators, teams and the organisation base permission (`None | Read | Write`,
    stored as `none`/`read`/`write`).
@@ -162,7 +162,7 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
    repository's collaborators page also lists team grants (read-only, linking to the team).
 4. **Organisation base permission** (org settings): what every member gets on every
    organisation repository — `write` by default, which preserves today's behaviour.
-5. **Policy.** Extend `rustit_auth::policy::repo_access` to take what the caller looked up:
+5. **Policy.** Extend `rbit_auth::policy::repo_access` to take what the caller looked up:
 
    ```rust
    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -194,7 +194,7 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
    admin moves the repository to an organisation where they may create repositories
    (same rule as `owner_for_new_repository`) or to their own account; site admins may
    move it to any user or organisation. Confirm by typing `owner/name`. A name clash at
-   the target is a 422. Order: move the directory with `rustit_git::relocate`
+   the target is a 422. Order: move the directory with `rbit_git::relocate`
    (`<root>/<old owner>/<id>.git` → `<root>/<new owner>/<id>.git`, same filesystem
    rename, parent created), then update `owner_id` in a transaction that also drops team
    grants of the old organisation; if the database step fails, move the directory back.
@@ -221,22 +221,22 @@ Declared in `rustit-storage/src/sqlite/audit.rs` (category "Repository access"):
 
 Stubs marked ★ already exist on `main`.
 
-- core: `rustit-core/src/{membership.rs★,access.rs,org.rs}`
-- auth: `rustit-auth/src/policy.rs`
-- git: `rustit-git/src/relocate.rs★`
-- storage: `rustit-storage/src/sqlite/{collaborators.rs★,teams.rs★,repositories.rs,orgs.rs,stars.rs}`,
-  `rustit-storage/migrations/0009_*.sql`, new `rustit-storage/tests/{collaborators,teams}.rs`
-- services: `rustit-services/src/{collaborators.rs★,teams.rs★,transfers.rs★,repositories.rs,orgs.rs}`,
-  new `rustit-services/tests/{access,teams,transfers}.rs`, `rustit-services/tests/orgs.rs`
-- web: `rustit-web/src/routes/{collaborators.rs★,teams.rs★,transfer.rs★,orgs.rs}`,
-  `rustit-web/src/views/{collaborators.rs★,teams.rs★,transfer.rs★,org.rs}`,
-  `rustit-web/templates/org/**`, new `rustit-web/templates/access/**`
-- e2e: `rustit-e2e/tests/e2e/access.rs★`
+- core: `rbit-core/src/{membership.rs★,access.rs,org.rs}`
+- auth: `rbit-auth/src/policy.rs`
+- git: `rbit-git/src/relocate.rs★`
+- storage: `rbit-storage/src/sqlite/{collaborators.rs★,teams.rs★,repositories.rs,orgs.rs,stars.rs}`,
+  `rbit-storage/migrations/0009_*.sql`, new `rbit-storage/tests/{collaborators,teams}.rs`
+- services: `rbit-services/src/{collaborators.rs★,teams.rs★,transfers.rs★,repositories.rs,orgs.rs}`,
+  new `rbit-services/tests/{access,teams,transfers}.rs`, `rbit-services/tests/orgs.rs`
+- web: `rbit-web/src/routes/{collaborators.rs★,teams.rs★,transfer.rs★,orgs.rs}`,
+  `rbit-web/src/views/{collaborators.rs★,teams.rs★,transfer.rs★,org.rs}`,
+  `rbit-web/templates/org/**`, new `rbit-web/templates/access/**`
+- e2e: `rbit-e2e/tests/e2e/access.rs★`
 
 Keep on `main`'s promises: `RepositoryService::owner_for_new_repository` stays
 `pub(crate)` with today's semantics (R's forks call it); `create_in` keeps publishing
 `RepositoryCreated`; `OrgSettingsPage.cards` and `org_settings_cards` stay (W's link);
-do not add fields to `rustit_core::Repository`/`OwnedRepository` (they are built in many
+do not add fields to `rbit_core::Repository`/`OwnedRepository` (they are built in many
 tests across the workspace).
 
 ### Tests expected
@@ -307,8 +307,8 @@ still get 404/401, and after a transfer the repository clones from the new URL.
      `repository` (`created`, `deleted`, `transferred`), `release` (`published`),
      `fork`, `ping` (`zen`, `hook_id`, `hook`). Deleted repositories only reach
      organisation hooks.
-   - **Headers:** `User-Agent: Rustit-Hookshot/<version>`, `X-Rustit-Event`,
-     `X-Rustit-Delivery` (random id), `X-Rustit-Signature-256: sha256=<hex HMAC-SHA256 of
+   - **Headers:** `User-Agent: Rbit-Hookshot/<version>`, `X-Rbit-Event`,
+     `X-Rbit-Delivery` (random id), `X-Rbit-Signature-256: sha256=<hex HMAC-SHA256 of
      the body>` and the GitHub-compatible `X-GitHub-Event`, `X-GitHub-Delivery`,
      `X-Hub-Signature-256` when a secret is set.
    - **Delivery queue:** persisted in SQLite so restarts lose nothing. The event subscriber
@@ -328,7 +328,7 @@ still get 404/401, and after a transfer the repository clones from the new URL.
      deliveries with request headers/body and response, redeliver, ping. Monochrome; status
      colour only for success/failure badges.
    - Dependencies (W's blocks): `reqwest` is already in the workspace for tests; enable it
-     in `rustit-services/Cargo.toml` with `features = [...]` as needed. Prefer the `ring`
+     in `rbit-services/Cargo.toml` with `features = [...]` as needed. Prefer the `ring`
      rustls provider (as lettre and russh use) so Windows builds need no CMake/NASM;
      `hmac` and `sha2` are already workspace dependencies; `serde`/`serde_json` for payloads.
 
@@ -347,16 +347,16 @@ still get 404/401, and after a transfer the repository clones from the new URL.
 
 ### Files W owns
 
-- core: `rustit-core/src/{webhook.rs★,access_token.rs,config/api.rs★,config/webhooks.rs★}`
-- storage: `rustit-storage/src/sqlite/{webhooks.rs★,access_tokens.rs}`,
-  `rustit-storage/migrations/0011_*.sql`, `0012_*.sql`,
-  `rustit-storage/tests/access_tokens.rs`, new `rustit-storage/tests/webhooks.rs`
-- services: `rustit-services/src/{webhooks.rs★,tokens.rs}`, `rustit-services/tests/tokens.rs`,
-  new `rustit-services/tests/{webhooks,api}*.rs`
-- web: `rustit-web/src/routes/api/**★`, `rustit-web/src/routes/{webhooks.rs★,settings.rs}`,
-  `rustit-web/src/views/{webhooks.rs★,settings.rs}`, `rustit-web/templates/settings/tokens.html`,
-  new `rustit-web/templates/webhooks/**`
-- e2e: `rustit-e2e/tests/e2e/api.rs★`, `rustit-e2e/tests/e2e/tokens.rs`
+- core: `rbit-core/src/{webhook.rs★,access_token.rs,config/api.rs★,config/webhooks.rs★}`
+- storage: `rbit-storage/src/sqlite/{webhooks.rs★,access_tokens.rs}`,
+  `rbit-storage/migrations/0011_*.sql`, `0012_*.sql`,
+  `rbit-storage/tests/access_tokens.rs`, new `rbit-storage/tests/webhooks.rs`
+- services: `rbit-services/src/{webhooks.rs★,tokens.rs}`, `rbit-services/tests/tokens.rs`,
+  new `rbit-services/tests/{webhooks,api}*.rs`
+- web: `rbit-web/src/routes/api/**★`, `rbit-web/src/routes/{webhooks.rs★,settings.rs}`,
+  `rbit-web/src/views/{webhooks.rs★,settings.rs}`, `rbit-web/templates/settings/tokens.html`,
+  new `rbit-web/templates/webhooks/**`
+- e2e: `rbit-e2e/tests/e2e/api.rs★`, `rbit-e2e/tests/e2e/tokens.rs`
 
 `routes/settings.rs` and `views/settings.rs` hold the whole account settings area: change
 only the token parts and keep the rest byte-for-byte.
@@ -422,11 +422,11 @@ signed `push` delivery on a local listener and verify the HMAC.
    - Deleting an asset removes the row, then the file. On `RepositoryDeleted`,
      `ReleaseService`'s background task removes `<attachments_dir>/<repo_id>`; at start-up
      it sweeps `tmp/*.part` older than a day. Backups: report the needed change to
-     `rustit backup` (integrator).
+     `rbit backup` (integrator).
    - Needs the `multipart` feature of axum: R may change the `axum` line of
-     `rustit-web/Cargo.toml`.
+     `rbit-web/Cargo.toml`.
 5. **Blame:** `/{owner}/{repo}/blame/{rev}/{path}` using gitoxide's `blame` (R may add the
-   feature to `rustit-git/Cargo.toml`), bounded by file size and a time budget (fall back to
+   feature to `rbit-git/Cargo.toml`), bounded by file size and a time budget (fall back to
    a "too large to blame" notice); hunks show commit summary, author, relative date and
    link to the commit; a **Blame** button on the blob view.
 6. **Compare:** `/{owner}/{repo}/compare` (pick base and head) and
@@ -436,7 +436,7 @@ signed `push` delivery on a local listener and verify the HMAC.
 7. **Forks:** `POST /{owner}/{repo}/fork` (choose yourself or an organisation where
    `owner_for_new_repository` allows it; optional new name); any reader may fork. The fork
    keeps the parent's visibility (a private parent yields a private fork), description and
-   default branch. Disk: `rustit_git::fork` runs `git clone --bare --local` (hard links
+   default branch. Disk: `rbit_git::fork` runs `git clone --bare --local` (hard links
    are safe: objects are immutable) and keeps only branches and tags; on failure the row is
    removed. `repo_forks` remembers the parent; the header shows "forked from owner/name",
    the sub-navigation a fork button with count, `/{owner}/{repo}/forks` lists readable
@@ -448,7 +448,7 @@ signed `push` delivery on a local listener and verify the HMAC.
    only, scrubbed environment, `GIT_TERMINAL_PROMPT=0`, no credential helpers, only
    `https`/`http`, timeout, the same address checks as webhooks unless
    `allow_private_addresses`), report through `PushService` with `pusher: None`. Pushes to a
-   mirror must be refused — describe the change to `git_http.rs` / `rustit-ssh` in your
+   mirror must be refused — describe the change to `git_http.rs` / `rbit-ssh` in your
    report rather than editing them.
 
 ### Migrations
@@ -465,18 +465,18 @@ signed `push` delivery on a local listener and verify the HMAC.
 
 ### Files R owns
 
-- core: `rustit-core/src/{release.rs★,mirror.rs★,config/releases.rs★,config/mirrors.rs★}`
-- git: `rustit-git/src/{archive.rs★,blame.rs★,compare.rs★,fork.rs★,mirror.rs★,changes.rs,diff.rs,model.rs,reader.rs,revision.rs}`,
-  `rustit-git/Cargo.toml`, `rustit-git/tests/{changes.rs,storage.rs}` and new test files
-- storage: `rustit-storage/src/sqlite/{releases.rs★,forks.rs★,mirrors.rs★}`,
-  `rustit-storage/migrations/0013_*.sql`, `0014_*.sql`, `0015_*.sql`, new storage tests
-- services: `rustit-services/src/{releases.rs★,forks.rs★,mirrors.rs★,archives.rs★}`, new service tests
-- web: `rustit-web/src/routes/{archives.rs★,blame.rs★,compare.rs★,forks.rs★,mirrors.rs★,releases.rs★,repo.rs,history.rs,repo_create.rs}`,
-  `rustit-web/src/views/{blame.rs★,compare.rs★,forks.rs★,mirrors.rs★,releases.rs★,repo.rs,refs.rs,commit.rs}`,
-  `rustit-web/src/render/markdown.rs`, `rustit-web/src/urls.rs`,
-  `rustit-web/templates/repo/**` **except `settings.html`**, new `rustit-web/templates/releases/**`,
-  the `axum` line of `rustit-web/Cargo.toml`, `rustit-web/tests/properties.rs` (Markdown cases)
-- e2e: `rustit-e2e/tests/e2e/essentials.rs★`
+- core: `rbit-core/src/{release.rs★,mirror.rs★,config/releases.rs★,config/mirrors.rs★}`
+- git: `rbit-git/src/{archive.rs★,blame.rs★,compare.rs★,fork.rs★,mirror.rs★,changes.rs,diff.rs,model.rs,reader.rs,revision.rs}`,
+  `rbit-git/Cargo.toml`, `rbit-git/tests/{changes.rs,storage.rs}` and new test files
+- storage: `rbit-storage/src/sqlite/{releases.rs★,forks.rs★,mirrors.rs★}`,
+  `rbit-storage/migrations/0013_*.sql`, `0014_*.sql`, `0015_*.sql`, new storage tests
+- services: `rbit-services/src/{releases.rs★,forks.rs★,mirrors.rs★,archives.rs★}`, new service tests
+- web: `rbit-web/src/routes/{archives.rs★,blame.rs★,compare.rs★,forks.rs★,mirrors.rs★,releases.rs★,repo.rs,history.rs,repo_create.rs}`,
+  `rbit-web/src/views/{blame.rs★,compare.rs★,forks.rs★,mirrors.rs★,releases.rs★,repo.rs,refs.rs,commit.rs}`,
+  `rbit-web/src/render/markdown.rs`, `rbit-web/src/urls.rs`,
+  `rbit-web/templates/repo/**` **except `settings.html`**, new `rbit-web/templates/releases/**`,
+  the `axum` line of `rbit-web/Cargo.toml`, `rbit-web/tests/properties.rs` (Markdown cases)
+- e2e: `rbit-e2e/tests/e2e/essentials.rs★`
 
 `RepoHeader` derives `Default`, so adding fields to it (forks, releases) does not break
 other files' tests. `RepoPage::load`/`header()` are used by A's and W's pages: keep their
@@ -501,17 +501,17 @@ publish a release and see it on the Releases tab.
 **Ownership.** Edit only files you own (lists above) and new files inside your own
 directories. Shared crates' `Cargo.toml`: append only the lines you need, inside your
 labelled block in the workspace `Cargo.toml` for new crates. Integrator files —
-`rustit-services/src/{lib.rs,events.rs,error.rs,pushes.rs,jobs.rs,repo_settings.rs,admin.rs,audit.rs}`,
-`rustit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs,sqlite/audit.rs,sqlite/admin.rs}`,
-`rustit-git/src/{lib.rs,push.rs,storage.rs}`, `rustit-core/src/{lib.rs,names.rs,config/mod.rs}`,
-`rustit-web/src/{lib.rs,error.rs,extract.rs,middleware.rs,state.rs,routes/mod.rs,views/mod.rs,views/components.rs,views/layout.rs,views/repo_settings.rs,routes/repo_settings.rs,routes/git_http.rs}`,
-`rustit-web/templates/{base.html,macros.html,repo/settings.html}`, `rustit-web/styles/app.css`,
-`rustit-server/**`, `rustit-ssh/**`, `rustit-e2e/src/lib.rs`, `docs/**`, `README.md` — and
+`rbit-services/src/{lib.rs,events.rs,error.rs,pushes.rs,jobs.rs,repo_settings.rs,admin.rs,audit.rs}`,
+`rbit-storage/src/{lib.rs,sqlite/mod.rs,sqlite/rows.rs,sqlite/audit.rs,sqlite/admin.rs}`,
+`rbit-git/src/{lib.rs,push.rs,storage.rs}`, `rbit-core/src/{lib.rs,names.rs,config/mod.rs}`,
+`rbit-web/src/{lib.rs,error.rs,extract.rs,middleware.rs,state.rs,routes/mod.rs,views/mod.rs,views/components.rs,views/layout.rs,views/repo_settings.rs,routes/repo_settings.rs,routes/git_http.rs}`,
+`rbit-web/templates/{base.html,macros.html,repo/settings.html}`, `rbit-web/styles/app.css`,
+`rbit-server/**`, `rbit-ssh/**`, `rbit-e2e/src/lib.rs`, `docs/**`, `README.md` — and
 everything owned by the deployment work (`Dockerfile`, `.dockerignore`, `deploy/**`,
 `.github/**`, `CHANGELOG.md`, `docs/deployment.md`). Need a change there (a re-export, an
 icon, a CSS component, an e2e harness helper, a reserved name, a `ServiceError` variant)?
 **Describe the exact change in your final report**; work around it on your branch without
-editing the file (e.g. import by module path, `rustit_core::membership::Permission`).
+editing the file (e.g. import by module path, `rbit_core::membership::Permission`).
 
 **Engineering** (same as milestone 1): layering `web → services → (storage, git, auth) →
 core`; thin handlers, rules in services, SQL in stores, no logic in templates; validated
@@ -538,12 +538,12 @@ characters, blank line, body explaining what and why (wrapped at 72), trailer
 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Typical order: migration +
 store → service + tests → routes/views/templates → e2e. Never rewrite `main`, never merge
 other branches, never commit `assets/app.css`, `target/` or `data/`. A running dev server
-locks `target/debug/rustit.exe`: build with `CARGO_TARGET_DIR` set to a directory of your
+locks `target/debug/rbit.exe`: build with `CARGO_TARGET_DIR` set to a directory of your
 own if it is in use.
 
 **Final report.** Commits (one line each), what is done and what is not (stretch goals
 included), integration requests with exact changes, config fields added (for
-`deploy/rustit.example.toml`), and anything you decided that this contract left open.
+`deploy/rbit.example.toml`), and anything you decided that this contract left open.
 
 ## Integration (after each workstream)
 
@@ -551,7 +551,7 @@ Rebase the branch onto `main` inside its worktree (conflicts are expected only i
 `Cargo.lock` — take `main`'s and run `cargo metadata` — and in `Cargo.toml` dependency
 lists — keep both), run the full gate, fast-forward `main`, remove the worktree, then
 apply the integration requests as separate small commits. After all three: verify an
-upgrade from a milestone 1 database through `0015`, extend `rustit backup` with the
+upgrade from a milestone 1 database through `0015`, extend `rbit backup` with the
 attachments directory, update `docs/ARCHITECTURE.md` (schema, routes, events) and the
 example configuration.
 

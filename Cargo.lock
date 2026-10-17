@@ -4145,6 +4145,217 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-auth"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "base64 0.23.1",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "hmac",
+ "p256",
+ "rbit-core",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha1 0.11.0",
+ "sha2 0.11.1",
+ "subtle",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "rbit-core"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "rbit-e2e"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "hmac",
+ "rbit-core",
+ "rbit-services",
+ "rbit-storage",
+ "rbit-web",
+ "reqwest",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "rbit-git"
+version = "0.1.0"
+dependencies = [
+ "async-compression",
+ "gix",
+ "proptest",
+ "rbit-core",
+ "similar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-mail"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "lettre",
+ "rbit-core",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "figment",
+ "mimalloc",
+ "rbit-core",
+ "rbit-git",
+ "rbit-services",
+ "rbit-ssh",
+ "rbit-storage",
+ "rbit-web",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "rbit-services"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.4.3",
+ "hmac",
+ "metrics",
+ "p256",
+ "percent-encoding",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-mail",
+ "rbit-storage",
+ "reqwest",
+ "rustls",
+ "serde_json",
+ "sha2 0.11.1",
+ "ssh-key",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-ssh"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "rbit-core",
+ "rbit-services",
+ "rbit-storage",
+ "rbit-transport",
+ "russh",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-storage"
+version = "0.1.0"
+dependencies = [
+ "postcard",
+ "rbit-core",
+ "redb",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-transport"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rbit-core",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "rbit-web"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "askama",
+ "askama_web",
+ "async-compression",
+ "axum",
+ "axum-extra",
+ "base64 0.23.1",
+ "futures-util",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "mime_guess",
+ "percent-encoding",
+ "proptest",
+ "pulldown-cmark",
+ "qrcode",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-services",
+ "rbit-storage",
+ "rbit-transport",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "syntect",
+ "tempfile",
+ "thiserror",
+ "time",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+]
+
+[[package]]
 name = "redb"
 version = "4.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4405,210 +4616,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
-]
-
-[[package]]
-name = "rustit-auth"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "base64 0.23.1",
- "getrandom 0.4.3",
- "hmac",
- "rustit-core",
- "sha1 0.11.0",
- "sha2 0.11.1",
- "subtle",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "rustit-core"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "serde",
- "serde_json",
- "thiserror",
- "time",
-]
-
-[[package]]
-name = "rustit-e2e"
-version = "0.1.0"
-dependencies = [
- "axum",
- "hmac",
- "reqwest",
- "rustit-core",
- "rustit-services",
- "rustit-storage",
- "rustit-web",
- "serde_json",
- "sha2 0.11.1",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "rustit-git"
-version = "0.1.0"
-dependencies = [
- "async-compression",
- "gix",
- "proptest",
- "rustit-core",
- "similar",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "rustit-mail"
-version = "0.1.0"
-dependencies = [
- "askama",
- "lettre",
- "rustit-core",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "rustit-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "figment",
- "mimalloc",
- "rustit-core",
- "rustit-git",
- "rustit-services",
- "rustit-ssh",
- "rustit-storage",
- "rustit-web",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "time",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "rustit-services"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.4.3",
- "hmac",
- "metrics",
- "percent-encoding",
- "reqwest",
- "rustit-auth",
- "rustit-core",
- "rustit-git",
- "rustit-mail",
- "rustit-storage",
- "rustls",
- "serde_json",
- "sha2 0.11.1",
- "ssh-key",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "rustit-ssh"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.4.3",
- "russh",
- "rustit-core",
- "rustit-services",
- "rustit-storage",
- "rustit-transport",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "rustit-storage"
-version = "0.1.0"
-dependencies = [
- "postcard",
- "redb",
- "rustit-core",
- "serde",
- "sqlx",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "rustit-transport"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "rustit-core",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "rustit-web"
-version = "0.1.0"
-dependencies = [
- "ammonia",
- "askama",
- "askama_web",
- "async-compression",
- "axum",
- "axum-extra",
- "base64 0.23.1",
- "futures-util",
- "metrics",
- "metrics-exporter-prometheus",
- "mime_guess",
- "percent-encoding",
- "proptest",
- "pulldown-cmark",
- "qrcode",
- "rust-embed",
- "rustit-auth",
- "rustit-core",
- "rustit-git",
- "rustit-services",
- "rustit-storage",
- "rustit-transport",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "syntect",
- "tempfile",
- "thiserror",
- "time",
- "tokio",
- "tokio-util",
- "tower",
- "tower-http 0.7.1",
- "tracing",
 ]
 
 [[package]]

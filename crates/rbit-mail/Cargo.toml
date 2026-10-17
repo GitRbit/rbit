@@ -1,0 +1,21 @@
+[package]
+name = "rbit-mail"
+description = "Outgoing email: message rendering and delivery transports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+askama.workspace = true
+lettre.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[lints]
+workspace = true

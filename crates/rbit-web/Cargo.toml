@@ -1,0 +1,51 @@
+[package]
+name = "rbit-web"
+description = "The Rbit web application: Axum routes, Askama templates, HTMX, and embedded assets."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+rbit-auth.workspace = true
+rbit-git.workspace = true
+rbit-services.workspace = true
+rbit-transport.workspace = true
+
+axum = { workspace = true, features = ["multipart"] }
+axum-extra.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+futures-util.workspace = true
+async-compression.workspace = true
+
+askama.workspace = true
+askama_web.workspace = true
+pulldown-cmark.workspace = true
+ammonia.workspace = true
+syntect.workspace = true
+rust-embed.workspace = true
+mime_guess.workspace = true
+percent-encoding.workspace = true
+qrcode.workspace = true
+
+base64.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rbit-storage.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

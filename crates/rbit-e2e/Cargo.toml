@@ -1,0 +1,30 @@
+[package]
+name = "rbit-e2e"
+description = "End-to-end and Git compatibility tests: a real server, a real HTTP client and the real git CLI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# The harness in `src/lib.rs` is only used by this crate's tests, but it lives in the
+# library so every test module shares one copy; hence regular dependencies.
+[dependencies]
+rbit-core.workspace = true
+rbit-services.workspace = true
+rbit-storage.workspace = true
+rbit-web.workspace = true
+axum.workspace = true
+reqwest = { workspace = true, features = ["multipart"] }
+tokio.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+# W: API responses and verifying webhook signatures independently of the server's code.
+serde_json.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

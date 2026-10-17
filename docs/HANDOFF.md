@@ -1,4 +1,4 @@
-# Rustit — Handoff
+# Rbit — Handoff
 
 **As of 2026-10-16, `main` @ `208ee4f` (plus the documentation and upgrade-test commits
 on top).** Everything below is what the next person (or agent team) needs to pick this up
@@ -26,10 +26,10 @@ npm ci && npm run build         # vendored htmx + Tailwind CSS
 
 Verified by hand: a copy of a real milestone 1 database (migrations `0001`–`0008`, with
 users, an organisation, repositories, an SSH key and audit entries) migrated with
-`rustit migrate` through `0016` — integrity and foreign-key checks clean, organisation
+`rbit migrate` through `0016` — integrity and foreign-key checks clean, organisation
 base permission `write`, all triggers present — and the server then served the
 repositories, the organisation, releases, archives and the API from it.
-`crates/rustit-storage/tests/upgrade.rs` repeats that upgrade on every test run. Earlier
+`crates/rbit-storage/tests/upgrade.rs` repeats that upgrade on every test run. Earlier
 (milestone 1): SSH key added in the UI then `ssh -T`/clone/push/re-clone with OpenSSH,
 password-reset email (log transport), security settings, audit log, `/healthz`,
 `/readyz`, `/metrics`; the Docker image and the systemd unit were run (see `5635638`).
@@ -61,19 +61,19 @@ cargo run                              # http://localhost:3000, data in ./data (
 ```
 
 The first account created becomes the site administrator. Useful development switches
-(environment variables override `rustit.toml`):
+(environment variables override `rbit.toml`):
 
 ```bash
-RUSTIT_MAIL__TRANSPORT=log             # print emails (reset/verify links) to the log
-RUSTIT_SSH__ENABLED=true RUSTIT_SSH__PUBLIC_HOST=localhost RUSTIT_SSH__PUBLIC_PORT=2222
-RUSTIT_OPERATIONS__METRICS=true        # expose /metrics
-RUSTIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true   # deliver webhooks to a local listener
-RUSTIT_MIRRORS__ALLOW_PRIVATE_ADDRESSES=true    # mirror from a local Git server
+RBIT_MAIL__TRANSPORT=log             # print emails (reset/verify links) to the log
+RBIT_SSH__ENABLED=true RBIT_SSH__PUBLIC_HOST=localhost RBIT_SSH__PUBLIC_PORT=2222
+RBIT_OPERATIONS__METRICS=true        # expose /metrics
+RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true   # deliver webhooks to a local listener
+RBIT_MIRRORS__ALLOW_PRIVATE_ADDRESSES=true    # mirror from a local Git server
 ```
 
-Create accounts from the CLI with `rustit user create <name> <email> [--admin]` (password
+Create accounts from the CLI with `rbit user create <name> <email> [--admin]` (password
 on stdin). Production setup: [deployment.md](deployment.md) and
-[`deploy/rustit.example.toml`](../deploy/rustit.example.toml).
+[`deploy/rbit.example.toml`](../deploy/rbit.example.toml).
 
 ## 4. How this codebase is worked on
 
@@ -127,11 +127,11 @@ and webhooks, security model, design system), then [design/milestone-2.md](desig
   commit. Long Python heredocs can break the Bash tool — write scripts to the scratchpad.
 - Tests that build fixtures use the real `git` CLI; SSH tests need the OpenSSH client and
   skip without it. Argon2 is slow in debug builds — sign in sparingly in e2e tests.
-- A running dev server locks `target/debug/rustit.exe`; stop it before `cargo build`.
+- A running dev server locks `target/debug/rbit.exe`; stop it before `cargo build`.
 
 ## 5. Next: Milestone 2 wave B — issues, pull requests, branch protection
 
-Goal: the collaboration layer that makes Rustit competitive with Gitea/Forgejo, in two
+Goal: the collaboration layer that makes Rbit competitive with Gitea/Forgejo, in two
 waves because pull requests reuse the issue timeline and comments.
 
 **Wave A is done** ([design/milestone-2.md](design/milestone-2.md)), merged and integrated:
@@ -139,11 +139,11 @@ waves because pull requests reuse the issue timeline and comments.
 | Workstream | Delivered |
 |---|---|
 | **Access** | `Permission`/`BasePermission`, collaborators, teams, organisation base permission (default `write`), the exhaustive `repo_access(viewer, repo, &Grants)` policy and one readable-by SQL predicate, repository transfer; integration: old-name redirects (`0016`), a Leave button for collaborators, audited base-permission changes. |
-| **API & webhooks** | `/api/v1` (token scopes incl. `admin`, pagination, JSON errors, throttling, OpenAPI from one route table), repository and organisation webhooks with HMAC signatures, a SQLite delivery queue with backoff, a delivery log and redelivery, the shared internal-address classifier (`rustit_core::network`). |
-| **Repository essentials** | Markdown relative links and images, archives, blame, compare, releases with uploads and downloads, forks, pull mirrors (pushes refused over HTTP and SSH); integration: release files in `rustit backup` (format 2). |
+| **API & webhooks** | `/api/v1` (token scopes incl. `admin`, pagination, JSON errors, throttling, OpenAPI from one route table), repository and organisation webhooks with HMAC signatures, a SQLite delivery queue with backoff, a delivery log and redelivery, the shared internal-address classifier (`rbit_core::network`). |
+| **Repository essentials** | Markdown relative links and images, archives, blame, compare, releases with uploads and downloads, forks, pull mirrors (pushes refused over HTTP and SSH); integration: release files in `rbit backup` (format 2). |
 
 Migrations `0009`–`0016` are on `main` and covered by the upgrade test
-(`crates/rustit-storage/tests/upgrade.rs`); [ARCHITECTURE.md](ARCHITECTURE.md) documents the
+(`crates/rbit-storage/tests/upgrade.rs`); [ARCHITECTURE.md](ARCHITECTURE.md) documents the
 schema, routes, events, API and webhooks.
 
 **Wave B** ([design/milestone-2b.md](design/milestone-2b.md)) — read its sequencing first:

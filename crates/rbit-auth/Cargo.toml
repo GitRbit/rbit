@@ -1,0 +1,27 @@
+[package]
+name = "rbit-auth"
+description = "Authentication primitives for Rbit: Argon2id password hashing, session tokens and access policy."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+argon2.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+base64.workspace = true
+subtle.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+p256.workspace = true
+ed25519-dalek.workspace = true
+rsa.workspace = true
+
+[lints]
+workspace = true

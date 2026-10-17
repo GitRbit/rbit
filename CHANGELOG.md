@@ -1,23 +1,77 @@
 # Changelog
 
-All notable changes to Rustit are documented in this file.
+All notable changes to Rbit are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Passkeys for two-factor authentication
+
+Passkeys and hardware security keys (WebAuthn) can now be used as a second factor, on
+their own or next to an authenticator app. Add them under **Settings → Security**; the
+second sign-in step then offers **Use a passkey** as well as the code field.
+
+- Supported: platform passkeys (Apple, Google, Windows Hello, password managers) and FIDO2
+  security keys, with ES256, EdDSA or RS256 keys. No attestation is requested.
+- Recovery codes now belong to the account rather than to the authenticator app: they are
+  issued with the first factor (passkey or app) and deleted with the last one. Removing the
+  authenticator app keeps two-factor authentication on while passkeys remain.
+- Removing a passkey or the app, and generating new recovery codes, need the password plus
+  an authenticator code, a recovery code or a passkey.
+- New audit actions: "Added a passkey", "Removed a passkey".
+- `/settings/security` and `/login/two-factor` are no longer preloaded on hover, since
+  they issue single-use challenges.
+
+#### Upgrade notes
+
+- Migration `0032_passkeys` adds the `passkeys` table.
+- Passkeys are bound to the host of `server.public_url` and only work when the site is
+  opened at exactly that origin (scheme, host and port). Set it correctly before users
+  register passkeys: changing the host later invalidates them.
+
+### Renamed to Rbit
+
+The project, its crates and its binary (`rbit`) are now called Rbit. The footer shows how
+long the server took for each page, and keeps the figure current across htmx swaps (it is
+also sent as a `Server-Timing` header).
+
+#### Upgrade notes
+
+- Existing installations keep working unchanged: `rustit.db` and `rustit.redb` are used
+  when `rbit.db` / `rbit.redb` do not exist, `RUSTIT_*` environment variables (including
+  `RUSTIT_CONFIG`) are still read with `RBIT_*` taking precedence, and the
+  `rustit_session` and `rustit-theme` cookies are still accepted, so nobody is signed out.
+  Rename the files and variables at your convenience.
+- **Breaking for integrations:** webhook headers are now `X-Rbit-Event`,
+  `X-Rbit-Delivery`, `X-Rbit-Hook-Id` and `X-Rbit-Signature-256` (`X-Hub-Signature-256`
+  is unchanged), the user agent is `Rbit-Hookshot/…`, and Prometheus metrics are prefixed
+  `rbit_` instead of `rustit_`.
+- The systemd unit is now `deploy/rbit.service` and the example config
+  `deploy/rbit.example.toml`.
+
+### Diff view
+
+- Commit and compare pages show the changed files as a folder tree beside the diffs, with
+  a filter, the file being read marked as you scroll, and a button to hide it (remembered
+  per browser). Diffs are listed in the tree's order.
+- File headers stick below the top bar while their diff scrolls past and collapse in
+  place; Alt-click or **Collapse all** toggles every file. Each header shows the change
+  type, a copy-path button and a change bar.
+- Scrollbars are thin and follow the active theme's colours.
+
 ### Milestone 2 — wave A
 
 The collaboration layer, first half: other people can work on a repository with exactly
-the access they need, Rustit can be automated through a REST API and signed webhooks, and
+the access they need, Rbit can be automated through a REST API and signed webhooks, and
 repositories gain downloads, releases, blame, comparison, forks and mirrors. Issues, pull
 requests and branch protection follow in wave B.
 
 #### Upgrade notes
 
 - Database migrations `0009_access` through `0016_repo_redirects` run automatically at
-  start-up (or explicitly with `rustit migrate`, which now also works while the server is
+  start-up (or explicitly with `rbit migrate`, which now also works while the server is
   running). Take a backup first; migrations only move forward. They were tested against a
   milestone 1 database: every row is kept. `0012_token_scopes` rebuilds the
   `access_tokens` table to allow the new `admin` scope, copying every token with its id,
@@ -27,15 +81,15 @@ requests and branch protection follow in wave B.
   milestone 1 behaviour. Owners can lower it to `read` or `none` under the organisation's
   settings and grant access through teams instead.
 - **Nobody is signed out** by this upgrade.
-- **Backups use format 2.** `rustit backup` now also copies release files into
+- **Backups use format 2.** `rbit backup` now also copies release files into
   `attachments/` and writes `"format": 2` to `manifest.json`. When restoring, copy
-  `attachments/` along with `rustit.db` and `repositories/` (see
+  `attachments/` along with `rbit.db` and `repositories/` (see
   [docs/deployment.md](docs/deployment.md#backups)). Backups in format 1 restore as before.
 - New data directory: `<data_dir>/attachments` holds release files (uploads in progress
   in `attachments/tmp`). It is created on demand; back it up with the rest of the data
   directory (the backup command does).
 - New configuration sections `[api]`, `[webhooks]`, `[releases]` and `[mirrors]`; every key
-  is optional and documented in [deploy/rustit.example.toml](deploy/rustit.example.toml).
+  is optional and documented in [deploy/rbit.example.toml](deploy/rbit.example.toml).
   The REST API is on by default (`[api] enabled = false` turns it off).
 - Webhooks and pull mirrors make **outbound** HTTP(S) requests. Internal addresses
   (loopback, private, link-local, …) are refused unless `allow_private_addresses` is set
@@ -68,7 +122,7 @@ requests and branch protection follow in wave B.
 - **Webhooks** for repositories and organisations (`push`, `repository`, `release`, `fork`,
   `ping`) with GitHub-compatible payloads and headers, HMAC-SHA256 signatures, a persistent
   delivery queue with retries and exponential backoff, a delivery log with redelivery, and
-  the metric `rustit_webhook_attempts_total{outcome}`.
+  the metric `rbit_webhook_attempts_total{outcome}`.
 - **Archives**: download any revision as `.zip` or `.tar.gz` (Clone menu, tags, releases).
 - **Releases** with Markdown notes, draft and pre-release flags, a Releases tab and the
   latest release in the sidebar; a release can create its tag from a branch. **Release
@@ -84,7 +138,7 @@ requests and branch protection follow in wave B.
   dark themes and ~500 tinted-theming schemes, applied without a flash and remembered
   per account.
 - A redesigned landing page and dashboard with public instance statistics, live search on
-  Explore, and the Rustit version in the footer.
+  Explore, and the Rbit version in the footer.
 
 #### Changed
 
@@ -93,7 +147,7 @@ requests and branch protection follow in wave B.
   before the upgrade keep their milestone 1 access.
 - Repository deletion and transfer are recorded with the person who did it; changing an
   organisation's base permission is audited.
-- `rustit user create` and `rustit migrate` no longer need the server to be stopped.
+- `rbit user create` and `rbit migrate` no longer need the server to be stopped.
 - Logs are plain text (no ANSI colours) when standard output is not a terminal.
 - Sign-in, recovery and error pages are drawn as bordered cards.
 
@@ -128,7 +182,7 @@ administration panel).
   created by earlier builds are not carried over, so after upgrading every user signs in
   again. Nothing else is lost: accounts, repositories, tokens and settings live in SQLite.
 - Database migrations `0006_security`, `0007_email` and `0008_ssh_keys` run automatically
-  at start-up (or explicitly with `rustit migrate`). Take a backup first; migrations only
+  at start-up (or explicitly with `rbit migrate`). Take a backup first; migrations only
   move forward.
 - Behind a reverse proxy, set `[security] trusted_proxies` to the proxy's address.
   Without it every request appears to come from the proxy, so per-IP rate limits and the
@@ -162,11 +216,11 @@ administration panel).
   HTTP requests and latency, Git operations, job runs, cache size.
 - **Health checks**: `/healthz` (SQLite and redb) and `/readyz` (also the repository
   directory), answering `503` on failure.
-- **Backups**: `rustit backup --output DIR` writes a consistent SQLite snapshot, a mirror of
+- **Backups**: `rbit backup --output DIR` writes a consistent SQLite snapshot, a mirror of
   every repository and a manifest while the server keeps running. Restore is documented.
 - **Deployment**: a multi-stage `Dockerfile` (non-root, `git` included, health check), a
   hardened systemd unit, a commented production configuration
-  (`deploy/rustit.example.toml`) and [docs/deployment.md](docs/deployment.md) covering
+  (`deploy/rbit.example.toml`) and [docs/deployment.md](docs/deployment.md) covering
   Caddy, nginx, TLS, backups and upgrades.
 - **Continuous integration**: formatting, Clippy with warnings denied, tests on Linux and
   Windows, the front-end build and a release build.

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  {% include "repo/ref_switcher.html" %}
+  {% include "repo/breadcrumbs.html" %}
+</div>
+
+<section class="box overflow-hidden" aria-label="{{ file_name }}">
+  {% include "repo/latest_commit.html" %}
+
+  <div class="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-1.5 text-xs text-ink-muted">
+    {% if let Some(lines) = line_count %}<span>{{ lines }} lines</span><span class="h-3 w-px bg-line-strong"></span>{% endif %}
+    <span>{{ size }}</span>
+    {% if let Some(language) = language %}<span class="h-3 w-px bg-line-strong"></span><span>{{ language }}</span>{% endif %}
+    <div class="ml-auto flex">
+      {% if line_count.is_some() %}<a href="{{ blame_url }}" class="btn -mr-px h-7 rounded-r-none px-2.5 text-xs sm:h-7">Blame</a>{% endif %}
+      <a href="{{ raw_url }}" class="btn h-7 {% if line_count.is_some() %}rounded-none{% else %}rounded-r-none{% endif %} px-2.5 text-xs sm:h-7" hx-boost="false">Raw</a>
+      <a href="{{ raw_url }}" download="{{ file_name }}" class="btn btn-icon -ml-px h-7 w-7 rounded-l-none sm:h-7 sm:w-7" hx-boost="false" aria-label="Download" title="Download">{% call ui::icon("download", "size-3.5") %}{% endcall %}</a>
+    </div>
+  </div>
+
+  {% match content %}
+  {% when BlobContent::Code(lines) %}
+  {#- One block per line rather than a table, so lines off screen skip layout
+      (`content-visibility`, see app.css); a long file lays out as fast as a short one.
+      No <a> per line either: the number is drawn by CSS from `data-line` (never copied
+      with the code) and nav.js turns a click into `#L…`. -#}
+  <div class="overflow-x-auto">
+    <div class="code-lines">
+      {%- for line in lines %}
+      <div class="code-line" id="L{{ loop.index }}"><span class="line-number" data-line="{{ loop.index }}"></span><span class="line-code">{{ line|safe }}</span></div>
+      {%- endfor %}
+    </div>
+  </div>
+  {% when BlobContent::Markdown(html) %}
+  <article class="prose-rbit px-5 py-6 sm:px-8">{{ html|safe }}</article>
+  {% when BlobContent::Binary %}
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">Binary file not shown. <a href="{{ raw_url }}" class="link" hx-boost="false">Download</a></p>
+  {% when BlobContent::TooLarge %}
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is too large to display. <a href="{{ raw_url }}" class="link" hx-boost="false">View raw</a></p>
+  {% endmatch %}
+</section>
+{% endblock %}

@@ -1,4 +1,4 @@
-// Live development server: rebuilds and restarts Rustit whenever Rust sources,
+// Live development server: rebuilds and restarts Rbit whenever Rust sources,
 // templates or manifests change, and keeps the stylesheet compiled with Tailwind's
 // watcher. Debug builds read `assets/` from disk, so CSS and JS changes need no
 // restart; refresh the browser to see any change.
@@ -6,7 +6,7 @@
 //   npm run dev            # http://localhost:3000, data in ./data-live
 //
 // Builds go to target/live so other cargo commands never fight over a locked
-// executable. RUSTIT_STORAGE__DATA_DIR overrides the data directory; the first run
+// executable. RBIT_STORAGE__DATA_DIR overrides the data directory; the first run
 // copies ./data into ./data-live when it exists, so experiments never touch ./data.
 
 import { spawn } from "node:child_process";
@@ -15,11 +15,11 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const targetDir = join(root, "target", "live");
-const exe = join(targetDir, "debug", process.platform === "win32" ? "rustit.exe" : "rustit");
-const runExe = join(targetDir, process.platform === "win32" ? "rustit-dev.exe" : "rustit-dev");
-const dataDir = process.env.RUSTIT_STORAGE__DATA_DIR ?? join(root, "data-live");
+const exe = join(targetDir, "debug", process.platform === "win32" ? "rbit.exe" : "rbit");
+const runExe = join(targetDir, process.platform === "win32" ? "rbit-dev.exe" : "rbit-dev");
+const dataDir = process.env.RBIT_STORAGE__DATA_DIR ?? join(root, "data-live");
 
-if (!process.env.RUSTIT_STORAGE__DATA_DIR && !existsSync(dataDir) && existsSync(join(root, "data"))) {
+if (!process.env.RBIT_STORAGE__DATA_DIR && !existsSync(dataDir) && existsSync(join(root, "data"))) {
   cpSync(join(root, "data"), dataDir, { recursive: true });
   log(`copied ./data to ${dataDir}`);
 }
@@ -27,8 +27,8 @@ if (!process.env.RUSTIT_STORAGE__DATA_DIR && !existsSync(dataDir) && existsSync(
 const env = {
   ...process.env,
   CARGO_TARGET_DIR: targetDir,
-  RUSTIT_STORAGE__DATA_DIR: dataDir,
-  RUSTIT_MAIL__TRANSPORT: process.env.RUSTIT_MAIL__TRANSPORT ?? "log",
+  RBIT_STORAGE__DATA_DIR: dataDir,
+  RBIT_MAIL__TRANSPORT: process.env.RBIT_MAIL__TRANSPORT ?? "log",
 };
 
 let server = null;
@@ -64,7 +64,7 @@ async function rebuild() {
   }
   building = true;
   log("building…");
-  const ok = await run("cargo", ["build", "--package", "rustit-server"]);
+  const ok = await run("cargo", ["build", "--package", "rbit-server"]);
   if (ok) {
     // Run a copy: Windows cannot relink an executable while it is running.
     await stopServer();

@@ -5,11 +5,12 @@
 /node_modules
 
 # Generated stylesheet: run `npm run build:css`
-/crates/rustit-web/assets/app.css
+/crates/rbit-web/assets/app.css
 
 # Local runtime data (SQLite, redb, repositories)
 /data
 /data-live
+/rbit.toml
 /rustit.toml
 
 # Agent worktrees (temporary checkouts of feature branches)

@@ -17,7 +17,7 @@ the `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` trailer, mobile-fi
    monochrome language, no duplicated Sign in / Sign up (they live in the header), and
    containers with clear, even borders.
 
-The default look stays **monochrome minimal** (Rustit Light / Rustit Dark / System). Tinted
+The default look stays **monochrome minimal** (Rbit Light / Rbit Dark / System). Tinted
 themes are an opt-in a user picks; they recolour tokens, never layout or components.
 
 ## Workstreams and file ownership
@@ -29,12 +29,12 @@ files you own; anything else goes in your final report as an integration request
 
 Owns:
 - `scripts/themes.mjs` (new) and a `themes` script line in `package.json` (no new deps).
-- `crates/rustit-web/assets/themes/**` (generated, committed — CI must not need network).
-- `crates/rustit-web/assets/theme.js`, a new `assets/theme-picker.js` module, and the
+- `crates/rbit-web/assets/themes/**` (generated, committed — CI must not need network).
+- `crates/rbit-web/assets/theme.js`, a new `assets/theme-picker.js` module, and the
   theme section of `assets/app.js` (the `THEME_KEY` / `toggleTheme` code).
-- `crates/rustit-web/styles/app.css`: the **Tokens** section, the avatar tones, the
+- `crates/rbit-web/styles/app.css`: the **Tokens** section, the avatar tones, the
   scheme-dependent visibility section, and a new **Themes** section at the end.
-- New theme modules in `crates/rustit-web/src/` (catalog, cookie, routes, views),
+- New theme modules in `crates/rbit-web/src/` (catalog, cookie, routes, views),
   `templates/settings/appearance.html` and any new theme templates.
 - `src/views/layout.rs` (`Page` gains the active theme), `src/routes/settings.rs` +
   settings nav (adding the Appearance entry), `src/routes/auth.rs` (only to set the theme
@@ -47,7 +47,7 @@ Owns:
 
 Owns:
 - `package.json` dependencies / `package-lock.json`, `scripts/vendor.mjs`,
-  `crates/rustit-web/assets/vendor/**` (e.g. the htmx preload extension).
+  `crates/rbit-web/assets/vendor/**` (e.g. the htmx preload extension).
 - In `templates/base.html`: the `htmx-config` meta, script tags, `<body>` attributes and the
   progress bar element. A new `assets/nav.js` module (imported from `app.js`) for
   navigation behaviour; append-only edits to `app.js` otherwise.
@@ -69,7 +69,7 @@ Owns:
 ## Contracts between workstreams
 
 - **Theme attribute.** The active theme is `<html data-theme="SLUG">`. `light` and `dark` are
-  the built-in Rustit monochrome themes; no attribute means System (follows the OS via
+  the built-in Rbit monochrome themes; no attribute means System (follows the OS via
   `light-dark()`). Tinted slugs are `base16-<slug>` / `base24-<slug>`, `[a-z0-9-]+` only.
 - **Tokens are the API.** Components use only the semantic tokens (`--canvas`, `--surface`,
   `--subtle`, `--hover`, `--line`, `--line-strong`, `--ink*`, `--inverted*`, status and
@@ -78,7 +78,7 @@ Owns:
   must be clearly visible in every theme.
 - **Theme selectors are scoped, not root-only:** `[data-theme="SLUG"] { --canvas: … }`, so a
   preview card can carry `data-theme` and render in that theme without touching `<html>`.
-- **No flash, no blocking JS.** The server reads the `rustit-theme` cookie and renders the
+- **No flash, no blocking JS.** The server reads the `rbit-theme` cookie and renders the
   attribute and the single theme stylesheet into the HTML. JS only makes switching instant.
 - **Navigation.** S decides boost/preload/swap behaviour globally (on `<body>`), so other
   workstreams write plain `<a href>` links and forms. Links that must not be boosted or
@@ -90,5 +90,5 @@ Owns:
 ## Verification (each workstream)
 
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test --workspace`, `npm run build` with a clean `git diff -- crates/rustit-web/assets`
+`cargo test --workspace`, `npm run build` with a clean `git diff -- crates/rbit-web/assets`
 afterwards, then exercise your pages in a browser at 375 px and desktop, light and dark.

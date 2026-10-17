@@ -1,0 +1,24 @@
+[package]
+name = "rbit-ssh"
+description = "Built-in SSH server for Git over SSH (russh)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+rbit-services.workspace = true
+rbit-transport.workspace = true
+getrandom.workspace = true
+russh.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rbit-storage.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

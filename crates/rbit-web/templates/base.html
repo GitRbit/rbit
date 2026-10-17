@@ -1,0 +1,149 @@
+{% import "macros.html" as ui %}
+<!doctype html>
+<html lang="en"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ page.document_title() }}</title>
+  <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
+  {%- if let Some(color) = page.theme.theme_color() %}
+  <meta name="theme-color" content="{{ color }}">
+  <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
+  {%- else %}
+  <meta name="theme-color" content="{{ crate::themes::LIGHT_CANVAS }}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{ crate::themes::DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  {%- endif %}
+  <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":10,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="{{ page.asset("icon.svg") }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ page.asset("apple-touch-icon.png") }}">
+  <link rel="stylesheet" href="{{ page.asset("app.css") }}">
+  {%- if let Some(href) = page.theme.stylesheet() %}
+  <link rel="stylesheet" href="{{ href }}" data-theme-stylesheet>
+  {%- endif %}
+  <script src="{{ page.asset("theme.js") }}"></script>
+  <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
+  <script src="{{ page.asset("vendor/htmx-preload.min.js") }}" defer></script>
+  <script src="{{ page.asset("app.js") }}" type="module"></script>
+  {#- app.js's imports (rewritten to these same hashed URLs when served), fetched in parallel with it. -#}
+  <link rel="modulepreload" href="{{ page.asset("nav.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("theme-picker.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("filter.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("diff.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("passkey.js") }}">
+</head>
+<body hx-boost="true" hx-ext="preload" class="flex min-h-dvh flex-col">
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
+
+  <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
+    <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
+  </div>
+
+  <header class="sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <nav class="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-5") %}{% endcall %}</a>
+      <div class="flex min-w-0 items-center gap-2 text-[13px]">
+        {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
+      </div>
+
+      <div class="ml-auto flex items-center gap-1">
+        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
+        {%- if !page.is_signed_in() %}
+        <a href="/explore" class="btn btn-ghost btn-icon sm:hidden" aria-label="Explore" title="Explore">{% call ui::icon("compass", "size-4") %}{% endcall %}</a>
+        {%- endif %}
+        {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
+            the palette menu next to it picks any theme. Both are plain forms without JS. -#}
+        {%- let toggle = page.theme.toggled() %}
+        <form method="post" action="/themes" class="contents" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+          <input type="hidden" name="next" value="{{ page.path }}">
+          <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="Switch between light and dark" title="Switch between light and dark">
+            {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
+            {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
+          </button>
+        </form>
+        <details class="relative hidden sm:block" data-menu>
+          <summary class="btn btn-ghost btn-icon" aria-label="Choose a theme" title="Choose a theme">
+            {% call ui::icon("palette", "size-4") %}{% endcall %}
+          </summary>
+          <div class="menu right-0 w-52">
+            <p class="menu-label">Theme</p>
+            <form method="post" action="/themes" data-theme-form>
+              <input type="hidden" name="next" value="{{ page.path }}">
+              {%- for option in page.theme_options() %}
+              <button class="menu-item theme-option" type="submit" name="theme" value="{{ option.slug }}" aria-pressed="{{ option.is_current }}">
+                {{ option.label }}{% call ui::icon("check", "theme-check ml-auto size-3.5") %}{% endcall %}
+              </button>
+              {%- endfor %}
+            </form>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/themes">{% if page.theme.is_tinted() %}<span class="min-w-0 truncate">{{ page.theme.name() }}</span><span class="ml-auto shrink-0 text-ink-faint">All…</span>{% else %}All themes…{% endif %}</a>
+          </div>
+        </details>
+
+        {% if let Some(user) = page.viewer %}
+        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="Notifications" title="{% if page.has_unread_notifications %}You have unread notifications{% else %}Notifications{% endif %}">
+          {% call ui::icon("bell", "size-4") %}{% endcall %}
+          {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
+        </a>
+        <a href="/new" class="btn btn-ghost btn-icon" aria-label="New repository" title="New repository">
+          {% call ui::icon("plus", "size-4") %}{% endcall %}
+        </a>
+        <details class="relative ml-1" data-menu>
+          <summary class="flex cursor-pointer rounded-full" aria-label="Account menu">
+            {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
+          </summary>
+          <div class="menu right-0 w-56">
+            <div class="px-2.5 py-2">
+              <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
+              <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+            </div>
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/">Dashboard</a>
+            <a class="menu-item" href="/{{ user.name }}">Profile</a>
+            <a class="menu-item" href="/new">New repository</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">New organization</a>{% endif %}
+            <a class="menu-item" href="/settings">Settings</a>
+            <a class="menu-item sm:hidden" href="/explore">Explore</a>
+            {% if user.is_admin %}
+            <div class="menu-divider"></div>
+            <a class="menu-item" href="/admin">Site administration</a>
+            {% endif %}
+            <div class="menu-divider"></div>
+            <form method="post" action="/logout">
+              <button class="menu-item text-ink-muted" type="submit">Sign out</button>
+            </form>
+          </div>
+        </details>
+        {% else %}
+        <a href="/login" class="btn btn-ghost">Sign in</a>
+        <a href="/signup" class="btn btn-primary">Sign up</a>
+        {% endif %}
+      </div>
+    </nav>
+    {% block subnav %}{% endblock %}
+  </header>
+
+  <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
+    <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
+      <p class="flex min-w-0 items-center gap-2">
+        {% call ui::logo("size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
+        <span class="truncate">Powered by <span class="text-ink-muted">Rbit</span></span>
+        <span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>
+        {%- if let Some(elapsed) = crate::timing::elapsed() %}
+        <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="Server time for the last page or update">· rendered in <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
+        {%- endif %}
+      </p>
+      <nav class="flex shrink-0 gap-4" aria-label="Footer">
+        <a href="/explore" class="hover:text-ink">Explore</a>
+        <a href="/themes" class="hover:text-ink">Themes</a>
+        <a href="/healthz" class="hover:text-ink" hx-boost="false">Status</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

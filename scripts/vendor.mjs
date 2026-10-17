@@ -2,7 +2,7 @@
 // Vendored files are committed so `cargo build` works without Node installed.
 import { copyFileSync, mkdirSync } from "node:fs";
 
-const target = "crates/rustit-web/assets/vendor";
+const target = "crates/rbit-web/assets/vendor";
 const files = [
   ["node_modules/htmx.org/dist/htmx.min.js", "htmx.min.js"],
   // Hover/touch preloading for boosted links (enabled on <body>, configured by nav.js).

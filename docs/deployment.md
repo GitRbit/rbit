@@ -1,13 +1,13 @@
-# Deploying Rustit
+# Deploying Rbit
 
-Rustit is one binary plus the `git` executable. All state lives in one data directory:
+Rbit is one binary plus the `git` executable. All state lives in one data directory:
 
 | Path (under `data_dir`) | Contents | Back up? |
 |---|---|---|
-| `rustit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
+| `rbit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
 | `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
 | `attachments/<repo-id>/<asset-id>` | Files attached to releases | **Yes** (not `attachments/tmp`) |
-| `rustit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
+| `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
 [Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),
@@ -16,9 +16,9 @@ Run it behind a reverse proxy that terminates TLS. The sections below cover
 
 ## Configuration
 
-Settings come from built-in defaults, then a TOML file (`--config` or `RUSTIT_CONFIG`),
-then `RUSTIT_<SECTION>__<KEY>` environment variables (later sources win).
-[`deploy/rustit.example.toml`](../deploy/rustit.example.toml) lists every setting with
+Settings come from built-in defaults, then a TOML file (`--config` or `RBIT_CONFIG`),
+then `RBIT_<SECTION>__<KEY>` environment variables (later sources win).
+[`deploy/rbit.example.toml`](../deploy/rbit.example.toml) lists every setting with
 production-minded values. The ones that matter most:
 
 - `server.public_url` — exactly what users type (`https://git.example.com`). It builds
@@ -32,46 +32,46 @@ production-minded values. The ones that matter most:
 
 The [`Dockerfile`](../Dockerfile) builds the stylesheet with Node, compiles a release
 binary, and ships it on Debian 13 (trixie) slim with `git`, CA certificates and `tini`
-(about 75 MB compressed). The container runs as the unprivileged user `rustit`
+(about 75 MB compressed). The container runs as the unprivileged user `rbit`
 (uid 10001), keeps all data in the `/data` volume and has a `HEALTHCHECK` against
 `/healthz`.
 
 ```bash
-docker build -t rustit .
-docker run -d --name rustit --restart unless-stopped \
+docker build -t rbit .
+docker run -d --name rbit --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
-  -v rustit-data:/data \
-  -e RUSTIT_SERVER__PUBLIC_URL=https://git.example.com \
-  rustit
+  -v rbit-data:/data \
+  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com \
+  rbit
 ```
 
-The image sets `RUSTIT_SERVER__BIND=0.0.0.0:3000` and `RUSTIT_SSH__BIND=0.0.0.0:2222`
-(inside the container), `RUSTIT_STORAGE__DATA_DIR=/data` and `NO_COLOR=1` (plain log
-lines in `docker logs`). For Git over SSH add `-e RUSTIT_SSH__ENABLED=true` and
-`-e RUSTIT_SSH__PUBLIC_HOST=git.example.com`, publish the port (`-p 2222:2222`, or
+The image sets `RBIT_SERVER__BIND=0.0.0.0:3000` and `RBIT_SSH__BIND=0.0.0.0:2222`
+(inside the container), `RBIT_STORAGE__DATA_DIR=/data` and `NO_COLOR=1` (plain log
+lines in `docker logs`). For Git over SSH add `-e RBIT_SSH__ENABLED=true` and
+`-e RBIT_SSH__PUBLIC_HOST=git.example.com`, publish the port (`-p 2222:2222`, or
 `-p 22:2222` when the host's own sshd listens elsewhere) and set
-`RUSTIT_SSH__PUBLIC_PORT` to the published port. The host key is generated in `/data/ssh`
+`RBIT_SSH__PUBLIC_PORT` to the published port. The host key is generated in `/data/ssh`
 on first start.
 
 To use a file instead of environment variables, mount it read-only and point
-`RUSTIT_CONFIG` at it:
+`RBIT_CONFIG` at it:
 
 ```yaml
 # compose.yaml
 services:
-  rustit:
+  rbit:
     build: .
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
       # - "2222:2222"            # built-in SSH server, when [ssh] enabled = true
     environment:
-      RUSTIT_CONFIG: /etc/rustit/rustit.toml
+      RBIT_CONFIG: /etc/rbit/rbit.toml
     volumes:
-      - rustit-data:/data
-      - ./rustit.toml:/etc/rustit/rustit.toml:ro
+      - rbit-data:/data
+      - ./rbit.toml:/etc/rbit/rbit.toml:ro
 volumes:
-  rustit-data:
+  rbit-data:
 ```
 
 In a config file used with the image, keep `[storage] data_dir = "/data"`,
@@ -81,44 +81,44 @@ port, override the health check (`--health-cmd` / `healthcheck:`) to match.
 Backups run in the live container:
 
 ```bash
-docker exec rustit rustit backup --output /data/backups/$(date +%Y%m%d-%H%M%S)
+docker exec rbit rbit backup --output /data/backups/$(date +%Y%m%d-%H%M%S)
 ```
 
-`rustit user create` works while the server runs (it only needs the SQLite database).
+`rbit user create` works while the server runs (it only needs the SQLite database).
 The first administrator is also easy to create by signing up in the browser (the first
 account becomes the administrator):
 
 ```bash
-docker exec -i rustit rustit user create alice alice@example.com --admin
+docker exec -i rbit rbit user create alice alice@example.com --admin
 ```
 
 ## systemd
 
-[`deploy/rustit.service`](../deploy/rustit.service) runs Rustit as a dedicated user with a
-systemd-managed state directory (`/var/lib/rustit`) and a strict sandbox: the file system
+[`deploy/rbit.service`](../deploy/rbit.service) runs Rbit as a dedicated user with a
+systemd-managed state directory (`/var/lib/rbit`) and a strict sandbox: the file system
 is read-only except the data directory, no capabilities, restricted address families and
 system calls. Installation steps are at the top of the file; in short:
 
 ```bash
-sudo useradd --system --home-dir /var/lib/rustit --shell /usr/sbin/nologin rustit
-sudo install -m 0755 target/release/rustit /usr/local/bin/rustit
-sudo install -d -m 0750 -o root -g rustit /etc/rustit
-sudo install -m 0640 -o root -g rustit deploy/rustit.example.toml /etc/rustit/rustit.toml
-sudo install -m 0644 deploy/rustit.service /etc/systemd/system/rustit.service
-sudo systemctl daemon-reload && sudo systemctl enable --now rustit
-journalctl -u rustit -f
+sudo useradd --system --home-dir /var/lib/rbit --shell /usr/sbin/nologin rbit
+sudo install -m 0755 target/release/rbit /usr/local/bin/rbit
+sudo install -d -m 0750 -o root -g rbit /etc/rbit
+sudo install -m 0640 -o root -g rbit deploy/rbit.example.toml /etc/rbit/rbit.toml
+sudo install -m 0644 deploy/rbit.service /etc/systemd/system/rbit.service
+sudo systemctl daemon-reload && sudo systemctl enable --now rbit
+journalctl -u rbit -f
 ```
 
 Run administrative commands as the service user so file ownership stays right.
 `user create` and `backup` run while the server serves:
 
 ```bash
-sudo -u rustit rustit --config /etc/rustit/rustit.toml user create alice alice@example.com --admin
+sudo -u rbit rbit --config /etc/rbit/rbit.toml user create alice alice@example.com --admin
 ```
 
 The sandbox gives the service no capabilities, so it cannot bind ports below 1024. Keep
 the SSH server on 2222 and forward port 22 to it with a firewall rule, or let it bind 22
-directly by granting only that capability in an override (`sudo systemctl edit rustit`):
+directly by granting only that capability in an override (`sudo systemctl edit rbit`):
 
 ```ini
 [Service]
@@ -136,7 +136,7 @@ clones long-running, so do not cap request bodies and do not buffer Git traffic.
 
 ### Trusted proxies
 
-Rustit uses the client address for rate limiting and the audit log. It only believes
+Rbit uses the client address for rate limiting and the audit log. It only believes
 `X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` from addresses listed in
 `[security] trusted_proxies`. List exactly your proxy (for a proxy on the same host,
 `["127.0.0.1/32", "::1/128"]`), never a broad range: any client inside a trusted range can
@@ -182,7 +182,7 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=63072000" always;
 
-    # Pushes can be arbitrarily large; Rustit streams them to git and enforces its own
+    # Pushes can be arbitrarily large; Rbit streams them to git and enforces its own
     # limit on release uploads ([releases] max_asset_bytes).
     client_max_body_size 0;
 
@@ -236,15 +236,15 @@ or block `/metrics` at the proxy and scrape the loopback address.
 
 | Metric | Type | Labels |
 |---|---|---|
-| `rustit_http_requests_total` | counter | `method`, `route` (matched route template, e.g. `/{owner}/{repo}/blob/{*rest}`, or `unmatched`), `status` (`2xx`…`5xx`) |
-| `rustit_http_request_duration_seconds` | histogram | `method`, `route` — time until response headers; streamed Git bodies continue afterwards |
-| `rustit_git_operations_total` | counter | `service` (`upload-pack` = clone/fetch, `receive-pack` = push), `stage` (`advertise`, `exchange`), `status` |
-| `rustit_jobs_total` | counter | `job` (`warm_caches`, `git_gc`, `prune_insights_cache`), `outcome` (`ok`, `error`) |
-| `rustit_job_duration_seconds` | histogram | `job` |
-| `rustit_insights_cache_entries` | gauge | — (after each prune) |
-| `rustit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
-| `rustit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
-| `rustit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
+| `rbit_http_requests_total` | counter | `method`, `route` (matched route template, e.g. `/{owner}/{repo}/blob/{*rest}`, or `unmatched`), `status` (`2xx`…`5xx`) |
+| `rbit_http_request_duration_seconds` | histogram | `method`, `route` — time until response headers; streamed Git bodies continue afterwards |
+| `rbit_git_operations_total` | counter | `service` (`upload-pack` = clone/fetch, `receive-pack` = push), `stage` (`advertise`, `exchange`), `status` |
+| `rbit_jobs_total` | counter | `job` (`warm_caches`, `git_gc`, `prune_insights_cache`), `outcome` (`ok`, `error`) |
+| `rbit_job_duration_seconds` | histogram | `job` |
+| `rbit_insights_cache_entries` | gauge | — (after each prune) |
+| `rbit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
+| `rbit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
+| `rbit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.
@@ -252,7 +252,7 @@ number of series is bounded.
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: rustit
+  - job_name: rbit
     scheme: https
     authorization:
       credentials: replace-with-the-metrics-token
@@ -262,7 +262,7 @@ scrape_configs:
 
 ## Background jobs
 
-Rustit runs its own maintenance; no cron jobs are needed.
+Rbit runs its own maintenance; no cron jobs are needed.
 
 - **After every push**, the language breakdown and the root directory's last-commit list
   of the default branch are computed and cached (`warm_caches_on_push`).
@@ -286,12 +286,12 @@ instance (for example to reach a CI server on the same network).
 
 ## Backups
 
-`rustit backup --output DIR` writes a consistent backup to a **new** directory while the
+`rbit backup --output DIR` writes a consistent backup to a **new** directory while the
 server keeps running:
 
 ```text
 DIR/
-├── rustit.db                          SQLite snapshot (VACUUM INTO: one consistent read)
+├── rbit.db                          SQLite snapshot (VACUUM INTO: one consistent read)
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
 ├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 └── manifest.json                      format, version, time, counts; written last
@@ -307,7 +307,7 @@ is complete and never changes afterwards. Uploads still in progress (`attachment
 are skipped, and a file whose release was deleted after the snapshot is listed under
 `missing_attachments`.
 
-**The redb store (`rustit.redb`) is not backed up.** It holds only login sessions and
+**The redb store (`rbit.redb`) is not backed up.** It holds only login sessions and
 caches. After a restore everyone signs in again and caches refill on demand.
 
 A backup is complete when `manifest.json` exists. The command exits non-zero, without a
@@ -317,39 +317,39 @@ Schedule it with a systemd timer or cron, as the service user, and copy the resu
 machine (restic, borg, rsync, object storage):
 
 ```bash
-sudo install -d -o rustit -g rustit -m 0750 /var/backups/rustit   # once
-sudo -u rustit rustit --config /etc/rustit/rustit.toml backup \
-  --output /var/backups/rustit/$(date +%Y%m%d-%H%M%S)
+sudo install -d -o rbit -g rbit -m 0750 /var/backups/rbit   # once
+sudo -u rbit rbit --config /etc/rbit/rbit.toml backup \
+  --output /var/backups/rbit/$(date +%Y%m%d-%H%M%S)
 ```
 
 ### Restore
 
 The backup directory mirrors the data directory, so restoring is a copy:
 
-1. Stop Rustit: `sudo systemctl stop rustit` (or `docker stop rustit`).
-2. Move the current data directory aside: `sudo mv /var/lib/rustit /var/lib/rustit.old`.
+1. Stop Rbit: `sudo systemctl stop rbit` (or `docker stop rbit`).
+2. Move the current data directory aside: `sudo mv /var/lib/rbit /var/lib/rbit.old`.
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
-   sudo mkdir -m 0750 /var/lib/rustit
-   sudo cp -a DIR/rustit.db DIR/repositories DIR/attachments /var/lib/rustit/
-   sudo chown -R rustit:rustit /var/lib/rustit
+   sudo mkdir -m 0750 /var/lib/rbit
+   sudo cp -a DIR/rbit.db DIR/repositories DIR/attachments /var/lib/rbit/
+   sudo chown -R rbit:rbit /var/lib/rbit
    ```
    For Docker, copy into the volume, e.g.
-   `docker run --rm -v rustit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rustit.db /backup/repositories /backup/attachments /data/ && chown -R 10001:10001 /data'`.
-4. Start Rustit. Pending migrations (if the backup came from an older version) run on
-   start-up; a fresh `rustit.redb` is created.
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/repositories /backup/attachments /data/ && chown -R 10001:10001 /data'`.
+4. Start Rbit. Pending migrations (if the backup came from an older version) run on
+   start-up; a fresh `rbit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.
 
-Restore onto the **same or a newer** Rustit version. Restoring a backup into an older
+Restore onto the **same or a newer** Rbit version. Restoring a backup into an older
 version is not supported (its database may have migrations the older binary does not know).
 
 ## Upgrades and migrations
 
-1. Take a backup (`rustit backup`).
+1. Take a backup (`rbit backup`).
 2. Replace the binary (or pull/rebuild the image).
 3. Restart. Database migrations are embedded in the binary and applied automatically at
    start-up, before the server accepts requests. To apply them separately (for example
-   in a deploy pipeline), run `rustit migrate` while the server is stopped; it migrates
+   in a deploy pipeline), run `rbit migrate` while the server is stopped; it migrates
    and exits.
 
 Migrations only move forward. To roll back, stop the new version, restore the backup

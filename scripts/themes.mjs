@@ -1,4 +1,4 @@
-// Imports tinted-theming base16/base24 colour schemes as Rustit themes.
+// Imports tinted-theming base16/base24 colour schemes as Rbit themes.
 //
 //   git clone --depth 1 https://github.com/tinted-theming/schemes /tmp/schemes
 //   npm run themes -- /tmp/schemes
@@ -8,12 +8,12 @@
 // every slug `[a-z0-9-]+`, and names are length-limited and escaped for each output.
 //
 // Outputs (all committed, so builds and CI never need the network):
-//   crates/rustit-web/assets/themes/<slug>.css  one theme, loaded only while it is active
-//   crates/rustit-web/assets/themes/all.css     every theme, loaded only by the gallery
-//   crates/rustit-web/assets/themes/LICENSE.txt scheme authors and the MIT licence
-//   crates/rustit-web/src/themes/catalog.rs     the compile-time catalog
+//   crates/rbit-web/assets/themes/<slug>.css  one theme, loaded only while it is active
+//   crates/rbit-web/assets/themes/all.css     every theme, loaded only by the gallery
+//   crates/rbit-web/assets/themes/LICENSE.txt scheme authors and the MIT licence
+//   crates/rbit-web/src/themes/catalog.rs     the compile-time catalog
 //
-// Each scheme's palette is mapped onto Rustit's semantic tokens following the base16
+// Each scheme's palette is mapped onto Rbit's semantic tokens following the base16
 // styling guidelines, then checked for contrast: body text (ink, ink-muted, status and
 // syntax colours) must reach WCAG AA (4.5:1) against every background it sits on, faint
 // text and comments 3:1, and the container border must stay visible. A colour that falls
@@ -26,8 +26,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const THEMES_DIR = join(ROOT, "crates/rustit-web/assets/themes");
-const CATALOG_RS = join(ROOT, "crates/rustit-web/src/themes/catalog.rs");
+const THEMES_DIR = join(ROOT, "crates/rbit-web/assets/themes");
+const CATALOG_RS = join(ROOT, "crates/rbit-web/src/themes/catalog.rs");
 
 const SYSTEMS = ["base24", "base16"]; // base24 first: it wins when a scheme exists in both.
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -176,7 +176,7 @@ const FAINT = 3;
 const STEP = { canvasLight: 1.05, canvasDark: 1.08, subtle: 1.05, hover: 1.12, line: 1.3, lineOnCanvas: 1.15, lineStrong: 1.65 };
 
 /**
- * base16 → Rustit tokens. `--surface` (containers) is the scheme's own editor background
+ * base16 → Rbit tokens. `--surface` (containers) is the scheme's own editor background
  * (base00), so code reads exactly as the scheme intends; the page `--canvas` sits one
  * step deeper. Raised and interactive backgrounds, borders and text are derived towards
  * the foreground, tinted by the scheme's own greys (base01–base03) where they fit.
@@ -337,6 +337,59 @@ function assignFamilies(schemes) {
   }
 }
 
+// ------------------------------------------------------------------ light/dark counterparts
+
+// Words that name a variant rather than a scheme: "Gruvbox dark, hard" and "Gruvbox light,
+// hard" are one scheme, as are Catppuccin Latte and Mocha or Rosé Pine Dawn and Rosé Pine.
+const VARIANT_WORDS = new Set([
+  "dark", "light", "darker", "lighter", "day", "night", "dawn", "dusk", "morning", "evening", "moon", "storm",
+  "mirage", "latte", "mocha", "frappe", "frappé", "macchiato", "dimmed",
+]);
+
+/** Lexicographic comparison of two equal-length number arrays. */
+function compareRanks(a, b) {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+  return 0;
+}
+
+/** The words that identify a scheme within its family, without variant words. */
+function coreWords(scheme) {
+  const family = new Set(words(scheme.family).map((w) => w.toLowerCase()));
+  return new Set(words(scheme.name).map((w) => w.toLowerCase()).filter((w) => !family.has(w) && !VARIANT_WORDS.has(w)));
+}
+
+/**
+ * Pairs each scheme with its closest sibling of the opposite variant in the same family, so
+ * the header's light/dark toggle keeps the scheme ("Gruvbox dark, hard" ↔ "Gruvbox light,
+ * hard"). Siblings must share their identifying words, or one of them must have none (the
+ * family's plain member). Ties prefer the same system, then the most extreme background
+ * (Catppuccin Latte → Mocha), then the shorter name.
+ */
+function assignCounterparts(schemes) {
+  const lum = (s) => luminance(s.tokens.canvas);
+  for (const scheme of schemes) {
+    const core = coreWords(scheme);
+    let best = null;
+    for (const other of schemes) {
+      if (other.family !== scheme.family || other.variant === scheme.variant) continue;
+      const otherCore = coreWords(other);
+      const shared = [...core].filter((w) => otherCore.has(w)).length;
+      const differing = core.size + otherCore.size - 2 * shared;
+      if (shared === 0 && core.size > 0 && otherCore.size > 0) continue;
+      const rank = [
+        differing === 0 ? 1 : 0,
+        shared,
+        -differing,
+        other.system === scheme.system ? 1 : 0,
+        other.variant === "dark" ? -lum(other) : lum(other),
+        -other.name.length,
+      ];
+      if (!best || compareRanks(rank, best.rank) > 0) best = { other, rank };
+    }
+    scheme.counterpart = best?.other.slug ?? null;
+  }
+}
+
 // ------------------------------------------------------------------ import
 
 const dropped = [];
@@ -409,6 +462,7 @@ for (const system of SYSTEMS) {
 }
 
 assignFamilies(schemes);
+assignCounterparts(schemes);
 schemes.sort((a, b) => (a.slug < b.slug ? -1 : 1));
 
 // ------------------------------------------------------------------ output
@@ -434,7 +488,7 @@ const licence = readFileSync(join(source, "LICENSE"), "utf8").replace(/\r\n/g, "
 writeFileSync(
   join(THEMES_DIR, "LICENSE.txt"),
   [
-    "Rustit's tinted themes are generated from the tinted-theming colour schemes:",
+    "Rbit's tinted themes are generated from the tinted-theming colour schemes:",
     `https://github.com/tinted-theming/schemes (commit ${commit}).`,
     "",
     licence,
@@ -466,7 +520,7 @@ writeFileSync(
     "pub static THEMES: &[TintedTheme] = &[",
     ...schemes.map(
       (s) =>
-        `    TintedTheme { slug: ${rs(s.slug)}, name: ${rs(s.name)}, family: ${rs(s.family)}, variant: ${variantRs(s.variant)}, system: ${systemRs(s.system)}, author: ${rs(s.author)}, canvas: ${rs(s.tokens.canvas)}, ink: ${rs(s.tokens.ink)}, swatches: [${s.swatches.map(rs).join(", ")}] },`,
+        `    TintedTheme { slug: ${rs(s.slug)}, name: ${rs(s.name)}, family: ${rs(s.family)}, variant: ${variantRs(s.variant)}, system: ${systemRs(s.system)}, author: ${rs(s.author)}, canvas: ${rs(s.tokens.canvas)}, ink: ${rs(s.tokens.ink)}, counterpart: ${s.counterpart ? `Some(${rs(s.counterpart)})` : "None"}, swatches: [${s.swatches.map(rs).join(", ")}] },`,
     ),
     "];",
     "",
@@ -480,6 +534,8 @@ for (const s of schemes) families.set(s.family, (families.get(s.family) ?? 0) + 
 const grouped = [...families.values()].filter((n) => n > 1);
 console.log(`imported ${schemes.length} themes from tinted-theming/schemes@${short}`);
 console.log(`  ${schemes.filter((s) => s.variant === "dark").length} dark, ${schemes.filter((s) => s.variant === "light").length} light`);
+console.log(`  ${schemes.filter((s) => s.counterpart).length} have a light/dark counterpart`);
+if (process.env.THEMES_PAIRS) for (const s of schemes) if (s.counterpart) console.log(`  ${s.slug} -> ${s.counterpart}`);
 console.log(`  ${grouped.length} families covering ${grouped.reduce((a, b) => a + b, 0)} themes; ${families.size - grouped.length} stand alone`);
 if (process.env.THEMES_VERBOSE) for (const line of adjusted) console.log(`  adjusted ${line}`);
 else console.log(`  ${adjusted.length} schemes adjusted for contrast or variant (THEMES_VERBOSE=1 lists them)`);

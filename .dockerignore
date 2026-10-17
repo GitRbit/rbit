@@ -5,7 +5,7 @@
 target
 node_modules
 data
-rustit.toml
+rbit.toml
 *.redb
 *.db
 *.db-shm
@@ -15,4 +15,4 @@ deploy
 Dockerfile
 .dockerignore
 # Generated in the image's Node stage.
-crates/rustit-web/assets/app.css
+crates/rbit-web/assets/app.css
