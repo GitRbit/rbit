@@ -364,3 +364,28 @@ async fn new_tables_start_empty_with_their_defaults() {
     assert_eq!(db.count("SELECT COUNT(*) FROM webhook_deliveries").await, 0);
     assert_eq!(db.count("SELECT COUNT(*) FROM releases").await, 0);
 }
+
+// Milestone 3: commit statuses (S).
+#[tokio::test]
+async fn commit_status_tables_start_empty_and_existing_rules_require_no_checks() {
+    let db = upgraded().await;
+    for table in ["commit_statuses", "branch_protection_required_checks"] {
+        assert!(db.exists("table", table).await, "{table}");
+        assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
+    }
+    sqlx::query("INSERT INTO branch_protections (repo_id, pattern, created_at, updated_at) VALUES (6, 'trunk', 1, 1)")
+        .execute(&db.raw)
+        .await
+        .unwrap();
+    assert_eq!(db.count("SELECT require_status_checks FROM branch_protections").await, 0, "off by default");
+
+    let insert = "INSERT INTO commit_statuses (repo_id, sha, state, context, created_at, updated_at) VALUES (6, ?, ?, 'ci', 1, 1)";
+    let sha = "a".repeat(40);
+    for (sha, state, valid) in [(sha.as_str(), "success", true), ("ABC", "success", false), (sha.as_str(), "passed", false)] {
+        let result = sqlx::query(insert).bind(sha).bind(state).execute(&db.raw).await;
+        assert_eq!(result.is_ok(), valid, "{sha} {state}");
+    }
+    sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM commit_statuses").await, 0, "statuses go with their repository");
+    assert_eq!(db.count("SELECT COUNT(*) FROM branch_protections").await, 0);
+}

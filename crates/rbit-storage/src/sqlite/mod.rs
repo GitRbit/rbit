@@ -24,7 +24,9 @@ mod repositories;
 pub mod reviews;
 mod rows;
 pub mod ssh_keys;
+// Milestone 3: commit statuses (S).
 pub mod stars;
+pub mod statuses;
 pub mod teams;
 pub mod two_factor;
 pub mod webhooks;
@@ -186,6 +188,12 @@ impl Database {
 
     pub fn branch_protection(&self) -> protection::BranchProtectionStore {
         protection::BranchProtectionStore::new(self.pool.clone())
+    }
+
+    // Milestone 3: commit statuses (S).
+
+    pub fn commit_statuses(&self) -> statuses::CommitStatusStore {
+        statuses::CommitStatusStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

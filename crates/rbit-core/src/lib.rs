@@ -23,6 +23,8 @@ pub mod ref_update;
 pub mod references;
 pub mod release;
 pub mod repository;
+// Milestone 3: commit statuses (S).
+pub mod status;
 pub mod timestamp;
 pub mod webhook;
 
