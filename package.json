@@ -1,6 +1,7 @@
 {
   "name": "rbit-web-assets",
   "private": true,
+  "license": "MIT OR Apache-2.0",
   "description": "Build-time front-end tooling for rbit. Nothing here runs in production.",
   "type": "module",
   "scripts": {
