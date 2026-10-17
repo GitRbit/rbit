@@ -25,7 +25,7 @@
 //   loaf        long-animation-frame entries during the run (when supported)
 //   layoutShift layout-shift entries during the run, plus the page's CLS before it
 //
-// A "blank" sample is a point on a code line (`.code-line`, a diff `<tr>`) whose content is
+// A "blank" sample is a point on a code line (`.code-line`, a diff row) whose content is
 // not rendered: the line is skipped by `content-visibility: auto` (checkVisibility with
 // contentVisibilityAuto is false) or its text has an empty box. A point inside a diff file
 // or code block that hits no line while the block's content is skipped is blank as well.
@@ -37,7 +37,7 @@
     maxSweepMs = 60_000,
   } = options;
 
-  const LINE = ".code-line, .diff-view tr, .diff-file tr";
+  const LINE = ".code-line, .diff-view .vblock > div";
   const BLOCK = ".vblock, .code-lines, .diff-file[open]";
   const CHROME = "header.site-header, .site-subnav, .diff-file-header, .diff-toolbar, .diff-sidebar";
   const frame = () => new Promise((done) => requestAnimationFrame(done));
@@ -62,7 +62,7 @@
   const dom = {
     elements: document.getElementsByTagName("*").length,
     codeLines: document.querySelectorAll(".code-line").length,
-    diffRows: document.querySelectorAll(".diff-view tr, .diff-file tr").length,
+    diffRows: document.querySelectorAll(".diff-view .vblock > div").length,
     diffFiles: document.querySelectorAll(".diff-file").length,
     scrollHeight: scroller.scrollHeight,
     viewport: [innerWidth, innerHeight],
