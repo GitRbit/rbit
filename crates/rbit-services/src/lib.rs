@@ -48,6 +48,7 @@ pub mod webhooks;
 // Milestone 3: editing files in the browser (E).
 pub mod edits;
 // Milestone 3: importing and push mirrors (M).
+pub mod imports;
 pub mod push_mirrors;
 
 use std::sync::Arc;
@@ -98,6 +99,7 @@ pub use webhooks::WebhookService;
 // Milestone 3: editing files in the browser (E).
 pub use edits::EditService;
 // Milestone 3: importing and push mirrors (M).
+pub use imports::ImportService;
 pub use push_mirrors::PushMirrorService;
 
 /// The infrastructure every service is built from. Cheap to clone (all handles are `Arc`s).
@@ -166,6 +168,7 @@ pub struct Services {
     // Milestone 3: external sign-in (O).
     pub external_auth: ExternalAuthService,
     // Milestone 3: importing and push mirrors (M).
+    pub imports: ImportService,
     pub push_mirrors: PushMirrorService,
 }
 
@@ -194,6 +197,10 @@ impl Services {
         let notification_email = NotificationEmailService::new(ctx.clone(), mail.clone(), throttle.clone(), instance.clone());
         // Milestone 3 (O): fails on an invalid `[auth]` section, so the server won't start.
         let external_auth = ExternalAuthService::new(&ctx, throttle.clone())?;
+        // Milestone 3 (M): the importer stores release files and LFS objects through the
+        // same services (LFS placement shares a lock with the orphan sweep).
+        let releases = ReleaseService::new(ctx.clone());
+        let lfs = LfsService::new(ctx.clone());
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
@@ -217,7 +224,7 @@ impl Services {
             archives: ArchiveService::new(ctx.clone()),
             forks: ForkService::new(ctx.clone(), repositories.clone()),
             mirrors: MirrorService::new(ctx.clone()),
-            releases: ReleaseService::new(ctx.clone()),
+            releases: releases.clone(),
             preferences: PreferenceService::new(ctx.clone()),
             issues: IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone()),
             references,
@@ -230,10 +237,11 @@ impl Services {
             notification_email,
             // Milestone 3: editing files in the browser (E).
             edits: EditService::new(ctx.clone(), ProtectionService::new(ctx.clone()), PushService::new(ctx.clone())),
-            lfs: LfsService::new(ctx.clone()),
+            lfs: lfs.clone(),
             // Milestone 3: external sign-in (O).
             external_auth,
             // Milestone 3: importing and push mirrors (M).
+            imports: ImportService::new(ctx.clone(), repositories.clone(), lfs, releases),
             push_mirrors: PushMirrorService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
@@ -255,6 +263,7 @@ impl Services {
         self.pulls.spawn_background();
         self.lfs.spawn_background();
         // Milestone 3: importing and push mirrors (M).
+        self.imports.spawn_background();
         self.push_mirrors.spawn_background();
     }
 
@@ -272,6 +281,7 @@ impl Services {
             self.pulls.shutdown(),
             self.lfs.shutdown(),
             // Milestone 3: importing and push mirrors (M).
+            self.imports.shutdown(),
             self.push_mirrors.shutdown(),
         );
     }

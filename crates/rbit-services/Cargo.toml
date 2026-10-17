@@ -29,6 +29,7 @@ percent-encoding.workspace = true
 # L: Git LFS (signed transfer tokens).
 base64.workspace = true
 # Milestone 3: external sign-in (O): provider documents (discovery, tokens, GitHub's API).
+# M: importing (the source's API objects).
 serde.workspace = true
 
 [dev-dependencies]
@@ -37,6 +38,8 @@ tempfile.workspace = true
 # A software authenticator for the passkey tests.
 p256.workspace = true
 base64.workspace = true
+# M: a fake GitHub/Gitea server for the import tests.
+axum.workspace = true
 
 [lints]
 workspace = true

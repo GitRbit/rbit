@@ -89,13 +89,14 @@ async fn an_import_record_moves_from_queued_to_finished() {
 
     // A second import of the same repository replaces the record; a restart fails it.
     store.create(&new).await.unwrap();
-    assert_eq!(store.fail_unfinished(Timestamp(30), "interrupted").await.unwrap(), 1);
+    assert_eq!(store.fail_unfinished(Timestamp(30), "interrupted", &[repo]).await.unwrap(), 0, "imports this process runs stay");
+    assert_eq!(store.fail_unfinished(Timestamp(30), "interrupted", &[]).await.unwrap(), 1);
     let failed = store.find(repo).await.unwrap().unwrap();
     assert_eq!(
         (failed.status, failed.error.as_deref(), failed.phase),
         (ImportStatus::Failed, Some("interrupted"), ImportPhase::Repository)
     );
-    assert_eq!(store.fail_unfinished(Timestamp(40), "again").await.unwrap(), 0, "finished imports stay as they are");
+    assert_eq!(store.fail_unfinished(Timestamp(40), "again", &[]).await.unwrap(), 0, "finished imports stay as they are");
 }
 
 #[tokio::test]

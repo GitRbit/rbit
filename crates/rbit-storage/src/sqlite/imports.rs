@@ -170,15 +170,21 @@ impl ImportStore {
         Ok(())
     }
 
-    /// Fails every queued or running import with `error` (at start-up: the jobs died with
-    /// the previous process, and their tokens with them). Returns how many there were.
-    pub async fn fail_unfinished(&self, at: Timestamp, error: &str) -> Result<u64, StorageError> {
-        let result =
-            sqlx::query("UPDATE repo_imports SET status = 'failed', error = ?, finished_at = ? WHERE status IN ('queued', 'running')")
-                .bind(error)
-                .bind(at.seconds())
-                .execute(&self.pool)
-                .await?;
+    /// Fails every queued or running import except those of `running` with `error` (at
+    /// start-up: their jobs died with the previous process, and their tokens with them).
+    /// Returns how many there were.
+    pub async fn fail_unfinished(&self, at: Timestamp, error: &str, running: &[RepoId]) -> Result<u64, StorageError> {
+        let running =
+            serde_json::to_string(&running.iter().map(|repo| repo.0).collect::<Vec<_>>()).map_err(|e| corrupt("repository ids", e))?;
+        let result = sqlx::query(
+            "UPDATE repo_imports SET status = 'failed', error = ?, finished_at = ? \
+             WHERE status IN ('queued', 'running') AND repo_id NOT IN (SELECT value FROM json_each(?))",
+        )
+        .bind(error)
+        .bind(at.seconds())
+        .bind(running)
+        .execute(&self.pool)
+        .await?;
         Ok(result.rows_affected())
     }
 
