@@ -10,6 +10,7 @@ pub mod instance;
 pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
+pub mod lfs;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
@@ -206,6 +207,12 @@ impl Database {
 
     pub fn server_secrets(&self) -> server_secrets::ServerSecretStore {
         server_secrets::ServerSecretStore::new(self.pool.clone())
+    }
+
+    // Milestone 3: Git LFS (L).
+
+    pub fn lfs(&self) -> lfs::LfsStore {
+        lfs::LfsStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

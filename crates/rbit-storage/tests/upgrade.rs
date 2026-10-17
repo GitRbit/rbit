@@ -319,6 +319,10 @@ async fn new_tables_start_empty_with_their_defaults() {
         "branch_protections",
         "branch_protection_users",
         "branch_protection_teams",
+        // Milestone 3: Git LFS (L).
+        "lfs_objects",
+        "lfs_repo_objects",
+        "lfs_locks",
     ] {
         assert!(db.exists("table", table).await, "{table}");
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
@@ -358,11 +362,23 @@ async fn new_tables_start_empty_with_their_defaults() {
     assert_eq!(release.get::<i64, _>("is_prerelease"), 0);
     assert_eq!(release.get::<Option<i64>, _>("published_at"), None);
 
+    // Milestone 3: Git LFS (L). An object linked to a milestone 1 repository, and a lock
+    // held by a milestone 1 user.
+    let oid = "a".repeat(64);
+    sqlx::query("INSERT INTO lfs_objects (oid, size, created_at) VALUES (?, 5, 1)").bind(&oid).execute(&db.raw).await.unwrap();
+    sqlx::query("INSERT INTO lfs_repo_objects (repo_id, oid, created_at) VALUES (6, ?, 1)").bind(&oid).execute(&db.raw).await.unwrap();
+    sqlx::query("INSERT INTO lfs_locks (repo_id, path, owner_id, created_at) VALUES (6, 'a.psd', 1, 1)").execute(&db.raw).await.unwrap();
+    let unlinked: Option<i64> = sqlx::query_scalar("SELECT unlinked_at FROM lfs_objects").fetch_one(&db.raw).await.unwrap();
+    assert_eq!(unlinked, None);
+
     // Deleting a milestone 1 repository cascades into the new tables.
     sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();
     assert_eq!(db.count("SELECT COUNT(*) FROM webhooks").await, 0);
     assert_eq!(db.count("SELECT COUNT(*) FROM webhook_deliveries").await, 0);
     assert_eq!(db.count("SELECT COUNT(*) FROM releases").await, 0);
+    assert_eq!(db.count("SELECT COUNT(*) FROM lfs_repo_objects").await, 0);
+    assert_eq!(db.count("SELECT COUNT(*) FROM lfs_locks").await, 0);
+    assert_eq!(db.count("SELECT COUNT(*) FROM lfs_objects WHERE unlinked_at IS NOT NULL").await, 1, "kept, now an orphan");
 }
 
 // Milestone 3: commit statuses (S).
