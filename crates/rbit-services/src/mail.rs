@@ -78,7 +78,13 @@ mod tests {
     use super::*;
 
     fn mail() -> Mail {
-        Mail { to: "bob@example.com".parse().unwrap(), subject: "Hi".to_owned(), text: String::new(), html: String::new() }
+        Mail {
+            to: "bob@example.com".parse().unwrap(),
+            subject: "Hi".to_owned(),
+            text: String::new(),
+            html: String::new(),
+            headers: rbit_mail::messages::MailHeaders::default(),
+        }
     }
 
     /// A transport that never answers.

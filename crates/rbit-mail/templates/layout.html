@@ -15,7 +15,7 @@
 {% block body %}{% endblock %}
 </td></tr>
 <tr><td style="padding-top:24px;font-size:12px;color:#8f8f8f">
-You received this email because of an account on <a href="{{ m.base_url }}" style="color:#666666">{{ m.site_name }}</a>.
+{% block footer %}You received this email because of an account on <a href="{{ m.base_url }}" style="color:#666666">{{ m.site_name }}</a>.{% endblock %}
 </td></tr>
 </table>
 </td></tr>

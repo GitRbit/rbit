@@ -42,6 +42,9 @@ pub enum ThrottleScope {
     ApiRequest,
     /// Issues, pull requests, comments and reviews created or edited (keyed by account).
     Content,
+    /// Milestone 3 (N): notification emails (keyed by recipient address). Over budget, the
+    /// email is skipped; the notification stays in the inbox.
+    NotificationEmail,
 }
 
 /// A budget: `burst` units, refilled one per `refill`; failures cost `failure_cost` more.
@@ -100,6 +103,8 @@ impl Bucket {
             Self::Scope(ThrottleScope::ApiRequest) => Limit::new(300, 1, 0),
             // A burst of 30 posts, then one every ten seconds per account.
             Self::Scope(ThrottleScope::Content) => Limit::new(30, 10, 0),
+            // 30 notification emails at once, then one every two minutes (30 an hour) per address.
+            Self::Scope(ThrottleScope::NotificationEmail) => Limit::new(30, 120, 0),
             // Generous: a person clicking around never notices, a script hammering forms does.
             Self::UnsafeRequest => Limit::new(60, 1, 0),
         }

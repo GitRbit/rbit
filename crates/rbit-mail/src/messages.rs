@@ -20,12 +20,59 @@ pub struct Mail {
     pub text: String,
     /// The `text/html` part.
     pub html: String,
+    /// Threading and list headers; empty for one-off messages.
+    pub headers: MailHeaders,
+}
+
+/// Optional headers of a message. Message ids are written with their angle brackets
+/// (`<owner/repo/issues/1@host>`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MailHeaders {
+    /// `Message-ID`; the relay assigns one when `None`.
+    pub message_id: Option<String>,
+    /// `In-Reply-To` and `References`: the message this one continues.
+    pub in_reply_to: Option<String>,
+    /// `List-Unsubscribe` (RFC 2369) with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+    /// (RFC 8058): an HTTPS link that unsubscribes with a single `POST`.
+    pub one_click_unsubscribe: Option<String>,
+}
+
+impl MailHeaders {
+    /// Each header as `(name, value)`, in the order they are written.
+    pub fn pairs(&self) -> Vec<(&'static str, String)> {
+        let mut pairs = Vec::new();
+        if let Some(id) = &self.message_id {
+            pairs.push(("Message-ID", id.clone()));
+        }
+        if let Some(parent) = &self.in_reply_to {
+            pairs.push(("In-Reply-To", parent.clone()));
+            pairs.push(("References", parent.clone()));
+        }
+        if let Some(link) = &self.one_click_unsubscribe {
+            pairs.push(("List-Unsubscribe", format!("<{link}>")));
+            pairs.push(("List-Unsubscribe-Post", "List-Unsubscribe=One-Click".to_owned()));
+        }
+        pairs
+    }
 }
 
 impl Mail {
     /// Renders `message` for `to`.
     pub fn render(to: Email, message: &impl MailMessage) -> Result<Self, MailError> {
-        Ok(Self { to, subject: message.subject(), text: message.render_text()?, html: message.render_html()? })
+        Ok(Self {
+            to,
+            subject: message.subject(),
+            text: message.render_text()?,
+            html: message.render_html()?,
+            headers: MailHeaders::default(),
+        })
+    }
+
+    /// The same message with `headers`.
+    #[must_use]
+    pub fn with_headers(mut self, headers: MailHeaders) -> Self {
+        self.headers = headers;
+        self
     }
 
     /// Every `http(s)://` link in the plain-text part, in order.
@@ -186,6 +233,63 @@ struct EmailChangedHtml<'a> {
 
 templates!(EmailChanged, text = EmailChangedText, html = EmailChangedHtml);
 
+// ------------------------------------------------------------------ thread notification
+
+/// Milestone 3 workstream N: activity on an issue or pull request the recipient follows
+/// (a mention, an assignment, a review request, a review, a comment, a state change).
+/// Short on purpose: what happened, an excerpt, a link to the thread, why the recipient
+/// got it, and links to the notification settings and to stop these emails.
+#[derive(Debug, Clone)]
+pub struct ThreadNotification {
+    pub site_name: String,
+    pub base_url: String,
+    /// `owner/repo`.
+    pub repository: String,
+    pub number: u64,
+    pub title: String,
+    /// One sentence, e.g. `bob commented on issue #3.`
+    pub headline: String,
+    /// The comment, description or review text (Markdown source, already shortened), or empty.
+    pub excerpt: String,
+    /// The thread, anchored at the activity.
+    pub link: String,
+    /// Whether this is a pull request (the button says so).
+    pub is_pull: bool,
+    /// Whether the message continues the thread (the subject starts with `Re:`).
+    pub is_reply: bool,
+    /// e.g. `You are receiving this because you were mentioned.`
+    pub reason: String,
+    pub settings_link: String,
+    /// The page that turns notification emails off (the link in `List-Unsubscribe`).
+    pub unsubscribe_link: String,
+}
+
+impl ThreadNotification {
+    fn subject(&self) -> String {
+        let prefix = if self.is_reply { "Re: " } else { "" };
+        format!("{prefix}[{}] {} (#{})", self.repository, self.title, self.number)
+    }
+
+    /// The button label.
+    pub fn action_label(&self) -> &'static str {
+        if self.is_pull { "View pull request" } else { "View issue" }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "thread_notification.txt")]
+struct ThreadNotificationText<'a> {
+    m: &'a ThreadNotification,
+}
+
+#[derive(Template)]
+#[template(path = "thread_notification.html")]
+struct ThreadNotificationHtml<'a> {
+    m: &'a ThreadNotification,
+}
+
+templates!(ThreadNotification, text = ThreadNotificationText, html = ThreadNotificationHtml);
+
 // ------------------------------------------------------------------ helpers
 
 /// `alice@example.com` → `a••••@example.com`: enough for the owner to recognise, without
@@ -281,6 +385,69 @@ mod tests {
         assert_well_formed(&mail);
     }
 
+    fn thread_notification() -> ThreadNotification {
+        ThreadNotification {
+            site_name: SITE.to_owned(),
+            base_url: "https://git.example.com".to_owned(),
+            repository: "alice/app".to_owned(),
+            number: 3,
+            title: "Crash on <start>".to_owned(),
+            headline: "bob commented on issue #3.".to_owned(),
+            excerpt: "Same here, @carol <b>".to_owned(),
+            link: "https://git.example.com/alice/app/issues/3#issuecomment-9".to_owned(),
+            is_pull: false,
+            is_reply: true,
+            reason: "You are receiving this because you were mentioned.".to_owned(),
+            settings_link: "https://git.example.com/settings/notifications".to_owned(),
+            unsubscribe_link: "https://git.example.com/email/unsubscribe/2.abc".to_owned(),
+        }
+    }
+
+    #[test]
+    fn renders_thread_notifications() {
+        let mail = Mail::render(to(), &thread_notification()).unwrap();
+        assert_eq!(mail.subject, "Re: [alice/app] Crash on <start> (#3)");
+        assert_eq!(
+            mail.links(),
+            [
+                "https://git.example.com/alice/app/issues/3#issuecomment-9",
+                "https://git.example.com/settings/notifications",
+                "https://git.example.com/email/unsubscribe/2.abc",
+                "https://git.example.com",
+            ]
+        );
+        assert!(mail.text.starts_with("bob commented on issue #3.\n\nSame here, @carol <b>\n\nView it on Forge <&>:"), "{:?}", mail.text);
+        assert!(mail.text.contains("You are receiving this because you were mentioned."), "says why");
+        assert!(mail.html.contains(r#"href="https://git.example.com/alice/app/issues/3#issuecomment-9""#));
+        assert!(mail.html.contains(r#"href="https://git.example.com/email/unsubscribe/2.abc""#));
+        assert!(mail.html.contains(r#"href="https://git.example.com/settings/notifications""#));
+        assert!(mail.html.contains("View issue"));
+        assert!(!mail.html.contains("<b>"), "the excerpt is escaped");
+        assert!(!mail.html.contains("<start>"), "the title is escaped");
+        assert!(!mail.html.contains("because of an account on"), "the generic footer is replaced");
+        assert_well_formed(&mail);
+        assert_eq!(mail.headers, MailHeaders::default(), "the caller adds the threading headers");
+
+        let opening = ThreadNotification { is_reply: false, is_pull: true, excerpt: String::new(), ..thread_notification() };
+        let mail = Mail::render(to(), &opening).unwrap();
+        assert_eq!(mail.subject, "[alice/app] Crash on <start> (#3)");
+        assert!(mail.text.starts_with("bob commented on issue #3.\n\nView it on"), "no empty excerpt: {:?}", mail.text);
+        assert!(mail.html.contains("View pull request"));
+    }
+
+    #[test]
+    fn lists_headers_in_order() {
+        assert_eq!(MailHeaders::default().pairs(), []);
+        let headers = MailHeaders {
+            message_id: Some("<a@h>".to_owned()),
+            in_reply_to: Some("<root@h>".to_owned()),
+            one_click_unsubscribe: Some("https://h/u".to_owned()),
+        };
+        let names: Vec<&str> = headers.pairs().iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["Message-ID", "In-Reply-To", "References", "List-Unsubscribe", "List-Unsubscribe-Post"]);
+        assert_eq!(headers.pairs()[3].1, "<https://h/u>");
+    }
+
     #[test]
     fn masks_addresses() {
         assert_eq!(mask_address("alice@example.com"), "a••••@example.com");
@@ -295,6 +462,7 @@ mod tests {
             subject: String::new(),
             text: "Go to https://a.example/x. Or (http://b.example/y) now".to_owned(),
             html: String::new(),
+            headers: MailHeaders::default(),
         };
         assert_eq!(mail.links(), ["https://a.example/x", "http://b.example/y"]);
     }

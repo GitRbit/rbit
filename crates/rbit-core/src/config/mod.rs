@@ -8,6 +8,7 @@ mod api;
 mod issues;
 mod mail;
 mod mirrors;
+mod notifications;
 mod operations;
 mod pulls;
 mod releases;
@@ -23,6 +24,7 @@ pub use api::ApiConfig;
 pub use issues::IssueConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use mirrors::MirrorConfig;
+pub use notifications::{EmailPreference, NotificationConfig};
 pub use operations::OperationsConfig;
 pub use pulls::PullConfig;
 pub use releases::ReleaseConfig;
@@ -46,6 +48,8 @@ pub struct Config {
     pub mirrors: MirrorConfig,
     pub issues: IssueConfig,
     pub pulls: PullConfig,
+    // Milestone 3: email notifications (N).
+    pub notifications: NotificationConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

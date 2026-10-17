@@ -15,6 +15,9 @@
 //! moment**. Mentions count only in Markdown text (never in code), at most 50 per text,
 //! and only for users not taking part yet. Everything is disabled by
 //! `[issues] notifications = false`.
+//!
+//! Milestone 3 workstream N: the recipients written to the inbox are handed on to
+//! [`NotificationEmailService`], which also mails those who want it.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -36,7 +39,7 @@ pub use rbit_storage::sqlite::notifications::{Notification, NotificationReason, 
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{DomainEvent, ServiceContext, ServiceError, repositories::viewer_grants};
+use crate::{DomainEvent, NotificationEmailService, ServiceContext, ServiceError, repositories::viewer_grants};
 
 /// Rows per inbox page.
 pub const NOTIFICATIONS_PER_PAGE: u32 = 50;
@@ -71,13 +74,22 @@ struct Background {
 pub struct NotificationService {
     ctx: ServiceContext,
     background: Arc<Background>,
+    /// Milestone 3 (N): also mails what the fan-out writes to the inbox.
+    email: Option<NotificationEmailService>,
 }
 
 impl NotificationService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let background =
             Arc::new(Background { started: AtomicBool::new(false), shutdown: CancellationToken::new(), tasks: TaskTracker::new() });
-        Self { ctx, background }
+        Self { ctx, background, email: None }
+    }
+
+    /// The same service, also sending notifications by email through `email` (tests pass
+    /// one with a memory transport).
+    #[must_use]
+    pub fn with_email(&self, email: NotificationEmailService) -> Self {
+        Self { email: Some(email), ..self.clone() }
     }
 
     /// Whether notifications are on (`[issues] notifications`).
@@ -274,6 +286,7 @@ impl NotificationService {
             return Ok(());
         }
         let Some(owned) = self.ctx.database.admin().find_repository(repo).await? else { return Ok(()) };
+        let mut notified = Vec::new();
         for (user_id, reason) in recipients {
             // Suspended users resolve to nothing; access is decided now, with grants.
             let Some(user) = self.ctx.database.accounts().find_active_user(user_id).await? else { continue };
@@ -286,6 +299,13 @@ impl NotificationService {
             let subscription = store.subscription(issue, user_id).await?;
             let reason = subscription.filter(|s| s.subscribed).map_or(reason, |s| s.reason.max(reason));
             store.notify(user_id, issue, repo, reason, actor, now).await?;
+            notified.push((user_id, reason));
+        }
+        // The inbox is written; email is best effort and never fails the fan-out.
+        if let Some(email) = &self.email
+            && let Err(error) = email.deliver(event, repo, issue, actor, &notified).await
+        {
+            tracing::warn!(%error, issue = issue.0, "cannot send notification emails");
         }
         Ok(())
     }
@@ -315,6 +335,9 @@ impl NotificationService {
     pub async fn prune(&self) -> Result<u64, ServiceError> {
         let days = i64::from(self.ctx.config.issues.notification_retention_days);
         let cutoff = Timestamp(Timestamp::now().0.saturating_sub(days.saturating_mul(SECONDS_PER_DAY)));
+        if let Some(email) = &self.email {
+            email.prune(cutoff).await?;
+        }
         Ok(self.ctx.database.notifications().prune_read(cutoff).await?)
     }
 

@@ -18,6 +18,7 @@ pub mod issues;
 pub mod jobs;
 pub mod mail;
 pub mod mirrors;
+pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
 pub mod preferences;
@@ -62,6 +63,7 @@ pub use issues::IssueService;
 pub use jobs::JobService;
 pub use mail::MailService;
 pub use mirrors::MirrorService;
+pub use notification_email::NotificationEmailService;
 pub use notifications::NotificationService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
 pub use preferences::PreferenceService;
@@ -142,6 +144,8 @@ pub struct Services {
     pub protection: ProtectionService,
     // Milestone 3: commit statuses and required checks (S).
     pub statuses: StatusService,
+    // Milestone 3: email notifications (N).
+    pub notification_email: NotificationEmailService,
 }
 
 impl Services {
@@ -165,6 +169,8 @@ impl Services {
         let references = ReferenceService::new(ctx.clone(), timeline.clone());
         let repositories =
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
+        // Milestone 3 (N): notification emails share the mail queue and the rate limits.
+        let notification_email = NotificationEmailService::new(ctx.clone(), mail.clone(), throttle.clone(), instance.clone());
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
@@ -194,9 +200,11 @@ impl Services {
             references,
             pulls: PullService::with_shared(ctx.clone(), timeline.clone(), throttle.clone()),
             timeline,
-            notifications: NotificationService::new(ctx.clone()),
+            notifications: NotificationService::new(ctx.clone()).with_email(notification_email.clone()),
             protection: ProtectionService::new(ctx.clone()),
             statuses: StatusService::new(ctx.clone()),
+            // Milestone 3: email notifications (N).
+            notification_email,
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),

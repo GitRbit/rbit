@@ -13,7 +13,10 @@ use std::{
 
 use lettre::{
     Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-    message::{Mailbox, MultiPart},
+    message::{
+        Mailbox, MultiPart,
+        header::{HeaderName, HeaderValue},
+    },
     transport::smtp::authentication::Credentials,
 };
 use rbit_core::config::{MailConfig, MailTransport};
@@ -74,14 +77,24 @@ fn parse_address(address: &str) -> Result<Address, MailError> {
         .map_err(|error: lettre::address::AddressError| MailError::Address { address: address.to_owned(), reason: error.to_string() })
 }
 
-/// Builds the MIME message: `multipart/alternative` with the text part first.
+/// Builds the MIME message: `multipart/alternative` with the text part first, plus the
+/// threading and list headers the message carries.
 fn build_message(from: &Sender, mail: Mail) -> Result<Message, MailError> {
     let to = Mailbox::new(None, parse_address(mail.to.as_str())?);
-    Ok(Message::builder()
-        .from(from.0.clone())
-        .to(to)
-        .subject(mail.subject)
-        .multipart(MultiPart::alternative_plain_html(mail.text, mail.html))?)
+    let mut builder = Message::builder().from(from.0.clone()).to(to).subject(mail.subject);
+    let headers = mail.headers;
+    if let Some(id) = headers.message_id.clone() {
+        builder = builder.message_id(Some(id));
+    }
+    if let Some(parent) = headers.in_reply_to.clone() {
+        builder = builder.in_reply_to(parent.clone()).references(parent);
+    }
+    if let Some(link) = &headers.one_click_unsubscribe {
+        builder = builder
+            .raw_header(HeaderValue::new(HeaderName::new_from_ascii_str("List-Unsubscribe"), format!("<{link}>")))
+            .raw_header(HeaderValue::new(HeaderName::new_from_ascii_str("List-Unsubscribe-Post"), "List-Unsubscribe=One-Click".to_owned()));
+    }
+    Ok(builder.multipart(MultiPart::alternative_plain_html(mail.text, mail.html))?)
 }
 
 // ------------------------------------------------------------------ SMTP
@@ -153,9 +166,16 @@ impl Mailer for LogMailer {
             let to = mail.to.clone();
             let subject = mail.subject.clone();
             let text = mail.text.clone();
+            let mut extra = String::new();
+            for (name, value) in mail.headers.pairs() {
+                extra.push('\n');
+                extra.push_str(name);
+                extra.push_str(": ");
+                extra.push_str(&value);
+            }
             build_message(&self.from, mail)?;
             // Headers first and the body last, so the message reads naturally in the log.
-            tracing::info!("email not sent (log transport)\nFrom: {}\nTo: {to}\nSubject: {subject}\n\n{text}", self.from);
+            tracing::info!("email not sent (log transport)\nFrom: {}\nTo: {to}\nSubject: {subject}{extra}\n\n{text}", self.from);
             Ok(())
         })
     }
@@ -240,6 +260,7 @@ mod tests {
             subject: "Hello".to_owned(),
             text: "Plain https://example.com/x".to_owned(),
             html: "<p>Rich</p>".to_owned(),
+            headers: crate::messages::MailHeaders::default(),
         }
     }
 
@@ -265,6 +286,24 @@ mod tests {
         assert!(formatted.contains("text/html"));
         assert!(formatted.contains("To: bob@example.com"));
         assert!(formatted.contains("Subject: Hello"));
+        assert!(!formatted.contains("List-Unsubscribe"), "one-off messages carry no list headers");
+    }
+
+    #[test]
+    fn writes_threading_and_unsubscribe_headers() {
+        let sender = Sender::new("git@example.com", "Forge").unwrap();
+        let headers = crate::messages::MailHeaders {
+            message_id: Some("<alice/app/issues/3/issuecomment-9@git.example.com>".to_owned()),
+            in_reply_to: Some("<alice/app/issues/3@git.example.com>".to_owned()),
+            one_click_unsubscribe: Some("https://git.example.com/email/unsubscribe/1.abc".to_owned()),
+        };
+        let formatted = String::from_utf8(build_message(&sender, mail().with_headers(headers)).unwrap().formatted()).unwrap();
+        assert!(formatted.contains("Message-ID: <alice/app/issues/3/issuecomment-9@git.example.com>"), "{formatted}");
+        assert!(formatted.contains("In-Reply-To: <alice/app/issues/3@git.example.com>"));
+        assert!(formatted.contains("References: <alice/app/issues/3@git.example.com>"));
+        assert!(formatted.contains("List-Unsubscribe: <https://git.example.com/email/unsubscribe/1.abc>"));
+        assert!(formatted.contains("List-Unsubscribe-Post: List-Unsubscribe=One-Click"));
+        assert!(!formatted.lines().any(|line| line.starts_with("Reply-To:")), "no incoming mail: replies are not invited");
     }
 
     #[test]

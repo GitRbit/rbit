@@ -1,0 +1,13 @@
+{{ m.headline }}
+{%- if !m.excerpt.is_empty() %}
+
+{{ m.excerpt }}
+{%- endif %}
+
+View it on {{ m.site_name }}: {{ m.link }}
+
+{{ m.reason }}
+Notification settings: {{ m.settings_link }}
+Stop notification emails: {{ m.unsubscribe_link }}
+
+{% include "footer.txt" %}

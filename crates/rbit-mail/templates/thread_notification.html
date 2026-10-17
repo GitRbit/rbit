@@ -1,0 +1,16 @@
+{% extends "layout.html" %}
+{% import "parts.html" as mail %}
+{% block title %}{{ m.title }}{% endblock %}
+{% block body %}
+<p style="margin:0 0 4px;font-size:12px;color:#666666">{{ m.repository }} #{{ m.number }}</p>
+{% call mail::heading(m.title) %}{% endcall %}
+<p style="margin:0">{{ m.headline }}</p>
+{% if !m.excerpt.is_empty() %}
+<p style="margin:16px 0 0;padding:0 0 0 12px;border-left:2px solid #ebebeb;color:#333333;white-space:pre-wrap">{{ m.excerpt }}</p>
+{% endif %}
+{% call mail::button(m.link, m.action_label()) %}{% endcall %}
+{% endblock %}
+{% block footer %}
+{{ m.reason }}<br>
+<a href="{{ m.settings_link }}" style="color:#666666">Notification settings</a> · <a href="{{ m.unsubscribe_link }}" style="color:#666666">Stop notification emails</a> · <a href="{{ m.base_url }}" style="color:#666666">{{ m.site_name }}</a>
+{% endblock %}

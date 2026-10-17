@@ -11,6 +11,7 @@ pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
 pub mod mirrors;
+pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
 pub mod preferences;
@@ -23,6 +24,7 @@ pub mod repo_settings;
 mod repositories;
 pub mod reviews;
 mod rows;
+pub mod server_secrets;
 pub mod ssh_keys;
 // Milestone 3: commit statuses (S).
 pub mod stars;
@@ -194,6 +196,16 @@ impl Database {
 
     pub fn commit_statuses(&self) -> statuses::CommitStatusStore {
         statuses::CommitStatusStore::new(self.pool.clone())
+    }
+
+    // Milestone 3: email notifications (N).
+
+    pub fn notification_email(&self) -> notification_email::NotificationEmailStore {
+        notification_email::NotificationEmailStore::new(self.pool.clone())
+    }
+
+    pub fn server_secrets(&self) -> server_secrets::ServerSecretStore {
+        server_secrets::ServerSecretStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

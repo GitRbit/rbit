@@ -392,3 +392,23 @@ async fn commit_status_tables_start_empty_and_existing_rules_require_no_checks()
     assert_eq!(db.count("SELECT COUNT(*) FROM commit_statuses").await, 0, "statuses go with their repository");
     assert_eq!(db.count("SELECT COUNT(*) FROM branch_protections").await, 0);
 }
+
+// Milestone 3: email notifications (N).
+#[tokio::test]
+async fn notification_email_tables_start_empty() {
+    let db = upgraded().await;
+    for table in ["notification_email_settings", "notification_emails", "server_secrets"] {
+        assert!(db.exists("table", table).await, "{table}");
+        assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
+    }
+    let store = db.database.notification_email();
+    assert_eq!(store.preference(ALICE).await.unwrap(), None, "existing users keep the configured default");
+
+    store.set_preference(BOB, rbit_core::config::EmailPreference::Off, Timestamp(1)).await.unwrap();
+    let invalid = sqlx::query("INSERT INTO notification_email_settings (account_id, email, updated_at) VALUES (1, 'sometimes', 1)")
+        .execute(&db.raw)
+        .await;
+    assert!(invalid.is_err(), "only known preferences are stored");
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM notification_email_settings").await, 0, "deleting the account removes its preference");
+}
