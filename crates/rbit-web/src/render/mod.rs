@@ -5,7 +5,7 @@ mod markdown;
 pub mod references;
 
 pub use highlight::Highlighter;
-pub use markdown::render_markdown;
+pub use markdown::{Rewritten, escape_html, render_markdown, render_markdown_rewriting};
 
 /// Whether a file name denotes Markdown that should be rendered rather than shown as source.
 pub fn is_markdown(file_name: &str) -> bool {

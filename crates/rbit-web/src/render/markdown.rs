@@ -13,7 +13,11 @@
 //!    targets (from Markdown and from raw HTML alike) to repository URLs, after
 //!    ammonia has already discarded dangerous schemes.
 
-use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
@@ -25,24 +29,113 @@ use crate::urls::{DocumentBase, LinkKind, ResolvedLink};
 /// With a `base`, relative links and images resolve against the document's location in
 /// its repository (see [`DocumentBase::resolve`]); without one they are left as written.
 pub fn render_markdown(source: &str, base: Option<&DocumentBase>) -> String {
-    let options = Options::ENABLE_TABLES
+    render(source, base, None)
+}
+
+/// What [`render_markdown_rewriting`] puts in place of one run of text.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rewritten {
+    /// The replacement, as (untrusted, still sanitised) HTML.
+    pub html: String,
+    /// Link targets the replacement contains: they are kept exactly as written instead
+    /// of being resolved against the document's base.
+    pub hrefs: Vec<String>,
+}
+
+/// [`render_markdown`], with every run of plain text (adjacent text events joined; never
+/// inside code, code blocks, links or images) offered to `rewrite`, which may return
+/// HTML to put in its place. Sanitisation stays the last step.
+pub fn render_markdown_rewriting(source: &str, base: Option<&DocumentBase>, rewrite: &dyn Fn(&str) -> Option<Rewritten>) -> String {
+    render(source, base, Some(rewrite))
+}
+
+fn options() -> Options {
+    Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TASKLISTS
         | Options::ENABLE_HEADING_ATTRIBUTES
-        | Options::ENABLE_GFM;
+        | Options::ENABLE_GFM
+}
 
+/// Replaces a run of text with HTML, or leaves it (`None`).
+type Rewrite<'r> = &'r dyn Fn(&str) -> Option<Rewritten>;
+
+fn render(source: &str, base: Option<&DocumentBase>, rewrite: Option<Rewrite<'_>>) -> String {
+    let mut events = with_heading_ids(Parser::new_ext(source, options()));
+    let mut kept: HashSet<String> = HashSet::new();
+    if let Some(rewrite) = rewrite {
+        events = rewrite_text(events, rewrite, &mut kept);
+    }
     let mut unsafe_html = String::with_capacity(source.len() * 3 / 2);
-    html::push_html(&mut unsafe_html, with_heading_ids(Parser::new_ext(source, options)).into_iter());
+    html::push_html(&mut unsafe_html, events.into_iter());
     match base {
         None => sanitizer().clean(&unsafe_html).to_string(),
         Some(base) => {
             let mut builder = configured_builder();
             let base = base.clone();
-            builder.attribute_filter(move |element, attribute, value| resolve_attribute(&base, element, attribute, value));
+            builder.attribute_filter(move |element, attribute, value| {
+                if element == "a" && attribute == "href" && kept.contains(value) {
+                    return Some(Cow::Borrowed(value));
+                }
+                resolve_attribute(&base, element, attribute, value)
+            });
             builder.clean(&unsafe_html).to_string()
         }
     }
+}
+
+/// Joins adjacent text events outside code, links and images and replaces each run with
+/// what `rewrite` returns for it (if anything), remembering the replacements' links.
+fn rewrite_text<'a>(events: Vec<Event<'a>>, rewrite: &dyn Fn(&str) -> Option<Rewritten>, kept: &mut HashSet<String>) -> Vec<Event<'a>> {
+    let mut output: Vec<Event<'a>> = Vec::with_capacity(events.len());
+    let mut run: Vec<Event<'a>> = Vec::new();
+    let mut hidden = 0_usize;
+    let flush = |run: &mut Vec<Event<'a>>, output: &mut Vec<Event<'a>>, kept: &mut HashSet<String>| {
+        if run.is_empty() {
+            return;
+        }
+        let text: String = run.iter().filter_map(|event| if let Event::Text(text) = event { Some(text.as_ref()) } else { None }).collect();
+        match rewrite(&text) {
+            Some(rewritten) => {
+                kept.extend(rewritten.hrefs);
+                output.push(Event::InlineHtml(CowStr::from(rewritten.html)));
+                run.clear();
+            }
+            None => output.append(run),
+        }
+    };
+    for event in events {
+        match &event {
+            Event::Text(_) if hidden == 0 => {
+                run.push(event);
+                continue;
+            }
+            Event::Start(Tag::Link { .. } | Tag::Image { .. } | Tag::CodeBlock(_)) => hidden += 1,
+            Event::End(TagEnd::Link | TagEnd::Image | TagEnd::CodeBlock) => hidden = hidden.saturating_sub(1),
+            _ => {}
+        }
+        flush(&mut run, &mut output, kept);
+        output.push(event);
+    }
+    flush(&mut run, &mut output, kept);
+    output
+}
+
+/// `text` with `&`, `<`, `>`, `"` and `'` escaped, for building HTML by hand.
+pub fn escape_html(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            c => escaped.push(c),
+        }
+    }
+    escaped
 }
 
 /// Rewrites relative link and image targets; every other attribute passes unchanged.

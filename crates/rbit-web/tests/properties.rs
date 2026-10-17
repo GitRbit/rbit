@@ -5,8 +5,13 @@
 
 use percent_encoding::percent_decode_str;
 use proptest::prelude::*;
+use rbit_core::{IssueKind, IssueNumber, IssueState};
+use rbit_services::references::{ReferenceSet, ReferencedIssue};
 use rbit_web::{
-    render::render_markdown,
+    render::{
+        references::{RefContext, render_issue_markdown},
+        render_markdown,
+    },
     urls::{DocumentBase, RepoUrls, encode_path},
 };
 
@@ -106,10 +111,30 @@ fn hostile_markdown() -> impl Strategy<Value = String> {
         Just("[^1]\n\n[^1]: <script>x</script>\n".to_owned()),
         Just("\n\n".to_owned()),
         Just(" ".to_owned()),
-        "[a-z<>=\"' /:()]{0,20}",
+        Just("Fixes #1, cc @alice and acme/web#2 ".to_owned()),
+        Just("#1\" onmouseover=\"x @alice<img src=x onerror=y> ".to_owned()),
+        Just("[#1 @alice](javascript:alert(1)) `#1`".to_owned()),
+        "[a-z<>=\"' /:()#@]{0,20}",
         any::<String>(),
     ];
     prop::collection::vec(fragment, 0..12).prop_map(|parts| parts.concat())
+}
+
+/// A thread context in which `#1` and `@alice` resolve, so issue Markdown inserts links.
+fn issue_context() -> RefContext {
+    let mut refs = ReferenceSet::default();
+    let one = IssueNumber::new(1).expect("one");
+    refs.issues.insert(
+        one,
+        ReferencedIssue { number: one, kind: IssueKind::Issue, state: IssueState::Open, title: "\"><script>x</script>".to_owned() },
+    );
+    refs.accounts.insert("alice".to_owned(), "alice".to_owned());
+    RefContext {
+        base: DocumentBase::new(RepoUrls::new("alice", "proj"), "main", ""),
+        owner: "alice".to_owned(),
+        repo: "proj".to_owned(),
+        refs,
+    }
 }
 
 proptest! {
@@ -119,7 +144,7 @@ proptest! {
     fn markdown_never_contains_script_or_event_handlers(source in hostile_markdown()) {
         // With and without link resolution: the attribute filter must not reopen anything.
         let base = DocumentBase::new(RepoUrls::new("alice", "proj"), "main", "docs");
-        for html in [render_markdown(&source, None), render_markdown(&source, Some(&base))] {
+        for html in [render_markdown(&source, None), render_markdown(&source, Some(&base)), render_issue_markdown(&source, &issue_context())] {
             let lower = html.to_ascii_lowercase();
             prop_assert!(!lower.contains("<script"), "script tag in {:?}", html);
             for tag in start_tags(&html) {
