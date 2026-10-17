@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in rbit does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Security problems go through a
+        [private advisory](https://github.com/rbit/rbit/security/advisories/new) instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, step by step, and what you saw (error messages, screenshots).
+      placeholder: |
+        1. Open a pull request from a fork
+        2. Click "Squash and merge"
+        3. The page shows …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: rbit version
+      description: The output of `rbit --version`, or the image tag.
+      placeholder: rbit 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How rbit runs
+      options:
+        - Release binary
+        - Container image (ghcr.io/rbit/rbit)
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Git version
+      placeholder: Debian 13, git 2.47
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log
+      description: The relevant lines of rbit's log (`RUST_LOG=debug` gives more). Remove secrets first.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: The relevant parts of `rbit.toml` or the `RBIT_*` variables. Remove passwords and tokens.
+      render: toml
