@@ -19,7 +19,7 @@
     <p class="ml-auto text-xs text-ink-faint" data-theme-count aria-live="polite">{{ gallery.shown_label() }}</p>
   </form>
 
-  <form method="post" action="/themes" data-theme-form>
+  <form method="post" action="/themes" hx-boost="false" data-theme-form>
     <input type="hidden" name="next" value="{{ gallery.next }}">
     <section class="theme-family" data-theme-family="rbit"{% if gallery.defaults_hidden %} hidden{% endif %}>
       <h2 class="theme-family-title">Rbit</h2>

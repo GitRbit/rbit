@@ -55,7 +55,7 @@
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. -#}
         {%- let toggle = page.theme.toggled() %}
-        <form method="post" action="/themes" class="contents" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+        <form method="post" action="/themes" class="contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
           <input type="hidden" name="next" value="{{ page.path }}">
           <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="Switch between light and dark" title="Switch between light and dark">
             {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
@@ -68,7 +68,7 @@
           </summary>
           <div class="menu right-0 w-52">
             <p class="menu-label">Theme</p>
-            <form method="post" action="/themes" data-theme-form>
+            <form method="post" action="/themes" hx-boost="false" data-theme-form>
               <input type="hidden" name="next" value="{{ page.path }}">
               {%- for option in page.theme_options() %}
               <button class="menu-item theme-option" type="submit" name="theme" value="{{ option.slug }}" aria-pressed="{{ option.is_current }}">
