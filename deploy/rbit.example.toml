@@ -119,3 +119,24 @@ min_interval_minutes = 10
 fetch_timeout_seconds = 900
 # Refuse upstreams on loopback, private, link-local and other internal addresses.
 allow_private_addresses = false
+
+[issues]
+# Commits scanned for `#N` references and closing keywords per pushed ref update.
+scan_commit_limit = 250
+# In-app notifications (the bell in the header and /notifications).
+notifications = true
+# Read notifications older than this are pruned daily.
+notification_retention_days = 90
+
+[pulls]
+# Merges and trial merges run in scratch repositories under <data_dir>/tmp (never backed up).
+# Upper bound for one merge, in seconds.
+merge_timeout_seconds = 120
+# Merges running at once across the instance (always one at a time per repository).
+max_concurrent_merges = 2
+# Trial merges computing mergeability at once.
+mergeability_concurrency = 2
+# Commits listed on a pull request's Commits tab.
+max_commits = 250
+# Domain of the addresses in commits Rbit makes; empty = "noreply.<host of server.public_url>".
+noreply_domain = ""

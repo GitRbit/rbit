@@ -7,6 +7,104 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Milestone 2 — wave B
+
+The collaboration layer, second half: issues, pull requests with review and merging, and
+protected branches — completing milestone 2. Pull requests are issues with a branch
+attached: they share the repository's number sequence, comments and timeline.
+
+#### Upgrade notes
+
+- Database migrations `0017_issues_core` through `0024_branch_protection` run
+  automatically at start-up (or with `rbit migrate`). Take a backup first; migrations only
+  move forward. They add tables only (and fill the new full-text index from existing rows,
+  which are none), so existing data is untouched; the upgrade test migrates a milestone 1
+  database through them. `0023` is unused on purpose.
+- **Clients can no longer push to `refs/pull/*`.** The namespace now holds pull request
+  heads (`refs/pull/{n}/head`) and is managed by Rbit; such pushes are refused with
+  "refs/pull/ is managed by Rbit", over HTTP and SSH.
+- **Force-push protection affects the whole push.** When a push updates a branch protected
+  against force pushes, git checks every ref of that push for fast-forwards, so a
+  non-fast-forward update of another, unprotected ref in the *same* push is refused too
+  ("non-fast-forward"). Push it separately. Pushes are also all or nothing: if branch
+  protection refuses one ref, the other refs of the push are declined with it.
+- New scratch directory `<data_dir>/tmp` (merges and cross-fork overlays). Its contents are
+  disposable, swept at start-up and **excluded from backups**; it needs no backup or
+  restore.
+- New configuration sections `[issues]` and `[pulls]`; every key is optional and
+  documented in [deploy/rbit.example.toml](deploy/rbit.example.toml). Commits Rbit makes
+  (merges, squashes, rebases) use `<username>@<[pulls] noreply_domain>`, by default
+  `noreply.<host of server.public_url>` — set `server.public_url` before merging.
+- `issues` and `pulls` are now reserved account names. An existing account with such a
+  name keeps its data but should be renamed.
+- Webhooks: the events `issues`, `issue_comment`, `pull_request` and
+  `pull_request_review` are new; existing hooks are not subscribed to them until you tick
+  them.
+
+#### Added
+
+- **Issues**: list, new and issue pages with a Markdown body, the shared timeline
+  (comments, edits, close as completed or not planned, reopen, lock, "close with
+  comment"), and a sidebar with assignees, labels, milestone and a notification
+  subscription. Administrators can delete issues.
+- **Labels** (with a default set) and **milestones** (description, due date, progress),
+  **assignees** (writers only).
+- **References**: `#12`, `owner/repo#12` and `@name` link in Markdown; mentions between
+  threads appear on the target's timeline; commits mentioning `#12` are listed on the
+  issue, and `fixes #12` closes it when the commit reaches the default branch or a pull
+  request naming it is merged into the default branch.
+- **Search and filters** for issues and pull requests: `is:open|closed|issue|pr|merged|draft|locked`,
+  `author:`, `assignee:` (`@me`), `label:` / `-label:`, `milestone:`, `no:`, `sort:` and
+  full-text search over titles and bodies.
+- **Notifications**: an in-app inbox (`/notifications`, a dot on the header bell) for
+  threads you take part in, are assigned to, mentioned in or asked to review; mark read,
+  mark all read, unsubscribe.
+- **Pull requests** within a repository and across its fork network
+  (`compare/main...owner:branch`), drafts, Conversation / Commits / Files changed tabs,
+  **line comments** with threads (outdated after new pushes), **reviews** (comment,
+  approve, request changes; pending reviews), review requests and dismissals,
+  background mergeability checks with conflicting paths, and **merging** by merge
+  commit, squash or rebase, optionally deleting the head branch. Pushes to the head branch
+  update the pull request; a pull request merged with plain `git` is recognised and marked
+  merged.
+- **Branch protection** (Settings → Branches): rules per branch name or glob that forbid
+  force pushes and deletion, require a pull request with up to 10 approvals (optionally
+  dismissing stale approvals and blocking on requested changes), restrict who may push
+  (users and teams), with an optional administrator bypass. Enforced for pushes over
+  HTTP and SSH and for merges; protected branches show a **Protected** badge on the
+  branches page.
+- **REST API**: issues, comments, timeline, labels, milestones, assignees, notifications,
+  pull requests (commits, files, merge, reviews, review comments, requested reviewers) and
+  branch protection rules; all in the OpenAPI document.
+- **Webhooks** `issues`, `issue_comment`, `pull_request` (including `synchronize` and
+  `closed` with `merged`) and `pull_request_review`, shaped like GitHub's.
+- New audit actions: branch protection rule created, changed, deleted and bypassed
+  ("Repository access"); issue deleted (new category "Repository content").
+
+#### Changed
+
+- Repositories have **Issues** and **Pull requests** tabs with open counts.
+- The compare page accepts heads from other repositories of the fork network
+  (`owner:branch`, `owner/name:branch`) and offers "Create pull request".
+- Git over SSH receives pushes in two steps (advertisement, then a stateless
+  `receive-pack`), exactly like smart HTTP, so pushes can be checked before git runs.
+  Clients notice no difference.
+
+#### Security
+
+- The push gate runs in-process in both receive paths before git starts; refused pushes
+  leave the repository untouched, and refusal messages never say who may push.
+- Merges never check files out: they are computed with `git merge-tree --write-tree` and
+  `git commit-tree` in scratch repositories under `<data_dir>/tmp`, with hooks disabled
+  and a hardened `git`, and reach the base branch only through one compare-and-swap
+  `update-ref`. They are bounded in time and concurrency.
+- No email address appears in any issue or pull request page, API object, webhook payload
+  or commit Rbit makes. Notifications only reach people who can read the repository at
+  that moment; mentions never reveal whether someone has access; cross-references are
+  shown only to people who can read their source.
+- Creating and editing issues, pull requests, comments and reviews is rate limited per
+  account.
+
 ### Passkeys for two-factor authentication
 
 Passkeys and hardware security keys (WebAuthn) can now be used as a second factor, on
