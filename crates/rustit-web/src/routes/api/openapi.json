@@ -98,6 +98,7 @@
         "security": [{ "token": [] }],
         "responses": {
           "204": { "description": "Starred" },
+          "307": { "$ref": "#/components/responses/TemporaryRedirect" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -110,6 +111,7 @@
         "security": [{ "token": [] }],
         "responses": {
           "204": { "description": "Not starred" },
+          "307": { "$ref": "#/components/responses/TemporaryRedirect" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -206,6 +208,7 @@
         "summary": "A repository, with the caller's permissions",
         "responses": {
           "200": { "description": "The repository", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Repository" } } } },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
@@ -217,6 +220,7 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepositoryChanges" } } } },
         "responses": {
           "200": { "description": "The changed repository", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Repository" } } } },
+          "307": { "$ref": "#/components/responses/TemporaryRedirect" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -231,6 +235,7 @@
         "security": [{ "token": [] }],
         "responses": {
           "204": { "description": "Deleted" },
+          "307": { "$ref": "#/components/responses/TemporaryRedirect" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -250,6 +255,7 @@
             "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
             "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Branch" } } } }
           },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -266,6 +272,7 @@
         "summary": "One branch",
         "responses": {
           "200": { "description": "The branch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Branch" } } } },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -283,6 +290,7 @@
             "headers": { "Link": { "$ref": "#/components/headers/Link" }, "X-Total-Count": { "$ref": "#/components/headers/X-Total-Count" } },
             "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } } } }
           },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -304,6 +312,7 @@
             "headers": { "Link": { "$ref": "#/components/headers/Link" } },
             "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Commit" } } } }
           },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "description": "The repository is empty", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
@@ -321,6 +330,7 @@
         "summary": "The commit a branch, tag or id names",
         "responses": {
           "200": { "description": "The commit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Commit" } } } },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -335,6 +345,7 @@
         "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
         "responses": {
           "200": { "$ref": "#/components/responses/Hooks" },
+          "301": { "$ref": "#/components/responses/MovedPermanently" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
@@ -348,6 +359,7 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
         "responses": {
           "201": { "$ref": "#/components/responses/CreatedHook" },
+          "307": { "$ref": "#/components/responses/TemporaryRedirect" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
@@ -362,7 +374,7 @@
         "tags": ["webhooks"],
         "summary": "One webhook",
         "security": [{ "token": [] }],
-        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "301": { "$ref": "#/components/responses/MovedPermanently" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       },
       "patch": {
         "operationId": "updateRepositoryHook",
@@ -370,14 +382,14 @@
         "summary": "Change a webhook; absent fields keep their value",
         "security": [{ "token": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HookBody" } } } },
-        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/ValidationFailed" } }
+        "responses": { "200": { "$ref": "#/components/responses/Hook" }, "307": { "$ref": "#/components/responses/TemporaryRedirect" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/ValidationFailed" } }
       },
       "delete": {
         "operationId": "deleteRepositoryHook",
         "tags": ["webhooks"],
         "summary": "Delete a webhook and its delivery log",
         "security": [{ "token": [] }],
-        "responses": { "204": { "description": "Deleted" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "204": { "description": "Deleted" }, "307": { "$ref": "#/components/responses/TemporaryRedirect" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/repos/{owner}/{repo}/hooks/{id}/pings": {
@@ -387,7 +399,7 @@
         "tags": ["webhooks"],
         "summary": "Queue a ping",
         "security": [{ "token": [] }],
-        "responses": { "204": { "description": "Queued" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "204": { "description": "Queued" }, "307": { "$ref": "#/components/responses/TemporaryRedirect" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/repos/{owner}/{repo}/hooks/{id}/deliveries": {
@@ -398,7 +410,7 @@
         "summary": "A webhook's deliveries, newest first",
         "security": [{ "token": [] }],
         "parameters": [{ "$ref": "#/components/parameters/page" }, { "$ref": "#/components/parameters/per_page" }],
-        "responses": { "200": { "$ref": "#/components/responses/Deliveries" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "$ref": "#/components/responses/Deliveries" }, "301": { "$ref": "#/components/responses/MovedPermanently" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/repos/{owner}/{repo}/hooks/{id}/deliveries/{delivery}": {
@@ -408,7 +420,7 @@
         "tags": ["webhooks"],
         "summary": "One delivery with its request and response",
         "security": [{ "token": [] }],
-        "responses": { "200": { "$ref": "#/components/responses/DeliveryDetail" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "$ref": "#/components/responses/DeliveryDetail" }, "301": { "$ref": "#/components/responses/MovedPermanently" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/repos/{owner}/{repo}/hooks/{id}/deliveries/{delivery}/attempts": {
@@ -418,7 +430,7 @@
         "tags": ["webhooks"],
         "summary": "Send a delivery again, as a new delivery with the same payload",
         "security": [{ "token": [] }],
-        "responses": { "202": { "$ref": "#/components/responses/Redelivery" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "202": { "$ref": "#/components/responses/Redelivery" }, "307": { "$ref": "#/components/responses/TemporaryRedirect" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/orgs/{org}/hooks": {
@@ -523,11 +535,14 @@
     },
     "headers": {
       "Link": { "description": "RFC 8288 links to the `first`, `prev`, `next` and `last` pages, where they exist.", "schema": { "type": "string" } },
+      "Location": { "description": "The same endpoint, path and query under the repository's current name (absolute URL).", "schema": { "type": "string", "format": "uri" } },
       "X-Total-Count": { "description": "Items across all pages.", "schema": { "type": "integer" } }
     },
     "responses": {
       "Unauthorized": { "description": "No or an invalid token (`WWW-Authenticate: Bearer`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "Forbidden": { "description": "The caller may see this but not do it (or the token's scope is too narrow)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "MovedPermanently": { "description": "The repository was renamed or transferred; `Location` and `url` name the same endpoint under its current name (GET and HEAD)", "headers": { "Location": { "$ref": "#/components/headers/Location" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Moved" } } } },
+      "TemporaryRedirect": { "description": "The repository was renamed or transferred; repeat the request, with the same method and body, at `Location`", "headers": { "Location": { "$ref": "#/components/headers/Location" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Moved" } } } },
       "NotFound": { "description": "It does not exist, or the caller may not know that it does", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "Conflict": { "description": "A name is already taken", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "ValidationFailed": { "description": "The input is invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationError" } } } },
@@ -561,6 +576,11 @@
       "Redelivery": { "description": "Queued as a new delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Delivery" } } } }
     },
     "schemas": {
+      "Moved": {
+        "type": "object",
+        "required": ["message", "url"],
+        "properties": { "message": { "type": "string" }, "url": { "type": "string", "format": "uri", "description": "Equal to `Location`" } }
+      },
       "Error": {
         "type": "object",
         "required": ["message"],

@@ -1,5 +1,6 @@
 //! Old names of renamed and transferred repositories: web pages redirect, Git over HTTP
-//! keeps working, a new repository at the old name wins, and readers only.
+//! keeps working, the REST API redirects like GitHub, a new repository at the old name
+//! wins, and readers only.
 
 use rustit_e2e::{Git, PASSWORD, StatusCode, TestServer};
 
@@ -138,4 +139,73 @@ async fn transferred_repositories_redirect_from_their_old_owner() {
     // Alice can reuse the name; her new repository wins.
     alice.create_repo("alice", "demo", "public").await;
     alice.get("/alice/demo").await.expect_status(StatusCode::OK);
+}
+
+/// A plain API request that does not follow redirects: status, `Location` and JSON body.
+async fn api(
+    server: &TestServer,
+    method: reqwest::Method,
+    path: &str,
+    token: Option<&str>,
+) -> (StatusCode, Option<String>, serde_json::Value) {
+    let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().expect("API client");
+    let url = if path.starts_with("http") { path.to_owned() } else { server.url(&format!("/api/v1{path}")) };
+    let mut request = http.request(method, url);
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    let response = request.send().await.expect("the API answers");
+    let status = response.status();
+    let location = response.headers().get("location").and_then(|value| value.to_str().ok()).map(str::to_owned);
+    let text = response.text().await.expect("read the body");
+    let json = if text.is_empty() { serde_json::Value::Null } else { serde_json::from_str(&text).expect("API bodies are JSON") };
+    (status, location, json)
+}
+
+#[tokio::test]
+async fn the_api_redirects_old_repository_names_like_github() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_org("acme").await;
+    alice.create_repo("alice", "before", "private").await;
+    let sample = git.sample();
+    git.push_sample(&sample, &server.git_url_as("alice", "before", "alice", PASSWORD));
+    alice.post("/alice/before/settings/rename", &[("name", "after")]).await.expect_redirect("/alice/after/settings");
+    let token = alice.create_token("api", "admin").await;
+    let get = reqwest::Method::GET;
+
+    // Reads: 301 to the same endpoint (path and query) under the current name.
+    let (status, location, body) = api(&server, get.clone(), "/repos/alice/before/commits?per_page=1", Some(&token)).await;
+    let expected = server.url("/api/v1/repos/alice/after/commits?per_page=1");
+    assert_eq!((status, location.as_deref()), (StatusCode::MOVED_PERMANENTLY, Some(expected.as_str())));
+    assert_eq!((body["message"].as_str(), body["url"].as_str()), (Some("Moved Permanently"), Some(expected.as_str())));
+    let (status, _, commits) = api(&server, get.clone(), &expected, Some(&token)).await;
+    assert_eq!((status, commits.as_array().map(Vec::len)), (StatusCode::OK, Some(1)));
+    // Other methods: 307, which keeps the method and body.
+    let (status, location, _) = api(&server, reqwest::Method::PUT, "/user/starred/alice/before", Some(&token)).await;
+    assert_eq!((status, location), (StatusCode::TEMPORARY_REDIRECT, Some(server.url("/api/v1/user/starred/alice/after"))));
+
+    // Callers who may not read the repository get 404, so the new name does not leak.
+    let bobs = bob.create_token("bob", "read").await;
+    for caller in [Some(bobs.as_str()), None] {
+        let (status, location, body) = api(&server, get.clone(), "/repos/alice/before", caller).await;
+        assert_eq!((status, location), (StatusCode::NOT_FOUND, None));
+        assert!(!body.to_string().contains("after"));
+    }
+
+    // Transfers redirect from the old owner as well (here right after a push).
+    git.commit_file(&sample.dir, "more.txt", "pushed before the transfer\n");
+    git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "after", "alice", PASSWORD), "HEAD:refs/heads/main"]);
+    alice.post("/alice/after/settings/transfer", &[("new_owner", "acme"), ("confirm", "alice/after")]).await.expect_redirect("/acme/after");
+    for old in ["/repos/alice/after", "/repos/alice/before"] {
+        let (status, location, _) = api(&server, get.clone(), old, Some(&token)).await;
+        assert_eq!((status, location), (StatusCode::MOVED_PERMANENTLY, Some(server.url("/api/v1/repos/acme/after"))), "{old}");
+    }
+
+    // A repository that takes the old name again wins.
+    alice.create_repo("alice", "before", "public").await;
+    let (status, _, repo) = api(&server, get, "/repos/alice/before", Some(&token)).await;
+    assert_eq!((status, repo["full_name"].as_str()), (StatusCode::OK, Some("alice/before")));
 }
