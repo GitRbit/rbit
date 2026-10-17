@@ -12,7 +12,6 @@
 //! certificates and unknown algorithms are refused.
 
 use rustit_core::{RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
-use rustit_git::RepositoryReader;
 /// The stored keys, re-exported so callers need not depend on the storage layer.
 pub use rustit_storage::sqlite::ssh_keys::{DeployKey, DeployKeyId, SshKey, SshKeyId};
 use rustit_storage::{
@@ -241,7 +240,7 @@ impl SshKeyService {
         }
         let access = if *read_only { RepoAccess::Read } else { RepoAccess::Write };
         let disk_path = self.ctx.repositories.path_for(repo.repo.owner_id, repo.repo.id);
-        let reader = RepositoryReader::new(disk_path.clone());
+        let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
         Ok(RepoContext { repo, access, reader, disk_path })
     }
 

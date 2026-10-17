@@ -317,6 +317,8 @@ impl JobService {
     /// `git gc --auto` for `repo`; `false` when the repository no longer exists.
     async fn collect_garbage(&self, repo: RepoId) -> Result<bool, ServiceError> {
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, repo).await? else { return Ok(false) };
+        // `git gc` has the repository's files open, so a transfer waits for it.
+        let _lease = self.inner.ctx.repositories.lease(repo).await;
         self.inner.maintenance.gc_auto(&context.disk_path).await.map_err(ServiceError::internal)?;
         Ok(true)
     }

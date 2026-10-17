@@ -1,21 +1,29 @@
 //! Physical layout of bare repositories: `<root>/<owner_id>/<repo_id>.git`.
 //!
-//! Numeric ids (not names) keep renames free and make path traversal impossible.
+//! Numeric ids (not names) keep renames free and make path traversal impossible. Work
+//! inside a repository's directory is coordinated with moving it through per-repository
+//! leases (see [`crate::lease`]).
 
 use std::path::{Path, PathBuf};
 
 use rustit_core::{AccountId, RepoId};
 
-use crate::{GitError, RepositoryReader};
+use crate::{
+    GitError, RepositoryReader,
+    lease::{ExclusiveLease, RepositoryLease, RepositoryLocks},
+};
 
+/// The repositories under one root directory. Clones share the same leases, so create
+/// one per root and clone it.
 #[derive(Debug, Clone)]
 pub struct RepositoryStorage {
     root: PathBuf,
+    locks: RepositoryLocks,
 }
 
 impl RepositoryStorage {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self { root: root.into(), locks: RepositoryLocks::default() }
     }
 
     pub fn root(&self) -> &Path {
@@ -26,8 +34,23 @@ impl RepositoryStorage {
         self.root.join(owner.0.to_string()).join(format!("{}.git", repo.0))
     }
 
+    /// A reader whose every operation holds a [`RepositoryLease`] while it has the
+    /// repository open, so the repository is never moved under it.
     pub fn reader(&self, owner: AccountId, repo: RepoId) -> RepositoryReader {
-        RepositoryReader::new(self.path_for(owner, repo))
+        RepositoryReader::new(self.path_for(owner, repo)).with_lock(self.locks.lock_for(repo))
+    }
+
+    /// Waits until `repo` is not being moved and keeps it in place while the lease is
+    /// held. Take one around work that opens files in the repository outside a
+    /// [`RepositoryReader`] (a `git` process, for example). Leases may be nested.
+    pub async fn lease(&self, repo: RepoId) -> RepositoryLease {
+        self.locks.shared(repo).await
+    }
+
+    /// Waits until no lease on `repo` is held (at most [`crate::lease::MAX_WAIT`]) and
+    /// holds back new ones until dropped.
+    pub(crate) async fn exclusive(&self, repo: RepoId) -> ExclusiveLease {
+        self.locks.exclusive(repo).await
     }
 
     /// Initialises an empty bare repository whose `HEAD` points at `default_branch`.

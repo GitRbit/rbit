@@ -71,6 +71,9 @@ impl TransferService {
         }
 
         let storage = &self.ctx.repositories;
+        // A page that loaded the repository through a pinned reader holds its lease; the
+        // move would wait for this very request.
+        repo.reader.close();
         relocate(storage, current.id, current.owner_id, target.id).await?;
         if let Err(error) = self.ctx.database.repositories().transfer(current.id, target.id).await {
             if let Err(restore) = relocate(storage, current.id, target.id, current.owner_id).await {

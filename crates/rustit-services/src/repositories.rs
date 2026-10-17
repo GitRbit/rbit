@@ -60,7 +60,7 @@ impl RepoContext {
     /// administration refuses. It is crate-private so no request handler can obtain one.
     pub(crate) fn for_system(repo: OwnedRepository, storage: &RepositoryStorage) -> Self {
         let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
-        let reader = RepositoryReader::new(disk_path.clone());
+        let reader = storage.reader(repo.repo.owner_id, repo.repo.id);
         Self { repo, access: RepoAccess::Read, reader, disk_path }
     }
 }
@@ -208,7 +208,7 @@ impl RepositoryService {
             return Err(ServiceError::NotFound);
         }
         let disk_path = self.storage.path_for(repo.repo.owner_id, repo.repo.id);
-        let reader = RepositoryReader::new(disk_path.clone());
+        let reader = self.storage.reader(repo.repo.owner_id, repo.repo.id);
         Ok(RepoContext { repo, access, reader, disk_path })
     }
 

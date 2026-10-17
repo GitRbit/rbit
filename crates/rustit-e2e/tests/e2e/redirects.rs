@@ -114,13 +114,22 @@ async fn transferred_repositories_redirect_from_their_old_owner() {
     let alice = server.sign_up("alice").await;
     alice.create_org("acme").await;
     alice.create_repo("alice", "demo", "public").await;
+    // Transferring right after a push: the push's background work must not hold the
+    // repository's files open (Windows cannot move a directory with open files).
+    let sample = git.sample();
+    git.push_sample(&sample, &server.git_url_as("alice", "demo", "alice", PASSWORD));
     alice.post("/alice/demo/settings/transfer", &[("new_owner", "acme"), ("confirm", "alice/demo")]).await.expect_redirect("/acme/demo");
 
     // Pushing to and cloning from the old location reach the repository.
-    let sample = git.sample();
-    git.push_sample(&sample, &server.git_url_as("alice", "demo", "alice", PASSWORD));
+    let pushed = git.commit_file(
+        &sample.dir,
+        "moved.txt",
+        "pushed after the transfer
+",
+    );
+    git.ok(&sample.dir, &["push", "--quiet", &server.git_url_as("alice", "demo", "alice", PASSWORD), "HEAD:refs/heads/main"]);
     let clone = git.clone(&server.git_url("alice", "demo"));
-    assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
+    assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), pushed);
     let moved = server.client().get("/alice/demo/tree/main/src").await;
     moved.expect_status(StatusCode::MOVED_PERMANENTLY);
     assert_eq!(moved.location(), Some("/acme/demo/tree/main/src"));

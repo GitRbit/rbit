@@ -24,6 +24,7 @@ pub mod error;
 pub mod fork;
 pub mod languages;
 pub mod last_commit;
+pub mod lease;
 pub mod maintenance;
 pub mod mirror;
 pub mod model;
@@ -37,6 +38,7 @@ pub use changes::DiffLimits;
 pub use error::GitError;
 pub use languages::{LanguageShare, LanguageStats};
 pub use last_commit::{LastCommitLimits, LastCommits};
+pub use lease::RepositoryLease;
 pub use maintenance::{Maintenance, MaintenanceError};
 pub use model::{
     BlobView, ChangeStatus, CommitDetail, CommitSummary, EntryKind, FileDiff, FileDiffBody, RefDetail, RefKind, RefSummary, TreeEntry,

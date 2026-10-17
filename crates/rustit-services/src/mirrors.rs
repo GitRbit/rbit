@@ -247,7 +247,12 @@ impl MirrorService {
         let git = &config.repository.git_binary;
         let timeout = Duration::from_secs(config.mirrors.fetch_timeout_seconds);
         let pending = self.inner.pushes.begin(context, None).await;
-        match fetch_mirror(git, &context.disk_path, mirror.url.as_str(), timeout).await {
+        let fetched = {
+            // `git fetch` writes into the repository, so a transfer waits for it.
+            let _lease = self.inner.ctx.repositories.lease(context.repo.repo.id).await;
+            fetch_mirror(git, &context.disk_path, mirror.url.as_str(), timeout).await
+        };
+        match fetched {
             Ok(()) => self.inner.pushes.complete(pending).await,
             Err(error) => return Err(describe(&error)),
         }

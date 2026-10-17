@@ -60,6 +60,22 @@ fn invalid<T: std::fmt::Debug>(result: Result<T, ServiceError>, needle: &str) {
 }
 
 #[tokio::test]
+async fn a_page_that_read_the_repository_transfers_it_without_waiting_for_itself() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    fixture.org(&alice, "acme").await;
+    let mut ctx = fixture.repo(&alice, "alice", "rocket").await;
+    // As a repository page does: one pinned reader, already used, held for the request.
+    ctx.reader = ctx.reader.pinned();
+    assert!(ctx.reader.is_empty().await.unwrap());
+
+    let transfer = fixture.services.transfers.transfer(&alice, &ctx, "acme", "alice/rocket");
+    let moved = tokio::time::timeout(std::time::Duration::from_secs(5), transfer).await.expect("no wait for its own lease").unwrap();
+    assert_eq!(moved.full_name(), "acme/rocket");
+    assert!(fixture.open(&alice, "acme", "rocket").await.disk_path.exists());
+}
+
+#[tokio::test]
 async fn admins_move_repositories_to_their_organisations() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice", false).await;

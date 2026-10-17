@@ -10,7 +10,11 @@ use gix::{
 };
 use rustit_core::Timestamp;
 
-use crate::{BlobView, CommitSummary, EntryKind, GitError, RefKind, RefSummary, TreeEntry, TreeView, diff::is_binary};
+use crate::{
+    BlobView, CommitSummary, EntryKind, GitError, RefKind, RefSummary, TreeEntry, TreeView,
+    diff::is_binary,
+    lease::{RepositoryLease, RepositoryLock},
+};
 
 /// File names recognised as a directory's README, in priority order.
 const README_NAMES: &[&str] = &["readme.md", "readme.markdown", "readme", "readme.txt", "readme.rst"];
@@ -21,17 +25,39 @@ const README_NAMES: &[&str] = &["readme.md", "readme.markdown", "readme", "readm
 /// A web page makes several calls (refs, tree, README, language statistics, …);
 /// [`Self::pinned`] lets them share one opened repository, so configuration, the
 /// reference store and pack indices are loaded once per page instead of once per call.
+///
+/// Readers from [`crate::RepositoryStorage::reader`] also hold the repository's
+/// [lease](crate::lease) while they have it open — for each operation, or for a pinned
+/// reader as long as its opened repository lives — so a transfer waits for them instead
+/// of failing on Windows.
 #[derive(Debug, Clone)]
 pub struct RepositoryReader {
     path: PathBuf,
+    /// The repository's lock, for readers that take leases.
+    lock: Option<Arc<RepositoryLock>>,
     /// The repository opened by the first operation of a pinned reader, shared by all
     /// its clones. `None` for an ordinary reader.
-    pinned: Option<Arc<Mutex<Option<gix::ThreadSafeRepository>>>>,
+    pinned: Option<Arc<Mutex<Option<Pinned>>>>,
+}
+
+/// A pinned reader's opened repository and the lease that keeps it in place. Fields drop
+/// in order: the repository's files are closed before the lease is released.
+#[derive(Debug)]
+struct Pinned {
+    repo: gix::ThreadSafeRepository,
+    _lease: Option<RepositoryLease>,
 }
 
 impl RepositoryReader {
+    /// A reader for the repository at `path` that takes no lease (for repositories that
+    /// are never moved, such as test fixtures).
     pub fn new(path: PathBuf) -> Self {
-        Self { path, pinned: None }
+        Self { path, lock: None, pinned: None }
+    }
+
+    pub(crate) fn with_lock(mut self, lock: Arc<RepositoryLock>) -> Self {
+        self.lock = Some(lock);
+        self
     }
 
     /// A reader whose operations (and those of its clones) share one opened repository.
@@ -40,10 +66,33 @@ impl RepositoryReader {
     /// Windows a mapped file cannot be deleted, so a long-lived pinned reader would get in
     /// the way of `git gc` and repository deletion. Objects and references written
     /// meanwhile are still seen: gitoxide re-scans the packs when an object is missing
-    /// and reads references from disk on every lookup.
+    /// and reads references from disk on every lookup. Its lease (if any) is held from
+    /// the first operation until the last clone is dropped, so the repository cannot be
+    /// moved during the request.
     #[must_use]
     pub fn pinned(&self) -> Self {
-        Self { path: self.path.clone(), pinned: Some(Arc::default()) }
+        Self { path: self.path.clone(), lock: self.lock.clone(), pinned: Some(Arc::default()) }
+    }
+
+    /// Closes a pinned reader's shared repository and releases its lease now, for every
+    /// clone; the next operation opens it again. Call it before moving the repository in
+    /// a request that has read it through a pinned reader, which would otherwise wait for
+    /// its own lease. Does nothing for an ordinary reader.
+    pub fn close(&self) {
+        if let Some(slot) = &self.pinned {
+            let pinned = slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+            drop(pinned);
+        }
+    }
+
+    /// The lease this operation needs: none without a lock, none for a pinned reader that
+    /// already holds one with its opened repository, otherwise a fresh one.
+    async fn lease(&self) -> Option<RepositoryLease> {
+        let lock = self.lock.as_ref()?;
+        if self.pinned.as_ref().is_some_and(|slot| slot.lock().unwrap_or_else(PoisonError::into_inner).is_some()) {
+            return None;
+        }
+        Some(Arc::clone(lock).shared().await)
     }
 
     /// Runs `operation` against the opened repository on the blocking thread pool.
@@ -54,13 +103,19 @@ impl RepositoryReader {
     {
         let path = self.path.clone();
         let pinned = self.pinned.clone();
+        let mut lease = self.lease().await;
         tokio::task::spawn_blocking(move || {
             let mut repo = match pinned {
-                Some(slot) => shared_repository(&slot, &path)?.to_thread_local(),
+                // The first operation hands its lease to the pinned repository.
+                Some(slot) => shared_repository(&slot, &path, &mut lease)?.to_thread_local(),
                 None => gix::open_opts(&path, gix::open::Options::isolated()).map_err(GitError::backend)?,
             };
             repo.object_cache_size_if_unset(4 * 1024 * 1024);
-            operation(&repo)
+            let result = operation(&repo);
+            // Close this operation's files before giving up its lease.
+            drop(repo);
+            drop(lease);
+            result
         })
         .await?
     }
@@ -218,14 +273,20 @@ impl RepositoryReader {
 
 /// The repository held by a pinned reader, opened on first use. Concurrent first calls
 /// wait for a single open rather than each opening their own.
-fn shared_repository(slot: &Mutex<Option<gix::ThreadSafeRepository>>, path: &Path) -> Result<gix::ThreadSafeRepository, GitError> {
+/// The pinned repository in `slot`, opened on first use. Opening it moves `lease` into
+/// the slot, where it stays as long as the repository.
+fn shared_repository(
+    slot: &Mutex<Option<Pinned>>,
+    path: &Path,
+    lease: &mut Option<RepositoryLease>,
+) -> Result<gix::ThreadSafeRepository, GitError> {
     // A panic while opening leaves `None` behind, which is safe to retry.
     let mut guard = slot.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(repo) = guard.as_ref() {
-        return Ok(repo.clone());
+    if let Some(pinned) = guard.as_ref() {
+        return Ok(pinned.repo.clone());
     }
     let repo = gix::ThreadSafeRepository::open_opts(path, gix::open::Options::isolated()).map_err(GitError::backend)?;
-    *guard = Some(repo.clone());
+    *guard = Some(Pinned { repo: repo.clone(), _lease: lease.take() });
     Ok(repo)
 }
 

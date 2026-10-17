@@ -70,7 +70,10 @@ impl ForkService {
 
         let target = self.ctx.repositories.path_for(owner.id, repo.id);
         let copied = async {
+            // The parent stays in place (no transfer moves it) while it is copied.
+            let lease = self.ctx.repositories.lease(source.id).await;
             fork_repository(&self.ctx.config.repository.git_binary, &parent.disk_path, &target).await?;
+            drop(lease);
             self.ctx.database.forks().record(repo.id, source.id).await?;
             Ok::<_, ServiceError>(())
         };
