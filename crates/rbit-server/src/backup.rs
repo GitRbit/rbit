@@ -1,5 +1,5 @@
-//! `rbit backup --output DIR`: a consistent snapshot of the database, repositories and
-//! release files, safe to take while the server is running.
+//! `rbit backup --output DIR`: a consistent snapshot of the database, repositories,
+//! release files and Git LFS objects, safe to take while the server is running.
 //!
 //! The backup directory mirrors the data directory, so restoring is a copy:
 //!
@@ -8,6 +8,7 @@
 //! ├── rbit.db                      # SQLite, written with `VACUUM INTO`
 //! ├── repositories/<owner>/<id>.git  # bare mirrors made with `git clone --mirror`
 //! ├── attachments/<repo>/<asset>     # files attached to releases
+//! ├── lfs/<aa>/<bb>/<oid>            # Git LFS objects
 //! └── manifest.json                  # written last: its presence marks a complete backup
 //! ```
 //!
@@ -21,7 +22,10 @@
 //!    upload is renamed into place only when complete) and never changed, so a plain copy
 //!    is consistent; uploads in progress (`attachments/tmp`) and files the snapshot does
 //!    not know are skipped, and files deleted in between are reported as missing.
-//! 4. `manifest.json` records the format, version, time and counts.
+//! 4. The Git LFS objects listed in the snapshot are copied the same way: content-addressed
+//!    and renamed into place only when complete, so a plain copy is consistent; uploads in
+//!    progress (`<data_dir>/tmp`) are never included.
+//! 5. `manifest.json` records the format, version, time and counts.
 //!
 //! The redb key/value store is **not** backed up: it holds only login sessions and
 //! rebuildable caches. After a restore, users sign in again and caches refill on demand.
@@ -34,14 +38,15 @@ use std::{
 };
 
 use anyhow::{Context, bail};
-use rbit_core::{AccountId, Config, RepoId};
+use rbit_core::{AccountId, Config, RepoId, lfs::LfsOid};
 use rbit_git::RepositoryStorage;
 use serde::Serialize;
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
 use tokio::{process::Command, sync::Semaphore, task::JoinSet};
 
-/// Bumped whenever the layout of a backup directory changes (2: release attachments).
-const FORMAT_VERSION: u32 = 2;
+/// Bumped whenever the layout of a backup directory changes (2: release attachments,
+/// 3: Git LFS objects).
+const FORMAT_VERSION: u32 = 3;
 /// Repositories copied at the same time.
 const COPY_CONCURRENCY: usize = 4;
 /// Environment variables passed through to Git; everything else is cleared.
@@ -64,6 +69,10 @@ pub struct Manifest {
     pub attachments: u64,
     /// Release files (asset ids) recorded in the database whose file did not exist.
     pub missing_attachments: Vec<i64>,
+    /// Git LFS objects copied into `lfs/`.
+    pub lfs_objects: u64,
+    /// Git LFS objects (ids) recorded in the database whose file did not exist.
+    pub missing_lfs_objects: Vec<String>,
     pub kv_store: &'static str,
 }
 
@@ -76,6 +85,8 @@ pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
         missing = manifest.missing_repositories.len(),
         attachments = manifest.attachments,
         missing_attachments = manifest.missing_attachments.len(),
+        lfs_objects = manifest.lfs_objects,
+        missing_lfs_objects = manifest.missing_lfs_objects.len(),
         "backup complete"
     );
     Ok(())
@@ -92,13 +103,20 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
 
     let snapshot = output.join("rbit.db");
     snapshot_database(&source, &snapshot).await?;
-    let Inventory { accounts, repositories, assets } = read_inventory(&snapshot).await?;
-    tracing::info!(accounts, repositories = repositories.len(), attachments = assets.len(), "database snapshot written");
+    let Inventory { accounts, repositories, assets, lfs_objects } = read_inventory(&snapshot).await?;
+    tracing::info!(
+        accounts,
+        repositories = repositories.len(),
+        attachments = assets.len(),
+        lfs_objects = lfs_objects.len(),
+        "database snapshot written"
+    );
 
     let storage = RepositoryStorage::new(config.storage.repositories_dir());
     let target = RepositoryStorage::new(output.join("repositories"));
     let copied = copy_repositories(&config.repository.git_binary, &storage, &target, &repositories).await?;
     let attachments = copy_attachments(&config.storage.attachments_dir(), &output.join("attachments"), &assets).await?;
+    let lfs = copy_lfs_objects(&config.storage.lfs_dir(), &output.join("lfs"), &lfs_objects).await?;
 
     let manifest = Manifest {
         format: FORMAT_VERSION,
@@ -110,6 +128,8 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         missing_repositories: copied.missing,
         attachments: attachments.copied,
         missing_attachments: attachments.missing,
+        lfs_objects: lfs.copied,
+        missing_lfs_objects: lfs.missing,
         kv_store: "not included: it holds only sessions and caches, which are rebuilt",
     };
     let staging = output.join("manifest.json.tmp");
@@ -141,6 +161,8 @@ struct Inventory {
     repositories: Vec<(RepoId, AccountId)>,
     /// `(repository, asset)` ids of release files.
     assets: Vec<(i64, i64)>,
+    /// Ids of Git LFS objects.
+    lfs_objects: Vec<LfsOid>,
 }
 
 async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
@@ -148,18 +170,28 @@ async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
     let accounts: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts").fetch_one(&mut connection).await?;
     let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, owner_id FROM repositories ORDER BY id").fetch_all(&mut connection).await?;
     let assets: Vec<(i64, i64)> = sqlx::query_as("SELECT repo_id, id FROM release_assets ORDER BY id").fetch_all(&mut connection).await?;
+    let oids: Vec<String> = sqlx::query_scalar("SELECT oid FROM lfs_objects ORDER BY oid").fetch_all(&mut connection).await?;
     connection.close().await?;
+    let lfs_objects =
+        oids.iter().map(|oid| LfsOid::parse(oid).with_context(|| format!("invalid LFS object id {oid:?}"))).collect::<Result<_, _>>()?;
     Ok(Inventory {
         accounts: u64::try_from(accounts).unwrap_or_default(),
         repositories: rows.into_iter().map(|(id, owner)| (RepoId(id), AccountId(owner))).collect(),
         assets,
+        lfs_objects,
     })
 }
 
-#[derive(Debug, Default)]
-struct Copied {
+#[derive(Debug)]
+struct Copied<Id = i64> {
     copied: u64,
-    missing: Vec<i64>,
+    missing: Vec<Id>,
+}
+
+impl<Id> Default for Copied<Id> {
+    fn default() -> Self {
+        Self { copied: 0, missing: Vec::new() }
+    }
 }
 
 async fn copy_repositories(
@@ -223,6 +255,31 @@ async fn copy_attachments(source: &Path, target: &Path, assets: &[(i64, i64)]) -
             tokio::fs::create_dir_all(parent).await?;
         }
         tokio::fs::copy(&from, &to).await.with_context(|| format!("cannot copy release file {asset} ({})", from.display()))?;
+        result.copied += 1;
+    }
+    Ok(result)
+}
+
+/// Copies the Git LFS objects `oids` from `<source>/<aa>/<bb>/<oid>` to the same place
+/// under `target`. Objects never change once in place; one removed since the snapshot (no
+/// repository used it any more) is reported as missing.
+async fn copy_lfs_objects(source: &Path, target: &Path, oids: &[LfsOid]) -> anyhow::Result<Copied<String>> {
+    tokio::fs::create_dir_all(target).await?;
+    let mut result = Copied::default();
+    for oid in oids {
+        let (first, second) = oid.shards();
+        let relative = Path::new(first).join(second).join(oid.as_str());
+        let from = source.join(&relative);
+        if !tokio::fs::try_exists(&from).await? {
+            tracing::warn!(%oid, path = %from.display(), "LFS object is in the database but not on disk; skipped");
+            result.missing.push(oid.to_string());
+            continue;
+        }
+        let to = target.join(&relative);
+        if let Some(parent) = to.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::copy(&from, &to).await.with_context(|| format!("cannot copy LFS object {oid} ({})", from.display()))?;
         result.copied += 1;
     }
     Ok(result)

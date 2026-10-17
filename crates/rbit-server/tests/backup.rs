@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use rbit_core::{Config, Visibility};
+use rbit_core::{Config, Visibility, lfs::LfsOid};
 use rbit_services::{CreateRepository, Services, SignUp, releases::ReleaseInput};
 use rbit_storage::{Database, KvStore};
 
@@ -66,7 +66,7 @@ async fn backup_writes_a_restorable_snapshot() {
     assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["format"], 2);
+    assert_eq!(manifest["format"], 3);
     assert_eq!(manifest["accounts"], 1);
     assert_eq!(manifest["repositories"], 2);
     assert_eq!(manifest["missing_repositories"], serde_json::json!([]));
@@ -161,4 +161,43 @@ async fn backup_includes_release_files_but_not_uploads_in_progress() {
     let copied = backup.join(file.strip_prefix(&data_dir).unwrap());
     assert_eq!(std::fs::read(&copied).unwrap(), b"release bytes");
     assert!(!backup.join("attachments").join("tmp").exists(), "uploads in progress are skipped");
+}
+
+/// Milestone 3: Git LFS (L). Stores one object for `ada/project` and returns its path.
+async fn store_lfs_object(data_dir: &Path, content: &[u8]) -> PathBuf {
+    let mut config = Config::default();
+    config.storage.data_dir = data_dir.to_owned();
+    let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let lfs_dir = config.storage.lfs_dir();
+    let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
+    let id = database.accounts().find_account_by_name("ada").await.unwrap().unwrap().id;
+    let ada = database.accounts().find_user(id).await.unwrap().unwrap();
+    let repo = services.repositories.open(Some(&ada), "ada", "project").await.unwrap();
+    let oid = LfsOid::from_digest(<sha2::Sha256 as sha2::Digest>::digest(content).into());
+    services.lfs.store(&repo, &oid, content.len() as u64, content).await.unwrap();
+    database.close().await;
+    let (first, second) = oid.shards();
+    lfs_dir.join(first).join(second).join(oid.as_str())
+}
+
+#[tokio::test]
+async fn backup_includes_lfs_objects() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().join("data");
+    populate(&data_dir).await;
+    let object = store_lfs_object(&data_dir, b"large file content").await;
+    let gone = store_lfs_object(&data_dir, b"removed before the backup").await;
+    std::fs::remove_file(&gone).unwrap();
+    let backup = dir.path().join("backup");
+
+    let output = rbit(&data_dir, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["lfs_objects"], 1);
+    let missing = gone.file_name().unwrap().to_str().unwrap();
+    assert_eq!(manifest["missing_lfs_objects"], serde_json::json!([missing]));
+
+    let copied = backup.join(object.strip_prefix(&data_dir).unwrap());
+    assert_eq!(std::fs::read(&copied).unwrap(), b"large file content");
 }

@@ -35,6 +35,8 @@ time.workspace = true
 rbit-services.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+# L: Git LFS object ids in the backup test.
+sha2.workspace = true
 
 [lints]
 workspace = true
