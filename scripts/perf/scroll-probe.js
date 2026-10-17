@@ -38,7 +38,7 @@
   } = options;
 
   const LINE = ".code-line, .diff-view tr, .diff-file tr";
-  const BLOCK = ".code-lines, .diff-file[open]";
+  const BLOCK = ".vblock, .code-lines, .diff-file[open]";
   const CHROME = "header.site-header, .site-subnav, .diff-file-header, .diff-toolbar, .diff-sidebar";
   const frame = () => new Promise((done) => requestAnimationFrame(done));
   const round = (n) => Math.round(n * 10) / 10;
