@@ -16,6 +16,7 @@ pub mod insights;
 pub mod instance;
 pub mod issues;
 pub mod jobs;
+pub mod lfs;
 pub mod mail;
 pub mod mirrors;
 pub mod notification_email;
@@ -63,6 +64,7 @@ pub use insights::InsightsService;
 pub use instance::InstanceService;
 pub use issues::IssueService;
 pub use jobs::JobService;
+pub use lfs::LfsService;
 pub use mail::MailService;
 pub use mirrors::MirrorService;
 pub use notification_email::NotificationEmailService;
@@ -152,6 +154,8 @@ pub struct Services {
     pub notification_email: NotificationEmailService,
     // Milestone 3: editing files in the browser (E).
     pub edits: EditService,
+    // Milestone 3: Git LFS (L).
+    pub lfs: LfsService,
 }
 
 impl Services {
@@ -213,6 +217,7 @@ impl Services {
             notification_email,
             // Milestone 3: editing files in the browser (E).
             edits: EditService::new(ctx.clone(), ProtectionService::new(ctx.clone()), PushService::new(ctx.clone())),
+            lfs: LfsService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
@@ -231,6 +236,7 @@ impl Services {
         self.issues.spawn_background();
         self.notifications.spawn_background();
         self.pulls.spawn_background();
+        self.lfs.spawn_background();
     }
 
     /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
@@ -245,6 +251,7 @@ impl Services {
             self.issues.shutdown(),
             self.notifications.shutdown(),
             self.pulls.shutdown(),
+            self.lfs.shutdown(),
         );
     }
 }

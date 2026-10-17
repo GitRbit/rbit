@@ -26,6 +26,8 @@ hmac.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
 percent-encoding.workspace = true
+# L: Git LFS (signed transfer tokens).
+base64.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
