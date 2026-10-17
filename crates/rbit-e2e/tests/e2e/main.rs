@@ -5,6 +5,7 @@
 mod access;
 mod accounts;
 mod api;
+mod api_workflow;
 mod compatibility;
 mod edge;
 mod essentials;
