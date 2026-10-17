@@ -311,36 +311,6 @@
     display: none;
   }
 
-  /* Source code viewer. */
-  .code-view {
-    @apply font-mono text-[12.5px] leading-5;
-    tab-size: 4;
-  }
-
-  .code-view td.line-number {
-    @apply w-1 select-none pl-4 pr-3 text-right align-top text-ink-faint;
-  }
-
-  .code-view td.line-number a:hover {
-    @apply text-ink;
-  }
-
-  .code-view td.line-code {
-    @apply whitespace-pre pl-3 pr-6;
-  }
-
-  .code-view tr:first-child td {
-    @apply pt-3;
-  }
-
-  .code-view tr:last-child td {
-    @apply pb-3;
-  }
-
-  .code-view tr:target {
-    @apply bg-hover;
-  }
-
   /* Unified diff: old/new line numbers, then the line with its +/- sign. */
   .diff-view {
     @apply font-mono text-[12.5px] leading-5;

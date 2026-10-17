@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="auth-shell">
+{#- hx-history="false" keeps the reset token in the URL out of htmx's localStorage history cache. -#}
+<section class="auth-shell" hx-history="false">
   {% if let Some(problem) = problem %}
   <header class="auth-head">
     <span class="tile">{% call ui::icon("alert", "size-5") %}{% endcall %}</span>
