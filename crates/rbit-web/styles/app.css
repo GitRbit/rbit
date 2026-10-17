@@ -769,9 +769,13 @@
 
 /* ---------------------------------------------------------------- File viewer lines */
 
-/* One block per line (repo/blob.html). Lines off screen skip layout and paint until
-   scrolled near (`content-visibility`), so a file of thousands of lines appears as
-   fast as a short one, on a full load and on an htmx swap alike. */
+/* repo/blob.html and repo/blame.html. Lines come in virtual blocks (`.vblock`, see
+   Virtual blocks): a block off screen skips layout and paint as a unit, so a file of
+   thousands of lines appears as fast as a short one, on a full load and on an htmx swap
+   alike. Every line is exactly one `--row-h` tall (`height`, not `min-height`: a glyph
+   from a taller fallback font, an emoji say, must not grow it), which keeps each block's
+   placeholder exact. `.code-lines` is as wide as its widest line, so line backgrounds
+   span the whole horizontal scroll. */
 .code-lines {
   @apply min-w-full py-3 font-mono text-[12.5px] leading-5;
   width: max-content;
@@ -780,9 +784,8 @@
 
 .code-line {
   display: flex;
-  min-height: 1.25rem;
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 1.25rem;
+  height: var(--row-h);
+  line-height: var(--row-h);
   /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
   scroll-margin-top: 8rem;
 }
