@@ -2,7 +2,7 @@
 //!
 //! Milestone 2 workstream P (pull requests) owns this file.
 
-use rbit_core::Issue;
+use rbit_core::{Issue, IssueId};
 
 use crate::{ServiceContext, ServiceError};
 
@@ -32,4 +32,16 @@ pub async fn check_reopen(ctx: &ServiceContext, pull: &Issue) -> Result<(), Serv
         return Err(ServiceError::Invalid(format!("pull request #{} already proposes these branches", number.get())));
     }
     Ok(())
+}
+
+/// Whether pull request `pull` was merged into its repository's **default** branch (the
+/// issue workstream closes the issues a pull request names only then, as GitHub does).
+/// `false` for anything else, including rows that no longer exist.
+pub async fn merged_into_default_branch(ctx: &ServiceContext, pull: IssueId) -> Result<bool, ServiceError> {
+    let Some(row) = ctx.database.pulls().find(pull).await? else { return Ok(false) };
+    if !row.is_merged() {
+        return Ok(false);
+    }
+    let Some(repo) = ctx.database.admin().find_repository(row.repo_id).await? else { return Ok(false) };
+    Ok(repo.repo.default_branch == row.base_branch)
 }

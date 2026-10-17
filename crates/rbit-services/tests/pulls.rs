@@ -493,5 +493,6 @@ async fn branch_protection_gates_merges_and_head_branch_deletion() {
     assert!(repo.reader.commit_id("refs/heads/feature".into()).await.is_ok(), "the protected head branch is kept");
     let merged = fixture.open_pull(&fixture.alice, number).await;
     assert!(merged.pull.is_merged());
+    assert!(pulls.merged_into_default_branch(merged.issue().id).await.unwrap(), "main is the default branch");
     assert!(matches!(pulls.delete_head(&fixture.alice, &merged).await, Err(ServiceError::Invalid(_))));
 }

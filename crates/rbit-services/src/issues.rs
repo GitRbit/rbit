@@ -967,11 +967,13 @@ impl IssueService {
         Ok(())
     }
 
-    /// A merged pull request closes the issues its body names with closing keywords.
-    ///
-    /// The base branch is the pull request workstream's data; until it exposes it, a
-    /// merge into any branch closes (see the integration notes).
+    /// A pull request merged into the default branch closes the issues its body names
+    /// with closing keywords (`pulls::lifecycle::merged_into_default_branch`); merges into
+    /// other branches close nothing, as on GitHub.
     async fn close_by_merge(&self, pull: IssueId, number: IssueNumber, actor: Option<AccountId>) -> Result<(), ServiceError> {
+        if !crate::pulls::lifecycle::merged_into_default_branch(&self.ctx, pull).await? {
+            return Ok(());
+        }
         let database = &self.ctx.database;
         let Some(pull) = database.issues().find(pull).await? else { return Ok(()) };
         let scan = references::scan_markdown(pull.body.as_str());

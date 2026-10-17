@@ -427,37 +427,60 @@ async fn pushed_commits_reference_and_close_issues_on_the_default_branch_only() 
 
 #[tokio::test]
 async fn merged_pull_requests_close_the_issues_their_body_names() {
+    use rbit_storage::sqlite::pulls::{CreatedPull, MergeRecord, NewPull};
+
     let fixture = Fixture::new().await;
     let first = fixture.create(&fixture.alice, "Crash", "").await;
+    let second = fixture.create(&fixture.alice, "Other crash", "").await;
     let repo = fixture.repo(&fixture.alice).await;
-    let pull = fixture
-        .database
-        .issues()
-        .create(&rbit_storage::sqlite::issues::NewIssue {
+    let pulls = fixture.database.pulls();
+    // Pull requests into `main` (the default branch) and into `release`, both naming an issue.
+    let open = |head: &str, base: &str, body: &str| NewPull {
+        issue: rbit_storage::sqlite::issues::NewIssue {
             repo: repo.repo.repo.id,
             kind: IssueKind::Pull,
             title: rbit_core::IssueTitle::parse("Fix").unwrap(),
-            body: rbit_core::IssueText::body("This resolves #1.").unwrap(),
+            body: rbit_core::IssueText::body(body).unwrap(),
             author: fixture.alice.id(),
             at: rbit_core::Timestamp::now(),
-        })
-        .await
-        .unwrap();
-    let merged = DomainEvent::Issue {
-        repo: repo.repo.repo.id,
-        issue: pull.id,
-        number: pull.number,
-        kind: IssueKind::Pull,
-        actor: Some(fixture.bob.id()),
-        action: IssueAction::Closed { reason: StateReason::Merged },
+        },
+        head_repo: repo.repo.repo.id,
+        head_branch: head.to_owned(),
+        base_branch: base.to_owned(),
+        head_sha: "a".repeat(40),
+        is_draft: false,
     };
-    fixture.services.issues.handle_event(&merged).await.unwrap();
+    let mut merged = Vec::new();
+    for (head, base, body) in [("fix", "main", "This resolves #1."), ("backport", "release", "Fixes #2.")] {
+        let CreatedPull::Created(created) = pulls.create(&open(head, base, body)).await.unwrap() else { panic!("a new pull request") };
+        let (pull, _) = *created;
+        let record = MergeRecord {
+            merged_by: Some(fixture.bob.id()),
+            strategy: None,
+            commit: "b",
+            base: "c",
+            head: "a",
+            at: rbit_core::Timestamp::now(),
+        };
+        assert!(pulls.record_merge(pull.id, &record).await.unwrap());
+        let event = DomainEvent::Issue {
+            repo: repo.repo.repo.id,
+            issue: pull.id,
+            number: pull.number,
+            kind: IssueKind::Pull,
+            actor: Some(fixture.bob.id()),
+            action: IssueAction::Closed { reason: StateReason::Merged },
+        };
+        fixture.services.issues.handle_event(&event).await.unwrap();
+        merged.push(pull.number);
+    }
     let ctx = fixture.open(&fixture.alice, first).await;
     assert_eq!((ctx.issue.state, ctx.issue.closed_by), (IssueState::Closed, Some(fixture.bob.id())));
     assert_eq!(
         fixture.events_of(&fixture.alice, first).await,
-        [TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: Some(pull.number) }]
+        [TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: Some(merged[0]) }]
     );
+    assert_eq!(fixture.open(&fixture.alice, second).await.issue.state, IssueState::Open, "merging into another branch closes nothing");
 }
 
 #[tokio::test]

@@ -508,6 +508,11 @@ impl PullService {
         json::load(self.ctx(), ctx.issue(), &ctx.pull, base_url).await
     }
 
+    /// Whether the pull request was merged into the repository's default branch.
+    pub async fn merged_into_default_branch(&self, pull: rbit_core::IssueId) -> Result<bool, ServiceError> {
+        lifecycle::merged_into_default_branch(self.ctx(), pull).await
+    }
+
     /// The `pull_request` object of a listed pull request.
     pub async fn json_of(&self, issue: &Issue, pull: &PullRequest, base_url: &str) -> Result<serde_json::Value, ServiceError> {
         json::load(self.ctx(), issue, pull, base_url).await
