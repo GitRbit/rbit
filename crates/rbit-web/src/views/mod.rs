@@ -18,6 +18,8 @@ pub mod errors;
 pub mod external_auth;
 pub mod forks;
 pub mod home;
+// Milestone 3: importing and push mirrors (M).
+pub mod imports;
 pub mod insights;
 pub mod issues;
 pub mod labels;

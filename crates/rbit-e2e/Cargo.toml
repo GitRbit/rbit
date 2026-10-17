@@ -32,6 +32,7 @@ sha2.workspace = true
 rbit-ssh.workspace = true
 # O: fake OIDC and GitHub providers (an ES256 signing key, base64url tokens).
 p256.workspace = true
+# M: the fake GitHub server shared with the services tests.
 base64.workspace = true
 
 [lints]

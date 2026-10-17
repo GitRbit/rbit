@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="mx-auto max-w-xl">
+  <h1 class="text-xl font-semibold tracking-tight">Import a repository</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Copies a repository from GitHub or Gitea with its history and, if you like, its issues, pull requests, labels, milestones, releases and Git LFS files. Issue and pull request numbers stay the same.</p>
+
+  {% if disabled %}
+  <div class="box mt-8">{% call ui::empty_state("download", "Importing is disabled", "An administrator of this instance has turned importing off.") %}{% endcall %}</div>
+  {% else %}
+  <form method="post" action="/new/import" class="mt-8" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+
+    <fieldset>
+      <legend class="label">Import from</legend>
+      <div class="box overflow-hidden">
+        {% for source in sources %}
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="kind" value="{{ source.value }}" class="mt-1 accent-(--ink)" {% if source.checked %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{{ source.label }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ source.hint }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <label class="label mt-5" for="import-host">Server address <span class="font-normal text-ink-faint">not needed for github.com</span></label>
+    <input class="input font-mono text-xs" id="import-host" name="host" value="{{ host }}" inputmode="url" placeholder="https://gitea.example.com" autocapitalize="none" spellcheck="false" maxlength="2048">
+
+    <label class="label mt-5" for="import-repository">Repository</label>
+    <input class="input font-mono text-xs" id="import-repository" name="repository" value="{{ repository }}" placeholder="owner/name or its URL" autocapitalize="none" spellcheck="false" maxlength="2048" required autofocus>
+
+    <label class="label mt-5" for="import-token">Access token <span class="font-normal text-ink-faint">optional for public repositories</span></label>
+    <input class="input font-mono text-xs" id="import-token" name="token" type="password" autocomplete="off" spellcheck="false" maxlength="1024">
+    <p class="hint">A token that can read the repository raises the source's rate limits and is needed for private repositories. It is used only while the import runs and is never stored.</p>
+
+    <div class="mt-5 grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
+      <div>
+        <label class="label" for="import-owner">Owner</label>
+        <div class="relative">
+          <select class="input cursor-pointer appearance-none pr-9" id="import-owner" name="owner">
+            {% for owner in owners %}
+            <option value="{{ owner.name }}" {% if owner.selected %}selected{% endif %}>{{ owner.name }}</option>
+            {% endfor %}
+          </select>
+          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        </div>
+      </div>
+      <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
+      <div>
+        <label class="label" for="import-name">Name <span class="font-normal text-ink-faint">optional</span></label>
+        <input class="input" id="import-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="as on the source">
+      </div>
+    </div>
+
+    <fieldset class="mt-6">
+      <legend class="label">Bring along</legend>
+      <div class="box overflow-hidden">
+        {% for option in options %}
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="checkbox" name="{{ option.field }}" value="on" class="mt-1 accent-(--ink)" {% if option.checked %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{{ option.label }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+        <div class="flex items-start gap-3 px-4 py-3 text-ink-faint">
+          <input type="checkbox" class="mt-1" disabled aria-describedby="import-wiki-hint">
+          <span>
+            <span class="block font-medium">Wiki</span>
+            <span id="import-wiki-hint" class="block text-[13px]">Not supported: this instance has no wikis.</span>
+          </span>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset class="mt-6">
+      <legend class="label">Visibility</legend>
+      <div class="box overflow-hidden">
+        <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Public</span>
+            <span class="block text-[13px] text-ink-muted">Anyone can see and clone the repository.</span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">Private</span>
+            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
+      <a href="/new" class="btn">Cancel</a>
+      <button class="btn btn-primary" type="submit">{% call ui::icon("download", "size-3.5") %}{% endcall %}Start import</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

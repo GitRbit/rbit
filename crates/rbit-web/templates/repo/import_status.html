@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section id="import-progress" class="mx-auto max-w-2xl" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#import-progress" hx-target="this" hx-swap="outerHTML"{% endif %}>
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="text-xl font-semibold tracking-tight">Import</h1>
+    <span class="badge {{ status_class }}">{{ status_label }}</span>
+  </div>
+  <p class="mt-1 break-all text-[13px] text-ink-muted">From {{ source_label }}: <a class="link font-mono text-xs" href="{{ source_url }}" rel="noreferrer noopener" target="_blank">{{ source_url }}</a></p>
+
+  {% if let Some(message) = error %}
+  <div role="alert" class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
+    {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+    <span class="whitespace-pre-wrap break-words">{{ message }} Everything imported until then is in the repository.</span>
+  </div>
+  {% endif %}
+
+  <ol class="box mt-6">
+    {% for phase in phases %}
+    <li class="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0">
+      {% if phase.state == "done" %}{% call ui::icon("circle-check", "mt-0.5 size-4 shrink-0 text-success") %}{% endcall %}
+      {% else if phase.state == "failed" %}{% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-danger") %}{% endcall %}
+      {% else if phase.state == "current" %}{% call ui::icon("refresh", "mt-0.5 size-4 shrink-0 animate-spin text-ink") %}{% endcall %}
+      {% else %}{% call ui::icon("circle-slash", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
+      {% endif %}
+      <span class="min-w-0 flex-1">
+        <span class="block text-[13px] font-medium {% if phase.state == "waiting" || phase.state == "skipped" %}text-ink-muted{% endif %}">{{ phase.label }}</span>
+        {% if !phase.detail.is_empty() %}<span class="block text-xs text-ink-muted">{{ phase.detail }}</span>{% endif %}
+      </span>
+      {% if phase.state == "skipped" %}<span class="text-xs text-ink-faint">Not reached</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+
+  <p class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+    {% if let Some((when, iso)) = started %}<span>Started <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time></span>{% else %}<span>Waiting for a free slot</span>{% endif %}
+    {% if let Some((when, iso)) = finished %}<span>Ended <time datetime="{{ iso }}" title="{{ iso }}">{{ when }}</time></span>{% endif %}
+    {% if active %}<span>This page updates by itself.</span>{% endif %}
+  </p>
+
+  {% if !warnings.is_empty() %}
+  <section class="box mt-6" aria-labelledby="import-warnings-title">
+    <h2 id="import-warnings-title" class="box-header text-[13px] font-medium">Skipped or incomplete</h2>
+    <ul>
+      {% for warning in warnings %}
+      <li class="border-b border-line px-4 py-2.5 text-[13px] break-words last:border-b-0">{{ warning }}</li>
+      {% endfor %}
+      {% if dropped_warnings > 0 %}
+      <li class="px-4 py-2.5 text-xs text-ink-muted">and {{ dropped_warnings }} more (see the server log)</li>
+      {% endif %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if !active %}
+  <div class="mt-6 flex justify-end">
+    <a href="{{ header.home_url }}" class="btn btn-primary">Go to the repository</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

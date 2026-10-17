@@ -16,6 +16,7 @@ mod forks;
 mod git_http;
 mod history;
 mod home;
+mod imports;
 mod issues;
 mod labels;
 mod lfs;
@@ -146,6 +147,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         // Milestone 3: external sign-in (O).
         .merge(external_auth::routes())
         // Milestone 3: importing and push mirrors (M).
+        .merge(imports::routes())
         .merge(push_mirrors::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
