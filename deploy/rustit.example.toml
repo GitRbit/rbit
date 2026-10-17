@@ -77,3 +77,45 @@ job_concurrency = 2
 # Insights cache limits (redb). Pruned entries are recomputed on demand. 0 = no limit.
 insights_cache_max_age_days = 30
 insights_cache_max_entries = 50000
+
+[api]
+# The REST API under /api/v1, authenticated with personal access tokens. When off, every
+# /api path answers 404.
+enabled = true
+# Items per page when a request does not send ?per_page=, and the most it may ask for.
+default_page_size = 30
+max_page_size = 100
+
+[webhooks]
+# Send webhook deliveries. When off, hooks can still be configured but nothing is sent.
+enabled = true
+# Refuse targets that resolve to loopback, private, link-local, unique-local and other
+# internal addresses. Only enable this if repository admins may probe your network.
+allow_private_addresses = false
+# Upper bound for one attempt (connect, send, read the response).
+timeout_seconds = 10
+# Attempts per delivery, including the first (retries after ~10 s, 1 min, 10 min, 1 h, 6 h).
+max_attempts = 5
+# Deliveries in flight at once across the instance.
+concurrency = 4
+# Days the delivery log keeps requests and responses.
+delivery_retention_days = 14
+
+[releases]
+# Files attached to releases live in <data_dir>/attachments (included in backups).
+# Largest attached file, in bytes (512 MiB). Raise the reverse proxy's body limit to match.
+max_asset_bytes = 536870912
+max_assets_per_release = 50
+# Upper bound for one upload; uploads are exempt from the 30-second page timeout.
+upload_timeout_seconds = 3600
+
+[mirrors]
+# Allow pull mirrors (repositories fetched from an http(s) upstream on a schedule).
+enabled = true
+# Fetch interval for new mirrors, and the shortest interval a mirror may use.
+default_interval_minutes = 480
+min_interval_minutes = 10
+# Upper bound for one fetch.
+fetch_timeout_seconds = 900
+# Refuse upstreams on loopback, private, link-local and other internal addresses.
+allow_private_addresses = false
