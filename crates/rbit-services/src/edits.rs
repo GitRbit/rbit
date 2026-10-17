@@ -16,10 +16,10 @@
 //! * paths are [`FilePath`]s; the tree checks (no clobbering, no paths through files) are
 //!   `rbit_git::edit`'s. Text is limited to `[repository] max_render_bytes` and written in
 //!   the file's existing line-ending style ([`rbit_core::file_edit::prepare_text`]); files
-//!   that are binary or larger than that cannot be edited (they can still be renamed by
+//!   that are binary, larger than that or Git LFS pointers cannot be edited (they can still be renamed by
 //!   uploading, deleted or replaced by an upload). Uploads are bounded by `[editor]`;
-//! * the commit's author and committer are the actor, with their address when it is
-//!   verified and their noreply address (`[pulls] noreply_domain`) otherwise;
+//! * the commit's author and committer are the actor with their noreply address
+//!   (`[pulls] noreply_domain`), as for merges;
 //! * the commit is one `update-ref` compare-and-swap against the commit the editor was
 //!   opened at: a branch that moved meanwhile is [`EditFailure::BranchMoved`], never
 //!   rebased.
@@ -323,7 +323,7 @@ impl EditService {
     }
 
     /// The content of file `path` at `parent` if the browser may edit it: text no larger
-    /// than [`Self::max_text_bytes`].
+    /// than [`Self::max_text_bytes`] that is not a Git LFS pointer.
     pub async fn editable_text(&self, repo: &RepoContext, parent: &str, path: &str) -> Result<Vec<u8>, EditFailure> {
         let view = match repo.reader.blob(parent.to_owned(), path.to_owned(), self.max_text_bytes()).await {
             Ok(view) => view,
@@ -333,7 +333,12 @@ impl EditService {
         if view.text().is_none() {
             return Err(EditFailure::Invalid(format!("{path} is binary or too large to edit in the browser")));
         }
-        Ok(view.data.unwrap_or_default())
+        let data = view.data.unwrap_or_default();
+        // Editing the pointer would replace the object with its own description.
+        if rbit_core::lfs::LfsPointer::parse(&data).is_some() {
+            return Err(EditFailure::Invalid(format!("{path} is stored with Git LFS and cannot be edited in the browser")));
+        }
+        Ok(data)
     }
 
     // ------------------------------------------------------------------ committing

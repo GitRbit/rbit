@@ -395,7 +395,8 @@ pub async fn blob(
 
     let urls = &loaded.urls;
     let editable = loaded.can_edit_on(&revision);
-    let is_text = matches!(content, BlobContent::Code(_) | BlobContent::Markdown(_));
+    // A Git LFS pointer is shown as its object, which the editor cannot change.
+    let is_text = lfs_stored.is_none() && matches!(content, BlobContent::Code(_) | BlobContent::Markdown(_));
     Ok(BlobPage {
         page: page.titled(format!("{path} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "code"),

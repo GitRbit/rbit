@@ -63,7 +63,8 @@ impl Fixture {
         Self::with(|_| {}).await
     }
 
-    /// `alice/demo` with `README.md` (LF), `win.txt` (CRLF) and `logo.bin` (binary) on `main`.
+    /// `alice/demo` with `README.md` (LF), `win.txt` (CRLF), `logo.bin` (binary) and
+    /// `big.dat` (a Git LFS pointer) on `main`.
     async fn with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
@@ -100,6 +101,14 @@ impl Fixture {
         std::fs::write(work.path().join("README.md"), "# Demo\n").unwrap();
         std::fs::write(work.path().join("win.txt"), "one\r\ntwo\r\n").unwrap();
         std::fs::write(work.path().join("logo.bin"), [0_u8, 159, 146, 150, 0, 1]).unwrap();
+        let pointer = format!(
+            "version https://git-lfs.github.com/spec/v1
+oid sha256:{}
+size 12
+",
+            "a".repeat(64)
+        );
+        std::fs::write(work.path().join("big.dat"), pointer).unwrap();
         git(work.path(), &["add", "."]);
         git(work.path(), &["commit", "-q", "-m", "initial"]);
         git(work.path(), &["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:refs/heads/main"]);
@@ -240,6 +249,8 @@ async fn text_keeps_its_line_endings_and_binaries_are_not_edited() {
     let input = form(&repo, CommitTarget::Branch);
     let binary = fixture.services.edits.update_file(&fixture.alice, &repo, &input, "logo.bin", "", "text").await;
     assert!(matches!(&binary, Err(EditFailure::Invalid(message)) if message.contains("binary")), "{binary:?}");
+    let pointer = fixture.services.edits.update_file(&fixture.alice, &repo, &input, "big.dat", "", "text").await;
+    assert!(matches!(&pointer, Err(EditFailure::Invalid(message)) if message.contains("Git LFS")), "{pointer:?}");
     let unchanged = fixture.services.edits.update_file(&fixture.alice, &repo, &input, "README.md", "", "# Demo\r\n").await;
     assert!(matches!(&unchanged, Err(EditFailure::Invalid(message)) if message == "there are no changes to commit"), "{unchanged:?}");
     for (path, message) in [("../x", "paths cannot contain . or .. parts"), (".git/config", "paths cannot contain a .git part")] {
