@@ -358,6 +358,11 @@ impl RecoveryService {
         match event {
             DomainEvent::UserSignedUp { user } => {
                 let Some(account) = self.store().find_account(*user).await? else { return Ok(()) };
+                // Milestone 3 (O): accounts registered through a provider that verified
+                // the address start verified; there is nothing to confirm.
+                if account.email_verified_at.is_some() {
+                    return Ok(());
+                }
                 self.send_verification(&account, VerifyReason::SignUp).await
             }
             DomainEvent::EmailChanged { user, previous } => {

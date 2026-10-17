@@ -11,6 +11,8 @@ pub mod audit;
 pub mod collaborators;
 pub mod error;
 pub mod events;
+// Milestone 3: external sign-in (O).
+pub mod external_auth;
 pub mod forks;
 pub mod insights;
 pub mod instance;
@@ -59,6 +61,7 @@ pub use audit::AuditService;
 pub use collaborators::CollaboratorService;
 pub use error::ServiceError;
 pub use events::{DomainEvent, EventBus};
+pub use external_auth::ExternalAuthService;
 pub use forks::ForkService;
 pub use insights::InsightsService;
 pub use instance::InstanceService;
@@ -156,6 +159,8 @@ pub struct Services {
     pub edits: EditService,
     // Milestone 3: Git LFS (L).
     pub lfs: LfsService,
+    // Milestone 3: external sign-in (O).
+    pub external_auth: ExternalAuthService,
 }
 
 impl Services {
@@ -181,6 +186,8 @@ impl Services {
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
         // Milestone 3 (N): notification emails share the mail queue and the rate limits.
         let notification_email = NotificationEmailService::new(ctx.clone(), mail.clone(), throttle.clone(), instance.clone());
+        // Milestone 3 (O): fails on an invalid `[auth]` section, so the server won't start.
+        let external_auth = ExternalAuthService::new(&ctx, throttle.clone())?;
 
         Ok(Self {
             accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
@@ -218,6 +225,8 @@ impl Services {
             // Milestone 3: editing files in the browser (E).
             edits: EditService::new(ctx.clone(), ProtectionService::new(ctx.clone()), PushService::new(ctx.clone())),
             lfs: LfsService::new(ctx.clone()),
+            // Milestone 3: external sign-in (O).
+            external_auth,
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),

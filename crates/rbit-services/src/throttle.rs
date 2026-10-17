@@ -45,6 +45,9 @@ pub enum ThrottleScope {
     /// Milestone 3 (N): notification emails (keyed by recipient address). Over budget, the
     /// email is skipped; the notification stays in the inbox.
     NotificationEmail,
+    /// Milestone 3 (O): returns from external sign-in providers (keyed by client address);
+    /// a callback that fails (bad state, refused token) costs extra.
+    ExternalSignIn,
 }
 
 /// A budget: `burst` units, refilled one per `refill`; failures cost `failure_cost` more.
@@ -105,6 +108,9 @@ impl Bucket {
             Self::Scope(ThrottleScope::Content) => Limit::new(30, 10, 0),
             // 30 notification emails at once, then one every two minutes (30 an hour) per address.
             Self::Scope(ThrottleScope::NotificationEmail) => Limit::new(30, 120, 0),
+            // Ten callbacks at once, then one every 30 seconds; a failure costs three. Only
+            // used per client address, which gets five times that.
+            Self::Scope(ThrottleScope::ExternalSignIn) => Limit::new(10, 30, 3),
             // Generous: a person clicking around never notices, a script hammering forms does.
             Self::UnsafeRequest => Limit::new(60, 1, 0),
         }

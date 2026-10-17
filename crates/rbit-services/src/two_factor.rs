@@ -169,6 +169,9 @@ struct PendingSignIn {
     failures: u8,
     /// The passkey challenge last shown on the second-step page.
     challenge: Option<Challenge>,
+    /// How the first step was passed, for the audit log: `password`, or (milestone 3, O)
+    /// the name of the external sign-in provider.
+    method: String,
 }
 
 /// What a settings-page challenge is for.
@@ -427,7 +430,9 @@ impl TwoFactorService {
         self.pending.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn start_pending(&self, account: AccountId) -> SessionToken {
+    /// Opens a pending sign-in for `account`, whose first step was `method` (see
+    /// [`PendingSignIn`]); external sign-in (milestone 3, O) continues here too.
+    pub(crate) fn start_pending(&self, account: AccountId, method: &str) -> SessionToken {
         let token = SessionToken::generate();
         let now = Instant::now();
         let mut pending = self.lock_pending();
@@ -437,7 +442,7 @@ impl TwoFactorService {
         {
             pending.remove(&oldest);
         }
-        pending.insert(token.digest(), PendingSignIn { account, started: now, failures: 0, challenge: None });
+        pending.insert(token.digest(), PendingSignIn { account, started: now, failures: 0, challenge: None, method: method.to_owned() });
         token
     }
 
@@ -453,6 +458,11 @@ impl TwoFactorService {
             }
             None => None,
         }
+    }
+
+    /// How the pending sign-in's first step was passed (`password` once it is gone).
+    fn pending_method(&self, token: &SessionToken) -> String {
+        self.lock_pending().get(&token.digest()).map_or_else(|| "password".to_owned(), |entry| entry.method.clone())
     }
 
     /// Takes the pending sign-in's passkey challenge, so each works once.
@@ -537,7 +547,7 @@ impl Services {
         self.throttle.reset(ThrottleScope::SignIn, login);
 
         if self.two_factor.is_enabled(user.id()).await? {
-            return Ok(SignInOutcome::SecondFactorRequired(self.two_factor.start_pending(user.id())));
+            return Ok(SignInOutcome::SecondFactorRequired(self.two_factor.start_pending(user.id(), "password")));
         }
         self.audit.record(AuditEntry::new(AuditAction::SignIn).by(&user).from_ip(client.ip).detail("password")).await;
         Ok(SignInOutcome::SignedIn(user))
@@ -566,11 +576,14 @@ impl Services {
         match self.two_factor.verify(&user, proof, challenge).await {
             Ok(factor) => {
                 self.throttle.reset(ThrottleScope::TwoFactor, &key);
+                let method = self.two_factor.pending_method(pending);
                 self.two_factor.end_pending(pending);
                 let entry = match factor {
-                    SecondFactor::Authenticator => AuditEntry::new(AuditAction::SignIn).detail("password and authenticator code"),
-                    SecondFactor::Passkey => AuditEntry::new(AuditAction::SignIn).detail("password and passkey"),
-                    SecondFactor::RecoveryCode => AuditEntry::new(AuditAction::RecoveryCodeUsed).detail("password and recovery code"),
+                    SecondFactor::Authenticator => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and authenticator code")),
+                    SecondFactor::Passkey => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and passkey")),
+                    SecondFactor::RecoveryCode => {
+                        AuditEntry::new(AuditAction::RecoveryCodeUsed).detail(format!("{method} and recovery code"))
+                    }
                 };
                 self.audit.record(entry.by(&user).from_ip(client.ip)).await;
                 Ok(user)
