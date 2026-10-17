@@ -551,6 +551,30 @@
   outline: none;
 }
 
+/* ---------------------------------------------------------------- Virtual blocks */
+
+/* Long code and diff views are runs of `.vblock`s (src/views/blocks.rs): up to 128
+   fixed-height rows each. Off screen, a block skips style, layout and paint as a unit. Its
+   placeholder height is exact, so scrolling never shows blank lines or moves the
+   scrollbar: every row inside is exactly `--row-h` tall, and the block says how many rows
+   it holds in `data-rows`. Typed `attr()` reads that where supported; elsewhere blocks.js
+   sets the same height through the CSSOM (the CSP forbids `style=`). The first
+   declaration is the fallback for both: a full block, which `auto` replaces with the
+   real height once the block has been rendered.
+
+   The second declaration must not use `var()`: a declaration holding `var()` is only
+   checked when computed, so browsers without typed `attr()` would keep it and end up
+   with no placeholder height at all, instead of dropping it while parsing. */
+:root {
+  --row-h: 1.25rem;
+}
+
+.vblock {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 160rem;
+  contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 128) * 1.25rem);
+}
+
 /* ---------------------------------------------------------------- Diffs */
 
 /* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and

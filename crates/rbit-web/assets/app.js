@@ -13,6 +13,9 @@ import "./filter.js";
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
 
+// Long code and diff views: exact placeholder heights for virtual blocks.
+import "./blocks.js";
+
 // Passkeys for two-factor authentication (settings and the second sign-in step).
 import "./passkey.js";
 
