@@ -84,9 +84,7 @@ pub async fn login(
                 .same_site(SameSite::Strict)
                 .secure(https.0)
                 .path(TWO_FACTOR_PATH)
-                .max_age(time::Duration::seconds(
-                    rbit_services::two_factor::PENDING_SIGN_IN_TTL.as_secs().try_into().unwrap_or(i64::MAX),
-                ));
+                .max_age(time::Duration::seconds(rbit_services::two_factor::PENDING_SIGN_IN_TTL.as_secs().try_into().unwrap_or(i64::MAX)));
             let target = format!("{TWO_FACTOR_PATH}?next={}", utf8_percent_encode(&next, NON_ALPHANUMERIC));
             return Ok((jar.add(cookie), Redirect::to(&target)).into_response());
         }

@@ -86,7 +86,12 @@ async fn enrolment_needs_a_confirming_code_and_issues_recovery_codes() {
     assert!(!two_factor.is_enabled(alice.id()).await.unwrap());
 
     let secret = fixture.secret(&alice).await;
-    let codes = fixture.services.confirm_two_factor(&alice, &code(&secret, time_step(Timestamp::now().0)), &client()).await.unwrap().expect("first factor");
+    let codes = fixture
+        .services
+        .confirm_two_factor(&alice, &code(&secret, time_step(Timestamp::now().0)), &client())
+        .await
+        .unwrap()
+        .expect("first factor");
     assert_eq!(codes.len(), RECOVERY_CODE_COUNT);
     let status = two_factor.status(&alice).await.unwrap();
     assert!(status.is_enabled());

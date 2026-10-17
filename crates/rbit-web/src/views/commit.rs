@@ -310,9 +310,7 @@ mod tests {
     }
 
     fn outline(rows: &[FileTreeRow]) -> Vec<String> {
-        rows.iter()
-            .map(|row| format!("{}{}{}", "  ".repeat(row.depth), row.name, if row.file.is_none() { "/" } else { "" }))
-            .collect()
+        rows.iter().map(|row| format!("{}{}{}", "  ".repeat(row.depth), row.name, if row.file.is_none() { "/" } else { "" })).collect()
     }
 
     #[test]

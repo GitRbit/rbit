@@ -14,12 +14,12 @@ use std::{
 };
 
 use hmac::{Hmac, KeyInit, Mac};
-use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use rbit_core::{
     Timestamp,
     webhook::{WebhookUrl, is_internal_address},
 };
 use rbit_storage::sqlite::webhooks::{AttemptRecord, ClaimedDelivery};
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use sha2::Sha256;
 
 /// Response bytes kept in the delivery log.

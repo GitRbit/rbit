@@ -7,8 +7,8 @@
 
 use std::sync::Arc;
 
-use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use rbit_core::{AccountId, Timestamp};
+use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use serde::{Deserialize, Serialize};
 
 use crate::{StorageError, error::kv_error};

@@ -52,12 +52,7 @@ async fn populate(data_dir: &Path) -> (PathBuf, PathBuf) {
 }
 
 fn rbit(data_dir: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_rbit"))
-        .args(args)
-        .env("RBIT_STORAGE__DATA_DIR", data_dir)
-        .env_remove("RBIT_CONFIG")
-        .output()
-        .unwrap()
+    Command::new(env!("CARGO_BIN_EXE_rbit")).args(args).env("RBIT_STORAGE__DATA_DIR", data_dir).env_remove("RBIT_CONFIG").output().unwrap()
 }
 
 #[tokio::test]
