@@ -1175,10 +1175,93 @@ binding like the rest of this document.
   (an event row and its icon circle on the timeline rule).
 
 T0 (before launching I and P)
-- [ ] `0017_issues_core.sql`, `IssueStore`, `TimelineService`, `routes/timeline.rs`,
+- [x] `0017_issues_core.sql`, `IssueStore`, `TimelineService`, `routes/timeline.rs`,
       `views/timeline.rs`, `templates/timeline/**`, `urls::issue_url`, open counts in the
       header — with store tests (concurrent creation yields distinct numbers, counters
       survive deletion, comment counts, timeline order and cursor), service tests
       (permissions, events published, locked threads, throttling, `Merged` refused),
       route tests (404 for hidden repositories and unknown numbers, 303 targets by kind)
       and view render tests.
+
+### T0 as built (the frozen core I and P build on)
+
+T0 is done. These details differ from, or pin down, §1; they are binding like the rest of
+this document. Requests to change any of it go through integration requests.
+
+**Storage (`rbit_storage::sqlite::issues`, `Database::issues()`)**
+- Migration `0017_issues_core.sql` is §1's schema plus `CHECK (last_number > 0)` and
+  `CHECK (comment_count >= 0)`.
+- **Timeline order is `(created_at, comments before events, id)`**: comments and events
+  have separate id spaces, so within one second comments come first (a "close with
+  comment" reads comment, then "closed"). `TimelineCursor { at, item: TimelineItemId::
+  {Comment(CommentId), Event(EventId)} }` is the position; `to_param()`/`parse()` give
+  the URL form `1760000000-c42` / `…-e7`.
+- `timeline(issue, after, limit) -> TimelinePage { items, next }` (not a bare `Vec`):
+  `next` is set when more items follow; events of unknown kinds are skipped but still
+  count towards the page, so a page can be shorter than `limit` and still have `next`.
+  `StoredTimelineItem::Event` also carries `actor_id`. `limit = 0` returns an empty page.
+- Missing rows are `None`, not errors: `update_text`, `add_comment` and `edit_comment`
+  return `Option<…>`. `update_text` records `Renamed` only when the title really changes
+  and moves `updated_at` only when something changed. `delete` never deletes pull
+  requests (returns `None`). `delete_comment` stamps the thread's `updated_at` with the
+  current time. Every comment and event change moves `updated_at` forward, never back.
+- Event `data` is the variant's fields (`{}` for unit variants); `decode` rebuilds serde's
+  adjacent tagging and skips unknown kinds or data that does not fit.
+- Additions: `readable_sources(ids, viewer, viewer_is_admin) -> Vec<IssueSource { issue:
+  IssueRef, full_name }>` (cross-reference sources through the shared `readable_by!`
+  predicate) and `AccountStore::find_accounts(ids)` (one `json_each` query).
+- `NewIssue` and `insert_in` are as specified (`insert_in` is `pub(crate)`, an associated
+  function taking `&mut SqliteConnection`: pass `&mut tx`).
+
+**Service (`rbit_services::timeline`, `Services::timeline`)**
+- Exported: `TimelineService`, `IssueContext`, `OpenCounts { issues, pulls }`,
+  `StateChange`, `TimelineEntry` (with `cursor()`), `EventSubjects`,
+  `CrossReferenceSource`, `Timeline { entries, next }`, `MAX_TIMELINE_PAGE` (200), and the
+  re-exported `TimelineCursor`, `TimelineItemId`.
+- `open` is also `NotFound` when `repo.access` cannot read. `timeline(viewer, ctx, …)`
+  expects `ctx` opened for that same `viewer` (its access decides the comment
+  permissions); `limit` is clamped to `1..=200`.
+- Every change recomputes `issue_permissions(Some(actor), ctx.repo.access, &ctx.issue)`
+  instead of trusting `ctx.permissions`. Order: permission (403), validation (400 via the
+  new `From<IssueTextError> for ServiceError`), throttle (429), write. A change to the
+  same state, lock or text is a no-op that publishes nothing; `set_state` then returns
+  the current row.
+- `create`, `close_as_system` and `record` are `pub(crate)` with
+  `#[cfg_attr(not(test), expect(dead_code, …))]`: **remove that attribute** when your
+  workstream starts calling them. `close_as_system` with a missing id returns `false`.
+- `check_reopen` receives `ctx.issue` as loaded for the request.
+
+**Web**
+- `urls::issue_url(owner, repo, kind, number)`; `RepoHeader.open_issues/open_pulls` are
+  loaded by `RepoPage::load` together with the other header data.
+- Routes (`routes/timeline.rs`): as specified. Anchors: `#issuecomment-{id}` after
+  comments and comment edits, `#issue-title` after title edits, `#issue-body` after body
+  edits, `#new-comment` after state, lock, comment deletion and state-only submissions.
+  "Close with comment" with an empty body only changes the state; a state change the
+  viewer may not make is refused **before** the comment is written. Invalid input is the
+  400 error page with the reason (there is no form to re-render yet); malformed comment
+  ids are 404.
+- Views (`views/timeline.rs`): `thread(&state, &ctx, viewer, after, TimelineOptions {
+  edit, head_branch, base_branch }) -> ThreadView { urls, badge, title, opening, items,
+  next_url, form }` loads one page, resolves references for the body and every comment
+  with one `ReferenceService::resolve` call and renders Markdown through
+  `render_issue_markdown`. `build_thread`/`items` are the I/O-free halves.
+  `TimelineItemView { cursor, comment: Option<CommentView>, event: Option<EventView> }`
+  (options instead of an enum, so `item.html` works from any module); event sentences
+  are `Vec<Fragment { kind, text, url, color }>`. `head_branch`/`base_branch` let P's
+  page name branches in push and merge sentences (the events do not store them).
+  `StateBadge::{for_issue, merged, draft}`; `ThreadUrls::{new, for_context, comment,
+  delete_comment, at}`; constants `BODY_ANCHOR`, `TITLE_ANCHOR`, `NEW_COMMENT_ANCHOR`,
+  helpers `comment_anchor`, `event_anchor`. "Load more" is `?after={cursor}`.
+  `ReviewDismissed` links `#pullrequestreview-{id}` (P's anchor).
+- Templates: `timeline/{thread,item,comment,event,comment_form,state_badge,title_form}.html`
+  expecting `thread`, `item`, `comment`, `event`, `form`, `badge`, `title` respectively.
+  Edit forms open with `?edit=comment-{id}`, `?edit=body`, `?edit=title`; the Edit links
+  swap just their element with `hx-select`, so no fragment endpoint exists. The opening
+  post renders with `comment.html` (`is_opening_post`). The lock toggle sits under the
+  comment form; I's sidebar need not repeat it.
+- Icons: `pencil` added (the rename event).
+- Tests: store (`rbit-storage/tests/issues.rs`), service (`rbit-services/tests/
+  timeline.rs` and unit tests for the crate-private functions), views and routes (unit
+  tests in `views/timeline.rs`, `routes/timeline.rs`), e2e (`tests/e2e/timeline.rs`,
+  seeding threads through the store on the server's database file).
