@@ -325,3 +325,60 @@ async fn pushes_to_mirrors_are_refused_over_ssh() {
     let mut harness = harness;
     harness.server.take().unwrap().shutdown().await;
 }
+
+async fn commit(harness: &Harness, key: &Path, checkout: &Path, message: &str) {
+    std::fs::write(checkout.join("file.txt"), message).unwrap();
+    assert_ok(&harness.git(key, checkout, &["add", "file.txt"]).await);
+    assert_ok(&harness.git(key, checkout, &["commit", "-q", "-m", message]).await);
+}
+
+async fn remote_refs(harness: &Harness, key: &Path, checkout: &Path) -> String {
+    let output = harness.git(key, checkout, &["ls-remote", "origin"]).await;
+    assert_ok(&output);
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Pushes run in two steps (the advertisement, then a stateless receive-pack after the
+/// push gate); every kind of update a client sends must work exactly as before.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn every_kind_of_push_works_through_the_two_step_exchange() {
+    if !openssh_available() {
+        return;
+    }
+    let harness = Harness::start().await;
+    let alice = harness.user("alice").await;
+    let repo = CreateRepository { name: "project".to_owned(), description: String::new(), visibility: Visibility::Public };
+    harness.services.repositories.create(&alice, repo).await.unwrap();
+    let (key, alice_public) = harness.key("alice_key");
+    harness.services.ssh_keys.add_user_key(&alice, AddSshKey { title: String::new(), key: alice_public }).await.unwrap();
+
+    let work = harness.workdir("work");
+    assert_ok(&harness.git(&key, &work, &["clone", "-q", &harness.url("alice/project.git"), "project"]).await);
+    let checkout = work.join("project");
+
+    commit(&harness, &key, &checkout, "one").await;
+    assert_ok(&harness.git(&key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
+    // Nothing to push: the client sends an empty command list.
+    let again = harness.git(&key, &checkout, &["push", "origin", "HEAD:refs/heads/main"]).await;
+    assert_ok(&again);
+    assert!(stderr(&again).contains("Everything up-to-date"), "{}", stderr(&again));
+
+    // Several refs at once, atomically; then a deletion, after which no pack follows.
+    commit(&harness, &key, &checkout, "two").await;
+    let both = ["push", "-q", "--atomic", "origin", "HEAD:refs/heads/main", "HEAD:refs/heads/feature"];
+    assert_ok(&harness.git(&key, &checkout, &both).await);
+    assert!(remote_refs(&harness, &key, &checkout).await.contains("refs/heads/feature"));
+    assert_ok(&harness.git(&key, &checkout, &["push", "-q", "origin", ":refs/heads/feature"]).await);
+    assert!(!remote_refs(&harness, &key, &checkout).await.contains("refs/heads/feature"), "the branch is deleted");
+
+    // Rewritten history needs --force (nothing protects the branch yet).
+    assert_ok(&harness.git(&key, &checkout, &["commit", "-q", "--amend", "-m", "two, rewritten"]).await);
+    assert_refused(&harness.git(&key, &checkout, &["push", "origin", "HEAD:refs/heads/main"]).await, "non-fast-forward");
+    assert_ok(&harness.git(&key, &checkout, &["push", "-q", "--force", "origin", "HEAD:refs/heads/main"]).await);
+    let head = harness.git(&key, &checkout, &["rev-parse", "HEAD"]).await;
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_owned();
+    assert!(remote_refs(&harness, &key, &checkout).await.contains(&head), "main is the rewritten commit");
+
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}

@@ -13,7 +13,8 @@
 //! A repository's old `owner/name` from before a rename or transfer is served as the
 //! repository itself, so remotes configured with it keep working.
 //! Pushes to pull mirrors are refused (`403`): a mirror only changes by fetching its
-//! upstream.
+//! upstream. Every other push passes the push gate ([`push_gate`]: branch protection
+//! reads the command list before git starts) after those checks.
 
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
@@ -25,9 +26,12 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
-use rustit_core::{AccountId, TokenScope, User};
-use rustit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, two_factor::GitPasswordOutcome};
-use rustit_transport::{ReceiveOptions, Service};
+use rustit_core::{TokenScope, User};
+use rustit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, protection::PushActor, two_factor::GitPasswordOutcome};
+use rustit_transport::{
+    ReceiveOptions, Service,
+    receive::{self, CommandLimits, Intercept},
+};
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
 use tokio_util::io::{ReaderStream, StreamReader};
@@ -91,15 +95,26 @@ async fn run_service(
     body: Body,
     service: Service,
 ) -> Response {
-    let (ctx, pusher) = match authorize(&state, &client, &headers, &owner, &repo, service).await {
+    let (ctx, user) = match authorize(&state, &client, &headers, &owner, &repo, service).await {
         Ok(authorized) => authorized,
         Err(denied) => return denied.into_response(),
     };
 
-    // Taken before git starts, so the push's ref updates can be reported afterwards.
-    let pending = if service.is_write() { Some(state.services.pushes.begin(&ctx, pusher).await) } else { None };
     let request = request_reader(&headers, body);
-    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), ReceiveOptions::default(), request) {
+    // The push gate runs on the resolved repository, after the access and mirror checks.
+    let (request, options) = if service.is_write() {
+        match push_gate(&state, &ctx, user.as_ref(), request).await {
+            Gate::Pass(request, options) => (request, options),
+            Gate::Answer(response) => return response,
+        }
+    } else {
+        (request, ReceiveOptions::default())
+    };
+
+    // Taken after the verdict and before git starts, so the push's ref updates can be
+    // reported afterwards.
+    let pending = if service.is_write() { Some(state.services.pushes.begin(&ctx, user.as_ref().map(User::id)).await) } else { None };
+    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), options, request) {
         Ok(session) => session,
         Err(error) => {
             tracing::error!(%error, %owner, %repo, %service, "failed to start git");
@@ -123,13 +138,54 @@ async fn run_service(
     response
 }
 
+type Request = Box<dyn AsyncRead + Send + Unpin>;
+
+/// What the push gate decided about a receive-pack request.
+enum Gate {
+    /// Run git on this input (the command list replayed, then the rest) with these options.
+    Pass(Request, ReceiveOptions),
+    /// Answer without starting git: a refusal report, or an error.
+    Answer(Response),
+}
+
+/// Reads the push's command list before git does and lets branch protection decide
+/// (`docs/design/milestone-2b.md` §4). A refused push is answered all-or-nothing, like a
+/// declining `pre-receive` hook: with the client's report (`ng <ref> <reason>`) or, for
+/// clients that asked for none, `403` and a text explanation.
+async fn push_gate(state: &AppState, ctx: &RepoContext, user: Option<&User>, request: Request) -> Gate {
+    let (commands, input) = match receive::intercept(request, CommandLimits::default()).await {
+        Ok(Intercept::Unread(request)) => return Gate::Pass(request, ReceiveOptions::default()),
+        Ok(Intercept::Read { commands, input }) => (commands, input),
+        Err(error) => return Gate::Answer((StatusCode::BAD_REQUEST, error.to_string()).into_response()),
+    };
+    let actor = PushActor { user, deploy_key: false, access: ctx.access };
+    let verdict = match state.services.protection.check_push(ctx, &actor, &commands.updates()).await {
+        Ok(verdict) => verdict,
+        Err(error) => {
+            tracing::error!(%error, repo = %ctx.repo.full_name(), "push gate failed");
+            return Gate::Answer(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+        }
+    };
+    if !verdict.is_refused() {
+        let options = ReceiveOptions { deny_non_fast_forwards: verdict.deny_non_fast_forwards };
+        return Gate::Pass(Box::new(input), options);
+    }
+    receive::drain(input).await;
+    let report = receive::refusal(&commands, &verdict.refusals);
+    if report.is_empty() {
+        return Gate::Answer((StatusCode::FORBIDDEN, receive::refusal_message(&verdict.refusals)).into_response());
+    }
+    let content_type = Service::ReceivePack.result_content_type();
+    Gate::Answer(([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-cache".to_owned())], report).into_response())
+}
+
 async fn session_succeeded(completion: tokio::sync::oneshot::Receiver<std::process::ExitStatus>) -> bool {
     completion.await.is_ok_and(|status| status.success())
 }
 
 /// Streams the request body, transparently decompressing `Content-Encoding: gzip`
 /// (which Git uses for large negotiation requests).
-fn request_reader(headers: &HeaderMap, body: Body) -> Box<dyn AsyncRead + Send + Unpin> {
+fn request_reader(headers: &HeaderMap, body: Body) -> Request {
     let stream = body.into_data_stream().map_err(std::io::Error::other);
     let reader = StreamReader::new(stream);
     let gzipped = headers.get(header::CONTENT_ENCODING).is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"gzip"));
@@ -216,7 +272,7 @@ async fn authorize(
     owner: &str,
     repo: &str,
     service: Service,
-) -> Result<(RepoContext, Option<AccountId>), Denied> {
+) -> Result<(RepoContext, Option<User>), Denied> {
     let caller = authenticate(state, client, headers).await?;
     let user = caller.as_ref().map(|caller| &caller.user);
 
@@ -236,14 +292,14 @@ async fn authorize(
         ctx.access = scope.limit(ctx.access);
     }
     if !service.is_write() {
-        return Ok((ctx, user.map(User::id)));
+        return Ok((ctx, user.cloned()));
     }
     if !ctx.access.can_write() {
         return Err(if caller.is_none() { Denied::Challenge } else { Denied::Forbidden });
     }
     // Checked after access, so only those who could otherwise push learn it is a mirror.
     match state.services.mirrors.is_mirror(ctx.repo.repo.id).await {
-        Ok(false) => Ok((ctx, user.map(User::id))),
+        Ok(false) => Ok((ctx, user.cloned())),
         Ok(true) => Err(Denied::Mirror),
         Err(error) => {
             tracing::error!(%error, "git mirror check failed");

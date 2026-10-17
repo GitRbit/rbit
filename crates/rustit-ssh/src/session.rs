@@ -5,6 +5,12 @@
 //! `env` request for `GIT_PROTOCOL`, and `shell` (which greets the user and closes).
 //! PTYs, X11, agent forwarding, subsystems and every kind of port forwarding are refused.
 //! Nothing a client sends is ever passed to a shell.
+//!
+//! Fetches run `git upload-pack` interactively. Pushes run in two steps, like smart HTTP:
+//! the server sends the ref advertisement itself, the push gate reads the client's
+//! command list and asks `ProtectionService::check_push` (after the access, mirror and
+//! old-name checks of [`Connection::authorize`]), and only then does
+//! `git receive-pack --stateless-rpc` run on the replayed input.
 
 // Every handler method is written as `async fn` for uniformity, whether or not it awaits.
 #![allow(clippy::unused_async_trait_impl)]
@@ -12,6 +18,7 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
+    process::ExitStatus,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -24,10 +31,14 @@ use russh::{
     keys::PublicKey,
     server::{Auth, ChannelOpenHandle, Handler, Msg, Session},
 };
-use rustit_services::{RepoContext, ServiceError, ThrottleScope, ssh_keys::SshIdentity};
-use rustit_transport::is_safe_protocol_header;
+use rustit_core::User;
+use rustit_services::{PendingPush, RepoContext, ServiceError, ThrottleScope, protection::PushActor, ssh_keys::SshIdentity};
+use rustit_transport::{
+    ReceiveOptions, Service, TransportError, is_safe_protocol_header,
+    receive::{self, CommandLimits, Intercept},
+};
 use tokio::{
-    io::{AsyncWriteExt, duplex},
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt, DuplexStream, duplex},
     sync::{OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
@@ -307,7 +318,7 @@ impl Handler for Connection {
 async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand, ctx: RepoContext, pending: PendingChannel) {
     let PendingChannel { channel, protocol, _slot } = pending;
     let (mut client, writer) = channel.split();
-    let stdout = writer.make_writer();
+    let mut stdout = writer.make_writer();
     let mut stderr = writer.make_writer_ext(Some(STDERR));
 
     // Channel messages → git's stdin. Only data is forwarded; EOF ends git's input.
@@ -329,34 +340,35 @@ async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand
 
     let started = Instant::now();
     let service = command.service;
-    let pending = if service.is_write() {
-        let pusher = match &identity {
-            SshIdentity::User { user, .. } => Some(user.id()),
-            SshIdentity::Deploy { .. } => None,
-        };
-        Some(shared.services.pushes.begin(&ctx, pusher).await)
-    } else {
-        None
+    let exchange = async {
+        if service.is_write() {
+            push(&shared, &identity, &ctx, protocol.as_deref(), input, &mut stdout, &mut stderr).await
+        } else {
+            let status =
+                shared.transport.serve_interactive(service, &ctx.disk_path, protocol.as_deref(), input, &mut stdout, &mut stderr).await?;
+            Ok(Exchanged { status: exit_code(status), push: None })
+        }
     };
-    let exchange = shared.transport.serve_interactive(service, &ctx.disk_path, protocol.as_deref(), input, stdout, &mut stderr);
-    let status = match tokio::time::timeout(shared.config.ssh.max_session(), exchange).await {
-        Ok(Ok(status)) => status.code().and_then(|code| u32::try_from(code).ok()).unwrap_or(FAILURE),
+    let outcome = tokio::time::timeout(shared.config.ssh.max_session(), exchange).await;
+    let (status, push) = match outcome {
+        Ok(Ok(Exchanged { status, push })) => (status, push),
         Ok(Err(error)) => {
             tracing::error!(%error, repo = %command.full_name(), %service, "failed to run git");
             let _ = stderr.write_all(b"ERROR: internal error; please try again later\r\n").await;
-            FAILURE
+            (FAILURE, None)
         }
         Err(_) => {
             tracing::warn!(repo = %command.full_name(), %service, "SSH Git operation exceeded the time limit");
             let _ = stderr.write_all(b"ERROR: the operation took too long and was stopped\r\n").await;
-            FAILURE
+            (FAILURE, None)
         }
     };
     drop(pump);
+    let _ = stdout.flush().await;
     let _ = stderr.flush().await;
 
-    if let Some(pending) = pending.filter(|_| status == 0) {
-        shared.services.pushes.complete(pending).await;
+    if let Some(push) = push.filter(|_| status == 0) {
+        shared.services.pushes.complete(push).await;
     }
 
     let _ = writer.exit_status(status).await;
@@ -368,6 +380,88 @@ async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand
         SshIdentity::Deploy { key, .. } => format!("deploy key {}", key.0),
     };
     tracing::info!(%actor, repo = %command.full_name(), %service, status, elapsed_ms = started.elapsed().as_millis(), "SSH Git request");
+}
+
+/// How a Git exchange ended: the exit status to report, and the push to record once it
+/// succeeded.
+struct Exchanged {
+    status: u32,
+    push: Option<PendingPush>,
+}
+
+/// git's exit status as SSH reports it.
+fn exit_code(status: ExitStatus) -> u32 {
+    status.code().and_then(|code| u32::try_from(code).ok()).unwrap_or(FAILURE)
+}
+
+/// `git-receive-pack` in two steps, like smart HTTP: the ref advertisement first, then the
+/// push gate reads the client's command list and decides, and only then does
+/// `git receive-pack --stateless-rpc` run, on the replayed input. Refused pushes never
+/// start git: the client gets the refusal report (or, without `report-status`, an error
+/// on stderr and exit status 1). Messages for the client go to `stderr`; the error is
+/// for failures to talk to git.
+async fn push<O, E>(
+    shared: &Shared,
+    identity: &SshIdentity,
+    ctx: &RepoContext,
+    protocol: Option<&str>,
+    input: DuplexStream,
+    stdout: &mut O,
+    stderr: &mut E,
+) -> Result<Exchanged, TransportError>
+where
+    O: AsyncWrite + Unpin,
+    E: AsyncWrite + Unpin,
+{
+    let refused = |status| Ok(Exchanged { status, push: None });
+    let advertisement = shared.transport.advertisement(Service::ReceivePack, &ctx.disk_path, protocol).await?;
+    stdout.write_all(&advertisement).await?;
+    stdout.flush().await?;
+
+    let (user, deploy_key) = match identity {
+        SshIdentity::User { user, .. } => (Some(user), false),
+        SshIdentity::Deploy { .. } => (None, true),
+    };
+    let (input, options): (Box<dyn AsyncRead + Send + Unpin>, ReceiveOptions) =
+        match receive::intercept(input, CommandLimits::default()).await {
+            Err(error) => {
+                stderr.write_all(format!("ERROR: {error}\r\n").as_bytes()).await?;
+                return refused(FAILURE);
+            }
+            Ok(Intercept::Unread(input)) => (Box::new(input), ReceiveOptions::default()),
+            Ok(Intercept::Read { commands, input }) => {
+                if commands.is_empty() {
+                    // `Everything up-to-date`: nothing for git to do.
+                    return refused(0);
+                }
+                let actor = PushActor { user, deploy_key, access: ctx.access };
+                let verdict = match shared.services.protection.check_push(ctx, &actor, &commands.updates()).await {
+                    Ok(verdict) => verdict,
+                    Err(error) => {
+                        stderr.write_all(format!("ERROR: {}\r\n", internal(&error)).as_bytes()).await?;
+                        return refused(FAILURE);
+                    }
+                };
+                if verdict.is_refused() {
+                    receive::drain(input).await;
+                    let report = receive::refusal(&commands, &verdict.refusals);
+                    if report.is_empty() {
+                        let message = receive::refusal_message(&verdict.refusals).replace('\n', "\r\n");
+                        stderr.write_all(format!("ERROR: push declined\r\n{message}").as_bytes()).await?;
+                        return refused(FAILURE);
+                    }
+                    stdout.write_all(&report).await?;
+                    // Like a declining pre-receive hook: git reports and exits successfully.
+                    return refused(0);
+                }
+                (Box::new(input), ReceiveOptions { deny_non_fast_forwards: verdict.deny_non_fast_forwards })
+            }
+        };
+
+    // Taken after the verdict, before git changes anything.
+    let pending = shared.services.pushes.begin(ctx, user.map(User::id)).await;
+    let status = shared.transport.receive_pack(&ctx.disk_path, protocol, options, input, stdout, stderr).await?;
+    Ok(Exchanged { status: exit_code(status), push: Some(pending) })
 }
 
 /// Aborts a background task when dropped, so it never outlives the request it serves.
