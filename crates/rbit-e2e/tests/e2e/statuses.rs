@@ -13,7 +13,7 @@ use std::{
 };
 
 use axum::{extract::State, http::HeaderMap, routing::post};
-use rbit_e2e::{Client, Git, StatusCode, TestServer};
+use rbit_e2e::{Client, Git, Sample, StatusCode, TestServer};
 use serde_json::{Value, json};
 
 /// Fetches `path` until its body contains `needle`; returns the body.
@@ -220,4 +220,32 @@ async fn a_required_check_blocks_the_merge_until_ci_reports_success() {
     assert_eq!(bob.get(&format!("/alice/vault/commit/{}", vault.head)).await.status, StatusCode::NOT_FOUND);
     let (_, combined) = ci.get("/repos/alice/vault/commits/main/status").await;
     assert_eq!((combined["state"].as_str(), combined["statuses"][0]["context"].as_str()), (Some("failure"), Some("default")));
+}
+
+/// A commit page reached through a name that merely looks like a commit id (an annotated
+/// tag's own object id, a branch named with 40 hex digits) shows the checks of the commit
+/// it resolves to, not of the name.
+#[tokio::test]
+async fn the_commit_page_shows_the_checks_of_the_resolved_commit() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let token = alice.create_token("ci", "write").await;
+    alice.create_repo("alice", "demo", "public").await;
+    let sample = git.sample();
+    let url = server.git_url_as("alice", "demo", "alice", &token);
+    git.push_sample(&sample, &url);
+    let hex_branch = "deadbeef".repeat(5);
+    git.ok(&sample.dir, &["push", "--quiet", &url, &format!("main:refs/heads/{hex_branch}")]);
+    let ci = Api::new(&server, Some(&token));
+    let status = json!({ "state": "success", "context": "ci", "description": "All green" });
+    assert_eq!(ci.post(&format!("/repos/alice/demo/statuses/{}", sample.head), status).await.0, StatusCode::CREATED);
+
+    let tag_object = git.ok(&sample.dir, &["rev-parse", Sample::TAG]).trim().to_owned();
+    assert_ne!(tag_object, sample.head, "an annotated tag is its own object");
+    for name in [sample.head.as_str(), tag_object.as_str(), hex_branch.as_str()] {
+        let page = alice.get(&format!("/alice/demo/commit/{name}")).await;
+        page.expect_status(StatusCode::OK);
+        assert!(page.contains("id=\"checks\"") && page.contains(">ci<") && page.contains("All green"), "checks via {name}");
+    }
 }

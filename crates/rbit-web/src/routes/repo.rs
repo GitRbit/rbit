@@ -340,8 +340,9 @@ pub async fn entry_commits(
             commit: commits.get(&entry.name).map(|c| EntryCommit::new(c, &urls)),
         })
         .collect();
-    // The tree page links here by commit id, which pins the answer.
-    let pinned = super::history::is_full_commit_id(&revision) && ctx.repo.repo.visibility.is_public();
+    // The tree page links here by commit id, which pins the answer. Only when the revision
+    // resolved to the commit it spells: a branch may be named with 40 hex digits.
+    let pinned = view.commit.id == revision && ctx.repo.repo.visibility.is_public();
     Ok(crate::middleware::cache_pinned(EntryCommitsFragment { cells }.into_response(), pinned))
 }
 

@@ -137,7 +137,13 @@ async fn last_commit_fragments_are_immutable_only_when_public() {
         fragment.expect_status(StatusCode::OK).expect_contains(&["hx-swap-oob"]);
         assert_eq!(fragment.header("cache-control"), Some(expected), "{name}");
     }
-    // A branch name is not pinned: revalidate.
+    // A branch name is not pinned: revalidate. Not even one that looks like a commit id.
     let by_branch = alice.get("/alice/open/tree-commits/main").await;
     assert_eq!(by_branch.header("cache-control"), Some("private, no-cache"));
+    let hex_branch = "deadbeef".repeat(5);
+    let url = server.git_url_as("alice", "open", "alice", PASSWORD);
+    git.ok(&sample.dir, &["push", "--quiet", &url, &format!("main:refs/heads/{hex_branch}")]);
+    let by_hex_branch = alice.get(&format!("/alice/open/tree-commits/{hex_branch}")).await;
+    by_hex_branch.expect_status(StatusCode::OK).expect_contains(&["hx-swap-oob"]);
+    assert_eq!(by_hex_branch.header("cache-control"), Some("private, no-cache"), "a branch moves");
 }
