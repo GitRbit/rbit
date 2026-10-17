@@ -221,12 +221,13 @@ pub fn fork(forkee: &OwnedRepository, parent: &OwnedRepository, parent_is_fork: 
     with_organization(payload, parent, base_url)
 }
 
-/// A release with its files, in GitHub's release shape. `author` is the creator's
-/// account and `uploaders` the accounts that uploaded files, as far as they still exist.
+/// A release with its files, in GitHub's release shape, as the API returns it and
+/// payloads embed it. `author` is the creator's account and `uploaders` the accounts
+/// that uploaded files, as far as they still exist.
 ///
-/// rbit's API has no release endpoints, so GitHub's API links (`url`, `assets_url`,
-/// `upload_url`) are absent; `html_url`, the archive links and every asset's
-/// `browser_download_url` point at the web interface.
+/// `url`, `assets_url`, `upload_url` (a URI template, `{?name,label}`) and every asset's
+/// `url` point at the REST API; `html_url`, the archive links and every asset's
+/// `browser_download_url` at the web interface.
 pub fn release(
     release: &Release,
     assets: &[ReleaseAsset],
@@ -236,6 +237,8 @@ pub fn release(
     base_url: &str,
 ) -> Value {
     let html = format!("{base_url}/{}", repo.full_name());
+    let api = format!("{base_url}/api/v1/repos/{}/releases", repo.full_name());
+    let url = format!("{api}/{}", release.id.0);
     let tag = encode_path(&release.tag_name);
     let assets: Vec<Value> = assets
         .iter()
@@ -243,6 +246,7 @@ pub fn release(
             let uploader = uploaders.iter().find(|who| Some(who.id) == asset.uploader_id);
             json!({
                 "id": asset.id.0,
+                "url": format!("{api}/assets/{}", asset.id.0),
                 "name": asset.name,
                 "label": null,
                 "state": "uploaded",
@@ -266,6 +270,9 @@ pub fn release(
         "created_at": timestamp(release.created_at),
         "published_at": optional_timestamp(release.published_at),
         "author": author.map(|who| account(who, base_url)),
+        "url": url,
+        "assets_url": format!("{url}/assets"),
+        "upload_url": format!("{url}/assets{{?name,label}}"),
         "html_url": format!("{html}/releases/tag/{tag}"),
         "tarball_url": format!("{html}/archive/{tag}.tar.gz"),
         "zipball_url": format!("{html}/archive/{tag}.zip"),
@@ -566,10 +573,13 @@ mod tests {
         assert_eq!(value["author"], Value::Null, "explicit null once the author is gone");
         assert_eq!(value["html_url"], "https://git.example.com/acme/tools/releases/tag/release/1.0");
         assert_eq!(value["zipball_url"], "https://git.example.com/acme/tools/archive/release/1.0.zip");
+        assert_eq!(value["url"], "https://git.example.com/api/v1/repos/acme/tools/releases/9");
+        assert_eq!(value["upload_url"], "https://git.example.com/api/v1/repos/acme/tools/releases/9/assets{?name,label}");
         let file = &value["assets"][0];
         assert_eq!((file["id"].as_i64(), file["name"].as_str(), file["size"].as_u64()), (Some(4), Some("app 1.zip"), Some(12)));
         assert_eq!((file["download_count"].as_u64(), file["state"].as_str()), (Some(3), Some("uploaded")));
         assert_eq!(file["uploader"]["login"], "ada");
+        assert_eq!(file["url"], "https://git.example.com/api/v1/repos/acme/tools/releases/assets/4");
         assert_eq!(file["browser_download_url"], "https://git.example.com/acme/tools/releases/download/release/1.0/app%201.zip");
     }
 }

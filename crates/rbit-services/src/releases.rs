@@ -40,7 +40,7 @@ use std::{
 };
 
 use rbit_core::{
-    RepoId, Timestamp, User,
+    Account, RepoId, Timestamp, User,
     release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseId, validate_asset_name, validate_release_name, validate_release_notes},
 };
 use rbit_git::GitError;
@@ -162,6 +162,33 @@ impl ReleaseService {
         result.releases =
             releases.into_iter().map(|release| ReleaseDetail { assets: assets.remove(&release.id).unwrap_or_default(), release }).collect();
         Ok(result)
+    }
+
+    /// `limit` releases from `offset`, ordered like [`Self::list`], and how many there
+    /// are in all (for the API's pages).
+    pub async fn page(&self, repo: &RepoContext, limit: u32, offset: u32) -> Result<(Vec<ReleaseDetail>, u64), ServiceError> {
+        let include_drafts = repo.access.can_write();
+        let repo_id = repo.repo.repo.id;
+        let total = self.store().count(repo_id, include_drafts).await?;
+        let releases = self.store().list(repo_id, include_drafts, limit, offset).await?;
+        let mut assets = self.store().assets_of(&releases.iter().map(|r| r.id).collect::<Vec<_>>()).await?;
+        let releases =
+            releases.into_iter().map(|release| ReleaseDetail { assets: assets.remove(&release.id).unwrap_or_default(), release }).collect();
+        Ok((releases, total))
+    }
+
+    /// The accounts that wrote `releases` or uploaded their files, as far as they still
+    /// exist (for API and webhook JSON).
+    pub async fn people(&self, releases: &[ReleaseDetail]) -> Result<Vec<Account>, ServiceError> {
+        let mut ids: Vec<_> = releases
+            .iter()
+            .flat_map(|detail| {
+                detail.release.author.iter().map(|author| author.id).chain(detail.assets.iter().filter_map(|a| a.uploader_id))
+            })
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        Ok(self.inner.ctx.database.accounts().find_accounts(&ids).await?)
     }
 
     /// The release of `tag`, if the viewer may see it.
@@ -401,6 +428,24 @@ impl ReleaseService {
     pub async fn open_asset(&self, repo: &RepoContext, tag: &str, name: &str) -> Result<AssetDownload, ServiceError> {
         let release = self.by_tag(repo, tag).await?.release;
         let asset = self.store().find_asset(release.id, name).await?.ok_or(ServiceError::NotFound)?;
+        self.open_file(asset).await
+    }
+
+    /// File `id` of any release of `repo` and that release, if the viewer may see it.
+    pub async fn asset(&self, repo: &RepoContext, id: ReleaseAssetId) -> Result<(ReleaseDetail, ReleaseAsset), ServiceError> {
+        let asset = self.store().find_asset_by_id(repo.repo.repo.id, id).await?.ok_or(ServiceError::NotFound)?;
+        let release = self.by_id(repo, asset.release_id).await?;
+        Ok((release, asset))
+    }
+
+    /// Opens file `id` for download, like [`Self::open_asset`].
+    pub async fn open_asset_by_id(&self, repo: &RepoContext, id: ReleaseAssetId) -> Result<AssetDownload, ServiceError> {
+        let (_, asset) = self.asset(repo, id).await?;
+        self.open_file(asset).await
+    }
+
+    /// Opens the bytes of `asset` and counts the download (best effort).
+    async fn open_file(&self, asset: ReleaseAsset) -> Result<AssetDownload, ServiceError> {
         let file = match tokio::fs::File::open(self.asset_path(asset.repo_id, asset.id)).await {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {

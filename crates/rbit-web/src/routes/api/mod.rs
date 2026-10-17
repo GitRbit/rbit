@@ -14,9 +14,13 @@
 //!
 //! The routes come from one table, [`table`]; wave B areas append theirs from child
 //! modules (`issues`, `notifications`, `pulls`, `protection`), milestone 3 too
-//! (`collaborators`, `teams`). `openapi.json` plus one fragment per
+//! (`collaborators`, `teams`, `releases`). `openapi.json` plus one fragment per
 //! area (`openapi/<area>.json`, merged once at start-up) documents the same set, and a
 //! test keeps the two equal.
+//!
+//! Streaming routes ([`ApiRoute::streaming`]: release file uploads and downloads) are
+//! served from the same table without the 1 MiB body limit, the 30 s timeout and
+//! compression; their handlers bound size and time themselves.
 
 mod accounts;
 mod auth;
@@ -29,6 +33,7 @@ mod notifications;
 mod pagination;
 mod protection;
 mod pulls;
+mod releases;
 mod repos;
 mod teams;
 #[cfg(test)]
@@ -96,6 +101,19 @@ pub struct ApiRoute {
     pub method: ApiMethod,
     pub path: Cow<'static, str>,
     handler: MethodRouter<AppState>,
+    /// Served without the 1 MiB body limit, the 30 s timeout and compression (see
+    /// [`ApiRoute::streaming`]).
+    streaming: bool,
+}
+
+impl ApiRoute {
+    /// Marks a route whose body streams (release file uploads and downloads): it is served
+    /// without the 1 MiB body limit, the 30 s timeout and compression, so its handler must
+    /// bound the size and duration itself.
+    fn streaming(mut self) -> Self {
+        self.streaming = true;
+        self
+    }
 }
 
 impl std::fmt::Debug for ApiRoute {
@@ -109,7 +127,7 @@ where
     H: Handler<T, AppState>,
     T: 'static,
 {
-    ApiRoute { method, path: path.into(), handler: on(method.filter(), handler) }
+    ApiRoute { method, path: path.into(), handler: on(method.filter(), handler), streaming: false }
 }
 
 /// Every endpoint of the API.
@@ -161,12 +179,13 @@ pub fn table() -> Vec<ApiRoute> {
     // Milestone 3: REST API continuation (A).
     routes.extend(collaborators::routes());
     routes.extend(teams::routes());
+    routes.extend(releases::routes());
     routes
 }
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
-const FRAGMENTS: [(&str, &str); 6] = [
+const FRAGMENTS: [(&str, &str); 7] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
     ("pulls", include_str!("openapi/pulls.json")),
@@ -174,6 +193,7 @@ const FRAGMENTS: [(&str, &str); 6] = [
     // Milestone 3: REST API continuation (A).
     ("collaborators", include_str!("openapi/collaborators.json")),
     ("teams", include_str!("openapi/teams.json")),
+    ("releases", include_str!("openapi/releases.json")),
 ];
 
 /// The served document: `openapi.json` with every fragment's paths and schemas merged in.
@@ -204,10 +224,18 @@ fn merged_document() -> (Value, Vec<String>) {
 }
 
 pub fn routes() -> Router<AppState> {
+    let (streaming, buffered): (Vec<_>, Vec<_>) = table().into_iter().partition(|entry| entry.streaming);
     let mut router = Router::new();
-    for entry in table() {
+    for entry in buffered {
         router = router.route(&format!("{PREFIX}{}", entry.path), entry.handler);
     }
+    let mut streams = Router::new();
+    for entry in streaming {
+        streams = streams.route(&format!("{PREFIX}{}", entry.path), entry.handler);
+    }
+    let streams = streams
+        .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, HeaderValue::from_static("no-store")))
+        .layer(SetResponseHeaderLayer::overriding(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff")));
     router
         .route("/api", any(not_found))
         .route("/api/", any(not_found))
@@ -217,6 +245,8 @@ pub fn routes() -> Router<AppState> {
         .layer(CompressionLayer::new())
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, REQUEST_TIMEOUT))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        // After the layers above, so streaming routes do not get them.
+        .merge(streams)
 }
 
 /// `GET /openapi.json`

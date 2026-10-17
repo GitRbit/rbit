@@ -240,3 +240,40 @@ async fn deleting_releases_and_repositories_removes_their_files() {
     }
     tokio::time::timeout(Duration::from_secs(5), releases.shutdown()).await.unwrap();
 }
+
+#[tokio::test]
+async fn releases_page_and_files_are_found_by_id() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let bob = fixture.user("bob").await;
+    let repo = fixture.repo(&alice).await;
+    let releases = &fixture.services.releases;
+    let draft = releases.create(&repo, &alice, input("v2", true)).await.unwrap();
+    let published = releases.create(&repo, &alice, input("v1", false)).await.unwrap();
+    let file = releases.upload_asset(&repo, &alice, draft.id, "app.zip", "", &b"x"[..]).await.unwrap();
+    let shown = releases.upload_asset(&repo, &alice, published.id, "doc.pdf", "", &b"y"[..]).await.unwrap();
+
+    // Writers page through drafts too; everyone else sees published releases only.
+    let (page, total) = releases.page(&repo, 1, 0).await.unwrap();
+    assert_eq!((page[0].release.id, total), (draft.id, 2), "drafts first");
+    let (page, _) = releases.page(&repo, 1, 1).await.unwrap();
+    assert_eq!((page[0].release.id, page[0].assets.len()), (published.id, 1));
+    let as_bob = fixture.services.repositories.open(Some(&bob), "alice", "demo").await.unwrap();
+    let (page, total) = releases.page(&as_bob, 10, 0).await.unwrap();
+    assert_eq!((page.len(), total), (1, 1));
+
+    // Files by id: only where the release is visible.
+    assert_eq!(releases.asset(&repo, file.id).await.unwrap().0.release.id, draft.id);
+    assert!(matches!(releases.asset(&as_bob, file.id).await, Err(ServiceError::NotFound)), "the draft's file is hidden");
+    let mut download = releases.open_asset_by_id(&as_bob, shown.id).await.unwrap();
+    let mut bytes = Vec::new();
+    download.file.read_to_end(&mut bytes).await.unwrap();
+    assert_eq!((bytes.as_slice(), download.asset.name.as_str()), (&b"y"[..], "doc.pdf"));
+    assert_eq!(releases.asset(&repo, shown.id).await.unwrap().1.download_count, 1, "counted");
+    assert!(matches!(releases.asset(&repo, rbit_core::release::ReleaseAssetId(999)).await, Err(ServiceError::NotFound)));
+
+    // The people to show: authors and uploaders, once each.
+    let (all, _) = releases.page(&repo, 10, 0).await.unwrap();
+    let people: Vec<_> = releases.people(&all).await.unwrap().into_iter().map(|account| account.name.to_string()).collect();
+    assert_eq!(people, ["alice"]);
+}

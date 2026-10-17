@@ -314,6 +314,13 @@ impl ReleaseStore {
         row.map(ReleaseAsset::try_from).transpose()
     }
 
+    /// File `id` of any release of `repo`.
+    pub async fn find_asset_by_id(&self, repo: RepoId, id: ReleaseAssetId) -> Result<Option<ReleaseAsset>, StorageError> {
+        let row: Option<AssetRow> =
+            sqlx::query_as(select_asset!("WHERE repo_id = ? AND id = ?")).bind(repo.0).bind(id.0).fetch_optional(&self.pool).await?;
+        row.map(ReleaseAsset::try_from).transpose()
+    }
+
     /// Best-effort download counter.
     pub async fn count_download(&self, id: ReleaseAssetId) -> Result<(), StorageError> {
         sqlx::query("UPDATE release_assets SET download_count = download_count + 1 WHERE id = ?").bind(id.0).execute(&self.pool).await?;

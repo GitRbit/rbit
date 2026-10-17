@@ -121,6 +121,8 @@ async fn assets_are_unique_per_release_and_cascade() {
 
     store.count_download(stored.id).await.unwrap();
     assert_eq!(store.find_asset(one, "b.zip").await.unwrap().unwrap().download_count, 1);
+    assert_eq!(store.find_asset_by_id(repo, stored.id).await.unwrap().map(|a| a.name).as_deref(), Some("b.zip"));
+    assert!(store.find_asset_by_id(RepoId(repo.0 + 1), stored.id).await.unwrap().is_none(), "only in its repository");
     store.delete_asset(stored.id).await.unwrap();
     assert!(store.find_asset(one, "b.zip").await.unwrap().is_none());
 
