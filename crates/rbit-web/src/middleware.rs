@@ -259,12 +259,23 @@ fn is_unsafe_to_preload(path: &str) -> bool {
         || segments.get(2).is_some_and(|repo| repo.to_ascii_lowercase().ends_with(".git"))
 }
 
-/// Answers preloads of [unsafe](is_unsafe_to_preload) paths with an empty, uncacheable
-/// `204` before any handler runs, so hovering a link can never trigger a side effect.
-/// The real click then goes to the network as usual.
+/// Whether `headers` are those of a preload (see [`PRELOAD_HEADER`]).
+pub fn is_preload(headers: &HeaderMap) -> bool {
+    headers.contains_key(PRELOAD_HEADER)
+}
+
+/// The answer to a preload the server declines: empty and never stored, so the click
+/// that follows goes to the network as usual.
+pub fn decline_preload() -> Response {
+    (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "no-store")]).into_response()
+}
+
+/// Declines preloads of [unsafe](is_unsafe_to_preload) paths before any handler runs, so
+/// hovering a link can never trigger a side effect. Handlers decline others whose `GET`
+/// changes state for the viewer (viewing a discussion marks it read).
 pub async fn preload_guard(request: Request, next: Next) -> Response {
-    if request.headers().contains_key(PRELOAD_HEADER) && is_unsafe_to_preload(request.uri().path()) {
-        return (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "no-store")]).into_response();
+    if is_preload(request.headers()) && is_unsafe_to_preload(request.uri().path()) {
+        return decline_preload();
     }
     next.run(request).await
 }

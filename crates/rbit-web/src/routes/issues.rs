@@ -16,6 +16,7 @@
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
+    http::HeaderMap,
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -266,14 +267,19 @@ pub struct ShowQuery {
 }
 
 /// `GET /{owner}/{repo}/issues/{n}[?edit=…&after=…]`: pull requests move to `/pull/{n}`.
-/// Viewing marks the viewer's notification about it read.
+/// Viewing marks the viewer's notification about it read, so a signed-in viewer's
+/// preload is declined (see [`crate::middleware::decline_preload`]).
 async fn show(
     State(state): State<AppState>,
     viewer: Viewer,
+    headers: HeaderMap,
     mut page: Page,
     Path((owner, repo, number)): Path<(String, String, String)>,
     Query(params): Query<ShowQuery>,
 ) -> WebResult<Response> {
+    if viewer.user().is_some() && crate::middleware::is_preload(&headers) {
+        return Ok(crate::middleware::decline_preload());
+    }
     let number = parse_number(&number)?;
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let ctx = state.services.timeline.open(viewer.user(), loaded.ctx.clone(), number).await?;
