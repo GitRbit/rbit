@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-3xl">
+  <h1 class="text-xl font-semibold tracking-tight">New issue</h1>
+  <form method="post" action="{{ action_url }}" class="mt-6" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <label class="label" for="issue-title">Title</label>
+    <input class="input" id="issue-title" name="title" value="{{ title }}" maxlength="256" required autofocus>
+
+    <label class="label mt-5" for="issue-body">Description <span class="font-normal text-ink-faint">Markdown; #12 and @name link</span></label>
+    <textarea class="input h-56 resize-y py-2 text-[13px]" id="issue-body" name="body" rows="10" maxlength="65536">{{ body }}</textarea>
+
+    {% if can_triage %}
+    <div class="mt-6 grid gap-4 sm:grid-cols-3">
+      <fieldset class="box p-3">
+        <legend class="px-1 text-[13px] font-medium">Labels</legend>
+        {% if labels.is_empty() %}<p class="text-xs text-ink-faint">No labels yet.</p>{% endif %}
+        <div class="max-h-52 space-y-1 overflow-y-auto">
+          {% for choice in labels %}
+          <label class="flex min-h-9 cursor-pointer items-center gap-2 text-[13px] sm:min-h-7">
+            <input type="checkbox" name="label" value="{{ choice.id }}" class="accent-(--ink)" {% if choice.selected %}checked{% endif %}>
+            {% if let Some(color) = choice.color %}<svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ color }}"/></svg>{% endif %}
+            <span class="truncate">{{ choice.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="box p-3">
+        <legend class="px-1 text-[13px] font-medium">Assignees</legend>
+        <div class="max-h-52 space-y-1 overflow-y-auto">
+          {% for choice in assignees %}
+          <label class="flex min-h-9 cursor-pointer items-center gap-2 text-[13px] sm:min-h-7">
+            <input type="checkbox" name="assignee" value="{{ choice.id }}" class="accent-(--ink)" {% if choice.selected %}checked{% endif %}>
+            <span class="truncate">{{ choice.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="box p-3">
+        <legend class="px-1 text-[13px] font-medium">Milestone</legend>
+        <label class="sr-only" for="issue-milestone">Milestone</label>
+        <div class="relative">
+          <select class="input cursor-pointer appearance-none pr-9 text-[13px]" id="issue-milestone" name="milestone">
+            <option value="">No milestone</option>
+            {% for choice in milestones %}<option value="{{ choice.id }}" {% if choice.selected %}selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+          </select>
+          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        </div>
+      </fieldset>
+    </div>
+    {% endif %}
+
+    <div class="mt-8 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-primary h-11 sm:h-9">Open issue</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost h-11 sm:h-9">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

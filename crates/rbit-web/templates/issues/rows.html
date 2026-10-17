@@ -1,0 +1,29 @@
+{#- Issue list rows inside a `.box`; expects `rows: Vec<IssueRow>`. On phones labels wrap under the title and
+    the metadata collapses to one muted line. -#}
+{% import "macros.html" as ui %}
+<ul>
+  {% for row in rows %}
+  <li class="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle">
+    <span class="mt-0.5 shrink-0 {{ row.state.class }}" title="{{ row.state.label }}">{% call ui::icon(row.state.icon, "size-4") %}{% endcall %}<span class="sr-only">{{ row.state.label }}</span></span>
+    <div class="min-w-0 flex-1">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <a href="{{ row.url }}" class="min-w-0 break-words font-medium text-ink hover:underline hover:underline-offset-4">{{ row.title }}</a>
+        {% for chip in row.labels %}{% include "issues/label_chip.html" %}{% endfor %}
+      </div>
+      <p class="mt-1 truncate text-xs text-ink-faint">
+        {{ row.number }} {% if row.closed %}closed{% else %}opened{% endif %} <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time>{% if !row.closed %} by {{ row.author }}{% endif %}
+        {%- if let Some((title, url)) = row.milestone %} · <a href="{{ url }}" class="hover:text-ink-muted hover:underline hover:underline-offset-4">{% call ui::icon("milestone", "inline size-3 align-[-2px]") %}{% endcall %} {{ title }}</a>{% endif %}
+        {%- if row.locked %} · {% call ui::icon("lock", "inline size-3 align-[-2px]") %}{% endcall %}<span class="sr-only">locked</span>{% endif %}
+      </p>
+    </div>
+    <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">
+      {% if !row.assignees.is_empty() %}
+      <span class="hidden -space-x-1.5 sm:flex" title="Assigned to {% for person in row.assignees %}{% if !loop.first %}, {% endif %}{{ person.name }}{% endfor %}">
+        {% for person in row.assignees %}{% call ui::avatar(person.avatar, "size-5 text-[9px]") %}{% endcall %}{% endfor %}
+      </span>
+      {% endif %}
+      {% if row.comments > 0 %}<a href="{{ row.comments_url }}" class="flex items-center gap-1 hover:text-ink-muted" aria-label="{{ row.comments }} comments">{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ row.comments }}</a>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>

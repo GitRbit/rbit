@@ -1,2 +1,103 @@
-{#- The issue sidebar (assignees, labels, milestone, notifications, lock, delete); expects `sidebar: IssueSidebar`.
-    Rendered on issue pages and, through the hook, on pull request pages. Workstream I owns it; the stub renders nothing. -#}
+{#- The issue sidebar (assignees, labels, milestone, notifications, delete); expects `sidebar: IssueSidebar`.
+    Rendered on issue pages and, through the hook, on pull request pages; a page may include it twice (phone and
+    desktop), so it uses no `id` attributes. Editors are `<details>` forms: no JavaScript needed. -#}
+{% import "macros.html" as ui %}
+{% if sidebar.visible %}
+<div class="flex flex-col gap-5 text-[13px]">
+  <section aria-label="Assignees">
+    <div class="flex min-h-7 items-center justify-between gap-2">
+      <h2 class="text-xs font-medium text-ink-muted">Assignees</h2>
+    </div>
+    {% if sidebar.assignees.is_empty() %}
+    <div class="text-ink-faint">No one{% if sidebar.can_assign_self %} —
+      <form method="post" action="{{ sidebar.assignees_url }}" class="inline"><input type="hidden" name="add" value="{{ sidebar.viewer_id }}"><button type="submit" class="text-ink underline underline-offset-4 hover:no-underline">assign yourself</button></form>{% endif %}</div>
+    {% else %}
+    <ul class="space-y-1.5">
+      {% for person in sidebar.assignees %}
+      <li><a href="{{ person.url }}" class="flex items-center gap-2 hover:underline hover:underline-offset-4">{% call ui::avatar(person.avatar, "size-5 text-[9px]") %}{% endcall %}<span class="truncate">{{ person.name }}</span></a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if sidebar.can_triage %}
+    <details class="mt-2">
+      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit assignees</summary>
+      <form method="post" action="{{ sidebar.assignees_url }}" class="mt-2">
+        <input type="hidden" name="replace" value="true">
+        <div class="max-h-52 space-y-1 overflow-y-auto">
+          {% for option in sidebar.assignee_options %}
+          <label class="flex min-h-9 cursor-pointer items-center gap-2 sm:min-h-7"><input type="checkbox" name="assignee" value="{{ option.value }}" class="accent-(--ink)" {% if option.selected %}checked{% endif %}><span class="truncate">{{ option.label }}</span></label>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn mt-2 h-11 w-full sm:h-8">Save assignees</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  <section aria-label="Labels" class="border-t border-line pt-4">
+    <h2 class="text-xs font-medium text-ink-muted">Labels</h2>
+    {% if sidebar.labels.is_empty() %}<p class="mt-1 text-ink-faint">None yet</p>{% else %}
+    <div class="mt-1.5 flex flex-wrap gap-1">{% for chip in sidebar.labels %}{% include "issues/label_chip.html" %}{% endfor %}</div>
+    {% endif %}
+    {% if sidebar.can_triage %}
+    <details class="mt-2">
+      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit labels</summary>
+      <form method="post" action="{{ sidebar.labels_url }}" class="mt-2">
+        {% if sidebar.label_options.is_empty() %}<p class="text-xs text-ink-faint">This repository has no labels yet.</p>{% endif %}
+        <div class="max-h-52 space-y-1 overflow-y-auto">
+          {% for option in sidebar.label_options %}
+          <label class="flex min-h-9 cursor-pointer items-center gap-2 sm:min-h-7"><input type="checkbox" name="label" value="{{ option.value }}" class="accent-(--ink)" {% if option.selected %}checked{% endif %}>{% if let Some(color) = option.color %}<svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ color }}"/></svg>{% endif %}<span class="truncate">{{ option.label }}</span></label>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn mt-2 h-11 w-full sm:h-8">Save labels</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  <section aria-label="Milestone" class="border-t border-line pt-4">
+    <h2 class="text-xs font-medium text-ink-muted">Milestone</h2>
+    {% if let Some((title, url)) = sidebar.milestone %}
+    <a href="{{ url }}" class="mt-1 flex items-center gap-1.5 hover:underline hover:underline-offset-4">{% call ui::icon("milestone", "size-3.5 text-ink-muted") %}{% endcall %}<span class="truncate">{{ title }}</span></a>
+    {% else %}<p class="mt-1 text-ink-faint">No milestone</p>{% endif %}
+    {% if sidebar.can_triage %}
+    <details class="mt-2">
+      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Change milestone</summary>
+      <form method="post" action="{{ sidebar.milestone_url }}" class="mt-2 space-y-2">
+        <label class="block">
+          <span class="sr-only">Milestone</span>
+          <select name="milestone" class="input cursor-pointer text-[13px]">
+            {% for option in sidebar.milestone_options %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="btn h-11 w-full sm:h-8">Save milestone</button>
+      </form>
+    </details>
+    {% endif %}
+  </section>
+
+  {% if sidebar.can_subscribe %}
+  <section aria-label="Notifications" class="border-t border-line pt-4">
+    <h2 class="text-xs font-medium text-ink-muted">Notifications</h2>
+    <form method="post" action="{{ sidebar.subscription_url }}" class="mt-1.5">
+      {% if sidebar.subscribed %}
+      <input type="hidden" name="subscribed" value="false">
+      <button type="submit" class="btn h-11 w-full sm:h-8">{% call ui::icon("eye-off", "size-3.5") %}{% endcall %}Unsubscribe</button>
+      {% else %}
+      <input type="hidden" name="subscribed" value="true">
+      <button type="submit" class="btn h-11 w-full sm:h-8">{% call ui::icon("bell", "size-3.5") %}{% endcall %}Subscribe</button>
+      {% endif %}
+    </form>
+    <p class="mt-1.5 text-xs text-ink-faint">{% if let Some(reason) = sidebar.subscription_reason %}{{ reason }}{% else %}You are not notified about this {{ sidebar.noun }}.{% endif %}</p>
+  </section>
+  {% endif %}
+
+  {% if sidebar.can_delete %}
+  <section aria-label="Danger" class="border-t border-line pt-4">
+    <form method="post" action="{{ sidebar.delete_url }}" hx-confirm="Delete this {{ sidebar.noun }} for good? This cannot be undone.">
+      <button type="submit" class="btn btn-ghost h-11 w-full text-danger sm:h-8">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete {{ sidebar.noun }}</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endif %}

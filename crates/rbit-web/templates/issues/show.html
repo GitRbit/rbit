@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<header class="border-b border-line pb-4">
+  {% include "timeline/title_form.html" %}
+  <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-muted">
+    {% include "timeline/state_badge.html" %}
+    <span>
+      {%- if let Some(url) = summary.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ summary.author.name }}</a>{% else %}<span class="font-medium">{{ summary.author.name }}</span>{% endif %}
+      {{ summary.verb }} <time datetime="{{ summary.when_iso }}" title="{{ summary.when_iso }}">{{ summary.when }}</time> · {{ summary.comments }} {% if summary.comments == 1 %}comment{% else %}comments{% endif %}
+    </span>
+  </div>
+</header>
+
+<details class="box mt-4 md:hidden">
+  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}Details</summary>
+  <div class="border-t border-line px-4 py-3">{% include "issues/sidebar.html" %}</div>
+</details>
+
+<div class="mt-6 grid gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
+  <div class="min-w-0">{% include "timeline/thread.html" %}</div>
+  <aside class="hidden md:block" aria-label="Details">{% include "issues/sidebar.html" %}</aside>
+</div>
+{% endblock %}

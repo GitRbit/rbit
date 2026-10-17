@@ -1,0 +1,2 @@
+{#- One label: name in ink with its colour as an SVG dot (never an inline style); expects `chip: LabelChip`. -#}
+{% if let Some(url) = chip.url %}<a href="{{ url }}" class="label-chip hover:border-line-strong" title="{{ chip.name }}">{% else %}<span class="label-chip" title="{{ chip.name }}">{% endif %}<svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ chip.color }}"/></svg><span class="truncate">{{ chip.name }}</span>{% if chip.url.is_some() %}</a>{% else %}</span>{% endif %}
