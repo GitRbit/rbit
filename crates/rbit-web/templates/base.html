@@ -62,24 +62,10 @@
             {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
           </button>
         </form>
-        <details class="relative hidden sm:block" data-menu>
-          <summary class="btn btn-ghost btn-icon" aria-label="Choose a theme" title="Choose a theme">
-            {% call ui::icon("palette", "size-4") %}{% endcall %}
-          </summary>
-          <div class="menu right-0 w-52">
-            <p class="menu-label">Theme</p>
-            <form method="post" action="/themes" hx-boost="false" data-theme-form>
-              <input type="hidden" name="next" value="{{ page.path }}">
-              {%- for option in page.theme_options() %}
-              <button class="menu-item theme-option" type="submit" name="theme" value="{{ option.slug }}" aria-pressed="{{ option.is_current }}">
-                {{ option.label }}{% call ui::icon("check", "theme-check ml-auto size-3.5") %}{% endcall %}
-              </button>
-              {%- endfor %}
-            </form>
-            <div class="menu-divider"></div>
-            <a class="menu-item" href="/themes">{% if page.theme.is_tinted() %}<span class="min-w-0 truncate">{{ page.theme.name() }}</span><span class="ml-auto shrink-0 text-ink-faint">All…</span>{% else %}All themes…{% endif %}</a>
-          </div>
-        </details>
+        {#- Opens the theme picker dialog; without scripts, the gallery. -#}
+        <a href="/themes" class="btn btn-ghost btn-icon" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+          {% call ui::icon("palette", "size-4") %}{% endcall %}
+        </a>
 
         {% if let Some(user) = page.viewer %}
         <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="Notifications" title="{% if page.has_unread_notifications %}You have unread notifications{% else %}Notifications{% endif %}">

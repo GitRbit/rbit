@@ -23,12 +23,17 @@ use crate::{
     urls::safe_redirect_target,
     views::{
         layout::Page,
-        themes::{GALLERY_URL, ThemesPage, VariantFilter},
+        themes::{GALLERY_URL, PICKER_URL, ThemePicker, ThemesPage, VariantFilter},
     },
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route(GALLERY_URL, get(gallery).post(choose))
+    Router::new().route(GALLERY_URL, get(gallery).post(choose)).route(PICKER_URL, get(picker))
+}
+
+/// `GET /themes/picker`: the header's theme picker dialog, fetched by `theme-picker.js`.
+pub async fn picker(page: Page) -> ThemePicker {
+    ThemePicker::new(&page)
 }
 
 /// `?variant=dark&q=gruvbox`

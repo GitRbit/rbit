@@ -1,0 +1,111 @@
+{% import "macros.html" as ui %}
+{#- The header's theme picker: a dialog fetched by theme-picker.js the first time the palette
+    button is pressed (without scripts that button is a link to the gallery). Rows are plain
+    submit buttons of a theme form; each row's chip carries its own `data-theme`, so it renders
+    in that theme's colours from the combined stylesheet linked here. Highlighting a row (the
+    pointer or the arrow keys) shows it in the preview pane; choosing one applies it. -#}
+<dialog class="tpk" aria-label="Choose a theme" data-theme-dialog data-asset-version="{{ asset_version }}">
+  <link rel="stylesheet" href="{{ stylesheet }}">
+  <div class="tpk-head">
+    <div class="tpk-search">
+      {% call ui::icon("search", "size-4 shrink-0 text-ink-faint") %}{% endcall %}
+      <input type="search" placeholder="Search {{ total }} themes" aria-label="Search themes" role="combobox" aria-expanded="true" aria-controls="tpk-list" aria-autocomplete="list" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="100" data-tpk-search>
+      <kbd class="kbd hidden sm:inline">Esc</kbd>
+      <button class="btn btn-ghost btn-icon -mr-2 sm:hidden" type="button" aria-label="Close" data-tpk-close>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
+    </div>
+    <div class="tpk-bar">
+      <div class="theme-segment tpk-segment" role="group" aria-label="Show">
+        <button type="button" data-tpk-variant="" aria-pressed="true">All</button>
+        <button type="button" data-tpk-variant="dark" aria-pressed="false">Dark</button>
+        <button type="button" data-tpk-variant="light" aria-pressed="false">Light</button>
+      </div>
+      <p class="ml-auto text-xs text-ink-faint" data-tpk-count aria-live="polite">{{ total }} themes</p>
+    </div>
+  </div>
+
+  <div class="tpk-body">
+    <nav class="tpk-index" aria-label="Theme families">
+      <a href="#tpk-recent" data-tpk-jump="tpk-recent" hidden>Recent</a>
+      {%- for group in groups %}
+      <a href="#tpk-g{{ loop.index }}" data-tpk-jump="tpk-g{{ loop.index }}">{{ group.name }}<span>{{ group.rows.len() }}</span></a>
+      {%- endfor %}
+    </nav>
+
+    <form class="tpk-list" id="tpk-list" method="post" action="/themes" hx-boost="false" role="listbox" aria-label="Themes" data-theme-form>
+      <section class="tpk-group" id="tpk-recent" data-tpk-recent hidden>
+        <h3 class="tpk-group-title">Recent</h3>
+      </section>
+      {%- for group in groups %}
+      <section class="tpk-group" id="tpk-g{{ loop.index }}" data-tpk-group>
+        <h3 class="tpk-group-title">{{ group.name }}<span>{{ group.rows.len() }}</span></h3>
+        {%- for row in group.rows %}
+        {%- if let Some(letter) = row.letter %}
+        <p class="tpk-letter" data-tpk-letter>{{ letter }}</p>
+        {%- endif %}
+        <button class="tpk-opt" id="tpk-{{ row.card.slug }}" type="submit" name="theme" value="{{ row.card.slug }}" role="option" aria-selected="false" aria-pressed="{{ row.card.is_current }}" data-variant="{{ row.card.variant }}" data-counterpart="{{ row.card.counterpart }}" data-search="{{ row.search }}" data-family="{{ group.name }}" title="{{ row.card.credit }}" tabindex="-1" data-tpk-option>
+          <span class="tpk-chip" data-theme="{{ row.card.slug }}" aria-hidden="true"><b>Aa</b><i></i><i></i><i></i><i></i></span>
+          <span class="tpk-name">{{ row.card.name }}</span>
+          <span class="tpk-variant">{{ row.variant_label }}</span>
+          {% call ui::icon("check", "tpk-check size-3.5") %}{% endcall %}
+        </button>
+        {%- endfor %}
+      </section>
+      {%- endfor %}
+      <p class="py-16 text-center text-[13px] text-ink-muted" data-tpk-empty hidden>No themes match your search.</p>
+    </form>
+
+    {#- The highlighted theme on a miniature repository page; theme-picker.js retargets
+        `data-theme` as the highlight moves. -#}
+    <aside class="tpk-side" aria-label="Preview">
+      <div class="tpk-info">
+        <div class="min-w-0">
+          <p class="tpk-info-name" data-tpk-name>System</p>
+          <p class="tpk-info-meta" data-tpk-meta>Rbit · Auto</p>
+        </div>
+        <button class="btn btn-primary ml-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>Apply</button>
+      </div>
+      <div class="tpk-preview" data-theme="system" data-tpk-preview aria-hidden="true">
+        <div class="pv-top">
+          {% call ui::logo("size-3.5") %}{% endcall %}
+          <span class="pv-crumb"><span>rbit</span> / <b>core</b></span>
+          <span class="pv-btn">{% call ui::icon("star", "size-3") %}{% endcall %} Star</span>
+          <span class="pv-btn pv-primary">Clone</span>
+        </div>
+        <div class="pv-tabs"><span class="pv-tab-on">Code</span><span>Issues <i>3</i></span><span>Pull requests <i>1</i></span><span>Releases</span></div>
+        <div class="pv-main">
+          <div class="pv-box">
+            <div class="pv-box-head"><span>src/main.rs</span><span class="pv-faint">8 lines</span></div>
+            <pre class="pv-code"><span class="pv-ln">1</span><span class="pv-k">use</span> std::<span class="pv-t">io</span>;
+<span class="pv-ln">2</span>
+<span class="pv-ln">3</span><span class="pv-c">/// Greets the world.</span>
+<span class="pv-ln">4</span><span class="pv-k">fn</span> <span class="pv-f">main</span>() -&gt; <span class="pv-t">io::Result</span>&lt;()&gt; {
+<span class="pv-ln">5</span>    <span class="pv-k">let</span> count = <span class="pv-n">42</span>;
+<span class="pv-ln">6</span>    <span class="pv-f">println!</span>(<span class="pv-s">"hello, {count}"</span>);
+<span class="pv-ln">7</span>    <span class="pv-t">Ok</span>(())
+<span class="pv-ln">8</span>}</pre>
+          </div>
+          <div class="pv-box">
+            <div class="pv-box-head"><span>lib.rs</span><span><b class="pv-add">+2</b> <b class="pv-del">−1</b></span></div>
+            <pre class="pv-code pv-diff"><span class="pv-del-line">-    <span class="pv-k">let</span> name = <span class="pv-s">"world"</span>;</span><span class="pv-add-line">+    <span class="pv-k">let</span> name = <span class="pv-f">env</span>(<span class="pv-s">"USER"</span>);</span><span class="pv-add-line">+    <span class="pv-k">let</span> times = <span class="pv-n">3</span>;</span></pre>
+          </div>
+          <div class="pv-row">
+            <span class="pv-pill pv-ok">{% call ui::icon("circle-check", "size-3") %}{% endcall %} Checks passed</span>
+            <span class="pv-pill pv-warn">{% call ui::icon("circle-dot", "size-3") %}{% endcall %} Review pending</span>
+            <span class="pv-pill pv-bad">{% call ui::icon("circle-slash", "size-3") %}{% endcall %} 1 failing</span>
+          </div>
+          <p class="pv-text">Self-hosted Git, <span class="pv-link">fast</span> and quiet. <span class="pv-faint">Updated 2 hours ago</span></p>
+        </div>
+      </div>
+      <p class="tpk-author" data-tpk-author></p>
+    </aside>
+  </div>
+
+  <footer class="tpk-foot">
+    <p class="hidden items-center gap-3 sm:flex">
+      <span><kbd class="kbd">↑</kbd> <kbd class="kbd">↓</kbd> Preview</span>
+      <span><kbd class="kbd">↵</kbd> or click Apply</span>
+      <span><kbd class="kbd">Esc</kbd> Close</span>
+    </p>
+    <a class="ml-auto inline-flex items-center gap-1 hover:text-ink" href="{{ gallery_url }}">Open gallery {% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  </footer>
+</dialog>

@@ -8,6 +8,10 @@
 //   click, staying within a tinted scheme's family (Gruvbox dark ↔ light) when it has a
 //   sibling. Its value is the theme it switches to; after every switch it is pointed back
 //   at the theme it came from, so toggling twice always returns to where you started.
+// * The header's palette button (`[data-theme-dialog-open]`, a link to the gallery) opens the
+//   theme picker dialog instead, fetched from `/themes/picker` the first time. It searches and
+//   filters as you type; the highlighted row (arrow keys or the pointer) shows in the dialog's
+//   preview pane, and Enter, a click or the pane's Apply button applies it to the page.
 // * In the gallery (`[data-theme-gallery]`), hovering or focusing a card previews that theme
 //   on the whole page; leaving the gallery or pressing Escape reverts the preview. The
 //   variant filter and search narrow the cards instantly.
@@ -92,6 +96,7 @@ function apply(slug, scheme, source) {
   document.cookie = `${COOKIE}=${slug}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
   // The server repeats the cookie and, for signed-in users, stores the choice.
   fetch("/themes", { method: "POST", body: new URLSearchParams({ theme: slug, js: "1" }), keepalive: true }).catch(() => {});
+  rememberRecent(slug);
 }
 
 function revert() {
@@ -147,6 +152,7 @@ document.addEventListener("submit", (event) => {
     aimAfterChoosing(button, button.value, scheme);
   }
   for (const menu of document.querySelectorAll("details[data-menu][open]")) menu.removeAttribute("open");
+  if (form.closest("[data-theme-dialog]")) syncSide();
 });
 
 // ------------------------------------------------------------------ gallery preview
@@ -258,4 +264,287 @@ document.addEventListener("submit", (event) => {
   if (!form) return;
   event.preventDefault();
   filter(form.closest("[data-theme-gallery]"));
+});
+
+// ------------------------------------------------------------------ picker dialog
+
+const PICKER_URL = "/themes/picker";
+const RECENT_KEY = "rbit-recent-themes";
+const RECENT_MAX = 5;
+
+/** The dialog once fetched; kept across boosted navigations, which replace the body. */
+let dialog = null;
+let loading = null;
+/** Each row with its search text, built once. */
+let rows = [];
+
+function readRecent() {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter((slug) => typeof slug === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecent(slug) {
+  try {
+    const list = [slug, ...readRecent().filter((other) => other !== slug)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+    /* storage unavailable: no recent list */
+  }
+}
+
+function loadDialog() {
+  loading ??= fetch(PICKER_URL, { headers: { Accept: "text/html" } })
+    .then((response) => {
+      if (!response.ok) throw new Error(`${response.status}`);
+      return response.text();
+    })
+    .then((html) => {
+      const template = document.createElement("template");
+      template.innerHTML = html.trim();
+      dialog = template.content.querySelector("[data-theme-dialog]");
+      document.body.append(dialog);
+      rows = [...dialog.querySelectorAll("[data-tpk-group] [data-tpk-option]")].map((option) => ({
+        option,
+        variant: option.dataset.variant,
+        text: option.dataset.search,
+      }));
+      wireDialog(dialog);
+      return dialog;
+    })
+    .catch((error) => {
+      loading = null;
+      throw error;
+    });
+  return loading;
+}
+
+const part = (name) => dialog.querySelector(`[data-tpk-${name}]`);
+const listOf = () => dialog.querySelector(".tpk-list");
+
+/** Rows the keyboard can reach, in order: shown, in a shown group. */
+function reachable() {
+  return [...listOf().querySelectorAll("[data-tpk-option]")].filter((option) => !option.hidden && !option.closest("[hidden]"));
+}
+
+function activeRow() {
+  return listOf().querySelector('[data-tpk-option][aria-selected="true"]');
+}
+
+/** Highlights `option`, shows it in the preview pane, and keeps it in view when asked. */
+function activate(option, { scroll = "nearest" } = {}) {
+  const previous = activeRow();
+  if (previous !== option) {
+    previous?.setAttribute("aria-selected", "false");
+    option?.setAttribute("aria-selected", "true");
+  }
+  const search = part("search");
+  if (option) {
+    search.setAttribute("aria-activedescendant", option.id);
+    if (scroll) option.scrollIntoView({ block: scroll });
+  } else {
+    search.removeAttribute("aria-activedescendant");
+  }
+  syncSide();
+}
+
+/** Points the preview pane, its description and its Apply button at the highlighted row. */
+function syncSide() {
+  const option = activeRow();
+  if (!option) return;
+  part("preview").dataset.theme = option.value;
+  part("name").textContent = option.querySelector(".tpk-name").textContent;
+  part("meta").textContent = `${option.dataset.family} · ${option.querySelector(".tpk-variant").textContent}`;
+  // Row titles read "Name by Author" or "Name · built in".
+  const credit = option.title;
+  const by = credit.indexOf(" by ");
+  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into Rbit";
+  const button = part("apply");
+  const isCurrent = option.value === applied.slug;
+  button.value = option.value;
+  button.dataset.variant = option.dataset.variant;
+  button.dataset.counterpart = option.dataset.counterpart;
+  button.disabled = isCurrent;
+  button.textContent = isCurrent ? "Applied" : "Apply";
+}
+
+function renderRecent() {
+  const section = part("recent");
+  for (const old of section.querySelectorAll("[data-tpk-option]")) old.remove();
+  for (const slug of readRecent()) {
+    const source = dialog.querySelector(`[data-tpk-group] [data-tpk-option][value="${CSS.escape(slug)}"]`);
+    if (!source) continue;
+    const copy = source.cloneNode(true);
+    copy.id = `tpk-recent-${slug}`;
+    copy.setAttribute("aria-selected", "false");
+    copy.hidden = false;
+    section.append(copy);
+  }
+  section.dataset.empty = String(!section.querySelector("[data-tpk-option]"));
+}
+
+function filterDialog() {
+  const words = part("search").value.toLowerCase().split(/\s+/).filter(Boolean);
+  const variant = dialog.querySelector('[data-tpk-variant][aria-pressed="true"]')?.dataset.tpkVariant ?? "";
+  let shown = 0;
+  for (const { option, variant: rowVariant, text } of rows) {
+    const visible = (!variant || !rowVariant || rowVariant === variant) && words.every((word) => text.includes(word));
+    option.hidden = !visible;
+    if (visible) shown++;
+  }
+  const list = listOf();
+  const recent = part("recent");
+  for (const option of recent.querySelectorAll("[data-tpk-option]")) {
+    option.hidden = Boolean(variant) && Boolean(option.dataset.variant) && option.dataset.variant !== variant;
+  }
+  recent.hidden = words.length > 0 || !recent.querySelector("[data-tpk-option]:not([hidden])");
+  for (const group of list.querySelectorAll("[data-tpk-group]")) {
+    const count = group.querySelectorAll("[data-tpk-option]:not([hidden])").length;
+    group.hidden = count === 0;
+    group.querySelector(".tpk-group-title span").textContent = count;
+    // A letter heading stays only while a row up to the next heading is shown.
+    for (const letter of group.querySelectorAll("[data-tpk-letter]")) {
+      let next = letter.nextElementSibling;
+      let any = false;
+      while (next && !next.matches("[data-tpk-letter]")) {
+        any ||= !next.hidden;
+        next = next.nextElementSibling;
+      }
+      letter.hidden = !any;
+    }
+  }
+  for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
+    link.hidden = document.getElementById(link.dataset.tpkJump)?.hidden ?? true;
+  }
+  part("count").textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  part("empty").hidden = shown > 0;
+  list.scrollTop = 0;
+  activate(reachable()[0] ?? null, { scroll: false });
+  syncIndex();
+}
+
+/** Marks the family index entry of the group at the top of the list. */
+function syncIndex() {
+  const list = listOf();
+  const top = list.scrollTop + 1;
+  let current = null;
+  for (const group of list.querySelectorAll(".tpk-group:not([hidden])")) {
+    if (group.offsetTop - list.offsetTop > top) break;
+    current = group;
+  }
+  current ??= list.querySelector(".tpk-group:not([hidden])");
+  for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
+    const isCurrent = link.dataset.tpkJump === current?.id;
+    if (isCurrent && !link.hasAttribute("aria-current")) {
+      link.setAttribute("aria-current", "true");
+      link.scrollIntoView({ block: "nearest" });
+    } else if (!isCurrent) {
+      link.removeAttribute("aria-current");
+    }
+  }
+}
+
+function move(by) {
+  const options = reachable();
+  if (!options.length) return;
+  const index = options.indexOf(activeRow());
+  const next = index < 0 ? 0 : Math.max(0, Math.min(options.length - 1, index + by));
+  activate(options[next]);
+}
+
+function wireDialog(dialog) {
+  const search = part("search");
+  const list = listOf();
+
+  search.addEventListener("input", filterDialog);
+
+  dialog.addEventListener("keydown", (event) => {
+    const page = Math.max(1, Math.floor(list.clientHeight / 44));
+    const keys = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    if (event.key in keys) {
+      event.preventDefault();
+      move(keys[event.key]);
+    } else if (event.key === "Enter" && event.target === search) {
+      event.preventDefault();
+      const option = activeRow();
+      if (option) list.requestSubmit(option);
+    }
+  });
+
+  // The pointer highlights too; `pointermove` rather than `pointerover`, so rows scrolling
+  // under a resting pointer don't take the highlight from the keyboard.
+  list.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    const option = event.target instanceof Element ? event.target.closest("[data-tpk-option]") : null;
+    if (option && option !== activeRow()) activate(option, { scroll: false });
+  });
+
+  list.addEventListener("scroll", () => requestAnimationFrame(syncIndex), { passive: true });
+
+  dialog.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    // A click on the backdrop lands on the dialog element itself.
+    if (target === dialog || target?.closest("button[data-tpk-close]")) {
+      dialog.close();
+      return;
+    }
+    // Touch has no hover: a tapped row is highlighted as it is applied.
+    const option = target?.closest("[data-tpk-option]");
+    if (option && option !== activeRow()) activate(option, { scroll: false });
+    const variantButton = target?.closest("[data-tpk-variant]");
+    if (variantButton) {
+      for (const other of dialog.querySelectorAll("[data-tpk-variant]")) {
+        other.setAttribute("aria-pressed", String(other === variantButton));
+      }
+      filterDialog();
+      search.focus();
+    }
+    const jump = target?.closest("[data-tpk-jump]");
+    if (jump) {
+      event.preventDefault();
+      const group = document.getElementById(jump.dataset.tpkJump);
+      list.scrollTo({ top: group.offsetTop - list.offsetTop });
+      activate(group.querySelector("[data-tpk-option]:not([hidden])"), { scroll: false });
+      search.focus();
+    }
+  });
+
+}
+
+async function openDialog() {
+  const element = dialog ?? (await loadDialog());
+  if (!element.isConnected) document.body.append(element);
+  if (element.open) return;
+  renderRecent();
+  part("search").value = "";
+  element.showModal();
+  filterDialog();
+  const current = listOf().querySelector('[data-tpk-group] [data-tpk-option][aria-pressed="true"]');
+  if (current && !current.hidden) activate(current, { scroll: "center" });
+  part("search").focus();
+}
+
+document.addEventListener("click", (event) => {
+  const opener = event.target instanceof Element ? event.target.closest("[data-theme-dialog-open]") : null;
+  if (!opener || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  // Should the dialog fail to load, the link's own destination still works.
+  openDialog().catch(() => {
+    location.href = opener.href;
+  });
+});
+
+// Fetch the dialog as soon as the pointer or focus heads for the button, so it opens at once.
+for (const type of ["pointerover", "focusin"]) {
+  document.addEventListener(type, (event) => {
+    if (!dialog && event.target instanceof Element && event.target.closest("[data-theme-dialog-open]")) loadDialog().catch(() => {});
+  });
+}
+
+// Leaving the page closes the picker.
+document.addEventListener("htmx:beforeRequest", () => {
+  if (dialog?.open) dialog.close();
 });

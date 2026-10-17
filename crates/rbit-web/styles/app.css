@@ -803,8 +803,188 @@
 
 /* ---------------------------------------------------------------- Themes */
 
-/* Header theme menu: a check marks the active built-in theme. */
-.theme-option[aria-pressed="false"] .theme-check { visibility: hidden; }
+/* Header theme picker (templates/themes/picker.html): a large dialog with the family index,
+   the list, and a preview pane showing the highlighted theme on a miniature repository page.
+   The dialog itself follows the page's theme, which changes only when a theme is applied.
+   Full screen on phones, where the preview pane gives way to the list. */
+.tpk {
+  @apply fixed inset-0 m-0 flex h-dvh max-h-none w-full max-w-none flex-col overflow-hidden bg-surface text-ink;
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  transition: opacity 120ms ease-out, translate 120ms ease-out, display 120ms allow-discrete, overlay 120ms allow-discrete;
+}
+
+.tpk:not([open]) { display: none; opacity: 0; translate: 0 6px; }
+
+@starting-style {
+  .tpk[open] { opacity: 0; translate: 0 6px; }
+}
+
+.tpk::backdrop {
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+}
+
+@media (width >= 40rem) {
+  .tpk {
+    @apply m-auto h-[min(48rem,calc(100dvh-4rem))] w-[min(76rem,calc(100vw-3rem))] rounded-lg border border-line-strong p-0;
+    box-shadow: 0 24px 64px -12px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(0 0 0 / 0.04);
+  }
+}
+
+html:has(.tpk[open]) { overflow: hidden; }
+
+.tpk-head { @apply shrink-0 border-b border-line; }
+
+.tpk-search {
+  @apply flex h-13 items-center gap-3 px-4;
+}
+
+.tpk-search input {
+  @apply h-full min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-faint;
+}
+
+.tpk-search input::-webkit-search-cancel-button { display: none; }
+
+.tpk-bar { @apply flex items-center gap-3 px-4 pb-3; }
+
+.tpk-segment { @apply h-8 sm:h-8; }
+
+.tpk-segment button {
+  @apply inline-flex h-full cursor-pointer items-center rounded px-3 text-[13px] text-ink-muted transition-colors
+    duration-100 hover:text-ink;
+}
+
+.tpk-segment button[aria-pressed="true"] { @apply bg-hover font-medium text-ink; }
+
+.tpk-body { @apply flex min-h-0 flex-1; }
+
+/* Family index: jumps to a group and follows the list as it scrolls. */
+.tpk-index {
+  @apply hidden w-48 shrink-0 overflow-y-auto overscroll-contain border-r border-line p-2 lg:block;
+}
+
+.tpk-index a {
+  @apply flex h-7 items-center gap-2 rounded px-2 text-[13px] text-ink-muted hover:bg-hover hover:text-ink;
+}
+
+.tpk-index a span { @apply ml-auto text-[11px] tabular-nums text-ink-faint; }
+
+.tpk-index a[aria-current] { @apply bg-hover font-medium text-ink; }
+
+.tpk-list {
+  @apply min-w-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2;
+  scroll-padding-block: 2.5rem 0.5rem;
+}
+
+.tpk-group-title {
+  @apply sticky top-0 z-10 -mx-2 flex items-baseline gap-2 bg-surface/95 px-4 pb-1.5 pt-3 text-[11px] font-semibold
+    uppercase tracking-wider text-ink-faint backdrop-blur-sm;
+}
+
+.tpk-group-title span { @apply font-normal tabular-nums; }
+
+.tpk-letter {
+  @apply mx-2 mb-1 mt-3 border-b border-line pb-1 font-mono text-[11px] text-ink-faint;
+}
+
+.tpk-opt {
+  @apply flex h-11 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left text-[13px] text-ink sm:h-10;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 2.5rem;
+}
+
+.tpk-opt[aria-selected="true"] { @apply bg-hover; }
+
+.tpk-opt:focus-visible { @apply outline-offset-0; }
+
+/* A thumbnail of the theme: its page, its text, and four accents. */
+.tpk-chip {
+  @apply flex h-7 w-14 shrink-0 items-center gap-0.75 rounded border border-line bg-canvas px-1.5 text-ink;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+
+.tpk-chip b { @apply mr-auto text-[11px] font-semibold leading-none; }
+.tpk-chip i { @apply size-1.5 rounded-full; }
+.tpk-chip i:nth-of-type(1) { background: var(--syntax-keyword); }
+.tpk-chip i:nth-of-type(2) { background: var(--syntax-string); }
+.tpk-chip i:nth-of-type(3) { background: var(--syntax-function); }
+.tpk-chip i:nth-of-type(4) { background: var(--warning); }
+
+.tpk-name { @apply min-w-0 flex-1 truncate; }
+
+.tpk-variant { @apply shrink-0 text-[11px] text-ink-faint; }
+
+.tpk-check { @apply shrink-0 text-ink; }
+.tpk-opt[aria-pressed="false"] .tpk-check { visibility: hidden; }
+.tpk-opt[aria-pressed="true"] .tpk-name { @apply font-medium; }
+
+/* Preview pane: the theme's name and Apply on the page's surface, then the miniature page in
+   the highlighted theme's own colours. */
+.tpk-side {
+  @apply hidden w-[28rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-line bg-subtle p-4 md:flex xl:w-[32rem];
+}
+
+.tpk-info { @apply flex items-center gap-3; }
+.tpk-info-name { @apply truncate text-[15px] font-semibold tracking-tight; }
+.tpk-info-meta { @apply mt-0.5 truncate text-xs text-ink-muted; }
+.tpk-author { @apply mt-auto truncate text-[11px] text-ink-faint; }
+
+.tpk-preview {
+  @apply overflow-hidden rounded-md border border-line bg-canvas text-[11px] leading-4 text-ink;
+  box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.3);
+  transition: background-color 120ms ease-out;
+}
+
+.pv-top { @apply flex h-9 items-center gap-2 border-b border-line bg-surface px-3; }
+.pv-crumb { @apply mr-auto truncate text-ink-muted; }
+.pv-crumb b { @apply font-semibold text-ink; }
+
+.pv-btn {
+  @apply inline-flex h-5.5 items-center gap-1 rounded border border-line bg-surface px-1.5 text-[10px] font-medium text-ink;
+}
+
+.pv-primary { @apply border-inverted bg-inverted text-inverted-ink; }
+
+.pv-tabs { @apply flex gap-3.5 border-b border-line bg-surface px-3 text-ink-muted; }
+.pv-tabs span { @apply inline-flex h-7.5 items-center gap-1; }
+.pv-tabs i { @apply rounded-full bg-hover px-1.5 text-[9px] not-italic leading-3.5 text-ink-muted; }
+.pv-tabs .pv-tab-on { @apply relative font-medium text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-ink; }
+
+.pv-main { @apply flex flex-col gap-2.5 p-3; }
+.pv-box { @apply overflow-hidden rounded border border-line bg-surface; }
+.pv-box-head { @apply flex h-6.5 items-center justify-between border-b border-line bg-subtle px-2.5 text-[10px] font-medium; }
+.pv-faint { @apply font-normal text-ink-faint; }
+
+.pv-code { @apply overflow-hidden whitespace-pre px-2.5 py-1.5 font-mono text-[10.5px] leading-[1.15rem]; }
+.pv-ln { @apply inline-block w-5 select-none text-ink-faint; }
+.pv-k { color: var(--syntax-keyword); }
+.pv-s { color: var(--syntax-string); }
+.pv-n { color: var(--syntax-number); }
+.pv-f { color: var(--syntax-function); }
+.pv-t { color: var(--syntax-type); }
+.pv-c { color: var(--syntax-comment); font-style: italic; }
+
+.pv-diff { @apply px-0 py-0; }
+.pv-diff > span { @apply block px-2.5; }
+.pv-add { @apply font-semibold text-success; }
+.pv-del { @apply font-semibold text-danger; }
+.pv-add-line { background: color-mix(in oklab, var(--success) 14%, transparent); }
+.pv-del-line { background: color-mix(in oklab, var(--danger) 14%, transparent); }
+
+.pv-row { @apply flex flex-wrap gap-1.5; }
+.pv-pill { @apply inline-flex h-5.5 items-center gap-1 rounded-full border px-2 text-[10px] font-medium; }
+.pv-ok { @apply border-success/40 text-success; }
+.pv-warn { @apply border-warning/40 text-warning; }
+.pv-bad { @apply border-danger/40 text-danger; }
+
+.pv-text { @apply text-ink-muted; }
+.pv-link { @apply text-ink underline decoration-line-strong underline-offset-2; }
+
+.tpk-foot {
+  @apply flex h-10 shrink-0 items-center gap-3 border-t border-line bg-subtle px-4 text-xs text-ink-muted;
+}
+
+.tpk-foot .kbd { @apply inline-flex h-4.5 min-w-4.5 items-center justify-center px-1 text-[10px]; }
 
 /* Gallery variant filter: a small segmented control. */
 .theme-segment {

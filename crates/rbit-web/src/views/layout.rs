@@ -18,14 +18,6 @@ pub struct Page {
     pub theme: Theme,
 }
 
-/// One entry of the header's theme menu.
-#[derive(Debug, Clone)]
-pub struct ThemeOption {
-    pub slug: &'static str,
-    pub label: &'static str,
-    pub is_current: bool,
-}
-
 /// The signed-in user as shown in the top bar.
 #[derive(Debug, Clone)]
 pub struct NavUser {
@@ -60,19 +52,6 @@ impl Page {
     pub fn with_theme(mut self, theme: Theme) -> Self {
         self.theme = theme;
         self
-    }
-
-    /// System / Light / Dark for the header menu, with the active one marked.
-    pub fn theme_options(&self) -> [ThemeOption; 3] {
-        Theme::BUILT_IN.map(|theme| ThemeOption {
-            slug: theme.slug(),
-            label: match theme {
-                Theme::Light => "Light",
-                Theme::Dark => "Dark",
-                _ => "System",
-            },
-            is_current: theme == self.theme,
-        })
     }
 
     #[must_use]

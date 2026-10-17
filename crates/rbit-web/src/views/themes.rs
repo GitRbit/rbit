@@ -259,6 +259,81 @@ impl ThemesPage {
     }
 }
 
+/// Where the header's theme picker dialog is fetched from.
+pub const PICKER_URL: &str = "/themes/picker";
+
+/// One row of the picker dialog.
+#[derive(Debug, Clone)]
+pub struct PickerRow {
+    pub card: ThemeCard,
+    /// What the dialog's search matches: name, family, author and variant, lowercased.
+    pub search: String,
+    /// `Light`, `Dark` or `Auto`.
+    pub variant_label: &'static str,
+    /// Starts a new letter in the long list of standalone schemes.
+    pub letter: Option<char>,
+}
+
+/// A heading of the picker dialog with its rows.
+#[derive(Debug, Clone)]
+pub struct PickerGroup {
+    pub name: &'static str,
+    pub rows: Vec<PickerRow>,
+}
+
+/// `GET /themes/picker`: the header's theme picker, a `<dialog>` fragment that
+/// `theme-picker.js` fetches the first time it opens, so pages don't carry every theme.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "themes/picker.html")]
+pub struct ThemePicker {
+    pub groups: Vec<PickerGroup>,
+    pub total: usize,
+    pub stylesheet: String,
+    pub asset_version: &'static str,
+    pub gallery_url: &'static str,
+}
+
+impl ThemePicker {
+    pub fn new(page: &Page) -> Self {
+        let gallery = Gallery::new(page, GALLERY_URL, VariantFilter::All, None);
+        let row = |card: ThemeCard, family: &'static str, letter: Option<char>| {
+            let variant_label = match card.variant {
+                "light" => "Light",
+                "dark" => "Dark",
+                _ => "Auto",
+            };
+            let search = format!("{} {family} {} {}", card.name, card.credit, card.variant).to_lowercase();
+            PickerRow { card, search, variant_label, letter }
+        };
+        let mut groups = vec![PickerGroup { name: "Rbit", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() }];
+        for family in gallery.families {
+            let standalone = family.name == STANDALONE_FAMILY;
+            let mut previous = None;
+            let rows = family
+                .cards
+                .into_iter()
+                .map(|card| {
+                    if !standalone {
+                        return row(card, family.name, None);
+                    }
+                    let first = card.name.chars().next().map_or('#', |c| if c.is_alphabetic() { c.to_ascii_uppercase() } else { '#' });
+                    let letter = (previous != Some(first)).then_some(first);
+                    previous = Some(first);
+                    row(card, "", letter)
+                })
+                .collect();
+            groups.push(PickerGroup { name: family.name, rows });
+        }
+        Self {
+            groups,
+            total: themes::tinted().len() + Theme::BUILT_IN.len(),
+            stylesheet: gallery.stylesheet,
+            asset_version: gallery.asset_version,
+            gallery_url: GALLERY_URL,
+        }
+    }
+}
+
 /// `GET /settings/appearance`
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "settings/appearance.html")]
@@ -331,6 +406,30 @@ mod tests {
         assert!(search.families.iter().any(|family| family.hidden), "families without matches are hidden");
         assert_eq!(search.next, "/themes?q=gruvbox%20DARK");
         assert_eq!(search.filters[1].url, "/themes?variant=dark&q=gruvbox%20DARK");
+    }
+
+    #[test]
+    fn picker_lists_every_theme_grouped_with_the_current_one_marked() {
+        let tinted = &themes::tinted()[0];
+        let picker = ThemePicker::new(&page(Theme::Tinted(tinted)));
+        assert_eq!(picker.groups[0].name, "Rbit");
+        let rows: Vec<_> = picker.groups.iter().flat_map(|group| &group.rows).collect();
+        assert_eq!(rows.len(), picker.total);
+        let current: Vec<_> = rows.iter().filter(|row| row.card.is_current).map(|row| row.card.slug).collect();
+        assert_eq!(current, [tinted.slug]);
+        let standalone = picker.groups.last().unwrap();
+        assert_eq!(standalone.name, STANDALONE_FAMILY);
+        assert!(standalone.rows[0].letter.is_some(), "the first standalone theme opens a letter");
+        assert!(standalone.rows.iter().filter_map(|row| row.letter).count() > 10);
+        let gruvbox = rows.iter().find(|row| row.card.slug == "base16-gruvbox-dark-hard").unwrap();
+        assert!(gruvbox.search.contains("gruvbox") && gruvbox.search.contains("dark"));
+
+        let html = picker.render().unwrap();
+        assert!(html.contains("<dialog class=\"tpk\""));
+        assert!(html.contains("/assets/themes/all.css?v="), "chips render in their own theme");
+        assert!(html.contains(&format!("value=\"{}\" role=\"option\" aria-selected=\"false\" aria-pressed=\"true\"", tinted.slug)));
+        assert!(html.contains("<form class=\"tpk-list\" id=\"tpk-list\" method=\"post\" action=\"/themes\""), "works as a plain form");
+        assert!(!html.contains("style="), "no inline styles under the CSP");
     }
 
     #[test]
