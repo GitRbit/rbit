@@ -259,10 +259,19 @@ async fn an_issue_is_fixed_through_a_protected_reviewed_pull_request() {
     // The webhooks: the merged pull request and the push to main it made.
     let merged_hook = delivery(&inbox, "pull_request", |body| body["action"] == "closed").await;
     assert_eq!((merged_hook["pull_request"]["merged"].as_bool(), merged_hook["number"].as_u64()), (Some(true), Some(2)));
-    // (Matched by `after`: the initial push may also be delivered, as hooks are looked up
-    // when the event is processed, which can be after the hook was added.)
-    let pushed = delivery(&inbox, "push", |body| body["ref"] == "refs/heads/main" && body["after"] == squash.as_str()).await;
+    let pushed = delivery(&inbox, "push", |body| body["ref"] == "refs/heads/main").await;
+    assert_eq!(pushed["after"].as_str(), Some(squash.as_str()));
     assert_eq!(pushed["before"].as_str(), Some(sample.head.as_str()), "the push moved main from the old tip");
-    delivery(&inbox, "push", |body| body["ref"] == "refs/heads/fix-crash" && body["after"] == fix.as_str()).await;
+    delivery(&inbox, "push", |body| body["ref"] == "refs/heads/fix-crash").await;
+    // Exactly the pushes GitHub would send: not the initial one, made before the hook.
+    let mut every_push: Vec<(String, String)> = inbox
+        .lock()
+        .expect("inbox")
+        .iter()
+        .filter(|d| d.event == "push")
+        .map(|d| (d.body["ref"].as_str().unwrap_or_default().to_owned(), d.body["after"].as_str().unwrap_or_default().to_owned()))
+        .collect();
+    every_push.sort();
+    assert_eq!(every_push, [("refs/heads/fix-crash".to_owned(), fix.clone()), ("refs/heads/main".to_owned(), squash.clone())]);
     assert!(inbox.lock().expect("inbox").iter().all(|d| d.signed), "every delivery is signed");
 }
