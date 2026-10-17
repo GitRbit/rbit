@@ -155,6 +155,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))
         .layer(from_fn(middleware::security_headers))
+        // Inside html_caching, so the ETag covers the partial page actually sent.
+        .layer(from_fn(crate::partial::partial_responses))
         // Inside compression, so ETags are computed over the uncompressed page.
         .layer(from_fn(middleware::html_caching))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, PAGE_TIMEOUT))

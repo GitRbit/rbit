@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{ page.document_title() }}</title>
+  <!--partial:title--><title>{{ page.document_title() }}</title><!--/partial:title-->
   <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
   {%- if let Some(color) = page.theme.theme_color() %}
   <meta name="theme-color" content="{{ color }}">
@@ -111,9 +111,10 @@
     {% block subnav %}{% endblock %}
   </header>
 
-  <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+  {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
+  <!--partial:main--><main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
     {% block content %}{% endblock %}
-  </main>
+  </main><!--/partial:main-->
 
   <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
     <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">

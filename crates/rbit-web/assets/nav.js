@@ -9,15 +9,31 @@
 //   after any state-changing request. HTML varies on it, so a page preloaded before a
 //   form post is never served after it.
 // * Partial swaps: between pages of the same repository only <main> and the repository
-//   tabs are replaced; the top bar stays mounted.
+//   tabs are replaced; the top bar stays mounted. Such requests carry `Rbit-Partial` (the
+//   repository scope), and the server then sends only the title, <main> and the tabs
+//   (`partial.rs`); a full page is swapped the same way.
 // * Progress bar after a short delay (CSS), and focus moved to <main> after navigating.
 // * Render time: the footer's "rendered in" figure follows every htmx request, partial
 //   swaps included, from the response's `Server-Timing` header (see `timing.rs`).
 
-// Title-Case like any HTTP header name (the server lists it in `Vary` with that spelling).
+// Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
+const PARTIAL_HEADER = "Rbit-Partial";
 const newEpoch = () => `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`;
 let epoch = newEpoch();
+
+/** The repository the current page belongs to (`/owner/repo`), if any. */
+function currentScope() {
+  return document.querySelector("[data-repo-scope]")?.getAttribute("data-repo-scope") ?? null;
+}
+
+/** The current page's repository scope if `url` is a page of the same repository. */
+function partialScope(url) {
+  const scope = currentScope();
+  if (!scope) return null;
+  const { pathname } = new URL(url, location.href);
+  return pathname === scope || pathname.startsWith(`${scope}/`) ? scope : null;
+}
 
 // Mirrors `middleware::is_unsafe_to_preload` (the server's answer is authoritative; this
 // only avoids sending requests that would be refused).
@@ -58,7 +74,11 @@ document.addEventListener("htmx:beforeProcessNode", (event) => {
 });
 
 document.addEventListener("htmx:configRequest", (event) => {
-  event.detail.headers[EPOCH_HEADER] = epoch;
+  const detail = event.detail;
+  detail.headers[EPOCH_HEADER] = epoch;
+  if (!detail.boosted || detail.verb !== "get") return;
+  const scope = partialScope(detail.path);
+  if (scope) detail.headers[PARTIAL_HEADER] = scope;
 });
 
 // ---------------------------------------------------------------- progress
@@ -121,27 +141,34 @@ document.addEventListener("htmx:afterSettle", showRenderTime);
 
 // ---------------------------------------------------------------- partial swaps
 
-/** The repository the current page belongs to (`/owner/repo`), if any. */
-function currentScope() {
-  return document.querySelector("[data-repo-scope]")?.getAttribute("data-repo-scope") ?? null;
-}
-
 document.addEventListener("htmx:beforeSwap", (event) => {
   const detail = event.detail;
   const config = detail.requestConfig;
   if (!config?.boosted || config.verb !== "get" || detail.isError || !detail.shouldSwap) return;
+  // The server sent only the title, <main> and the tabs (with hx-swap-oob).
+  const partial = Boolean(detail.xhr?.getResponseHeader(PARTIAL_HEADER));
   const scope = currentScope();
   const main = document.getElementById("main");
   const response = detail.serverResponse;
-  if (!scope || !main || typeof response !== "string") return;
   // A plain substring test: cheaper than parsing the page twice, and enough to know the
   // response is a page of the same repository with the same chrome.
-  if (!response.includes(`data-repo-scope="${scope}"`) || !response.includes('id="main"')) return;
+  const sameRepository =
+    scope && main && typeof response === "string" && response.includes(`data-repo-scope="${scope}"`) && response.includes('id="main"');
+  if (!sameRepository) {
+    // A partial page cannot replace the whole body (the page changed repository while the
+    // request was in flight): load the page in full instead.
+    if (partial) {
+      detail.shouldSwap = false;
+      location.assign(detail.xhr.responseURL || detail.pathInfo?.finalRequestPath);
+    }
+    return;
+  }
 
   detail.target = main;
-  detail.selectOverride = "#main";
   const anchorLink = detail.elt?.getAttribute?.("href")?.includes("#");
   detail.swapOverride = anchorLink ? "outerHTML" : "outerHTML show:window:top";
+  if (partial) return;
+  detail.selectOverride = "#main";
   // The tabs (active tab, star count) come along out of band; read by htmx right
   // after this event, from the triggering element.
   detail.elt?.setAttribute?.("hx-select-oob", "#repo-subnav");

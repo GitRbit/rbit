@@ -34,3 +34,5 @@ mod external_auth;
 mod imports;
 // Frontend wave: deferred slots (S).
 mod slots;
+// Frontend wave: partial responses and preloading (P).
+mod navigation;

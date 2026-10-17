@@ -11,6 +11,7 @@
 //! * [`extract`] — request extractors (`Viewer`, `SignedIn`, `Page`).
 //! * [`themes`] — the colour theme catalog and the theme cookie.
 //! * [`timing`] — the footer's per-request render time.
+//! * [`partial`] — partial responses for navigation inside a repository.
 
 pub mod assets;
 pub mod client_ip;
@@ -18,6 +19,7 @@ pub mod error;
 pub mod extract;
 pub mod metrics;
 pub mod middleware;
+pub mod partial;
 pub mod render;
 pub mod routes;
 pub mod state;
