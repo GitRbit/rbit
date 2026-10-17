@@ -1,0 +1,364 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listCollaborators",
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "Direct collaborators of a repository, by name",
+        "description": "Repository administrators with an `admin` token; 403 for callers who can see the repository but are not, 404 for the rest. Organisation members and teams with access are not repeated (GitHub's `affiliation=direct`).",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of collaborators",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Collaborator"
+                  }
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "$ref": "#/components/parameters/username"
+        }
+      ],
+      "get": {
+        "operationId": "checkCollaborator",
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "Whether a user is a direct collaborator",
+        "description": "Repository administrators with an `admin` token; 403 for callers who can see the repository but are not, 404 for the rest.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "A collaborator"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "Not a collaborator (or the repository is not visible)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setCollaborator",
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "Add a collaborator, or change a collaborator's permission",
+        "description": "Repository administrators with an `admin` token; 403 for callers who can see the repository but are not, 404 for the rest. The body is optional; the permission defaults to `write` (GitHub's `push`). Owners, organisations, suspended and unknown users are 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollaboratorBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Added (directly: there are no invitations)",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collaborator"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "An existing collaborator now has the permission"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeCollaborator",
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "Remove a collaborator",
+        "description": "Repository administrators remove anyone, collaborators themselves (an `admin` token either way). Users who are not collaborators are 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/collaborators/{username}/permission": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "$ref": "#/components/parameters/username"
+        }
+      ],
+      "get": {
+        "operationId": "getCollaboratorPermission",
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "The access a user has, from every grant",
+        "description": "Repository administrators with an `admin` token; 403 for callers who can see the repository but are not, 404 for the rest. Counts ownership, site administration, the organisation role and base permission, teams and the collaborator entry; `none` when the user cannot read the repository.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The user's access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorPermission"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Permissions": {
+        "type": "object",
+        "description": "GitHub's permission flags: `maintain` equals `admin`, `triage` equals `push` (rbit has three levels).",
+        "required": [
+          "admin",
+          "maintain",
+          "push",
+          "triage",
+          "pull"
+        ],
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "maintain": {
+            "type": "boolean"
+          },
+          "push": {
+            "type": "boolean"
+          },
+          "triage": {
+            "type": "boolean"
+          },
+          "pull": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Collaborator": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Account"
+          },
+          {
+            "type": "object",
+            "required": [
+              "permissions",
+              "role_name"
+            ],
+            "properties": {
+              "permissions": {
+                "$ref": "#/components/schemas/Permissions"
+              },
+              "role_name": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "write",
+                  "admin"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "CollaboratorPermission": {
+        "type": "object",
+        "required": [
+          "permission",
+          "role_name",
+          "user"
+        ],
+        "properties": {
+          "permission": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "role_name": {
+            "type": "string",
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "admin"
+            ]
+          },
+          "user": {
+            "$ref": "#/components/schemas/Collaborator"
+          }
+        }
+      },
+      "CollaboratorBody": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "admin",
+              "pull",
+              "push"
+            ],
+            "description": "`pull` means `read` and `push` means `write`; absent means `write`."
+          }
+        }
+      }
+    }
+  }
+}

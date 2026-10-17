@@ -13,12 +13,14 @@
 //! `?per_page=` and answer with `Link` and `X-Total-Count` (see [`pagination`]).
 //!
 //! The routes come from one table, [`table`]; wave B areas append theirs from child
-//! modules (`issues`, `notifications`, `pulls`, `protection`). `openapi.json` plus one
-//! fragment per area (`openapi/<area>.json`, merged once at start-up) documents the same
-//! set, and a test keeps the two equal.
+//! modules (`issues`, `notifications`, `pulls`, `protection`), milestone 3 too
+//! (`collaborators`). `openapi.json` plus one fragment per
+//! area (`openapi/<area>.json`, merged once at start-up) documents the same set, and a
+//! test keeps the two equal.
 
 mod accounts;
 mod auth;
+mod collaborators;
 mod error;
 mod hooks;
 mod issues;
@@ -28,6 +30,8 @@ mod pagination;
 mod protection;
 mod pulls;
 mod repos;
+#[cfg(test)]
+mod test_support;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
@@ -153,16 +157,20 @@ pub fn table() -> Vec<ApiRoute> {
     routes.extend(notifications::routes());
     routes.extend(pulls::routes());
     routes.extend(protection::routes());
+    // Milestone 3: REST API continuation (A).
+    routes.extend(collaborators::routes());
     routes
 }
 
-/// The `OpenAPI` fragments of wave B's areas, merged into [`OPENAPI`]. Each is shaped
+/// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
-const FRAGMENTS: [(&str, &str); 4] = [
+const FRAGMENTS: [(&str, &str); 5] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
     ("pulls", include_str!("openapi/pulls.json")),
     ("protection", include_str!("openapi/protection.json")),
+    // Milestone 3: REST API continuation (A).
+    ("collaborators", include_str!("openapi/collaborators.json")),
 ];
 
 /// The served document: `openapi.json` with every fragment's paths and schemas merged in.

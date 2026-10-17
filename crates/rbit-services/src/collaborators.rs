@@ -8,12 +8,15 @@
 //!   added, nor can the personal owner of the repository.
 //! * A collaborator may always remove themselves.
 //! * Every change is recorded in the audit log ("Repository access").
+//! * Administrators may ask what access anyone has ([`CollaboratorService::access_of`]),
+//!   from every grant at once — the same policy every check uses.
 //!
 //! Every method takes a [`RepoContext`] from [`crate::RepositoryService::open`] for the
 //! acting user, so the caller has already proven the repository is visible to them.
 
+use rbit_auth::repo_access;
 use rbit_core::{
-    Account, AccountKind, User,
+    Account, AccountKind, RepoAccess, User,
     membership::{Collaborator, Permission, TeamGrant},
 };
 use rbit_storage::{StorageError, sqlite::collaborators::CollaboratorStore};
@@ -21,6 +24,7 @@ use rbit_storage::{StorageError, sqlite::collaborators::CollaboratorStore};
 use crate::{
     AuditService, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry},
+    repositories::viewer_grants,
 };
 
 /// Everyone with direct or team access to a repository, for its collaborators page.
@@ -100,6 +104,30 @@ impl CollaboratorService {
         tracing::info!(repo = %repo.repo.full_name(), collaborator = %user.name, by = %actor.name(), "collaborator removed");
         self.record(AuditAction::CollaboratorRemoved, actor, repo, user.name.to_string()).await;
         Ok(())
+    }
+
+    /// Adds the user called `username` with `permission`, or gives them `permission` if
+    /// they already collaborate (nothing changes, and nothing is audited, when they have
+    /// it already). Returns whether they were added.
+    pub async fn set(&self, actor: &User, repo: &RepoContext, username: &str, permission: Permission) -> Result<bool, ServiceError> {
+        require_admin(repo)?;
+        let user = self.find_user(username).await?;
+        match self.store().permission(repo.repo.repo.id, user.id).await? {
+            None => self.add(actor, repo, user.name.as_str(), permission).await.map(|()| true),
+            Some(current) if current == permission => Ok(false),
+            Some(_) => self.change(actor, repo, user.name.as_str(), permission).await.map(|()| false),
+        }
+    }
+
+    /// The access the user called `username` has to `repo`, from every grant at once
+    /// (ownership, site administration, organisation role and base permission, teams,
+    /// their collaborator entry), and their account. Administrators only.
+    pub async fn access_of(&self, repo: &RepoContext, username: &str) -> Result<(Account, RepoAccess), ServiceError> {
+        require_admin(repo)?;
+        let account = self.find_user(username).await?;
+        let user = self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
+        let grants = viewer_grants(&self.ctx.database.repositories(), Some(&user), &repo.repo).await?;
+        Ok((account, repo_access(Some(&user), &repo.repo, &grants)))
     }
 
     /// `actor`'s own collaborator permission on `repo`, if any (to offer "leave").

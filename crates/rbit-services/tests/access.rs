@@ -302,3 +302,38 @@ async fn organisation_repositories_list_team_grants() {
     assert_eq!(listed.teams.len(), 1);
     assert_eq!((listed.teams[0].team.name.as_str(), listed.teams[0].permission), ("core", Permission::Write));
 }
+
+#[tokio::test]
+async fn collaborators_are_set_idempotently_and_access_is_explained() {
+    let fixture = Fixture::new().await;
+    let olga = fixture.user("olga", false).await;
+    let bob = fixture.user("bob", false).await;
+    fixture.user("carol", false).await;
+    fixture.user("root", true).await;
+    fixture.org(&olga, "acme", BasePermission::Read).await;
+    let acme = fixture.services.orgs.open(None, "acme").await.unwrap().org;
+    fixture.services.orgs.add_member(&olga, &acme, "carol", OrgRole::Member).await.unwrap();
+    fixture.repo(&olga, "acme", "rocket", Visibility::Private).await;
+    let collaborators = &fixture.services.collaborators;
+    let as_olga = fixture.open_as(&olga, "acme", "rocket").await;
+
+    assert!(collaborators.set(&olga, &as_olga, "bob", Permission::Read).await.unwrap(), "added");
+    assert!(!collaborators.set(&olga, &as_olga, "bob", Permission::Read).await.unwrap(), "unchanged");
+    assert!(!collaborators.set(&olga, &as_olga, "bob", Permission::Write).await.unwrap(), "changed");
+    assert_eq!(fixture.access(Some(&bob), "acme", "rocket").await, RepoAccess::Write);
+    invalid(collaborators.set(&olga, &as_olga, "ghost", Permission::Read).await.map(|_| ()), "no user called ghost");
+
+    // Every grant counts: the collaborator entry, the base permission, ownership, site administration.
+    for (name, expected) in
+        [("bob", RepoAccess::Write), ("carol", RepoAccess::Read), ("olga", RepoAccess::Admin), ("root", RepoAccess::Admin)]
+    {
+        let (account, access) = collaborators.access_of(&as_olga, name).await.unwrap();
+        assert_eq!((account.name.as_str(), access), (name, expected));
+    }
+    invalid(collaborators.access_of(&as_olga, "ghost").await.map(|_| ()), "no user called ghost");
+
+    // Only administrators may ask or set.
+    let as_bob = fixture.open_as(&bob, "acme", "rocket").await;
+    assert!(matches!(collaborators.access_of(&as_bob, "carol").await, Err(ServiceError::Forbidden)));
+    assert!(matches!(collaborators.set(&bob, &as_bob, "carol", Permission::Admin).await, Err(ServiceError::Forbidden)));
+}
