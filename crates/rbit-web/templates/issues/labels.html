@@ -39,7 +39,7 @@
       </div>
       {% if can_write %}
       <details class="mt-2">
-        <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit</summary>
+        <summary class="inline-flex min-h-11 cursor-pointer items-center text-xs text-ink-muted hover:text-ink sm:min-h-0">Edit</summary>
         <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
           <form method="post" action="{{ label.update_url }}" class="grid flex-1 gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
             <label class="block"><span class="label">Name</span><input class="input" name="name" value="{{ label.name }}" maxlength="50" required></label>

@@ -20,7 +20,7 @@
     {% endif %}
     {% if sidebar.can_triage %}
     <details class="mt-2">
-      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit assignees</summary>
+      <summary class="inline-flex min-h-11 cursor-pointer items-center text-xs text-ink-muted hover:text-ink sm:min-h-0">Edit assignees</summary>
       <form method="post" action="{{ sidebar.assignees_url }}" class="mt-2">
         <input type="hidden" name="replace" value="true">
         <div class="max-h-52 space-y-1 overflow-y-auto">
@@ -41,7 +41,7 @@
     {% endif %}
     {% if sidebar.can_triage %}
     <details class="mt-2">
-      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit labels</summary>
+      <summary class="inline-flex min-h-11 cursor-pointer items-center text-xs text-ink-muted hover:text-ink sm:min-h-0">Edit labels</summary>
       <form method="post" action="{{ sidebar.labels_url }}" class="mt-2">
         {% if sidebar.label_options.is_empty() %}<p class="text-xs text-ink-faint">This repository has no labels yet.</p>{% endif %}
         <div class="max-h-52 space-y-1 overflow-y-auto">
@@ -62,7 +62,7 @@
     {% else %}<p class="mt-1 text-ink-faint">No milestone</p>{% endif %}
     {% if sidebar.can_triage %}
     <details class="mt-2">
-      <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Change milestone</summary>
+      <summary class="inline-flex min-h-11 cursor-pointer items-center text-xs text-ink-muted hover:text-ink sm:min-h-0">Change milestone</summary>
       <form method="post" action="{{ sidebar.milestone_url }}" class="mt-2 space-y-2">
         <label class="block">
           <span class="sr-only">Milestone</span>

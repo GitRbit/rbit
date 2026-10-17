@@ -22,16 +22,16 @@
 {% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}Clear the search, filters and sort</a></p>{% endif %}
 
 <div class="box mt-4 overflow-visible">
-  <div class="box-header flex flex-col gap-2 sm:flex-row sm:items-center">
+  <div class="box-header relative flex flex-col gap-2 sm:flex-row sm:items-center">
     <nav class="flex items-center gap-4 text-[13px]" aria-label="State">
       <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ open }}</span> Open</a>
       <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> Closed</a>
     </nav>
-    <div class="relative flex flex-wrap gap-x-1 sm:ml-auto">
+    <div class="flex flex-wrap gap-x-1 sm:relative sm:ml-auto">
       {% for menu in menus %}
       <details class="sm:relative" data-menu>
         <summary class="btn btn-ghost h-9 cursor-pointer px-2 text-xs sm:h-7 {% if menu.active %}text-ink{% else %}text-ink-muted{% endif %}">{{ menu.title }}{% call ui::icon("chevron-down", "size-3") %}{% endcall %}</summary>
-        <div class="menu inset-x-0 max-h-80 overflow-y-auto sm:left-auto sm:right-0 sm:w-56">
+        <div class="menu inset-x-2 top-full max-h-80 min-w-0 overflow-y-auto sm:left-auto sm:right-0 sm:top-auto sm:w-56">
           <p class="menu-label">Filter by {{ menu.title|lower }}</p>
           {% if menu.items.is_empty() %}<p class="px-2.5 py-2 text-xs text-ink-faint">Nothing to choose from yet.</p>{% endif %}
           {% for item in menu.items %}
