@@ -16,7 +16,7 @@ use std::{
 };
 
 /// Part of every key: bump it whenever `Highlighter::highlight_lines` changes its output.
-pub const HIGHLIGHTER_VERSION: u32 = 2;
+pub const HIGHLIGHTER_VERSION: u32 = 3;
 
 /// 32 MiB. Compact markup is about four times its source text, so the largest file the
 /// viewer highlights (512 KiB of source, ~2 MiB of markup) takes 1/16 of it, and a

@@ -1160,6 +1160,22 @@ mod tests {
     }
 
     #[test]
+    fn a_lone_carriage_return_stays_inside_its_row() {
+        let changes = rbit_git::diff::diff_bytes(b"foo\rbar\n", b"foo\rbaz\n");
+        let urls = PullUrls::new("alice", "demo", 3);
+        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), None, true);
+        let lines: Vec<&str> = text
+            .parts
+            .iter()
+            .filter_map(|part| if let DiffPart::Rows(block) = part { Some(block.rows()) } else { None })
+            .flatten()
+            .filter(|row| row.line.is_line())
+            .map(|row| row.line.text.as_str())
+            .collect();
+        assert_eq!(lines, ["foo\u{240D}bar", "foo\u{240D}baz"]);
+    }
+
+    #[test]
     fn long_files_fill_whole_blocks_between_threads() {
         let old = crate::views::commit::tests::numbered("", 400);
         let new = crate::views::commit::tests::numbered("y", 400);

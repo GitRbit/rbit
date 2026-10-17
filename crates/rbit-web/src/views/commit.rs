@@ -38,7 +38,9 @@ pub struct DiffLineView {
     /// Empty for hunk headers and end-of-file notes, and on the side a line is not on.
     pub old_number: String,
     pub new_number: String,
-    /// The line, the hunk header (`@@ -a,b +c,d @@`) or the end-of-file note.
+    /// The line (anything in it that would break it shown as a symbol, see
+    /// [`crate::render::row_char`]), the hunk header (`@@ -a,b +c,d @@`) or the
+    /// end-of-file note.
     pub text: String,
 }
 
@@ -74,7 +76,8 @@ impl DiffLineView {
             LineKind::Removed => "del",
             LineKind::Context => "ctx",
         };
-        Self { kind, old_number: number(line.old_number), new_number: number(line.new_number), text: line.text.clone() }
+        let text = crate::render::row_text(&line.text).into_owned();
+        Self { kind, old_number: number(line.old_number), new_number: number(line.new_number), text }
     }
 }
 
@@ -96,11 +99,12 @@ const COLUMN_STEP: usize = 8;
 /// Wider than any diff column on any screen: a longer line needs a scrollbar anyway.
 const MAX_COLUMNS: usize = 256;
 
-/// The columns `text` takes in a monospace font: tabs stop every 4 columns (app.css's
-/// `tab-size`), and characters from U+1100 on count double, a generous guess for wide
-/// scripts and emoji. Erring wide only adds blank space at the end of the rows.
+/// The columns `text` takes in a monospace font, as its row shows it (see
+/// [`crate::render::row_char`]): tabs stop every 4 columns (app.css's `tab-size`), and
+/// characters from U+1100 on count double, a generous guess for wide scripts and emoji.
+/// Erring wide only adds blank space at the end of the rows.
 fn display_columns(text: &str) -> usize {
-    text.chars().fold(0, |column, c| match c {
+    text.chars().map(crate::render::row_char).fold(0, |column, c| match c {
         '\t' => column + 4 - column % 4,
         c if u32::from(c) >= 0x1100 => column + 2,
         _ => column + 1,
@@ -455,6 +459,14 @@ pub(crate) mod tests {
         assert_eq!((rows[4].old_number.as_str(), rows[4].new_number.as_str(), rows[4].text.as_str()), ("", "2", "c"));
         assert_eq!(rows[3].text, NO_NEWLINE);
         assert_eq!(text.width_classes, "diff-w1 diff-c16");
+    }
+
+    #[test]
+    fn a_lone_carriage_return_stays_inside_its_row() {
+        let changes = rbit_git::diff::diff_bytes(b"foo\rbar\r\n", b"foo\rbaz\r\n");
+        let text = DiffTextView::new(&changes.hunks);
+        let lines: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| row.text.as_str()).collect();
+        assert_eq!(lines, ["foo\u{240D}bar", "foo\u{240D}baz"], "shown, not a second line over the next row");
     }
 
     #[test]

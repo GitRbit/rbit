@@ -199,10 +199,9 @@ struct LineWriter {
 }
 
 impl LineWriter {
+    /// Appends `text`, which holds no line terminator (the caller cuts it off).
     fn push(&mut self, style: Style, text: &str) {
-        // Each line is rendered in its own row, so terminators are dropped wherever they
-        // appear (a line comment's scope includes its newline).
-        if !text.chars().any(|c| !matches!(c, '\n' | '\r')) {
+        if text.is_empty() {
             return;
         }
         if self.run != Some(style) {
@@ -214,8 +213,8 @@ impl LineWriter {
             }
             self.run = Some(style);
         }
-        for ch in text.chars().filter(|c| !matches!(c, '\n' | '\r')) {
-            push_escaped(&mut self.html, ch);
+        for ch in text.chars() {
+            push_escaped(&mut self.html, super::row_char(ch));
         }
     }
 
@@ -300,11 +299,15 @@ impl Highlighter {
             let Ok(ops) = parser.parse_line(line, set) else {
                 return plain_lines(text);
             };
+            // Each line is rendered in its own row, so its terminator is cut off (a line
+            // comment's scope includes it); anything else that breaks lines is shown.
+            let end = content_len(line);
             let mut writer = LineWriter::default();
             for (range, op) in ScopeRangeIterator::new(&ops, line) {
                 if stack.apply(op).is_err() {
                     return plain_lines(text);
                 }
+                let range = range.start.min(end)..range.end.min(end);
                 if range.is_empty() {
                     continue;
                 }
@@ -315,6 +318,11 @@ impl Highlighter {
         }
         lines
     }
+}
+
+/// The length of `line` without its terminator, `\n` or `\r\n`, as [`str::lines`] cuts it.
+fn content_len(line: &str) -> usize {
+    line.strip_suffix('\n').map_or(line.len(), |line| line.strip_suffix('\r').unwrap_or(line).len())
 }
 
 fn plain_lines(text: &str) -> Vec<String> {
@@ -333,10 +341,11 @@ fn push_escaped(out: &mut String, ch: char) {
     }
 }
 
+/// Escapes one line for its row, showing what would break it (see [`super::row_char`]).
 fn escape_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
-        push_escaped(&mut out, ch);
+        push_escaped(&mut out, super::row_char(ch));
     }
     out
 }
@@ -652,6 +661,17 @@ fn main() { println!("hi"); }
         assert_eq!(as_text, ["fn main() {}"], "another name may pick another syntax");
         let stats = highlighter.cache_stats();
         assert_eq!((stats.hits, stats.misses, stats.entries), (1, 2, 2));
+    }
+
+    #[test]
+    fn line_breaks_inside_a_line_are_shown_not_followed() {
+        let highlighter = Highlighter::new();
+        let unknown = highlighter.highlight_lines("notes.unknownext", "foo\rbar\r\nnext\u{2028}line\n");
+        assert_eq!(unknown, ["foo\u{240D}bar", "next\u{2424}line"], "the CRLF terminator is cut, the lone CR shown");
+        let rust = highlighter.highlight_lines("main.rs", "// foo\rbar\r\nlet x\u{0C} = 1;\n");
+        assert_eq!(rust.len(), 2);
+        assert!(rust[0].contains("foo\u{240D}bar") && !rust[0].contains(['\r', '\n']), "{}", rust[0]);
+        assert!(rust[1].contains('\u{240C}') && !rust[1].contains('\u{0C}'), "{}", rust[1]);
     }
 
     #[test]

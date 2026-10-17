@@ -784,6 +784,10 @@
   height: var(--row-h);
   padding-right: 1.5rem;
   white-space: pre;
+  /* A row never paints over its neighbours, whatever its text holds (the server already
+     shows line-breaking characters as symbols, see `row_char` in src/render/mod.rs).
+     `clip` leaves the horizontal axis alone, so long lines still scroll. */
+  overflow-y: clip;
 }
 
 /* The sign, after the numbers (`order`), before the text. */
@@ -805,6 +809,11 @@
 
 .diff-view a.num:hover {
   @apply text-ink;
+}
+
+/* Inside the row, which clips vertically. */
+.diff-view a.num:focus-visible {
+  outline-offset: -2px;
 }
 
 .diff-view .diff-add {
@@ -875,6 +884,8 @@
   display: flex;
   height: var(--row-h);
   line-height: var(--row-h);
+  /* Never paints over the next line (see the diff rows above). */
+  overflow-y: clip;
   /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
   scroll-margin-top: 8rem;
 }
