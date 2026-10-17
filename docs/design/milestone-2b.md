@@ -1079,44 +1079,100 @@ push gate) and `deploy/rustit.example.toml`.
 ## P0 pre-wire checklist (integrator, on `main` after I1)
 
 Core and storage
-- [ ] `rustit-core/src/issue.rs` complete (types, `TimelineEvent`, `IssueAction`,
+- [x] `rustit-core/src/issue.rs` complete (types, `TimelineEvent`, `IssueAction`,
       `CommentAction`, `ReviewAction`, `issue_permissions` with exhaustive tests); stub
       modules `references.rs`, `issue_query.rs`, `pull.rs`, `protection.rs`;
       `config/{issues,pulls}.rs` with defaults; `StorageConfig::tmp_dir()`; reserved account
       names `issues`, `pulls`.
-- [ ] `WebhookEvent::{Issues, IssueComment, PullRequest, PullRequestReview}` (+ `parse`,
+- [x] `WebhookEvent::{Issues, IssueComment, PullRequest, PullRequestReview}` (+ `parse`,
       labels, descriptions, `SUBSCRIBABLE`).
-- [ ] Stub stores with `Database` accessors: `issue_meta()`, `issue_search()`,
+- [x] Stub stores with `Database` accessors: `issue_meta()`, `issue_search()`,
       `notifications()`, `pulls()`, `reviews()`, `branch_protection()`.
-- [ ] Audit actions and the "Repository content" category; `ThrottleScope::Content`.
+- [x] Audit actions and the "Repository content" category; `ThrottleScope::Content`.
 
 Services
-- [ ] `DomainEvent::{Issue, IssueComment, PullRequestReview}`.
-- [ ] Stub services and `Services` fields: `issues` (`IssueService`), `references`,
+- [x] `DomainEvent::{Issue, IssueComment, PullRequestReview}`.
+- [x] Stub services and `Services` fields: `issues` (`IssueService`), `references`,
       `notifications`, `pulls` (`PullService`), `protection` (`ProtectionService`), with
       the §3 signatures; modules `issues/{hooks,json}.rs`, `pulls/{hooks,json,lifecycle}.rs`;
       `spawn_background`/`shutdown` include `issues`, `notifications`, `pulls`.
-- [ ] `WebhookService::handle_event` dispatch to `issues::hooks` / `pulls::hooks`.
+- [x] `WebhookService::handle_event` dispatch to `issues::hooks` / `pulls::hooks`.
 
 Git and transport
-- [ ] Stub `rustit-git/src/{merge.rs,overlay.rs,pull_refs.rs}`; `rustit-transport/src/receive.rs`
+- [x] Stub `rustit-git/src/{merge.rs,overlay.rs,pull_refs.rs}`; `rustit-transport/src/receive.rs`
       (`Intercept`, `Replay` complete, `CommandList`, `CommandLimits`, `Refusal`,
       `ReceiveError`, stub `intercept`/`refusal`, real `drain`).
-- [ ] `ProcessTransport` receive entry points take `ReceiveOptions`; stderr exposed for SSH.
-- [ ] Push-gate glue in `routes/git_http.rs` and `rustit-ssh/src/session.rs` (after I1's
+- [x] `ProcessTransport` receive entry points take `ReceiveOptions`; stderr exposed for SSH.
+- [x] Push-gate glue in `routes/git_http.rs` and `rustit-ssh/src/session.rs` (after I1's
       checks); SSH receive-pack in two steps; existing transport e2e tests green.
 
 Web
-- [ ] Stub route modules merged into `page_routes`: `issues`, `labels`, `milestones`,
+- [x] Stub route modules merged into `page_routes`: `issues`, `labels`, `milestones`,
       `notifications`, `pulls`, `protection` (and `timeline` with T0).
-- [ ] Stub view modules: `issues` (incl. `sidebar` + `IssueSidebar`), `labels`,
+- [x] Stub view modules: `issues` (incl. `sidebar` + `IssueSidebar`), `labels`,
       `milestones`, `notifications`, `pulls`, `protection` (incl. `repo_settings_cards`);
       `render/references.rs`; empty template folders with the sidebar stub.
-- [ ] API: `api/{issues,notifications,pulls,protection}.rs` stubs in `table()`;
+- [x] API: `api/{issues,notifications,pulls,protection}.rs` stubs in `table()`;
       `api/openapi/*.json` fragments; merged OpenAPI document and its test.
-- [ ] `RepoHeader.{open_issues, open_pulls}` (zero until T0), Issues / Pull requests tabs;
+- [x] `RepoHeader.{open_issues, open_pulls}` (zero until T0), Issues / Pull requests tabs;
       bell + `Page.has_unread_notifications`; `shield` settings card; icons; CSS components.
-- [ ] E2E module stubs `issues`, `pulls`, `protection`.
+- [x] E2E module stubs `issues`, `pulls`, `protection`.
+
+### P0 as built (where reality refined the contract)
+
+P0 is done. These details differ from, or pin down, the sections above; they are
+binding like the rest of this document.
+
+- **`RefUpdate` lives in `rustit_core::ref_update`** (re-exported unchanged as
+  `rustit_git::RefUpdate` and `rustit_services::events::RefUpdate`), so
+  `rustit-transport` (which now depends on `rustit-core` only) can return it from
+  `CommandList::updates()`.
+- **The push-gate types live in `rustit_core::protection`**: `Refusal`, `PushActor`,
+  `PushVerdict` (`allow()`, `is_refused()`) and `MergeRules` (`unprotected()`,
+  `is_protected()`). `rustit_services::protection` and `rustit_transport::receive`
+  re-export them; B may add its pure decision functions next to them.
+- **`receive.rs` extras:** `PushCommand { old, new, name }` (`update()`), `ZERO_ID`;
+  `CommandList::{new, commands, updates, capabilities, has_capability, shallow, is_empty,
+  wants_report}`; `Replay::new(saved, inner, Remaining)` where `Remaining::{Nothing,
+  ToEnd}` tells `drain` whether anything follows the saved bytes (over SSH a deletion-only
+  push never sends EOF, so `intercept` must say `Nothing` when every command is a deletion
+  and any push options are already among the saved bytes); `refusal` returns an **empty**
+  vector when the client asked for no report, and the glue then answers `403` (HTTP) or
+  stderr + exit 1 (SSH) with `refusal_message(&refusals)`.
+- **`ProcessTransport`:** `serve(service, path, protocol, ReceiveOptions, request)` (HTTP;
+  options ignored for upload-pack), `advertisement(service, path, protocol)` (raw, without
+  `# service=`), `receive_pack(path, protocol, ReceiveOptions, input, output, errors)`
+  (stateless, stderr streamed: the second SSH step). `advertise_refs` and
+  `serve_interactive` are unchanged.
+- **Glue behaviour:** an `Intercept::Read` with an empty command list ends the SSH
+  exchange with status 0 without git; a refusal with a report is sent as git would (HTTP
+  200 with the result content type, SSH exit status 0); `check_push` errors are HTTP 500 /
+  SSH "internal error"; `intercept` errors are HTTP 400 / SSH `ERROR: <message>` + exit 1.
+  HTTP pushes pass `PushActor { user: Some(..), deploy_key: false, .. }` (deploy keys
+  exist only over SSH).
+- **`IssueNumber`:** `parse` accepts canonical decimals only (`"012"`, `"+1"`, `"0"` are
+  errors — a new `NameError::NotANumber`); `Display` writes `#12`, use `get()` in URLs.
+  Titles and texts fail with `IssueTextError`. `IssueText` also turns lone `\r` into `\n`.
+  `TimelineEvent::kind()` gives the `kind` column; serde's adjacent tagging
+  (`{"kind": …, "data": {…}}`, unit variants without `data`) is the stored shape.
+- **`comment_permissions(viewer, IssuePermissions, &Comment) -> CommentPermissions {
+  can_edit, can_delete }`** joins `issue_permissions`: editing your own comment needs
+  `can_comment` (a locked thread freezes readers' comments), deleting needs ownership
+  with `can_comment`, or `can_moderate`.
+- **`IssueContext`** is declared in P0 (`rustit_services::timeline`, re-exported at the
+  crate root), because the sidebar hook takes it; T0 adds `TimelineService` to that file.
+- **Hook shapes:** `HookPayload` is defined in `rustit_services::webhooks`;
+  `ReferenceSet` is an empty struct I fills; `IssueMetadata { labels: Vec<LabelSnapshot>,
+  assignees: Vec<Account>, milestone: Option<MilestoneRef { id, title }> }`;
+  `issues::json::{issue(&Issue, &OwnedRepository, base_url), label(&LabelSnapshot, ..),
+  milestone(&MilestoneRef, ..)}`; `NotificationService::mark_thread_read` returns `()`
+  (it logs). The `Page` extractor skips `has_unread` when `[issues] notifications = false`.
+- **Stub lint markers:** async stubs returning `Result` carry
+  `#[expect(clippy::unused_async, clippy::unused_async_trait_impl, …)]` (this clippy
+  fires both), `()` stubs `#[expect(clippy::unused_async, …)]`, stub fields
+  `#[expect(dead_code, …)]`. Remove them when the code is real.
+- **CSS:** besides the listed components P0 adds `.timeline-event` and `.timeline-badge`
+  (an event row and its icon circle on the timeline rule).
 
 T0 (before launching I and P)
 - [ ] `0017_issues_core.sql`, `IssueStore`, `TimelineService`, `routes/timeline.rs`,
