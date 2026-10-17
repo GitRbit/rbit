@@ -143,8 +143,12 @@ impl CachedLastCommits {
 pub struct CachedComparisonCounts {
     /// Commits in head but not in base.
     pub ahead: u64,
-    /// Changed files, as the diff listed them (bounded by the diff limits).
+    /// Changed files, as the diff listed them (bounded by `max_files`).
     pub files: u64,
+    /// The diff's file limit when it counted: `files` never exceeds it, so counts made
+    /// under another limit are not the same answer and readers treat them as a miss.
+    /// Entries written before this field existed no longer decode, so they are misses too.
+    pub max_files: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -445,18 +449,21 @@ mod tests {
         assert_eq!(cache.last_commits("c1", "src").await.unwrap(), Some(last));
         assert_eq!(cache.last_commits("c1", "").await.unwrap(), None, "keyed by directory too");
 
-        let counts = CachedComparisonCounts { ahead: 3, files: 12 };
+        let counts = CachedComparisonCounts { ahead: 3, files: 12, max_files: 300 };
         assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), None);
         cache.put_comparison_counts("b1", "h1", counts).await.unwrap();
         assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), Some(counts));
         assert_eq!(cache.comparison_counts("h1", "b1").await.unwrap(), None, "ordered pair");
+        // An entry from before the file limit was recorded reads as a miss.
+        let old_format = postcard::to_stdvec(&(3_u64, 12_u64)).unwrap();
+        assert_eq!(decode::<CachedComparisonCounts>(&old_format), None);
     }
 
     #[tokio::test]
     async fn prune_removes_comparison_counts() {
         let dir = tempfile::tempdir().unwrap();
         let cache = open_cache(&dir);
-        cache.put_comparison_counts("b1", "h1", CachedComparisonCounts { ahead: 1, files: 1 }).await.unwrap();
+        cache.put_comparison_counts("b1", "h1", CachedComparisonCounts { ahead: 1, files: 1, max_files: 300 }).await.unwrap();
         cache.put_language_stats("c1", &stats()).await.unwrap();
         assert_eq!(cache.entry_count().await.unwrap(), 2);
         let report = cache.prune(None, Some(0)).await.unwrap();

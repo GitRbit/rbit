@@ -55,6 +55,11 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use rbit_storage::sqlite::pulls::{PullFilter, PullSort, PullStateFilter};
 
+/// The file limit of the diffs whose counts are cached: the default one.
+fn counted_max_files() -> u64 {
+    u64::try_from(DiffLimits::default().max_files).unwrap_or(u64::MAX)
+}
+
 /// What a pull request's header counts: commits ahead and changed files.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PullCounts {
@@ -464,7 +469,8 @@ impl PullService {
     /// the viewer may see (those of [`Self::compared_ids`]), never ids from a request.
     pub async fn cached_counts(&self, base: &str, head: &str) -> Option<PullCounts> {
         match self.ctx().kv.insights().comparison_counts(base, head).await {
-            Ok(counts) => counts.map(|counts| PullCounts {
+            // Counted under another file limit (an older or newer server): not this answer.
+            Ok(counts) => counts.filter(|counts| counts.max_files == counted_max_files()).map(|counts| PullCounts {
                 ahead: usize::try_from(counts.ahead).unwrap_or(usize::MAX),
                 files: usize::try_from(counts.files).unwrap_or(usize::MAX),
             }),
@@ -503,6 +509,7 @@ impl PullService {
         let cached = CachedComparisonCounts {
             ahead: u64::try_from(counts.ahead).unwrap_or(u64::MAX),
             files: u64::try_from(counts.files).unwrap_or(u64::MAX),
+            max_files: counted_max_files(),
         };
         if let Err(error) = self.ctx().kv.insights().put_comparison_counts(base, head, cached).await {
             tracing::warn!(%error, "comparison cache write failed");
