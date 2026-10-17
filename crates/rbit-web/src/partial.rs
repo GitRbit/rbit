@@ -72,6 +72,10 @@ pub async fn partial_responses(request: Request, next: Next) -> Response {
         return response;
     }
     let (mut parts, body) = response.into_parts();
+    // Fragments pinned by commit ids are never cut; they need not vary on the header.
+    if crate::middleware::is_immutable(&parts.headers) {
+        return Response::from_parts(parts, body);
+    }
     append_vary(&mut parts.headers);
     let Some(scope) = scope.filter(|_| parts.status == StatusCode::OK) else {
         return Response::from_parts(parts, body);
@@ -226,6 +230,7 @@ mod tests {
             .route("/alice/demo/issues", get(|| async { Html(page(SCOPE)) }))
             .route("/missing", get(|| async { (StatusCode::NOT_FOUND, Html(page(SCOPE))) }))
             .route("/text", get(|| async { "plain" }))
+            .route("/pinned", get(|| async { crate::middleware::cache_pinned(Html(page(SCOPE)).into_response(), true) }))
             .layer(from_fn(partial_responses))
             .layer(from_fn(crate::middleware::html_caching))
     }
@@ -289,6 +294,9 @@ mod tests {
                 assert!(body.contains("<footer>"), "{path} {headers:?}");
             }
         }
+        let (pinned, body) = send(Method::GET, "/pinned", &PARTIAL).await;
+        assert!(body.contains("<footer>") && pinned.headers().get(PARTIAL_HEADER).is_none());
+        assert_eq!(pinned.headers()[header::VARY], "HX-Request", "pinned fragments vary on neither the epoch nor the scope");
         let (text, body) = send(Method::GET, "/text", &PARTIAL).await;
         assert_eq!(body, "plain");
         assert!(text.headers().get(header::VARY).is_none());

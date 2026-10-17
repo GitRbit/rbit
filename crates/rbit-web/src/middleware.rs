@@ -290,7 +290,10 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return response;
     }
     let (mut parts, body) = response.into_parts();
-    append_vary(&mut parts.headers, "HX-Request, Rbit-Nav-Epoch");
+    // A response pinned by commit ids (`cache_pinned`) is the same in every epoch; varying
+    // on it would throw a year-long cache entry away after every form post.
+    let vary = if is_immutable(&parts.headers) { "HX-Request" } else { "HX-Request, Rbit-Nav-Epoch" };
+    append_vary(&mut parts.headers, vary);
     if parts.status != StatusCode::OK || parts.headers.contains_key(header::CACHE_CONTROL) || parts.headers.contains_key(header::SET_COOKIE)
     {
         return Response::from_parts(parts, body);
@@ -330,6 +333,14 @@ pub fn cache_pinned(mut response: Response, readable_anonymously: bool) -> Respo
         response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(PINNED_CACHE_CONTROL));
     }
     response
+}
+
+/// Whether `headers` mark the response as [pinned](cache_pinned): never changing at its URL.
+pub(crate) fn is_immutable(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CACHE_CONTROL)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|d| d.trim().eq_ignore_ascii_case("immutable")))
 }
 
 fn weak_etag(body: &[u8]) -> String {
@@ -379,10 +390,12 @@ mod tests {
 
         let public = app.clone().oneshot(get("/public")).await.unwrap();
         assert_eq!(public.headers()[header::CACHE_CONTROL], PINNED_CACHE_CONTROL);
-        assert!(public.headers()[header::VARY].to_str().unwrap().contains("HX-Request"));
+        // Pinned by commit ids: the same in every navigation epoch.
+        assert_eq!(public.headers()[header::VARY], "HX-Request");
         let private = app.oneshot(get("/private")).await.unwrap();
         assert_eq!(private.headers()[header::CACHE_CONTROL], "private, no-cache");
         assert!(private.headers().contains_key(header::ETAG), "revalidated");
+        assert_eq!(private.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch");
     }
 
     fn app() -> Router {
