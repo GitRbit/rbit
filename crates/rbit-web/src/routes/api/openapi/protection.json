@@ -1,4 +1,426 @@
 {
-  "paths": {},
-  "components": { "schemas": {} }
+  "paths": {
+    "/repos/{owner}/{repo}/branch_protections": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listBranchProtections",
+        "tags": [
+          "branch-protection"
+        ],
+        "summary": "A repository's branch protection rules, by pattern (administrators; admin scope)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of rules",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BranchProtection"
+                  }
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createBranchProtection",
+        "tags": [
+          "branch-protection"
+        ],
+        "summary": "Add a rule; absent flags take the defaults of a new rule (at most 50 rules per repository)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchProtectionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {
+              "Location": {
+                "description": "The rule's URL",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchProtection"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/branch_protections/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The rule id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getBranchProtection",
+        "tags": [
+          "branch-protection"
+        ],
+        "summary": "One branch protection rule",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchProtection"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateBranchProtection",
+        "tags": [
+          "branch-protection"
+        ],
+        "summary": "Change a rule; absent fields keep their value",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchProtectionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BranchProtection"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteBranchProtection",
+        "tags": [
+          "branch-protection"
+        ],
+        "summary": "Delete a rule",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BranchProtection": {
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "pattern",
+          "deny_force_push",
+          "deny_deletion",
+          "require_pull_request",
+          "required_approvals",
+          "dismiss_stale_approvals",
+          "block_on_changes_requested",
+          "restrict_pushers",
+          "allow_admin_bypass",
+          "push_allowlist_users",
+          "push_allowlist_teams",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "A branch name (without refs/heads/) or a glob: * within one segment, ** across segments, ? one character. Case-sensitive; unique per repository."
+          },
+          "deny_force_push": {
+            "type": "boolean",
+            "description": "Refuse non-fast-forward updates of matching branches."
+          },
+          "deny_deletion": {
+            "type": "boolean",
+            "description": "Refuse deleting matching branches."
+          },
+          "require_pull_request": {
+            "type": "boolean",
+            "description": "Updates of an existing matching branch only by merging a pull request; creating it is allowed."
+          },
+          "required_approvals": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Approvals a pull request needs; above 0 requires require_pull_request."
+          },
+          "dismiss_stale_approvals": {
+            "type": "boolean",
+            "description": "Approvals no longer count once new commits are pushed (with require_pull_request)."
+          },
+          "block_on_changes_requested": {
+            "type": "boolean",
+            "description": "A pending change request blocks merging (with require_pull_request)."
+          },
+          "restrict_pushers": {
+            "type": "boolean",
+            "description": "Only push_allowlist_users and members of push_allowlist_teams may push or merge; deploy keys never may."
+          },
+          "allow_admin_bypass": {
+            "type": "boolean",
+            "description": "Repository administrators are not held to this rule; bypasses are audited."
+          },
+          "push_allowlist_users": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Logins of users with write access allowed to push (with restrict_pushers)."
+          },
+          "push_allowlist_teams": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the owning organization's teams allowed to push (with restrict_pushers)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BranchProtectionBody": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "A branch name (without refs/heads/) or a glob: * within one segment, ** across segments, ? one character. Case-sensitive; unique per repository. Required when creating."
+          },
+          "deny_force_push": {
+            "type": "boolean",
+            "default": true,
+            "description": "Refuse non-fast-forward updates of matching branches."
+          },
+          "deny_deletion": {
+            "type": "boolean",
+            "default": true,
+            "description": "Refuse deleting matching branches."
+          },
+          "require_pull_request": {
+            "type": "boolean",
+            "default": false,
+            "description": "Updates of an existing matching branch only by merging a pull request; creating it is allowed."
+          },
+          "dismiss_stale_approvals": {
+            "type": "boolean",
+            "default": false,
+            "description": "Approvals no longer count once new commits are pushed (with require_pull_request)."
+          },
+          "block_on_changes_requested": {
+            "type": "boolean",
+            "default": true,
+            "description": "A pending change request blocks merging (with require_pull_request)."
+          },
+          "restrict_pushers": {
+            "type": "boolean",
+            "default": false,
+            "description": "Only push_allowlist_users and members of push_allowlist_teams may push or merge; deploy keys never may."
+          },
+          "allow_admin_bypass": {
+            "type": "boolean",
+            "default": false,
+            "description": "Repository administrators are not held to this rule; bypasses are audited."
+          },
+          "required_approvals": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Approvals a pull request needs; above 0 requires require_pull_request.",
+            "default": 0
+          },
+          "push_allowlist_users": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Logins of users with write access allowed to push (with restrict_pushers)."
+          },
+          "push_allowlist_teams": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the owning organization's teams allowed to push (with restrict_pushers)."
+          }
+        }
+      }
+    }
+  }
 }
