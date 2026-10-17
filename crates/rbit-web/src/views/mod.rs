@@ -14,6 +14,8 @@ pub mod compare;
 pub mod components;
 pub mod edits;
 pub mod errors;
+// Milestone 3: external sign-in (O).
+pub mod external_auth;
 pub mod forks;
 pub mod home;
 pub mod insights;

@@ -26,6 +26,7 @@ use rbit_services::{
 use crate::views::{
     admin::{AdminLink, AdminSection},
     components::FormError,
+    external_auth::SignInSection,
     layout::Page,
     settings::{SettingsLink, SettingsSection},
 };
@@ -42,10 +43,13 @@ pub enum SecurityNotice {
     SessionRevoked,
     OtherSessionsRevoked,
     SetupCancelled,
+    // Milestone 3: external sign-in (O).
+    IdentityLinked,
+    IdentityUnlinked,
 }
 
 impl SecurityNotice {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 9] = [
         Self::TwoFactorDisabled,
         Self::AuthenticatorAdded,
         Self::PasskeyAdded,
@@ -53,6 +57,8 @@ impl SecurityNotice {
         Self::SessionRevoked,
         Self::OtherSessionsRevoked,
         Self::SetupCancelled,
+        Self::IdentityLinked,
+        Self::IdentityUnlinked,
     ];
 
     pub const fn key(self) -> &'static str {
@@ -64,6 +70,8 @@ impl SecurityNotice {
             Self::SessionRevoked => "session-revoked",
             Self::OtherSessionsRevoked => "sessions-revoked",
             Self::SetupCancelled => "setup-cancelled",
+            Self::IdentityLinked => "identity-linked",
+            Self::IdentityUnlinked => "identity-unlinked",
         }
     }
 
@@ -80,6 +88,8 @@ impl SecurityNotice {
             Self::SessionRevoked => "Session signed out.",
             Self::OtherSessionsRevoked => "Signed out of every other session.",
             Self::SetupCancelled => "Two-factor setup cancelled.",
+            Self::IdentityLinked => "Account linked. You can sign in with it now.",
+            Self::IdentityUnlinked => "Account unlinked.",
         }
     }
 
@@ -224,6 +234,8 @@ pub struct Overview {
     pub regenerate_error: FormError,
     pub sessions: Vec<SessionRow>,
     pub activity: Vec<ActivityRow>,
+    /// Milestone 3 (O): password and linked identities.
+    pub sign_in: Box<SignInSection>,
 }
 
 impl Overview {
@@ -239,6 +251,7 @@ impl Overview {
             regenerate_error: FormError::default(),
             sessions: sessions.iter().map(SessionRow::from).collect(),
             activity: activity.iter().map(ActivityRow::from).collect(),
+            sign_in: Box::default(),
         }
     }
 

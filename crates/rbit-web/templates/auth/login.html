@@ -24,6 +24,15 @@
 
       <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Sign in</button>
     </form>
+    {#- Milestone 3: external sign-in (O). Plain links: the provider is another site. -#}
+    {% if !providers.is_empty() %}
+    <p class="my-4 text-center text-xs text-ink-faint">or</p>
+    <div class="flex flex-col gap-2">
+      {% for provider in providers %}
+      <a href="{{ provider.url }}" class="btn btn-lg w-full" hx-boost="false">{% call ui::icon("key-round", "size-3.5") %}{% endcall %}Sign in with {{ provider.name }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   {% if registration_open %}

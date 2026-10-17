@@ -16,6 +16,7 @@ use axum_extra::extract::{
     cookie::{Cookie, SameSite},
 };
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use rbit_auth::SessionToken;
 use rbit_core::User;
 use rbit_services::{ServiceError, SignUp, ThrottleScope, two_factor::SignInOutcome};
 use serde::Deserialize;
@@ -31,6 +32,7 @@ use crate::{
     views::{
         auth::{LoginPage, SignupPage},
         components::FormError,
+        external_auth::ProviderButton,
         layout::Page,
     },
 };
@@ -78,16 +80,7 @@ pub async fn login(
     let next = safe_redirect_target(form.next.as_deref()).to_owned();
     let message = match state.services.sign_in(&form.login, form.password, &client.0).await {
         Ok(SignInOutcome::SignedIn(user)) => return start_session(&state, jar, https, &client, &user, &next).await,
-        Ok(SignInOutcome::SecondFactorRequired(pending)) => {
-            let cookie = Cookie::build((TWO_FACTOR_COOKIE, pending.encode()))
-                .http_only(true)
-                .same_site(SameSite::Strict)
-                .secure(https.0)
-                .path(TWO_FACTOR_PATH)
-                .max_age(time::Duration::seconds(rbit_services::two_factor::PENDING_SIGN_IN_TTL.as_secs().try_into().unwrap_or(i64::MAX)));
-            let target = format!("{TWO_FACTOR_PATH}?next={}", utf8_percent_encode(&next, NON_ALPHANUMERIC));
-            return Ok((jar.add(cookie), Redirect::to(&target)).into_response());
-        }
+        Ok(SignInOutcome::SecondFactorRequired(pending)) => return Ok(second_factor_redirect(jar, https, &pending, &next)),
         Err(ServiceError::InvalidCredentials) => "Incorrect username or password.".to_owned(),
         Err(ServiceError::Forbidden) => "This account has been suspended. Contact an administrator.".to_owned(),
         Err(ServiceError::RateLimited { retry_after_seconds }) => {
@@ -142,7 +135,22 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> WebResult<
 
 pub(crate) async fn login_page(state: &AppState, page: Page, error: FormError, login: String, next: String) -> Result<LoginPage, WebError> {
     let registration_open = state.services.accounts.registration_open().await?;
-    Ok(LoginPage { page: page.titled("Sign in"), error, login, next, registration_open })
+    // Milestone 3: external sign-in (O).
+    let providers = ProviderButton::all(&state.services.external_auth.providers(), &next);
+    Ok(LoginPage { page: page.titled("Sign in"), error, login, next, registration_open, providers })
+}
+
+/// Continues a sign-in whose first step passed at the second step: the pending sign-in
+/// rides in a short-lived cookie scoped to that page. Shared with external sign-in.
+pub(crate) fn second_factor_redirect(jar: CookieJar, https: Https, pending: &SessionToken, next: &str) -> Response {
+    let cookie = Cookie::build((TWO_FACTOR_COOKIE, pending.encode()))
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .secure(https.0)
+        .path(TWO_FACTOR_PATH)
+        .max_age(time::Duration::seconds(rbit_services::two_factor::PENDING_SIGN_IN_TTL.as_secs().try_into().unwrap_or(i64::MAX)));
+    let target = format!("{TWO_FACTOR_PATH}?next={}", utf8_percent_encode(next, NON_ALPHANUMERIC));
+    (jar.add(cookie), Redirect::to(&target)).into_response()
 }
 
 async fn signup_page(state: &AppState, page: Page, error: FormError, username: String, email: String) -> Result<SignupPage, WebError> {

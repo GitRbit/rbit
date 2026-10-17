@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="auth-shell">
+  <header class="auth-head">
+    {% call ui::logo("size-16") %}{% endcall %}
+    <h1 class="auth-title">Sign-in didn't work</h1>
+  </header>
+
+  <div class="card">
+    <div class="notice" role="alert">
+      {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+      <p>{{ message }}</p>
+    </div>
+    <a href="{{ back_url }}" class="btn btn-primary btn-lg mt-6 w-full">{{ back_label }}</a>
+  </div>
+</section>
+{% endblock %}

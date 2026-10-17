@@ -1,7 +1,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 
-use crate::views::{components::FormError, layout::Page};
+use crate::views::{components::FormError, external_auth::ProviderButton, layout::Page};
 
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "auth/login.html")]
@@ -13,6 +13,8 @@ pub struct LoginPage {
     /// Where to go after signing in.
     pub next: String,
     pub registration_open: bool,
+    /// Milestone 3 (O): "Sign in with …" for each configured provider.
+    pub providers: Vec<ProviderButton>,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -64,11 +66,31 @@ mod tests {
             login: "alice".to_owned(),
             next: "/settings".to_owned(),
             registration_open: false,
+            providers: Vec::new(),
         }
         .render()
         .unwrap();
         assert!(html.contains("Too many sign-in attempts. Try again in 2 minutes."));
         assert!(html.contains(r#"value="alice""#));
+        assert!(!html.contains("Sign in with"));
+    }
+
+    #[test]
+    fn login_page_offers_each_provider() {
+        let providers = vec![ProviderButton { name: "GitHub".to_owned(), url: "/login/github?next=%2Fnew".to_owned() }];
+        let html = LoginPage {
+            page: page(),
+            error: FormError::default(),
+            login: String::new(),
+            next: "/new".to_owned(),
+            registration_open: true,
+            providers,
+        }
+        .render()
+        .unwrap();
+        assert!(html.contains("Sign in with GitHub"));
+        assert!(html.contains(r#"href="/login/github?next=%2Fnew" class="btn btn-lg w-full" hx-boost="false""#));
+        assert!(html.contains(r#"action="/login""#), "the password form stays");
     }
 
     #[test]

@@ -10,6 +10,8 @@ mod blame;
 mod collaborators;
 mod compare;
 mod edits;
+// Milestone 3: external sign-in (O).
+mod external_auth;
 mod forks;
 mod git_http;
 mod history;
@@ -140,6 +142,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(notification_email::routes())
         // Milestone 3: editing files in the browser (E).
         .merge(edits::routes(state))
+        // Milestone 3: external sign-in (O).
+        .merge(external_auth::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

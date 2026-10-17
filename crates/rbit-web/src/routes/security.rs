@@ -109,11 +109,11 @@ fn optional_options(options: Result<Option<String>, ServiceError>) -> WebResult<
 }
 
 /// Security pages are personal and may show secrets: never cache them.
-fn no_store(response: impl IntoResponse) -> Response {
+pub(super) fn no_store(response: impl IntoResponse) -> Response {
     ([(header::CACHE_CONTROL, "no-store")], response).into_response()
 }
 
-async fn overview_model(state: &AppState, user: &User, current: &CurrentSession) -> WebResult<Overview> {
+pub(super) async fn overview_model(state: &AppState, user: &User, current: &CurrentSession) -> WebResult<Overview> {
     let two_factor = &state.services.two_factor;
     let status = two_factor.status(user).await?;
     let sessions = state.services.accounts.sessions(user, Some(&current.0)).await?;
@@ -121,6 +121,8 @@ async fn overview_model(state: &AppState, user: &User, current: &CurrentSession)
     let mut overview = Overview::new(&status, &sessions, &activity);
     overview.passkey_create_options = optional_options(two_factor.creation_options(user).await.map(Some))?;
     overview.passkey_confirm_options = optional_options(two_factor.confirmation_options(user).await)?;
+    // Milestone 3: external sign-in (O).
+    overview.sign_in = Box::new(super::external_auth::sign_in_section(state, user, current).await?);
     Ok(overview)
 }
 

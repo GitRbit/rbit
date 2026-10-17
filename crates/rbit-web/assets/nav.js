@@ -24,7 +24,8 @@ let epoch = newEpoch();
 const NO_PRELOAD = [
   /^\/logout(\/|$)/,
   /^\/settings\/security/,
-  /^\/login\/two-factor/,
+  // The second sign-in step, and (milestone 3, O) external sign-in under /login/{provider}.
+  /^\/login\//,
   /^\/email\/verify\//,
   /^\/password\/reset\//,
   /^\/(api|assets)\//,

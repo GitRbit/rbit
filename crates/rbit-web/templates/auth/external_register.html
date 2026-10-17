@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<section class="auth-shell">
+  <header class="auth-head">
+    {% call ui::logo("size-16") %}{% endcall %}
+    <h1 class="auth-title">Create your account</h1>
+    <p class="auth-lede">You signed in with {{ provider_name }}. Choose a username on {{ page.site_name }}.</p>
+  </header>
+
+  <div class="card">
+    <form method="post" action="{{ action }}" novalidate>
+      {% call ui::form_error(error) %}{% endcall %}
+
+      <label class="label" for="username">Username</label>
+      <input class="input" id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
+      <p class="hint">Letters, digits, '-', '_' and '.'</p>
+
+      <label class="label mt-4" for="email">Email</label>
+      <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required>
+      {% if email_verified %}
+      <p class="hint">Verified by {{ provider_name }}. A different address has to be confirmed by email.</p>
+      {% else %}
+      <p class="hint">You'll get an email to confirm this address.</p>
+      {% endif %}
+
+      <div class="notice mt-5" role="note">
+        {% call ui::icon("key-round", "mt-px size-4 shrink-0") %}{% endcall %}
+        <p>You'll sign in with {{ provider_name }}; your account has no password until you set one with a reset link. Git over HTTPS needs a personal access token.</p>
+      </div>
+
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
+    </form>
+  </div>
+
+  <p class="auth-aside">Already have an account? <a href="/login" class="link">Sign in</a> and link {{ provider_name }} in your security settings.</p>
+</section>
+{% endblock %}

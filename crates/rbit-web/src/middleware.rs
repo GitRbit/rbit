@@ -239,9 +239,10 @@ pub const PRELOAD_MAX_AGE_SECONDS: u32 = 10;
 /// secret, or is a download or Git traffic. `nav.js` skips these links too; this is the
 /// authoritative check.
 fn is_unsafe_to_preload(path: &str) -> bool {
-    // The security pages and the second sign-in step issue secrets and passkey challenges.
+    // The security pages and the second sign-in step issue secrets and passkey challenges;
+    // (milestone 3, O) `/login/{provider}…` starts or finishes an external sign-in.
     const PREFIXES: [&str; 8] =
-        ["/logout", "/settings/security", "/login/two-factor", "/email/verify/", "/password/reset/", "/api/", "/assets/", "/sw.js"];
+        ["/logout", "/settings/security", "/login/", "/email/verify/", "/password/reset/", "/api/", "/assets/", "/sw.js"];
     const EXACT: [&str; 3] = ["/healthz", "/readyz", "/metrics"];
     // `/{owner}/{repo}/{area}/…`: downloads and smart-HTTP endpoints.
     const REPO_AREAS: [&str; 5] = ["raw", "archive", "info", "git-upload-pack", "git-receive-pack"];
@@ -426,12 +427,22 @@ mod tests {
             // Issue passkey challenges.
             "/settings/security",
             "/login/two-factor",
+            // Milestone 3 (O): start and finish external sign-in.
+            "/login/github",
+            "/login/corp/callback",
         ] {
             assert!(is_unsafe_to_preload(path), "{path}");
         }
-        for path in
-            ["/", "/explore", "/a/b", "/a/b/tree/main/src", "/a/b/blob/main/raw/archive.rs", "/a/b/commits/main", "/settings/profile"]
-        {
+        for path in [
+            "/",
+            "/login",
+            "/explore",
+            "/a/b",
+            "/a/b/tree/main/src",
+            "/a/b/blob/main/raw/archive.rs",
+            "/a/b/commits/main",
+            "/settings/profile",
+        ] {
             assert!(!is_unsafe_to_preload(path), "{path}");
         }
     }

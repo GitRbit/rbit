@@ -129,6 +129,54 @@
   {% endif %}
 </section>
 
+{#- Milestone 3: external sign-in (O). -#}
+{% if overview.sign_in.shown %}
+<section class="box mt-6" aria-labelledby="sign-in-title">
+  <div class="box-header justify-between gap-3">
+    <h3 id="sign-in-title" class="flex items-center gap-2 text-[13px] font-medium">{% call ui::icon("link", "size-4 text-ink-muted") %}{% endcall %}Sign-in methods</h3>
+    {% if overview.sign_in.has_password %}<span class="badge">Password</span>{% else %}<span class="badge">No password</span>{% endif %}
+  </div>
+  <div class="px-4 pt-4">
+    {% call ui::form_error(overview.sign_in.error) %}{% endcall %}
+    {% if overview.sign_in.has_password %}
+    <p class="text-[13px] text-ink-muted">Sign in with your password or with a linked account.</p>
+    {% else %}
+    <p class="text-[13px] text-ink-muted">Your account has no password: you sign in with a linked account. To set one, request a <a href="/password/forgot" class="link">password reset link</a>. Git over HTTPS needs a <a href="/settings/tokens" class="link">personal access token</a>.</p>
+    {% endif %}
+  </div>
+  <ul class="mt-3">
+    {% for identity in overview.sign_in.identities %}
+    <li class="row items-start gap-3 py-3 sm:items-center">
+      <div class="min-w-0 flex-1">
+        <p class="flex min-w-0 items-center gap-2"><span class="truncate font-medium">{{ identity.provider_name }}</span>{% if !identity.configured %}<span class="badge">No longer available</span>{% endif %}</p>
+        <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
+          {% if !identity.detail.is_empty() %}<span class="min-w-0 break-all">{{ identity.detail }}</span>{% endif %}
+          <span>{{ identity.linked }}</span>
+          <span>{{ identity.last_used }}</span>
+        </p>
+      </div>
+      {% if identity.can_unlink %}
+      <form method="post" action="{{ identity.unlink_url }}" class="shrink-0">
+        <button class="btn btn-danger" type="submit" aria-label="Unlink {{ identity.provider_name }}">Unlink</button>
+      </form>
+      {% else %}
+      <span class="shrink-0 text-xs text-ink-faint">Only way to sign in</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+    {% for provider in overview.sign_in.linkable %}
+    <li class="row items-center gap-3 py-3">
+      <div class="min-w-0 flex-1">
+        <p class="truncate font-medium">{{ provider.name }}</p>
+        <p class="mt-1 text-xs text-ink-muted">Not linked</p>
+      </div>
+      <a href="{{ provider.url }}" class="btn shrink-0" hx-boost="false">Link</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="mt-6" aria-labelledby="sessions-title">
   <div class="mb-3 flex min-h-8 items-center justify-between gap-3">
     <h3 id="sessions-title" class="text-[13px] font-medium text-ink-muted">Sessions</h3>
