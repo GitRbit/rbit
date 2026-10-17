@@ -32,9 +32,7 @@ to argue for something.
   webhooks with a retrying delivery queue.
 - **Themes:** light, dark and about 500 tinted-theming schemes.
 
-## Next — the "ready to open-source" milestone
-
-Being built now:
+From the "ready to open-source" milestone:
 
 - **Open-source packaging:** MIT OR Apache-2.0, community files, release binaries for
   Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/rbit/rbit`.
@@ -46,13 +44,20 @@ Being built now:
   one-click unsubscribe.
 - **Editing files in the browser:** create, edit, rename, delete and upload files, committing
   to the branch or to a new branch with a pull request.
+- **Git LFS:** the batch API, uploads and downloads, and file locking.
+- **External sign-in:** OpenID Connect providers and GitHub OAuth.
+
+## Next — finishing the "ready to open-source" milestone
+
+Being built now:
+
 - **Pull request polish:** resolving review threads, changing a pull request's base branch,
   cross-repository `/issues` and `/pulls` dashboards, a Markdown preview, redirects for
   renamed accounts.
-- **Git LFS:** the batch API, uploads and downloads, and file locking.
-- **External sign-in:** OpenID Connect providers and GitHub OAuth.
 - **Migration:** importing repositories with their issues, pull requests and releases from
   GitHub and Gitea/Forgejo, and push mirrors.
+
+Then the first public release, `v0.1.0`.
 
 ## Later
 
@@ -63,6 +68,9 @@ Ideas with no schedule yet:
 - A native gitoxide transport for `receive-pack`, behind a configuration switch, so pushes
   no longer need the `git` binary.
 - Email digests.
+- Archived (read-only) repositories.
+- Git LFS over pure SSH (`git-lfs-transfer`); today SSH clients use
+  `git-lfs-authenticate` and HTTP.
 
 ## Not planned
 

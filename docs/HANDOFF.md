@@ -1,8 +1,10 @@
 # rbit — Handoff
 
-**As of 2026-10-17, `main` @ `17ecacf` plus the wave B integration commits on top
-(Protected badge, documentation). Milestone 2 is complete.** Everything below is what
-the next person (or agent team) needs to pick this up without re-reading the history.
+**As of 2026-10-17, `main` @ `5607485` plus the milestone 3 documentation commits on top.
+Milestone 2 is complete; milestone 3 ("ready to open-source",
+[design/milestone-3.md](design/milestone-3.md)) is in progress with 7 of its 9 workstreams
+merged.** Everything below is what the next person (or agent team) needs to pick this up
+without re-reading the history.
 
 ## 1. Where things stand
 
@@ -15,14 +17,24 @@ the next person (or agent team) needs to pick this up without re-reading the his
 | **Milestone 2 wave A** — access (collaborators, teams, base permission, transfer, old-name redirects), REST API `/api/v1` + signed webhooks, repository essentials (README links, archives, blame, compare, releases with files, forks, pull mirrors) | ✅ Done, merged and integrated |
 | **Milestone 2 wave B** — shared issue timeline, issues (labels, milestones, assignees, references, search, in-app notifications), pull requests (fork network, reviews, line comments, mergeability, merge/squash/rebase), branch protection (push gate over HTTP and SSH, merge rules), REST endpoints and webhooks | ✅ Done, merged and integrated |
 | Alongside wave B (the user's work) — rename to **rbit**, passkeys (WebAuthn, migration `0032`), diff file tree, modal theme picker, live dev server (`npm run dev`) | ✅ Done, on `main` |
-| Next milestone | ⏭️ Not started — see §5 |
+| **Milestone 3 — ready to open-source** | 🚧 In progress: 7 of 9 workstreams merged |
+| ↳ H — open-source hygiene (MIT OR Apache-2.0, community files, `cargo deny`, release workflow and ghcr.io image, `rbit_` tokens) | ✅ Merged; CI and the release workflow have never run (§2) |
+| ↳ S — commit statuses and required checks (`0033`) | ✅ Merged |
+| ↳ A — REST API: collaborators, teams, releases (streamed uploads), forks; `member` webhook | ✅ Merged (no migration) |
+| ↳ N — email notifications (`0034`, `server_secrets`) | ✅ Merged |
+| ↳ E — editing files in the browser | ✅ Merged (no migration; `0035` spare) |
+| ↳ L — Git LFS (`0036`, backup format 3) | ✅ Merged |
+| ↳ O — external sign-in: OpenID Connect and GitHub (`0037`) | ✅ Merged |
+| ↳ W — wave B stretch items (`0023`, `0025`) | 🚧 In progress |
+| ↳ M — importing from GitHub/Gitea, push mirrors (`0038`, `0039`) | 🚧 In progress |
 
 Quality gate on `main`, exactly as CI runs it:
 
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace          # 874 tests, 0 failing, 0 ignored
+cargo test --workspace          # 1043 tests, 0 failing, 0 ignored
+cargo deny --locked check licenses advisories   # CI's deny job
 npm ci && npm run build         # vendored htmx + Tailwind CSS
 ```
 
@@ -32,7 +44,7 @@ users, an organisation, repositories, an SSH key and audit entries) migrated wit
 base permission `write`, all triggers present — and the server then served the
 repositories, the organisation, releases, archives and the API from it.
 `crates/rbit-storage/tests/upgrade.rs` repeats that upgrade on every test run, now through
-`0032`, and checks that wave B's tables exist and start empty. Wave B is covered end to
+`0037`, and checks that the tables of wave B and milestone 3 exist and start empty. Wave B is covered end to
 end by `crates/rbit-e2e/tests/e2e/{timeline,issues,pulls,protection}.rs` (real `git` over
 HTTP); the SSH protection scenarios are in `crates/rbit-ssh/tests/protection.rs`. Earlier
 (milestone 1): SSH key added in the UI then `ssh -T`/clone/push/re-clone with OpenSSH,
@@ -41,27 +53,88 @@ password-reset email (log transport), security settings, audit log, `/healthz`,
 The PWA service worker was verified in real Edge (the in-app browser pane cannot register
 service workers — ignore failures there).
 
+Milestone 3 is covered end to end by `crates/rbit-e2e/tests/e2e/{api_workflow,statuses,
+notification_email,edits,lfs,external_auth,tokens}.rs`: the API scenario streams a 1.5 MiB
+release file; notification emails are read back from the log transport; Git LFS runs the
+real `git lfs` client over HTTP and SSH (skipped without it or OpenSSH); external sign-in
+runs against an in-process fake OIDC provider (signed ID tokens, JWKs) and a fake GitHub.
+By hand: the status marks and checks at 375 px (S), the release workflow with `actionlint`
+and `docker build --check` for both Dockerfile variants (H). Nothing of milestone 3 has run
+on GitHub yet.
+
 ## 2. Open items (do these first)
 
 1. **CI has never run on GitHub:** nothing is pushed anywhere and there is no remote
-   configured yet. Push a branch to run `.github/workflows/ci.yml` (Linux + Windows).
-2. **Release notes:** [CHANGELOG.md](../CHANGELOG.md) has the wave B upgrade notes
-   (migrations `0017`–`0024`, `refs/pull/*` reserved, the force-push side effect,
-   `<data_dir>/tmp` excluded from backups, `[issues]`/`[pulls]`), the rename and passkeys
-   notes, wave A's, and milestone 1's one-time sign-out (`sessions_v2`).
-3. **Not yet recorded as verified by hand:** upgrading a real wave A database through
-   `0024` with `rbit migrate` (the upgrade test covers a synthetic milestone 1 one), and the
-   cross-workstream scenario the contract sketches as `tests/e2e/workflow.rs` (protected
-   `main` with one approval, a fork PR whose body says "Fixes #1", squash merge, the issue
-   closed via the PR, a notification and both webhooks). Its parts are tested separately
-   in `pulls.rs`, `issues.rs` and `protection.rs`.
-4. **Wave B stretch items not built:** resolving review threads (migration `0023` stays
-   spare), a base-branch picker on the PR page (the `…/pull/{n}/base` route and the
-   `BaseChanged` event exist), cross-repository dashboards (`/issues`, `/pulls`; the names
-   are reserved), a Markdown preview tab, and redirects for renamed *accounts* (only
-   repositories redirect).
-5. API endpoints for collaborators, teams, releases and forks are still missing (moved out
-   of wave B; migrations `0026`–`0031` were reserved for them).
+   configured yet. Push a branch to `github.com/rbit/rbit` to run
+   `.github/workflows/ci.yml` (Linux + Windows, and the new `cargo deny` job).
+2. **The release workflow has never run either.** Push a `v0.1.0-rc.1` tag first (a
+   pre-release: its notes come from `## [Unreleased]`, it does not move `latest`) to
+   exercise the whole pipeline — binaries for five targets, `SHA256SUMS`, the GitHub
+   release, the ghcr.io push — before the real `v0.1.0`. For `v0.1.0`, turn
+   `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) into `## [0.1.0] - <date>` (keep an
+   empty `## [Unreleased]` above it): the release job refuses a tag without its section.
+   The workspace version is already `0.1.0`.
+3. **GitHub repository settings** (owner, after the first push): enable *Private
+   vulnerability reporting* (Settings → Code security) — `SECURITY.md` and the issue
+   template link to it; enable *Discussions* (linked from the issue chooser and README) or
+   drop those links; after the first image push make the `rbit` package on ghcr.io public
+   and link it to the repository (new packages are private); add the `bug` and
+   `enhancement` labels if the repository lacks GitHub's defaults (the issue forms apply
+   them).
+4. **Owner to confirm the logo's license:** `THIRD-PARTY.md` says the logo and icons are
+   distributed under the project's MIT OR Apache-2.0 terms. If the mascot should be
+   reserved instead (trademark-style "all rights reserved" for the artwork), change that
+   row and the README.
+5. **Finish milestone 3:** merge W (wave B stretch items: resolving review threads with
+   `0023`, the base-branch picker, `/issues` and `/pulls` dashboards, the Markdown preview,
+   account-rename redirects with `0025`) and M (import from GitHub/Gitea, push mirrors:
+   `0038`, `0039`), then integrate their `docs/design/milestone-3/{W,M}.md` notes like the
+   other seven (CHANGELOG, README, example config, ARCHITECTURE, this file, ROADMAP).
+   Hooks waiting for them: E's `markdown_preview_url()` in
+   `crates/rbit-web/src/routes/edits.rs` returns `None` until `POST /markdown/preview`
+   exists (the editor posts the field `content`); M's importer should bring LFS objects in
+   through `LfsService::store`.
+6. **Not yet recorded as verified by hand:** upgrading a real milestone 2 database through
+   `0037` with `rbit migrate` (the upgrade test covers a synthetic milestone 1 one); a real
+   OIDC provider (Keycloak, Entra ID, Google) and real GitHub OAuth (only fakes are tested);
+   notification emails through a real SMTP server and mail client (threading, one-click
+   unsubscribe). (The milestone 2 scenario — protected `main`, a "Fixes #1" pull request,
+   review, squash merge, notifications and webhooks — exists as
+   `crates/rbit-e2e/tests/e2e/workflow.rs`.)
+7. **Follow-ups the milestone 3 workstreams left** (none blocks a release):
+   - *Archived repositories* do not exist yet. When they do, extend
+     `EditService::read_only_reason` and `RepoPage::can_edit_on` (E) and refuse LFS uploads
+     where mirrors are refused (`lfs::Authorized::require_write` and the SSH push
+     authorisation `git-lfs-authenticate upload` reuses) (L).
+   - Webhooks: `member` covers collaborators only; team grants and memberships (GitHub's
+     `membership` / `team` events) are not reported (A).
+   - Statuses: no "strict" (branch up to date) checks; `require_status_checks` needs at
+     least one context; "Required" badges are shown to writers only; `mergeable_state:
+     blocked` is still never produced (S).
+   - REST API: releases do not store `target_commitish`; an API upload cut off by the
+     timeout leaves its `.part` until the start-up sweep (A).
+   - Email notifications: no per-repository mute; repeatable actions dedupe per second;
+     renaming a repository starts new mail threads (N).
+   - Editing: no rename for binaries (delete and upload instead); no "create the first
+     file" in an empty repository (`EditWorkspace` needs a parent-less commit); mirrors are
+     covered by service tests only (E).
+   - Git LFS: the pure-SSH `git-lfs-transfer` protocol is not implemented (clients fall
+     back); the token key is per process (a restart makes clients re-authenticate); the
+     orphan grace period (24 h) is a constant; uploads have no time limit; locks ignore
+     `ref`; a crash between placing an object and writing its row leaves a file nothing
+     sweeps; images committed to Git (not LFS) still show "Binary file not shown" (L).
+   - External sign-in: no "set a password" form for passwordless accounts (a reset link
+     sets one; without mail only an administrator can), and the change-email,
+     change-password and remove-2FA forms ask for a password such accounts lack — they
+     could explain it using `ExternalAuthService::methods(user).has_password`; the
+     provider's display name is not copied; pending registrations live in memory (a
+     restart in the 15-minute window means signing in again); no "Sign up with …" buttons
+     on `/signup`; the JWKS refetch on an unknown `kid` is not rate limited (only a token
+     from the provider's own token endpoint can trigger it) (O).
+   - Packaging: Linux binaries are glibc only (musl static builds could be added as extra
+     targets); token hints are shown without a prefix (`…a1b2`); `RUSTSEC-2023-0071` (RSA
+     Marvin attack) is ignored in `deny.toml` because rbit never uses an RSA private key —
+     revisit if it ever signs or decrypts with RSA (H).
 
 Known, accepted limitations (documented, not bugs): tags that point at trees/blobs are
 not listed; URL revisions accept names and ids but not expressions like `v1.0~1`;
@@ -105,8 +178,9 @@ built" and "T0 as built" sections — the model for refining a contract while ag
 - Self-describing code, `//!` module docs, validated domain types, clippy **pedantic**
   clean, `unsafe` forbidden, no `unwrap` outside tests, `cargo fmt` (see `rustfmt.toml`).
 - Cross-cutting reactions go through the `EventBus` (`DomainEvent`), not direct calls.
-- Security defaults: secrets stored only as digests (webhook secrets are the one
-  documented exception — HMAC needs the raw value), 404 for things a viewer may not know
+- Security defaults: secrets stored only as digests (webhook secrets and the
+  server-generated keys in `server_secrets` are the documented exceptions — HMAC needs the
+  raw value), 404 for things a viewer may not know
   exist, strict CSP (no inline `style=`/scripts — use SVG attributes for proportional
   widths), Origin-checked forms, throttle anything that verifies a secret.
 - **Design: monochrome minimal** — the user rejected an earlier colourful design. Reuse
@@ -115,6 +189,8 @@ built" and "T0 as built" sections — the model for refining a contract while ag
 - **Commits are atomic**: each builds, is formatted, lint-clean and tested on its own;
   imperative subject ≤ 72 chars, body explains what and why, trailer
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. History on `main` is linear.
+- Dependencies must pass `cargo deny check licenses advisories`; new licenses are added to
+  `deny.toml` deliberately.
 
 **The multi-agent workflow that worked (use it again)**
 1. On `main`, the integrator pre-wires every shared registration point as inert stubs
@@ -133,6 +209,14 @@ built" and "T0 as built" sections — the model for refining a contract while ag
 4. Apply the agents' integration requests yourself as separate small commits.
 5. When shared code is refined while workstreams run (wave B's P0 and T0), record "as
    built" notes in the contract so every agent builds on the same facts.
+
+Milestone 3 varied this: no pre-wired stubs. Shared registration points are edited by
+**appending one marked block** (`// Milestone 3: <name> (<letter>).`) at the end of each
+list, so rebases conflict only as "keep both sides"; and workstreams do not edit the
+shared documents — each writes `docs/design/milestone-3/<letter>.md` (as built, deviations,
+and prepared text for CHANGELOG, README, example config, ARCHITECTURE and HANDOFF), which
+the integrator merges. Both worked; the notes files are also the best record of why
+something is the way it is.
 
 **Gotchas learned the hard way**
 - Rebases conflict almost only in `Cargo.lock` (take `main`'s side, run `cargo metadata`)
@@ -160,30 +244,35 @@ built" and "T0 as built" sections — the model for refining a contract while ag
   created inside a renamed directory are not moved automatically — look for files left
   under the old path after the rebase and move them by hand.
 
-## 5. Next milestone (suggested)
+## 5. Next steps
 
-Milestone 2 is done: wave A ([design/milestone-2.md](design/milestone-2.md)) and wave B
-([design/milestone-2b.md](design/milestone-2b.md)) are merged and integrated.
+Milestone 2 is done (wave A: [design/milestone-2.md](design/milestone-2.md), wave B:
+[design/milestone-2b.md](design/milestone-2b.md)). Milestone 3
+([design/milestone-3.md](design/milestone-3.md), as-built notes in
+[design/milestone-3/](design/milestone-3/)) has delivered:
 
-| Wave B step | Delivered |
+| Workstream | Delivered |
 |---|---|
-| **P0 + T0** (integrator) | Stubs, events, the push-gate glue in both receive paths (SSH receive-pack in two steps); the shared thread core: one number sequence per repository for issues and PRs, comments, the timeline (`issue_events`), `issue_permissions`, `TimelineService`, generic routes and timeline views (`0017`). |
-| **B — Branch protection** | Rules per pattern, the in-process push gate over HTTP and SSH (all-or-nothing refusals in git's report format, `receive.denyNonFastForwards`, `refs/pull/*` reserved), merge rules for PRs, settings UI, the Protected badge, REST endpoints (`0024`). |
-| **I — Issues** | Labels, milestones, assignees, references and closing keywords, FTS5 search and filters, in-app notifications, `issues`/`issue_comment` webhooks, REST endpoints (`0018`–`0020`). |
-| **P — Pull requests** | Fork networks and overlay compares, `refs/pull/{n}/head`, line comments and reviews, the mergeability worker, merge/squash/rebase via `merge-tree` + `commit-tree` and an `update-ref` lease, `pull_request`/`pull_request_review` webhooks, REST endpoints (`0021`, `0022`). |
+| **H — Open-source hygiene** | MIT OR Apache-2.0, `THIRD-PARTY.md`, `deny.toml` + CI job, community files and `ROADMAP.md`, the release workflow (five native targets, `SHA256SUMS`, notes from the changelog, a multi-arch `ghcr.io/rbit/rbit` image from the release binaries), OCI labels, `rbit_` tokens with `rit_` still accepted, the rename sweep. |
+| **S — Commit statuses** | GitHub-compatible status API, required status checks in branch protection (a bypassable protection requirement), checks in the merge box and on commits, the `status` webhook (`0033`). |
+| **A — REST API continuation** | Collaborators, teams, releases with streamed file uploads and downloads (`.streaming()` routes), forks; the `member` webhook; team grants refuse other owners' repositories. |
+| **N — Email notifications** | Preferences (off / participating / all), threading headers, signed one-click unsubscribe (the one CSRF exemption), per-address throttle, `server_secrets` (`0034`). |
+| **E — Editing in the browser** | Create, edit, rename, delete and upload as one commit via a scratch repository and the merge's `update-ref` lease; push gate as for pushes; noreply author; LFS pointers not editable. |
+| **L — Git LFS** | Batch API, basic transfers, locks, `git-lfs-authenticate`, content-addressed storage shared by fork networks where readable, signed short-lived tokens, blob/raw pages, backups (format 3), orphan clean-up (`0036`). |
+| **O — External sign-in** | OpenID Connect and GitHub, PKCE, sealed flow cookie, full ID token checks, linking rules, register step, passwordless accounts, Settings → Security sign-in methods (`0037`). |
 
-Candidates for milestone 3, roughly by value — write a contract like
-`design/milestone-2b.md` first and pre-wire it as in §4:
+Then, in order:
 
-1. **Actions / CI integration**: a commit status API (a runner protocol later) feeding the
-   existing required-checks placeholder (`ChecksStatus` in `rbit_core::pull`, shown as "No
-   status checks" in the merge box), plus a "require checks" protection flag.
-2. **API continuation**: collaborators, teams, releases and forks (migrations
-   `0026`–`0031` were reserved for this).
-3. **Email notifications** on top of the in-app inbox (the `MailService` seam exists;
-   per-user settings, digests).
-4. **gitoxide transport** for `receive-pack` behind a config switch (see §6).
-5. The wave B stretch items of §2.
+1. Merge W and M and integrate their notes (§2 item 5).
+2. Run CI on GitHub, then the `v0.1.0-rc.1` tag, fix what the first real runs find, apply
+   the repository settings (§2 items 1–4), and tag `v0.1.0`.
+3. Candidates for milestone 4, roughly by value — write a contract like
+   `design/milestone-3.md` first:
+   - **gitoxide transport** for `receive-pack` behind a config switch (see §6);
+   - a **runner protocol** on top of commit statuses (rbit still would not run builds);
+   - **archived repositories** (read-only everywhere: pushes, edits, LFS uploads, §2 item 7);
+   - `membership` / `team` webhooks, strict (up-to-date) status checks, email digests,
+     `git-lfs-transfer` over SSH — the follow-ups of §2 item 7 by demand.
 
 ## 6. Decisions on record
 
@@ -209,3 +298,46 @@ Candidates for milestone 3, roughly by value — write a contract like
 - Merges never check files out (`merge-tree --write-tree` + `commit-tree` in a scratch
   repository) and reach the base branch through one `update-ref` compare-and-swap, not
   `receive-pack`; protection for merges is `check_merge`.
+
+Milestone 3:
+
+- Licensed **MIT OR Apache-2.0** (was AGPL). The public home is github.com/rbit/rbit, the
+  image `ghcr.io/rbit/rbit`; vulnerability reports go through GitHub private security
+  advisories (no email published).
+- Tokens are `rbit_…`; `rit_…` is accepted forever (it costs nothing: the digest covers
+  only the random part). The webhook user agent stays `rbit-Hookshot/…` and the header
+  names `X-Rbit-*`. Legacy `rustit.*` file names, `RUSTIT_*` variables and `rustit_*`
+  cookies stay as commented shims; applied migrations are never edited, not even comments
+  (sqlx checks their checksums).
+- Release images package the release binaries (`BINARY=prebuilt`), never a second build
+  under QEMU; Linux binaries are glibc (2.35 baseline), built on native runners.
+- Commit statuses: the latest status per (repository, commit, context) wins; only
+  *required* contexts block, as a protection requirement an administrator may bypass where
+  the rule allows it; statuses never affect pushes.
+- API scopes: deleting releases and release files needs `write` (writers' actions), all
+  collaborator endpoints (reads too) and team management need `admin`.
+- Web edits are authored **with the user's noreply address, like merges** (rbit never
+  writes a real address into a commit — the contract's "verified email" was overridden for
+  privacy). They never check files out (scratch repository + scratch index +
+  `commit-tree`), reach the branch through the merge's `update-ref` compare-and-swap, are
+  decided by the push gate (`check_push`) and reported through `PushService` like pushes.
+  Git LFS pointer files cannot be edited in the browser.
+- Email notifications get their own `[notifications]` section and their own throttle
+  scope (a busy thread must never use up a user's password-reset budget); emails are
+  claimed in an outbox before sending, so each (recipient, thread, activity) is mailed at
+  most once.
+- `server_secrets` is the store for keys rbit generates itself (stored raw, like webhook
+  secrets, because HMAC needs them); the one CSRF exemption is the RFC 8058 one-click
+  unsubscribe `POST`.
+- Git LFS: objects are stored once (content-addressed) and **linked per repository**. A
+  repository may use the objects linked to it, and those of its fork network where the
+  requester can read them (then linked to it lazily); anything else must be uploaded again
+  before it is linked, so knowing an object id never grants content. Transfer tokens are
+  stateless, signed with a per-process key and re-check access on every use.
+- External sign-in: identities are keyed by the provider's stable subject. A first
+  sign-in links only (a) from a link started in Settings → Security in the same session,
+  or (b) by email when the provider has `trust_email` and **both** addresses are verified;
+  otherwise it registers (if `allow_registration` allows) or is refused. The account's own
+  2FA still applies unless `trust_mfa` and the provider reports MFA. Accounts registered
+  through a provider have no password until a reset link sets one; the last way to sign in
+  cannot be unlinked. The flow state is a signed cookie, nothing is stored server-side.
