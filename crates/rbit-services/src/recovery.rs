@@ -378,7 +378,8 @@ impl RecoveryService {
             | DomainEvent::Issue { .. }
             | DomainEvent::IssueComment { .. }
             | DomainEvent::PullRequestReview { .. }
-            | DomainEvent::CollaboratorChanged { .. } => Ok(()),
+            | DomainEvent::CollaboratorChanged { .. }
+            | DomainEvent::CommitStatus { .. } => Ok(()),
         }
     }
 

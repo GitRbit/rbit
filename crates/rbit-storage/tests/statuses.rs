@@ -57,6 +57,9 @@ async fn reports_are_kept_and_the_latest_per_context_wins() {
     store.create(repo, B, &report("error", "ci/build"), alice.id(), 1000).await.unwrap().unwrap();
     store.create(other, A, &report("failure", "ci/build"), alice.id(), 1000).await.unwrap().unwrap();
 
+    assert_eq!(store.find(repo, first.id).await.unwrap(), Some(first.clone()), "superseded reports stay readable");
+    assert_eq!(store.find(other, first.id).await.unwrap(), None, "ids are scoped to their repository");
+
     let history = store.list(repo, A, 0, 10).await.unwrap();
     let states: Vec<_> = history.iter().map(|status| (status.context.as_str(), status.state)).collect();
     assert_eq!(states, [("lint", StatusState::Failure), ("ci/build", StatusState::Success), ("ci/build", StatusState::Pending)]);

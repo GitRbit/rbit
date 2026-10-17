@@ -44,11 +44,13 @@ pub enum WebhookEvent {
     Member,
     /// Sent once when a hook is created (and on request) to check the receiver.
     Ping,
+    /// A commit status was created (milestone 3, S).
+    Status,
 }
 
 impl WebhookEvent {
     /// The events a hook can subscribe to, in display order. `ping` is always sent.
-    pub const SUBSCRIBABLE: [Self; 9] = [
+    pub const SUBSCRIBABLE: [Self; 10] = [
         Self::Push,
         Self::Repository,
         Self::Release,
@@ -58,6 +60,7 @@ impl WebhookEvent {
         Self::PullRequest,
         Self::PullRequestReview,
         Self::Member,
+        Self::Status,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -72,6 +75,7 @@ impl WebhookEvent {
             Self::PullRequestReview => "pull_request_review",
             Self::Member => "member",
             Self::Ping => "ping",
+            Self::Status => "status",
         }
     }
 
@@ -91,6 +95,7 @@ impl WebhookEvent {
             Self::PullRequestReview => "Pull request reviews",
             Self::Member => "Collaborators",
             Self::Ping => "Pings",
+            Self::Status => "Statuses",
         }
     }
 
@@ -106,6 +111,7 @@ impl WebhookEvent {
             Self::PullRequestReview => "Pull request reviews submitted, edited or dismissed.",
             Self::Member => "Collaborators added, removed or given another permission.",
             Self::Ping => "Sent when the webhook is created.",
+            Self::Status => "Commit statuses reported by CI.",
         }
     }
 }

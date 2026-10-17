@@ -112,6 +112,17 @@ impl CommitStatusStore {
         row.map(CommitStatus::try_from).transpose()
     }
 
+    /// Report `id` of `repo`.
+    pub async fn find(&self, repo: RepoId, id: StatusId) -> Result<Option<CommitStatus>, StorageError> {
+        let row: Option<StatusRow> =
+            sqlx::query_as(concat!("SELECT ", status_columns!(), " FROM commit_statuses WHERE id = ? AND repo_id = ?"))
+                .bind(id.0)
+                .bind(repo.0)
+                .fetch_optional(&self.pool)
+                .await?;
+        row.map(CommitStatus::try_from).transpose()
+    }
+
     /// Every report on `sha`, newest first, skipping `offset` and returning at most `limit`.
     pub async fn list(&self, repo: RepoId, sha: &str, offset: u64, limit: u32) -> Result<Vec<CommitStatus>, StorageError> {
         let rows: Vec<StatusRow> = sqlx::query_as(concat!(

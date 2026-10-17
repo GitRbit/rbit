@@ -32,6 +32,8 @@ pub mod repo_settings;
 pub mod repositories;
 pub mod ssh_keys;
 pub mod stars;
+// Milestone 3: commit statuses (S).
+pub mod statuses;
 pub mod teams;
 pub mod throttle;
 pub mod timeline;
@@ -74,6 +76,7 @@ pub use repo_settings::RepoSettingsService;
 pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
 pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
+pub use statuses::StatusService;
 pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
 pub use timeline::{IssueContext, TimelineService};
@@ -137,6 +140,8 @@ pub struct Services {
     pub pulls: PullService,
     // Branch protection (B).
     pub protection: ProtectionService,
+    // Milestone 3: commit statuses and required checks (S).
+    pub statuses: StatusService,
 }
 
 impl Services {
@@ -191,6 +196,7 @@ impl Services {
             timeline,
             notifications: NotificationService::new(ctx.clone()),
             protection: ProtectionService::new(ctx.clone()),
+            statuses: StatusService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),

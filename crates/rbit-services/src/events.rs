@@ -22,6 +22,7 @@ use rbit_core::{
     AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
     issue::{CommentAction, IssueAction, ReviewAction},
     membership::Permission,
+    status::StatusId,
     webhook::WebhookId,
 };
 pub use rbit_git::RefUpdate;
@@ -96,6 +97,10 @@ pub enum DomainEvent {
     /// `actor` (the collaborator themselves when they left). Published by
     /// [`crate::CollaboratorService`] (milestone 3, A).
     CollaboratorChanged { repo: RepoId, user: AccountId, actor: AccountId, change: CollaboratorChange },
+    // Milestone 3: commit statuses (S).
+    /// A commit status was created on commit `sha` (a full id). Published by
+    /// [`crate::StatusService::create`].
+    CommitStatus { repo: RepoId, status: StatusId, sha: String, actor: AccountId },
 }
 
 /// What happened to a collaborator ([`DomainEvent::CollaboratorChanged`]).

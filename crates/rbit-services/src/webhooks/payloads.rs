@@ -377,7 +377,7 @@ pub fn ping(hook_json: &Value, hook_id: i64, context: Option<(&str, Value)>, sen
 /// The `action` stored with a delivery, read back from its payload.
 pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
     match event {
-        WebhookEvent::Push | WebhookEvent::Fork | WebhookEvent::Ping => None,
+        WebhookEvent::Push | WebhookEvent::Fork | WebhookEvent::Ping | WebhookEvent::Status => None,
         WebhookEvent::Repository
         | WebhookEvent::Release
         | WebhookEvent::Issues

@@ -381,50 +381,7 @@ impl WebhookService {
     async fn queue_event(&self, event: &DomainEvent, newest: WebhookId) -> Result<usize, ServiceError> {
         let base = self.base_url().to_owned();
         let queued = match event {
-            DomainEvent::RepositoryPushed { repo, pusher, updates } => {
-                let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Push).await?;
-                if hooks.is_empty() || updates.is_empty() {
-                    return Ok(0);
-                }
-                let pusher = match pusher {
-                    Some(id) => self.account(*id).await?,
-                    None => None,
-                };
-                let fork = self.is_fork(*repo).await?;
-                let reader = self.inner.ctx.repositories.reader(owned.repo.owner_id, owned.repo.id);
-                let snapshot = reader.ref_snapshot().await.ok();
-                let mut queued = 0;
-                for update in updates {
-                    let commits = match &update.after {
-                        Some(after) if update.branch().is_some() => {
-                            let excluding = match (&update.before, &snapshot) {
-                                (Some(before), _) => vec![before.clone()],
-                                // A new branch: list only what no other ref already has.
-                                (None, Some(snapshot)) => other_tips(snapshot.ids(), after),
-                                (None, None) => Vec::new(),
-                            };
-                            reader.new_commits(after.clone(), excluding, MAX_COUNTED_COMMITS).await.unwrap_or_else(|error| {
-                                tracing::warn!(%error, repo = %owned.full_name(), r#ref = %update.name, "cannot list pushed commits");
-                                Vec::new()
-                            })
-                        }
-                        _ => Vec::new(),
-                    };
-                    let payload = payloads::PushPayload {
-                        repo: &owned,
-                        update,
-                        commits: &commits,
-                        total: commits.len(),
-                        pusher: pusher.as_ref(),
-                        fork,
-                        base_url: &base,
-                    }
-                    .to_json();
-                    queued += self.queue(hooks.clone(), WebhookEvent::Push, &payload).await?.len();
-                }
-                queued
-            }
+            DomainEvent::RepositoryPushed { repo, pusher, updates } => self.queue_push(*repo, *pusher, updates, newest, &base).await?,
             DomainEvent::RepositoryCreated { repo, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
@@ -475,8 +432,65 @@ impl WebhookService {
             DomainEvent::Issue { .. } | DomainEvent::IssueComment { .. } | DomainEvent::PullRequestReview { .. } => {
                 self.queue_payload(self.workflow_payload(event, &base).await?, newest).await?
             }
+            // Milestone 3: commit statuses (S).
+            DomainEvent::CommitStatus { .. } => {
+                self.queue_payload(crate::statuses::hooks::payload(&self.inner.ctx, event, &base).await?, newest).await?
+            }
             _ => 0,
         };
+        Ok(queued)
+    }
+
+    /// Queues one `push` payload per updated ref of a push.
+    async fn queue_push(
+        &self,
+        repo: RepoId,
+        pusher: Option<AccountId>,
+        updates: &[crate::events::RefUpdate],
+        newest: WebhookId,
+        base: &str,
+    ) -> Result<usize, ServiceError> {
+        let Some(owned) = self.repository(repo).await? else { return Ok(0) };
+        let hooks = self.subscribed(newest, Some(repo), &org_of(&owned.owner), WebhookEvent::Push).await?;
+        if hooks.is_empty() || updates.is_empty() {
+            return Ok(0);
+        }
+        let pusher = match pusher {
+            Some(id) => self.account(id).await?,
+            None => None,
+        };
+        let fork = self.is_fork(repo).await?;
+        let reader = self.inner.ctx.repositories.reader(owned.repo.owner_id, owned.repo.id);
+        let snapshot = reader.ref_snapshot().await.ok();
+        let mut queued = 0;
+        for update in updates {
+            let commits = match &update.after {
+                Some(after) if update.branch().is_some() => {
+                    let excluding = match (&update.before, &snapshot) {
+                        (Some(before), _) => vec![before.clone()],
+                        // A new branch: list only what no other ref already has.
+                        (None, Some(snapshot)) => other_tips(snapshot.ids(), after),
+                        (None, None) => Vec::new(),
+                    };
+                    reader.new_commits(after.clone(), excluding, MAX_COUNTED_COMMITS).await.unwrap_or_else(|error| {
+                        tracing::warn!(%error, repo = %owned.full_name(), r#ref = %update.name, "cannot list pushed commits");
+                        Vec::new()
+                    })
+                }
+                _ => Vec::new(),
+            };
+            let payload = payloads::PushPayload {
+                repo: &owned,
+                update,
+                commits: &commits,
+                total: commits.len(),
+                pusher: pusher.as_ref(),
+                fork,
+                base_url: base,
+            }
+            .to_json();
+            queued += self.queue(hooks.clone(), WebhookEvent::Push, &payload).await?.len();
+        }
         Ok(queued)
     }
 
