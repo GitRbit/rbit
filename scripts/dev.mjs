@@ -10,7 +10,7 @@
 // copies ./data into ./data-live when it exists, so experiments never touch ./data.
 
 import { spawn } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, watch } from "node:fs";
+import { copyFileSync, cpSync, existsSync, statSync, watch } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -35,6 +35,8 @@ let server = null;
 let building = false;
 let pending = false;
 let timer = null;
+/** Last seen modification time per watched path. */
+const stamps = new Map();
 
 function log(message) {
   console.log(`[dev ${new Date().toLocaleTimeString()}] ${message}`);
@@ -90,6 +92,18 @@ function schedule(path) {
   // Tailwind owns styles/ and assets/, so those would only cause needless restarts.
   if (!path || /(^|[\\/])(target|node_modules|assets|styles)([\\/]|$)/.test(path)) return;
   if (!/\.(rs|html|toml|sql|json|svg)$/.test(path)) return;
+  // Windows reports reads (indexers, scanners, other builds) as changes: rebuild only
+  // when the file's modification time or existence actually changed.
+  let stamp = "gone";
+  try {
+    stamp = String(statSync(join(root, path)).mtimeMs);
+  } catch {
+    /* deleted */
+  }
+  if (stamps.get(path) === stamp) return;
+  const first = !stamps.has(path);
+  stamps.set(path, stamp);
+  if (first && stamp !== "gone" && Date.now() - Number(stamp) > 5000) return;
   clearTimeout(timer);
   timer = setTimeout(() => {
     log(`change in ${path}`);
