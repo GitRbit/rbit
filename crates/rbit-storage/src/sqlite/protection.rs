@@ -1,4 +1,5 @@
-//! Branch protection rules with their allowed users and teams.
+//! Branch protection rules with their allowed users and teams, and (milestone 3, S) their
+//! required status checks.
 //!
 //! Milestone 2 workstream B (branch protection) owns this file. Keep row types here rather than in `rows.rs`.
 //!
@@ -14,6 +15,7 @@ use rbit_core::{
     Account, AccountId, RepoId, Timestamp,
     membership::{Team, TeamId},
     protection::{BranchPattern, BranchProtection, MAX_RULES, ProtectionId, ProtectionRule, RuleSettings},
+    status::StatusContext,
 };
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
@@ -24,7 +26,8 @@ use crate::StorageError;
 macro_rules! rule_columns {
     () => {
         "id, repo_id, pattern, deny_force_push, deny_deletion, require_pull_request, required_approvals, \
-         dismiss_stale_approvals, block_on_changes_requested, restrict_pushers, allow_admin_bypass, created_by, created_at, updated_at"
+         dismiss_stale_approvals, block_on_changes_requested, restrict_pushers, allow_admin_bypass, require_status_checks, created_by, \
+         created_at, updated_at"
     };
 }
 
@@ -42,6 +45,7 @@ struct RuleRow {
     block_on_changes_requested: bool,
     restrict_pushers: bool,
     allow_admin_bypass: bool,
+    require_status_checks: bool,
     created_by: Option<i64>,
     created_at: i64,
     updated_at: i64,
@@ -71,6 +75,8 @@ pub struct RuleInput {
     pub settings: RuleSettings,
     pub users: Vec<AccountId>,
     pub teams: Vec<TeamId>,
+    /// Required status check contexts (milestone 3, S).
+    pub contexts: Vec<StatusContext>,
 }
 
 /// The result of [`BranchProtectionStore::create`] and [`BranchProtectionStore::update`].
@@ -95,8 +101,8 @@ impl BranchProtectionStore {
         Self { pool }
     }
 
-    /// The rules of `repo`, by pattern, with their allowed users and teams (by name).
-    /// Three queries whatever the number of rules.
+    /// The rules of `repo`, by pattern, with their allowed users and teams (by name) and
+    /// their required contexts. Four queries whatever the number of rules.
     pub async fn list(&self, repo: RepoId) -> Result<Vec<BranchProtection>, StorageError> {
         let rows: Vec<RuleRow> =
             sqlx::query_as(concat!("SELECT ", rule_columns!(), " FROM branch_protections WHERE repo_id = ? ORDER BY pattern"))
@@ -119,7 +125,19 @@ impl BranchProtectionStore {
         .bind(repo.0)
         .fetch_all(&self.pool)
         .await?;
+        let contexts: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT c.rule_id, c.context FROM branch_protection_required_checks c JOIN branch_protections p ON p.id = c.rule_id \
+             WHERE p.repo_id = ? ORDER BY c.context",
+        )
+        .bind(repo.0)
+        .fetch_all(&self.pool)
+        .await?;
 
+        let mut contexts_by_rule: HashMap<i64, Vec<StatusContext>> = HashMap::new();
+        for (rule_id, context) in contexts {
+            let context = StatusContext::parse(&context).map_err(|e| StorageError::Corrupt(format!("required check: {e}")))?;
+            contexts_by_rule.entry(rule_id).or_default().push(context);
+        }
         let mut users_by_rule: HashMap<i64, Vec<Account>> = HashMap::new();
         for row in users {
             users_by_rule.entry(row.rule_id).or_default().push(row.account.try_into()?);
@@ -139,7 +157,8 @@ impl BranchProtectionStore {
             .map(|row| {
                 let users = users_by_rule.remove(&row.id).unwrap_or_default();
                 let teams = teams_by_rule.remove(&row.id).unwrap_or_default();
-                protection(&row, users, teams)
+                let contexts = contexts_by_rule.remove(&row.id).unwrap_or_default();
+                protection(&row, users, teams, contexts)
             })
             .collect()
     }
@@ -171,8 +190,8 @@ impl BranchProtectionStore {
         let id: Option<i64> = sqlx::query_scalar(
             "INSERT INTO branch_protections (repo_id, pattern, deny_force_push, deny_deletion, require_pull_request, \
              required_approvals, dismiss_stale_approvals, block_on_changes_requested, restrict_pushers, allow_admin_bypass, \
-             created_by, created_at, updated_at) \
-             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12 \
+             created_by, created_at, updated_at, require_status_checks) \
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12, ?14 \
              WHERE (SELECT COUNT(*) FROM branch_protections WHERE repo_id = ?1) < ?13 RETURNING id",
         )
         .bind(repo.0)
@@ -188,6 +207,7 @@ impl BranchProtectionStore {
         .bind(creator.0)
         .bind(now)
         .bind(i64::try_from(MAX_RULES).unwrap_or(i64::MAX))
+        .bind(settings.require_status_checks)
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| StorageError::from_insert(e, "pattern"))?;
@@ -209,7 +229,7 @@ impl BranchProtectionStore {
         let result = sqlx::query(
             "UPDATE branch_protections SET pattern = ?, deny_force_push = ?, deny_deletion = ?, require_pull_request = ?, \
              required_approvals = ?, dismiss_stale_approvals = ?, block_on_changes_requested = ?, restrict_pushers = ?, \
-             allow_admin_bypass = ?, updated_at = ? WHERE id = ? AND repo_id = ?",
+             allow_admin_bypass = ?, require_status_checks = ?, updated_at = ? WHERE id = ? AND repo_id = ?",
         )
         .bind(input.pattern.as_str())
         .bind(settings.deny_force_push)
@@ -220,6 +240,7 @@ impl BranchProtectionStore {
         .bind(settings.block_on_changes_requested)
         .bind(settings.restrict_pushers)
         .bind(settings.allow_admin_bypass)
+        .bind(settings.require_status_checks)
         .bind(Timestamp::now().seconds())
         .bind(id.0)
         .bind(repo.0)
@@ -231,6 +252,7 @@ impl BranchProtectionStore {
         }
         sqlx::query("DELETE FROM branch_protection_users WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM branch_protection_teams WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
+        sqlx::query("DELETE FROM branch_protection_required_checks WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
         if !insert_grants(&mut tx, repo, id.0, input).await? {
             return Ok(RuleChange::TeamOutsideOrganization);
         }
@@ -246,10 +268,17 @@ impl BranchProtectionStore {
     }
 }
 
-/// Writes the allowed users and teams of rule `id`. `false` (and nothing more written) if
+/// Writes the allowed users and teams and the required contexts of rule `id`. `false` (and nothing more written) if
 /// a team does not belong to the organisation owning `repo`; the caller then drops the
 /// transaction.
 async fn insert_grants(tx: &mut Transaction<'_, Sqlite>, repo: RepoId, id: i64, input: &RuleInput) -> Result<bool, StorageError> {
+    for context in &input.contexts {
+        sqlx::query("INSERT OR IGNORE INTO branch_protection_required_checks (rule_id, context) VALUES (?, ?)")
+            .bind(id)
+            .bind(context.as_str())
+            .execute(&mut **tx)
+            .await?;
+    }
     for user in &input.users {
         sqlx::query("INSERT OR IGNORE INTO branch_protection_users (rule_id, user_id) VALUES (?, ?)")
             .bind(id)
@@ -282,7 +311,12 @@ async fn insert_grants(tx: &mut Transaction<'_, Sqlite>, repo: RepoId, id: i64, 
     Ok(true)
 }
 
-fn protection(row: &RuleRow, users: Vec<Account>, teams: Vec<Team>) -> Result<BranchProtection, StorageError> {
+fn protection(
+    row: &RuleRow,
+    users: Vec<Account>,
+    teams: Vec<Team>,
+    contexts: Vec<StatusContext>,
+) -> Result<BranchProtection, StorageError> {
     let corrupt = |what: &str, detail: String| StorageError::Corrupt(format!("branch protection {what}: {detail}"));
     let pattern = BranchPattern::parse(&row.pattern).map_err(|e| corrupt("pattern", e.to_string()))?;
     let settings = RuleSettings {
@@ -294,12 +328,14 @@ fn protection(row: &RuleRow, users: Vec<Account>, teams: Vec<Team>) -> Result<Br
         block_on_changes_requested: row.block_on_changes_requested,
         restrict_pushers: row.restrict_pushers,
         allow_admin_bypass: row.allow_admin_bypass,
+        require_status_checks: row.require_status_checks,
     };
     let rule = ProtectionRule {
         pattern,
         settings,
         allowed_users: users.iter().map(|account| account.id).collect(),
         allowed_teams: teams.iter().map(|team| team.id).collect(),
+        required_contexts: contexts,
     };
     Ok(BranchProtection {
         id: ProtectionId(row.id),

@@ -12,6 +12,7 @@ use askama_web::WebTemplate;
 use rbit_core::{
     membership::Team,
     protection::{BranchPattern, BranchProtection, MAX_REQUIRED_APPROVALS, MAX_RULES, RuleSettings},
+    status::MAX_REQUIRED_CONTEXTS,
 };
 use rbit_services::protection::ProtectionInput;
 
@@ -51,6 +52,9 @@ pub fn badges(settings: &RuleSettings) -> Vec<String> {
             1 => "1 approval".to_owned(),
             n => format!("{n} approvals"),
         });
+    }
+    if settings.require_status_checks {
+        badges.push("Status checks".to_owned());
     }
     if settings.restrict_pushers {
         badges.push("Restricted".to_owned());
@@ -167,6 +171,10 @@ pub struct RuleForm {
     pub block_on_changes_requested: bool,
     pub restrict_pushers: bool,
     pub allow_admin_bypass: bool,
+    pub require_status_checks: bool,
+    /// Required status check contexts, one per line.
+    pub contexts: String,
+    pub max_contexts: usize,
     /// Allowed usernames, separated by spaces.
     pub users: String,
     pub teams: Vec<TeamChoice>,
@@ -189,6 +197,9 @@ impl RuleForm {
             block_on_changes_requested: settings.block_on_changes_requested,
             restrict_pushers: settings.restrict_pushers,
             allow_admin_bypass: settings.allow_admin_bypass,
+            require_status_checks: settings.require_status_checks,
+            contexts: input.contexts.join("\n"),
+            max_contexts: MAX_REQUIRED_CONTEXTS,
             users: input.users.join(" "),
             teams: teams.iter().map(|team| TeamChoice { name: team.name.to_string(), checked: picked(team.name.as_str()) }).collect(),
         }
@@ -339,6 +350,10 @@ mod tests {
                 settings,
                 allowed_users: vec![bob.id],
                 allowed_teams: vec![TeamId(1)],
+                required_contexts: vec![
+                    rbit_core::status::StatusContext::parse("ci/build").unwrap(),
+                    rbit_core::status::StatusContext::parse("lint: all").unwrap(),
+                ],
             },
             users: vec![bob],
             teams: vec![team(1, "core")],
@@ -367,6 +382,21 @@ mod tests {
         assert_eq!(badges(&strict), ["No force pushes", "No deletion", "2 approvals", "Restricted", "Admins bypass"]);
         assert_eq!(badges(&RuleSettings { require_pull_request: true, ..RuleSettings::default() })[2], "Pull request");
         assert_eq!(badges(&RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() })[2], "1 approval");
+        assert_eq!(badges(&RuleSettings { require_status_checks: true, ..RuleSettings::default() })[2], "Status checks");
+    }
+
+    #[test]
+    fn the_form_lists_required_checks_one_per_line() {
+        let html = RuleFormPage::new_rule(page(), header(), false, &[]).render().unwrap();
+        assert!(html.contains(r#"name="require_status_checks""#));
+        assert!(!html.contains(r#"name="require_status_checks" value="on" class="mt-1 accent-(--ink)" checked"#), "off by default");
+        assert!(html.contains(r#"<textarea class="input"#) && html.contains(r#"name="contexts""#));
+
+        let stored = rule(3, "main", RuleSettings { require_status_checks: true, ..RuleSettings::default() });
+        let html = RuleFormPage::edit(page(), header(), false, &[], &stored, &branches()).render().unwrap();
+        assert!(html.contains(r#"name="require_status_checks" value="on" class="mt-1 accent-(--ink)" checked"#));
+        assert!(html.contains(">ci/build\nlint: all</textarea>"), "{html}");
+        assert!(!html.contains("style="));
     }
 
     #[test]

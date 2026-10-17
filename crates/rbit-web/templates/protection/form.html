@@ -113,6 +113,21 @@
               {% endif %}
             </div>
           </div>
+          {#- Milestone 3: required status checks (S). -#}
+          <div class="border-b border-line">
+            <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+              <input type="checkbox" name="require_status_checks" value="on" class="mt-1 accent-(--ink)" {% if form.require_status_checks %}checked{% endif %}>
+              <span>
+                <span class="block font-medium">Require status checks to pass</span>
+                <span class="block text-[13px] text-ink-muted">Pull requests merge only when the latest status of every check below is a success on their head commit.</span>
+              </span>
+            </label>
+            <div class="px-4 pb-4 sm:pl-11">
+              <label class="label" for="rule-contexts">Required checks</label>
+              <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="rule-contexts" name="contexts" rows="4" placeholder="ci/build" autocomplete="off" autocapitalize="none" spellcheck="false">{{ form.contexts }}</textarea>
+              <p class="hint">One context per line, exactly as your CI reports it (case-sensitive), at most {{ form.max_contexts }}.</p>
+            </div>
+          </div>
           <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="checkbox" name="allow_admin_bypass" value="on" class="mt-1 accent-(--ink)" {% if form.allow_admin_bypass %}checked{% endif %}>
             <span>

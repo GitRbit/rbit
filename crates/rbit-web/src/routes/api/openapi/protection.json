@@ -275,6 +275,8 @@
           "allow_admin_bypass",
           "push_allowlist_users",
           "push_allowlist_teams",
+          "require_status_checks",
+          "required_status_checks",
           "created_at",
           "updated_at"
         ],
@@ -341,6 +343,18 @@
               "type": "string"
             },
             "description": "Names of the owning organization's teams allowed to push (with restrict_pushers)."
+          },
+          "require_status_checks": {
+            "type": "boolean",
+            "description": "Pull requests merge only when the latest status of every required_status_checks context on their head commit is success."
+          },
+          "required_status_checks": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Commit status contexts that must pass, by name (with require_status_checks)."
           },
           "created_at": {
             "type": "string",
@@ -418,6 +432,21 @@
               "type": "string"
             },
             "description": "Names of the owning organization's teams allowed to push (with restrict_pushers)."
+          },
+          "require_status_checks": {
+            "type": "boolean",
+            "default": false,
+            "description": "Pull requests merge only when the latest status of every required_status_checks context on their head commit is success; needs at least one context."
+          },
+          "required_status_checks": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "description": "Commit status contexts that must pass, case-sensitive (with require_status_checks)."
           }
         }
       }

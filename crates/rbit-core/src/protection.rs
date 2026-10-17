@@ -15,12 +15,16 @@
 //!   without it still applies to them. Nothing bypasses the reserved `refs/pull/`
 //!   namespace.
 //! * Refusal texts never say who is allowed.
+//! * `require_status_checks` (milestone 3, S) adds the rule's required contexts to what
+//!   merging needs: every required context's latest status on the head must be `success`.
+//!   It does not affect pushes.
 
 use std::{fmt, str::FromStr};
 
 use crate::{
     Account, AccountId, RefUpdate, RepoAccess, RepoId, Timestamp, User,
     membership::{Team, TeamId},
+    status::StatusContext,
 };
 
 /// Longest pattern, in bytes.
@@ -100,6 +104,10 @@ pub struct MergeRules {
     /// The merger is an administrator and every matching rule allows administrators to
     /// bypass it.
     pub merger_may_bypass: bool,
+    /// Some matching rule requires status checks (milestone 3, S).
+    pub require_status_checks: bool,
+    /// The contexts those rules require, sorted and without duplicates.
+    pub required_contexts: Vec<StatusContext>,
 }
 
 impl MergeRules {
@@ -113,6 +121,8 @@ impl MergeRules {
             block_on_changes_requested: false,
             merger_may_push: true,
             merger_may_bypass: false,
+            require_status_checks: false,
+            required_contexts: Vec::new(),
         }
     }
 
@@ -290,6 +300,8 @@ pub struct RuleSettings {
     pub restrict_pushers: bool,
     /// Repository administrators pass this rule (default off).
     pub allow_admin_bypass: bool,
+    /// Merging needs every required context to pass on the head commit (milestone 3, S).
+    pub require_status_checks: bool,
 }
 
 impl Default for RuleSettings {
@@ -303,6 +315,7 @@ impl Default for RuleSettings {
             block_on_changes_requested: true,
             restrict_pushers: false,
             allow_admin_bypass: false,
+            require_status_checks: false,
         }
     }
 }
@@ -337,6 +350,8 @@ pub struct ProtectionRule {
     pub allowed_users: Vec<AccountId>,
     /// With `restrict_pushers`: teams whose members may push.
     pub allowed_teams: Vec<TeamId>,
+    /// With `require_status_checks`: the contexts that must pass.
+    pub required_contexts: Vec<StatusContext>,
 }
 
 impl ProtectionRule {
@@ -509,6 +524,10 @@ pub fn merge_rules(rules: &[ProtectionRule], merger: &Pusher, branch: &str) -> M
         return MergeRules::unprotected();
     }
     let with_pull_requests = || matching.iter().filter(|rule| rule.settings.require_pull_request);
+    let with_checks = || matching.iter().filter(|rule| rule.settings.require_status_checks);
+    let mut required_contexts: Vec<StatusContext> = with_checks().flat_map(|rule| rule.required_contexts.iter().cloned()).collect();
+    required_contexts.sort();
+    required_contexts.dedup();
     MergeRules {
         patterns: matching.iter().map(|rule| rule.pattern.to_string()).collect(),
         require_pull_request: with_pull_requests().next().is_some(),
@@ -517,6 +536,8 @@ pub fn merge_rules(rules: &[ProtectionRule], merger: &Pusher, branch: &str) -> M
         block_on_changes_requested: with_pull_requests().any(|rule| rule.settings.block_on_changes_requested),
         merger_may_push: matching.iter().all(|rule| !rule.settings.restrict_pushers || merger.allowed_by(rule)),
         merger_may_bypass: merger.is_admin() && matching.iter().all(|rule| rule.settings.allow_admin_bypass),
+        require_status_checks: with_checks().next().is_some(),
+        required_contexts,
     }
 }
 
@@ -537,6 +558,10 @@ mod tests {
 
     fn pattern(value: &str) -> BranchPattern {
         value.parse().unwrap()
+    }
+
+    fn context(value: &str) -> StatusContext {
+        StatusContext::parse(value).unwrap()
     }
 
     #[test]
@@ -682,7 +707,13 @@ mod tests {
     }
 
     fn rule(glob: &str, settings: RuleSettings) -> ProtectionRule {
-        ProtectionRule { pattern: pattern(glob), settings, allowed_users: vec![LISTED], allowed_teams: vec![TEAM] }
+        ProtectionRule {
+            pattern: pattern(glob),
+            settings,
+            allowed_users: vec![LISTED],
+            allowed_teams: vec![TEAM],
+            required_contexts: vec![context("ci")],
+        }
     }
 
     /// The reference table, written independently of [`decide_push`]: what one rule with
@@ -839,6 +870,27 @@ mod tests {
         let mixed = [restricted[0].clone(), rule("*", RuleSettings::default())];
         assert!(!merge_rules(&mixed, &Actor::Admin.pusher(), "main").merger_may_bypass);
         assert!(!merge_rules(&restricted, &Actor::DeployKey.pusher(), "main").merger_may_push);
+        assert!(!merge.require_status_checks && merge.required_contexts.is_empty(), "contexts count only with the flag");
+    }
+
+    #[test]
+    fn required_checks_are_the_union_of_the_matching_rules() {
+        let checked = RuleSettings { require_status_checks: true, ..RuleSettings::default() };
+        let rules = [
+            ProtectionRule { required_contexts: vec![context("lint"), context("ci")], ..rule("main", checked) },
+            ProtectionRule { required_contexts: vec![context("ci"), context("build")], ..rule("ma*", checked) },
+            // Without the flag its contexts are not required.
+            ProtectionRule { required_contexts: vec![context("docs")], ..rule("*", RuleSettings::default()) },
+            ProtectionRule { required_contexts: vec![context("deploy")], ..rule("release/*", checked) },
+        ];
+        let merge = merge_rules(&rules, &Actor::Writer.pusher(), "main");
+        assert!(merge.require_status_checks);
+        assert_eq!(merge.required_contexts, [context("build"), context("ci"), context("lint")]);
+        let other = merge_rules(&rules, &Actor::Writer.pusher(), "feature");
+        assert!(other.is_protected() && !other.require_status_checks && other.required_contexts.is_empty());
+        // Status checks never change what a push may do.
+        let decision = decide_push(&rules, &Actor::Writer.pusher(), &[update("refs/heads/main", Kind::Update)]);
+        assert!(!decision.verdict.is_refused());
     }
 
     #[test]

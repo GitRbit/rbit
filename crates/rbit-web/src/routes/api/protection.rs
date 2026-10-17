@@ -19,6 +19,7 @@ use axum::{
 use rbit_core::{
     TokenScope,
     protection::{BranchProtection, ProtectionId, RuleSettings},
+    status::StatusContext,
 };
 use rbit_services::{RepoContext, ServiceError, protection::ProtectionInput, webhooks::payloads};
 use serde::Deserialize;
@@ -92,6 +93,8 @@ fn rule_json(rule: &BranchProtection, rules_url: &str) -> Value {
         "block_on_changes_requested": settings.block_on_changes_requested,
         "restrict_pushers": settings.restrict_pushers,
         "allow_admin_bypass": settings.allow_admin_bypass,
+        "require_status_checks": settings.require_status_checks,
+        "required_status_checks": rule.rule.required_contexts.iter().map(StatusContext::as_str).collect::<Vec<_>>(),
         "push_allowlist_users": rule.users.iter().map(|user| user.name.as_str()).collect::<Vec<_>>(),
         "push_allowlist_teams": rule.teams.iter().map(|team| team.name.as_str()).collect::<Vec<_>>(),
         "created_at": payloads::timestamp(rule.created_at),
@@ -114,6 +117,8 @@ pub struct RuleBody {
     allow_admin_bypass: Option<bool>,
     push_allowlist_users: Option<Vec<String>>,
     push_allowlist_teams: Option<Vec<String>>,
+    require_status_checks: Option<bool>,
+    required_status_checks: Option<Vec<String>>,
 }
 
 impl RuleBody {
@@ -129,12 +134,14 @@ impl RuleBody {
             block_on_changes_requested: self.block_on_changes_requested.unwrap_or(base.block_on_changes_requested),
             restrict_pushers: self.restrict_pushers.unwrap_or(base.restrict_pushers),
             allow_admin_bypass: self.allow_admin_bypass.unwrap_or(base.allow_admin_bypass),
+            require_status_checks: self.require_status_checks.unwrap_or(base.require_status_checks),
         };
         ProtectionInput {
             pattern: self.pattern.unwrap_or(current.pattern),
             settings,
             users: self.push_allowlist_users.unwrap_or(current.users),
             teams: self.push_allowlist_teams.unwrap_or(current.teams),
+            contexts: self.required_status_checks.unwrap_or(current.contexts),
         }
     }
 }
@@ -143,6 +150,7 @@ impl RuleBody {
 fn field_error(error: ServiceError) -> ApiError {
     let field = match &error {
         ServiceError::Invalid(message) if message.contains("approvals") => "required_approvals",
+        ServiceError::Invalid(message) if message.contains("check") => "required_status_checks",
         ServiceError::Invalid(message) if message.contains("team") => "push_allowlist_teams",
         ServiceError::Invalid(message) if message.contains("user") || message.contains("write access") => "push_allowlist_users",
         _ => "pattern",

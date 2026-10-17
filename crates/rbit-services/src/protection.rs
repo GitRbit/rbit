@@ -16,6 +16,8 @@
 //! * Allowed users must have write access; allowed teams must be teams of the owning
 //!   organisation; at most [`MAX_ALLOWED`] of each. Without `restrict_pushers` the lists
 //!   are not kept.
+//! * `require_status_checks` (milestone 3, S) needs 1 to [`MAX_REQUIRED_CONTEXTS`]
+//!   distinct contexts; without the flag they are not kept.
 //! * The decisions themselves are pure ([`rbit_core::protection`]); this service only
 //!   loads the rules and the pusher's teams. Bypasses by administrators that changed a
 //!   push's outcome are audited as `BranchProtectionBypassed`.
@@ -26,6 +28,7 @@ use rbit_core::{
     AccountKind, RefUpdate, User,
     membership::{Team, TeamId},
     protection::{self, BranchPattern, BranchProtection, MAX_ALLOWED, ProtectionId, ProtectionRule, Pusher, RuleSettings},
+    status::{MAX_REQUIRED_CONTEXTS, StatusContext},
 };
 use rbit_git::RefKind;
 use rbit_storage::{
@@ -48,6 +51,8 @@ pub struct ProtectionInput {
     pub users: Vec<String>,
     /// Names of the organisation's teams allowed to push (with `restrict_pushers`).
     pub teams: Vec<String>,
+    /// Status check contexts that must pass (with `require_status_checks`).
+    pub contexts: Vec<String>,
 }
 
 impl ProtectionInput {
@@ -58,6 +63,7 @@ impl ProtectionInput {
             settings: rule.rule.settings,
             users: rule.users.iter().map(|user| user.name.to_string()).collect(),
             teams: rule.teams.iter().map(|team| team.name.to_string()).collect(),
+            contexts: rule.rule.required_contexts.iter().map(ToString::to_string).collect(),
         }
     }
 }
@@ -161,7 +167,10 @@ impl ProtectionService {
     async fn validate(&self, repo: &RepoContext, input: &ProtectionInput) -> Result<RuleInput, ServiceError> {
         let pattern = BranchPattern::parse(&input.pattern).map_err(|error| ServiceError::Invalid(error.to_string()))?;
         input.settings.validate().map_err(|error| ServiceError::Invalid(error.to_string()))?;
-        let mut rule = RuleInput { pattern, settings: input.settings, users: Vec::new(), teams: Vec::new() };
+        let mut rule = RuleInput { pattern, settings: input.settings, users: Vec::new(), teams: Vec::new(), contexts: Vec::new() };
+        if input.settings.require_status_checks {
+            rule.contexts = required_contexts(&input.contexts)?;
+        }
         if !input.settings.restrict_pushers {
             return Ok(rule);
         }
@@ -290,6 +299,25 @@ fn distinct(names: &[String]) -> Vec<&str> {
     seen
 }
 
+/// The validated, distinct contexts a rule requires: at least one, at most
+/// [`MAX_REQUIRED_CONTEXTS`]. Contexts are case-sensitive and may contain spaces.
+fn required_contexts(contexts: &[String]) -> Result<Vec<StatusContext>, ServiceError> {
+    let mut parsed: Vec<StatusContext> = Vec::new();
+    for context in contexts.iter().filter(|context| !context.trim().is_empty()) {
+        let context = StatusContext::parse(context).map_err(|error| ServiceError::Invalid(format!("required check: {error}")))?;
+        if !parsed.contains(&context) {
+            parsed.push(context);
+        }
+    }
+    if parsed.is_empty() {
+        return Err(ServiceError::Invalid("requiring status checks needs at least one required check".to_owned()));
+    }
+    if parsed.len() > MAX_REQUIRED_CONTEXTS {
+        return Err(ServiceError::Invalid(format!("a rule can require at most {MAX_REQUIRED_CONTEXTS} status checks")));
+    }
+    Ok(parsed)
+}
+
 fn pattern_taken(error: StorageError) -> ServiceError {
     match error {
         StorageError::Conflict(_) => ServiceError::Invalid("a rule for this pattern already exists".to_owned()),
@@ -316,6 +344,9 @@ pub fn summary(settings: &RuleSettings) -> String {
             1 => "1 approval".to_owned(),
             n => format!("{n} approvals"),
         });
+    }
+    if settings.require_status_checks {
+        parts.push("status checks".to_owned());
     }
     if settings.restrict_pushers {
         parts.push("restricted".to_owned());
@@ -345,5 +376,22 @@ mod tests {
         assert_eq!(summary(&none), "no restrictions");
         let names = ["a".to_owned(), " b ".to_owned(), String::new(), "a".to_owned()];
         assert_eq!(distinct(&names), ["a", "b"]);
+        assert_eq!(summary(&RuleSettings { require_status_checks: true, ..none }), "status checks");
+    }
+
+    #[test]
+    fn required_contexts_are_validated() {
+        let contexts = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
+        let parsed = required_contexts(&contexts(&["ci/build", " ", "lint: all", "ci/build"])).unwrap();
+        let names: Vec<_> = parsed.iter().map(StatusContext::as_str).collect();
+        assert_eq!(names, ["ci/build", "lint: all"], "in order, distinct, spaces allowed");
+        let message = |result: Result<Vec<StatusContext>, ServiceError>| match result {
+            Err(ServiceError::Invalid(message)) => message,
+            other => panic!("expected a validation error, got {other:?}"),
+        };
+        assert!(message(required_contexts(&contexts(&["", "  "]))).contains("at least one"));
+        let many: Vec<String> = (0..=MAX_REQUIRED_CONTEXTS).map(|n| format!("check-{n}")).collect();
+        assert!(message(required_contexts(&many)).contains("at most"));
+        assert!(message(required_contexts(&["x".repeat(256)])).contains("required check"));
     }
 }

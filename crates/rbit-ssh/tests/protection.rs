@@ -167,6 +167,7 @@ fn rule(pattern: &str, settings: RuleSettings, users: &[&str]) -> ProtectionInpu
         settings,
         users: users.iter().map(|user| (*user).to_owned()).collect(),
         teams: Vec::new(),
+        contexts: Vec::new(),
     }
 }
 

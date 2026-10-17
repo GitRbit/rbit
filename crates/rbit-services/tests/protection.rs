@@ -117,7 +117,7 @@ fn git(dir: &Path, args: &[&str]) {
 }
 
 fn input(pattern: &str, settings: RuleSettings) -> ProtectionInput {
-    ProtectionInput { pattern: pattern.to_owned(), settings, users: Vec::new(), teams: Vec::new() }
+    ProtectionInput { pattern: pattern.to_owned(), settings, users: Vec::new(), teams: Vec::new(), contexts: Vec::new() }
 }
 
 fn restricted() -> RuleSettings {
@@ -323,4 +323,43 @@ async fn merges_deletions_and_protected_branches() {
     assert!(protection.may_delete_branch(&writer, &fixture.bob, "feature").await.unwrap());
     let names = protection.branch_names(&admin).await.unwrap();
     assert_eq!(names.len(), 3);
+}
+
+// Milestone 3: required status checks (S).
+#[tokio::test]
+async fn required_status_checks_are_validated_and_reach_the_merge_rules() {
+    let fixture = Fixture::new().await;
+    let protection = &fixture.services.protection;
+    let admin = fixture.repo(&fixture.olga).await;
+    let writer = fixture.repo(&fixture.bob).await;
+    let checked = RuleSettings { require_status_checks: true, ..RuleSettings::default() };
+    let with = |pattern: &str, contexts: &[&str]| ProtectionInput {
+        contexts: contexts.iter().map(|context| (*context).to_owned()).collect(),
+        ..input(pattern, checked)
+    };
+
+    assert_eq!(
+        invalid(protection.create(&fixture.olga, &admin, &with("main", &[" "])).await),
+        "requiring status checks needs at least one required check"
+    );
+    let too_long = "x".repeat(256);
+    assert!(invalid(protection.create(&fixture.olga, &admin, &with("main", &[&too_long])).await).starts_with("required check:"));
+
+    let rule = protection.create(&fixture.olga, &admin, &with("main", &["ci/build", "lint", "ci/build"])).await.unwrap();
+    let contexts: Vec<_> = rule.rule.required_contexts.iter().map(ToString::to_string).collect();
+    assert_eq!(contexts, ["ci/build", "lint"]);
+    assert_eq!(ProtectionInput::from_rule(&rule).contexts, ["ci/build", "lint"], "the edit form shows them");
+    protection.create(&fixture.olga, &admin, &with("m*", &["deploy"])).await.unwrap();
+    // Without the flag the contexts are dropped (and not validated).
+    let unchecked = ProtectionInput { contexts: vec![too_long.clone()], ..input("release/*", RuleSettings::default()) };
+    assert_eq!(protection.create(&fixture.olga, &admin, &unchecked).await.unwrap().rule.required_contexts.len(), 0);
+
+    let merge = protection.check_merge(&writer, &fixture.bob, "main").await.unwrap();
+    assert!(merge.require_status_checks);
+    let required: Vec<_> = merge.required_contexts.iter().map(ToString::to_string).collect();
+    assert_eq!(required, ["ci/build", "deploy", "lint"], "every matching rule's contexts");
+    assert!(!protection.check_merge(&writer, &fixture.bob, "release/1.0").await.unwrap().require_status_checks);
+
+    let created = fixture.audit(AuditAction::BranchProtectionCreated).await;
+    assert!(created.iter().any(|event| event.detail == "main (no force pushes, no deletion, status checks)"), "{created:?}");
 }

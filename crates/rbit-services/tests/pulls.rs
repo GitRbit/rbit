@@ -460,8 +460,13 @@ async fn branch_protection_gates_merges_and_head_branch_deletion() {
     let pulls = &fixture.services.pulls;
     let protection = &fixture.services.protection;
     let repo = fixture.repo(&fixture.alice, "alice").await;
-    let rule =
-        |pattern: &str, settings: RuleSettings| ProtectionInput { pattern: pattern.into(), settings, users: Vec::new(), teams: Vec::new() };
+    let rule = |pattern: &str, settings: RuleSettings| ProtectionInput {
+        pattern: pattern.into(),
+        settings,
+        users: Vec::new(),
+        teams: Vec::new(),
+        contexts: Vec::new(),
+    };
     let main = RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() };
     protection.create(&fixture.alice, &repo, &rule("main", main)).await.unwrap();
     protection

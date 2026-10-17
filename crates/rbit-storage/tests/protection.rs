@@ -4,6 +4,7 @@ use rbit_core::{
     AccountId, RepoId, User, Visibility,
     membership::{TeamId, TeamName},
     protection::{BranchPattern, MAX_RULES, ProtectionId, RuleSettings},
+    status::StatusContext,
 };
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
@@ -50,7 +51,13 @@ async fn create_team(database: &Database, org: AccountId, name: &str) -> TeamId 
 }
 
 fn input(pattern: &str) -> RuleInput {
-    RuleInput { pattern: BranchPattern::parse(pattern).unwrap(), settings: RuleSettings::default(), users: vec![], teams: vec![] }
+    RuleInput {
+        pattern: BranchPattern::parse(pattern).unwrap(),
+        settings: RuleSettings::default(),
+        users: vec![],
+        teams: vec![],
+        contexts: vec![],
+    }
 }
 
 fn saved(change: RuleChange) -> ProtectionId {
@@ -213,4 +220,36 @@ async fn team_membership_and_transfers() {
     assert!(stored.rule.allowed_teams.is_empty(), "the former organisation's teams no longer count");
     assert_eq!(stored.rule.allowed_users, [bob.id()], "users stay");
     assert_eq!(store.teams_of(repo, alice.id()).await.unwrap(), [elsewhere]);
+}
+
+// Milestone 3: required status checks (S).
+#[tokio::test]
+async fn required_checks_are_stored_replaced_and_deleted_with_the_rule() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let alice = create_user(&database, "alice").await;
+    let repo = create_repo(&database, alice.id(), "rocket").await;
+    let store = database.branch_protection();
+    let context = |name: &str| StatusContext::parse(name).unwrap();
+
+    let settings = RuleSettings { require_status_checks: true, ..RuleSettings::default() };
+    let contexts = vec![context("lint"), context("ci/build"), context("lint")];
+    let id = saved(store.create(repo, &RuleInput { settings, contexts, ..input("main") }, alice.id()).await.unwrap());
+    let stored = store.get(repo, id).await.unwrap().unwrap();
+    assert!(stored.rule.settings.require_status_checks);
+    assert_eq!(stored.rule.required_contexts, [context("ci/build"), context("lint")], "by name, without duplicates");
+
+    let change = RuleInput { settings, contexts: vec![context("deploy")], ..input("main") };
+    saved(store.update(repo, id, &change).await.unwrap());
+    assert_eq!(store.get(repo, id).await.unwrap().unwrap().rule.required_contexts, [context("deploy")], "replaced");
+    saved(store.update(repo, id, &input("main")).await.unwrap());
+    let cleared = store.get(repo, id).await.unwrap().unwrap();
+    assert!(!cleared.rule.settings.require_status_checks);
+    assert_eq!(cleared.rule.required_contexts, Vec::<StatusContext>::new());
+
+    // Deleting the rule deletes its contexts (and a new rule starts without them).
+    saved(store.update(repo, id, &change).await.unwrap());
+    assert!(store.delete(repo, id).await.unwrap());
+    let fresh = saved(store.create(repo, &input("main"), alice.id()).await.unwrap());
+    assert_eq!(store.get(repo, fresh).await.unwrap().unwrap().rule.required_contexts, Vec::<StatusContext>::new());
 }

@@ -85,6 +85,7 @@ impl RuleFormInput {
             block_on_changes_requested: self.ticked("block_on_changes_requested"),
             restrict_pushers: self.ticked("restrict_pushers"),
             allow_admin_bypass: self.ticked("allow_admin_bypass"),
+            require_status_checks: self.ticked("require_status_checks"),
         };
         let users = self.value("users").unwrap_or_default();
         ProtectionInput {
@@ -92,6 +93,15 @@ impl RuleFormInput {
             settings,
             users: users.split(|c: char| c == ',' || c.is_whitespace()).filter(|name| !name.is_empty()).map(str::to_owned).collect(),
             teams: self.pairs.iter().filter(|(key, _)| key == "team").map(|(_, value)| value.clone()).collect(),
+            // One context per line: contexts may contain spaces.
+            contexts: self
+                .value("contexts")
+                .unwrap_or_default()
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
         }
     }
 }

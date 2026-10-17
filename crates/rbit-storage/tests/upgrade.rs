@@ -378,6 +378,9 @@ async fn commit_status_tables_start_empty_and_existing_rules_require_no_checks()
         .await
         .unwrap();
     assert_eq!(db.count("SELECT require_status_checks FROM branch_protections").await, 0, "off by default");
+    let rules = db.database.branch_protection().list(ROCKET).await.unwrap();
+    assert!(!rules[0].rule.settings.require_status_checks);
+    assert_eq!(rules[0].rule.required_contexts.len(), 0);
 
     let insert = "INSERT INTO commit_statuses (repo_id, sha, state, context, created_at, updated_at) VALUES (6, ?, ?, 'ci', 1, 1)";
     let sha = "a".repeat(40);

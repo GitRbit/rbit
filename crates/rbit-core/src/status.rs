@@ -131,6 +131,12 @@ impl fmt::Display for StatusContext {
     }
 }
 
+impl AsRef<str> for StatusContext {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A full commit id: 40 (SHA-1) or 64 (SHA-256) hexadecimal digits, lower-cased.
 pub fn parse_sha(value: &str) -> Result<String, StatusError> {
     let value = value.trim();

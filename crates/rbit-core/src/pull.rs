@@ -563,6 +563,8 @@ mod tests {
             block_on_changes_requested: true,
             merger_may_push: false,
             merger_may_bypass: false,
+            require_status_checks: false,
+            required_contexts: Vec::new(),
         };
         let one = ReviewTally { approvals: vec![AccountId(1)], changes_requested: vec![AccountId(2)] };
         let blocked = evaluate(&facts(&one), &rules);
