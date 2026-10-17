@@ -27,6 +27,8 @@ pub mod repository;
 pub mod status;
 pub mod timestamp;
 pub mod webhook;
+// Milestone 3: editing files in the browser (E).
+pub mod file_edit;
 
 pub use access::RepoAccess;
 pub use access_token::{AccessToken, AccessTokenId, TokenScope};

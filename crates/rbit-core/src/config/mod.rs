@@ -5,6 +5,8 @@
 //! submodule so they can evolve independently.
 
 mod api;
+// Milestone 3: editing files in the browser (E).
+mod editor;
 mod issues;
 mod mail;
 mod mirrors;
@@ -21,6 +23,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub use api::ApiConfig;
+pub use editor::EditorConfig;
 pub use issues::IssueConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use mirrors::MirrorConfig;
@@ -50,6 +53,8 @@ pub struct Config {
     pub pulls: PullConfig,
     // Milestone 3: email notifications (N).
     pub notifications: NotificationConfig,
+    // Milestone 3: editing files in the browser (E).
+    pub editor: EditorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
