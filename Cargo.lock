@@ -4296,6 +4296,7 @@ dependencies = [
  "rbit-core",
  "redb",
  "serde",
+ "serde_json",
  "sqlx",
  "tempfile",
  "thiserror",

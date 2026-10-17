@@ -151,6 +151,22 @@ impl AccountStore {
         row.map(Account::try_from).transpose()
     }
 
+    /// The accounts among `ids` (users and organisations; unknown ids are left out), in
+    /// one query.
+    pub async fn find_accounts(&self, ids: &[AccountId]) -> Result<Vec<Account>, StorageError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<i64> = ids.iter().map(|id| id.0).collect();
+        let rows: Vec<AccountRow> = sqlx::query_as(
+            "SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id",
+        )
+        .bind(format!("{ids:?}"))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Account::try_from).collect()
+    }
+
     pub async fn count_users(&self) -> Result<i64, StorageError> {
         Ok(sqlx::query_scalar("SELECT COUNT(*) FROM user_logins").fetch_one(&self.pool).await?)
     }

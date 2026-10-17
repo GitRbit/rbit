@@ -11,6 +11,8 @@ rbit-core.workspace = true
 sqlx.workspace = true
 redb.workspace = true
 serde.workspace = true
+# T0: timeline events are stored as JSON.
+serde_json.workspace = true
 postcard.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

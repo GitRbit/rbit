@@ -298,6 +298,10 @@ async fn new_tables_start_empty_with_their_defaults() {
         "repo_forks",
         "repo_mirrors",
         "repo_redirects",
+        "issue_counters",
+        "issues",
+        "issue_comments",
+        "issue_events",
     ] {
         assert!(db.exists("table", table).await, "{table}");
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");

@@ -9,6 +9,7 @@ pub mod forks;
 pub mod instance;
 pub mod issue_meta;
 pub mod issue_search;
+pub mod issues;
 pub mod mirrors;
 pub mod notifications;
 pub mod orgs;
@@ -157,7 +158,11 @@ impl Database {
         preferences::PreferenceStore::new(self.pool.clone())
     }
 
-    // Milestone 2 wave B. `issues()` (the shared issue core) arrives with T0.
+    // Milestone 2 wave B: the shared issue core (T0), then the workstreams.
+
+    pub fn issues(&self) -> issues::IssueStore {
+        issues::IssueStore::new(self.pool.clone())
+    }
 
     pub fn issue_meta(&self) -> issue_meta::IssueMetaStore {
         issue_meta::IssueMetaStore::new(self.pool.clone())
