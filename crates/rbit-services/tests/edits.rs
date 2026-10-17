@@ -128,7 +128,7 @@ async fn a_writer_commits_once_and_the_push_is_announced() {
     assert_eq!(bare(&repo, &["rev-parse", &format!("{}^", edited.commit)]), parent);
     assert_eq!(bytes(&repo, &edited.commit, "README.md"), b"# Demo\n\nMore.", "LF kept, nothing appended");
     let commit = bare(&repo, &["cat-file", "commit", &edited.commit]);
-    assert!(commit.contains("author bob <bob@noreply.code.example.com>"), "an unverified address stays private: {commit}");
+    assert!(commit.contains("author bob <bob@noreply.code.example.com>"), "the noreply address: {commit}");
     assert!(commit.ends_with("Explain the demo\n\nFixes #1"), "{commit}");
 
     let DomainEvent::RepositoryPushed { repo: pushed, pusher, updates } = events.recv().await.unwrap() else {
@@ -141,13 +141,13 @@ async fn a_writer_commits_once_and_the_push_is_announced() {
     let reopened = fixture.repo(&fixture.bob).await;
     assert!(reopened.repo.repo.pushed_at.is_some(), "pushed_at is recorded");
 
-    // A verified address is used as is.
+    // A verified address stays private too, as in merges.
     let email = "bob@example.com".parse().unwrap();
     assert!(fixture.database.recovery().mark_verified(fixture.bob.id(), &email, Timestamp(1)).await.unwrap());
     let input = form(&repo, CommitTarget::Branch);
     let created = fixture.services.edits.create_file(&fixture.bob, &repo, &input, "docs/new/guide.md", "Hello\r\n").await.unwrap();
     let commit = bare(&repo, &["cat-file", "commit", &created.commit]);
-    assert!(commit.contains("author bob <bob@example.com>"), "{commit}");
+    assert!(commit.contains("author bob <bob@noreply.code.example.com>"), "{commit}");
     assert!(commit.ends_with("Create docs/new/guide.md"), "the default title: {commit}");
     assert_eq!(bytes(&repo, &created.commit, "docs/new/guide.md"), b"Hello\n");
 }

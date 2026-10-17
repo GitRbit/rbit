@@ -374,20 +374,15 @@ impl EditService {
                 CommitTarget::NewBranch(_) => EditFailure::Invalid(refusal.reason),
             });
         }
-        Ok(Checked { identity: self.identity(actor).await? })
+        Ok(Checked { identity: self.identity(actor) })
     }
 
-    /// The actor as a commit identity: their address when verified, else their noreply one.
-    async fn identity(&self, actor: &User) -> Result<CommitIdentity, ServiceError> {
+    /// The actor as a commit identity: always their noreply address, like merges (rbit never
+    /// writes a real email address into a commit it makes).
+    fn identity(&self, actor: &User) -> CommitIdentity {
         let config = &self.ctx.config;
         let domain = noreply_domain(&config.pulls.noreply_domain, &config.server.public_url);
-        let mut identity = CommitIdentity::noreply(actor.name().as_str(), actor.account.display_name.as_deref(), &domain);
-        if let Some(account) = self.ctx.database.recovery().find_account(actor.id()).await?
-            && account.email_verified_at.is_some()
-        {
-            account.email.as_str().clone_into(&mut identity.email);
-        }
-        Ok(identity)
+        CommitIdentity::noreply(actor.name().as_str(), actor.account.display_name.as_deref(), &domain)
     }
 
     fn text(&self, text: &str, style: LineEnding) -> Result<Vec<u8>, EditFailure> {

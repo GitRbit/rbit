@@ -88,9 +88,8 @@ text below is for the files the integrator owns (`CHANGELOG.md`, `README.md`,
   which would need the same flag).
 - **Author address**: `rbit_core::pull::noreply_email` documents "rbit never writes a real
   email address into a commit"; the milestone contract asks for the primary verified
-  address. Web edits follow the contract (verified address, else noreply); merges are
-  unchanged. If the project prefers privacy here, drop the `verified` branch in
-  `EditService::identity` (one `if let`).
+  address. The integrator chose privacy: web edits are authored with the noreply
+  address, exactly like merges.
 - **Renaming binaries** is not offered (the rename field lives in the text editor). They
   can be deleted and uploaded under the new name.
 - **Empty repositories**: no "create the first file" from the browser (the empty-repository
@@ -174,7 +173,7 @@ branch is a 409 page (nothing committed, the text kept), never a rebase.
 `EditService` decides everything first: write access, mirrors read-only, the push gate
 (`check_push`, as for a push updating or creating the branch; a refusal of the branch
 offers a new branch, then redirects to the new pull request page). The author is the
-user with their verified address, else their noreply address. The commit is wrapped in
+user with their noreply address, as for merges. The commit is wrapped in
 `PushService::begin`/`complete`, so `RepositoryPushed` drives webhooks, commit references
 (`fixes #n`), caches and mergeability as for any push. Text keeps the file's line-ending
 style (browsers send CRLF); uploads are stored byte for byte. Limits: `[repository]
