@@ -76,7 +76,7 @@ pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
 pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
-pub use timeline::IssueContext;
+pub use timeline::{IssueContext, TimelineService};
 pub use tokens::{AccessTokenService, CreateAccessToken};
 pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
@@ -127,7 +127,9 @@ pub struct Services {
     pub releases: ReleaseService,
     // Frontend wave: themes (T).
     pub preferences: PreferenceService,
-    // Milestone 2 wave B: issues (I).
+    // Milestone 2 wave B: the shared issue timeline (T0).
+    pub timeline: TimelineService,
+    // Issues (I).
     pub issues: IssueService,
     pub references: ReferenceService,
     pub notifications: NotificationService,
@@ -160,6 +162,7 @@ impl Services {
             mail: mail.clone(),
             recovery: RecoveryService::builder(ctx.clone()).mail(mail).throttle(throttle.clone()).instance(instance.clone()).build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
+            timeline: TimelineService::new(ctx.clone(), throttle.clone()),
             throttle,
             two_factor: TwoFactorService::new(ctx.clone(), instance.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),

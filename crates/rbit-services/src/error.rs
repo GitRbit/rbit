@@ -1,4 +1,4 @@
-use rbit_core::NameError;
+use rbit_core::{NameError, issue::IssueTextError};
 use rbit_storage::StorageError;
 
 /// Outcomes a caller must handle. Messages of the user-facing variants are safe to display.
@@ -53,6 +53,12 @@ impl From<StorageError> for ServiceError {
 
 impl From<NameError> for ServiceError {
     fn from(error: NameError) -> Self {
+        Self::Invalid(error.to_string())
+    }
+}
+
+impl From<IssueTextError> for ServiceError {
+    fn from(error: IssueTextError) -> Self {
         Self::Invalid(error.to_string())
     }
 }
