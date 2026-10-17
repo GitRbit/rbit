@@ -47,10 +47,12 @@ use rbit_core::{
 use rbit_git::{CommitSummary, DiffLimits, compare::Comparison, overlay::Overlay, pull_refs};
 use rbit_storage::sqlite::{
     issues::NewIssue,
-    pulls::{CreatedPull, NewPull, PullFilter},
+    pulls::{CreatedPull, NewPull},
 };
 use tokio::sync::{Notify, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
+
+pub use rbit_storage::sqlite::pulls::{PullFilter, PullSort, PullStateFilter};
 
 pub use self::{
     merging::{MergeBox, MergeFailure, MergeInput},
@@ -378,7 +380,6 @@ impl PullService {
 
     /// `limit` pull requests from `offset`, for the API's own pagination.
     pub async fn list_page(&self, repo: &RepoContext, filter: &PullFilter, limit: u32, offset: u32) -> Result<PullList, ServiceError> {
-        use rbit_storage::sqlite::pulls::PullStateFilter;
         let store = self.ctx().database.pulls();
         let id = repo.repo.repo.id;
         let open_filter = PullFilter { state: PullStateFilter::Open, ..filter.clone() };
@@ -505,6 +506,11 @@ impl PullService {
     /// The `pull_request` object of `ctx`, as the API returns it.
     pub async fn json(&self, ctx: &PullContext, base_url: &str) -> Result<serde_json::Value, ServiceError> {
         json::load(self.ctx(), ctx.issue(), &ctx.pull, base_url).await
+    }
+
+    /// The `pull_request` object of a listed pull request.
+    pub async fn json_of(&self, issue: &Issue, pull: &PullRequest, base_url: &str) -> Result<serde_json::Value, ServiceError> {
+        json::load(self.ctx(), issue, pull, base_url).await
     }
 
     /// The webhook payload [`hooks::payload`] builds for `event` (for tools and tests).

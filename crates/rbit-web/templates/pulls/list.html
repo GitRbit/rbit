@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+  <nav class="flex items-center gap-1" aria-label="Pull request state">
+    <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.open }}</span> Open</a>
+    <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.closed }}</span> Closed</a>
+  </nav>
+  {% if let Some(author) = author_filter %}<span class="badge">author: {{ author }}</span>{% endif %}
+  <a href="{{ new_url }}" class="btn btn-primary ml-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}New pull request</a>
+</div>
+
+<div class="box">
+  {% if rows.is_empty() %}
+  {% call ui::empty_state("git-pull-request", "No pull requests here", "Pull requests propose changes from a branch or a fork. Compare branches to open one.") %}{% endcall %}
+  {% else %}
+  <ul>
+    {% for row in rows %}
+    <li class="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0">
+      <span class="mt-0.5 {% if row.badge.label == "Open" %}text-success{% else if row.badge.label == "Draft" %}text-ink-faint{% else %}text-ink-muted{% endif %}" title="{{ row.badge.label }}">{% call ui::icon(row.badge.icon, "size-4") %}{% endcall %}</span>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <a href="{{ row.url }}" class="min-w-0 break-words text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.title }}</a>
+          {% for label in row.labels %}<span class="label-chip"><svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ label.color }}"/></svg>{{ label.name }}</span>{% endfor %}
+          {% if row.badge.label == "Draft" %}<span class="badge">Draft</span>{% endif %}
+        </div>
+        <p class="mt-0.5 truncate text-xs text-ink-muted">{{ row.number }} {{ row.verb() }} <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time> by {{ row.author }}{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{{ review.0 }}</span>{% endif %}</p>
+      </div>
+      {% if row.comment_count > 0 %}<span class="flex shrink-0 items-center gap-1 text-xs text-ink-faint" title="{{ row.comment_count }} comments">{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ row.comment_count }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% call ui::pagination(pagination) %}{% endcall %}
+{% endblock %}

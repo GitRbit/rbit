@@ -1,0 +1,58 @@
+{#- The merge box under the conversation; expects `merge: MergeBoxView` (views::pulls). Works without
+    JavaScript: an empty title or message means the strategy's default. -#}
+{% import "macros.html" as ui %}
+<section id="{{ merge.anchor }}" class="timeline-item scroll-mt-28" aria-label="Merge">
+  <span class="timeline-badge {% if merge.ready %}text-success{% else if merge.checking %}text-warning{% else %}text-danger{% endif %}">{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}</span>
+  <div class="box min-w-0 flex-1 overflow-hidden">
+    <ul class="divide-y divide-line">
+      {% for requirement in merge.requirements %}
+      <li class="flex items-center gap-2 px-3 py-2 text-[13px] sm:px-4">
+        <span class="{{ requirement.tone }}">{% call ui::icon(requirement.icon, "size-4 shrink-0") %}{% endcall %}</span>
+        <span class="{% if requirement.met %}text-ink-muted{% else %}text-ink{% endif %}">{{ requirement.text }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if !merge.conflict_paths.is_empty() %}
+    <div class="border-t border-line px-3 py-2.5 sm:px-4">
+      <p class="text-xs font-medium text-danger">Conflicting files</p>
+      <ul class="mt-1 space-y-0.5">{% for path in merge.conflict_paths %}<li class="truncate font-mono text-xs text-ink">{{ path }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if merge.can_mark_ready %}
+    <form method="post" action="{{ merge.draft_url }}" class="flex flex-col gap-2 border-t border-line px-3 py-3 sm:flex-row sm:items-center sm:px-4">
+      <p class="flex-1 text-[13px] text-ink-muted">This pull request is still a work in progress.</p>
+      <input type="hidden" name="draft" value="false">
+      <button type="submit" class="btn h-11 sm:h-8">Ready for review</button>
+    </form>
+    {% endif %}
+    {% if merge.can_merge && (merge.ready || merge.needs_bypass) %}
+    <form method="post" action="{{ merge.action_url }}" class="border-t border-line px-3 py-3 sm:px-4">
+      <input type="hidden" name="expected_head" value="{{ merge.expected_head }}">
+      <fieldset class="flex flex-col gap-1.5">
+        <legend class="label">Merge method</legend>
+        {% for strategy in merge.strategies %}
+        <label class="flex min-h-11 items-center gap-2 text-[13px] sm:min-h-0"><input type="radio" name="strategy" value="{{ strategy.0 }}" {% if loop.first %}checked{% endif %}>{{ strategy.1 }}</label>
+        {% endfor %}
+      </fieldset>
+      <details class="mt-2">
+        <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit the commit message</summary>
+        <label class="label mt-2" for="merge-title">Title</label>
+        <input id="merge-title" class="input mt-1" name="title" maxlength="256" placeholder="{{ merge.default_title }} — or, when squashing, {{ merge.default_squash_title }}">
+        <label class="label mt-2" for="merge-message">Message</label>
+        <textarea id="merge-message" class="input mt-1 h-24 resize-y py-2 text-[13px]" name="message" rows="4" maxlength="65536" placeholder="{{ merge.default_message }}"></textarea>
+      </details>
+      {% if merge.can_delete_head %}
+      <label class="mt-2 flex min-h-11 items-center gap-2 text-[13px] sm:min-h-0"><input type="checkbox" name="delete_branch" value="true">Delete the head branch after merging</label>
+      {% endif %}
+      {% if merge.needs_bypass %}
+      <label class="mt-2 flex min-h-11 items-start gap-2 text-[13px] text-danger sm:min-h-0"><input class="mt-0.5" type="checkbox" name="bypass" value="true" required>Merge without meeting the branch protection requirements (this is audited)</label>
+      {% endif %}
+      <div class="mt-3 flex justify-end">
+        <button type="submit" class="btn {% if merge.needs_bypass %}btn-danger{% else %}btn-primary{% endif %} h-11 w-full sm:h-8 sm:w-auto">{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}Merge pull request</button>
+      </div>
+    </form>
+    {% else if !merge.can_merge %}
+    <p class="border-t border-line px-3 py-2.5 text-xs text-ink-muted sm:px-4">Only people with write access to this repository can merge.</p>
+    {% endif %}
+  </div>
+</section>

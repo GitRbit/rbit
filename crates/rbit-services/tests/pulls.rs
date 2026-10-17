@@ -446,6 +446,7 @@ async fn drafts_requests_and_hidden_repositories() {
     let secret = CreateRepository { name: "secret".into(), description: String::new(), visibility: Visibility::Private };
     fixture.services.repositories.create(&fixture.alice, secret).await.unwrap();
     assert!(matches!(fixture.services.repositories.open(Some(&fixture.bob), "alice", "secret").await, Err(ServiceError::NotFound)));
-    let list = pulls.list(&fixture.repo(&fixture.alice, "alice").await, &rbit_storage::sqlite::pulls::PullFilter::default(), 1).await.unwrap();
+    let list =
+        pulls.list(&fixture.repo(&fixture.alice, "alice").await, &rbit_storage::sqlite::pulls::PullFilter::default(), 1).await.unwrap();
     assert_eq!((list.total, list.open, list.closed, list.items.len()), (1, 1, 0, 1));
 }

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+{#- A pull request's conversation: T0's timeline interleaved with reviews, then the merge box. -#}
+{% let title = thread.title %}{% include "timeline/title_form.html" %}
+{% include "pulls/header.html" %}
+
+<div class="mt-6 flex flex-col gap-6 md:flex-row-reverse md:items-start">
+  <aside class="md:w-60 md:shrink-0" aria-label="Details">
+    <details class="box md:hidden">
+      <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}Details</summary>
+      <div class="border-t border-line p-3">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
+    </details>
+    <div class="hidden md:block">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
+  </aside>
+
+  <div class="min-w-0 flex-1">
+    <div class="timeline">
+      {% let comment = thread.opening %}{% include "timeline/comment.html" %}
+      {% for entry in entries %}
+      {% if let Some(item) = entry.item %}{% include "timeline/item.html" %}{% endif %}
+      {% if let Some(review) = entry.review %}{% include "pulls/review.html" %}{% endif %}
+      {% endfor %}
+      {% if let Some(url) = thread.next_url %}
+      <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">Load more</a></div>
+      {% endif %}
+      {% if let Some(merge) = merge_box %}{% include "pulls/merge_box.html" %}{% endif %}
+      {% if let Some(closed) = closed_box %}
+      <section class="timeline-item" aria-label="Merged">
+        <span class="timeline-badge {% if closed.merged %}bg-inverted text-inverted-ink{% endif %}">{% if closed.merged %}{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}{% else %}{% call ui::icon("git-pull-request-closed", "size-3.5") %}{% endcall %}{% endif %}</span>
+        <div class="box flex min-w-0 flex-1 flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
+          <p class="flex-1 text-[13px] text-ink-muted">
+            {% if closed.merged %}Pull request merged{% if let Some(commit) = closed.merge_commit %} as <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ commit.0 }}</a>{% endif %}.{% else %}This pull request is closed.{% endif %}
+          </p>
+          {% if closed.can_delete_branch %}
+          <form method="post" action="{{ closed.delete_url }}">
+            <button type="submit" class="btn h-11 w-full sm:h-8 sm:w-auto">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete {{ closed.head_label }}</button>
+          </form>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+      {% let form = thread.form %}{% include "timeline/comment_form.html" %}
+    </div>
+    {% if let Some(form) = review_form %}<div class="mt-6">{% include "pulls/review_form.html" %}</div>{% endif %}
+    {% if can_convert_to_draft %}
+    <form method="post" action="{{ pull.urls.draft }}" class="mt-2 flex justify-end">
+      <input type="hidden" name="draft" value="true">
+      <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("git-pull-request-draft", "size-3.5") %}{% endcall %}Convert to draft</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

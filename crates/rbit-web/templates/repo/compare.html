@@ -5,24 +5,10 @@
 {% block content %}
 <div class="mb-6">
   <h1 class="text-base font-semibold tracking-tight">Compare changes</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">Pick a base and the branch, tag or commit to compare against it.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">Pick a base and the branch, tag or commit to compare against it, also across forks.</p>
 </div>
 
-<form method="get" action="{{ picker.action_url }}" class="box flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
-  <div class="min-w-0 flex-1">
-    <label class="label" for="compare-base">Base</label>
-    <input class="input font-mono text-xs" id="compare-base" name="base" value="{{ picker.base }}" list="compare-refs" autocomplete="off" required>
-  </div>
-  <span class="hidden pb-2 text-ink-faint sm:block" aria-hidden="true">…</span>
-  <div class="min-w-0 flex-1">
-    <label class="label" for="compare-head">Compare</label>
-    <input class="input font-mono text-xs" id="compare-head" name="head" value="{{ picker.head }}" list="compare-refs" autocomplete="off" required>
-  </div>
-  <datalist id="compare-refs">
-    {% for option in picker.options %}<option value="{{ option.name }}">{% if option.is_tag %}tag{% else %}branch{% endif %}</option>{% endfor %}
-  </datalist>
-  <button type="submit" class="btn btn-primary">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}Compare</button>
-</form>
+{% include "pulls/picker.html" %}
 
 {% if let Some(summary) = summary %}
 <section class="mt-6" aria-label="Comparison">
@@ -33,7 +19,10 @@
     {% if let Some(merge_base) = summary.merge_base %}
     <span class="text-xs text-ink-muted">merge base <a class="font-mono text-ink hover:underline hover:underline-offset-4" href="{{ merge_base.url }}">{{ merge_base.short_id }}</a></span>
     {% endif %}
-    <a href="{{ summary.swap_url }}" class="btn btn-ghost ml-auto h-7 px-2 text-xs sm:h-7">{% call ui::icon("transfer", "size-3.5") %}{% endcall %}Swap</a>
+    <span class="ml-auto flex items-center gap-2">
+      {% if let Some(url) = summary.swap_url %}<a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">{% call ui::icon("transfer", "size-3.5") %}{% endcall %}Swap</a>{% endif %}
+      {% if let Some(url) = summary.create_url %}<a href="{{ url }}" class="btn btn-primary h-11 px-3 text-xs sm:h-7">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}Create pull request</a>{% endif %}
+    </span>
   </div>
 
   {% if summary.merge_base.is_none() %}

@@ -1,0 +1,31 @@
+{#- Reviewers and their latest state, with request / remove forms; expects `reviewers: ReviewersView`. -#}
+{% import "macros.html" as ui %}
+<section class="mb-5" aria-label="Reviewers">
+  <h2 class="text-xs font-medium text-ink-muted">Reviewers</h2>
+  {% if reviewers.reviewers.is_empty() %}
+  <p class="mt-1.5 text-xs text-ink-faint">No reviews yet</p>
+  {% else %}
+  <ul class="mt-1.5 space-y-1.5">
+    {% for reviewer in reviewers.reviewers %}
+    <li class="flex min-h-8 items-center gap-2 text-[13px]">
+      {% call ui::avatar(reviewer.actor.avatar, "size-5 text-[9px]") %}{% endcall %}
+      {% if let Some(url) = reviewer.actor.url %}<a href="{{ url }}" class="min-w-0 truncate font-medium hover:underline hover:underline-offset-4">{{ reviewer.name }}</a>{% else %}<span class="min-w-0 truncate">{{ reviewer.name }}</span>{% endif %}
+      <span class="ml-auto shrink-0 text-xs {{ reviewer.tone }}">{{ reviewer.state }}</span>
+      {% if reviewers.can_request && reviewer.requested %}
+      <form method="post" action="{{ reviewers.remove_url }}">
+        <input type="hidden" name="reviewer" value="{{ reviewer.name }}">
+        <button type="submit" class="btn btn-ghost btn-icon h-8 w-8 sm:h-6 sm:w-6" aria-label="Remove the review request for {{ reviewer.name }}" title="Remove request">{% call ui::icon("x", "size-3") %}{% endcall %}</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if reviewers.can_request %}
+  <form method="post" action="{{ reviewers.request_url }}" class="mt-2 flex gap-1.5">
+    <label class="sr-only" for="request-reviewer">Request a review from</label>
+    <input id="request-reviewer" class="input h-11 min-w-0 flex-1 text-xs sm:h-8" name="reviewers" placeholder="username" maxlength="200" autocomplete="off">
+    <button type="submit" class="btn h-11 shrink-0 px-2.5 text-xs sm:h-8" aria-label="Request review">{% call ui::icon("user-plus", "size-3.5") %}{% endcall %}</button>
+  </form>
+  {% endif %}
+</section>

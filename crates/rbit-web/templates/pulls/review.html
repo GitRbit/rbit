@@ -1,0 +1,32 @@
+{#- A submitted review in the conversation; expects `review: ReviewView` (views::pulls). -#}
+{% import "macros.html" as ui %}
+<article id="{{ review.anchor }}" class="timeline-item scroll-mt-28">
+  <span class="timeline-badge {{ review.tone }}">{% call ui::icon(review.icon, "size-3.5") %}{% endcall %}</span>
+  <div class="min-w-0 flex-1">
+    <p class="flex min-h-8 flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
+      {% if let Some(url) = review.reviewer.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ review.reviewer.name }}</a>{% else %}<span class="font-medium">{{ review.reviewer.name }}</span>{% endif %}
+      <span class="{{ review.tone }}">{{ review.sentence }}</span>
+      <a href="#{{ review.anchor }}" class="text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ review.when_iso }}" title="{{ review.when_iso }}">{{ review.when }}</time></a>
+    </p>
+    {% if let Some(dismissal) = review.dismissal %}<p class="mb-2 text-xs text-ink-faint">{{ dismissal }}</p>{% endif %}
+    {% if !review.body_html.is_empty() || !review.comments.is_empty() %}
+    <div class="box mt-1 overflow-hidden">
+      {% if !review.body_html.is_empty() %}<div class="prose-rbit px-3 py-3 sm:px-4">{{ review.body_html|safe }}</div>{% endif %}
+      {% let show_hunk = true %}
+      {% for comment in review.comments %}
+      <div class="{% if !review.body_html.is_empty() || !loop.first %}border-t border-line{% endif %}">{% include "pulls/review_comment.html" %}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if review.can_dismiss %}
+    <details class="mt-2">
+      <summary class="btn btn-ghost h-11 cursor-pointer text-xs sm:h-8">Dismiss review</summary>
+      <form method="post" action="{{ review.dismiss_url }}" class="mt-2 flex flex-col gap-2 sm:flex-row">
+        <label class="sr-only" for="{{ review.anchor }}-dismiss">Why is this review dismissed?</label>
+        <input id="{{ review.anchor }}-dismiss" class="input min-w-0 flex-1" name="message" maxlength="1000" placeholder="Why is this review dismissed?" required>
+        <button type="submit" class="btn btn-danger h-11 sm:h-9">Dismiss</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</article>

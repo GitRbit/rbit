@@ -1,0 +1,34 @@
+{#- Base and head pickers (repository and revision) of the compare and new pull request pages; expects
+    `picker: ComparePicker` (views::compare). A plain GET form, so it works without JavaScript. -#}
+{% import "macros.html" as ui %}
+<form method="get" action="{{ picker.action_url }}" class="box flex flex-col gap-3 p-4 md:flex-row md:items-end">
+  {% if picker.repositories.len() > 1 %}
+  <div class="min-w-0 md:w-48">
+    <label class="label" for="compare-base-repo">Base repository</label>
+    <select class="input font-mono text-xs" id="compare-base-repo" name="base_repo">
+      {% for repo in picker.repositories %}<option value="{{ repo }}" {% if repo == &picker.base_repo %}selected{% endif %}>{{ repo }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="min-w-0 flex-1">
+    <label class="label" for="compare-base">Base</label>
+    <input class="input font-mono text-xs" id="compare-base" name="base" value="{{ picker.base }}" list="compare-refs" autocomplete="off" required>
+  </div>
+  <span class="hidden pb-2 text-ink-faint md:block" aria-hidden="true">…</span>
+  {% if picker.repositories.len() > 1 %}
+  <div class="min-w-0 md:w-48">
+    <label class="label" for="compare-head-repo">Head repository</label>
+    <select class="input font-mono text-xs" id="compare-head-repo" name="head_repo">
+      {% for repo in picker.repositories %}<option value="{{ repo }}" {% if repo == &picker.head_repo %}selected{% endif %}>{{ repo }}</option>{% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="min-w-0 flex-1">
+    <label class="label" for="compare-head">Compare</label>
+    <input class="input font-mono text-xs" id="compare-head" name="head" value="{{ picker.head }}" list="compare-refs" autocomplete="off" required>
+  </div>
+  <datalist id="compare-refs">
+    {% for option in picker.options %}<option value="{{ option.name }}">{% if option.is_tag %}tag{% else %}branch{% endif %}</option>{% endfor %}
+  </datalist>
+  <button type="submit" class="btn btn-primary h-11 md:h-9">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}Compare</button>
+</form>

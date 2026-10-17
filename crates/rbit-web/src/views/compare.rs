@@ -1,6 +1,8 @@
 //! The branch compare page.
 //!
-//! Milestone 2 workstream R (repository essentials) owns this file.
+//! Milestone 2 workstream R (repository essentials) wrote this file; wave B's pull request
+//! workstream (P) owns it now and added the repository pickers (cross-fork compare) and the
+//! "Create pull request" button.
 
 use askama::Template;
 use askama_web::WebTemplate;
@@ -30,16 +32,35 @@ pub struct ComparePicker {
     pub options: Vec<RefOption>,
     pub base: String,
     pub head: String,
+    /// `owner/name` of every readable repository of the fork network; the repository
+    /// selects are shown only when there is more than one.
+    pub repositories: Vec<String>,
+    pub base_repo: String,
+    pub head_repo: String,
 }
 
 impl ComparePicker {
     pub fn new(urls: &RepoUrls, refs: &[RefSummary], base: &str, head: &str) -> Self {
+        let full_name = urls.home().trim_start_matches('/').to_owned();
         Self {
             action_url: format!("{}/compare", urls.home()),
             options: refs.iter().map(|r| RefOption { name: r.name.clone(), is_tag: r.kind == RefKind::Tag }).collect(),
             base: base.to_owned(),
             head: head.to_owned(),
+            repositories: vec![full_name.clone()],
+            base_repo: full_name.clone(),
+            head_repo: full_name,
         }
+    }
+
+    /// Offers the repositories of the fork network, with `head_repo` selected for the head.
+    #[must_use]
+    pub fn with_network(mut self, repositories: Vec<String>, head_repo: &str) -> Self {
+        if !repositories.is_empty() {
+            self.repositories = repositories;
+        }
+        head_repo.clone_into(&mut self.head_repo);
+        self
     }
 }
 
@@ -48,6 +69,7 @@ impl ComparePicker {
 #[derive(Debug, Clone)]
 pub struct CompareSummary {
     pub base: String,
+    /// The head as written in the URL (`branch`, `owner:branch`, …).
     pub head: String,
     pub ahead: usize,
     pub behind: usize,
@@ -58,8 +80,10 @@ pub struct CompareSummary {
     pub commits: Vec<CommitView>,
     /// More commits are ahead than listed.
     pub more_commits: bool,
-    /// The same comparison the other way round.
-    pub swap_url: String,
+    /// The same comparison the other way round (same repository only).
+    pub swap_url: Option<String>,
+    /// "Create pull request", when the head has commits the base lacks.
+    pub create_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +93,9 @@ pub struct CommitLink {
 }
 
 impl CompareSummary {
-    pub fn new(comparison: &Comparison, base: &str, head: &str, urls: &RepoUrls) -> Self {
+    /// The summary of `comparison`; commit links point at `head_urls` (the head
+    /// repository, which has every commit ahead).
+    pub fn new(comparison: &Comparison, base: &str, head: &str, urls: &RepoUrls, head_urls: &RepoUrls, same_repository: bool) -> Self {
         let label = |count: usize| {
             if count >= rbit_git::compare::MAX_COUNTED_COMMITS { format!("{count}+") } else { count.to_string() }
         };
@@ -84,9 +110,10 @@ impl CompareSummary {
                 .merge_base
                 .as_ref()
                 .map(|id| CommitLink { short_id: id[..7.min(id.len())].to_owned(), url: urls.commit(id) }),
-            commits: comparison.commits.iter().map(|c| CommitView::new(c, urls)).collect(),
+            commits: comparison.commits.iter().map(|c| CommitView::new(c, head_urls)).collect(),
             more_commits: comparison.ahead > comparison.commits.len(),
-            swap_url: urls.compare(head, base),
+            swap_url: same_repository.then(|| urls.compare(head, base)),
+            create_url: None,
         }
     }
 }
@@ -106,7 +133,7 @@ pub struct ComparePage {
 }
 
 impl ComparePage {
-    /// Diff views of `comparison`, linking files to their version at `head`.
+    /// Diff views of `comparison`, linking files to their version at `head` in `urls`.
     #[must_use]
     pub fn with_comparison(mut self, comparison: &Comparison, urls: &RepoUrls) -> Self {
         self.files = FileDiffView::list(&comparison.files, &comparison.head.id, urls);
@@ -114,5 +141,19 @@ impl ComparePage {
         self.deletions = comparison.deletions();
         self.truncated = comparison.truncated;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_picker_lists_the_network_and_keeps_the_head_repository() {
+        let urls = RepoUrls::new("alice", "demo");
+        let picker = ComparePicker::new(&urls, &[], "main", "feature");
+        assert_eq!((picker.base_repo.as_str(), picker.repositories.len()), ("alice/demo", 1));
+        let picker = picker.with_network(vec!["alice/demo".into(), "bob/demo".into()], "bob/demo");
+        assert_eq!((picker.head_repo.as_str(), picker.repositories.len()), ("bob/demo", 2));
     }
 }

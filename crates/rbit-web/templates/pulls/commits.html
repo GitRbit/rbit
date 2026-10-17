@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<h1 class="break-words text-xl font-semibold tracking-tight">{{ pull.title }} <span class="font-normal text-ink-faint">{{ pull.number }}</span></h1>
+{% include "pulls/header.html" %}
+
+<ol class="box mt-6">
+  {% for commit in commits %}
+  <li class="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+    {% call ui::avatar(commit.avatar, "size-6 text-[9px]") %}{% endcall %}
+    <div class="min-w-0 flex-1">
+      <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
+      <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
+    </div>
+    <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ commit.short_id }}</a>
+  </li>
+  {% else %}
+  <li>{% call ui::empty_state("commit", "No commits", "The head and the base point at the same commit.") %}{% endcall %}</li>
+  {% endfor %}
+</ol>
+{% if more_commits %}<p class="mt-2 text-xs text-ink-muted">Only the newest {{ commits.len() }} commits are listed.</p>{% endif %}
+{% endblock %}
