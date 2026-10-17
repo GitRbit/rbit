@@ -126,6 +126,7 @@ pub struct HookFormInput {
     event_issue_comment: Option<String>,
     event_pull_request: Option<String>,
     event_pull_request_review: Option<String>,
+    event_member: Option<String>,
 }
 
 impl HookFormInput {
@@ -139,6 +140,7 @@ impl HookFormInput {
             (WebhookEvent::IssueComment, &self.event_issue_comment),
             (WebhookEvent::PullRequest, &self.event_pull_request),
             (WebhookEvent::PullRequestReview, &self.event_pull_request_review),
+            (WebhookEvent::Member, &self.event_member),
         ];
         ticked.into_iter().filter(|(_, value)| value.is_some()).map(|(event, _)| event).collect()
     }
