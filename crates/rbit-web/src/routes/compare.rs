@@ -76,6 +76,11 @@ pub(super) async fn pickers(
     head_repo: &str,
 ) -> ComparePicker {
     let network = state.services.pulls.network(viewer.user(), &loaded.ctx).await.unwrap_or_default();
+    picker_with(loaded, &network, base, head, head_repo)
+}
+
+/// The pickers for `loaded` once its readable fork network is known.
+fn picker_with(loaded: &RepoPage, network: &[rbit_core::OwnedRepository], base: &str, head: &str, head_repo: &str) -> ComparePicker {
     let names: Vec<String> = network.iter().map(rbit_core::OwnedRepository::full_name).collect();
     ComparePicker::new(&loaded.urls, loaded.refs(), base, head).with_network(names, head_repo)
 }
@@ -147,18 +152,26 @@ async fn compare(
     };
     let head_spec_parsed = HeadSpec::parse(&head).ok_or(WebError::NotFound)?;
     let pulls = &state.services.pulls;
-    let head_ctx = pulls.resolve_head(viewer.user(), &loaded.ctx, &head_spec_parsed).await?;
+    // The fork network (for the pickers) does not depend on the comparison: read it meanwhile.
+    let (compared, network) = tokio::join!(
+        async {
+            let head_ctx = pulls.resolve_head(viewer.user(), &loaded.ctx, &head_spec_parsed).await?;
+            let comparison = pulls
+                .compare(&loaded.ctx, &base, &head_ctx, &head_spec_parsed.branch, DiffLimits::default(), MAX_LISTED_COMMITS)
+                .await
+                .map_err(|error| match error {
+                    ServiceError::Internal(_) => WebError::from(error),
+                    _ => WebError::NotFound,
+                })?;
+            WebResult::Ok((head_ctx, comparison))
+        },
+        pulls.network(viewer.user(), &loaded.ctx),
+    );
+    let (head_ctx, comparison) = compared?;
     let same = head_ctx.repo.repo.id == loaded.ctx.repo.repo.id;
-    let comparison = pulls
-        .compare(&loaded.ctx, &base, &head_ctx, &head_spec_parsed.branch, DiffLimits::default(), MAX_LISTED_COMMITS)
-        .await
-        .map_err(|error| match error {
-            ServiceError::Internal(_) => WebError::from(error),
-            _ => WebError::NotFound,
-        })?;
 
     let head_full_name = head_ctx.repo.full_name();
-    let picker = pickers(&state, &viewer, &loaded, &base, &head_spec_parsed.branch, &head_full_name).await;
+    let picker = picker_with(&loaded, &network.unwrap_or_default(), &base, &head_spec_parsed.branch, &head_full_name);
     let mut view = empty_page(&loaded, &state, page, picker);
     view.page.title = Some(format!("Compare {base}...{head} · {}", loaded.ctx.repo.full_name()));
     let head_urls = RepoUrls::new(head_ctx.repo.owner.name.as_str(), head_ctx.repo.repo.name.as_str());
