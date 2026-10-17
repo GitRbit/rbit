@@ -2,6 +2,7 @@
 //! every user-controlled segment is percent-encoded exactly once.
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use rbit_core::{IssueKind, IssueNumber};
 
 /// Characters escaped inside a single path segment (RFC 3986 `pchar` minus a few
 /// characters that are legal but confusing in file names).
@@ -11,6 +12,16 @@ const SEGMENT: &AsciiSet =
 /// Encodes a slash-separated path, keeping the slashes.
 pub fn encode_path(path: &str) -> String {
     path.split('/').map(|segment| utf8_percent_encode(segment, SEGMENT).to_string()).collect::<Vec<_>>().join("/")
+}
+
+/// The page of issue or pull request `number`: `/{owner}/{repo}/issues/{n}` or
+/// `/{owner}/{repo}/pull/{n}` by `kind`. Their forms all post under `/issues/{n}/…`.
+pub fn issue_url(owner: &str, repo: &str, kind: IssueKind, number: IssueNumber) -> String {
+    let section = match kind {
+        IssueKind::Issue => "issues",
+        IssueKind::Pull => "pull",
+    };
+    format!("/{owner}/{repo}/{section}/{}", number.get())
 }
 
 /// URLs scoped to one repository.

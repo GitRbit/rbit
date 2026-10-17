@@ -1,0 +1,27 @@
+{#- One timeline event; expects `event: EventView` (views::timeline). The sentence is a list of
+    fragments whose `kind` says how each is shown. -#}
+{% import "macros.html" as ui %}
+<div id="{{ event.anchor }}" class="timeline-event">
+  <span class="timeline-badge">{% call ui::icon(event.icon, "size-3.5") %}{% endcall %}</span>
+  <div class="min-w-0 flex-1 py-1.5">
+    <p class="break-words leading-5">
+      {%- if let Some(url) = event.actor.url -%}
+      <a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ event.actor.name }}</a>
+      {%- else -%}
+      <span class="font-medium text-ink-muted">{{ event.actor.name }}</span>
+      {%- endif %} {% for part in event.sentence -%}
+      {%- if part.kind == "strong" -%}<strong class="font-medium text-ink">{{ part.text }}</strong>
+      {%- else if part.kind == "struck" -%}<del class="text-ink-faint">{{ part.text }}</del>
+      {%- else if part.kind == "code" -%}<code class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink">{{ part.text }}</code>
+      {%- else if part.kind == "code-link" -%}{% if let Some(url) = part.url %}<a href="{{ url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ part.text }}</a>{% endif %}
+      {%- else if part.kind == "link" -%}{% if let Some(url) = part.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ part.text }}</a>{% endif %}
+      {%- else if part.kind == "label" -%}<span class="label-chip align-middle"><svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{% if let Some(color) = part.color %}{{ color }}{% endif %}"/></svg>{{ part.text }}</span>
+      {%- else if part.kind == "account" -%}{% if let Some(url) = part.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ part.text }}</a>{% else %}<span class="font-medium">{{ part.text }}</span>{% endif %}
+      {%- else if part.kind == "muted" -%}<span class="text-ink-faint">{{ part.text }}</span>
+      {%- else -%}{{ part.text }}
+      {%- endif -%}
+      {%- endfor %} <a href="#{{ event.anchor }}" class="whitespace-nowrap text-ink-faint hover:text-ink-muted hover:underline hover:underline-offset-4"><time datetime="{{ event.when_iso }}" title="{{ event.when_iso }}">{{ event.when }}</time></a>
+    </p>
+    {% if let Some(detail) = event.detail %}<p class="mt-0.5 truncate text-xs text-ink-faint">{{ detail }}</p>{% endif %}
+  </div>
+</div>

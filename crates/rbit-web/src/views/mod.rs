@@ -36,5 +36,6 @@ pub mod settings;
 pub mod ssh_keys;
 pub mod teams;
 pub mod themes;
+pub mod timeline;
 pub mod transfer;
 pub mod webhooks;

@@ -1,0 +1,4 @@
+{#- One conversation entry; expects `item: TimelineItemView` (views::timeline). Pages that interleave
+    their own items (pull request reviews) loop over the entries themselves and include this. -#}
+{% if let Some(comment) = item.comment %}{% include "timeline/comment.html" %}{% endif %}
+{% if let Some(event) = item.event %}{% include "timeline/event.html" %}{% endif %}

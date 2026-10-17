@@ -1,0 +1,39 @@
+{#- A comment or the opening post; expects `comment: CommentView` (views::timeline). With
+    `comment.editing` it shows the edit form in place (`?edit=…`); htmx swaps just this element. -#}
+{% import "macros.html" as ui %}
+<article id="{{ comment.anchor }}" class="timeline-item">
+  <span class="relative z-10 hidden sm:block">{% call ui::avatar(comment.author.avatar, "size-8 text-xs") %}{% endcall %}</span>
+  <div class="box min-w-0 flex-1 overflow-hidden">
+    <header class="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-subtle px-3 py-1.5 text-[13px] sm:px-4">
+      <span class="sm:hidden">{% call ui::avatar(comment.author.avatar, "size-5 text-[9px]") %}{% endcall %}</span>
+      {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium text-ink-muted">{{ comment.author.name }}</span>{% endif %}
+      <span class="text-ink-muted">{% if comment.is_opening_post %}opened{% else %}commented{% endif %} <a href="#{{ comment.anchor }}" class="hover:text-ink hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a></span>
+      {% if comment.edited %}<span class="text-xs text-ink-faint">edited</span>{% endif %}
+      <span class="ml-auto flex items-center gap-1">
+        {% if comment.by_thread_author %}<span class="badge">Author</span>{% endif %}
+        {% if comment.can_edit && !comment.editing %}
+        <a href="{{ comment.edit_url }}" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" hx-get="{{ comment.edit_url }}" hx-select="#{{ comment.anchor }}" hx-target="#{{ comment.anchor }}" hx-swap="outerHTML" hx-push-url="true">Edit</a>
+        {% endif %}
+        {% if comment.can_delete %}{% if let Some(url) = comment.delete_url %}
+        <form method="post" action="{{ url }}" hx-confirm="Delete this comment?">
+          <button type="submit" class="btn btn-ghost btn-icon h-8 w-8 sm:h-7 sm:w-7" aria-label="Delete comment" title="Delete comment">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</button>
+        </form>
+        {% endif %}{% endif %}
+      </span>
+    </header>
+    {% if comment.editing %}
+    <form method="post" action="{{ comment.update_url }}" class="p-3 sm:p-4">
+      <label class="sr-only" for="{{ comment.anchor }}-text">{% if comment.is_opening_post %}Description{% else %}Comment{% endif %}</label>
+      <textarea id="{{ comment.anchor }}-text" name="body" class="input h-40 resize-y py-2 text-[13px]" rows="8" maxlength="65536" {% if !comment.is_opening_post %}required{% endif %}>{{ comment.source }}</textarea>
+      <div class="mt-3 flex justify-end gap-2">
+        <a href="{{ comment.cancel_url }}" class="btn h-11 sm:h-8" hx-get="{{ comment.cancel_url }}" hx-select="#{{ comment.anchor }}" hx-target="#{{ comment.anchor }}" hx-swap="outerHTML" hx-push-url="true">Cancel</a>
+        <button type="submit" class="btn btn-primary h-11 sm:h-8">Save</button>
+      </div>
+    </form>
+    {% else if comment.body_html.is_empty() %}
+    <p class="px-3 py-4 text-[13px] italic text-ink-faint sm:px-4">No description provided.</p>
+    {% else %}
+    <div class="prose-rbit px-3 py-4 sm:px-4">{{ comment.body_html|safe }}</div>
+    {% endif %}
+  </div>
+</article>

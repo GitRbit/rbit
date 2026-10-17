@@ -1,0 +1,3 @@
+{#- The open / closed / merged / draft pill of a thread; expects `badge: StateBadge` (views::timeline). -#}
+{% import "macros.html" as ui %}
+<span class="state-badge {{ badge.class }}">{% call ui::icon(badge.icon, "size-3.5") %}{% endcall %}{{ badge.label }}</span>

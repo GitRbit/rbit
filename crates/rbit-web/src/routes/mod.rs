@@ -35,6 +35,7 @@ mod ssh_keys;
 mod stars;
 mod teams;
 mod themes;
+mod timeline;
 mod transfer;
 mod webhooks;
 
@@ -120,7 +121,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(mirrors::routes())
         // Frontend wave: themes (T).
         .merge(themes::routes())
-        // Milestone 2 wave B (the shared timeline routes arrive with T0).
+        // Milestone 2 wave B: the shared timeline forms (T0), then the workstreams.
+        .merge(timeline::routes())
         .merge(issues::routes())
         .merge(labels::routes())
         .merge(milestones::routes())

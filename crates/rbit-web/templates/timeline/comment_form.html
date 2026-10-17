@@ -1,0 +1,47 @@
+{#- The form under a conversation: comment, close or reopen, lock; expects `form: CommentFormView`
+    (views::timeline). Works without JavaScript; buttons are 44 px tall on touch. -#}
+{% import "macros.html" as ui %}
+<section id="{{ form.anchor }}" class="timeline-item" aria-label="Add a comment">
+  <div class="box min-w-0 flex-1 overflow-hidden">
+    {% if form.can_comment %}
+    <form method="post" action="{{ form.action_url }}" class="p-3 sm:p-4">
+      <label for="{{ form.anchor }}-body" class="label">Add a comment</label>
+      <textarea id="{{ form.anchor }}-body" name="body" class="input mt-1.5 h-32 resize-y py-2 text-[13px]" rows="6" maxlength="65536" placeholder="Markdown is supported"></textarea>
+      {% if form.locked %}<p class="hint mt-2 flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}This conversation is locked; only collaborators can comment.</p>{% endif %}
+      <div class="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+        {% if form.can_set_state %}{% if form.is_open %}
+        <button type="submit" name="state" value="close_completed" class="btn h-11 sm:h-8">{% call ui::icon("circle-check", "size-3.5") %}{% endcall %}Close {{ form.noun }}</button>
+        {% if form.is_issue %}<button type="submit" name="state" value="close_not_planned" class="btn h-11 sm:h-8">{% call ui::icon("circle-slash", "size-3.5") %}{% endcall %}Close as not planned</button>{% endif %}
+        {% else %}
+        <button type="submit" name="state" value="reopen" class="btn h-11 sm:h-8">{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}Reopen {{ form.noun }}</button>
+        {% endif %}{% endif %}
+        <button type="submit" class="btn btn-primary h-11 sm:h-8">Comment</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:p-4">
+      <p class="flex flex-1 items-center gap-2 text-[13px] text-ink-muted">
+        {% if !form.signed_in %}{% call ui::icon("message-square", "size-4 shrink-0") %}{% endcall %}<span><a href="{{ form.sign_in_url }}" class="font-medium text-ink underline underline-offset-4">Sign in</a> to join the conversation.</span>
+        {% else %}{% call ui::icon("lock", "size-4 shrink-0") %}{% endcall %}<span>This conversation is locked; only collaborators can comment.</span>{% endif %}
+      </p>
+      {% if form.can_set_state %}
+      <form method="post" action="{{ form.state_url }}">
+        {% if form.is_open %}<button type="submit" name="state" value="close_completed" class="btn h-11 w-full sm:h-8 sm:w-auto">Close {{ form.noun }}</button>
+        {% else %}<button type="submit" name="state" value="reopen" class="btn h-11 w-full sm:h-8 sm:w-auto">Reopen {{ form.noun }}</button>{% endif %}
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% if form.can_lock %}
+<form method="post" action="{{ form.lock_url }}" class="relative flex justify-end">
+  {% if form.locked %}
+  <input type="hidden" name="locked" value="false">
+  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("unlock", "size-3.5") %}{% endcall %}Unlock conversation</button>
+  {% else %}
+  <input type="hidden" name="locked" value="true">
+  <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("lock", "size-3.5") %}{% endcall %}Lock conversation</button>
+  {% endif %}
+</form>
+{% endif %}

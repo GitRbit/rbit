@@ -1,0 +1,10 @@
+{#- A whole conversation: opening post, entries, "load more" and the comment form; expects
+    `thread: ThreadView` (views::timeline). The title and the state badge are the page's to place. -#}
+<div class="timeline">
+  {% let comment = thread.opening %}{% include "timeline/comment.html" %}
+  {% for item in thread.items %}{% include "timeline/item.html" %}{% endfor %}
+  {% if let Some(url) = thread.next_url %}
+  <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">Load more</a></div>
+  {% endif %}
+  {% let form = thread.form %}{% include "timeline/comment_form.html" %}
+</div>
