@@ -1238,15 +1238,31 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 - Streaming Git transport: pack data is never buffered in memory.
 - One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
   Git reads share opened config, refs and pack indexes instead of reopening them.
-- Navigation: `hx-boost` plus the htmx preload extension (`assets/nav.js` marks eligible
-  links; 100 ms hover intent, touchstart on touch screens). Within a repository only
-  `<main>` swaps and the tabs update out of band. `middleware::preload_guard` answers
-  preloads of side-effecting or heavy paths with `204`; `middleware::html_caching` makes
-  HTML `private, no-cache` with a weak `ETag` (revisits cost a `304`), preloads briefly
-  fresh, varying on `HX-Request` and a per-page-load navigation epoch so nothing preloaded
-  before a form post is shown after it. Secret-showing pages carry `hx-history="false"`.
-- Large files and diffs: one block per line with `content-visibility: auto`, line numbers
-  drawn by CSS, per-file diffs laid out only near the viewport.
+- Navigation: `hx-boost` plus a purpose-built preloader (`assets/preload.js`, listeners on
+  `document` only): ~80 ms hover or mousedown, taps but not scrolls on touch screens,
+  `data-preload="visible"` links (repository tabs, next pages) when idle within a small
+  budget and never under Save-Data or 2G; each URL at most once per freshness window
+  (`PRELOAD_MAX_AGE_SECONDS`, shared with the server), never links with their own
+  `hx-get`/`hx-post`. A preload is a `fetch` with exactly the headers responses vary on,
+  so the click is answered from the browser cache. Within a repository only `<main>`
+  swaps and the tabs update out of band, and the request says so (`Rbit-Partial`):
+  `partial::partial_responses` then sends only the title, `<main>` and the tabs, cut at
+  markers the layout emits. `middleware::preload_guard` answers preloads of
+  side-effecting or heavy paths with `204`; `middleware::html_caching` makes HTML
+  `private, no-cache` with a weak `ETag` (revisits cost a `304`), preloads fresh for the
+  window, varying on `HX-Request`, `Rbit-Partial` and a per-page-load navigation epoch so
+  nothing preloaded before a form post is shown after it. Commit-pinned fragments of
+  public repositories are `immutable` and vary on `HX-Request` only. Secret-showing pages
+  carry `hx-history="false"`.
+- Large files and diffs: rows of exactly one `--row-h` grouped in blocks of 128
+  (`views::blocks`, `.vblock`), each one `content-visibility: auto` container whose
+  placeholder height comes from `data-rows` (typed `attr()`, or `assets/blocks.js`
+  through the CSSOM), so nothing moves as blocks are laid out; line numbers and diff
+  signs drawn by CSS. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
+- Syntax highlighting resolves syntect's scopes to one short class per token in Rust
+  (flat spans, styled categories only) and caches highlighted files by blob id
+  (`render::highlight_cache`, 32 MiB). Pull request counts are cached by base and head
+  commit ids in redb (`comparison_counts`).
 - JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
   so every module can be `immutable` and still update on deploy.
 - redb caches for last-commit-per-path and language statistics, keyed by commit id (never
