@@ -38,8 +38,10 @@ async fn pull_mirrors_fetch_their_upstream() {
         .await
         .expect_redirect("/alice/copy");
 
-    // The first fetch runs in the background and brings every branch and tag.
-    wait_for(&alice, "/alice/copy/branches", "feature").await;
+    // The first fetch runs in the background and brings every branch and tag. Its
+    // outcome is recorded after the refs land, so wait for the outcome, not the refs.
+    wait_for(&alice, "/alice/copy/settings/mirror", ">OK<").await;
+    alice.get("/alice/copy/branches").await.expect_contains(&["feature"]);
     alice.get("/alice/copy/tags").await.expect_contains(&[Sample::TAG]);
     alice.get("/alice/copy").await.expect_contains(&["mirror of", &upstream]);
     let settings = alice.get("/alice/copy/settings/mirror").await;
