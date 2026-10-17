@@ -152,6 +152,10 @@ impl Services {
         // Shared so recovery emails use the same delivery queue and the same rate limits.
         let mail = MailService::new(ctx.clone());
         let throttle = ThrottleService::new(ctx.clone());
+        // Shared so the issue and pull request services spend the same content budget and
+        // record through the same timeline.
+        let timeline = TimelineService::new(ctx.clone(), throttle.clone());
+        let references = ReferenceService::new(ctx.clone(), timeline.clone());
         let repositories =
             RepositoryService::new(Arc::clone(&config), database.repositories(), ctx.repositories.clone(), ctx.events.clone());
 
@@ -162,8 +166,7 @@ impl Services {
             mail: mail.clone(),
             recovery: RecoveryService::builder(ctx.clone()).mail(mail).throttle(throttle.clone()).instance(instance.clone()).build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
-            timeline: TimelineService::new(ctx.clone(), throttle.clone()),
-            throttle,
+            throttle: throttle.clone(),
             two_factor: TwoFactorService::new(ctx.clone(), instance.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
@@ -180,8 +183,9 @@ impl Services {
             mirrors: MirrorService::new(ctx.clone()),
             releases: ReleaseService::new(ctx.clone()),
             preferences: PreferenceService::new(ctx.clone()),
-            issues: IssueService::new(ctx.clone()),
-            references: ReferenceService::new(ctx.clone()),
+            issues: IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone()),
+            references,
+            timeline,
             notifications: NotificationService::new(ctx.clone()),
             pulls: PullService::new(ctx.clone()),
             protection: ProtectionService::new(ctx.clone()),

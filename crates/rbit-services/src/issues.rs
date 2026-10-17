@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use rbit_core::{Account, IssueId, MilestoneId, issue::LabelSnapshot};
 
-use crate::{ServiceContext, ServiceError};
+use crate::{ServiceContext, ServiceError, ThrottleService, TimelineService, references::ReferenceService};
 
 /// Labels, assignees and milestone of one issue or pull request, for lists, payloads and
 /// the API.
@@ -36,11 +36,19 @@ pub struct MilestoneRef {
 pub struct IssueService {
     #[expect(dead_code, reason = "stub until the workstream implements the service")]
     ctx: ServiceContext,
+    #[expect(dead_code, reason = "stub until the workstream implements the service")]
+    timeline: TimelineService,
+    #[expect(dead_code, reason = "stub until the workstream implements the service")]
+    references: ReferenceService,
+    #[expect(dead_code, reason = "stub until the workstream implements the service")]
+    throttle: ThrottleService,
 }
 
 impl IssueService {
-    pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self { ctx }
+    /// `timeline` and `throttle` are the instances every service shares, so creating an
+    /// issue spends the same content budget as commenting.
+    pub(crate) fn new(ctx: ServiceContext, timeline: TimelineService, references: ReferenceService, throttle: ThrottleService) -> Self {
+        Self { ctx, timeline, references, throttle }
     }
 
     /// Labels, assignees and milestone of each of `issues` (missing ids are left out).

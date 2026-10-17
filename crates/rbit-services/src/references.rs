@@ -7,7 +7,7 @@
 //! timeline views and P call it before rendering with
 //! `rbit_web::render::references::render_issue_markdown`.
 
-use crate::{RepoContext, ServiceContext, ServiceError};
+use crate::{RepoContext, ServiceContext, ServiceError, TimelineService};
 
 /// What the references in a batch of texts resolve to: the existing issues of the
 /// repository among `#N` and the existing accounts among `@name`. I defines its fields;
@@ -19,11 +19,13 @@ pub struct ReferenceSet {}
 pub struct ReferenceService {
     #[expect(dead_code, reason = "stub until the workstream implements the service")]
     ctx: ServiceContext,
+    #[expect(dead_code, reason = "stub until the workstream implements the service")]
+    timeline: TimelineService,
 }
 
 impl ReferenceService {
-    pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self { ctx }
+    pub(crate) fn new(ctx: ServiceContext, timeline: TimelineService) -> Self {
+        Self { ctx, timeline }
     }
 
     /// Resolves the `#N` and `@name` references among `texts` in `repo` (already
