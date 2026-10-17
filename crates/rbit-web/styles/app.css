@@ -440,19 +440,21 @@
 /* ---------------------------------------------------------------- Syntax highlighting */
 
 /* render/highlight.rs resolves each token's scopes to at most one colour class plus
-   b (semibold) and i (italic), on flat spans; unstyled text has no span. */
-.c { color: var(--syntax-comment); }
-.s { color: var(--syntax-string); }
-.n { color: var(--syntax-number); }
-.k { color: var(--syntax-keyword); }
-.f { color: var(--syntax-function); }
-.t { color: var(--syntax-type); }
-.g { color: var(--syntax-tag); }
-.a { color: var(--syntax-attribute); }
-.h { color: var(--ink); font-weight: 600; }
-.x { color: var(--danger); }
-.b { font-weight: 600; }
-.i { font-style: italic; }
+   b (semibold) and i (italic), on flat spans; unstyled text has no span. The classes are
+   one letter to keep large files small, so they apply only inside highlighted code
+   (`.line-code`); `:where()` keeps the specificity of the bare classes. */
+:where(.line-code) .c { color: var(--syntax-comment); }
+:where(.line-code) .s { color: var(--syntax-string); }
+:where(.line-code) .n { color: var(--syntax-number); }
+:where(.line-code) .k { color: var(--syntax-keyword); }
+:where(.line-code) .f { color: var(--syntax-function); }
+:where(.line-code) .t { color: var(--syntax-type); }
+:where(.line-code) .g { color: var(--syntax-tag); }
+:where(.line-code) .a { color: var(--syntax-attribute); }
+:where(.line-code) .h { color: var(--ink); font-weight: 600; }
+:where(.line-code) .x { color: var(--danger); }
+:where(.line-code) .b { font-weight: 600; }
+:where(.line-code) .i { font-style: italic; }
 
 /* ---------------------------------------------------------------- Scheme-dependent visibility */
 

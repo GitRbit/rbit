@@ -367,13 +367,15 @@ mod tests {
 ";
 
     /// The **Syntax highlighting** section of the real stylesheet.
-    fn compact_css() -> &'static str {
+    fn compact_css() -> String {
         let css = include_str!("../../styles/app.css");
         let marker = "Syntax highlighting */";
         let start = css.find(marker).expect("section header") + marker.len();
         let rest = &css[start..];
         let end = rest.find("/* ----").expect("next section");
-        &rest[..end]
+        // The rules are scoped to highlighted code; the resolver below matches classes on
+        // one element, so it reads them without that (zero-specificity) scope.
+        rest[..end].replace(":where(.line-code) ", "")
     }
 
     /// The nested renderer compact output replaced, kept to prove equivalence.
@@ -505,7 +507,7 @@ mod tests {
         let nested = nested_lines(&highlighter, file_name, text);
         let compact = highlighter.highlight_lines(file_name, text);
         assert_eq!(nested.len(), compact.len(), "{file_name}: line count");
-        let (old_rules, new_rules) = (parse_css(NESTED_CSS), parse_css(compact_css()));
+        let (old_rules, new_rules) = (parse_css(NESTED_CSS), parse_css(&compact_css()));
         let mut styled = 0;
         for (number, (old, new)) in nested.iter().zip(&compact).enumerate() {
             let (old, new) = (computed(old, &old_rules), computed(new, &new_rules));
