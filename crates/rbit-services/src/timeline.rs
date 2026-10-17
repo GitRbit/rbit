@@ -144,7 +144,6 @@ impl TimelineService {
     /// Inserts a new thread by `actor` (who must be able to read `repo`) after validating
     /// the title and body and spending the actor's content budget. Creates the row only:
     /// the caller adds its own data and then publishes `IssueAction::Opened`.
-    #[cfg_attr(not(test), expect(dead_code, reason = "called by the issue (I) and pull request (P) services"))]
     pub(crate) async fn create(
         &self,
         actor: &User,
@@ -225,7 +224,6 @@ impl TimelineService {
     /// Closes a thread on behalf of the system: by a pushed commit (I) or by a merge (P).
     /// No permission check and no throttle; records `event` and publishes
     /// `IssueAction::Closed { reason }`. `false` when it was already closed (or is gone).
-    #[cfg_attr(not(test), expect(dead_code, reason = "called by the issue (I) and pull request (P) services"))]
     pub(crate) async fn close_as_system(
         &self,
         issue: IssueId,
@@ -372,7 +370,6 @@ impl TimelineService {
     }
 
     /// Records `event` on a thread for the workstreams' own changes (labels, pushes, …).
-    #[cfg_attr(not(test), expect(dead_code, reason = "called by the issue (I) and pull request (P) services"))]
     pub(crate) async fn record(&self, issue: IssueId, actor: Option<AccountId>, event: TimelineEvent) -> Result<EventId, ServiceError> {
         Ok(self.ctx.database.issues().record_event(issue, actor, &event, Timestamp::now()).await?)
     }
