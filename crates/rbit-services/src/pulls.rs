@@ -459,6 +459,9 @@ impl PullService {
     /// The header counts of comparing `head` against `base` (full commit ids) when a
     /// Files changed tab or [`Self::counts_between`] computed them before. Cache failures
     /// are logged and read as a miss.
+    ///
+    /// The cache is shared by every repository: pass only ids the caller already knows
+    /// the viewer may see (those of [`Self::compared_ids`]), never ids from a request.
     pub async fn cached_counts(&self, base: &str, head: &str) -> Option<PullCounts> {
         match self.ctx().kv.insights().comparison_counts(base, head).await {
             Ok(counts) => counts.map(|counts| PullCounts {
@@ -474,7 +477,18 @@ impl PullService {
 
     /// The header counts of comparing `head` against `base` (commit ids) in `ctx`'s
     /// base repository: cached, or computed with the default diff limits and remembered.
+    ///
+    /// Only the pair this pull request compares ([`Self::compared_ids`]) is answered;
+    /// any other pair is [`ServiceError::NotFound`]. The ids come from a URL, and the
+    /// cache is shared by every repository: without the check a viewer of one pull
+    /// request could read (or confirm) the counts of commits in a repository they cannot
+    /// see, or make the server diff arbitrary pairs. Within that check an id-only key is
+    /// sound: a pair of commit ids compares the same way wherever both exist.
     pub async fn counts_between(&self, ctx: &PullContext, base: &str, head: &str) -> Result<PullCounts, ServiceError> {
+        let (compared_base, compared_head) = self.compared_ids(ctx).await?;
+        if base != compared_base || head != compared_head {
+            return Err(ServiceError::NotFound);
+        }
         if let Some(counts) = self.cached_counts(base, head).await {
             return Ok(counts);
         }

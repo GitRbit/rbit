@@ -581,7 +581,9 @@ async fn files(
 
 /// `GET /{owner}/{repo}/pull/{n}/counts/{base}...{head}`: the header counts of comparing
 /// two commit ids, as out-of-band swaps into the slots of the Conversation and Commits
-/// tabs. The ids pin the answer, so it never changes.
+/// tabs. The ids pin the answer, so it never changes. Only the pair the pull request
+/// compares right now answers; any other is 404 (and an outdated slot keeps its no-JS
+/// state).
 async fn counts(
     State(state): State<AppState>,
     viewer: Viewer,

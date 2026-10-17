@@ -54,6 +54,47 @@ async fn pull_request_counts_are_deferred_until_a_diff_has_counted_them() {
 }
 
 #[tokio::test]
+async fn counts_answer_only_for_the_pull_requests_own_commits() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let sample = git.sample();
+    alice.create_repo("alice", "demo", "public").await;
+    git.push_sample(&sample, &server.git_url_as("alice", "demo", "alice", PASSWORD));
+    alice
+        .post("/alice/demo/pulls", &[("base", "main"), ("head", Sample::BRANCH), ("title", "Feature"), ("body", "")])
+        .await
+        .expect_redirect("/alice/demo/pull/1");
+
+    // A private repository whose pull request head exists nowhere else, counted by its
+    // Files changed tab (so the shared cache holds its pair).
+    git.ok(&sample.dir, &["checkout", "--quiet", Sample::BRANCH]);
+    let secret_head = git.commit_file(&sample.dir, "secret.txt", "classified\n");
+    alice.create_repo("alice", "secret", "private").await;
+    git.push_sample(&sample, &server.git_url_as("alice", "secret", "alice", PASSWORD));
+    alice
+        .post("/alice/secret/pulls", &[("base", "main"), ("head", Sample::BRANCH), ("title", "Secret"), ("body", "")])
+        .await
+        .expect_redirect("/alice/secret/pull/1");
+    alice.get("/alice/secret/pull/1/files").await.expect_status(StatusCode::OK).expect_contains(&["secret.txt"]);
+
+    // The public pull request does not answer for the private pair, cached or not.
+    let anonymous = server.client();
+    let foreign = format!("/alice/demo/pull/1/counts/{}...{secret_head}", sample.head);
+    let response = anonymous.get(&foreign).await;
+    response.expect_status(StatusCode::NOT_FOUND);
+    assert!(!response.contains("pull-file-count"), "no counts leak: {}", response.body);
+
+    // Nor for any other pair of its own repository's commits (here: reversed).
+    let url = counts_url(&alice.get("/alice/demo/pull/1").await.body).expect("a deferred counts request");
+    let (prefix, pair) = url.rsplit_once('/').unwrap();
+    let (base, head) = pair.split_once("...").unwrap();
+    anonymous.get(&format!("{prefix}/{head}...{base}")).await.expect_status(StatusCode::NOT_FOUND);
+    // Its own pair still answers.
+    anonymous.get(&url).await.expect_status(StatusCode::OK).expect_contains(&[">1 commit</span>"]);
+}
+
+#[tokio::test]
 async fn the_files_tab_counts_for_the_other_tabs() {
     let server = TestServer::start();
     let alice = pull_request(&server, "public", "demo").await;
