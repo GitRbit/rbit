@@ -40,9 +40,9 @@ use rbit_core::{
     references,
     repository::OwnedRepository,
 };
-pub use rbit_storage::sqlite::issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress};
-use rbit_storage::sqlite::{
-    issue_meta::{LabelFields, MilestoneFields},
+use rbit_storage::sqlite::issue_meta::{LabelFields, MilestoneFields};
+pub use rbit_storage::sqlite::{
+    issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress},
     issue_search::SearchFilter,
 };
 use tokio::sync::broadcast::error::RecvError;
@@ -455,6 +455,62 @@ impl IssueService {
         results.authors = authors.into_iter().map(|account| (account.id, account)).collect();
         results.metadata = metadata;
         Ok(results)
+    }
+
+    /// One page (1-based, not clamped) of `per_page` threads of `repo` matching `filter`
+    /// (its `repo` is replaced by `repo`'s), with authors and metadata: the REST API's list.
+    pub async fn list(
+        &self,
+        repo: &RepoContext,
+        mut filter: SearchFilter,
+        page: u32,
+        per_page: u32,
+    ) -> Result<IssueSearchResults, ServiceError> {
+        if !repo.access.can_read() {
+            return Err(ServiceError::NotFound);
+        }
+        filter.repo = repo.repo.repo.id;
+        let store = self.ctx.database.issue_search();
+        let (open, closed) = store.state_counts(&filter).await?;
+        let total = match filter.state {
+            Some(IssueState::Open) => open,
+            Some(IssueState::Closed) => closed,
+            None => open + closed,
+        };
+        let per_page = per_page.max(1);
+        let offset = u64::from(page.max(1) - 1) * u64::from(per_page);
+        let issues = store.search(&filter, per_page, offset).await?;
+        let ids: Vec<IssueId> = issues.iter().map(|issue| issue.id).collect();
+        let author_ids: Vec<AccountId> = distinct(&issues.iter().filter_map(|issue| issue.author).collect::<Vec<_>>());
+        let authors = self.ctx.database.accounts().find_accounts(&author_ids).await?;
+        Ok(IssueSearchResults {
+            metadata: self.metadata(&ids).await?,
+            authors: authors.into_iter().map(|account| (account.id, account)).collect(),
+            issues,
+            total,
+            open,
+            closed,
+            page: page.max(1),
+            per_page,
+            hints: Vec::new(),
+        })
+    }
+
+    /// The users among `names` (case-insensitively); an unknown name is invalid.
+    pub async fn users_named(&self, names: &[String]) -> Result<Vec<Account>, ServiceError> {
+        let accounts = self.ctx.database.issue_meta().accounts_named(names).await?;
+        if let Some(missing) =
+            names.iter().find(|name| !accounts.iter().any(|a| !a.is_organization() && a.name.as_str().eq_ignore_ascii_case(name)))
+        {
+            return Err(invalid(format!("there is no user called “{missing}”")));
+        }
+        Ok(accounts.into_iter().filter(|a| !a.is_organization()).collect())
+    }
+
+    /// The number of the thread of `repo` that comment `id` belongs to.
+    pub async fn comment_thread(&self, repo: &RepoContext, id: rbit_core::CommentId) -> Result<IssueNumber, ServiceError> {
+        let found = self.ctx.database.issue_meta().comment_thread(repo.repo.repo.id, id).await?;
+        found.map(|(_, number)| number).ok_or(ServiceError::NotFound)
     }
 
     /// The account id `who` names: unknown names match nothing (`AccountId(0)`), `@me`

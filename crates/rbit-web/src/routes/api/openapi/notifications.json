@@ -1,4 +1,251 @@
 {
-  "paths": {},
-  "components": { "schemas": {} }
+  "paths": {
+    "/notifications": {
+      "get": {
+        "operationId": "listNotifications",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Your unread notification threads (all of them with all=true), newest first",
+        "responses": {
+          "200": {
+            "description": "One page of threads",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationThread"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "description": "Include read threads",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ]
+      },
+      "put": {
+        "operationId": "markNotificationsRead",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark every notification read",
+        "responses": {
+          "205": {
+            "description": "Marked read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/notifications/threads/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The notification thread id",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "patch": {
+        "operationId": "markNotificationThreadRead",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark one thread read",
+        "responses": {
+          "205": {
+            "description": "Marked read"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/notifications/threads/{id}/subscription": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The notification thread id",
+          "schema": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "unsubscribeNotificationThread",
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Stop notifications about a thread",
+        "responses": {
+          "204": {
+            "description": "Unsubscribed"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "NotificationThread": {
+        "type": "object",
+        "required": [
+          "id",
+          "unread",
+          "reason",
+          "subject",
+          "repository",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "unread": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "author",
+              "comment",
+              "assigned",
+              "mention",
+              "review_requested",
+              "reviewed",
+              "manual"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "subject": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Issue",
+                  "PullRequest"
+                ]
+              },
+              "number": {
+                "type": "integer"
+              }
+            }
+          },
+          "repository": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "full_name": {
+                "type": "string"
+              },
+              "owner": {
+                "type": "object",
+                "properties": {
+                  "login": {
+                    "type": "string"
+                  }
+                }
+              },
+              "html_url": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "url": {
+            "type": "string"
+          },
+          "subscription_url": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
 }
