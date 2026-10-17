@@ -12,6 +12,7 @@ pub mod config;
 pub mod instance;
 pub mod issue;
 pub mod issue_query;
+pub mod lfs;
 pub mod membership;
 pub mod mirror;
 pub mod names;

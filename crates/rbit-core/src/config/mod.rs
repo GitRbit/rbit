@@ -8,6 +8,7 @@ mod api;
 // Milestone 3: editing files in the browser (E).
 mod editor;
 mod issues;
+mod lfs;
 mod mail;
 mod mirrors;
 mod notifications;
@@ -25,6 +26,7 @@ use serde::{Deserialize, Serialize};
 pub use api::ApiConfig;
 pub use editor::EditorConfig;
 pub use issues::IssueConfig;
+pub use lfs::LfsConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use mirrors::MirrorConfig;
 pub use notifications::{EmailPreference, NotificationConfig};
@@ -55,6 +57,8 @@ pub struct Config {
     pub notifications: NotificationConfig,
     // Milestone 3: editing files in the browser (E).
     pub editor: EditorConfig,
+    // Milestone 3: Git LFS (L).
+    pub lfs: LfsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
