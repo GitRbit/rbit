@@ -302,6 +302,23 @@ async fn new_tables_start_empty_with_their_defaults() {
         "issues",
         "issue_comments",
         "issue_events",
+        "labels",
+        "issue_labels",
+        "milestones",
+        "issue_milestones",
+        "issue_assignees",
+        "issue_commit_refs",
+        "issue_cross_refs",
+        "issue_subscriptions",
+        "notifications",
+        "issues_fts",
+        "pull_requests",
+        "pull_reviews",
+        "pull_review_comments",
+        "pull_review_requests",
+        "branch_protections",
+        "branch_protection_users",
+        "branch_protection_teams",
     ] {
         assert!(db.exists("table", table).await, "{table}");
         assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
