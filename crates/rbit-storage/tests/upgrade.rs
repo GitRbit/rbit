@@ -449,3 +449,45 @@ async fn external_identity_table_starts_empty() {
     sqlx::query("DELETE FROM accounts WHERE id = 1").execute(&db.raw).await.unwrap();
     assert_eq!(db.count("SELECT COUNT(*) FROM external_identities").await, 0, "deleting the account removes its identities");
 }
+
+// Milestone 3: importing and push mirrors (M).
+#[tokio::test]
+async fn import_and_push_mirror_tables_start_empty() {
+    let db = upgraded().await;
+    for table in ["repo_imports", "repo_push_mirrors"] {
+        assert!(db.exists("table", table).await, "{table}");
+        assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
+    }
+    sqlx::query(
+        "INSERT INTO repo_imports (repo_id, importer_id, source_kind, source_url, created_at) \
+         VALUES (6, 2, 'github', 'https://github.com/a/b', 1)",
+    )
+    .execute(&db.raw)
+    .await
+    .unwrap();
+    let import = db.database.imports().find(ROCKET).await.unwrap().unwrap();
+    assert_eq!(import.status, rbit_core::import::ImportStatus::Queued);
+    assert_eq!(import.phase, rbit_core::import::ImportPhase::Repository);
+    assert_eq!(import.options, rbit_core::import::ImportOptions::default());
+    assert!(import.warnings.is_empty() && import.counts == rbit_core::import::ImportCounts::default());
+    let failed_without_error = sqlx::query("UPDATE repo_imports SET status = 'failed'").execute(&db.raw).await;
+    assert!(failed_without_error.is_err(), "a failed import says why");
+
+    sqlx::query(
+        "INSERT INTO repo_push_mirrors (repo_id, url, next_sync_at, created_by, created_at, updated_at) \
+         VALUES (6, 'https://example.com/a.git', 1, 2, 1, 1)",
+    )
+    .execute(&db.raw)
+    .await
+    .unwrap();
+    let mirrors = db.database.push_mirrors().list(ROCKET).await.unwrap();
+    assert_eq!(mirrors.len(), 1);
+    assert!(mirrors[0].enabled && mirrors[0].sync_on_push && !mirrors[0].has_secret && mirrors[0].username.is_empty());
+
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&db.raw).await.unwrap();
+    assert_eq!(db.database.imports().find(ROCKET).await.unwrap().unwrap().importer, None, "the importer may be deleted");
+    assert_eq!(db.database.push_mirrors().list(ROCKET).await.unwrap()[0].created_by, None);
+    sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM repo_imports").await, 0, "imports go with their repository");
+    assert_eq!(db.count("SELECT COUNT(*) FROM repo_push_mirrors").await, 0, "push mirrors go with their repository");
+}

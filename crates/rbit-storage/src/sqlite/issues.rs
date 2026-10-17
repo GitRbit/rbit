@@ -774,6 +774,131 @@ async fn touch_in(conn: &mut SqliteConnection, issue: IssueId, at: Timestamp) ->
     Ok(())
 }
 
+// ------------------------------------------------------------------ imported history
+// Milestone 3: importing (M). Threads copied from another forge keep their numbers,
+// states and timestamps; they are written here so this file stays the only writer of
+// the core tables.
+
+/// How an imported thread was closed.
+#[derive(Debug, Clone, Copy)]
+pub struct ImportedClosing {
+    pub at: Timestamp,
+    pub reason: StateReason,
+    pub by: Option<AccountId>,
+}
+
+/// A comment of an imported thread, with its original times.
+#[derive(Debug, Clone)]
+pub struct ImportedComment {
+    pub author: AccountId,
+    pub body: IssueText,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+
+/// A timeline event of an imported thread.
+#[derive(Debug, Clone)]
+pub struct ImportedEvent {
+    pub actor: Option<AccountId>,
+    pub event: TimelineEvent,
+    pub at: Timestamp,
+}
+
+/// An issue or pull request thread as it was on the source, numbered as it was there.
+#[derive(Debug, Clone)]
+pub struct ImportedThread {
+    pub repo: RepoId,
+    pub number: IssueNumber,
+    pub kind: IssueKind,
+    pub title: IssueTitle,
+    pub body: IssueText,
+    pub author: AccountId,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub closed: Option<ImportedClosing>,
+    pub locked: bool,
+    pub comments: Vec<ImportedComment>,
+    pub events: Vec<ImportedEvent>,
+}
+
+impl IssueStore {
+    /// Makes sure numbers handed out from now on are above `highest`, so threads created
+    /// here while an import runs never take a number the import still has to write.
+    pub async fn reserve_numbers(&self, repo: RepoId, highest: IssueNumber) -> Result<(), StorageError> {
+        reserve_in(&mut *self.pool.acquire().await?, repo, highest).await
+    }
+
+    /// Inserts an imported thread with its number, state, comments and events in one
+    /// transaction. [`StorageError::Conflict`] (`"issue number"`) when the number is taken.
+    pub async fn insert_imported(&self, thread: &ImportedThread) -> Result<Issue, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let issue = Self::insert_imported_in(&mut tx, thread).await?;
+        tx.commit().await?;
+        Ok(issue)
+    }
+
+    /// [`Self::insert_imported`] inside a caller's transaction (an imported pull request
+    /// adds its own row in the same transaction).
+    pub(crate) async fn insert_imported_in(conn: &mut SqliteConnection, thread: &ImportedThread) -> Result<Issue, StorageError> {
+        reserve_in(conn, thread.repo, thread.number).await?;
+        let closed = thread.closed.as_ref();
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO issues (repo_id, number, kind, title, body, author_id, state, state_reason, closed_at, closed_by, locked, \
+             created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        )
+        .bind(thread.repo.0)
+        .bind(i64::from(thread.number.get()))
+        .bind(thread.kind.as_str())
+        .bind(thread.title.as_str())
+        .bind(thread.body.as_str())
+        .bind(thread.author.0)
+        .bind(if closed.is_some() { IssueState::Closed } else { IssueState::Open }.as_str())
+        .bind(closed.map(|c| c.reason.as_str()))
+        .bind(closed.map(|c| c.at.0))
+        .bind(closed.and_then(|c| c.by).map(|a| a.0))
+        .bind(thread.locked)
+        .bind(thread.created_at.0)
+        .bind(thread.created_at.0)
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| StorageError::from_insert(e, "issue number"))?;
+        let issue = IssueId(id);
+        for comment in &thread.comments {
+            sqlx::query("INSERT INTO issue_comments (issue_id, author_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+                .bind(id)
+                .bind(comment.author.0)
+                .bind(comment.body.as_str())
+                .bind(comment.created_at.0)
+                .bind(comment.updated_at.0.max(comment.created_at.0))
+                .execute(&mut *conn)
+                .await?;
+        }
+        for event in &thread.events {
+            insert_event(conn, issue, event.actor, &event.event, event.at).await?;
+        }
+        let count = i64::try_from(thread.comments.len()).unwrap_or(i64::MAX);
+        sqlx::query("UPDATE issues SET comment_count = ?, updated_at = MAX(updated_at, ?) WHERE id = ?")
+            .bind(count)
+            .bind(thread.updated_at.0)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        find_in(conn, issue).await?.ok_or_else(|| corrupt("imported issue", "vanished"))
+    }
+}
+
+async fn reserve_in(conn: &mut SqliteConnection, repo: RepoId, highest: IssueNumber) -> Result<(), StorageError> {
+    sqlx::query(
+        "INSERT INTO issue_counters (repo_id, last_number) VALUES (?1, ?2) \
+         ON CONFLICT (repo_id) DO UPDATE SET last_number = MAX(last_number, ?2)",
+    )
+    .bind(repo.0)
+    .bind(i64::from(highest.get()))
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

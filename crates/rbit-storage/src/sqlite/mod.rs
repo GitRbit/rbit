@@ -8,6 +8,8 @@ pub mod collaborators;
 // Milestone 3: external sign-in (O).
 pub mod external_identities;
 pub mod forks;
+// Milestone 3: importing and push mirrors (M).
+pub mod imports;
 pub mod instance;
 pub mod issue_meta;
 pub mod issue_search;
@@ -21,6 +23,8 @@ pub mod preferences;
 pub mod profiles;
 pub mod protection;
 pub mod pulls;
+// Milestone 3: importing and push mirrors (M).
+pub mod push_mirrors;
 pub mod recovery;
 pub mod releases;
 pub mod repo_settings;
@@ -221,6 +225,16 @@ impl Database {
 
     pub fn external_identities(&self) -> external_identities::ExternalIdentityStore {
         external_identities::ExternalIdentityStore::new(self.pool.clone())
+    }
+
+    // Milestone 3: importing and push mirrors (M).
+
+    pub fn imports(&self) -> imports::ImportStore {
+        imports::ImportStore::new(self.pool.clone())
+    }
+
+    pub fn push_mirrors(&self) -> push_mirrors::PushMirrorStore {
+        push_mirrors::PushMirrorStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

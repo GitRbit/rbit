@@ -30,6 +30,9 @@ pub mod timestamp;
 pub mod webhook;
 // Milestone 3: editing files in the browser (E).
 pub mod file_edit;
+// Milestone 3: importing and push mirrors (M).
+pub mod import;
+pub mod push_mirror;
 
 pub use access::RepoAccess;
 pub use access_token::{AccessToken, AccessTokenId, TokenScope};

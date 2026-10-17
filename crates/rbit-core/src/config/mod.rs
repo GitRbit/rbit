@@ -8,6 +8,8 @@ mod api;
 // Milestone 3: editing files in the browser (E).
 mod auth;
 mod editor;
+// Milestone 3: importing and push mirrors (M).
+mod imports;
 mod issues;
 mod lfs;
 mod mail;
@@ -27,6 +29,8 @@ use serde::{Deserialize, Serialize};
 pub use api::ApiConfig;
 pub use auth::{AuthConfig, MAX_PROVIDER_ID_LEN, ProviderConfig, ProviderKind, ProviderRegistration};
 pub use editor::EditorConfig;
+// Milestone 3: importing and push mirrors (M).
+pub use imports::{AuthorMapping, ImportConfig, PushMirrorConfig};
 pub use issues::IssueConfig;
 pub use lfs::LfsConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
@@ -63,6 +67,9 @@ pub struct Config {
     pub lfs: LfsConfig,
     // Milestone 3: external sign-in (O).
     pub auth: AuthConfig,
+    // Milestone 3: importing and push mirrors (M).
+    pub imports: ImportConfig,
+    pub push_mirrors: PushMirrorConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
