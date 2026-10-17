@@ -16,6 +16,7 @@ use crate::{
     AccountId, IssueId, IssueNumber, RepoId, Timestamp,
     issue::{MergeStrategy, ReviewId, ReviewState},
     protection::MergeRules,
+    status::RequiredChecks,
 };
 
 /// Conflicting paths stored (and shown) at most per pull request.
@@ -75,8 +76,8 @@ stored_enum!(
 );
 
 stored_enum!(
-    /// Required status checks. Nothing produces anything but `NotConfigured` in this wave;
-    /// the other states exist for a future commit status API.
+    /// The combined state of the head commit's statuses (milestone 3, S; see
+    /// [`crate::status::checks_status`]): `NotConfigured` when nothing reported.
     ChecksStatus {
         NotConfigured => "not_configured",
         Pending => "pending",
@@ -266,13 +267,16 @@ pub enum Requirement {
     },
     /// The merger may push to the base branch (restricted pushers).
     MergerMayPush,
+    /// The head commit's statuses as a whole: informational, never blocks merging.
     Checks(ChecksStatus),
+    /// Every context the protection rules require passes on the head commit.
+    RequiredChecks(RequiredChecks),
 }
 
 impl Requirement {
     /// Requirements a protection bypass may skip: the protection rules themselves.
     pub const fn is_protection(self) -> bool {
-        matches!(self, Self::Approvals { .. } | Self::NoChangesRequested { .. } | Self::MergerMayPush)
+        matches!(self, Self::Approvals { .. } | Self::NoChangesRequested { .. } | Self::MergerMayPush | Self::RequiredChecks(_))
     }
 
     /// The sentence shown in the merge box.
@@ -300,7 +304,23 @@ impl Requirement {
             }
             (Self::MergerMayPush, true) => "You may push to the base branch".to_owned(),
             (Self::MergerMayPush, false) => "You are not allowed to push to the base branch".to_owned(),
-            (Self::Checks(_), _) => "No status checks — not supported yet".to_owned(),
+            (Self::Checks(status), _) => match status {
+                ChecksStatus::NotConfigured => "No status checks",
+                ChecksStatus::Pending => "Some checks have not completed yet",
+                ChecksStatus::Passing => "All checks have passed",
+                ChecksStatus::Failing => "Some checks were not successful",
+            }
+            .to_owned(),
+            (Self::RequiredChecks(checks), _) => {
+                let plural = |count: usize, one: &str, many: &str| if count == 1 { one.to_owned() } else { many.to_owned() };
+                if checks.all_pass() {
+                    format!("{} {} passed", checks.required, plural(checks.required, "required check", "required checks"))
+                } else if checks.failing > 0 {
+                    format!("{} of {} required checks failed", checks.failing, checks.required)
+                } else {
+                    format!("Waiting for {} of {} required checks", checks.waiting(), checks.required)
+                }
+            }
         }
     }
 }
@@ -321,6 +341,8 @@ pub struct MergeFacts<'a> {
     pub mergeable: Mergeability,
     pub tally: &'a ReviewTally,
     pub checks: ChecksStatus,
+    /// How the contexts in [`MergeRules::required_contexts`] stand on the head commit.
+    pub required_checks: RequiredChecks,
 }
 
 /// The merge box: every requirement with its state.
@@ -368,8 +390,13 @@ pub fn evaluate(facts: &MergeFacts<'_>, rules: &MergeRules) -> MergeEvaluation {
     if !rules.merger_may_push {
         checks.push(check(Requirement::MergerMayPush, false));
     }
-    // Nothing reports statuses yet: the placeholder is informational and always met.
-    checks.push(check(Requirement::Checks(facts.checks), facts.checks != ChecksStatus::Failing && facts.checks != ChecksStatus::Pending));
+    if rules.require_status_checks {
+        checks.push(check(Requirement::RequiredChecks(facts.required_checks), facts.required_checks.all_pass()));
+    }
+    // Statuses nobody requires are shown but never block, as on GitHub.
+    if facts.checks != ChecksStatus::NotConfigured {
+        checks.push(check(Requirement::Checks(facts.checks), true));
+    }
     MergeEvaluation { checks, may_bypass: rules.merger_may_bypass }
 }
 
@@ -545,6 +572,7 @@ mod tests {
             mergeable: Mergeability::Clean,
             tally,
             checks: ChecksStatus::NotConfigured,
+            required_checks: RequiredChecks::default(),
         }
     }
 
@@ -553,7 +581,7 @@ mod tests {
         let none = ReviewTally::default();
         let open = evaluate(&facts(&none), &MergeRules::unprotected());
         assert!(open.can_merge() && !open.is_blocked());
-        assert_eq!(open.checks.len(), 5);
+        assert_eq!(open.checks.len(), 4, "no status line without statuses");
 
         let rules = MergeRules {
             patterns: vec!["main".to_owned()],
@@ -592,6 +620,44 @@ mod tests {
 
         let two = ReviewTally { approvals: vec![AccountId(1), AccountId(3)], changes_requested: Vec::new() };
         assert!(evaluate(&facts(&two), &MergeRules { merger_may_push: true, ..rules }).can_merge());
+    }
+
+    #[test]
+    fn required_checks_block_and_other_statuses_inform() {
+        let none = ReviewTally::default();
+        // Unrequired statuses never block, whatever their state.
+        for checks in [ChecksStatus::Pending, ChecksStatus::Failing, ChecksStatus::Passing] {
+            let evaluation = evaluate(&MergeFacts { checks, ..facts(&none) }, &MergeRules::unprotected());
+            assert!(evaluation.can_merge(), "{checks:?}");
+            assert_eq!(evaluation.checks.last().map(|c| c.requirement), Some(Requirement::Checks(checks)));
+        }
+
+        let rules = MergeRules {
+            patterns: vec!["main".to_owned()],
+            require_status_checks: true,
+            required_contexts: vec![crate::status::StatusContext::parse("ci").unwrap()],
+            ..MergeRules::unprotected()
+        };
+        let waiting = RequiredChecks { required: 2, passing: 1, failing: 0 };
+        let failing = RequiredChecks { required: 2, passing: 0, failing: 1 };
+        let passing = RequiredChecks { required: 2, passing: 2, failing: 0 };
+        for (required_checks, can_merge, sentence) in [
+            (waiting, false, "Waiting for 1 of 2 required checks"),
+            (failing, false, "1 of 2 required checks failed"),
+            (passing, true, "2 required checks passed"),
+        ] {
+            let evaluation = evaluate(&MergeFacts { required_checks, checks: ChecksStatus::Pending, ..facts(&none) }, &rules);
+            assert_eq!(evaluation.can_merge(), can_merge, "{required_checks:?}");
+            assert_eq!(evaluation.is_blocked(), !can_merge, "required checks are a protection requirement");
+            let line = evaluation.checks.iter().find(|c| matches!(c.requirement, Requirement::RequiredChecks(_))).unwrap();
+            assert_eq!(line.requirement.describe(line.met), sentence);
+        }
+        let one = RequiredChecks { required: 1, passing: 1, failing: 0 };
+        assert_eq!(Requirement::RequiredChecks(one).describe(true), "1 required check passed");
+        // An administrator allowed to bypass may merge while checks fail; structure still counts.
+        let bypass = MergeRules { merger_may_bypass: true, ..rules.clone() };
+        assert!(evaluate(&MergeFacts { required_checks: failing, ..facts(&none) }, &bypass).can_merge_with_bypass());
+        assert_eq!(Requirement::Checks(ChecksStatus::Failing).describe(true), "Some checks were not successful");
     }
 
     #[test]

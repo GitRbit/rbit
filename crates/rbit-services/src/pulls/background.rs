@@ -1,6 +1,6 @@
 //! The pull request service's background work: reacting to pushes (head moved, head
-//! deleted, base moved, merged outside rbit), the mergeability worker and the start-up
-//! sweep of temporary directories.
+//! deleted, base moved, merged outside rbit), to new commit statuses on a head (milestone
+//! 3, S), the mergeability worker and the start-up sweep of temporary directories.
 //!
 //! Milestone 2 workstream P (pull requests) owns this file.
 //!
@@ -74,6 +74,12 @@ impl PullService {
                         tracing::warn!(%error, repo = repo.0, "cannot update pull requests after a push");
                     }
                 }
+                // Milestone 3: commit statuses (S).
+                Ok(DomainEvent::CommitStatus { repo, sha, .. }) => {
+                    if let Err(error) = self.handle_status(repo, &sha).await {
+                        tracing::warn!(%error, repo = repo.0, "cannot re-evaluate pull requests after a commit status");
+                    }
+                }
                 Ok(_) => {}
                 Err(RecvError::Lagged(skipped)) => {
                     tracing::warn!(skipped, "pull requests missed push events; mergeability is rechecked periodically");
@@ -99,6 +105,37 @@ impl PullService {
         }
         self.inner.wake.notify_one();
         Ok(())
+    }
+
+    /// Re-evaluates the open pull requests of `repo` whose head is `sha` after a status
+    /// arrived: the checks are read when the merge box is built, so what is left is to
+    /// make sure the mergeability those pull requests show is computed for their current
+    /// base and head, so the merge button is ready once the checks pass. Returns how many
+    /// pull requests were queued for a trial merge. Public so tests can drive it.
+    pub async fn handle_status(&self, repo: RepoId, sha: &str) -> Result<usize, ServiceError> {
+        let store = self.ctx().database.pulls();
+        let mut queued = 0;
+        for (issue, pull) in store.open_with_head_sha(repo, sha).await? {
+            tracing::debug!(pull = issue.id.0, %sha, "commit status on a pull request head");
+            if pull.is_draft {
+                continue;
+            }
+            let Some(base) = RepoContext::load_for_system(self.ctx(), pull.repo_id).await? else { continue };
+            let base_tip = base.reader.commit_id(format!("refs/heads/{}", pull.base_branch)).await.ok();
+            let current = pull.mergeable != Mergeability::Unknown
+                && pull.mergeable_base_sha == base_tip
+                && pull.mergeable_head_sha.as_deref() == Some(pull.head_sha.as_str());
+            if !current {
+                if pull.mergeable != Mergeability::Unknown {
+                    store.mark_unknown(issue.id).await?;
+                }
+                queued += 1;
+            }
+        }
+        if queued > 0 {
+            self.inner.wake.notify_one();
+        }
+        Ok(queued)
     }
 
     async fn head_moved(

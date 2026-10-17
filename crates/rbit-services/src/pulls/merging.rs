@@ -10,15 +10,21 @@
 //! instance-wide (`[pulls] max_concurrent_merges`); the git work is `rbit_git::merge`,
 //! wrapped in [`crate::PushService`] so `RepositoryPushed` (webhooks, commit references)
 //! fires as for any push. A base branch that moves during the merge is retried once.
+//!
+//! Checks (milestone 3, S): the merge box reads the latest commit statuses of the head in
+//! the base repository; with `require_status_checks`, every required context must be
+//! `success` (a protection requirement, so an allowed bypass skips it). Other statuses
+//! are shown but never block.
 
 use rbit_core::{
     StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
-        ChecksStatus, CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, ReviewTally, commit_message, default_merge_title,
-        default_squash_body, default_squash_title, evaluate, noreply_domain, tally,
+        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, ReviewTally, commit_message, default_merge_title, default_squash_body,
+        default_squash_title, evaluate, noreply_domain, tally,
     },
+    status::{CommitStatus, checks_status, required_checks},
 };
 use rbit_git::merge::{MergeError, MergeSpec, merge};
 use rbit_storage::sqlite::{audit::AuditAction, pulls::MergeRecord};
@@ -35,6 +41,8 @@ pub struct MergeBox {
     /// The mergeability shown: the stored one, or `Unknown` when it ran on another base.
     pub mergeable: Mergeability,
     pub conflict_paths: Vec<String>,
+    /// The latest status of each context on the head commit, by context (milestone 3, S).
+    pub statuses: Vec<CommitStatus>,
     pub head_branch_exists: bool,
     /// The viewer may press the button (write access to the base repository).
     pub can_merge: bool,
@@ -91,6 +99,7 @@ impl PullService {
         };
         let tally = self.tally(ctx, &rules).await?;
         let head_branch_exists = self.head_branch_exists(ctx).await;
+        let statuses = self.ctx().database.commit_statuses().latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
         let stale = base_tip.is_none()
             || ctx.pull.mergeable_base_sha != base_tip
             || ctx.pull.mergeable_head_sha.as_deref() != Some(&ctx.pull.head_sha);
@@ -107,7 +116,8 @@ impl PullService {
             head_branch_exists,
             mergeable,
             tally: &tally,
-            checks: ChecksStatus::NotConfigured,
+            checks: checks_status(&statuses),
+            required_checks: required_checks(&rules.required_contexts, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
         let can_delete_head = match viewer {
@@ -122,6 +132,7 @@ impl PullService {
             tally,
             mergeable,
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
+            statuses,
             head_branch_exists,
             can_merge: viewer.is_some() && ctx.repo().access.can_write(),
             can_delete_head,

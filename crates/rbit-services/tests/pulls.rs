@@ -501,3 +501,72 @@ async fn branch_protection_gates_merges_and_head_branch_deletion() {
     assert!(pulls.merged_into_default_branch(merged.issue().id).await.unwrap(), "main is the default branch");
     assert!(matches!(pulls.delete_head(&fixture.alice, &merged).await, Err(ServiceError::Invalid(_))));
 }
+
+// Milestone 3: required status checks (S).
+#[tokio::test]
+async fn required_status_checks_gate_merges_and_statuses_wake_the_worker() {
+    use rbit_core::{
+        protection::RuleSettings,
+        pull::{ChecksStatus, Requirement},
+        status::StatusState,
+    };
+    use rbit_services::{protection::ProtectionInput, statuses::NewStatus};
+
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let statuses = &fixture.services.statuses;
+    let repo = fixture.repo(&fixture.alice, "alice").await;
+    let checked = RuleSettings { require_status_checks: true, ..RuleSettings::default() };
+    let rule = ProtectionInput { pattern: "main".into(), settings: checked, contexts: vec!["ci".into()], ..ProtectionInput::default() };
+    fixture.services.protection.create(&fixture.alice, &repo, &rule).await.unwrap();
+
+    // A pull request from bob's fork: its head is in alice/demo as refs/pull/1/head.
+    git(&fixture.work, &["checkout", "-q", "-b", "topic"]);
+    commit(&fixture.work, "topic.txt", "topic\n", "Add the topic");
+    fixture.push(&fixture.bob, "bob", &["topic"]).await;
+    let number = fixture.create(&fixture.bob, "bob", "topic").await.unwrap();
+    pulls.check_unknown().await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    let head = ctx.pull.head_sha.clone();
+    let post = |state: &str, context: &str| NewStatus { state: state.into(), context: Some(context.into()), ..NewStatus::default() };
+
+    let merge_box = pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap();
+    assert!(merge_box.evaluation.is_blocked() && merge_box.statuses.is_empty());
+    let line = |merge_box: &rbit_services::pulls::MergeBox| {
+        let check = merge_box.evaluation.checks.iter().find(|c| matches!(c.requirement, Requirement::RequiredChecks(_))).unwrap();
+        check.requirement.describe(check.met)
+    };
+    assert_eq!(line(&merge_box), "Waiting for 1 of 1 required checks");
+    let refused = pulls.merge(&fixture.alice, &ctx, Fixture::merge_input(MergeStrategy::Merge)).await.unwrap_err();
+    assert!(matches!(&refused, MergeFailure::Blocked(message) if message.contains("required checks")), "{refused}");
+
+    // Statuses on the fork's head are posted to the base repository.
+    statuses.create(&fixture.alice, &repo, &head, &post("failure", "ci")).await.unwrap();
+    statuses.create(&fixture.alice, &repo, &head, &post("pending", "lint")).await.unwrap();
+    let merge_box = pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap();
+    assert_eq!(line(&merge_box), "1 of 1 required checks failed");
+    let contexts: Vec<_> = merge_box.statuses.iter().map(|s| (s.context.as_str(), s.state)).collect();
+    assert_eq!(contexts, [("ci", StatusState::Failure), ("lint", StatusState::Pending)]);
+    assert!(merge_box.evaluation.checks.iter().any(|c| c.requirement == Requirement::Checks(ChecksStatus::Failing)));
+
+    // A status for the head re-evaluates the pull request: its mergeability is current,
+    // so nothing is queued; once it is stale, it is.
+    assert_eq!(pulls.handle_status(repo.repo.repo.id, &head).await.unwrap(), 0);
+    assert_eq!(pulls.handle_status(repo.repo.repo.id, &"0".repeat(40)).await.unwrap(), 0, "no pull request has that head");
+    git(&fixture.work, &["checkout", "-q", "main"]);
+    commit(&fixture.work, "base.txt", "base\n", "Move the base");
+    // The base moved outside the push path: the stored mergeability is stale now.
+    git(&fixture.work, &["push", "-q", repo.disk_path.to_str().unwrap(), "main"]);
+    assert_eq!(pulls.handle_status(repo.repo.repo.id, &head).await.unwrap(), 1);
+    pulls.check_unknown().await.unwrap();
+
+    // Success on the required context (the newest report wins) unblocks the merge; the
+    // pending, unrequired one does not block.
+    statuses.create(&fixture.alice, &repo, &head, &post("success", "ci")).await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    let merge_box = pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap();
+    assert_eq!(line(&merge_box), "1 required check passed");
+    assert!(merge_box.evaluation.can_merge(), "{:?}", merge_box.evaluation);
+    pulls.merge(&fixture.alice, &ctx, Fixture::merge_input(MergeStrategy::Merge)).await.unwrap();
+    assert!(fixture.open_pull(&fixture.alice, number).await.pull.is_merged());
+}

@@ -435,13 +435,26 @@ impl MergeBoxView {
             .checks
             .iter()
             .map(|check| {
-                let checking = matches!(check.requirement, rbit_core::pull::Requirement::NoConflicts(Mergeability::Unknown));
-                let (tone, icon) = match (check.met, checking) {
-                    (true, _) => ("text-success", "check"),
-                    (false, true) => ("text-warning", "refresh"),
-                    (false, false) => ("text-danger", "x"),
+                use rbit_core::pull::{ChecksStatus, Requirement};
+                let checking = match check.requirement {
+                    Requirement::NoConflicts(Mergeability::Unknown) => true,
+                    // Milestone 3 (S): required checks still running are pending, not failed.
+                    Requirement::RequiredChecks(checks) => checks.failing == 0,
+                    _ => false,
                 };
-                RequirementView { text: check.requirement.describe(check.met), met: check.met, tone, icon }
+                let (tone, icon) = match (check.requirement, check.met, checking) {
+                    // Statuses nobody requires: always "met", shown by their state.
+                    (Requirement::Checks(ChecksStatus::Failing), ..) => ("text-danger", "x"),
+                    (Requirement::Checks(ChecksStatus::NotConfigured), ..) => ("text-ink-faint", "circle-dot"),
+                    (Requirement::Checks(ChecksStatus::Pending), ..) | (Requirement::RequiredChecks(_), false, true) => {
+                        ("text-warning", "circle-dot")
+                    }
+                    (_, true, _) => ("text-success", "check"),
+                    (_, false, true) => ("text-warning", "refresh"),
+                    (_, false, false) => ("text-danger", "x"),
+                };
+                let met = check.met && !matches!(check.requirement, Requirement::Checks(ChecksStatus::Failing | ChecksStatus::Pending));
+                RequirementView { text: check.requirement.describe(check.met), met, tone, icon }
             })
             .collect();
         let ready = merge_box.evaluation.can_merge();

@@ -377,6 +377,24 @@ impl PullStore {
         rows.into_iter().map(ListedRow::into_pair).collect()
     }
 
+    /// Open pull requests of `repo` whose head is commit `sha` (milestone 3, S: a commit
+    /// status arrived for it).
+    pub async fn open_with_head_sha(&self, repo: RepoId, sha: &str) -> Result<Vec<(Issue, PullRequest)>, StorageError> {
+        let rows: Vec<ListedRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            pull_columns!(),
+            ", ",
+            issue_columns!(),
+            " FROM pull_requests p JOIN issues i ON i.id = p.issue_id \
+             WHERE p.repo_id = ? AND p.head_sha = ? AND i.state = 'open' ORDER BY i.id"
+        ))
+        .bind(repo.0)
+        .bind(sha)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(ListedRow::into_pair).collect()
+    }
+
     /// Open pull requests into `branch` of `repo`.
     pub async fn open_with_base(&self, repo: RepoId, branch: &str) -> Result<Vec<(Issue, PullRequest)>, StorageError> {
         let rows: Vec<ListedRow> = sqlx::query_as(concat!(
