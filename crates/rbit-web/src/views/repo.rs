@@ -53,8 +53,8 @@ pub struct RepoHeader {
     /// `/{owner}/{repo}/issues` and `/{owner}/{repo}/pulls`.
     pub issues_url: String,
     pub pulls_url: String,
-    /// Open issues and pull requests, shown on the tabs (zero until T0 fills them from
-    /// `TimelineService::open_counts`).
+    /// Open issues and pull requests, shown on the tabs (from
+    /// `TimelineService::open_counts`, loaded with the page).
     pub open_issues: u64,
     pub open_pulls: u64,
     /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
