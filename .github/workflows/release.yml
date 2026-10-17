@@ -1,0 +1,270 @@
+name: Release
+
+# Pushing a tag `vX.Y.Z` publishes rbit X.Y.Z:
+#   1. checks that the tag matches the workspace version and that CHANGELOG.md has a
+#      `## [X.Y.Z]` section (its text becomes the release notes);
+#   2. builds the stylesheet once, then release binaries for Linux (x86_64, aarch64),
+#      macOS (x86_64, aarch64) and Windows (x86_64), each natively or with the platform's
+#      own cross toolchain — no emulation, no Docker-based cross compilers;
+#   3. creates the GitHub release with the archives and their SHA-256 sums;
+#   4. pushes a multi-architecture image (linux/amd64, linux/arm64) of the same Linux
+#      binaries to ghcr.io/rbit/rbit.
+#
+# A tag with a pre-release suffix (`v0.2.0-rc.1`) makes a pre-release; it may use the
+# `## [Unreleased]` section when the version has none yet, and never moves `latest`.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# Never run two releases of the same tag at once, and never cancel one half-way.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "24"
+  IMAGE: ghcr.io/rbit/rbit
+
+jobs:
+  prepare:
+    name: Check version and notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare the tag with the workspace version
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          crate="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "rbit-server") | .version')"
+          if [[ "$version" != "$crate" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the workspace version $crate (Cargo.toml)"
+            exit 1
+          fi
+          prerelease=false
+          [[ "$version" == *-* ]] && prerelease=true
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      - name: Extract the release notes from CHANGELOG.md
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          # Print the body of the `## [<heading>]` section, up to the next `## [` heading.
+          section() {
+            awk -v heading="## [$1]" '
+              index($0, "## [") == 1 { if (found) exit; found = (index($0, heading) == 1); next }
+              found { print }
+            ' CHANGELOG.md
+          }
+          section "$VERSION" > notes.md
+          if [[ ! -s notes.md && "$PRERELEASE" == true ]]; then
+            section "Unreleased" > notes.md
+          fi
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' section with content"
+            exit 1
+          fi
+          echo "Release notes:"; cat notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: notes.md
+          retention-days: 7
+
+  assets:
+    name: Stylesheet
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # The stylesheet is embedded into the binary at compile time, so it is built first.
+      - run: npm ci
+      - run: npm run build
+      # Vendored scripts are committed; a release must ship exactly what is in the tag.
+      - run: git diff --exit-code -- crates/rbit-web/assets
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-css
+          path: crates/rbit-web/assets/app.css
+          retention-days: 7
+
+  binaries:
+    name: Build ${{ matrix.target }}
+    needs: [prepare, assets]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # glibc builds on the oldest supported Ubuntu runners (glibc 2.35), so they also
+          # run on Debian 12, Ubuntu 22.04 and newer. aarch64 builds natively on an Arm
+          # runner, so SQLite, ring and mimalloc need no cross C toolchain.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+            archive: tar.gz
+          # Apple's toolchain builds both architectures on an Apple silicon runner.
+          - target: aarch64-apple-darwin
+            os: macos-15
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-15
+            archive: tar.gz
+            cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    env:
+      NAME: rbit-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: app-css
+          path: crates/rbit-web/assets
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked --package rbit-server --target ${{ matrix.target }}
+      - name: Smoke test
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: ./target/${{ matrix.target }}/release/rbit --version
+      - name: Package
+        shell: bash
+        run: |
+          exe=rbit
+          [[ "${{ matrix.target }}" == *windows* ]] && exe=rbit.exe
+          mkdir -p "dist/$NAME"
+          cp "target/${{ matrix.target }}/release/$exe" "dist/$NAME/"
+          cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY.md "dist/$NAME/"
+          cp deploy/rbit.example.toml deploy/rbit.service "dist/$NAME/"
+          cd dist
+          if [[ "${{ matrix.archive }}" == zip ]]; then
+            7z a -tzip "$NAME.zip" "$NAME" > /dev/null
+          else
+            tar -czf "$NAME.tar.gz" "$NAME"
+          fi
+          ls -l
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/${{ env.NAME }}.${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the GitHub release
+    needs: [prepare, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          flags=()
+          [[ "$PRERELEASE" == true ]] && flags+=(--prerelease)
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "rbit ${TAG#v}" \
+            --notes-file notes.md \
+            --verify-tag \
+            "${flags[@]}"
+
+  image:
+    name: Publish the container image
+    needs: [prepare, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*-linux-gnu
+          path: archives
+          merge-multiple: true
+      # The Dockerfile's `prebuilt` stage takes dist/linux-<arch>/rbit (tar keeps the
+      # executable bit that artifacts would lose).
+      - name: Unpack the Linux binaries
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          for pair in amd64:x86_64-unknown-linux-gnu arm64:aarch64-unknown-linux-gnu; do
+            arch="${pair%%:*}" target="${pair#*:}"
+            mkdir -p "dist/linux-$arch"
+            tar -xzf "archives/rbit-$VERSION-$target.tar.gz" --strip-components=1 \
+              -C "dist/linux-$arch" "rbit-$VERSION-$target/rbit"
+          done
+          ls -lR dist
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          # `latest` and the X.Y / X tags only for final releases (the semver patterns skip
+          # pre-releases on their own); `{{version}}` always.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0.') }}
+          flavor: |
+            latest=${{ needs.prepare.outputs.prerelease == 'false' }}
+          # GitHub reports a dual license as "NOASSERTION"; state it explicitly.
+          labels: |
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+            org.opencontainers.image.title=rbit
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: BINARY=prebuilt
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true

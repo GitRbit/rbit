@@ -14,5 +14,8 @@
 /rbit.toml
 /rustit.toml
 
+# Release archives (assembled by .github/workflows/release.yml)
+/dist
+
 # Agent worktrees (temporary checkouts of feature branches)
 /.claude/worktrees/

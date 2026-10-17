@@ -8,10 +8,16 @@
 #
 # Configuration comes from RBIT_* environment variables or a TOML file mounted into the
 # container and passed with RBIT_CONFIG=/path/to/rbit.toml. See docs/deployment.md.
+#
+# Released images (ghcr.io/rbit/rbit) are built by .github/workflows/release.yml with
+# BINARY=prebuilt: they package the exact release binaries, built natively for each
+# architecture, instead of compiling again under emulation. The default compiles from source.
 
 ARG RUST_VERSION=1
 ARG NODE_VERSION=24
 ARG DEBIAN_RELEASE=trixie
+# `source` (compile in stages 1 and 2) or `prebuilt` (take dist/linux-<arch>/rbit, stage 2b).
+ARG BINARY=source
 
 # ---------------------------------------------------------------- 1. stylesheet
 # Tailwind scans the templates and Rust sources for class names, so only those (and the
@@ -37,8 +43,28 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked --package rbit-server \
     && install -D -m 0755 target/release/rbit /out/rbit
 
+FROM build AS binary-source
+
+# ---------------------------------------------------------------- 2b. prebuilt binary
+# Only used with BINARY=prebuilt. BuildKit builds only the stages the final one needs, so
+# a default build never reads dist/, and a prebuilt build skips stages 1 and 2.
+FROM scratch AS binary-prebuilt
+ARG TARGETARCH
+COPY --chmod=0755 dist/linux-${TARGETARCH}/rbit /out/rbit
+
+FROM binary-${BINARY} AS binary
+
 # ---------------------------------------------------------------- 3. runtime
 FROM debian:${DEBIAN_RELEASE}-slim AS runtime
+
+# Release builds add org.opencontainers.image.version, .revision and .created.
+LABEL org.opencontainers.image.title="rbit" \
+      org.opencontainers.image.description="A fast, self-hosted Git platform written in Rust" \
+      org.opencontainers.image.url="https://github.com/rbit/rbit" \
+      org.opencontainers.image.source="https://github.com/rbit/rbit" \
+      org.opencontainers.image.documentation="https://github.com/rbit/rbit/blob/main/docs/deployment.md" \
+      org.opencontainers.image.licenses="MIT OR Apache-2.0" \
+      org.opencontainers.image.vendor="The rbit contributors"
 
 # git: the smart-HTTP transport, `git gc` and backups run the git executable.
 # tini: PID 1 that forwards signals and reaps orphaned git processes.
@@ -51,7 +77,7 @@ RUN groupadd --system --gid 10001 rbit \
     && useradd --system --uid 10001 --gid rbit --home-dir /data --shell /usr/sbin/nologin rbit \
     && install -d -o rbit -g rbit -m 0750 /data
 
-COPY --from=build /out/rbit /usr/local/bin/rbit
+COPY --from=binary /out/rbit /usr/local/bin/rbit
 
 # Both listeners bind every interface inside the container; publish them with -p. The SSH
 # server only starts with RBIT_SSH__ENABLED=true; its built-in default bind is loopback,
