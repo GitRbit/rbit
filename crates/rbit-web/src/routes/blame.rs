@@ -57,7 +57,8 @@ async fn show(
             let highlighter = state.clone();
             let name = file_name.clone();
             let text = std::mem::take(&mut blamed.text);
-            let lines = tokio::task::spawn_blocking(move || highlighter.highlighter.highlight_lines(&name, &text))
+            let blob_id = std::mem::take(&mut blamed.blob_id);
+            let lines = tokio::task::spawn_blocking(move || highlighter.highlighter.highlight_lines_cached(&blob_id, &name, &text))
                 .await
                 .map_err(WebError::internal)?;
             BlameContent::Hunks(BlameHunkView::build(&blamed.hunks, &lines, urls))

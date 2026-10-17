@@ -24,13 +24,18 @@
 //! both the old nested markup (against the old rules) and the new markup (against the
 //! stylesheet itself) per character and require identical results.
 
-use std::{collections::HashMap, sync::OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use syntect::{
     easy::ScopeRangeIterator,
     parsing::{ParseState, Scope, ScopeStack, SyntaxReference, SyntaxSet},
     util::LinesWithEndings,
 };
+
+use super::highlight_cache::HighlightCache;
 
 /// Files above these limits are shown as plain text: highlighting cost grows with size
 /// and pathological inputs (minified bundles) gain nothing from it.
@@ -227,10 +232,12 @@ impl LineWriter {
     }
 }
 
-/// Loads syntax definitions lazily on first use (≈ tens of ms), then shares them.
+/// Loads syntax definitions lazily on first use (≈ tens of ms), then shares them, and
+/// keeps recently highlighted files ([`Self::highlight_lines_cached`]).
 #[derive(Debug, Default)]
 pub struct Highlighter {
     syntaxes: OnceLock<SyntaxSet>,
+    cache: HighlightCache,
 }
 
 impl Highlighter {
@@ -254,6 +261,22 @@ impl Highlighter {
             .or_else(|| set.find_syntax_by_extension(file_name))
             .or_else(|| text.lines().next().and_then(|first| set.find_syntax_by_first_line(first)))
             .filter(|syntax| syntax.name != "Plain Text")
+    }
+
+    /// [`Self::highlight_lines`] through the cache. `content_id` must name `text` exactly:
+    /// a Git blob id, or a Git LFS object id.
+    pub fn highlight_lines_cached(&self, content_id: &str, file_name: &str, text: &str) -> Vec<String> {
+        if let Some(lines) = self.cache.get(content_id, file_name) {
+            return lines.to_vec();
+        }
+        let lines = self.highlight_lines(file_name, text);
+        self.cache.insert(content_id, file_name, Arc::from(lines.as_slice()));
+        lines
+    }
+
+    /// How the cache of highlighted files is doing.
+    pub fn cache_stats(&self) -> super::CacheStats {
+        self.cache.stats()
     }
 
     /// Highlights `text` into one self-contained HTML fragment per line of flat spans, so
@@ -613,6 +636,20 @@ fn main() { println!("hi"); }
         let nested: usize = nested_lines(&highlighter, "pulls.rs", text).iter().map(String::len).sum();
         let compact: usize = highlighter.highlight_lines("pulls.rs", text).iter().map(String::len).sum();
         assert!(nested >= compact * 3, "nested {nested} bytes, compact {compact} bytes");
+    }
+
+    #[test]
+    fn cached_highlighting_is_reused_per_blob_and_name() {
+        let highlighter = Highlighter::new();
+        let text = "fn main() {}\n";
+        let first = highlighter.highlight_lines_cached("blob1", "a.rs", text);
+        let again = highlighter.highlight_lines_cached("blob1", "a.rs", "ignored: the id names the text");
+        assert_eq!(first, again);
+        assert_eq!(first, highlighter.highlight_lines("a.rs", text));
+        let as_text = highlighter.highlight_lines_cached("blob1", "a.txt", text);
+        assert_eq!(as_text, ["fn main() {}"], "another name may pick another syntax");
+        let stats = highlighter.cache_stats();
+        assert_eq!((stats.hits, stats.misses, stats.entries), (1, 2, 2));
     }
 
     #[test]

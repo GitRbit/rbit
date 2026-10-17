@@ -1,10 +1,12 @@
 //! Turning repository content into safe HTML.
 
 mod highlight;
+mod highlight_cache;
 mod markdown;
 pub mod references;
 
 pub use highlight::Highlighter;
+pub use highlight_cache::{CacheStats, HIGHLIGHTER_VERSION, HighlightCache};
 pub use markdown::{Rewritten, escape_html, render_markdown, render_markdown_rewriting};
 
 /// Whether a file name denotes Markdown that should be rendered rather than shown as source.

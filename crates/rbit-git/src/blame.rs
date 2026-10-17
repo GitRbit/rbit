@@ -54,6 +54,8 @@ pub struct FileBlame {
     pub commit: CommitSummary,
     /// The file's contents at that commit (lossily decoded).
     pub text: String,
+    /// The blob's object id (hex): names `text`, e.g. for caches.
+    pub blob_id: String,
     /// In file order, covering every line exactly once.
     pub hunks: Vec<BlameHunk>,
 }
@@ -107,7 +109,12 @@ impl RepositoryReader {
                     source_path: entry.source_file_name.map(|name| name.to_str_lossy().into_owned()).filter(|name| *name != path),
                 });
             }
-            Ok(Blame::Blamed(Box::new(FileBlame { commit: summarize(&commit)?, text: String::from_utf8_lossy(&data).into_owned(), hunks })))
+            Ok(Blame::Blamed(Box::new(FileBlame {
+                commit: summarize(&commit)?,
+                text: String::from_utf8_lossy(&data).into_owned(),
+                blob_id: entry.object_id().to_hex().to_string(),
+                hunks,
+            })))
         });
         match tokio::time::timeout(limits.time_budget, work).await {
             Ok(result) => result,

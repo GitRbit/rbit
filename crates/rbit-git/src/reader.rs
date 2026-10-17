@@ -226,7 +226,7 @@ impl RepositoryReader {
             };
             let is_binary = data.as_deref().is_some_and(is_binary);
 
-            Ok(BlobView { commit: summarize(&commit)?, size, data, is_binary })
+            Ok(BlobView { commit: summarize(&commit)?, id: entry.object_id().to_hex().to_string(), size, data, is_binary })
         })
         .await
     }
