@@ -13,7 +13,7 @@
 //! warm-up is usually still reading it — and holds new ones back until it is done. A
 //! pinned reader serving a page holds the lease for the whole request.
 //!
-//! Processes outside Rbit's control can still have a file open for a moment: a `git`
+//! Processes outside rbit's control can still have a file open for a moment: a `git`
 //! process serving a clone, or a virus scanner or search indexer inspecting the pack a
 //! push just wrote. On Windows a rename refused with a sharing violation or "access
 //! denied" is therefore retried a few times with exponential backoff (about 1.5 s in

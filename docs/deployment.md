@@ -1,6 +1,6 @@
-# Deploying Rbit
+# Deploying rbit
 
-Rbit is one binary plus the `git` executable. All state lives in one data directory:
+rbit is one binary plus the `git` executable. All state lives in one data directory:
 
 | Path (under `data_dir`) | Contents | Back up? |
 |---|---|---|
@@ -94,7 +94,7 @@ docker exec -i rbit rbit user create alice alice@example.com --admin
 
 ## systemd
 
-[`deploy/rbit.service`](../deploy/rbit.service) runs Rbit as a dedicated user with a
+[`deploy/rbit.service`](../deploy/rbit.service) runs rbit as a dedicated user with a
 systemd-managed state directory (`/var/lib/rbit`) and a strict sandbox: the file system
 is read-only except the data directory, no capabilities, restricted address families and
 system calls. Installation steps are at the top of the file; in short:
@@ -136,7 +136,7 @@ clones long-running, so do not cap request bodies and do not buffer Git traffic.
 
 ### Trusted proxies
 
-Rbit uses the client address for rate limiting and the audit log. It only believes
+rbit uses the client address for rate limiting and the audit log. It only believes
 `X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` from addresses listed in
 `[security] trusted_proxies`. List exactly your proxy (for a proxy on the same host,
 `["127.0.0.1/32", "::1/128"]`), never a broad range: any client inside a trusted range can
@@ -182,7 +182,7 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=63072000" always;
 
-    # Pushes can be arbitrarily large; Rbit streams them to git and enforces its own
+    # Pushes can be arbitrarily large; rbit streams them to git and enforces its own
     # limit on release uploads ([releases] max_asset_bytes).
     client_max_body_size 0;
 
@@ -262,7 +262,7 @@ scrape_configs:
 
 ## Background jobs
 
-Rbit runs its own maintenance; no cron jobs are needed.
+rbit runs its own maintenance; no cron jobs are needed.
 
 - **After every push**, the language breakdown and the root directory's last-commit list
   of the default branch are computed and cached (`warm_caches_on_push`).
@@ -326,7 +326,7 @@ sudo -u rbit rbit --config /etc/rbit/rbit.toml backup \
 
 The backup directory mirrors the data directory, so restoring is a copy:
 
-1. Stop Rbit: `sudo systemctl stop rbit` (or `docker stop rbit`).
+1. Stop rbit: `sudo systemctl stop rbit` (or `docker stop rbit`).
 2. Move the current data directory aside: `sudo mv /var/lib/rbit /var/lib/rbit.old`.
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
@@ -336,11 +336,11 @@ The backup directory mirrors the data directory, so restoring is a copy:
    ```
    For Docker, copy into the volume, e.g.
    `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/repositories /backup/attachments /data/ && chown -R 10001:10001 /data'`.
-4. Start Rbit. Pending migrations (if the backup came from an older version) run on
+4. Start rbit. Pending migrations (if the backup came from an older version) run on
    start-up; a fresh `rbit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.
 
-Restore onto the **same or a newer** Rbit version. Restoring a backup into an older
+Restore onto the **same or a newer** rbit version. Restoring a backup into an older
 version is not supported (its database may have migrations the older binary does not know).
 
 ## Upgrades and migrations

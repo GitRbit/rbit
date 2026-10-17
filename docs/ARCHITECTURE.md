@@ -1,6 +1,6 @@
-# Rbit — Architecture & Design
+# rbit — Architecture & Design
 
-Rbit is a self-hosted Git forge written in Rust. It competes with Gitea, Forgejo and
+rbit is a self-hosted Git forge written in Rust. It competes with Gitea, Forgejo and
 GitLab CE on three axes: **raw speed**, **operational simplicity** (one static binary, no
 external services), and **a modern, mobile-first interface**.
 
@@ -26,7 +26,7 @@ When the code and this document disagree, fix one of them.
 ## 2. Workspace layout
 
 ```
-Rbit/
+rbit/
 ├── Cargo.toml                 # workspace: shared deps, lints, release profile
 ├── rustfmt.toml               # formatting standard (checked in CI)
 ├── package.json               # Tailwind v4 CLI, htmx, icon rendering (build-time only)
@@ -153,7 +153,7 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `IssueService` (`issues`) | Creating issues with labels, assignees and a milestone; labels (≤ 200 per repository, 25 per issue, default set), milestones, assignees (writers only, ≤ 10), deletion (admins), search; the metadata hook P uses; the background subscriber that turns references into timeline entries and closes issues from commits on the default branch and from pull requests merged into it. |
 | `ReferenceService` (`references`) | Resolves `#N` and `@name` in a batch of texts for rendering; records `CrossReferenced` on targets the mention's author can read. |
 | `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` for the header bell, retention pruning. |
-| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside Rbit"), the mergeability worker, reviews and line comments, review requests, drafts, the merge box and merging (§3.7). |
+| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
 `Services::spawn_background()` starts the webhook, release, mirror, issue, notification and
@@ -236,7 +236,7 @@ SSH server and background jobs, graceful shutdown.
     └── overlays/<random>          # object overlays for cross-fork compares
 ```
 
-Data directories created before the rename to Rbit keep working: `rustit.db` and
+Data directories created before the rename to rbit keep working: `rustit.db` and
 `rustit.redb` are used when `rbit.db` / `rbit.redb` do not exist (`StorageConfig`).
 
 Repositories are addressed by numeric IDs, not names, so renaming a user or repository
@@ -335,7 +335,7 @@ pull_requests      issue_id → issues PK, repo_id → repositories (base), head
                    head_branch, base_branch, head_sha, is_draft,
                    mergeable(unknown|clean|conflict|error), mergeable_base_sha, mergeable_head_sha,
                    conflict_paths (JSON), merged_at, merged_by SET NULL,
-                   merge_strategy(merge|squash|rebase, NULL = merged outside Rbit),
+                   merge_strategy(merge|squash|rebase, NULL = merged outside rbit),
                    merge_commit_sha, merged_base_sha, merged_head_sha, created_at, updated_at
 pull_reviews       id, pull_id → pull_requests, reviewer_id SET NULL,
                    state(pending|commented|approved|changes_requested|dismissed), body, commit_sha,
@@ -434,7 +434,7 @@ DIR/
 └── manifest.json                  # written last; its presence marks a complete backup
 ```
 
-The manifest records `format` (currently **2**; 1 had no `attachments/`), the Rbit
+The manifest records `format` (currently **2**; 1 had no `attachments/`), the rbit
 version, the time, and counts (accounts, repositories, attachments) plus the ids of
 repositories and attachments that disappeared between the snapshot and the copy. Release
 files are written once and never changed, so a plain copy is consistent. redb is not
@@ -482,7 +482,7 @@ branch from a fork, verifying the fetched id), so a pull request keeps its commi
 fork is deleted. Clients can never push to `refs/pull/*` (§4.4). A background subscriber on
 `RepositoryPushed` refreshes the ref when the head branch moves (`HeadPushed`, `forced` when
 the old head is not an ancestor), records `HeadRefDeleted`, and marks pull requests whose
-head became reachable from their base as **merged outside Rbit** (strategy `NULL`).
+head became reachable from their base as **merged outside rbit** (strategy `NULL`).
 
 **Cross-fork compare.** Repositories whose `repo_forks` chains (≤ 10 levels) reach the same
 root form a network; pull requests may go between any readable members. Compares and checks
@@ -524,7 +524,7 @@ and the scratch directory is removed on every exit path and swept at start-up. E
 runs hardened: the transports' scrubbed environment without system or global configuration,
 no prompts, `LC_ALL=C`, no replace refs, `-c core.hooksPath=<null device>`,
 `core.autocrlf=false`, no GPG signing, rerere, auto-gc or fsmonitor, revisions only as
-validated full ids or `refs/heads/<validated name>` after `--end-of-options`. Rbit-made
+validated full ids or `refs/heads/<validated name>` after `--end-of-options`. rbit-made
 commits use `<username>@<[pulls] noreply_domain>` (default `noreply.<host of
 server.public_url>`), never a real address, and dates from the service clock. Deleting the
 head branch afterwards needs `ProtectionService::may_delete_branch` and write access to the
@@ -692,7 +692,7 @@ organisation; changes are audited.
   No payload contains an email address. `WebhookService::handle_event` routes
   `DomainEvent::Issue { kind: issue }` and `IssueComment` to `issues::hooks::payload`, and
   `Issue { kind: pull }` and `PullRequestReview` to `pulls::hooks::payload`.
-- **Headers** — `User-Agent: Rbit-Hookshot/<version>`, `X-Rbit-Event`,
+- **Headers** — `User-Agent: rbit-Hookshot/<version>`, `X-Rbit-Event`,
   `X-Rbit-Delivery` (random id), `X-Rbit-Hook-Id` and GitHub's `X-GitHub-Event`,
   `X-GitHub-Delivery`, `X-GitHub-Hook-ID`. With a secret: `X-Rbit-Signature-256` and
   `X-Hub-Signature-256`, both `sha256=<lower-case hex HMAC-SHA256 of the body>`.
@@ -731,7 +731,7 @@ mirror and old-name checks:
    the stream byte for byte (push options and the pack are never buffered).
 2. **Decide.** `ProtectionService::check_push` loads the repository's rules and decides,
    purely (`rbit_core::protection`), everything that needs no objects: updates of
-   `refs/pull/*` are always refused ("refs/pull/ is managed by Rbit" — the namespace is
+   `refs/pull/*` are always refused ("refs/pull/ is managed by rbit" — the namespace is
    reserved for pull request heads); deletions under `deny_deletion`; pushers not allowed by
    `restrict_pushers` (deploy keys never are, also when creating the branch); updates of an
    existing branch under `require_pull_request`. Every matching rule applies and the
@@ -739,11 +739,11 @@ mirror and old-name checks:
    (never the `refs/pull/` rule) and each bypass that changed the outcome is audited as
    `BranchProtectionBypassed`. Refusal texts never say who is allowed.
 3. **Refuse all or nothing**, like a declining `pre-receive` hook: if any ref is refused,
-   the rest of the request is drained, git is never started, and Rbit answers in git's own
+   the rest of the request is drained, git is never started, and rbit answers in git's own
    format — `unpack ok`, `ng <ref> <reason>` for each refused ref and `ng <ref> push
    declined: another ref in this push was refused` for the others — honouring
    `report-status` / `report-status-v2` and `side-band-64k` / `side-band` (with a band-2
-   `Rbit: …` line per refusal). Clients that asked for no report get HTTP 403 with a text
+   `rbit: …` line per refusal). Clients that asked for no report get HTTP 403 with a text
    body, or over SSH a stderr message and exit status 1.
 4. **Force pushes** need the new objects, which arrive after the commands. When some
    update of an existing branch is protected against force pushes for this pusher, git
@@ -759,7 +759,7 @@ input — the exchange smart HTTP performs, so it is equivalent for clients. An 
 list (`Everything up-to-date`) ends with exit status 0 without starting git; a
 deletion-only push never sends EOF, so the reader stops after the commands.
 
-Merges made by Rbit move the base branch with `update-ref`, not `receive-pack`; they are
+Merges made by rbit move the base branch with `update-ref`, not `receive-pack`; they are
 checked by `check_merge` instead (§3.7).
 
 ### 4.5 Page routes added in milestone 2 wave B
@@ -804,10 +804,10 @@ repositories, unknown numbers and malformed ids are 404.
 | Sessions | Listed per account; revoke one or all others; all other sessions end when the password changes. |
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
-| Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by Rbit are checked against the same rules (`check_merge`). |
+| Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by rbit are checked against the same rules (`check_merge`). |
 | Merges | Computed without a working tree in a scratch repository under `<data_dir>/tmp` (`merge-tree --write-tree` + `commit-tree`), so no checkout filters, hooks or editors run; the base repository changes only through one lease-protected `update-ref`; hardened `git` (no system/global config, null hooks path, no prompts, `--end-of-options`, validated ids and names only); bounded time and concurrency; scratch directories removed on every exit path and swept at start-up. |
 | Issues and pull requests | 404 for hidden repositories and unknown or malformed numbers; one pure permission table (§3.7); every Markdown body goes through reference rendering and then `ammonia`; label colours appear only as validated `#rrggbb` SVG `fill`s (no inline `style=`); creation and edits are throttled (`ThrottleScope::Content`). Pending reviews are visible to their author only. |
-| Privacy | No email address in any page, payload, API object or Rbit-made commit (noreply addresses); notifications only reach people who can read the repository (§5.1); `@name` links for any existing account, so a mention never reveals whether someone has access; cross-references are shown only to viewers of the source; `owner/repo#N` is never looked up when rendering. |
+| Privacy | No email address in any page, payload, API object or rbit-made commit (noreply addresses); notifications only reach people who can read the repository (§5.1); `@name` links for any existing account, so a mention never reveals whether someone has access; cross-references are shown only to viewers of the source; `owner/repo#N` is never looked up when rendering. |
 | Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`), as are repository access changes (category "Repository access": collaborators added/changed/removed, teams created/changed/deleted, transfers, webhooks created/changed/deleted, an organisation's member permission changed, branch protection rules created/changed/deleted and bypassed) and deleted issues (category "Repository content"). |
 
 ### 5.1 Notifications
@@ -871,7 +871,7 @@ and restored into the cookie on sign-in. `/themes` (and Settings → Appearance)
 gallery: by family and variant, searchable, live preview on hover, plain-form fallback. The header's
 sun/moon flips light/dark in one click: the generator pairs each scheme with its sibling of
 the other variant in the same family (Gruvbox dark, hard ↔ light, hard; Catppuccin Latte ↔
-Mocha), falling back to Rbit Light/Dark. The palette button beside it opens a modal theme
+Mocha), falling back to rbit Light/Dark. The palette button beside it opens a modal theme
 picker (fetched from `/themes/picker` on first use: families, recent themes, search, a
 Dark/Light filter and a live preview on a miniature repository page); without scripts it
 links to the gallery.

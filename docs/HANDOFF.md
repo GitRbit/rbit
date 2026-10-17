@@ -1,4 +1,4 @@
-# Rbit — Handoff
+# rbit — Handoff
 
 **As of 2026-10-17, `main` @ `17ecacf` plus the wave B integration commits on top
 (Protected badge, documentation). Milestone 2 is complete.** Everything below is what
@@ -14,7 +14,7 @@ the next person (or agent team) needs to pick this up without re-reading the his
 | Frontend wave (landing page and dashboard, live explore search, theme gallery with ~500 schemes, stored preferences) | ✅ Done, merged |
 | **Milestone 2 wave A** — access (collaborators, teams, base permission, transfer, old-name redirects), REST API `/api/v1` + signed webhooks, repository essentials (README links, archives, blame, compare, releases with files, forks, pull mirrors) | ✅ Done, merged and integrated |
 | **Milestone 2 wave B** — shared issue timeline, issues (labels, milestones, assignees, references, search, in-app notifications), pull requests (fork network, reviews, line comments, mergeability, merge/squash/rebase), branch protection (push gate over HTTP and SSH, merge rules), REST endpoints and webhooks | ✅ Done, merged and integrated |
-| Alongside wave B (the user's work) — rename to **Rbit**, passkeys (WebAuthn, migration `0032`), diff file tree, modal theme picker, live dev server (`npm run dev`) | ✅ Done, on `main` |
+| Alongside wave B (the user's work) — rename to **rbit**, passkeys (WebAuthn, migration `0032`), diff file tree, modal theme picker, live dev server (`npm run dev`) | ✅ Done, on `main` |
 | Next milestone | ⏭️ Not started — see §5 |
 
 Quality gate on `main`, exactly as CI runs it:

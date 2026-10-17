@@ -1,6 +1,6 @@
 # Milestone 2 — A real forge
 
-The working contract for the collaboration layer that makes Rbit competitive with
+The working contract for the collaboration layer that makes rbit competitive with
 Gitea and Forgejo. It ships in two waves, because pull requests reuse the issue
 timeline and comments:
 
@@ -16,7 +16,7 @@ timeline and comments:
 
 1. People other than the owner can work on a repository with exactly the access they
    need — collaborators, organisation teams — and repositories can change hands.
-2. Rbit can be automated: a versioned, documented REST API and signed webhooks.
+2. rbit can be automated: a versioned, documented REST API and signed webhooks.
 3. Repositories feel complete: working README links and images, downloads, releases,
    blame, branch comparison and forks.
 
@@ -307,7 +307,7 @@ still get 404/401, and after a transfer the repository clones from the new URL.
      `repository` (`created`, `deleted`, `transferred`), `release` (`published`),
      `fork`, `ping` (`zen`, `hook_id`, `hook`). Deleted repositories only reach
      organisation hooks.
-   - **Headers:** `User-Agent: Rbit-Hookshot/<version>`, `X-Rbit-Event`,
+   - **Headers:** `User-Agent: rbit-Hookshot/<version>`, `X-Rbit-Event`,
      `X-Rbit-Delivery` (random id), `X-Rbit-Signature-256: sha256=<hex HMAC-SHA256 of
      the body>` and the GitHub-compatible `X-GitHub-Event`, `X-GitHub-Delivery`,
      `X-Hub-Signature-256` when a secret is set.

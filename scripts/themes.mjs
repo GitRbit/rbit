@@ -1,4 +1,4 @@
-// Imports tinted-theming base16/base24 colour schemes as Rbit themes.
+// Imports tinted-theming base16/base24 colour schemes as rbit themes.
 //
 //   git clone --depth 1 https://github.com/tinted-theming/schemes /tmp/schemes
 //   npm run themes -- /tmp/schemes
@@ -13,7 +13,7 @@
 //   crates/rbit-web/assets/themes/LICENSE.txt scheme authors and the MIT licence
 //   crates/rbit-web/src/themes/catalog.rs     the compile-time catalog
 //
-// Each scheme's palette is mapped onto Rbit's semantic tokens following the base16
+// Each scheme's palette is mapped onto rbit's semantic tokens following the base16
 // styling guidelines, then checked for contrast: body text (ink, ink-muted, status and
 // syntax colours) must reach WCAG AA (4.5:1) against every background it sits on, faint
 // text and comments 3:1, and the container border must stay visible. A colour that falls
@@ -176,7 +176,7 @@ const FAINT = 3;
 const STEP = { canvasLight: 1.05, canvasDark: 1.08, subtle: 1.05, hover: 1.12, line: 1.3, lineOnCanvas: 1.15, lineStrong: 1.65 };
 
 /**
- * base16 → Rbit tokens. `--surface` (containers) is the scheme's own editor background
+ * base16 → rbit tokens. `--surface` (containers) is the scheme's own editor background
  * (base00), so code reads exactly as the scheme intends; the page `--canvas` sits one
  * step deeper. Raised and interactive backgrounds, borders and text are derived towards
  * the foreground, tinted by the scheme's own greys (base01–base03) where they fit.
@@ -488,7 +488,7 @@ const licence = readFileSync(join(source, "LICENSE"), "utf8").replace(/\r\n/g, "
 writeFileSync(
   join(THEMES_DIR, "LICENSE.txt"),
   [
-    "Rbit's tinted themes are generated from the tinted-theming colour schemes:",
+    "rbit's tinted themes are generated from the tinted-theming colour schemes:",
     `https://github.com/tinted-theming/schemes (commit ${commit}).`,
     "",
     licence,

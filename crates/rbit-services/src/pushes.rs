@@ -4,7 +4,7 @@
 //! `git receive-pack` and [`PushService::complete`] once it succeeded. Completing a push
 //! marks the repository as pushed and publishes [`DomainEvent::RepositoryPushed`] with the
 //! refs that changed, computed from snapshots taken before and after (`receive-pack`
-//! runs without hooks, so this is how Rbit learns what a push did).
+//! runs without hooks, so this is how rbit learns what a push did).
 //!
 //! Recording never fails the push: the objects are already accepted, so problems reading
 //! refs or updating `pushed_at` are logged and the event is still published.

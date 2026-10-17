@@ -518,7 +518,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
-            site_name: "Rbit".to_owned(),
+            site_name: "rbit".to_owned(),
             title: None,
             viewer: None,
             path: SECURITY_URL.to_owned(),
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn qr_codes_are_plain_svg() {
-        let svg = qr_svg("otpauth://totp/Rbit:alice?secret=GEZDGNBVGY3TQOJQ&issuer=Rbit");
+        let svg = qr_svg("otpauth://totp/rbit:alice?secret=GEZDGNBVGY3TQOJQ&issuer=rbit");
         assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
         assert!(svg.contains("<path fill=\"#000\" d=\"M"));
         assert!(!svg.contains("style="), "no inline styles under the CSP");
@@ -653,7 +653,7 @@ mod tests {
     fn setup_shows_qr_code_and_secret() {
         let enrolment = Enrolment {
             secret: "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".to_owned(),
-            provisioning_uri: "otpauth://totp/Rbit:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".to_owned(),
+            provisioning_uri: "otpauth://totp/rbit:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ".to_owned(),
         };
         let html = SecurityPage::new(page(), SecurityView::Setup(Setup::new(&enrolment, FormError::default()))).render().unwrap();
         assert!(html.contains("<svg xmlns"), "the QR code is not escaped");

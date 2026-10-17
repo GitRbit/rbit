@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# Rbit container image: one static-ish binary plus `git`, running as an unprivileged user.
+# rbit container image: one static-ish binary plus `git`, running as an unprivileged user.
 #
 #   docker build -t rbit .
 #   docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \

@@ -216,7 +216,7 @@ fn refusal_reports_for_report_status_and_v2() {
 fn refusal_reports_on_a_side_band() {
     let refusals = [refused("refs/heads/main", PROTECTED)];
     let names = ["refs/heads/main", "refs/heads/topic"];
-    let message = format!("Rbit: refs/heads/main: {PROTECTED}\n");
+    let message = format!("rbit: refs/heads/main: {PROTECTED}\n");
     for capabilities in ["report-status side-band-64k", "report-status-v2 side-band", "side-band-64k report-status"] {
         let report = refusal(&list(capabilities, &names), &refusals);
         let mut expected = format!("{:04x}\x02{message}", message.len() + 5).into_bytes();

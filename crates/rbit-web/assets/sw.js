@@ -1,4 +1,4 @@
-// Rbit service worker.
+// rbit service worker.
 //
 // * /assets/*  — cache-first. URLs carry a content hash (?v=…), so entries never go stale.
 // * HTML pages — network-first, falling back to the offline page when the network is down.

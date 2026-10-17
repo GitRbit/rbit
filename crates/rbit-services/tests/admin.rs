@@ -120,7 +120,7 @@ async fn closed_registration_still_allows_the_first_account_and_admin_creation()
     assert!(invalid(services.admin.create_user(&first, SignUp { password: "short".to_owned(), ..signup("dave") }, false).await));
 
     // Opening registration at runtime takes effect without a restart.
-    services.instance.update(&first, settings("Rbit", RegistrationMode::Open)).await.unwrap();
+    services.instance.update(&first, settings("rbit", RegistrationMode::Open)).await.unwrap();
     assert!(services.accounts.registration_open().await.unwrap());
 }
 

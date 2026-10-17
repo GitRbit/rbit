@@ -10,6 +10,7 @@
 # Local runtime data (SQLite, redb, repositories)
 /data
 /data-live
+/data-alt
 /rbit.toml
 /rustit.toml
 

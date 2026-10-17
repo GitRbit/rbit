@@ -1,6 +1,6 @@
 # Milestone 1 — Safe to self-host
 
-The working contract for hardening Rbit for real use. Five workstreams are built in
+The working contract for hardening rbit for real use. Five workstreams are built in
 parallel, each on its **own branch in its own git worktree**, each owning a disjoint set of
 files. Shared registration points (services, stores, routes, views, crates, config
 sections, CLI commands, navigation entries) are pre-wired on `main` as stubs.

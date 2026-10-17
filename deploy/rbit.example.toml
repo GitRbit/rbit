@@ -1,4 +1,4 @@
-# Rbit configuration for a production instance.
+# rbit configuration for a production instance.
 #
 # Copy to /etc/rbit/rbit.toml (the systemd unit's default) and adjust. Every key is
 # optional; omitted keys keep their built-in defaults. Any key can also be set with an
@@ -11,7 +11,7 @@ bind = "127.0.0.1:3000"
 # The address users type. Used for clone URLs, secure cookies (https://…) and the
 # cross-site request check, so it must match what the browser sees exactly.
 public_url = "https://git.example.com"
-site_name = "Rbit"
+site_name = "rbit"
 # Default for the runtime "registration" setting (administrators can change it in /admin).
 open_registration = false
 
@@ -138,5 +138,5 @@ max_concurrent_merges = 2
 mergeability_concurrency = 2
 # Commits listed on a pull request's Commits tab.
 max_commits = 250
-# Domain of the addresses in commits Rbit makes; empty = "noreply.<host of server.public_url>".
+# Domain of the addresses in commits rbit makes; empty = "noreply.<host of server.public_url>".
 noreply_domain = ""

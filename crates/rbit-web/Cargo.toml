@@ -1,6 +1,6 @@
 [package]
 name = "rbit-web"
-description = "The Rbit web application: Axum routes, Askama templates, HTMX, and embedded assets."
+description = "The rbit web application: Axum routes, Askama templates, HTMX, and embedded assets."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

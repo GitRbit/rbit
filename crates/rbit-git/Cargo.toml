@@ -1,6 +1,6 @@
 [package]
 name = "rbit-git"
-description = "Git repository storage and read model for Rbit, built on gitoxide."
+description = "Git repository storage and read model for rbit, built on gitoxide."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

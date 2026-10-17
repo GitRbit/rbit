@@ -1,6 +1,6 @@
 //! # rbit-core
 //!
-//! The domain model of Rbit. Everything here is pure data and pure logic: no I/O,
+//! The domain model of rbit. Everything here is pure data and pure logic: no I/O,
 //! no async, no framework types. Other crates depend on these types so that a
 //! `RepoName` validated at the HTTP boundary is the same `RepoName` that reaches the
 //! filesystem layer — validation happens exactly once, at construction.

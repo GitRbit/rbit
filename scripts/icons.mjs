@@ -1,4 +1,4 @@
-// Generate browser and installable-app icons from the original Rbit mascot.
+// Generate browser and installable-app icons from the original rbit mascot.
 // Commit the outputs so cargo build never requires Node. Run: npm run icons
 import { readFileSync, writeFileSync } from "node:fs";
 import { Resvg } from "@resvg/resvg-js";

@@ -130,7 +130,7 @@ pub async fn start(config: Arc<Config>, services: Services) -> Result<RunningSsh
 
 fn russh_config(config: &Config, host_key: PrivateKey) -> RusshConfig {
     RusshConfig {
-        server_id: SshId::Standard(Cow::Borrowed(concat!("SSH-2.0-Rbit_", env!("CARGO_PKG_VERSION")))),
+        server_id: SshId::Standard(Cow::Borrowed(concat!("SSH-2.0-rbit_", env!("CARGO_PKG_VERSION")))),
         methods: MethodSet::from(&[MethodKind::PublicKey][..]),
         // Clients probe with "none" first; answering that at once keeps sign-in fast,
         // while real rejections still take a constant second.

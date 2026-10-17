@@ -114,9 +114,9 @@ pub struct Gallery {
     pub variant: &'static str,
     pub query: String,
     pub filters: Vec<FilterLink>,
-    /// Rbit's own themes, pinned first.
+    /// rbit's own themes, pinned first.
     pub defaults: Vec<ThemeCard>,
-    /// Whether the search hides all of Rbit's own themes.
+    /// Whether the search hides all of rbit's own themes.
     pub defaults_hidden: bool,
     pub families: Vec<FamilyGroup>,
     pub shown: usize,
@@ -305,7 +305,7 @@ impl ThemePicker {
             let search = format!("{} {family} {} {}", card.name, card.credit, card.variant).to_lowercase();
             PickerRow { card, search, variant_label, letter }
         };
-        let mut groups = vec![PickerGroup { name: "Rbit", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() }];
+        let mut groups = vec![PickerGroup { name: "rbit", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() }];
         for family in gallery.families {
             let standalone = family.name == STANDALONE_FAMILY;
             let mut previous = None;
@@ -356,7 +356,7 @@ mod tests {
 
     fn page(theme: Theme) -> Page {
         Page {
-            site_name: "Rbit".to_owned(),
+            site_name: "rbit".to_owned(),
             title: None,
             viewer: None,
             path: GALLERY_URL.to_owned(),
@@ -412,7 +412,7 @@ mod tests {
     fn picker_lists_every_theme_grouped_with_the_current_one_marked() {
         let tinted = &themes::tinted()[0];
         let picker = ThemePicker::new(&page(Theme::Tinted(tinted)));
-        assert_eq!(picker.groups[0].name, "Rbit");
+        assert_eq!(picker.groups[0].name, "rbit");
         let rows: Vec<_> = picker.groups.iter().flat_map(|group| &group.rows).collect();
         assert_eq!(rows.len(), picker.total);
         let current: Vec<_> = rows.iter().filter(|row| row.card.is_current).map(|row| row.card.slug).collect();

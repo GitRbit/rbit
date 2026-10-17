@@ -5,7 +5,7 @@ use rbit_e2e::{Client, Git, PASSWORD, StatusCode, TestServer, numbers_between};
 
 /// The instance settings form with `registration` set to `open` or `closed`.
 fn settings_form(registration: &str) -> [(&'static str, &str); 4] {
-    [("site_name", "Rbit"), ("registration", registration), ("org_creation", "any_user"), ("default_visibility", "public")]
+    [("site_name", "rbit"), ("registration", registration), ("org_creation", "any_user"), ("default_visibility", "public")]
 }
 
 /// The account id of `username`, read from the administrator's user list.

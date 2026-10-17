@@ -47,7 +47,7 @@ impl Fixture {
 
     /// Enrols `user`, returning their secret, the step used to confirm and the recovery codes.
     async fn enrol(&self, user: &User) -> (TotpSecret, u64, Vec<String>) {
-        self.services.two_factor.begin_enrolment(user, "Rbit").await.unwrap();
+        self.services.two_factor.begin_enrolment(user, "rbit").await.unwrap();
         let secret = self.secret(user).await;
         let step = time_step(Timestamp::now().seconds());
         let codes = self.services.confirm_two_factor(user, &code(&secret, step), &client()).await.unwrap().expect("first factor");

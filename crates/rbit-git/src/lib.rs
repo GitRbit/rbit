@@ -1,6 +1,6 @@
 //! # rbit-git
 //!
-//! Everything Rbit knows about Git *data*:
+//! Everything rbit knows about Git *data*:
 //!
 //! * [`RepositoryStorage`] — where bare repositories live and how they are created/removed.
 //! * [`RepositoryReader`] — a read model (refs, trees, blobs, history) over one repository.

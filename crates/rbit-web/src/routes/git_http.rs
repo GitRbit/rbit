@@ -226,7 +226,7 @@ impl IntoResponse for Denied {
         match self {
             Self::Challenge => (
                 StatusCode::UNAUTHORIZED,
-                [(header::WWW_AUTHENTICATE, "Basic realm=\"Rbit\", charset=\"UTF-8\"")],
+                [(header::WWW_AUTHENTICATE, "Basic realm=\"rbit\", charset=\"UTF-8\"")],
                 "authentication required",
             )
                 .into_response(),

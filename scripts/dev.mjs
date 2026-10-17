@@ -1,4 +1,4 @@
-// Live development server: rebuilds and restarts Rbit whenever Rust sources,
+// Live development server: rebuilds and restarts rbit whenever Rust sources,
 // templates or manifests change, and keeps the stylesheet compiled with Tailwind's
 // watcher. Debug builds read `assets/` from disk, so CSS and JS changes need no
 // restart; refresh the browser to see any change.

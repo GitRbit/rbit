@@ -167,7 +167,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
-            site_name: "Rbit".to_owned(),
+            site_name: "rbit".to_owned(),
             title: None,
             viewer: None,
             path: "/password/forgot".to_owned(),

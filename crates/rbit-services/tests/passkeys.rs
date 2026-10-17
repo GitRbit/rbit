@@ -60,7 +60,7 @@ impl Fixture {
 
     /// Sets up the authenticator app; returns its secret and the step used to confirm.
     async fn enrol_app(&self, user: &User) -> (TotpSecret, u64) {
-        self.services.two_factor.begin_enrolment(user, "Rbit").await.unwrap();
+        self.services.two_factor.begin_enrolment(user, "rbit").await.unwrap();
         let record = self.database.two_factor().find(user.id()).await.unwrap().unwrap();
         let secret = TotpSecret::from_bytes(&record.secret).unwrap();
         let step = time_step(Timestamp::now().seconds());

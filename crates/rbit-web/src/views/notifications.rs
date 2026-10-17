@@ -138,7 +138,7 @@ mod tests {
 
         let html = InboxPage {
             page: Page {
-                site_name: "Rbit".into(),
+                site_name: "rbit".into(),
                 title: None,
                 viewer: None,
                 path: "/notifications".into(),

@@ -2,7 +2,7 @@
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file.
 //!
-//! A mirror is an ordinary repository with a [`Mirror`] row: Rbit fetches the
+//! A mirror is an ordinary repository with a [`Mirror`] row: rbit fetches the
 //! upstream's branches and tags on a schedule and nobody pushes to it. Upstreams are
 //! `http`/`https` URLs without credentials ([`MirrorUrl`]); before every fetch the host's
 //! addresses are checked with [`crate::network::is_internal_address`] unless the instance

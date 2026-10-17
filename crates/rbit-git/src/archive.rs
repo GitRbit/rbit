@@ -4,7 +4,7 @@
 //!
 //! `git archive` writes the archive to its standard output, which is handed to the caller
 //! as an [`AsyncRead`] without buffering the whole archive; `tar.gz` is compressed
-//! in-process while streaming. Like every Git child process Rbit runs, `git` sees a
+//! in-process while streaming. Like every Git child process rbit runs, `git` sees a
 //! scrubbed environment and no system or global configuration ([`git_command`]).
 //!
 //! The child is killed as soon as the reader is dropped (a client that disconnects never

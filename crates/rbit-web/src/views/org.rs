@@ -282,7 +282,7 @@ mod tests {
         let header = OrgHeader::new(&ctx(Some(OrgRole::Owner), true), OrgTab::Settings);
         let html = OrgSettingsPage {
             page: Page {
-                site_name: "Rbit".into(),
+                site_name: "rbit".into(),
                 title: None,
                 viewer: None,
                 path: "/acme/settings".into(),

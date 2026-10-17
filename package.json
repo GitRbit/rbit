@@ -1,7 +1,7 @@
 {
   "name": "rbit-web-assets",
   "private": true,
-  "description": "Build-time front-end tooling for Rbit. Nothing here runs in production.",
+  "description": "Build-time front-end tooling for rbit. Nothing here runs in production.",
   "type": "module",
   "scripts": {
     "build": "npm run vendor && npm run build:css",

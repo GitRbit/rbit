@@ -1,6 +1,6 @@
 [package]
 name = "rbit-storage"
-description = "Persistence for Rbit: SQLite for relational data, redb for sessions and caches."
+description = "Persistence for rbit: SQLite for relational data, redb for sessions and caches."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

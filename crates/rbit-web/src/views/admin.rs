@@ -188,7 +188,7 @@ impl DashboardPage {
             },
         ];
         let system_rows = vec![
-            InfoRow::mono("Rbit", system.rbit_version),
+            InfoRow::mono("rbit", system.rbit_version),
             InfoRow::mono("SQLite", system.sqlite_version.clone()),
             InfoRow::mono("Git", system.git_version.clone().unwrap_or_else(|| "unavailable".to_owned())),
             InfoRow::text("Uptime", uptime(system.uptime)),
@@ -727,7 +727,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
-            site_name: "Rbit".to_owned(),
+            site_name: "rbit".to_owned(),
             title: None,
             viewer: None,
             path: "/admin/users".to_owned(),

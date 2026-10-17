@@ -5,7 +5,7 @@
 //!
 //! Everything here is pure: the stored shapes ([`PullRequest`], [`Review`],
 //! [`ReviewComment`]), the approval tally ([`tally`]), the merge box's requirement list
-//! ([`evaluate`]), default merge messages and the noreply identities Rbit writes into
+//! ([`evaluate`]), default merge messages and the noreply identities rbit writes into
 //! the commits it makes. Services decide *when*; this module decides *what*.
 
 use std::{collections::HashMap, fmt};
@@ -104,7 +104,7 @@ pub struct PullRequest {
     pub head_repo_id: Option<RepoId>,
     pub head_branch: String,
     pub base_branch: String,
-    /// The head commit as of the last push Rbit saw (what `refs/pull/{n}/head` points at).
+    /// The head commit as of the last push rbit saw (what `refs/pull/{n}/head` points at).
     pub head_sha: String,
     pub is_draft: bool,
     pub mergeable: Mergeability,
@@ -115,7 +115,7 @@ pub struct PullRequest {
     pub conflict_paths: Vec<String>,
     pub merged_at: Option<Timestamp>,
     pub merged_by: Option<AccountId>,
-    /// `None` for a pull request merged outside Rbit.
+    /// `None` for a pull request merged outside rbit.
     pub merge_strategy: Option<MergeStrategy>,
     pub merge_commit_sha: Option<String>,
     pub merged_base_sha: Option<String>,
@@ -396,7 +396,7 @@ pub fn commit_message(title: &str, body: &str) -> String {
     if body.is_empty() { format!("{title}\n") } else { format!("{title}\n\n{body}\n") }
 }
 
-/// The domain of the addresses in commits Rbit makes: the configured one, else
+/// The domain of the addresses in commits rbit makes: the configured one, else
 /// `noreply.<host of public_url>`.
 pub fn noreply_domain(configured: &str, public_url: &str) -> String {
     let configured = configured.trim();
@@ -415,12 +415,12 @@ pub fn noreply_domain(configured: &str, public_url: &str) -> String {
     format!("noreply.{host}")
 }
 
-/// `username@domain`: Rbit never writes a real email address into a commit.
+/// `username@domain`: rbit never writes a real email address into a commit.
 pub fn noreply_email(username: &str, domain: &str) -> String {
     format!("{username}@{domain}")
 }
 
-/// Who appears in a commit Rbit makes.
+/// Who appears in a commit rbit makes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitIdentity {
     pub name: String,

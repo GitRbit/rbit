@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub const SESSION_COOKIE: &str = "rbit_session";
-/// The session cookie's name from before the rename to Rbit, still accepted so nobody is
+/// The session cookie's name from before the rename to rbit, still accepted so nobody is
 /// signed out by the upgrade; signing out clears it.
 pub const LEGACY_SESSION_COOKIE: &str = "rustit_session";
 

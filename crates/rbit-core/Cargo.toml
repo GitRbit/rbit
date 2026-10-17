@@ -1,6 +1,6 @@
 [package]
 name = "rbit-core"
-description = "Domain model shared by every Rbit crate: validated names, entities, permissions and configuration."
+description = "Domain model shared by every rbit crate: validated names, entities, permissions and configuration."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

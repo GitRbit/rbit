@@ -1,4 +1,4 @@
-Rbit's tinted themes are generated from the tinted-theming colour schemes:
+rbit's tinted themes are generated from the tinted-theming colour schemes:
 https://github.com/tinted-theming/schemes (commit 3ac91137e879502c442ab89ba0f1a98077d0da9d).
 
 Copyright (c) 2022 Tinted Theming (https://github.com/tinted-theming)

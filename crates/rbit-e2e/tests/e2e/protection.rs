@@ -94,7 +94,7 @@ async fn protected_branches_over_http() {
     // Deleting it is rejected, with the reason.
     let refused = git.fails(&work, &["push", "origin", ":main"]);
     assert!(refused.contains("protected branch: deleting it is not allowed"), "{refused}");
-    assert!(refused.contains("Rbit: refs/heads/main"), "the side band explains it: {refused}");
+    assert!(refused.contains("rbit: refs/heads/main"), "the side band explains it: {refused}");
     assert_eq!(remote_branch(&git, &work, "main").as_deref(), Some(sample.head.as_str()));
 
     // A force push of an unprotected branch, in a separate push, still works.
@@ -103,9 +103,9 @@ async fn protected_branches_over_http() {
     git.ok(&work, &["push", "--quiet", "--force", "origin", "feature"]);
     assert_eq!(remote_branch(&git, &work, "feature"), Some(rewritten.clone()));
 
-    // refs/pull/ belongs to Rbit.
+    // refs/pull/ belongs to rbit.
     let refused = git.fails(&work, &["push", "origin", "feature:refs/pull/1/head"]);
-    assert!(refused.contains("refs/pull/ is managed by Rbit"), "{refused}");
+    assert!(refused.contains("refs/pull/ is managed by rbit"), "{refused}");
 
     // Pushes are all or nothing: the allowed update of feature is declined with the deletion.
     let next = git.commit_file(&work, "more.txt", "more\n");

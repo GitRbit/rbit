@@ -434,7 +434,7 @@ pub enum TimelineEvent {
         from: String,
         to: String,
     },
-    /// `strategy: None`: merged outside Rbit (the head became part of the base).
+    /// `strategy: None`: merged outside rbit (the head became part of the base).
     Merged {
         commit: String,
         strategy: Option<MergeStrategy>,

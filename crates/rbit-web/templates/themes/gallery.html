@@ -22,7 +22,7 @@
   <form method="post" action="/themes" hx-boost="false" data-theme-form>
     <input type="hidden" name="next" value="{{ gallery.next }}">
     <section class="theme-family" data-theme-family="rbit"{% if gallery.defaults_hidden %} hidden{% endif %}>
-      <h2 class="theme-family-title">Rbit</h2>
+      <h2 class="theme-family-title">rbit</h2>
       <ul class="theme-grid">
         {%- for card in gallery.defaults %}{% include "themes/card.html" %}{% endfor -%}
       </ul>

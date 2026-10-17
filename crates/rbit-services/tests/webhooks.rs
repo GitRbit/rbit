@@ -257,7 +257,7 @@ async fn a_push_is_signed_delivered_and_retried_after_a_server_error() {
     assert_eq!(push.header("X-Rbit-Event"), Some("push"));
     assert_eq!(push.header("X-GitHub-Event"), Some("push"));
     assert_eq!(push.header("Content-Type"), Some("application/json"));
-    assert!(push.header("User-Agent").is_some_and(|agent| agent.starts_with("Rbit-Hookshot/")));
+    assert!(push.header("User-Agent").is_some_and(|agent| agent.starts_with("rbit-Hookshot/")));
     let expected = format!("sha256={}", signature("It's a secret", push.body.as_bytes()));
     assert_eq!(push.header("X-Rbit-Signature-256"), Some(expected.as_str()));
     assert_eq!(push.header("X-Hub-Signature-256"), Some(expected.as_str()));

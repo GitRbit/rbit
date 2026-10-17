@@ -229,7 +229,7 @@ pub struct PullFilter {
 #[derive(Debug, Clone)]
 pub struct MergeRecord<'a> {
     pub merged_by: Option<AccountId>,
-    /// `None`: merged outside Rbit.
+    /// `None`: merged outside rbit.
     pub strategy: Option<MergeStrategy>,
     pub commit: &'a str,
     pub base: &'a str,

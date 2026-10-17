@@ -1,7 +1,7 @@
 //! What a push changed: ref snapshots taken before and after it, and the commits a ref
 //! update introduced.
 //!
-//! The transports run `git receive-pack` without hooks, so Rbit learns about ref updates
+//! The transports run `git receive-pack` without hooks, so rbit learns about ref updates
 //! by comparing a [`RefSnapshot`] taken just before a push with one taken just after it.
 //! Two pushes racing on the same repository may each report the other's updates too;
 //! consumers (webhooks, caches) treat updates as facts about the repository, not about

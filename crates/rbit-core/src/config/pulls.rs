@@ -10,7 +10,7 @@
 //! mergeability_concurrency = 2
 //! # Commits listed on a pull request's Commits tab.
 //! max_commits = 250
-//! # Domain of the addresses in commits Rbit makes; empty = "noreply.<host of server.public_url>".
+//! # Domain of the addresses in commits rbit makes; empty = "noreply.<host of server.public_url>".
 //! noreply_domain = ""
 //! ```
 //!
@@ -40,7 +40,7 @@ pub struct PullConfig {
     pub mergeability_concurrency: usize,
     /// Commits shown per pull request.
     pub max_commits: usize,
-    /// Domain of the noreply addresses in Rbit-made commits; empty means
+    /// Domain of the noreply addresses in rbit-made commits; empty means
     /// `noreply.<host of server.public_url>`.
     pub noreply_domain: String,
 }

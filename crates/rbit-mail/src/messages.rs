@@ -1,4 +1,4 @@
-//! Every email Rbit sends.
+//! Every email rbit sends.
 //!
 //! Each message is a plain struct holding exactly what its templates show. Two Askama
 //! templates render it: `templates/<name>.txt` (the plain-text part, not escaped) and

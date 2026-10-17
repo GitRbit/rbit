@@ -1,5 +1,5 @@
 /*
- * Rbit design system — monochrome minimal. Tailwind CSS v4, CSS-first configuration.
+ * rbit design system — monochrome minimal. Tailwind CSS v4, CSS-first configuration.
  *
  * Principles
  *   - Black and white do the work. Colour appears only to communicate state
@@ -19,7 +19,7 @@
 /* ---------------------------------------------------------------- Tokens */
 
 /*
- * The built-in Rbit themes. `data-theme` selects one: none (or "system") follows the
+ * The built-in rbit themes. `data-theme` selects one: none (or "system") follows the
  * OS, "light"/"dark" pin a scheme, and tinted themes (assets/themes/*.css, linked only
  * while active) redefine the same tokens under `[data-theme="base16-…"]`. Selectors are
  * scoped rather than root-only so a preview card carrying `data-theme` renders in that

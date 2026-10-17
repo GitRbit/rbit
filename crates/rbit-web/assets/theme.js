@@ -3,7 +3,7 @@
 // It covers responses rendered without the visitor's cookie (the offline page the service
 // worker cached, error pages produced before the session is known), and moves a choice
 // stored by older releases (in localStorage, or the `rustit-theme` cookie from before the
-// rename to Rbit) into the cookie.
+// rename to rbit) into the cookie.
 (() => {
   const root = document.documentElement;
   const cookie = (name) => new RegExp(`(?:^|;\\s*)${name}=([a-z0-9-]{1,64})(?:;|$)`).exec(document.cookie)?.[1];

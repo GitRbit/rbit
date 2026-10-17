@@ -206,7 +206,7 @@ async fn protected_branches_over_ssh() {
     // Deleting it is rejected (a deletion-only push sends no pack and keeps the channel open).
     let refused = harness.fails(&alice_key, &work, &["push", "origin", ":main"]).await;
     assert!(refused.contains("protected branch: deleting it is not allowed"), "{refused}");
-    assert!(refused.contains("Rbit: refs/heads/main"), "{refused}");
+    assert!(refused.contains("rbit: refs/heads/main"), "{refused}");
     assert_eq!(harness.remote(&alice_key, &work, "main").await, Some(main.clone()));
 
     // An unprotected branch can be force-pushed in a separate push, and deleted.
@@ -214,9 +214,9 @@ async fn protected_branches_over_ssh() {
     harness.ok(&alice_key, &work, &["push", "-q", "origin", ":feature"]).await;
     assert_eq!(harness.remote(&alice_key, &work, "feature").await, None);
 
-    // refs/pull/ belongs to Rbit, whoever pushes.
+    // refs/pull/ belongs to rbit, whoever pushes.
     let refused = harness.fails(&alice_key, &work, &["push", "origin", "HEAD:refs/pull/1/head"]).await;
-    assert!(refused.contains("refs/pull/ is managed by Rbit"), "{refused}");
+    assert!(refused.contains("refs/pull/ is managed by rbit"), "{refused}");
 
     // Restricted pushers: carol may push, bob and the deploy key may not.
     let restricted = RuleSettings { restrict_pushers: true, ..RuleSettings::default() };

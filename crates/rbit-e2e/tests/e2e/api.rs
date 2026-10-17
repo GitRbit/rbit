@@ -469,7 +469,7 @@ async fn a_hook_created_through_the_api_receives_a_signed_push() {
     assert_eq!(push.header("x-rbit-event"), Some("push"));
     assert_eq!(push.header("x-github-event"), Some("push"));
     assert!(push.header("x-rbit-delivery").is_some_and(|guid| guid.len() == 36));
-    assert!(push.header("user-agent").is_some_and(|agent| agent.starts_with("Rbit-Hookshot/")));
+    assert!(push.header("user-agent").is_some_and(|agent| agent.starts_with("rbit-Hookshot/")));
     assert!(push.signed_with("api-secret"), "X-Hub-Signature-256 verifies with the secret");
     let payload = push.json();
     assert_eq!((payload["ref"].as_str(), payload["after"].as_str()), (Some("refs/heads/main"), Some(sample.head.as_str())));

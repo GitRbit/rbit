@@ -299,7 +299,7 @@ impl AdminService {
     }
 }
 
-/// e.g. `registration: open → closed; site name: Rbit → Forge`.
+/// e.g. `registration: open → closed; site name: rbit → Forge`.
 fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> String {
     let fields = [
         ("site name", before.site_name.as_str(), after.site_name.as_str()),

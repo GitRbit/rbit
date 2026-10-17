@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Rbit are documented in this file.
+All notable changes to rbit are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -21,8 +21,8 @@ attached: they share the repository's number sequence, comments and timeline.
   which are none), so existing data is untouched; the upgrade test migrates a milestone 1
   database through them. `0023` is unused on purpose.
 - **Clients can no longer push to `refs/pull/*`.** The namespace now holds pull request
-  heads (`refs/pull/{n}/head`) and is managed by Rbit; such pushes are refused with
-  "refs/pull/ is managed by Rbit", over HTTP and SSH.
+  heads (`refs/pull/{n}/head`) and is managed by rbit; such pushes are refused with
+  "refs/pull/ is managed by rbit", over HTTP and SSH.
 - **Force-push protection affects the whole push.** When a push updates a branch protected
   against force pushes, git checks every ref of that push for fast-forwards, so a
   non-fast-forward update of another, unprotected ref in the *same* push is refused too
@@ -32,7 +32,7 @@ attached: they share the repository's number sequence, comments and timeline.
   disposable, swept at start-up and **excluded from backups**; it needs no backup or
   restore.
 - New configuration sections `[issues]` and `[pulls]`; every key is optional and
-  documented in [deploy/rbit.example.toml](deploy/rbit.example.toml). Commits Rbit makes
+  documented in [deploy/rbit.example.toml](deploy/rbit.example.toml). Commits rbit makes
   (merges, squashes, rebases) use `<username>@<[pulls] noreply_domain>`, by default
   `noreply.<host of server.public_url>` — set `server.public_url` before merging.
 - `issues` and `pulls` are now reserved account names. An existing account with such a
@@ -99,7 +99,7 @@ attached: they share the repository's number sequence, comments and timeline.
   and a hardened `git`, and reach the base branch only through one compare-and-swap
   `update-ref`. They are bounded in time and concurrency.
 - No email address appears in any issue or pull request page, API object, webhook payload
-  or commit Rbit makes. Notifications only reach people who can read the repository at
+  or commit rbit makes. Notifications only reach people who can read the repository at
   that moment; mentions never reveal whether someone has access; cross-references are
   shown only to people who can read their source.
 - Creating and editing issues, pull requests, comments and reviews is rate limited per
@@ -129,9 +129,9 @@ second sign-in step then offers **Use a passkey** as well as the code field.
   opened at exactly that origin (scheme, host and port). Set it correctly before users
   register passkeys: changing the host later invalidates them.
 
-### Renamed to Rbit
+### Renamed to rbit
 
-The project, its crates and its binary (`rbit`) are now called Rbit. The footer shows how
+The project, its crates and its binary (`rbit`) are now called rbit. The footer shows how
 long the server took for each page, and keeps the figure current across htmx swaps (it is
 also sent as a `Server-Timing` header).
 
@@ -144,7 +144,7 @@ also sent as a `Server-Timing` header).
   Rename the files and variables at your convenience.
 - **Breaking for integrations:** webhook headers are now `X-Rbit-Event`,
   `X-Rbit-Delivery`, `X-Rbit-Hook-Id` and `X-Rbit-Signature-256` (`X-Hub-Signature-256`
-  is unchanged), the user agent is `Rbit-Hookshot/…`, and Prometheus metrics are prefixed
+  is unchanged), the user agent is `rbit-Hookshot/…`, and Prometheus metrics are prefixed
   `rbit_` instead of `rustit_`.
 - The systemd unit is now `deploy/rbit.service` and the example config
   `deploy/rbit.example.toml`.
@@ -162,7 +162,7 @@ also sent as a `Server-Timing` header).
 ### Milestone 2 — wave A
 
 The collaboration layer, first half: other people can work on a repository with exactly
-the access they need, Rbit can be automated through a REST API and signed webhooks, and
+the access they need, rbit can be automated through a REST API and signed webhooks, and
 repositories gain downloads, releases, blame, comparison, forks and mirrors. Issues, pull
 requests and branch protection follow in wave B.
 
@@ -236,7 +236,7 @@ requests and branch protection follow in wave B.
   dark themes and ~500 tinted-theming schemes, applied without a flash and remembered
   per account.
 - A redesigned landing page and dashboard with public instance statistics, live search on
-  Explore, and the Rbit version in the footer.
+  Explore, and the rbit version in the footer.
 
 #### Changed
 

@@ -1,6 +1,6 @@
 //! # rbit-web
 //!
-//! The HTTP face of Rbit. Server-rendered HTML (Askama) progressively enhanced with
+//! The HTTP face of rbit. Server-rendered HTML (Askama) progressively enhanced with
 //! htmx, plus the Git smart-HTTP endpoints.
 //!
 //! Module map:

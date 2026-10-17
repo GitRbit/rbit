@@ -1,5 +1,5 @@
 //! Layered configuration: built-in defaults → TOML file → `RUSTIT_*` environment variables
-//! (the names from before the rename to Rbit, still honoured) → `RBIT_*` environment variables.
+//! (the names from before the rename to rbit, still honoured) → `RBIT_*` environment variables.
 
 use std::path::Path;
 
@@ -12,7 +12,7 @@ use rbit_core::Config;
 
 /// Nested keys use a double underscore: `RBIT_SERVER__PUBLIC_URL`.
 const ENV_PREFIX: &str = "RBIT_";
-/// The prefix from before the rename to Rbit; `RBIT_*` wins where both are set.
+/// The prefix from before the rename to rbit; `RBIT_*` wins where both are set.
 const LEGACY_ENV_PREFIX: &str = "RUSTIT_";
 const ENV_SEPARATOR: &str = "__";
 

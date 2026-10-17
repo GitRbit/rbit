@@ -361,7 +361,7 @@ function syncSide() {
   // Row titles read "Name by Author" or "Name · built in".
   const credit = option.title;
   const by = credit.indexOf(" by ");
-  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into Rbit";
+  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into rbit";
   const button = part("apply");
   const isCurrent = option.value === applied.slug;
   button.value = option.value;

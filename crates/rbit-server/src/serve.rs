@@ -46,7 +46,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     let background = services.clone();
     let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
     let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
-    tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "Rbit is listening");
+    tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
 
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())

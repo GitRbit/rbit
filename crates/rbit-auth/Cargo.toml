@@ -1,6 +1,6 @@
 [package]
 name = "rbit-auth"
-description = "Authentication primitives for Rbit: Argon2id password hashing, session tokens and access policy."
+description = "Authentication primitives for rbit: Argon2id password hashing, session tokens and access policy."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

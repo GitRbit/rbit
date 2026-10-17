@@ -1,6 +1,6 @@
 [package]
 name = "rbit-services"
-description = "Application use-cases for Rbit, combining storage, Git and authentication behind HTTP-agnostic APIs."
+description = "Application use-cases for rbit, combining storage, Git and authentication behind HTTP-agnostic APIs."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

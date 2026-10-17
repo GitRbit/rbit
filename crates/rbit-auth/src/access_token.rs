@@ -21,7 +21,7 @@ impl AccessTokenSecret {
         Self(secret::random_bytes())
     }
 
-    /// Parses a full token string. Returns `None` unless it is exactly a Rbit token.
+    /// Parses a full token string. Returns `None` unless it is exactly a rbit token.
     pub fn parse(value: &str) -> Option<Self> {
         value.strip_prefix(Self::PREFIX).and_then(secret::decode).map(Self)
     }

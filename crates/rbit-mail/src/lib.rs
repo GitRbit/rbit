@@ -2,7 +2,7 @@
 //!
 //! Outgoing email: message rendering and delivery transports.
 //!
-//! * [`messages`] — every email Rbit sends, rendered from Askama templates kept in this
+//! * [`messages`] — every email rbit sends, rendered from Askama templates kept in this
 //!   crate (`templates/`), each with a plain-text and an HTML part.
 //! * [`Mailer`] — the delivery seam, with an SMTP transport ([`SmtpMailer`], lettre over
 //!   rustls), a log transport for development ([`LogMailer`]), a transport that refuses

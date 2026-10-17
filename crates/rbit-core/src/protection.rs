@@ -32,12 +32,12 @@ pub const MAX_ALLOWED: usize = 50;
 /// Most approvals a rule may require.
 pub const MAX_REQUIRED_APPROVALS: u8 = 10;
 
-/// The namespace Rbit keeps pull request heads in; clients may never update it.
+/// The namespace rbit keeps pull request heads in; clients may never update it.
 pub const PULL_REFS: &str = "refs/pull/";
 
 /// Refusal reasons, as the client shows them (`! [remote rejected] main -> main (…)`).
 pub mod reasons {
-    pub const PULL_REFS: &str = "refs/pull/ is managed by Rbit";
+    pub const PULL_REFS: &str = "refs/pull/ is managed by rbit";
     pub const DELETION: &str = "protected branch: deleting it is not allowed";
     pub const RESTRICTED: &str = "protected branch: you are not allowed to push to it";
     pub const PULL_REQUEST: &str = "protected branch: changes must go through a pull request";

@@ -66,7 +66,7 @@ impl Default for ServerConfig {
         Self {
             bind: SocketAddr::from(([127, 0, 0, 1], 3000)),
             public_url: "http://localhost:3000".to_owned(),
-            site_name: "Rbit".to_owned(),
+            site_name: "rbit".to_owned(),
             open_registration: true,
         }
     }
@@ -98,12 +98,12 @@ impl Default for StorageConfig {
 }
 
 impl StorageConfig {
-    /// `rbit.db`, or `rustit.db` in a data directory created before the rename to Rbit.
+    /// `rbit.db`, or `rustit.db` in a data directory created before the rename to rbit.
     pub fn sqlite_path(&self) -> PathBuf {
         self.named_or_legacy("rbit.db", "rustit.db")
     }
 
-    /// `rbit.redb`, or `rustit.redb` in a data directory created before the rename to Rbit.
+    /// `rbit.redb`, or `rustit.redb` in a data directory created before the rename to rbit.
     pub fn kv_path(&self) -> PathBuf {
         self.named_or_legacy("rbit.redb", "rustit.redb")
     }

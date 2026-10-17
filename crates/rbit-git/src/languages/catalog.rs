@@ -1,9 +1,9 @@
-//! The languages Rbit recognises, with GitHub Linguist's names, colours and kinds so the
+//! The languages rbit recognises, with GitHub Linguist's names, colours and kinds so the
 //! breakdown looks familiar.
 //!
 //! Detection is by exact file name first (`Makefile`, `Dockerfile`), then by extension.
 //! Where Linguist resolves an ambiguous extension with content heuristics (`.h`, `.m`,
-//! `.pl`, `.v`), this table assigns it to the most common language instead: Rbit never
+//! `.pl`, `.v`), this table assigns it to the most common language instead: rbit never
 //! reads blob contents for statistics.
 
 /// Linguist's coarse classification. Only [`Programming`](Self::Programming) and

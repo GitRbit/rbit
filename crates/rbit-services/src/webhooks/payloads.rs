@@ -224,7 +224,7 @@ pub fn fork(forkee: &OwnedRepository, parent: &OwnedRepository, parent_is_fork: 
 /// A release with its files, in GitHub's release shape. `author` is the creator's
 /// account and `uploaders` the accounts that uploaded files, as far as they still exist.
 ///
-/// Rbit's API has no release endpoints, so GitHub's API links (`url`, `assets_url`,
+/// rbit's API has no release endpoints, so GitHub's API links (`url`, `assets_url`,
 /// `upload_url`) are absent; `html_url`, the archive links and every asset's
 /// `browser_download_url` point at the web interface.
 pub fn release(

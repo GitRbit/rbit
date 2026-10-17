@@ -110,7 +110,7 @@ mod tests {
     fn page(kind: &'static str) -> RefsPage {
         RefsPage {
             page: Page {
-                site_name: "Rbit".to_owned(),
+                site_name: "rbit".to_owned(),
                 title: None,
                 viewer: None,
                 path: "/acme/rocket/branches".to_owned(),

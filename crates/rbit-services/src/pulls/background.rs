@@ -1,5 +1,5 @@
 //! The pull request service's background work: reacting to pushes (head moved, head
-//! deleted, base moved, merged outside Rbit), the mergeability worker and the start-up
+//! deleted, base moved, merged outside rbit), the mergeability worker and the start-up
 //! sweep of temporary directories.
 //!
 //! Milestone 2 workstream P (pull requests) owns this file.
@@ -183,13 +183,13 @@ impl PullService {
         if !base.reader.is_ancestor(pull.head_sha.clone(), after.clone()).await.unwrap_or(false) {
             return Ok(());
         }
-        // The head is part of the base now: merged outside Rbit.
+        // The head is part of the base now: merged outside rbit.
         let record =
             MergeRecord { merged_by: pusher, strategy: None, commit: after, base: after, head: &pull.head_sha, at: Timestamp::now() };
         if store.record_merge(issue.id, &record).await? {
             let event = TimelineEvent::Merged { commit: after.clone(), strategy: None };
             self.inner.timeline.close_as_system(issue.id, pusher, StateReason::Merged, event).await?;
-            tracing::info!(pull = issue.id.0, "pull request merged outside Rbit");
+            tracing::info!(pull = issue.id.0, "pull request merged outside rbit");
         }
         Ok(())
     }

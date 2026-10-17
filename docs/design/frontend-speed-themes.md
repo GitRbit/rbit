@@ -17,7 +17,7 @@ the `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` trailer, mobile-fi
    monochrome language, no duplicated Sign in / Sign up (they live in the header), and
    containers with clear, even borders.
 
-The default look stays **monochrome minimal** (Rbit Light / Rbit Dark / System). Tinted
+The default look stays **monochrome minimal** (rbit Light / rbit Dark / System). Tinted
 themes are an opt-in a user picks; they recolour tokens, never layout or components.
 
 ## Workstreams and file ownership
@@ -69,7 +69,7 @@ Owns:
 ## Contracts between workstreams
 
 - **Theme attribute.** The active theme is `<html data-theme="SLUG">`. `light` and `dark` are
-  the built-in Rbit monochrome themes; no attribute means System (follows the OS via
+  the built-in rbit monochrome themes; no attribute means System (follows the OS via
   `light-dark()`). Tinted slugs are `base16-<slug>` / `base24-<slug>`, `[a-z0-9-]+` only.
 - **Tokens are the API.** Components use only the semantic tokens (`--canvas`, `--surface`,
   `--subtle`, `--hover`, `--line`, `--line-strong`, `--ink*`, `--inverted*`, status and

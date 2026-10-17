@@ -118,7 +118,7 @@
     <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
         {% call ui::logo("size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
-        <span class="truncate">Powered by <span class="text-ink-muted">Rbit</span></span>
+        <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>
         <span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>
         {%- if let Some(elapsed) = crate::timing::elapsed() %}
         <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="Server time for the last page or update">· rendered in <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->

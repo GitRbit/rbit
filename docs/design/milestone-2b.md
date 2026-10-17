@@ -30,7 +30,7 @@ with explicit `ON DELETE`.
 1. Anyone who can read a repository can report and discuss problems; writers triage them
    with labels, milestones and assignees; commits close issues.
 2. Changes arrive as pull requests, also from forks, are reviewed line by line and are
-   merged by Rbit itself, safely, with the strategy the merger picks.
+   merged by rbit itself, safely, with the strategy the merger picks.
 3. Important branches cannot be rewritten, deleted or pushed to by the wrong people, no
    matter which transport is used.
 4. Everything above is visible to automation: REST endpoints and GitHub-shaped webhooks.
@@ -178,7 +178,7 @@ pub enum TimelineEvent {
     // P
     HeadPushed { before: String, after: String, count: u32, forced: bool },
     BaseChanged { from: String, to: String },
-    Merged { commit: String, strategy: Option<MergeStrategy> },   // None: merged outside Rbit
+    Merged { commit: String, strategy: Option<MergeStrategy> },   // None: merged outside rbit
     ReviewRequested { reviewer: AccountId }, ReviewRequestRemoved { reviewer: AccountId },
     ReviewDismissed { review: ReviewId, reviewer: Option<AccountId> },
     HeadRefDeleted { branch: String },
@@ -389,7 +389,7 @@ pub struct MergeRules {
 
 ### 4. The push gate (P0 glue, B's logic)
 
-`git receive-pack` runs without hooks, and Rbit's tests boot the server in-process, so a
+`git receive-pack` runs without hooks, and rbit's tests boot the server in-process, so a
 `pre-receive` hook executable is not an option. The gate is in-process instead:
 
 1. **Read the command list before git sees it.** The client's request starts with
@@ -407,7 +407,7 @@ pub struct MergeRules {
    does not start git, and answers `receive::refusal(...)`: `unpack ok`, then
    `ng <ref> <reason>` for every refused ref and `ng <ref> push declined: another ref in
    this push was refused` for the others, honouring `report-status` / `report-status-v2`
-   and `side-band-64k` / `side-band` (with a band-2 `Rbit: …` explanation per refusal).
+   and `side-band-64k` / `side-band` (with a band-2 `rbit: …` explanation per refusal).
    Clients that requested no `report-status` get HTTP 403 with a text body, or over SSH a
    stderr message and exit status 1. The client then prints
    `! [remote rejected] main -> main (protected branch: force pushes are not allowed)`.
@@ -737,7 +737,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
    - head branch deleted: record `HeadRefDeleted`; the PR stays open but cannot be merged
      until the branch is pushed again;
    - base branch moved: mark open PRs into it unknown; if a PR's head is now an ancestor of
-     the base tip, it was **merged outside Rbit**: mark it merged (`merged_by` = pusher,
+     the base tip, it was **merged outside rbit**: mark it merged (`merged_by` = pusher,
      strategy `NULL`), record `Merged { strategy: None }`, close it with reason `Merged`.
 5. **Mergeability.** A bounded worker (`mergeability_concurrency`) computes, for open
    non-draft PRs with `mergeable = 'unknown'`, a trial merge of head into base on a
@@ -806,7 +806,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
    -c rerere.enabled=false -c gc.auto=0 -c maintenance.auto=false -c core.fsmonitor=false`,
    `--no-verify` on commits, `--end-of-options` before revisions, revisions as full ids or
    `refs/heads/<validated name>`, never options from user input. Identities: name = display
-   name (or username), email = `<username>@<noreply_domain>` — Rbit never writes a real
+   name (or username), email = `<username>@<noreply_domain>` — rbit never writes a real
    email address into a commit. Fixed `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` from the
    service clock. `merge_timeout_seconds` bounds the whole merge (`kill_on_drop`). The
    temporary directory is removed on every exit path (a guard) and swept at start-up;
@@ -890,7 +890,7 @@ conflict, timeout and panic, no hooks executed (a hook planted in the fixture ne
 follows head pushes and survives fork deletion; approval counting table (latest review per
 reviewer, stale with and without `dismiss_stale_approvals`, dismissed, non-writer, own PR,
 changes requested); requirements evaluation against `MergeRules` values (P tests with
-hand-built `MergeRules`, since B's logic is not on its branch); "merged outside Rbit"
+hand-built `MergeRules`, since B's logic is not on its branch); "merged outside rbit"
 detection; reopen preconditions; payload shapes; API handler tests; view render tests;
 e2e: fork a repository, push a branch to the fork, open a PR to the parent in the UI,
 leave a line comment, request changes, push a fix (timeline shows the push, the comment
@@ -924,7 +924,7 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
    exhaustively tested over rule flags × actor (anonymous/deploy key/reader/writer/admin
    with and without bypass, listed user, team member) × update kind (create,
    fast-forward-or-unknown update, delete) × reserved refs):
-   - any update of `refs/pull/*` by a client: refused ("refs/pull/ is managed by Rbit");
+   - any update of `refs/pull/*` by a client: refused ("refs/pull/ is managed by rbit");
    - delete with `deny_deletion`: refused ("protected branch: deleting it is not allowed");
    - pusher not allowed by `restrict_pushers` (deploy keys never are): refused, also for
      creation ("protected branch: you are not allowed to push to it");
@@ -1012,7 +1012,7 @@ it; a push to a pull mirror is still refused by I1's check first.
 - **Markdown** always goes through `render_issue_markdown` (ammonia last). Label colours
   appear only as an SVG `fill` on a dot (validated `#rrggbb`), progress bars as SVG
   `width` attributes: **no inline `style=`, no inline scripts**.
-- **Privacy:** no email address in any page, payload, API object or Rbit-made commit;
+- **Privacy:** no email address in any page, payload, API object or rbit-made commit;
   notifications only for users who can read the repository; mentions never reveal whether
   a user can read it; cross-references shown only to viewers of the source; refusal
   messages never list allowed pushers.

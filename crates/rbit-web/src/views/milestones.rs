@@ -185,7 +185,7 @@ mod tests {
     fn the_list_draws_progress_with_svg_widths() {
         let html = MilestonesPage {
             page: Page {
-                site_name: "Rbit".into(),
+                site_name: "rbit".into(),
                 title: None,
                 viewer: None,
                 path: "/a/b/milestones".into(),

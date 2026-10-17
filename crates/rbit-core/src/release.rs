@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn asset_names() {
-        for good in ["app.tar.gz", "Rbit Setup 1.0.exe", "ü.zip", "a"] {
+        for good in ["app.tar.gz", "rbit Setup 1.0.exe", "ü.zip", "a"] {
             assert!(validate_asset_name(good).is_ok(), "{good}");
         }
         let long = "a".repeat(256);

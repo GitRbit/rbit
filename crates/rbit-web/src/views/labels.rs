@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(view.issues_url, "/alice/demo/issues?q=is%3Aopen%20is%3Aissue%20label%3A%22good%20first%20issue%22");
         let page = |can_write| LabelsPage {
             page: Page {
-                site_name: "Rbit".into(),
+                site_name: "rbit".into(),
                 title: None,
                 viewer: None,
                 path: "/alice/demo/labels".into(),

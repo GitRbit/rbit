@@ -142,7 +142,7 @@ impl IntoResponse for ApiError {
             headers.insert(header::LOCATION, location);
         }
         if self.status == StatusCode::UNAUTHORIZED {
-            headers.insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer realm=\"Rbit\""));
+            headers.insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer realm=\"rbit\""));
         }
         if let Some(seconds) = self.retry_after {
             headers.insert(header::RETRY_AFTER, HeaderValue::from(seconds));

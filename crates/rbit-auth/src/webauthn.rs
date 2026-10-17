@@ -391,7 +391,7 @@ mod tests {
     const ORIGIN: &str = "https://git.example.com";
 
     fn rp() -> RelyingParty {
-        RelyingParty::from_public_url(ORIGIN, "Rbit").unwrap()
+        RelyingParty::from_public_url(ORIGIN, "rbit").unwrap()
     }
 
     /// A software authenticator holding one P-256 key.
@@ -477,11 +477,11 @@ mod tests {
 
     #[test]
     fn derives_rp_id_and_origin_from_the_public_url() {
-        let rp = RelyingParty::from_public_url("https://Git.Example.com:443/sub/", "Rbit").unwrap();
+        let rp = RelyingParty::from_public_url("https://Git.Example.com:443/sub/", "rbit").unwrap();
         assert_eq!((rp.id(), rp.origin()), ("git.example.com", "https://git.example.com"));
-        let rp = RelyingParty::from_public_url("http://localhost:3000", "Rbit").unwrap();
+        let rp = RelyingParty::from_public_url("http://localhost:3000", "rbit").unwrap();
         assert_eq!((rp.id(), rp.origin()), ("localhost", "http://localhost:3000"));
-        assert!(RelyingParty::from_public_url("not a url", "Rbit").is_none());
+        assert!(RelyingParty::from_public_url("not a url", "rbit").is_none());
     }
 
     #[test]

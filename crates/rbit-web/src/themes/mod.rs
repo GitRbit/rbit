@@ -1,4 +1,4 @@
-//! Colour themes: the built-in monochrome Rbit themes and the generated tinted catalog.
+//! Colour themes: the built-in monochrome rbit themes and the generated tinted catalog.
 //!
 //! A theme only recolours the semantic tokens (`--canvas`, `--surface`, `--ink`, …), never
 //! layout. The active one is `<html data-theme="SLUG">`:
@@ -28,7 +28,7 @@ pub use catalog::SOURCE_COMMIT;
 
 /// Cookie holding the chosen theme slug. Readable by scripts so switching is instant.
 pub const COOKIE: &str = "rbit-theme";
-/// The theme cookie's name from before the rename to Rbit, read when [`COOKIE`] is absent.
+/// The theme cookie's name from before the rename to rbit, read when [`COOKIE`] is absent.
 pub const LEGACY_COOKIE: &str = "rustit-theme";
 
 /// How long the theme cookie lives.
@@ -148,8 +148,8 @@ impl Theme {
     pub fn name(self) -> &'static str {
         match self {
             Self::System => "System",
-            Self::Light => "Rbit Light",
-            Self::Dark => "Rbit Dark",
+            Self::Light => "rbit Light",
+            Self::Dark => "rbit Dark",
             Self::Tinted(theme) => theme.name,
         }
     }

@@ -32,7 +32,7 @@ const MAX_RESPONSE_HEADERS: usize = 64;
 const RETRY_DELAYS_SECONDS: [u64; 5] = [10, 60, 600, 3_600, 21_600];
 
 /// Sent as `User-Agent`.
-pub const USER_AGENT: &str = concat!("Rbit-Hookshot/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("rbit-Hookshot/", env!("CARGO_PKG_VERSION"));
 
 /// The lower-case hex HMAC-SHA256 of `body` keyed with `secret`, as sent in
 /// `X-Rbit-Signature-256: sha256=<hex>` (and GitHub's `X-Hub-Signature-256`).
@@ -336,7 +336,7 @@ mod tests {
         let signed = request_headers("push", "g", 3, Some("abc"));
         assert!(signed.contains(&("X-Rbit-Signature-256".to_owned(), "sha256=abc".to_owned())));
         assert!(signed.contains(&("X-Hub-Signature-256".to_owned(), "sha256=abc".to_owned())));
-        assert!(USER_AGENT.starts_with("Rbit-Hookshot/"));
+        assert!(USER_AGENT.starts_with("rbit-Hookshot/"));
     }
 
     #[test]

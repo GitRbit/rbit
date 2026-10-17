@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="crates/rbit-web/assets/logo.png" width="280" alt="Rbit logo — an orange frog mascot in a gear">
+  <img src="crates/rbit-web/assets/logo.png" width="280" alt="rbit logo — an orange frog mascot in a gear">
 </p>
 
-# Rbit
+# rbit
 
 A fast, self-hosted Git platform written in Rust — one binary, no external services.
 
@@ -104,7 +104,7 @@ Settings**.
 
 ## Development
 
-The orange frog is Rbit's logo and mascot. The original artwork lives in
+The orange frog is rbit's logo and mascot. The original artwork lives in
 [`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
 the README and landing page. After replacing it, run `npm run icons` to regenerate
 the browser, home-screen, and installable-app icons, and commit the generated PNGs.

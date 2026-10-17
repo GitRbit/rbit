@@ -1,6 +1,6 @@
 [package]
 name = "rbit-transport"
-description = "Git wire protocol (smart HTTP and SSH) for Rbit, independent of any web framework."
+description = "Git wire protocol (smart HTTP and SSH) for rbit, independent of any web framework."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

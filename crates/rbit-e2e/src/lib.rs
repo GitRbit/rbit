@@ -54,7 +54,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 // ------------------------------------------------------------------ server
 
-/// A running Rbit instance. Dropping it stops the server and deletes its data.
+/// A running rbit instance. Dropping it stops the server and deletes its data.
 #[derive(Debug)]
 pub struct TestServer {
     addr: SocketAddr,

@@ -211,7 +211,7 @@ const MAX_PKT_LEN: usize = 65520;
 /// by `limits` whatever the client sends.
 ///
 /// Always returns [`Intercept::Read`]; an empty stream counts as an empty command list.
-/// Signed pushes (`push-cert`) are malformed here: Rbit never advertises them.
+/// Signed pushes (`push-cert`) are malformed here: rbit never advertises them.
 pub async fn intercept<R: AsyncRead + Unpin>(mut input: R, limits: CommandLimits) -> Result<Intercept<R>, ReceiveError> {
     let mut reader = PktReader { saved: Vec::new(), limits };
     let mut commands = Vec::new();
@@ -372,7 +372,7 @@ pub const DECLINED: &str = "push declined: another ref in this push was refused"
 /// `ng <ref> <reason>` per refused ref and `ng <ref> push declined: …` for the others (in
 /// the client's order), framed for `report-status`/`report-status-v2` and
 /// `side-band-64k`/`side-band` as the client requested. With a side band, a band-2
-/// `Rbit: <ref>: <reason>` message per refusal comes first and a flush packet last, as
+/// `rbit: <ref>: <reason>` message per refusal comes first and a flush packet last, as
 /// git sends them. Empty when the client requested no report (the glue then answers
 /// HTTP 403 / SSH stderr with [`refusal_message`]).
 pub fn refusal(commands: &CommandList, refusals: &[Refusal]) -> Vec<u8> {
@@ -396,7 +396,7 @@ pub fn refusal(commands: &CommandList, refusals: &[Refusal]) -> Vec<u8> {
     };
     let mut framed = Vec::with_capacity(report.len() + 64);
     for refusal in refusals {
-        let message = format!("Rbit: {}: {}\n", one_line(&refusal.name), one_line(&refusal.reason));
+        let message = format!("rbit: {}: {}\n", one_line(&refusal.name), one_line(&refusal.reason));
         for chunk in message.as_bytes().chunks(band_size) {
             band(&mut framed, 2, chunk);
         }

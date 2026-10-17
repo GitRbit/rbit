@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     // Before anything can open a TLS connection (webhook deliveries, mail, mirror checks):
     // every rustls user in the process then agrees on `ring`, whatever its features.
     rbit_services::webhooks::delivery::install_crypto_provider();
-    // `RUSTIT_CONFIG` is the variable's name from before the rename to Rbit.
+    // `RUSTIT_CONFIG` is the variable's name from before the rename to rbit.
     let file = cli.config.or_else(|| std::env::var_os("RUSTIT_CONFIG").map(std::path::PathBuf::from));
     let config = config::load(file.as_deref())?;
 
