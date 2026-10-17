@@ -39,7 +39,7 @@ async fn user(database: &Database, name: &str) -> User {
 impl Fixture {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rustit.db")).await.unwrap();
+        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
         let alice = user(&database, "alice").await;
         let bob = user(&database, "bob").await;
         let new = NewRepository {

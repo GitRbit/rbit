@@ -33,8 +33,8 @@ impl Fixture {
 
     async fn with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rustit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rustit.redb")).unwrap();
+        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         // These tests make many changes in a row; throttling has its own test below.

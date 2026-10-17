@@ -31,7 +31,9 @@ const MAX_RESPONSE_HEADERS: usize = 64;
 /// attempts reuse the last one.
 const RETRY_DELAYS_SECONDS: [u64; 5] = [10, 60, 600, 3_600, 21_600];
 
-/// Sent as `User-Agent`.
+/// Sent as `User-Agent`. Shaped like GitHub's `GitHub-Hookshot/<id>`: the product name as it is
+/// written (rbit, lower case) and `Hookshot`. Receivers may match on it, so it stays as
+/// released rather than being lower-cased.
 pub const USER_AGENT: &str = concat!("rbit-Hookshot/", env!("CARGO_PKG_VERSION"));
 
 /// The lower-case hex HMAC-SHA256 of `body` keyed with `secret`, as sent in
@@ -82,7 +84,9 @@ pub fn new_guid() -> String {
     format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
 }
 
-/// The headers of a delivery request, in the order they are sent.
+/// The headers of a delivery request, in the order they are sent. Header names use HTTP's
+/// usual Title-Case (`X-Rbit-Event`, like `X-GitHub-Event`); that is header style, not a
+/// spelling of the project's name, and receivers already read these names.
 pub fn request_headers(event: &str, guid: &str, hook_id: i64, signature: Option<&str>) -> Vec<(String, String)> {
     let mut headers = vec![
         ("Content-Type".to_owned(), "application/json".to_owned()),

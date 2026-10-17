@@ -23,7 +23,7 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rustit.db")).await.unwrap();
+        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
         let alice = user(&database, "alice").await;
         let repo = repo(&database, &alice, "demo").await;
         Self { _dir: dir, database, alice, repo }

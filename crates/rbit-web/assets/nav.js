@@ -14,6 +14,7 @@
 // * Render time: the footer's "rendered in" figure follows every htmx request, partial
 //   swaps included, from the response's `Server-Timing` header (see `timing.rs`).
 
+// Title-Case like any HTTP header name (the server lists it in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
 const newEpoch = () => `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`;
 let epoch = newEpoch();

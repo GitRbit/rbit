@@ -12,6 +12,7 @@
 /data-live
 /data-alt
 /rbit.toml
+# The config file name from before the rename to rbit; still kept out of commits.
 /rustit.toml
 
 # Release archives (assembled by .github/workflows/release.yml)
