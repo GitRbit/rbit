@@ -141,8 +141,11 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   detail.target = main;
   const anchorLink = detail.elt?.getAttribute?.("href")?.includes("#");
   detail.swapOverride = anchorLink ? "outerHTML" : "outerHTML show:window:top";
-  if (partial) return;
+  // Never an `hx-select` inherited from an ancestor of the link. A partial response has
+  // <main> at its root, where the select finds it too; htmx swaps its out-of-band tabs
+  // and reads its title before selecting.
   detail.selectOverride = "#main";
+  if (partial) return;
   // The tabs (active tab, star count) come along out of band; read by htmx right
   // after this event, from the triggering element.
   detail.elt?.setAttribute?.("hx-select-oob", "#repo-subnav");
