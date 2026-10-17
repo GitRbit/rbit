@@ -14,14 +14,19 @@ pub mod events;
 pub mod forks;
 pub mod insights;
 pub mod instance;
+pub mod issues;
 pub mod jobs;
 pub mod mail;
 pub mod mirrors;
+pub mod notifications;
 pub mod orgs;
 pub mod preferences;
 pub mod profiles;
+pub mod protection;
+pub mod pulls;
 pub mod pushes;
 pub mod recovery;
+pub mod references;
 pub mod releases;
 pub mod repo_settings;
 pub mod repositories;
@@ -29,6 +34,7 @@ pub mod ssh_keys;
 pub mod stars;
 pub mod teams;
 pub mod throttle;
+pub mod timeline;
 pub mod tokens;
 pub mod transfers;
 pub mod two_factor;
@@ -50,14 +56,19 @@ pub use events::{DomainEvent, EventBus};
 pub use forks::ForkService;
 pub use insights::InsightsService;
 pub use instance::InstanceService;
+pub use issues::IssueService;
 pub use jobs::JobService;
 pub use mail::MailService;
 pub use mirrors::MirrorService;
+pub use notifications::NotificationService;
 pub use orgs::{CreateOrganization, OrgContext, OrgService, UpdateOrganization};
 pub use preferences::PreferenceService;
 pub use profiles::ProfileService;
+pub use protection::ProtectionService;
+pub use pulls::PullService;
 pub use pushes::{PendingPush, PushService};
 pub use recovery::RecoveryService;
+pub use references::ReferenceService;
 pub use releases::ReleaseService;
 pub use repo_settings::RepoSettingsService;
 pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
@@ -65,6 +76,7 @@ pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
 pub use teams::TeamService;
 pub use throttle::{ThrottleScope, ThrottleService};
+pub use timeline::IssueContext;
 pub use tokens::{AccessTokenService, CreateAccessToken};
 pub use transfers::TransferService;
 pub use two_factor::TwoFactorService;
@@ -115,6 +127,14 @@ pub struct Services {
     pub releases: ReleaseService,
     // Frontend wave: themes (T).
     pub preferences: PreferenceService,
+    // Milestone 2 wave B: issues (I).
+    pub issues: IssueService,
+    pub references: ReferenceService,
+    pub notifications: NotificationService,
+    // Pull requests (P).
+    pub pulls: PullService,
+    // Branch protection (B).
+    pub protection: ProtectionService,
 }
 
 impl Services {
@@ -157,6 +177,11 @@ impl Services {
             mirrors: MirrorService::new(ctx.clone()),
             releases: ReleaseService::new(ctx.clone()),
             preferences: PreferenceService::new(ctx.clone()),
+            issues: IssueService::new(ctx.clone()),
+            references: ReferenceService::new(ctx.clone()),
+            notifications: NotificationService::new(ctx.clone()),
+            pulls: PullService::new(ctx.clone()),
+            protection: ProtectionService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
@@ -172,12 +197,23 @@ impl Services {
         self.webhooks.spawn_background();
         self.releases.spawn_background();
         self.mirrors.spawn_background();
+        self.issues.spawn_background();
+        self.notifications.spawn_background();
+        self.pulls.spawn_background();
     }
 
-    /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up)
-    /// and waits, bounded, for it to finish. Call during graceful shutdown, before closing
-    /// the stores.
+    /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
+    /// commit references, notifications, merges) and waits, bounded, for it to finish.
+    /// Call during graceful shutdown, before closing the stores.
     pub async fn shutdown(&self) {
-        tokio::join!(self.jobs.shutdown(), self.webhooks.shutdown(), self.releases.shutdown(), self.mirrors.shutdown());
+        tokio::join!(
+            self.jobs.shutdown(),
+            self.webhooks.shutdown(),
+            self.releases.shutdown(),
+            self.mirrors.shutdown(),
+            self.issues.shutdown(),
+            self.notifications.shutdown(),
+            self.pulls.shutdown(),
+        );
     }
 }

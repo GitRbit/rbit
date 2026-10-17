@@ -6,7 +6,10 @@
 //! blocks or fails: with no subscribers an event is simply dropped, and a subscriber that
 //! falls behind skips the oldest events rather than slowing producers down.
 
-use rustit_core::{AccountId, ReleaseId, RepoId};
+use rustit_core::{
+    AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
+    issue::{CommentAction, IssueAction, ReviewAction},
+};
 pub use rustit_git::RefUpdate;
 use tokio::sync::broadcast;
 
@@ -52,6 +55,29 @@ pub enum DomainEvent {
     PasswordChanged { user: AccountId },
     /// A user's email address was changed; `previous` is the old address.
     EmailChanged { user: AccountId, previous: String },
+    /// Something happened to an issue or pull request (`kind` tells which). Published by
+    /// the timeline (T0) and the issue (I) and pull request (P) services.
+    Issue {
+        repo: RepoId,
+        issue: IssueId,
+        number: IssueNumber,
+        kind: IssueKind,
+        /// `None` for system actions: a deploy-key push or a mirror fetch closing an issue.
+        actor: Option<AccountId>,
+        action: IssueAction,
+    },
+    /// A comment on an issue or pull request was created, edited or deleted.
+    IssueComment {
+        repo: RepoId,
+        issue: IssueId,
+        number: IssueNumber,
+        kind: IssueKind,
+        comment: CommentId,
+        actor: AccountId,
+        action: CommentAction,
+    },
+    /// A pull request review was submitted, edited or dismissed. Published by P.
+    PullRequestReview { repo: RepoId, pull: IssueId, number: IssueNumber, review: ReviewId, actor: AccountId, action: ReviewAction },
 }
 
 #[derive(Debug, Clone)]

@@ -40,6 +40,8 @@ pub enum ThrottleScope {
     ApiAuth,
     /// Authenticated REST API requests (keyed by account), so one script cannot monopolise the instance.
     ApiRequest,
+    /// Issues, pull requests, comments and reviews created or edited (keyed by account).
+    Content,
 }
 
 /// A budget: `burst` units, refilled one per `refill`; failures cost `failure_cost` more.
@@ -96,6 +98,8 @@ impl Bucket {
             Self::Scope(ThrottleScope::SshAuth) => Limit::new(20, 3, 5),
             // 300 requests at once, then one per second (3,600 an hour) per account.
             Self::Scope(ThrottleScope::ApiRequest) => Limit::new(300, 1, 0),
+            // A burst of 30 posts, then one every ten seconds per account.
+            Self::Scope(ThrottleScope::Content) => Limit::new(30, 10, 0),
             // Generous: a person clicking around never notices, a script hammering forms does.
             Self::UnsafeRequest => Limit::new(60, 1, 0),
         }

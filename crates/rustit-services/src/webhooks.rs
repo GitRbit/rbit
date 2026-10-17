@@ -35,7 +35,7 @@ use std::{
 };
 
 use rustit_core::{
-    Account, AccountId, ReleaseId, RepoId, Timestamp, User,
+    Account, AccountId, IssueKind, ReleaseId, RepoId, Timestamp, User,
     repository::OwnedRepository,
     webhook::{Delivery, DeliveryId, Webhook, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
@@ -63,6 +63,17 @@ const POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// How often old deliveries are pruned.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+
+/// A delivery body built outside this module (wave B's `issues::hooks::payload` and
+/// `pulls::hooks::payload`), queued by [`WebhookService::handle_event`] for every hook of
+/// `repo` (and its organisation) subscribed to `event`.
+#[derive(Debug, Clone)]
+pub struct HookPayload {
+    pub repo: OwnedRepository,
+    pub event: WebhookEvent,
+    /// The JSON body; its `action` field becomes the delivery's action.
+    pub body: Value,
+}
 
 /// What a hook is attached to, as loaded for the acting user.
 #[derive(Debug, Clone, Copy)]
@@ -437,9 +448,35 @@ impl WebhookService {
                 let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
+            DomainEvent::Issue { .. } | DomainEvent::IssueComment { .. } | DomainEvent::PullRequestReview { .. } => {
+                self.queue_payload(self.workflow_payload(event, &base).await?).await?
+            }
             _ => 0,
         };
         Ok(queued)
+    }
+
+    /// Wave B's payloads, built by the issue (I) and pull request (P) workstreams. Comments
+    /// on pull requests are I's (`issue_comment`); everything else about pulls is P's.
+    async fn workflow_payload(&self, event: &DomainEvent, base: &str) -> Result<Option<HookPayload>, ServiceError> {
+        let ctx = &self.inner.ctx;
+        match event {
+            DomainEvent::Issue { kind: IssueKind::Issue, .. } | DomainEvent::IssueComment { .. } => {
+                crate::issues::hooks::payload(ctx, event, base).await
+            }
+            DomainEvent::Issue { kind: IssueKind::Pull, .. } | DomainEvent::PullRequestReview { .. } => {
+                crate::pulls::hooks::payload(ctx, event, base).await
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Queues `payload` (if any) for the hooks of its repository and organisation that
+    /// subscribe to its event; the delivery's `action` is the body's `action` field.
+    async fn queue_payload(&self, payload: Option<HookPayload>) -> Result<usize, ServiceError> {
+        let Some(HookPayload { repo, event, body }) = payload else { return Ok(0) };
+        let hooks = self.inner.store.subscribed(Some(repo.repo.id), &org_of(&repo.owner), event).await?;
+        Ok(self.queue(hooks, event, &body).await?.len())
     }
 
     async fn repository(&self, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {

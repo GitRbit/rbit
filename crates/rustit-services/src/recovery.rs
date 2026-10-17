@@ -374,7 +374,10 @@ impl RecoveryService {
             | DomainEvent::RepositoryTransferred { .. }
             | DomainEvent::RepositoryForked { .. }
             | DomainEvent::ReleasePublished { .. }
-            | DomainEvent::PasswordChanged { .. } => Ok(()),
+            | DomainEvent::PasswordChanged { .. }
+            | DomainEvent::Issue { .. }
+            | DomainEvent::IssueComment { .. }
+            | DomainEvent::PullRequestReview { .. } => Ok(()),
         }
     }
 
