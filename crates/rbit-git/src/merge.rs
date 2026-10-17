@@ -210,30 +210,45 @@ async fn merge_inner(env: &MergeEnvironment, spec: &MergeSpec<'_>) -> Result<Mer
     };
 
     // Hand the result to the base repository: objects first, then the atomic ref update.
-    git.run(["update-ref", "--no-deref", "--end-of-options", RESULT_REF, commit.as_str()]).await?;
     let base = Git { binary: &env.git_binary, dir: spec.repo };
+    hand_over(&git, &base, &target, &commit, spec.base_tip, "rbit: merge pull request").await?;
+    drop(scratch);
+    Ok(Merged { commit })
+}
+
+/// Hands `commit` (made in the scratch repository `scratch`) to the repository `base`:
+/// objects first, then `update-ref <target> <commit> <expected>`, the atomic
+/// compare-and-swap. `expected` is the id `target` must still point at, or all zeros when
+/// `target` must not exist yet. A ref that moved (or appeared) meanwhile is
+/// [`MergeError::BaseMoved`]; nothing in `base` changes but the fetched objects. Also used
+/// by [`crate::edit`].
+pub(crate) async fn hand_over(
+    scratch: &Git<'_>,
+    base: &Git<'_>,
+    target: &str,
+    commit: &str,
+    expected: &str,
+    reason: &str,
+) -> Result<(), MergeError> {
+    scratch.run(["update-ref", "--no-deref", "--end-of-options", RESULT_REF, commit]).await?;
     let mut fetch = base.command();
     fetch
         .args(["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", "--"])
-        .arg(scratch.path())
+        .arg(scratch.dir)
         .arg(RESULT_REF);
     expect_success(fetch.output().await?, "fetch")?;
     let mut update = base.command();
-    update
-        .args(["update-ref", "--no-deref", "-m", "rbit: merge pull request", "--end-of-options"])
-        .arg(&target)
-        .arg(&commit)
-        .arg(spec.base_tip);
+    update.args(["update-ref", "--no-deref", "-m", reason, "--end-of-options"]).arg(target).arg(commit).arg(expected);
     let output = update.output().await?;
     if !output.status.success() {
-        return match base.rev_parse(&target).await? {
-            Some(current) if current != spec.base_tip => Err(MergeError::BaseMoved),
-            None => Err(MergeError::BaseMoved),
-            Some(_) => Err(failure(&output, "update-ref")),
+        let creating = expected.bytes().all(|b| b == b'0');
+        return match base.rev_parse(target).await? {
+            Some(current) if current != expected => Err(MergeError::BaseMoved),
+            None if !creating => Err(MergeError::BaseMoved),
+            Some(_) | None => Err(failure(&output, "update-ref")),
         };
     }
-    drop(scratch);
-    Ok(Merged { commit })
+    Ok(())
 }
 
 /// Replays the head's commits onto the base tip; returns the new tip.
@@ -274,7 +289,7 @@ async fn rebase(git: &Git<'_>, spec: &MergeSpec<'_>, merge_base: &str) -> Result
 
 /// An author or committer: identity and date, as `git commit-tree` takes them.
 #[derive(Debug, Clone)]
-struct Signature {
+pub(crate) struct Signature {
     name: String,
     email: String,
     /// Git's internal date format: `@<seconds> <+hhmm>`.
@@ -282,7 +297,7 @@ struct Signature {
 }
 
 impl Signature {
-    fn new(identity: &CommitIdentity, at: Timestamp) -> Self {
+    pub(crate) fn new(identity: &CommitIdentity, at: Timestamp) -> Self {
         Self { name: identity.name.clone(), email: identity.email.clone(), date: format!("@{} +0000", at.seconds()) }
     }
 }
@@ -295,20 +310,20 @@ struct OriginalCommit {
 }
 
 /// `git` on one repository.
-struct Git<'a> {
-    binary: &'a Path,
-    dir: &'a Path,
+pub(crate) struct Git<'a> {
+    pub(crate) binary: &'a Path,
+    pub(crate) dir: &'a Path,
 }
 
 impl Git<'_> {
-    fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut command = hardened(self.binary, Some(self.dir));
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         command
     }
 
     /// Runs `args`, returning standard output; a non-zero status is an error.
-    async fn run<'s>(&self, args: impl IntoIterator<Item = &'s str>) -> Result<Vec<u8>, MergeError> {
+    pub(crate) async fn run<'s>(&self, args: impl IntoIterator<Item = &'s str>) -> Result<Vec<u8>, MergeError> {
         let mut command = self.command();
         command.args(args);
         let output = command.output().await?;
@@ -316,7 +331,7 @@ impl Git<'_> {
         expect_success(output, what)
     }
 
-    async fn rev_parse(&self, name: &str) -> Result<Option<String>, MergeError> {
+    pub(crate) async fn rev_parse(&self, name: &str) -> Result<Option<String>, MergeError> {
         let mut command = self.command();
         command.args(["rev-parse", "--verify", "--quiet", "--end-of-options"]).arg(name);
         let output = command.output().await?;
@@ -382,7 +397,7 @@ impl Git<'_> {
         Ok(Err(paths))
     }
 
-    async fn commit_tree(
+    pub(crate) async fn commit_tree(
         &self,
         tree: &str,
         parents: &[&str],
@@ -447,11 +462,11 @@ fn parse_ident(ident: &str) -> Option<Signature> {
     Some(Signature { name: name.trim().to_owned(), email: email.trim().to_owned(), date: format!("@{seconds} {zone}") })
 }
 
-fn expect_success(output: Output, what: &str) -> Result<Vec<u8>, MergeError> {
+pub(crate) fn expect_success(output: Output, what: &str) -> Result<Vec<u8>, MergeError> {
     if output.status.success() { Ok(output.stdout) } else { Err(failure(&output, what)) }
 }
 
-fn failure(output: &Output, what: &str) -> MergeError {
+pub(crate) fn failure(output: &Output, what: &str) -> MergeError {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let message: String = stderr.trim().chars().filter(|c| !c.is_control() || *c == '\n').take(500).collect();
     MergeError::Failed(format!("{what} ({}): {message}", output.status))

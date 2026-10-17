@@ -20,6 +20,8 @@ pub mod blame;
 pub mod changes;
 pub mod compare;
 pub mod diff;
+// Milestone 3: editing files in the browser (E).
+pub mod edit;
 pub mod error;
 pub mod fork;
 pub mod languages;
