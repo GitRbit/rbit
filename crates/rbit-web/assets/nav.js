@@ -156,9 +156,10 @@ document.addEventListener("htmx:afterSwap", (event) => {
 // Leaving a large file or diff is costly in two htmx steps: the history snapshot clones
 // and serialises the whole page, and the swap walks every outgoing element to clean it
 // up (one event each; highlighted code has tens of thousands of spans). For such pages
-// the snapshot is skipped (going back refetches, usually a 304) and the code and diff
-// tables, which hold no htmx state, are dropped before htmx walks them. Both happen in
-// the same task as the swap, so nothing is painted in between.
+// the snapshot is skipped (going back refetches, usually a 304) and the code and diffs
+// (`.diff-view`, every row block and comment thread of a file), which hold no htmx state
+// that outlives them, are dropped before htmx walks them. Both happen in the same task as
+// the swap, so nothing is painted in between.
 const LARGE_PAGE_ELEMENTS = 4000;
 const HEAVY_CONTENT = ".code-lines, .diff-view";
 const NO_SNAPSHOT_ID = "nav-no-snapshot";

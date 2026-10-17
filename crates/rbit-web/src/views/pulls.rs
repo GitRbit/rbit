@@ -29,8 +29,9 @@ use crate::{
     render::references::{RefContext, render_issue_markdown},
     urls::{RepoUrls, encode_path},
     views::{
+        blocks::{Block, Blocker},
         // `DiffBodyView` is matched by `repo/file_diffs.html` (the new pull request page).
-        commit::DiffBodyView,
+        commit::{DiffBodyView, DiffLineView, width_classes},
         compare::ComparePicker,
         components::Pagination,
         issues::IssueSidebar,
@@ -201,9 +202,10 @@ pub struct ReviewCommentView {
     pub path: String,
     /// `L12` / `R12`.
     pub line_label: String,
-    /// The stored diff excerpt, one `(css kind, sign, text)` per line after the header.
+    /// The stored diff excerpt, one `(css kind, text)` per line after the header (app.css
+    /// draws the sign from the kind).
     pub hunk_header: String,
-    pub hunk: Vec<(&'static str, String, String)>,
+    pub hunk: Vec<(&'static str, String)>,
     pub outdated: bool,
     pub pending: bool,
     pub is_reply: bool,
@@ -219,12 +221,12 @@ impl ReviewCommentView {
         let hunk_header = lines.next().unwrap_or_default().to_owned();
         let hunk = lines
             .map(|line| {
-                let (kind, sign) = match line.chars().next() {
-                    Some('+') => ("add", "+"),
-                    Some('-') => ("del", "-"),
-                    _ => ("ctx", " "),
+                let kind = match line.chars().next() {
+                    Some('+') => "add",
+                    Some('-') => "del",
+                    _ => "ctx",
                 };
-                (kind, sign.to_owned(), line.get(1..).unwrap_or_default().to_owned())
+                (kind, line.get(1..).unwrap_or_default().to_owned())
             })
             .collect();
         let side = match comment.side {
@@ -542,36 +544,51 @@ pub struct PullCommitsPage {
     pub more_commits: bool,
 }
 
-/// One row of the Files changed table.
+/// One fixed-height row of the Files changed tab: a line (with its anchor and comment
+/// link) or a hunk header or end-of-file note (`line.is_line()` false, empty anchor).
 #[derive(Debug, Clone)]
 pub struct DiffRowView {
-    /// `add`, `del` or `ctx`.
-    pub kind: &'static str,
-    pub sign: &'static str,
-    pub old_number: String,
-    pub new_number: String,
-    pub text: String,
-    pub missing_newline: bool,
+    pub line: DiffLineView,
+    /// `{file_anchor}-L{n}` or `-R{n}` ([`line_anchor`]); empty when not a line.
+    pub anchor: String,
+    /// The line number on the row's side, as in "Comment on line N".
+    pub number: u32,
+    /// `?comment=<anchor>#<anchor>`: opens the inline form (no JavaScript).
+    pub comment_url: String,
+}
+
+/// The comments under one line and, when requested, the form for a new one. Not a
+/// fixed-height row, so it ends the block before it and renders between blocks.
+#[derive(Debug, Clone)]
+pub struct DiffThreadView {
+    /// The line's anchor.
     pub anchor: String,
     /// `left` or `right`.
     pub side: &'static str,
     pub line: u32,
-    /// `?comment=<anchor>#<anchor>`: opens the inline form (no JavaScript).
-    pub comment_url: String,
     pub comments: Vec<ReviewCommentView>,
     pub show_form: bool,
 }
 
+/// A run of rows or a thread, in page order.
 #[derive(Debug, Clone)]
-pub struct DiffHunkView {
-    pub header: String,
-    pub rows: Vec<DiffRowView>,
+pub enum DiffPart {
+    Rows(Block<DiffRowView>),
+    Thread(DiffThreadView),
+}
+
+/// A file's text diff on the Files changed tab.
+#[derive(Debug, Clone)]
+pub struct PullDiffText {
+    pub parts: Vec<DiffPart>,
+    /// See [`width_classes`].
+    pub width_classes: String,
 }
 
 /// What a changed file shows.
 #[derive(Debug, Clone)]
 pub enum PullDiffBody {
-    Text(Vec<DiffHunkView>),
+    Text(PullDiffText),
     Binary,
     TooLarge,
     NoContentChanges,
@@ -619,9 +636,9 @@ impl PullFileView {
                     ChangeStatus::Copied => "Copied",
                 };
                 let body = match &file.body {
-                    FileDiffBody::Text(hunks) => PullDiffBody::Text(
-                        hunks.iter().map(|hunk| hunk_view(hunk, &file.path, urls, &mut by_anchor, form_at, can_comment)).collect(),
-                    ),
+                    FileDiffBody::Text(hunks) => {
+                        PullDiffBody::Text(diff_text(hunks, &file.path, urls, &mut by_anchor, form_at, can_comment))
+                    }
                     FileDiffBody::Binary => PullDiffBody::Binary,
                     FileDiffBody::TooLarge => PullDiffBody::TooLarge,
                     FileDiffBody::ModeOnly => PullDiffBody::NoContentChanges,
@@ -647,26 +664,28 @@ impl PullFileView {
     }
 }
 
-fn hunk_view(
-    hunk: &Hunk,
+/// The rows of `hunks` in blocks, each line's comments (and the inline form at `form_at`)
+/// after it in a thread that ends the block before it.
+fn diff_text(
+    hunks: &[Hunk],
     path: &str,
     urls: &PullUrls,
     comments: &mut HashMap<String, Vec<ReviewCommentView>>,
     form_at: Option<&str>,
     can_comment: bool,
-) -> DiffHunkView {
-    let number = |n: Option<usize>| n.map(|n| n.to_string()).unwrap_or_default();
-    let rows = hunk
-        .lines
-        .iter()
-        .map(|line| {
-            let (kind, sign, side, number_on_side) = match line.kind {
-                LineKind::Added => ("add", "+", ReviewSide::Right, line.new_number),
-                LineKind::Removed => ("del", "-", ReviewSide::Left, line.old_number),
-                LineKind::Context => ("ctx", " ", ReviewSide::Right, line.new_number),
+) -> PullDiffText {
+    let plain = |line: DiffLineView| DiffRowView { line, anchor: String::new(), number: 0, comment_url: String::new() };
+    let mut parts = Vec::new();
+    let mut rows = Blocker::new();
+    for hunk in hunks {
+        rows.push(plain(DiffLineView::hunk(&hunk.header)));
+        for line in &hunk.lines {
+            let (side, number_on_side) = match line.kind {
+                LineKind::Removed => (ReviewSide::Left, line.old_number),
+                LineKind::Added | LineKind::Context => (ReviewSide::Right, line.new_number),
             };
-            let line_number = number_on_side.and_then(|n| u32::try_from(n).ok()).unwrap_or(0);
-            let anchor = line_anchor(path, side, line_number);
+            let number = number_on_side.and_then(|n| u32::try_from(n).ok()).unwrap_or(0);
+            let anchor = line_anchor(path, side, number);
             let mut threads = comments.remove(&anchor).unwrap_or_default();
             // Comments on the left side of a context line show under it too.
             if line.kind == LineKind::Context
@@ -674,23 +693,30 @@ fn hunk_view(
             {
                 threads.extend(comments.remove(&line_anchor(path, ReviewSide::Left, old)).unwrap_or_default());
             }
-            DiffRowView {
-                kind,
-                sign,
-                old_number: number(line.old_number),
-                new_number: number(line.new_number),
-                text: line.text.clone(),
-                missing_newline: line.missing_newline,
+            let show_form = can_comment && form_at == Some(anchor.as_str());
+            rows.push(DiffRowView {
+                line: DiffLineView::line(line),
                 comment_url: format!("{}?comment={anchor}#{anchor}", urls.files),
-                show_form: can_comment && form_at == Some(anchor.as_str()),
-                side: if side == ReviewSide::Left { "left" } else { "right" },
-                line: line_number,
-                anchor,
-                comments: threads,
+                anchor: anchor.clone(),
+                number,
+            });
+            if line.missing_newline {
+                rows.push(plain(DiffLineView::eof()));
             }
-        })
-        .collect();
-    DiffHunkView { header: hunk.header.clone(), rows }
+            if !threads.is_empty() || show_form {
+                parts.extend(rows.take().into_iter().map(DiffPart::Rows));
+                parts.push(DiffPart::Thread(DiffThreadView {
+                    anchor,
+                    side: if side == ReviewSide::Left { "left" } else { "right" },
+                    line: number,
+                    comments: threads,
+                    show_form,
+                }));
+            }
+        }
+    }
+    parts.extend(rows.finish().into_iter().map(DiffPart::Rows));
+    PullDiffText { parts, width_classes: width_classes(hunks) }
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -954,6 +980,99 @@ mod tests {
         assert!(!html.contains("style="), "no inline styles (strict CSP)");
     }
 
+    fn comment_on(urls: &PullUrls, anchor: &str, id: i64) -> ReviewCommentView {
+        ReviewCommentView {
+            anchor: review_comment_anchor(id),
+            author: ActorView::ghost(),
+            body_html: String::new(),
+            when: String::new(),
+            when_iso: String::new(),
+            path: "f".to_owned(),
+            line_label: String::new(),
+            hunk_header: String::new(),
+            hunk: Vec::new(),
+            outdated: false,
+            pending: false,
+            is_reply: false,
+            line_url: format!("{}#{anchor}", urls.files),
+            reply_to: id,
+        }
+    }
+
+    /// One string per part: `rows:<kinds>` or `thread:<anchor>`.
+    fn outline(text: &PullDiffText) -> Vec<String> {
+        text.parts
+            .iter()
+            .map(|part| match part {
+                DiffPart::Rows(block) => format!("rows:{}", block.rows().iter().map(|row| row.line.kind).collect::<Vec<_>>().join(",")),
+                DiffPart::Thread(thread) => format!("thread:{}{}", thread.anchor, if thread.show_form { "+form" } else { "" }),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn threads_and_the_form_end_blocks_and_every_row_stays_in_order() {
+        let changes = rbit_git::diff::diff_bytes(b"a\nb\nc", b"a\nB\nc");
+        let urls = PullUrls::new("alice", "demo", 3);
+        let left = line_anchor("f", ReviewSide::Left, 2);
+        let context = line_anchor("f", ReviewSide::Right, 1);
+        let mut comments = HashMap::new();
+        comments.insert(left.clone(), vec![comment_on(&urls, &left, 1)]);
+        comments.insert(context.clone(), vec![comment_on(&urls, &context, 2)]);
+        let form_at = line_anchor("f", ReviewSide::Right, 3);
+        let text = diff_text(&changes.hunks, "f", &urls, &mut comments, Some(&form_at), true);
+        assert_eq!(
+            outline(&text),
+            [
+                "rows:hunk,ctx".to_owned(),
+                format!("thread:{context}"),
+                "rows:del".to_owned(),
+                format!("thread:{left}"),
+                "rows:add,ctx,eof".to_owned(),
+                format!("thread:{form_at}+form"),
+            ]
+        );
+        assert!(comments.is_empty(), "every comment is placed");
+        let rows: Vec<&DiffRowView> = text
+            .parts
+            .iter()
+            .filter_map(|part| if let DiffPart::Rows(block) = part { Some(block.rows()) } else { None })
+            .flatten()
+            .collect();
+        assert_eq!(
+            rows.iter().filter(|row| row.line.is_line()).map(|row| row.line.text.as_str()).collect::<Vec<_>>(),
+            ["a", "b", "B", "c"]
+        );
+        assert_eq!(rows[2].anchor, left);
+        assert_eq!(rows[2].number, 2);
+        assert!(rows[0].anchor.is_empty() && rows[5].anchor.is_empty(), "hunk headers and eof notes have no anchor");
+        assert_eq!(rows[3].comment_url, format!("{}?comment={}#{}", urls.files, rows[3].anchor, rows[3].anchor));
+        // Without the right to comment, the form never opens.
+        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), Some(&form_at), false);
+        assert_eq!(outline(&text), ["rows:hunk,ctx,del,add,ctx,eof"]);
+    }
+
+    #[test]
+    fn long_files_fill_whole_blocks_between_threads() {
+        let old = crate::views::commit::tests::numbered("", 400);
+        let new = crate::views::commit::tests::numbered("y", 400);
+        let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
+        let urls = PullUrls::new("alice", "demo", 3);
+        let anchor = line_anchor("f", ReviewSide::Right, 300);
+        let mut comments = HashMap::from([(anchor.clone(), vec![comment_on(&urls, &anchor, 1)])]);
+        let text = diff_text(&changes.hunks, "f", &urls, &mut comments, None, true);
+        let mut sizes = Vec::new();
+        for part in &text.parts {
+            match part {
+                DiffPart::Rows(block) => sizes.push(block.len().to_string()),
+                DiffPart::Thread(_) => sizes.push("thread".to_owned()),
+            }
+        }
+        // hunk + 400 deletions + 300 additions, then the thread, then 100 additions.
+        assert_eq!(sizes, ["128", "128", "128", "128", "128", "61", "thread", "100"]);
+        assert_eq!(text.width_classes, "diff-w3 diff-c24");
+    }
+
     #[test]
     fn files_render_line_anchors_comments_and_one_inline_form() {
         let changes = rbit_git::diff::diff_bytes(b"a\nb\n", b"a\nB\n");
@@ -1008,6 +1127,15 @@ mod tests {
         .unwrap();
         assert!(html.contains(&format!("id=\"{anchor}\"")));
         assert!(html.contains(&format!("?comment={anchor}#{anchor}")));
+        let link = format!(
+            r##"<a href="/alice/demo/pull/3/files?comment={anchor}#{anchor}" class="num" hx-get="/alice/demo/pull/3/files?comment={anchor}#{anchor}" hx-select="#{file}" hx-target="#{file}" hx-swap="outerHTML""##,
+            file = file_anchor("src/lib.rs"),
+        );
+        assert!(html.contains(&format!(r#"<div id="{anchor}" class="diff-add">{link} aria-label="Comment on line 2">"#)), "{html}");
+        assert!(html.contains(&format!(r#"{link} tabindex="-1">2</a>B</div>"#)));
+        // The thread and the form end the block: they sit between blocks, outside any.
+        assert!(html.contains("</div>\n      <div class=\"diff-comment\">"));
+        assert!(!html.contains("<table"));
         assert_eq!(html.matches("Add single comment").count(), 1, "the form opens only at the requested line");
         for needle in ["id=\"r9\"", "<p>Why?</p>", "Pending", "Finish your review", "name=\"in_reply_to\" value=\"9\"", "Request changes"] {
             assert!(html.contains(needle), "{needle} missing");

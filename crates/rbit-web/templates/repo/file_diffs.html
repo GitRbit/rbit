@@ -1,4 +1,5 @@
 {% import "macros.html" as ui %}
+{% import "repo/diff_rows.html" as diff %}
 {#- Changed-file summary, file tree and per-file diffs; expects `files: Vec<FileDiffView>`,
     `additions`, `deletions` and `truncated` fields (and `DiffBodyView` in scope).
     diff.js adds the filter, folder collapsing, the current-file marker and the toolbar
@@ -97,26 +98,14 @@
           {% endif %}
         </summary>
         {% match file.body %}
-        {% when DiffBodyView::Text(hunks) %}
-        <div class="overflow-x-auto">
-          <table class="diff-view w-full border-collapse">
-            {% for hunk in hunks %}
-            <tbody>
-              <tr class="diff-hunk"><td class="num" colspan="2"></td><td class="code">{{ hunk.header }}</td></tr>
-              {% for line in hunk.lines %}
-              <tr class="diff-{{ line.kind }}">
-                <td class="num">{{ line.old_number }}</td>
-                <td class="num">{{ line.new_number }}</td>
-                <td class="code"><span class="sign">{{ line.sign }}</span>{{ line.text }}</td>
-              </tr>
-              {% if line.missing_newline %}
-              <tr class="diff-eof"><td class="num" colspan="2"></td><td class="code"><span class="sign"></span>No newline at end of file</td></tr>
-              {% endif %}
-              {% endfor %}
-            </tbody>
-            {% endfor %}
-          </table>
-        </div>
+        {% when DiffBodyView::Text(text) %}
+        <div class="diff-scroll"><div class="diff-view {{ text.width_classes }}">
+          {%- for block in text.blocks %}
+          <div class="vblock" data-rows="{{ block.len() }}">
+            {%- for line in block.rows() %}{% call diff::row(line, "") %}{% endcall %}{% endfor -%}
+          </div>
+          {%- endfor %}
+        </div></div>
         {% when DiffBodyView::Binary %}
         <p class="diff-placeholder">Binary file not shown.</p>
         {% when DiffBodyView::TooLarge %}

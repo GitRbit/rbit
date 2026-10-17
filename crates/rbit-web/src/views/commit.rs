@@ -6,7 +6,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use rbit_git::{
     ChangeStatus, CommitDetail, FileDiff, FileDiffBody,
-    diff::{Hunk, LineKind},
+    diff::{DiffLine, Hunk, LineKind},
 };
 
 use rbit_services::statuses::CombinedStatus;
@@ -14,6 +14,7 @@ use rbit_services::statuses::CombinedStatus;
 use crate::{
     urls::RepoUrls,
     views::{
+        blocks::{Block, blocks},
         layout::Page,
         repo::{CommitView, RepoHeader},
         statuses::{CHECKS_ANCHOR, ChecksView, StatusMark},
@@ -26,55 +27,133 @@ pub struct ParentLink {
     pub url: String,
 }
 
-#[derive(Debug, Clone)]
+/// One fixed-height row of a unified diff: a hunk header, a changed or context line, or
+/// Git's "No newline at end of file" note. Every row is exactly one `--row-h` tall, so a
+/// block of rows has an exact height (see [`crate::views::blocks`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffLineView {
-    /// CSS modifier: `add`, `del` or `ctx`.
+    /// CSS modifier: `hunk`, `add`, `del`, `ctx` or `eof`. The sign (`+`, `-`) is drawn by
+    /// app.css from it, so it is never copied with the code.
     pub kind: &'static str,
-    pub sign: &'static str,
+    /// Empty for hunk headers and end-of-file notes, and on the side a line is not on.
     pub old_number: String,
     pub new_number: String,
+    /// The line, the hunk header (`@@ -a,b +c,d @@`) or the end-of-file note.
     pub text: String,
-    /// Shows Git's `\ No newline at end of file` marker after this line.
-    pub missing_newline: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct HunkView {
-    pub header: String,
-    pub lines: Vec<DiffLineView>,
-}
+/// What an end-of-file row says.
+pub const NO_NEWLINE: &str = "No newline at end of file";
 
-impl From<&Hunk> for HunkView {
-    fn from(hunk: &Hunk) -> Self {
+impl DiffLineView {
+    /// Whether the row is a line of the file, with line numbers (not a hunk header or an
+    /// end-of-file note).
+    #[must_use]
+    pub fn is_line(&self) -> bool {
+        matches!(self.kind, "add" | "del" | "ctx")
+    }
+
+    /// The hunk header row.
+    #[must_use]
+    pub fn hunk(header: &str) -> Self {
+        Self { kind: "hunk", old_number: String::new(), new_number: String::new(), text: header.to_owned() }
+    }
+
+    /// The "No newline at end of file" row shown after a line that lacks one.
+    #[must_use]
+    pub fn eof() -> Self {
+        Self { kind: "eof", old_number: String::new(), new_number: String::new(), text: NO_NEWLINE.to_owned() }
+    }
+
+    /// The row of one line of a hunk.
+    #[must_use]
+    pub fn line(line: &DiffLine) -> Self {
         let number = |n: Option<usize>| n.map(|n| n.to_string()).unwrap_or_default();
-        Self {
-            header: hunk.header.clone(),
-            lines: hunk
-                .lines
-                .iter()
-                .map(|line| {
-                    let (kind, sign) = match line.kind {
-                        LineKind::Added => ("add", "+"),
-                        LineKind::Removed => ("del", "-"),
-                        LineKind::Context => ("ctx", " "),
-                    };
-                    DiffLineView {
-                        kind,
-                        sign,
-                        old_number: number(line.old_number),
-                        new_number: number(line.new_number),
-                        text: line.text.clone(),
-                        missing_newline: line.missing_newline,
-                    }
-                })
-                .collect(),
-        }
+        let kind = match line.kind {
+            LineKind::Added => "add",
+            LineKind::Removed => "del",
+            LineKind::Context => "ctx",
+        };
+        Self { kind, old_number: number(line.old_number), new_number: number(line.new_number), text: line.text.clone() }
+    }
+}
+
+/// Widest line number column a class exists for (`diff-w1` … `diff-w7` in app.css).
+const NUMBER_CLASSES: [&str; 7] = ["diff-w1", "diff-w2", "diff-w3", "diff-w4", "diff-w5", "diff-w6", "diff-w7"];
+
+/// The class that makes a diff's line number columns as wide as the largest line number
+/// in `hunks` needs: one `ch` per digit (the CSP forbids computed `style=` widths).
+#[must_use]
+pub fn number_class(hunks: &[Hunk]) -> &'static str {
+    let largest =
+        hunks.iter().flat_map(|hunk| &hunk.lines).flat_map(|line| [line.old_number, line.new_number]).flatten().max().unwrap_or(0);
+    let digits = largest.checked_ilog10().map_or(1, |log| log as usize + 1);
+    NUMBER_CLASSES[digits.min(NUMBER_CLASSES.len()) - 1]
+}
+
+/// Granularity of [`column_class`]: `diff-c8`, `diff-c16`, … `diff-c256` in app.css.
+const COLUMN_STEP: usize = 8;
+/// Wider than any diff column on any screen: a longer line needs a scrollbar anyway.
+const MAX_COLUMNS: usize = 256;
+
+/// The columns `text` takes in a monospace font: tabs stop every 4 columns (app.css's
+/// `tab-size`), and characters from U+1100 on count double, a generous guess for wide
+/// scripts and emoji. Erring wide only adds blank space at the end of the rows.
+fn display_columns(text: &str) -> usize {
+    text.chars().fold(0, |column, c| match c {
+        '\t' => column + 4 - column % 4,
+        c if u32::from(c) >= 0x1100 => column + 2,
+        _ => column + 1,
+    })
+}
+
+/// The class that makes a diff at least as wide as its widest line (`diff-c{n}`, `n`
+/// columns rounded up to [`COLUMN_STEP`], at most [`MAX_COLUMNS`]). Blocks off screen
+/// are skipped and so have no width; without this a file's horizontal scrollbar, and with
+/// it the file's height, would appear only once its widest block is first rendered.
+#[must_use]
+pub fn column_class(hunks: &[Hunk]) -> String {
+    let widest = hunks
+        .iter()
+        .flat_map(|hunk| std::iter::once(hunk.header.as_str()).chain(hunk.lines.iter().map(|line| line.text.as_str())))
+        .map(display_columns)
+        .max()
+        .unwrap_or(0);
+    format!("diff-c{}", (widest.div_ceil(COLUMN_STEP).max(1) * COLUMN_STEP).min(MAX_COLUMNS))
+}
+
+/// The width classes of a diff of `hunks`: [`number_class`] and [`column_class`].
+#[must_use]
+pub fn width_classes(hunks: &[Hunk]) -> String {
+    format!("{} {}", number_class(hunks), column_class(hunks))
+}
+
+/// A file's text diff: its rows (hunk headers, lines and end-of-file notes, in order) in
+/// blocks of at most [`BLOCK_ROWS`](crate::views::blocks::BLOCK_ROWS).
+#[derive(Debug, Clone)]
+pub struct DiffTextView {
+    pub blocks: Vec<Block<DiffLineView>>,
+    /// See [`width_classes`].
+    pub width_classes: String,
+}
+
+impl DiffTextView {
+    #[must_use]
+    pub fn new(hunks: &[Hunk]) -> Self {
+        let rows = hunks.iter().flat_map(|hunk| {
+            std::iter::once(DiffLineView::hunk(&hunk.header)).chain(
+                hunk.lines
+                    .iter()
+                    .flat_map(|line| std::iter::once(DiffLineView::line(line)).chain(line.missing_newline.then(DiffLineView::eof))),
+            )
+        });
+        Self { blocks: blocks(rows), width_classes: width_classes(hunks) }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum DiffBodyView {
-    Text(Vec<HunkView>),
+    Text(DiffTextView),
     Binary,
     TooLarge,
     NoContentChanges,
@@ -150,7 +229,7 @@ impl FileDiffView {
         };
         let split = file.path.rfind('/').map_or(0, |i| i + 1);
         let body = match &file.body {
-            FileDiffBody::Text(hunks) => DiffBodyView::Text(hunks.iter().map(HunkView::from).collect()),
+            FileDiffBody::Text(hunks) => DiffBodyView::Text(DiffTextView::new(hunks)),
             FileDiffBody::Binary => DiffBodyView::Binary,
             FileDiffBody::TooLarge => DiffBodyView::TooLarge,
             FileDiffBody::ModeOnly => DiffBodyView::NoContentChanges,
@@ -302,7 +381,7 @@ impl CommitPage {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn file(index: usize, path: &str, additions: usize, deletions: usize) -> FileDiffView {
@@ -353,6 +432,122 @@ mod tests {
         assert_eq!(rows[2].path, "plugins/computer-use");
         assert_eq!(rows[3].path, "plugins/computer-use/overlay");
         assert_eq!(rows[4].file.as_ref().map(|leaf| leaf.anchor.as_str()), Some("diff-2"));
+    }
+
+    /// `count` lines `{prefix}{n}`, each ending in a newline.
+    pub(crate) fn numbered(prefix: &str, count: usize) -> String {
+        (0..count).map(|n| format!("{prefix}{n}\n")).collect::<Vec<_>>().concat()
+    }
+
+    fn kinds(text: &DiffTextView) -> Vec<&'static str> {
+        text.blocks.iter().flat_map(Block::rows).map(|row| row.kind).collect()
+    }
+
+    #[test]
+    fn diff_rows_are_hunk_headers_lines_and_eof_notes_in_order() {
+        let changes = rbit_git::diff::diff_bytes(b"a\nb", b"a\nc");
+        let text = DiffTextView::new(&changes.hunks);
+        assert_eq!(kinds(&text), ["hunk", "ctx", "del", "eof", "add", "eof"]);
+        let rows: Vec<&DiffLineView> = text.blocks.iter().flat_map(Block::rows).collect();
+        assert_eq!(rows[0].text, changes.hunks[0].header);
+        assert!(rows[0].old_number.is_empty() && !rows[0].is_line());
+        assert_eq!((rows[2].old_number.as_str(), rows[2].new_number.as_str(), rows[2].text.as_str()), ("2", "", "b"));
+        assert_eq!((rows[4].old_number.as_str(), rows[4].new_number.as_str(), rows[4].text.as_str()), ("", "2", "c"));
+        assert_eq!(rows[3].text, NO_NEWLINE);
+        assert_eq!(text.width_classes, "diff-w1 diff-c16");
+    }
+
+    #[test]
+    fn long_diffs_split_into_full_blocks_holding_every_row_once() {
+        let old = numbered("", 300);
+        let new = numbered("x", 300);
+        let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
+        let text = DiffTextView::new(&changes.hunks);
+        let lengths: Vec<usize> = text.blocks.iter().map(Block::len).collect();
+        let expected_rows = changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
+        assert_eq!(lengths.iter().sum::<usize>(), expected_rows);
+        assert!(lengths.iter().rev().skip(1).all(|&len| len == crate::views::blocks::BLOCK_ROWS));
+        let texts: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| row.text.as_str()).collect();
+        let source: Vec<&str> = changes.hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| line.text.as_str()).collect();
+        assert_eq!(texts, source);
+        assert_eq!(text.width_classes, "diff-w3 diff-c24");
+    }
+
+    #[test]
+    fn number_columns_fit_the_largest_line_number() {
+        let hunk = |old: usize, new: usize| Hunk {
+            header: String::new(),
+            lines: vec![DiffLine {
+                kind: LineKind::Context,
+                old_number: Some(old),
+                new_number: Some(new),
+                text: String::new(),
+                missing_newline: false,
+            }],
+        };
+        assert_eq!(number_class(&[]), "diff-w1");
+        assert_eq!(number_class(&[hunk(9, 9)]), "diff-w1");
+        assert_eq!(number_class(&[hunk(9, 10)]), "diff-w2");
+        assert_eq!(number_class(&[hunk(1, 2), hunk(99_999, 3)]), "diff-w5");
+        assert_eq!(number_class(&[hunk(123_456_789, 1)]), "diff-w7");
+    }
+
+    #[test]
+    fn diffs_are_as_wide_as_their_widest_line() {
+        let hunk = |texts: &[&str]| Hunk {
+            header: "@@ -1 +1 @@".to_owned(),
+            lines: texts
+                .iter()
+                .map(|text| DiffLine {
+                    kind: LineKind::Added,
+                    old_number: None,
+                    new_number: Some(1),
+                    text: (*text).to_owned(),
+                    missing_newline: false,
+                })
+                .collect(),
+        };
+        assert_eq!(display_columns("ab\tc"), 5);
+        assert_eq!(display_columns("\t\t"), 8);
+        assert_eq!(display_columns("日本"), 4);
+        assert_eq!(column_class(&[]), "diff-c8");
+        assert_eq!(column_class(&[hunk(&["x"])]), "diff-c16", "the hunk header counts too");
+        assert_eq!(column_class(&[hunk(&[&"y".repeat(17)])]), "diff-c24");
+        assert_eq!(column_class(&[hunk(&["a"]), hunk(&[&"z".repeat(1000)])]), "diff-c256");
+        assert_eq!(width_classes(&[hunk(&["a"])]), "diff-w1 diff-c16");
+    }
+
+    #[derive(Template)]
+    #[template(source = r#"{% include "repo/file_diffs.html" %}"#, ext = "html")]
+    struct Diffs {
+        files: Vec<FileDiffView>,
+        additions: usize,
+        deletions: usize,
+        truncated: bool,
+    }
+
+    #[test]
+    fn diffs_render_rows_in_exact_blocks_without_tables_or_inline_styles() {
+        let old = numbered("", 200);
+        let new = format!("{}<b>\n", old.replacen("5\n", "five\n", 1));
+        let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
+        let mut view = file(0, "src/a.rs", changes.additions, changes.deletions);
+        view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
+        let html = Diffs { files: vec![view], additions: 2, deletions: 1, truncated: false }.render().unwrap();
+        assert!(!html.contains("<table") && !html.contains("style="));
+        assert!(html.contains(r#"<div class="diff-view diff-w3 diff-c24">"#));
+        assert!(html.contains(r#"<div class="diff-del"><span class="num">6</span><span class="num"></span>5</div>"#));
+        assert!(html.contains(r#"<div class="diff-add"><span class="num"></span><span class="num">201</span>&#60;b&#62;</div>"#));
+        // Each block says how many rows it holds, and holds exactly that many.
+        let mut total = 0;
+        for block in html.split(r#"<div class="vblock" data-rows=""#).skip(1) {
+            let (rows, body) = block.split_once("\">").unwrap();
+            let rows: usize = rows.parse().unwrap();
+            let body = &body[..body.find('\n').unwrap_or(body.len())];
+            assert_eq!(body.matches("<div class=\"diff-").count(), rows);
+            total += rows;
+        }
+        assert_eq!(total, changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>());
     }
 
     #[test]

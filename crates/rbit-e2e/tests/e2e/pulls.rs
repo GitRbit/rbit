@@ -150,9 +150,13 @@ async fn a_fork_pull_request_is_reviewed_fixed_approved_and_squash_merged() {
 
     // Alice comments on a line and requests changes.
     let files = alice.get("/alice/demo/pull/1/files").await;
-    files.expect_status(StatusCode::OK).expect_contains(&["greeting.txt", "?comment=diff-"]);
+    files.expect_status(StatusCode::OK).expect_contains(&["greeting.txt", "?comment=diff-", "<div class=\"vblock\" data-rows=\""]);
     let anchor = line_anchor(&files.body, 2);
-    alice.get(&format!("/alice/demo/pull/1/files?comment={anchor}")).await.expect_contains(&["Add single comment", "Start a review"]);
+    alice.get(&format!("/alice/demo/pull/1/files?comment={anchor}")).await.expect_contains(&[
+        "Add single comment",
+        "Start a review",
+        "<div class=\"diff-comment\">",
+    ]);
     alice
         .post(
             "/alice/demo/pull/1/comments",

@@ -56,15 +56,18 @@ async fn push_then_browse_every_view() {
     let feature_log = web.get("/alice/demo/commits/feature").await;
     feature_log.expect_status(StatusCode::OK).expect_contains(&["Feature work", Sample::FIRST_MESSAGE]);
 
-    // A commit with its diff: hunk headers as Git writes them.
-    web.get(&format!("/alice/demo/commit/{}", sample.head)).await.expect_status(StatusCode::OK).expect_contains(&[
+    // A commit with its diff: hunk headers as Git writes them, rows in exact-height blocks.
+    let commit = web.get(&format!("/alice/demo/commit/{}", sample.head)).await;
+    commit.expect_status(StatusCode::OK).expect_contains(&[
         Sample::SECOND_MESSAGE,
         "src/main.rs",
         "docs/guide.txt",
-        "@@ -1,3 +1,3 @@",
+        "<div class=\"diff-hunk\">@@ -1,3 +1,3 @@</div>",
         "@@ -0,0 +1,2 @@",
         "hello, rbit",
+        "<div class=\"vblock\" data-rows=\"",
     ]);
+    assert!(!commit.body.contains("<table"), "diffs are rows, not tables");
     web.get("/alice/demo/commit/0000000000000000000000000000000000000000").await.expect_status(StatusCode::NOT_FOUND);
 
     // Branches and tags.

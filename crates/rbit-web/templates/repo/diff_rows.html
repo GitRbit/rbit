@@ -1,0 +1,18 @@
+{#- Unified diff rows, shared by repo/file_diffs.html and pulls/files.html. Import with
+    {% import "repo/diff_rows.html" as diff %}.
+
+    A diff body is `<div class="diff-scroll"><div class="diff-view diff-wN">` holding
+    `.vblock`s of rows (src/views/blocks.rs) and, on pull requests, comment threads between
+    them. Every row is exactly one `--row-h` tall (app.css "Diffs"): a line is the old and
+    new numbers then the text, its sign drawn by CSS so neither numbers nor sign are
+    copied; hunk headers and end-of-file notes are the text alone. No whitespace may sit
+    inside a row: rows are `white-space: pre`. -#}
+
+{#- One row of `crate::views::commit::DiffLineView`; `id` is the row's anchor, or empty. -#}
+{% macro row(line, id) -%}
+{%- if line.is_line() -%}
+<div{% if !id.is_empty() %} id="{{ id }}"{% endif %} class="diff-{{ line.kind }}"><span class="num">{{ line.old_number }}</span><span class="num">{{ line.new_number }}</span>{{ line.text }}</div>
+{%- else -%}
+<div class="diff-{{ line.kind }}">{{ line.text }}</div>
+{%- endif -%}
+{%- endmacro %}
