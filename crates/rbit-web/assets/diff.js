@@ -288,12 +288,14 @@ document.addEventListener("click", (event) => {
 });
 
 // Keyboard toggling of a header (Enter/Space on <summary>) goes through `click` too, but
-// the browser's own `toggle` also fires for find-in-page and anchor reveals.
+// the browser's own `toggle` also fires for find-in-page and anchor reveals. Pull request
+// files (pulls/files.html) are `.diff-file`s outside any layout: nothing to sync there.
 document.addEventListener(
   "toggle",
   (event) => {
     const file = event.target instanceof HTMLDetailsElement && event.target.matches(".diff-file") ? event.target : null;
-    if (file) syncCollapseAll(layoutOf(file));
+    const layout = file && layoutOf(file);
+    if (layout) syncCollapseAll(layout);
   },
   true,
 );
