@@ -1193,7 +1193,7 @@ mod tests {
         }
         // hunk + 400 deletions + 300 additions, then the thread, then 100 additions.
         assert_eq!(sizes, ["128", "128", "128", "128", "128", "61", "thread", "100"]);
-        assert_eq!(text.width_classes, "diff-w3 diff-c24");
+        assert_eq!(text.width_classes, "diff-w3 cols-24");
     }
 
     #[test]

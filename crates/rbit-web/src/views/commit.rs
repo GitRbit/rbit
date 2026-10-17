@@ -14,7 +14,7 @@ use rbit_services::statuses::CombinedStatus;
 use crate::{
     urls::RepoUrls,
     views::{
-        blocks::{Block, blocks},
+        blocks::{self, Block, blocks},
         layout::Page,
         repo::{CommitView, RepoHeader},
         statuses::{CHECKS_ANCHOR, ChecksView, StatusMark},
@@ -94,36 +94,17 @@ pub fn number_class(hunks: &[Hunk]) -> &'static str {
     NUMBER_CLASSES[digits.min(NUMBER_CLASSES.len()) - 1]
 }
 
-/// Granularity of [`column_class`]: `diff-c8`, `diff-c16`, … `diff-c256` in app.css.
-const COLUMN_STEP: usize = 8;
-/// Wider than any diff column on any screen: a longer line needs a scrollbar anyway.
-const MAX_COLUMNS: usize = 256;
-
-/// The columns `text` takes in a monospace font, as its row shows it (see
-/// [`crate::render::row_char`]): tabs stop every 4 columns (app.css's `tab-size`), and
-/// characters from U+1100 on count double, a generous guess for wide scripts and emoji.
-/// Erring wide only adds blank space at the end of the rows.
-fn display_columns(text: &str) -> usize {
-    text.chars().map(crate::render::row_char).fold(0, |column, c| match c {
-        '\t' => column + 4 - column % 4,
-        c if u32::from(c) >= 0x1100 => column + 2,
-        _ => column + 1,
-    })
-}
-
-/// The class that makes a diff at least as wide as its widest line (`diff-c{n}`, `n`
-/// columns rounded up to [`COLUMN_STEP`], at most [`MAX_COLUMNS`]). Blocks off screen
-/// are skipped and so have no width; without this a file's horizontal scrollbar, and with
-/// it the file's height, would appear only once its widest block is first rendered.
+/// The class that makes a diff at least as wide as its widest line, hunk headers
+/// included ([`blocks::column_class`]).
 #[must_use]
 pub fn column_class(hunks: &[Hunk]) -> String {
     let widest = hunks
         .iter()
         .flat_map(|hunk| std::iter::once(hunk.header.as_str()).chain(hunk.lines.iter().map(|line| line.text.as_str())))
-        .map(display_columns)
+        .map(blocks::display_columns)
         .max()
         .unwrap_or(0);
-    format!("diff-c{}", (widest.div_ceil(COLUMN_STEP).max(1) * COLUMN_STEP).min(MAX_COLUMNS))
+    blocks::column_class(widest)
 }
 
 /// The width classes of a diff of `hunks`: [`number_class`] and [`column_class`].
@@ -458,7 +439,7 @@ pub(crate) mod tests {
         assert_eq!((rows[2].old_number.as_str(), rows[2].new_number.as_str(), rows[2].text.as_str()), ("2", "", "b"));
         assert_eq!((rows[4].old_number.as_str(), rows[4].new_number.as_str(), rows[4].text.as_str()), ("", "2", "c"));
         assert_eq!(rows[3].text, NO_NEWLINE);
-        assert_eq!(text.width_classes, "diff-w1 diff-c16");
+        assert_eq!(text.width_classes, "diff-w1 cols-16");
     }
 
     #[test]
@@ -482,7 +463,7 @@ pub(crate) mod tests {
         let texts: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| row.text.as_str()).collect();
         let source: Vec<&str> = changes.hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| line.text.as_str()).collect();
         assert_eq!(texts, source);
-        assert_eq!(text.width_classes, "diff-w3 diff-c24");
+        assert_eq!(text.width_classes, "diff-w3 cols-24");
     }
 
     #[test]
@@ -519,14 +500,11 @@ pub(crate) mod tests {
                 })
                 .collect(),
         };
-        assert_eq!(display_columns("ab\tc"), 5);
-        assert_eq!(display_columns("\t\t"), 8);
-        assert_eq!(display_columns("日本"), 4);
-        assert_eq!(column_class(&[]), "diff-c8");
-        assert_eq!(column_class(&[hunk(&["x"])]), "diff-c16", "the hunk header counts too");
-        assert_eq!(column_class(&[hunk(&[&"y".repeat(17)])]), "diff-c24");
-        assert_eq!(column_class(&[hunk(&["a"]), hunk(&[&"z".repeat(1000)])]), "diff-c256");
-        assert_eq!(width_classes(&[hunk(&["a"])]), "diff-w1 diff-c16");
+        assert_eq!(column_class(&[]), "cols-8");
+        assert_eq!(column_class(&[hunk(&["x"])]), "cols-16", "the hunk header counts too");
+        assert_eq!(column_class(&[hunk(&[&"y".repeat(17)])]), "cols-24");
+        assert_eq!(column_class(&[hunk(&["a"]), hunk(&[&"z".repeat(1000)])]), "cols-256");
+        assert_eq!(width_classes(&[hunk(&["a"])]), "diff-w1 cols-16");
     }
 
     #[derive(Template)]
@@ -547,7 +525,7 @@ pub(crate) mod tests {
         view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
         let html = Diffs { files: vec![view], additions: 2, deletions: 1, truncated: false }.render().unwrap();
         assert!(!html.contains("<table") && !html.contains("style="));
-        assert!(html.contains(r#"<div class="diff-view diff-w3 diff-c24">"#));
+        assert!(html.contains(r#"<div class="diff-view diff-w3 cols-24">"#));
         assert!(html.contains(r#"<div class="diff-del"><span class="num">6</span><span class="num"></span>5</div>"#));
         assert!(html.contains(r#"<div class="diff-add"><span class="num"></span><span class="num">201</span>&#60;b&#62;</div>"#));
         // Each block says how many rows it holds, and holds exactly that many.

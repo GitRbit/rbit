@@ -29,7 +29,7 @@
       in `data-rows`; see src/views/blame.rs). The header's text stays in view while
       the code scrolls sideways. -#}
   <div class="blame-scroll overflow-x-auto">
-    <div class="code-lines blame-lines">
+    <div class="code-lines blame-lines {{ self.code_columns() }}">
       {%- for block in self.blocks() %}
       <div class="vblock" data-rows="{{ block.rows() }}">
         {%- for entry in block.entries() %}

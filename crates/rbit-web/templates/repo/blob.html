@@ -33,7 +33,7 @@
       line either: the number is drawn by CSS from `data-line` (never copied with the
       code) and nav.js turns a click into `#L…`. -#}
   <div class="overflow-x-auto">
-    <div class="code-lines">
+    <div class="code-lines {{ self.code_columns() }}">
       {%- for block in self.code_blocks() %}
       <div class="vblock" data-rows="{{ block.len() }}">
         {%- for line in block.rows() %}

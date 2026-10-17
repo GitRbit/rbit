@@ -29,7 +29,7 @@ use rbit_git::blame::BlameHunk;
 use crate::{
     urls::RepoUrls,
     views::{
-        blocks::BLOCK_ROWS,
+        blocks::{BLOCK_ROWS, column_class, markup_columns},
         layout::Page,
         repo::{CommitView, Crumb, RefSwitcher, RepoHeader},
     },
@@ -171,6 +171,17 @@ impl BlamePage {
             BlameContent::Hunks(hunks) => blame_blocks(hunks),
             BlameContent::Binary | BlameContent::TooLarge => Vec::new(),
         }
+    }
+
+    /// The code's minimum width, from its widest line ([`column_class`]).
+    pub fn code_columns(&self) -> String {
+        let widest = match &self.content {
+            BlameContent::Hunks(hunks) => {
+                hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| markup_columns(&line.html)).max().unwrap_or(0)
+            }
+            BlameContent::Binary | BlameContent::TooLarge => 0,
+        };
+        column_class(widest)
     }
 }
 
@@ -320,6 +331,7 @@ mod tests {
             let headers = body.matches(r#"class="blame-hunk""#).count();
             assert_eq!(rows, lines + HEADER_ROWS * headers);
         }
+        assert!(html.contains(r#"<div class="code-lines blame-lines cols-8">"#));
         assert_eq!(html.matches(r#"class="blame-hunk""#).count(), sizes.len());
         let total: usize = sizes.iter().sum();
         for n in 1..=total {

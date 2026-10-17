@@ -521,6 +521,45 @@
   contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 128) * 1.25rem);
 }
 
+/* A view of blocks is at least as wide as its widest row (`column_class` in
+   src/views/blocks.rs), which the server knows before any block is rendered. Sizing the
+   view to its content instead (`width: max-content`) makes the browser measure every
+   rendered row again each time a block is laid out while scrolling, and leaves the
+   horizontal scrollbar to appear only once the widest block has been. Each view adds its
+   gutters to `--cols` columns. */
+.cols-8 { --cols: 8; }
+.cols-16 { --cols: 16; }
+.cols-24 { --cols: 24; }
+.cols-32 { --cols: 32; }
+.cols-40 { --cols: 40; }
+.cols-48 { --cols: 48; }
+.cols-56 { --cols: 56; }
+.cols-64 { --cols: 64; }
+.cols-72 { --cols: 72; }
+.cols-80 { --cols: 80; }
+.cols-88 { --cols: 88; }
+.cols-96 { --cols: 96; }
+.cols-104 { --cols: 104; }
+.cols-112 { --cols: 112; }
+.cols-120 { --cols: 120; }
+.cols-128 { --cols: 128; }
+.cols-136 { --cols: 136; }
+.cols-144 { --cols: 144; }
+.cols-152 { --cols: 152; }
+.cols-160 { --cols: 160; }
+.cols-168 { --cols: 168; }
+.cols-176 { --cols: 176; }
+.cols-184 { --cols: 184; }
+.cols-192 { --cols: 192; }
+.cols-200 { --cols: 200; }
+.cols-208 { --cols: 208; }
+.cols-216 { --cols: 216; }
+.cols-224 { --cols: 224; }
+.cols-232 { --cols: 232; }
+.cols-240 { --cols: 240; }
+.cols-248 { --cols: 248; }
+.cols-256 { --cols: 256; }
+
 /* ---------------------------------------------------------------- Diffs */
 
 /* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and
@@ -726,7 +765,6 @@
   --num-w: 1ch;
   --nums-w: calc(2 * var(--num-w) + 2.25rem);
   @apply font-mono text-[12.5px];
-  width: max-content;
   min-width: max(100%, calc(var(--nums-w) + 2.75rem + var(--cols, 0) * 1ch));
   line-height: var(--row-h);
   tab-size: 4;
@@ -739,41 +777,6 @@
 .diff-w6 { --num-w: 6ch; }
 .diff-w7 { --num-w: 7ch; }
 
-/* At least as wide as the file's widest line, known before its block is rendered (see
-   `column_class` in src/views/commit.rs): a skipped block has no width, so otherwise a
-   file's horizontal scrollbar would appear, and add to its height, only once scrolled to. */
-.diff-c8 { --cols: 8; }
-.diff-c16 { --cols: 16; }
-.diff-c24 { --cols: 24; }
-.diff-c32 { --cols: 32; }
-.diff-c40 { --cols: 40; }
-.diff-c48 { --cols: 48; }
-.diff-c56 { --cols: 56; }
-.diff-c64 { --cols: 64; }
-.diff-c72 { --cols: 72; }
-.diff-c80 { --cols: 80; }
-.diff-c88 { --cols: 88; }
-.diff-c96 { --cols: 96; }
-.diff-c104 { --cols: 104; }
-.diff-c112 { --cols: 112; }
-.diff-c120 { --cols: 120; }
-.diff-c128 { --cols: 128; }
-.diff-c136 { --cols: 136; }
-.diff-c144 { --cols: 144; }
-.diff-c152 { --cols: 152; }
-.diff-c160 { --cols: 160; }
-.diff-c168 { --cols: 168; }
-.diff-c176 { --cols: 176; }
-.diff-c184 { --cols: 184; }
-.diff-c192 { --cols: 192; }
-.diff-c200 { --cols: 200; }
-.diff-c208 { --cols: 208; }
-.diff-c216 { --cols: 216; }
-.diff-c224 { --cols: 224; }
-.diff-c232 { --cols: 232; }
-.diff-c240 { --cols: 240; }
-.diff-c248 { --cols: 248; }
-.diff-c256 { --cols: 256; }
 
 .diff-excerpt {
   --nums-w: 0rem;
@@ -872,11 +875,12 @@
    thousands of lines appears as fast as a short one, on a full load and on an htmx swap
    alike. Every line is exactly one `--row-h` tall (`height`, not `min-height`: a glyph
    from a taller fallback font, an emoji say, must not grow it), which keeps each block's
-   placeholder exact. `.code-lines` is as wide as its widest line, so line backgrounds
-   span the whole horizontal scroll. */
+   placeholder exact. `.code-lines` is at least as wide as its widest line (`cols-N`,
+   see Virtual blocks), so line backgrounds span the horizontal scroll. */
 .code-lines {
-  @apply min-w-full py-3 font-mono text-[12.5px] leading-5;
-  width: max-content;
+  @apply py-3 font-mono text-[12.5px] leading-5;
+  /* The line number (w-14), the code's padding (pl-3, pr-6) and the widest line. */
+  min-width: max(100%, calc(5.75rem + var(--cols, 0) * 1ch));
   tab-size: 4;
 }
 

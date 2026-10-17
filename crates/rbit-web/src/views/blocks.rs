@@ -10,11 +10,70 @@
 //! Templates give each block `data-rows="{{ block.len() }}"`; app.css turns it into the
 //! block's exact placeholder height where the browser supports typed `attr()`, and
 //! `blocks.js` does the same through the CSSOM elsewhere (the CSP forbids `style=`).
+//!
+//! Widths come from the server too: a view of blocks carries [`column_class`], the
+//! columns of its widest row, as its minimum width. The browser could size the view to
+//! its content (`width: max-content`) instead, but then every block laid out while
+//! scrolling makes it measure every rendered row again — about 30 % more layout per
+//! row, measured — and skipped blocks have no width, so the horizontal scrollbar would
+//! only appear once the widest block had been rendered.
 //! See docs/design/frontend-virtualization.md.
 
 /// Rows per block: large enough that a long file has few containment boundaries (a
 /// 20,000-line file has 157), small enough that a block is about two screens tall.
 pub const BLOCK_ROWS: usize = 128;
+
+/// Granularity of [`column_class`]: `cols-8`, `cols-16`, … `cols-256` in app.css.
+const COLUMN_STEP: usize = 8;
+/// Wider than any view on any screen: a longer row scrolls anyway, its background (a
+/// diff's colour, a linked line's highlight) then ending at this width.
+const MAX_COLUMNS: usize = 256;
+
+/// The columns `text` takes in a monospace font, as a row shows it (see
+/// [`crate::render::row_char`]): tabs stop every 4 columns (app.css's `tab-size`), and
+/// characters from U+1100 on count double, a generous guess for wide scripts and emoji.
+/// Erring wide only adds blank space at the end of the rows.
+#[must_use]
+pub fn display_columns(text: &str) -> usize {
+    text.chars().map(crate::render::row_char).fold(0, advance)
+}
+
+/// [`display_columns`] of the text in a line of highlighted markup: tags take no columns
+/// and an entity (`&lt;`, `&#39;`) is the one character it stands for. The highlighter
+/// escapes only ASCII, so an entity is always one column.
+#[must_use]
+pub fn markup_columns(html: &str) -> usize {
+    let mut column = 0;
+    let mut chars = html.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '<' => {
+                chars.by_ref().find(|&c| c == '>');
+            }
+            '&' => {
+                chars.by_ref().find(|&c| c == ';');
+                column += 1;
+            }
+            c => column = advance(column, crate::render::row_char(c)),
+        }
+    }
+    column
+}
+
+fn advance(column: usize, c: char) -> usize {
+    match c {
+        '\t' => column + 4 - column % 4,
+        c if u32::from(c) >= 0x1100 => column + 2,
+        _ => column + 1,
+    }
+}
+
+/// The class that makes a view at least `widest` columns wide (`cols-{n}`, rounded up to
+/// [`COLUMN_STEP`], at most [`MAX_COLUMNS`]); app.css adds the gutters of each view.
+#[must_use]
+pub fn column_class(widest: usize) -> String {
+    format!("cols-{}", (widest.div_ceil(COLUMN_STEP).max(1) * COLUMN_STEP).min(MAX_COLUMNS))
+}
 
 /// A run of at most [`BLOCK_ROWS`] consecutive rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,5 +199,24 @@ mod tests {
             blocker.push(row);
         }
         assert_eq!(lengths(&blocker.finish()), [BLOCK_ROWS, 1]);
+    }
+
+    #[test]
+    fn columns_count_what_a_row_shows() {
+        assert_eq!(display_columns("ab\tc"), 5, "a tab stops every 4 columns");
+        assert_eq!(display_columns("\t\t"), 8);
+        assert_eq!(display_columns("日本"), 4, "wide characters count double");
+        assert_eq!(display_columns("a\rb"), 4, "a carriage return shows as ␍, counted wide like any symbol");
+        assert_eq!(markup_columns(r#"<span class="k">fn</span> main"#), 7, "tags take no columns");
+        assert_eq!(markup_columns("&lt;&amp;&#39;\tx"), 5, "an entity is one character");
+        assert_eq!(markup_columns(&format!("<i>{}</i>", "日".repeat(3))), 6);
+    }
+
+    #[test]
+    fn column_classes_round_up_and_stop_at_the_widest() {
+        assert_eq!(column_class(0), "cols-8");
+        assert_eq!(column_class(8), "cols-8");
+        assert_eq!(column_class(9), "cols-16");
+        assert_eq!(column_class(10_000), "cols-256");
     }
 }

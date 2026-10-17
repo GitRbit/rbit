@@ -7,7 +7,7 @@ use rbit_git::{CommitSummary, RefKind, RefSummary};
 use crate::{
     urls::RepoUrls,
     views::{
-        blocks::{Block, blocks},
+        blocks::{Block, blocks, column_class, markup_columns},
         collaborators::CollaboratorAccess,
         components::Avatar,
         forks::ForkedFrom,
@@ -282,6 +282,15 @@ impl BlobPage {
             _ => Vec::new(),
         }
     }
+
+    /// The code's minimum width, from its widest line ([`column_class`]).
+    pub fn code_columns(&self) -> String {
+        let widest = match &self.content {
+            BlobContent::Code(lines) => lines.iter().map(|line| markup_columns(line)).max().unwrap_or(0),
+            _ => 0,
+        };
+        column_class(widest)
+    }
 }
 
 /// Commits grouped under a calendar-day heading.
@@ -398,6 +407,7 @@ mod tests {
             })
             .collect();
         assert_eq!(rows, [(128, 128), (2, 2)], "data-rows is the number of lines in the block");
+        assert!(html.contains(r#"<div class="code-lines cols-8">"#), "as wide as the widest line's text, tags aside");
         for n in 1..=130 {
             assert_eq!(html.matches(&format!(r#"id="L{n}""#)).count(), 1, "line {n} once, with its id");
         }
