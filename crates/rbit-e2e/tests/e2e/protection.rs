@@ -73,6 +73,16 @@ async fn protected_branches_over_http() {
     alice.get("/alice/demo/settings/branches/abc").await.expect_status(StatusCode::NOT_FOUND);
     bob.get(&main_rule).await.expect_status(StatusCode::NOT_FOUND);
 
+    // The branches page marks main (and only main) as protected, for every reader.
+    for client in [&alice, &bob] {
+        let branches = client.get("/alice/demo/branches").await;
+        branches.expect_status(StatusCode::OK);
+        assert_eq!(branches.body.matches("Protected</span>").count(), 1, "only main is protected");
+    }
+    let tags = alice.get("/alice/demo/tags").await;
+    tags.expect_status(StatusCode::OK);
+    assert!(!tags.contains("Protected</span>"), "tags are never marked");
+
     // A force push to the protected main is rejected and main is unchanged.
     let alice_url = server.git_url_as("alice", "demo", "alice", PASSWORD);
     let work = git.clone(&alice_url);

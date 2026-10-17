@@ -58,10 +58,16 @@ async fn refs(
         RefKind::Branch => ("Branches", "branches", "branch"),
         RefKind::Tag => ("Tags", "tags", "tag"),
     };
+    // Only branches carry the "Protected" badge.
+    let protected = match kind {
+        RefKind::Branch => state.services.protection.protected_branches(&loaded.ctx).await?,
+        RefKind::Tag => Vec::new(),
+    };
     Ok(RefsPage {
         page: page.titled(format!("{label} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, tab),
         kind: kind_name,
         rows,
-    })
+    }
+    .with_protected(&protected))
 }
