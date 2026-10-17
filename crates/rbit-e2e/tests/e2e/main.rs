@@ -28,3 +28,5 @@ mod visibility;
 mod workflow;
 // Milestone 3: commit statuses and required checks (S).
 mod statuses;
+// Milestone 3: external sign-in against fake providers (O).
+mod external_auth;

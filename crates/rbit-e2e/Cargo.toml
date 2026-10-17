@@ -30,6 +30,9 @@ hmac.workspace = true
 sha2.workspace = true
 # L: Git LFS over SSH needs the SSH server beside the HTTP one.
 rbit-ssh.workspace = true
+# O: fake OIDC and GitHub providers (an ES256 signing key, base64url tokens).
+p256.workspace = true
+base64.workspace = true
 
 [lints]
 workspace = true

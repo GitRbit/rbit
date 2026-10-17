@@ -4182,7 +4182,9 @@ name = "rbit-e2e"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.23.1",
  "hmac",
+ "p256",
  "rbit-core",
  "rbit-services",
  "rbit-ssh",
