@@ -8,7 +8,7 @@ use std::{
 
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader},
-    process::{ChildStdout, Command},
+    process::{Child, ChildStdout, Command},
     sync::oneshot,
     task::JoinHandle,
 };
@@ -23,6 +23,15 @@ pub enum TransportError {
     Failed { service: Service, status: ExitStatus },
     #[error("I/O error talking to git: {0}")]
     Io(#[from] std::io::Error),
+}
+
+/// How `git receive-pack` runs, as decided by the push gate (`crate::receive`) before git
+/// starts. Ignored for `upload-pack`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReceiveOptions {
+    /// Run with `receive.denyNonFastForwards`: git refuses every non-fast-forward update
+    /// of this push after unpacking and before updating refs ("non-fast-forward").
+    pub deny_non_fast_forwards: bool,
 }
 
 /// A running `git <service> --stateless-rpc` exchange.
@@ -50,7 +59,7 @@ impl ProcessTransport {
     /// dropped, so an abandoned exchange never leaves git running.
     ///
     /// Arguments are passed directly to the executable; no shell is ever involved.
-    fn service_command(&self, service: Service, protocol: Option<&str>) -> Command {
+    fn service_command(&self, service: Service, protocol: Option<&str>, options: ReceiveOptions) -> Command {
         let mut command = Command::new(&self.git_binary);
         command.env_clear();
         for key in ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"] {
@@ -62,24 +71,25 @@ impl ProcessTransport {
         if let Some(protocol) = protocol.filter(|p| is_safe_protocol_header(p)) {
             command.env("GIT_PROTOCOL", protocol);
         }
+        if service == Service::ReceivePack && options.deny_non_fast_forwards {
+            command.args(["-c", "receive.denyNonFastForwards=true"]);
+        }
         command.arg(service.subcommand()).kill_on_drop(true);
         command
     }
 
-    /// `git <service> --stateless-rpc <repo>`, for HTTP's request/response exchanges.
-    fn command(&self, service: Service, repo_path: &Path, protocol: Option<&str>) -> Command {
-        let mut command = self.service_command(service, protocol);
+    /// `git <service> --stateless-rpc <repo>`, for request/response exchanges.
+    fn command(&self, service: Service, repo_path: &Path, protocol: Option<&str>, options: ReceiveOptions) -> Command {
+        let mut command = self.service_command(service, protocol, options);
         command.arg("--stateless-rpc").arg(repo_path);
         command
     }
 
-    /// Produces the body for `GET …/info/refs?service=…`.
-    ///
-    /// For protocol v0/v1 the advertisement is prefixed with the `# service=` header; v2
-    /// clients expect the capability advertisement directly.
-    pub async fn advertise_refs(&self, service: Service, repo_path: &Path, protocol: Option<&str>) -> Result<Vec<u8>, TransportError> {
+    /// The ref advertisement exactly as git writes it, without HTTP's `# service=` header:
+    /// what an SSH server sends before reading a push's commands.
+    pub async fn advertisement(&self, service: Service, repo_path: &Path, protocol: Option<&str>) -> Result<Vec<u8>, TransportError> {
         let output = self
-            .command(service, repo_path, protocol)
+            .command(service, repo_path, protocol, ReceiveOptions::default())
             .arg("--advertise-refs")
             .stdin(Stdio::null())
             .stderr(Stdio::piped())
@@ -91,28 +101,38 @@ impl ProcessTransport {
             tracing::warn!(%service, stderr = %String::from_utf8_lossy(&output.stderr), "ref advertisement failed");
             return Err(TransportError::Failed { service, status: output.status });
         }
+        Ok(output.stdout)
+    }
 
+    /// Produces the body for `GET …/info/refs?service=…`.
+    ///
+    /// For protocol v0/v1 the advertisement is prefixed with the `# service=` header; v2
+    /// clients expect the capability advertisement directly.
+    pub async fn advertise_refs(&self, service: Service, repo_path: &Path, protocol: Option<&str>) -> Result<Vec<u8>, TransportError> {
+        let advertisement = self.advertisement(service, repo_path, protocol).await?;
         let is_v2 = protocol.is_some_and(|p| p.split(':').any(|kv| kv == "version=2"));
-        let mut body = Vec::with_capacity(output.stdout.len() + 64);
+        let mut body = Vec::with_capacity(advertisement.len() + 64);
         if !is_v2 {
             body.extend(pkt_line::encode(&format!("# service={}\n", service.wire_name())));
             body.extend_from_slice(pkt_line::FLUSH);
         }
-        body.extend(output.stdout);
+        body.extend(advertisement);
         Ok(body)
     }
 
     /// Starts `POST …/git-upload-pack` or `…/git-receive-pack`: streams `request` into git's
-    /// stdin and returns git's stdout for streaming back to the client.
+    /// stdin and returns git's stdout for streaming back to the client. `options` apply to
+    /// receive-pack only.
     pub fn serve(
         &self,
         service: Service,
         repo_path: &Path,
         protocol: Option<&str>,
+        options: ReceiveOptions,
         mut request: impl AsyncRead + Send + Unpin + 'static,
     ) -> Result<ServiceSession, TransportError> {
         let mut child = self
-            .command(service, repo_path, protocol)
+            .command(service, repo_path, protocol, options)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -149,9 +169,38 @@ impl ProcessTransport {
 
         Ok(ServiceSession { output, completion })
     }
-}
 
-impl ProcessTransport {
+    /// Runs `git receive-pack --stateless-rpc <repo>` on `input` (the commands and pack
+    /// that follow an advertisement sent with [`Self::advertisement`]), streaming git's
+    /// stdout to `output` and its stderr to `errors`, and returns git's exit status. This
+    /// is the second half of SSH's two-step push, which lets the push gate read the
+    /// commands before git starts; it is the same exchange smart HTTP performs.
+    ///
+    /// Dropping the returned future kills git.
+    pub async fn receive_pack<I, O, E>(
+        &self,
+        repo_path: &Path,
+        protocol: Option<&str>,
+        options: ReceiveOptions,
+        input: I,
+        output: O,
+        errors: E,
+    ) -> Result<ExitStatus, TransportError>
+    where
+        I: AsyncRead + Send + Unpin + 'static,
+        O: AsyncWrite + Unpin,
+        E: AsyncWrite + Unpin,
+    {
+        let child = self
+            .command(Service::ReceivePack, repo_path, protocol, options)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(TransportError::Spawn)?;
+        exchange(Service::ReceivePack, child, input, output, errors).await
+    }
+
     /// Runs `git <service> <repo>` in interactive mode, as Git does over SSH: one long
     /// bidirectional conversation instead of HTTP's stateless request/response pairs.
     ///
@@ -169,46 +218,61 @@ impl ProcessTransport {
         service: Service,
         repo_path: &Path,
         protocol: Option<&str>,
-        mut input: I,
-        mut output: O,
-        mut errors: E,
+        input: I,
+        output: O,
+        errors: E,
     ) -> Result<ExitStatus, TransportError>
     where
         I: AsyncRead + Send + Unpin + 'static,
         O: AsyncWrite + Unpin,
         E: AsyncWrite + Unpin,
     {
-        let mut child = self
-            .service_command(service, protocol)
+        let child = self
+            .service_command(service, protocol, ReceiveOptions::default())
             .arg(repo_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(TransportError::Spawn)?;
-
-        let mut stdin = child.stdin.take().expect("stdin is piped");
-        let mut stdout = child.stdout.take().expect("stdout is piped");
-        let mut stderr = child.stderr.take().expect("stderr is piped");
-
-        let feed = AbortOnDrop(tokio::spawn(async move {
-            if let Err(error) = tokio::io::copy(&mut input, &mut stdin).await {
-                tracing::debug!(%service, %error, "client stream ended early");
-            }
-            // Dropping stdin tells git the client has nothing more to say.
-        }));
-
-        let (forwarded, reported) = tokio::join!(tokio::io::copy(&mut stdout, &mut output), tokio::io::copy(&mut stderr, &mut errors));
-        if let Err(error) = forwarded.and(reported) {
-            // The client went away: nobody drains git's pipes any more, so stop it rather
-            // than wait for it to block forever.
-            tracing::debug!(%service, %error, "client went away while git was responding");
-            child.start_kill()?;
-        }
-        let status = child.wait().await?;
-        drop(feed);
-        Ok(status)
+        exchange(service, child, input, output, errors).await
     }
+}
+
+/// Feeds `input` to a spawned git, forwards its stdout and stderr, and waits for it.
+async fn exchange<I, O, E>(
+    service: Service,
+    mut child: Child,
+    mut input: I,
+    mut output: O,
+    mut errors: E,
+) -> Result<ExitStatus, TransportError>
+where
+    I: AsyncRead + Send + Unpin + 'static,
+    O: AsyncWrite + Unpin,
+    E: AsyncWrite + Unpin,
+{
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    let mut stdout = child.stdout.take().expect("stdout is piped");
+    let mut stderr = child.stderr.take().expect("stderr is piped");
+
+    let feed = AbortOnDrop(tokio::spawn(async move {
+        if let Err(error) = tokio::io::copy(&mut input, &mut stdin).await {
+            tracing::debug!(%service, %error, "client stream ended early");
+        }
+        // Dropping stdin tells git the client has nothing more to say.
+    }));
+
+    let (forwarded, reported) = tokio::join!(tokio::io::copy(&mut stdout, &mut output), tokio::io::copy(&mut stderr, &mut errors));
+    if let Err(error) = forwarded.and(reported) {
+        // The client went away: nobody drains git's pipes any more, so stop it rather
+        // than wait for it to block forever.
+        tracing::debug!(%service, %error, "client went away while git was responding");
+        child.start_kill()?;
+    }
+    let status = child.wait().await?;
+    drop(feed);
+    Ok(status)
 }
 
 /// Aborts a background task when dropped, so it never outlives the exchange it serves.
@@ -296,6 +360,33 @@ mod tests {
         let exchange = transport.serve_interactive(Service::UploadPack, repo.path(), None, client, &mut output, &mut errors);
         let status = tokio::time::timeout(std::time::Duration::from_secs(30), exchange).await.expect("did not hang").unwrap();
         assert!(status.success());
+        drop(server_side);
+    }
+
+    #[tokio::test]
+    async fn the_raw_advertisement_has_no_http_service_header() {
+        let repo = bare_repository();
+        let transport = ProcessTransport::new("git");
+        let raw = transport.advertisement(Service::ReceivePack, repo.path(), None).await.unwrap();
+        assert!(String::from_utf8_lossy(&raw).contains("report-status"));
+        assert!(!raw.starts_with(b"001f# service="));
+        let http = transport.advertise_refs(Service::ReceivePack, repo.path(), None).await.unwrap();
+        assert!(http.starts_with(b"001f# service=git-receive-pack\n0000"));
+        assert!(http.ends_with(&raw));
+    }
+
+    #[tokio::test]
+    async fn stateless_receive_pack_with_an_empty_command_list_exits_cleanly() {
+        let repo = bare_repository();
+        let (client, mut server_side) = tokio::io::duplex(64);
+        tokio::io::AsyncWriteExt::write_all(&mut server_side, b"0000").await.unwrap();
+        let (mut output, mut errors) = (Vec::new(), Vec::new());
+        let transport = ProcessTransport::new("git");
+        // The client keeps its stream open, as an SSH client waiting for the report does.
+        let exchange = transport.receive_pack(repo.path(), None, ReceiveOptions::default(), client, &mut output, &mut errors);
+        let status = tokio::time::timeout(std::time::Duration::from_secs(30), exchange).await.expect("did not hang").unwrap();
+        assert!(status.success(), "{}", String::from_utf8_lossy(&errors));
+        assert!(output.is_empty(), "nothing to report: {}", String::from_utf8_lossy(&output));
         drop(server_side);
     }
 }

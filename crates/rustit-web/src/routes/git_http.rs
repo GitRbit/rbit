@@ -27,7 +27,7 @@ use futures_util::TryStreamExt;
 use rustit_auth::AccessTokenSecret;
 use rustit_core::{AccountId, TokenScope, User};
 use rustit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, two_factor::GitPasswordOutcome};
-use rustit_transport::Service;
+use rustit_transport::{ReceiveOptions, Service};
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
 use tokio_util::io::{ReaderStream, StreamReader};
@@ -99,7 +99,7 @@ async fn run_service(
     // Taken before git starts, so the push's ref updates can be reported afterwards.
     let pending = if service.is_write() { Some(state.services.pushes.begin(&ctx, pusher).await) } else { None };
     let request = request_reader(&headers, body);
-    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), request) {
+    let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), ReceiveOptions::default(), request) {
         Ok(session) => session,
         Err(error) => {
             tracing::error!(%error, %owner, %repo, %service, "failed to start git");
