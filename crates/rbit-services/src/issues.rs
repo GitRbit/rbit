@@ -11,6 +11,7 @@
 //! pull requests too: every change records its timeline event and publishes
 //! `DomainEvent::Issue` with the thread's own kind. Triage (labels, milestone, assignees)
 //! needs `can_triage` from [`issue_permissions`], recomputed for the actor on every call.
+//! Creating and changing things spends the actor's [`ThrottleScope::Content`] budget.
 //!
 //! The background subscriber ([`IssueService::spawn_background`]) turns references into
 //! timeline entries: `#N` and `owner/repo#N` in threads and comments become
@@ -39,8 +40,9 @@ use rbit_core::{
     references,
     repository::OwnedRepository,
 };
+pub use rbit_storage::sqlite::issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress};
 use rbit_storage::sqlite::{
-    issue_meta::{Label, LabelFields, LabelUsage, Milestone, MilestoneFields, MilestoneProgress},
+    issue_meta::{LabelFields, MilestoneFields},
     issue_search::SearchFilter,
 };
 use tokio::sync::broadcast::error::RecvError;
@@ -520,6 +522,7 @@ impl IssueService {
         if kept + added > MAX_LABELS_PER_ISSUE {
             return Err(invalid(format!("an issue can have at most {MAX_LABELS_PER_ISSUE} labels")));
         }
+        self.spend(actor)?;
         let now = Timestamp::now();
         for (_, label) in current.iter().filter(|(_, label)| remove.contains(&label.id)) {
             if store.remove_label(ctx.issue.id, label.id).await? {
@@ -565,6 +568,7 @@ impl IssueService {
         if kept + users.len() > MAX_ASSIGNEES {
             return Err(invalid(format!("an issue can have at most {MAX_ASSIGNEES} assignees")));
         }
+        self.spend(actor)?;
         let now = Timestamp::now();
         for id in current.iter().filter(|id| remove.contains(id)) {
             if store.remove_assignee(ctx.issue.id, *id).await? {
@@ -610,6 +614,7 @@ impl IssueService {
         if current.as_ref().map(|m| m.id) == new.as_ref().map(|m| m.id) {
             return Ok(());
         }
+        self.spend(actor)?;
         store.set_milestone(ctx.issue.id, new.as_ref().map(|m| m.id)).await?;
         if let Some(old) = current {
             let event = TimelineEvent::Demilestoned { milestone: old.id, title: old.title.clone() };

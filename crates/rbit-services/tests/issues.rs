@@ -28,11 +28,18 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with(|_| {}).await
+    }
+
+    async fn with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rustit.db")).await.unwrap();
         let kv = KvStore::open(&dir.path().join("rustit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
+        // These tests make many changes in a row; throttling has its own test below.
+        config.security.rate_limit = false;
+        configure(&mut config);
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let alice = user(&database, "alice").await;
         let bob = user(&database, "bob").await;
@@ -451,4 +458,25 @@ async fn merged_pull_requests_close_the_issues_their_body_names() {
         fixture.events_of(&fixture.alice, first).await,
         [TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: Some(pull.number) }]
     );
+}
+
+#[tokio::test]
+async fn triage_spends_the_content_budget() {
+    let fixture = Fixture::with(|config| config.security.rate_limit = true).await;
+    let number = fixture.create(&fixture.alice, "Crash", "").await;
+    let ctx = fixture.open(&fixture.alice, number).await;
+    let bug = fixture.label("bug").await;
+    let mut limited = false;
+    for _ in 0..40 {
+        let result = fixture.services.issues.set_labels(&fixture.alice, &ctx, &[bug]).await;
+        let result = match result {
+            Ok(()) => fixture.services.issues.set_labels(&fixture.alice, &ctx, &[]).await,
+            other => other,
+        };
+        if matches!(result, Err(ServiceError::RateLimited { .. })) {
+            limited = true;
+            break;
+        }
+    }
+    assert!(limited, "label changes are throttled like comments");
 }
