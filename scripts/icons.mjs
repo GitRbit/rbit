@@ -1,43 +1,27 @@
-// Renders the PWA / home-screen PNG icons from crates/rbit-web/assets/icon.svg.
-// The PNGs are committed so `cargo build` works without Node; rerun after changing the SVG:
-//
-//   npm run icons
-//
-// * icon-192.png, icon-512.png   "any" purpose: the SVG as drawn (rounded square).
-// * icon-maskable-512.png        "maskable": full-bleed background, glyph shrunk into the
-//                                 central safe zone (a circle of 40 % radius) so any
-//                                 platform mask shape keeps it intact.
-// * apple-touch-icon.png (180)   full-bleed: iOS applies its own rounded mask and
-//                                 renders transparency as black.
+// Generate browser and installable-app icons from the original Rbit mascot.
+// Commit the outputs so cargo build never requires Node. Run: npm run icons
 import { readFileSync, writeFileSync } from "node:fs";
 import { Resvg } from "@resvg/resvg-js";
 
-const assets = "crates/rbit-web/assets";
-const source = readFileSync(`${assets}/icon.svg`, "utf8");
+const assets = new URL("../crates/rbit-web/assets/", import.meta.url);
+const mascot = readFileSync(new URL("logo.png", assets)).toString("base64");
 
-const background = source.match(/<rect[^>]*fill="([^"]+)"/)?.[1];
-const glyph = source.match(/<g[\s\S]*<\/g>/)?.[0];
-if (!background || !glyph) {
-  throw new Error("icon.svg must contain a background <rect fill=…> and a <g> glyph");
-}
-
-/** A full-bleed square icon with the glyph scaled about the centre. */
-function fullBleed(scale) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="${background}"/>
-  <g transform="translate(256 256) scale(${scale}) translate(-256 -256)">${glyph}</g>
-</svg>`;
-}
-
-function render(svg, size, file) {
+function render(size, file, scale = 1, background = false) {
+  const edge = 512 * scale;
+  const inset = (512 - edge) / 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512">
+    ${background ? '<rect width="512" height="512" fill="#f5f2eb"/>' : ""}
+    <image x="${inset}" y="${inset}" width="${edge}" height="${edge}" preserveAspectRatio="xMidYMid meet" xlink:href="data:image/png;base64,${mascot}"/>
+  </svg>`;
   const png = new Resvg(svg, { fitTo: { mode: "width", value: size } }).render().asPng();
-  writeFileSync(`${assets}/${file}`, png);
+  writeFileSync(new URL(file, assets), png);
   console.log(`${file}: ${size}x${size}, ${png.length} bytes`);
 }
 
-render(source, 192, "icon-192.png");
-render(source, 512, "icon-512.png");
-// The glyph's farthest point is ~180/256 of the half-width from the centre; 0.8 keeps
-// it inside the 40 % safe-zone radius (204.8 px of 512) with room to spare.
-render(fullBleed(0.8), 512, "icon-maskable-512.png");
-render(fullBleed(0.9), 180, "apple-touch-icon.png");
+render(32, "icon-32.png");
+render(192, "icon-192.png");
+render(512, "icon-512.png");
+// A square at 56% width fits entirely inside the maskable 40%-radius safe circle.
+render(512, "icon-maskable-512.png", 0.56, true);
+// iOS supplies its own rounded mask and needs an opaque background.
+render(180, "apple-touch-icon.png", 0.85, true);

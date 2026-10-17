@@ -25,10 +25,9 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         // The splash screen before first paint. No theme_color: the page's own theme-color
         // meta tags (light, dark or the chosen theme) apply from there on.
         "background_color": crate::themes::LIGHT_CANVAS,
-        // PNGs (rendered from icon.svg by `npm run icons`) for platforms that ignore SVG
-        // icons; the maskable one keeps the glyph inside the safe zone.
+        // PNGs generated from logo.png by `npm run icons`; the maskable icon keeps
+        // the entire mascot inside the safe zone.
         "icons": [
-            { "src": assets::url("icon.svg"), "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
             { "src": assets::url("icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any" },
             { "src": assets::url("icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any" },
             { "src": assets::url("icon-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
@@ -89,7 +88,13 @@ mod tests {
 
     #[test]
     fn generated_icons_are_embedded_at_their_declared_sizes() {
-        for (file, size) in [("icon-192.png", 192), ("icon-512.png", 512), ("icon-maskable-512.png", 512), ("apple-touch-icon.png", 180)] {
+        for (file, size) in [
+            ("icon-32.png", 32),
+            ("icon-192.png", 192),
+            ("icon-512.png", 512),
+            ("icon-maskable-512.png", 512),
+            ("apple-touch-icon.png", 180),
+        ] {
             let bytes = assets::read(file).unwrap_or_else(|| panic!("{file} is missing; run `npm run icons`"));
             assert_eq!(png_size(&bytes), (size, size), "{file}");
         }

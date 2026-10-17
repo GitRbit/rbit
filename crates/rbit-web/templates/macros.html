@@ -170,11 +170,9 @@
 </a>
 {% endmacro %}
 
-{#- The Rbit mark, drawn in currentColor so it inverts with the theme. -#}
+{#- The Rbit frog mascot, shared by every branded surface. -#}
 {% macro logo(class) %}
-<svg class="{{ class }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-<circle cx="7" cy="5.5" r="2.5"/><circle cx="7" cy="18.5" r="2.5"/><circle cx="17" cy="9" r="2.5"/><path d="M7 8v8"/><path d="M17 11.5c0 3.8-3.2 5-7.5 6"/>
-</svg>
+<img class="{{ class }} object-contain" src="{{ crate::assets::url("icon-192.png") }}" width="192" height="192" alt="" aria-hidden="true">
 {% endmacro %}
 
 {% macro avatar(avatar, size) %}

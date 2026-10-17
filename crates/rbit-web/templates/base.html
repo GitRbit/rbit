@@ -16,7 +16,7 @@
   {%- endif %}
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":10,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="{{ page.asset("icon.svg") }}" type="image/svg+xml">
+  <link rel="icon" href="{{ page.asset("icon-32.png") }}" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ page.asset("apple-touch-icon.png") }}">
   <link rel="stylesheet" href="{{ page.asset("app.css") }}">
   {%- if let Some(href) = page.theme.stylesheet() %}
@@ -42,7 +42,7 @@
 
   <header class="sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
     <nav class="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
-      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-5") %}{% endcall %}</a>
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-9") %}{% endcall %}</a>
       <div class="flex min-w-0 items-center gap-2 text-[13px]">
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
       </div>
