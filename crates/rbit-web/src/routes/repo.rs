@@ -29,6 +29,7 @@ use crate::{
             BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
             TreePage, breadcrumbs,
         },
+        statuses::{CHECKS_ANCHOR, StatusMark},
     },
 };
 
@@ -474,7 +475,15 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
 
     let urls = &loaded.urls;
     let base = urls.commits(&revision);
-    let commits = history.iter().map(|c| CommitView::new(c, urls)).collect();
+    let mut commits: Vec<CommitView> = history.iter().map(|c| CommitView::new(c, urls)).collect();
+    // Milestone 3 (S): each commit's combined status mark, one query for the page.
+    let ids: Vec<String> = history.iter().map(|commit| commit.id.clone()).collect();
+    let combined = state.services.statuses.combined_of(&loaded.ctx, &ids).await?;
+    for commit in &mut commits {
+        if let Some(status) = combined.get(&commit.id) {
+            commit.status = StatusMark::new(status, format!("{}#{CHECKS_ANCHOR}", commit.url));
+        }
+    }
 
     Ok(CommitsPage {
         page: page.titled(format!("Commits · {}", loaded.ctx.repo.full_name())),

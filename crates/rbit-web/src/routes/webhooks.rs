@@ -127,6 +127,8 @@ pub struct HookFormInput {
     event_pull_request: Option<String>,
     event_pull_request_review: Option<String>,
     event_member: Option<String>,
+    // Milestone 3: commit statuses (S).
+    event_status: Option<String>,
 }
 
 impl HookFormInput {
@@ -141,6 +143,7 @@ impl HookFormInput {
             (WebhookEvent::PullRequest, &self.event_pull_request),
             (WebhookEvent::PullRequestReview, &self.event_pull_request_review),
             (WebhookEvent::Member, &self.event_member),
+            (WebhookEvent::Status, &self.event_status),
         ];
         ticked.into_iter().filter(|(_, value)| value.is_some()).map(|(event, _)| event).collect()
     }

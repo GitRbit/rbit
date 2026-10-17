@@ -19,6 +19,7 @@
           <a href="{{ commit.url }}" class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" title="{{ commit.summary }}">{{ commit.summary }}</a>
           <p class="mt-0.5 truncate text-xs text-ink-muted">{{ commit.author }} · <time datetime="{{ commit.when_iso }}">{{ commit.when }}</time></p>
         </div>
+        {% if let Some(mark) = commit.status %}{% include "statuses/mark.html" %}{% endif %}
         <div class="flex shrink-0">
           <a href="{{ commit.url }}" class="btn h-7 rounded-r-none px-2 font-mono text-xs sm:h-7" title="View commit {{ commit.id }}">{{ commit.short_id }}</a>
           <a href="{{ commit.browse_url }}" class="btn btn-icon -ml-px h-7 w-7 rounded-l-none sm:h-7 sm:w-7" aria-label="Browse files at this commit" title="Browse files">{% call ui::icon("code", "size-3.5") %}{% endcall %}</a>

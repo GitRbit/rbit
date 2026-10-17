@@ -94,6 +94,7 @@ mod tests {
             date: String::new(),
             browse_url: String::new(),
             url: "/acme/rocket/commit/1111111".to_owned(),
+            status: None,
         };
         RefRow {
             name: name.to_owned(),

@@ -412,6 +412,8 @@ pub struct MergeBoxView {
     pub anchor: &'static str,
     pub requirements: Vec<RequirementView>,
     pub conflict_paths: Vec<String>,
+    /// The head commit's checks, required ones first (milestone 3, S).
+    pub checks: Option<crate::views::statuses::ChecksView>,
     pub checking: bool,
     pub can_merge: bool,
     pub ready: bool,
@@ -458,12 +460,22 @@ impl MergeBoxView {
             })
             .collect();
         let ready = merge_box.evaluation.can_merge();
+        // Milestone 3 (S): when only running required checks are missing, the box is
+        // "pending", not failed.
+        let waiting_for_checks = !ready
+            && merge_box
+                .evaluation
+                .checks
+                .iter()
+                .filter(|check| !check.met)
+                .all(|check| matches!(check.requirement, rbit_core::pull::Requirement::RequiredChecks(checks) if checks.failing == 0));
         let is_author = viewer.is_some_and(|viewer| ctx.issue().is_author(viewer));
         Self {
             anchor: "merge-box",
             requirements,
             conflict_paths: merge_box.conflict_paths.clone(),
-            checking: merge_box.mergeable == Mergeability::Unknown,
+            checks: crate::views::statuses::ChecksView::new(&merge_box.statuses, &merge_box.rules.required_contexts),
+            checking: merge_box.mergeable == Mergeability::Unknown || waiting_for_checks,
             can_merge: merge_box.can_merge,
             ready,
             needs_bypass: !ready && merge_box.evaluation.can_merge_with_bypass(),

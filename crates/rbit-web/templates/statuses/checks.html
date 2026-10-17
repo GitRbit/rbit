@@ -1,0 +1,27 @@
+{#- The checks of a commit: one row per context, required ones first; expects `checks: ChecksView` (views::statuses).
+    Placed inside a `.box`; target URLs are validated http(s) URLs. -#}
+{% import "macros.html" as ui %}
+<div id="{{ checks.anchor }}" class="scroll-mt-28">
+  <p class="border-b border-line px-3 py-2 text-xs text-ink-muted sm:px-4">{{ checks.summary }}</p>
+  <ul class="divide-y divide-line">
+    {% for row in checks.rows %}
+    <li class="flex items-start gap-2 px-3 py-2 text-[13px] sm:items-center sm:px-4">
+      <span class="mt-0.5 shrink-0 sm:mt-0 {{ row.tone }}" title="{{ row.label }}">
+        {%- if row.key == "success" -%}{% call ui::icon("check", "size-4") %}{% endcall %}
+        {%- else if row.key == "failure" -%}{% call ui::icon("x", "size-4") %}{% endcall %}
+        {%- else if row.key == "error" -%}{% call ui::icon("alert", "size-4") %}{% endcall %}
+        {%- else -%}{% call ui::icon("circle-dot", "size-4") %}{% endcall %}{%- endif -%}
+        <span class="sr-only">{{ row.label }}</span>
+      </span>
+      <div class="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+        <span class="truncate font-medium text-ink">{{ row.context }}</span>
+        {% if !row.description.is_empty() %}<span class="truncate text-xs text-ink-muted">{{ row.description }}</span>{% endif %}
+      </div>
+      {% if row.required %}<span class="badge shrink-0">Required</span>{% endif %}
+      {% if let Some(url) = row.target_url %}
+      <a href="{{ url }}" rel="nofollow noopener noreferrer" hx-boost="false" class="shrink-0 text-xs text-ink-muted hover:text-ink hover:underline hover:underline-offset-4">Details</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>

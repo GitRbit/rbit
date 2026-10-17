@@ -1,0 +1,7 @@
+{#- A commit's combined status as one icon linking to its checks; expects `mark: StatusMark` (views::statuses). -#}
+{% import "macros.html" as ui %}
+<a href="{{ mark.url }}" class="inline-flex size-7 shrink-0 items-center justify-center {{ mark.tone }}" title="{{ mark.title }}" aria-label="{{ mark.title }}">
+  {%- if mark.key == "success" -%}{% call ui::icon("check", "size-4") %}{% endcall %}
+  {%- else if mark.key == "failure" -%}{% call ui::icon("x", "size-4") %}{% endcall %}
+  {%- else -%}{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}{%- endif -%}
+</a>

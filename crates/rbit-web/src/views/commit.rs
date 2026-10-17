@@ -9,11 +9,14 @@ use rbit_git::{
     diff::{Hunk, LineKind},
 };
 
+use rbit_services::statuses::CombinedStatus;
+
 use crate::{
     urls::RepoUrls,
     views::{
         layout::Page,
         repo::{CommitView, RepoHeader},
+        statuses::{CHECKS_ANCHOR, ChecksView, StatusMark},
     },
 };
 
@@ -263,6 +266,8 @@ pub struct CommitPage {
     pub additions: usize,
     pub deletions: usize,
     pub truncated: bool,
+    /// The commit's checks (milestone 3, S); `None` without statuses.
+    pub checks: Option<ChecksView>,
 }
 
 impl CommitPage {
@@ -283,7 +288,16 @@ impl CommitPage {
             additions: detail.additions(),
             deletions: detail.deletions(),
             truncated: detail.truncated,
+            checks: None,
         }
+    }
+
+    /// Adds the commit's combined status: the mark beside the title and the checks.
+    #[must_use]
+    pub fn with_statuses(mut self, combined: &CombinedStatus) -> Self {
+        self.commit.status = StatusMark::new(combined, format!("{}#{CHECKS_ANCHOR}", self.commit.url));
+        self.checks = ChecksView::new(&combined.statuses, &[]);
+        self
     }
 }
 

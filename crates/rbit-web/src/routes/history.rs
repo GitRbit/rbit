@@ -27,7 +27,9 @@ pub async fn commit(
     let detail = loaded.ctx.reader.commit_detail(revision, DiffLimits::default()).await.map_err(ServiceError::from)?;
 
     let title = format!("{} · {}", detail.commit.summary, loaded.ctx.repo.full_name());
-    Ok(CommitPage::new(page.titled(title), loaded.header(&state, "commits"), &detail, &loaded.urls))
+    // Milestone 3 (S): the commit's combined status and checks.
+    let combined = state.services.statuses.combined_for(&loaded.ctx, &detail.commit.id).await?;
+    Ok(CommitPage::new(page.titled(title), loaded.header(&state, "commits"), &detail, &loaded.urls).with_statuses(&combined))
 }
 
 /// `GET /{owner}/{repo}/branches`

@@ -4,6 +4,8 @@
 <section id="{{ merge.anchor }}" class="timeline-item scroll-mt-28" aria-label="Merge">
   <span class="timeline-badge {% if merge.ready %}text-success{% else if merge.checking %}text-warning{% else %}text-danger{% endif %}">{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}</span>
   <div class="box min-w-0 flex-1 overflow-hidden">
+    {#- Milestone 3: the head commit's checks (S). -#}
+    {% if let Some(checks) = merge.checks %}<div class="border-b border-line">{% include "statuses/checks.html" %}</div>{% endif %}
     <ul class="divide-y divide-line">
       {% for requirement in merge.requirements %}
       <li class="flex items-center gap-2 px-3 py-2 text-[13px] sm:px-4">

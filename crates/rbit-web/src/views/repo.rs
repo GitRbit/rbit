@@ -120,6 +120,8 @@ pub struct CommitView {
     pub browse_url: String,
     /// The commit's own page (message and diff).
     pub url: String,
+    /// The combined commit status mark (milestone 3, S); `None` without statuses.
+    pub status: Option<crate::views::statuses::StatusMark>,
 }
 
 impl CommitView {
@@ -135,6 +137,7 @@ impl CommitView {
             date: commit.authored_at.date(),
             browse_url: urls.tree(&commit.id, ""),
             url: urls.commit(&commit.id),
+            status: None,
         }
     }
 }
