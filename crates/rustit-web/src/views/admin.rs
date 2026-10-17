@@ -732,6 +732,7 @@ mod tests {
             viewer: None,
             path: "/admin/users".to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 

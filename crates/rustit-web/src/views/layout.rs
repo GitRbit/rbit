@@ -12,6 +12,8 @@ pub struct Page {
     pub viewer: Option<NavUser>,
     /// Request path, used to highlight the active navigation item.
     pub path: String,
+    /// A signed-in viewer has an unread notification: the header's bell shows a dot.
+    pub has_unread_notifications: bool,
     /// The visitor's colour theme (from the `rustit-theme` cookie), rendered into `<html>`.
     pub theme: Theme,
 }
@@ -48,6 +50,7 @@ impl Page {
                 can_create_org: state.services.orgs.can_create(user),
             }),
             path: path.to_owned(),
+            has_unread_notifications: false,
             theme: Theme::default(),
         }
     }

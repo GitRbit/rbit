@@ -12,7 +12,7 @@ use crate::{
         collaborators,
         components::{Avatar, FormError, SettingsCard},
         layout::Page,
-        mirrors,
+        mirrors, protection,
         repo::RepoHeader,
         transfer, webhooks,
     },
@@ -86,6 +86,7 @@ fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     cards.extend(collaborators::repo_settings_cards(header));
     cards.extend(webhooks::repo_settings_cards(header));
     cards.extend(mirrors::repo_settings_cards(header));
+    cards.extend(protection::repo_settings_cards(header));
     cards
 }
 
@@ -264,6 +265,7 @@ mod tests {
             viewer: None,
             path: "/alice/proj/stargazers".to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 
@@ -301,6 +303,24 @@ mod tests {
         assert!(html.contains("Nope."));
         assert!(html.contains(r#"href="/alice/proj/settings/keys""#), "settings sub-pages are linked as cards");
         assert!(html.contains("Deploy keys"));
+    }
+
+    #[test]
+    fn issue_and_pull_request_tabs_follow_code_with_open_counts() {
+        let mut header = header(false);
+        header.issues_url = "/alice/proj/issues".to_owned();
+        header.pulls_url = "/alice/proj/pulls".to_owned();
+        let render = |header: RepoHeader| StargazersPage { page: page(), header, stargazers: Vec::new() }.render().unwrap();
+        let html = render(header.clone());
+        let (code, issues, pulls) = (html.find(">Code<").unwrap(), html.find(">Issues").unwrap(), html.find(">Pull requests").unwrap());
+        assert!(code < issues && issues < pulls, "Code, Issues, Pull requests");
+        assert!(html.contains(r#"href="/alice/proj/issues""#) && html.contains(r#"href="/alice/proj/pulls""#));
+        assert!(!html.contains(r#"<span class="badge tabular-nums">"#), "no count while there is nothing open");
+        let html = render(RepoHeader { open_issues: 3, open_pulls: 1, active_tab: "issues", ..header });
+        assert!(
+            html.contains(r#"<span class="badge tabular-nums">3</span>"#) && html.contains(r#"<span class="badge tabular-nums">1</span>"#)
+        );
+        assert!(html.contains(r#"href="/alice/proj/issues" aria-current="page""#));
     }
 
     #[test]

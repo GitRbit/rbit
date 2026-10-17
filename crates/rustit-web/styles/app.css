@@ -386,6 +386,76 @@
   .prose-rustit :not(pre) > code {
     @apply rounded border border-line bg-subtle px-1 py-0.5 text-[0.85em];
   }
+
+  /* ------------------------------------------------ Issues and pull requests (wave B) */
+
+  /* Thread state, beside a title: open, closed, merged, draft. Colour only from tokens. */
+  .state-badge {
+    @apply inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap;
+  }
+
+  .state-badge-open {
+    border-color: color-mix(in oklab, var(--success) 45%, transparent);
+    background: color-mix(in oklab, var(--success) 9%, var(--surface));
+    color: var(--success);
+  }
+
+  .state-badge-closed {
+    @apply border-line bg-subtle text-ink-muted;
+  }
+
+  .state-badge-merged {
+    @apply border-inverted bg-inverted text-inverted-ink;
+  }
+
+  .state-badge-draft {
+    @apply border-dashed border-ink-faint bg-transparent text-ink-faint;
+  }
+
+  /* A label: ink on surface with the label's colour only as an SVG dot (`fill`), so it is
+     legible in every theme. */
+  .label-chip {
+    @apply inline-flex h-5 max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 text-[11px]
+      font-medium text-ink;
+  }
+
+  .label-chip > svg {
+    @apply size-2 shrink-0;
+  }
+
+  /* The conversation: items on a vertical rule. */
+  .timeline {
+    @apply relative flex flex-col gap-4;
+  }
+
+  .timeline::before {
+    content: "";
+    @apply absolute inset-y-0 left-4 w-px bg-line;
+  }
+
+  .timeline-item {
+    @apply relative flex min-w-0 gap-3;
+  }
+
+  /* A small event row ("alice added the bug label"): icon in a circle on the rule. */
+  .timeline-event {
+    @apply relative flex min-h-8 min-w-0 items-center gap-2 pl-1 text-[13px] text-ink-muted;
+  }
+
+  .timeline-badge {
+    @apply relative z-10 inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-line bg-canvas
+      text-ink-muted;
+  }
+
+  /* The unread indicator on the header's bell. */
+  .notification-dot {
+    @apply pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full border border-canvas bg-inverted;
+  }
+
+  /* A review comment thread inside a diff table row. */
+  .diff-comment {
+    @apply border-y border-line bg-subtle px-3 py-3 font-sans text-[13px] whitespace-normal text-ink;
+  }
 }
 
 /* ---------------------------------------------------------------- Syntax highlighting */

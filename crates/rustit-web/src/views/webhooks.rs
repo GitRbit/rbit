@@ -521,6 +521,13 @@ mod tests {
     }
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/".to_owned(), theme: crate::themes::Theme::System }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: "/".to_owned(),
+            theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
+        }
     }
 }

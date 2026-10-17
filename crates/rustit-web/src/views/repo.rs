@@ -50,8 +50,15 @@ pub struct RepoHeader {
     pub forked_from: Option<ForkedFrom>,
     /// The upstream URL, when this repository is a pull mirror.
     pub mirror_url: Option<String>,
-    /// `"code"`, `"commits"`, `"branches"`, `"tags"`, `"releases"` or `"settings"`;
-    /// compared in `repo/subnav.html`.
+    /// `/{owner}/{repo}/issues` and `/{owner}/{repo}/pulls`.
+    pub issues_url: String,
+    pub pulls_url: String,
+    /// Open issues and pull requests, shown on the tabs (zero until T0 fills them from
+    /// `TimelineService::open_counts`).
+    pub open_issues: u64,
+    pub open_pulls: u64,
+    /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
+    /// or `"settings"`; compared in `repo/subnav.html`.
     pub active_tab: &'static str,
 }
 

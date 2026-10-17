@@ -315,6 +315,7 @@ mod tests {
             viewer: None,
             path: "/acme/teams/core".to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 

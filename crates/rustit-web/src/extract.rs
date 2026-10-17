@@ -84,6 +84,13 @@ impl FromRequestParts<AppState> for Page {
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let viewer = Viewer::from_request_parts(parts, state).await?;
-        Ok(Page::new(state, viewer.user(), parts.uri.path()).with_theme(Theme::from_headers(&parts.headers)))
+        let mut page = Page::new(state, viewer.user(), parts.uri.path()).with_theme(Theme::from_headers(&parts.headers));
+        if let Some(user) = viewer.user().filter(|_| state.config.issues.notifications) {
+            page.has_unread_notifications = state.services.notifications.has_unread(user.id()).await.unwrap_or_else(|error| {
+                tracing::warn!(%error, "cannot check for unread notifications");
+                false
+            });
+        }
+        Ok(page)
     }
 }

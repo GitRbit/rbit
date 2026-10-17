@@ -277,7 +277,14 @@ mod tests {
     use super::*;
 
     fn page(theme: Theme) -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: GALLERY_URL.to_owned(), theme }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: GALLERY_URL.to_owned(),
+            theme,
+            has_unread_notifications: false,
+        }
     }
 
     fn all_cards(gallery: &Gallery) -> impl Iterator<Item = &ThemeCard> {

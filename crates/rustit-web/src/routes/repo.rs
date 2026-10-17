@@ -118,6 +118,10 @@ impl RepoPage {
             forks_url: format!("{}/forks", self.urls.home()),
             forked_from: self.forked_from.clone(),
             mirror_url: self.mirror_url.clone(),
+            issues_url: format!("{}/issues", self.urls.home()),
+            pulls_url: format!("{}/pulls", self.urls.home()),
+            open_issues: 0,
+            open_pulls: 0,
             active_tab,
         }
     }

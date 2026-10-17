@@ -562,6 +562,7 @@ mod tests {
             viewer: None,
             path: "/settings/account".to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 

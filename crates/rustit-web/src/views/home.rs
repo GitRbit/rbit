@@ -189,7 +189,14 @@ mod tests {
     use super::*;
 
     fn page() -> Page {
-        Page { site_name: "Rustit".to_owned(), title: None, viewer: None, path: "/".to_owned(), theme: crate::themes::Theme::System }
+        Page {
+            site_name: "Rustit".to_owned(),
+            title: None,
+            viewer: None,
+            path: "/".to_owned(),
+            theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
+        }
     }
 
     fn landing(public_repositories: i64, users: i64, organizations: i64) -> LandingPage {
@@ -213,6 +220,26 @@ mod tests {
     /// The page body, without the header (which has its own sign-in links).
     fn main_of(html: &str) -> &str {
         &html[html.find("<main").unwrap()..html.find("</main>").unwrap()]
+    }
+
+    #[test]
+    fn signed_in_headers_have_a_notification_bell_with_an_unread_dot() {
+        let viewer = crate::views::layout::NavUser {
+            name: "alice".to_owned(),
+            label: "Alice".to_owned(),
+            avatar: Avatar { initials: "A".to_owned(), palette: 0 },
+            is_admin: false,
+            can_create_org: false,
+        };
+        let signed_in = |unread| {
+            let page = Page { viewer: Some(viewer.clone()), has_unread_notifications: unread, ..page() };
+            DashboardPage { page, repos: Vec::new(), recent: Vec::new(), orgs: Vec::new(), can_create_org: false }.render().unwrap()
+        };
+        let read = signed_in(false);
+        assert!(read.contains(r#"href="/notifications""#) && read.contains(r#"aria-label="Notifications""#));
+        assert!(!read.contains("notification-dot"));
+        assert!(signed_in(true).contains("notification-dot"));
+        assert!(!landing(0, 0, 0).render().unwrap().contains(r#"href="/notifications""#), "anonymous visitors get no bell");
     }
 
     #[test]

@@ -71,6 +71,10 @@
         </details>
 
         {% if let Some(user) = page.viewer %}
+        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="Notifications" title="{% if page.has_unread_notifications %}You have unread notifications{% else %}Notifications{% endif %}">
+          {% call ui::icon("bell", "size-4") %}{% endcall %}
+          {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
+        </a>
         <a href="/new" class="btn btn-ghost btn-icon" aria-label="New repository" title="New repository">
           {% call ui::icon("plus", "size-4") %}{% endcall %}
         </a>

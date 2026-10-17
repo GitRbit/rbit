@@ -172,6 +172,7 @@ mod tests {
             viewer: None,
             path: "/password/forgot".to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 

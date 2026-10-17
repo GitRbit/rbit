@@ -287,6 +287,7 @@ mod tests {
                 viewer: None,
                 path: "/acme/settings".into(),
                 theme: crate::themes::Theme::System,
+                has_unread_notifications: false,
             },
             header,
             form: OrgProfileForm::default(),

@@ -462,6 +462,7 @@ mod tests {
             viewer: None,
             path: SECURITY_URL.to_owned(),
             theme: crate::themes::Theme::System,
+            has_unread_notifications: false,
         }
     }
 
