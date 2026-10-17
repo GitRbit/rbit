@@ -66,7 +66,7 @@ through integration requests. B does not depend on T0.
 
 ### 1. The issue model (T0, frozen)
 
-#### Migration `0016_issues_core.sql`
+#### Migration `0017_issues_core.sql`
 
 ```sql
 CREATE TABLE issue_counters (
@@ -633,7 +633,7 @@ paths or schema names.
 
 ### Migrations
 
-- `0017_issue_metadata.sql`: `labels(id, repo_id CASCADE, name NOCASE, color CHECK
+- `0018_issue_metadata.sql`: `labels(id, repo_id CASCADE, name NOCASE, color CHECK
   (color GLOB '#[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'), description,
   created_at, updated_at, UNIQUE(repo_id, name))`; `issue_labels(issue_id CASCADE,
   label_id CASCADE, created_at, PK)` + index on `label_id`; `milestones(id, repo_id
@@ -644,12 +644,12 @@ paths or schema names.
   `issue_commit_refs(issue_id CASCADE, commit_sha, created_at, PK)`;
   `issue_cross_refs(target_id → issues CASCADE, source_id → issues CASCADE, created_at, PK)`
   (dedupes `CrossReferenced`).
-- `0018_notifications.sql`: `issue_subscriptions(issue_id CASCADE, user_id CASCADE,
+- `0019_notifications.sql`: `issue_subscriptions(issue_id CASCADE, user_id CASCADE,
   reason CHECK IN ('author','comment','assigned','mention','review_requested','reviewed','manual'),
   subscribed CHECK IN (0,1), updated_at, PK)`; `notifications(id, user_id CASCADE,
   issue_id CASCADE, repo_id CASCADE, reason, unread CHECK IN (0,1), last_actor_id SET
   NULL, updated_at, UNIQUE(user_id, issue_id))` + index `(user_id, unread, updated_at DESC)`.
-- `0019_issue_search.sql`: `issues_fts` (FTS5, `content='issues'`, `content_rowid='id'`,
+- `0020_issue_search.sql`: `issues_fts` (FTS5, `content='issues'`, `content_rowid='id'`,
   columns `title`, `body`, `tokenize='unicode61 remove_diacritics 2'`), insert/update/delete
   triggers on `issues`, then `INSERT INTO issues_fts(issues_fts) VALUES ('rebuild')`. The
   bundled SQLite is built with `SQLITE_ENABLE_FTS5`; a store test asserts it.
@@ -660,7 +660,7 @@ Stubs marked ★ exist on `main` after P0.
 
 - core: `rustit-core/src/{references.rs★,issue_query.rs★,config/issues.rs★}`
 - storage: `rustit-storage/src/sqlite/{issue_meta.rs★,issue_search.rs★,notifications.rs★}`,
-  `rustit-storage/migrations/0017_*.sql`, `0018_*.sql`, `0019_*.sql`, new
+  `rustit-storage/migrations/0018_*.sql`, `0019_*.sql`, `0020_*.sql`, new
   `rustit-storage/tests/{issue_meta,issue_search,notifications}.rs`
 - services: `rustit-services/src/{issues.rs★,issues/**★,references.rs★,notifications.rs★}`,
   new `rustit-services/tests/{issues,references,notifications}*.rs`
@@ -844,7 +844,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
 
 ### Migrations
 
-- `0020_pull_requests.sql`: `pull_requests(issue_id INTEGER PRIMARY KEY → issues CASCADE,
+- `0021_pull_requests.sql`: `pull_requests(issue_id INTEGER PRIMARY KEY → issues CASCADE,
   repo_id → repositories CASCADE, head_repo_id → repositories SET NULL, head_branch,
   base_branch, head_sha, is_draft CHECK IN (0,1), mergeable CHECK IN
   ('unknown','clean','conflict','error') DEFAULT 'unknown', mergeable_base_sha,
@@ -852,7 +852,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
   SET NULL, merge_strategy CHECK IN ('merge','squash','rebase') NULL, merge_commit_sha,
   merged_base_sha, merged_head_sha, created_at, updated_at)`; indexes on
   `(head_repo_id, head_branch)`, `(repo_id, base_branch)`, `(repo_id, mergeable)`.
-- `0021_reviews.sql`: `pull_reviews(id, pull_id → pull_requests CASCADE, reviewer_id SET
+- `0022_reviews.sql`: `pull_reviews(id, pull_id → pull_requests CASCADE, reviewer_id SET
   NULL, state CHECK IN ('pending','commented','approved','changes_requested','dismissed'),
   body, commit_sha, created_at, submitted_at, dismissed_by SET NULL, dismissed_at,
   dismissal_message)` + a partial unique index on `(pull_id, reviewer_id) WHERE state =
@@ -869,7 +869,7 @@ sees an unread notification while a mentioned outsider does not; `git push` a co
 - git: `rustit-git/src/{merge.rs★,overlay.rs★,pull_refs.rs★,compare.rs,diff.rs}` (the last
   two additively), new `rustit-git/tests/{merge,overlay}.rs`
 - storage: `rustit-storage/src/sqlite/{pulls.rs★,reviews.rs★,forks.rs}`,
-  `rustit-storage/migrations/0020_*.sql`, `0021_*.sql`, `0022_*.sql`, new storage tests
+  `rustit-storage/migrations/0021_*.sql`, `0022_*.sql`, `0023_*.sql`, new storage tests
 - services: `rustit-services/src/{pulls.rs★,pulls/**★,forks.rs}` (`forks.rs` additively:
   network queries), new `rustit-services/tests/pulls*.rs`
 - web: `rustit-web/src/routes/{pulls.rs★,compare.rs}`, `rustit-web/src/routes/api/pulls.rs★`,
@@ -958,7 +958,7 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
 
 ### Migrations
 
-- `0023_branch_protection.sql`: `branch_protections(id, repo_id CASCADE, pattern,
+- `0024_branch_protection.sql`: `branch_protections(id, repo_id CASCADE, pattern,
   deny_force_push, deny_deletion, require_pull_request, required_approvals CHECK
   (required_approvals BETWEEN 0 AND 10), dismiss_stale_approvals,
   block_on_changes_requested, restrict_pushers, allow_admin_bypass (all flags `CHECK IN
@@ -972,8 +972,8 @@ refuses to merge; a private repository's PRs are 404 for outsiders (pages and AP
 
 - core: `rustit-core/src/protection.rs★`
 - transport: `rustit-transport/src/receive.rs★`, new `rustit-transport/tests/receive.rs`
-- storage: `rustit-storage/src/sqlite/protection.rs★`, `rustit-storage/migrations/0023_*.sql`,
-  `0024_*.sql`, new `rustit-storage/tests/protection.rs`
+- storage: `rustit-storage/src/sqlite/protection.rs★`, `rustit-storage/migrations/0024_*.sql`,
+  `0025_*.sql`, new `rustit-storage/tests/protection.rs`
 - services: `rustit-services/src/protection.rs★`, new `rustit-services/tests/protection.rs`
 - web: `rustit-web/src/routes/{protection.rs★,api/protection.rs★}`,
   `rustit-web/src/routes/api/openapi/protection.json★`,
@@ -1119,7 +1119,7 @@ Web
 - [ ] E2E module stubs `issues`, `pulls`, `protection`.
 
 T0 (before launching I and P)
-- [ ] `0016_issues_core.sql`, `IssueStore`, `TimelineService`, `routes/timeline.rs`,
+- [ ] `0017_issues_core.sql`, `IssueStore`, `TimelineService`, `routes/timeline.rs`,
       `views/timeline.rs`, `templates/timeline/**`, `urls::issue_url`, open counts in the
       header — with store tests (concurrent creation yields distinct numbers, counters
       survive deletion, comment counts, timeline order and cursor), service tests
