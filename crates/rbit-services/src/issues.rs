@@ -297,9 +297,8 @@ impl IssueService {
 
     // ------------------------------------------------------------------ the hook
 
-    /// Labels, assignees and milestone of each of `issues` (missing ids are left out of
-    /// nothing: every id gets an entry, empty when it has no metadata). One batch query
-    /// per kind of metadata.
+    /// Labels, assignees and milestone of each of `issues`: every id gets an entry, empty
+    /// when it has none (or does not exist). One batch query per kind of metadata.
     pub async fn metadata(&self, issues: &[IssueId]) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError> {
         let store = self.ctx.database.issue_meta();
         let (labels, assignees, milestones) =
