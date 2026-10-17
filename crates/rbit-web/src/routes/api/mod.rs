@@ -39,6 +39,8 @@ mod repos;
 mod teams;
 #[cfg(test)]
 mod test_support;
+// Milestone 3: commit statuses (S).
+mod statuses;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
@@ -101,7 +103,9 @@ impl ApiMethod {
 pub struct ApiRoute {
     pub method: ApiMethod,
     pub path: Cow<'static, str>,
-    handler: MethodRouter<AppState>,
+    /// `None`: served by the handler of a wildcard route that also matches this path
+    /// (see [`route_in_wildcard`]); listed so the `OpenAPI` test covers it.
+    handler: Option<MethodRouter<AppState>>,
     /// Served without the 1 MiB body limit, the 30 s timeout and compression (see
     /// [`ApiRoute::streaming`]).
     streaming: bool,
@@ -128,7 +132,14 @@ where
     H: Handler<T, AppState>,
     T: 'static,
 {
-    ApiRoute { method, path: path.into(), handler: on(method.filter(), handler), streaming: false }
+    ApiRoute { method, path: path.into(), handler: Some(on(method.filter(), handler)), streaming: false }
+}
+
+/// An endpoint the router cannot register next to a wildcard (axum cannot route
+/// `/commits/{ref}/status` beside `/commits/{*reference}`); the wildcard's handler serves
+/// it (milestone 3, S: `statuses::commit_or_statuses`).
+fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> ApiRoute {
+    ApiRoute { method, path: path.into(), handler: None, streaming: false }
 }
 
 /// Every endpoint of the API.
@@ -156,7 +167,8 @@ pub fn table() -> Vec<ApiRoute> {
         route(Get, "/repos/{owner}/{repo}/branches/{*branch}", repos::branch),
         route(Get, "/repos/{owner}/{repo}/tags", repos::tags),
         route(Get, "/repos/{owner}/{repo}/commits", repos::commits),
-        route(Get, "/repos/{owner}/{repo}/commits/{*reference}", repos::commit),
+        // Also serves `…/commits/{ref}/statuses` and `…/status` (milestone 3, S).
+        route(Get, "/repos/{owner}/{repo}/commits/{*reference}", statuses::commit_or_statuses),
     ];
     for prefix in ["/repos/{owner}/{repo}/hooks", "/orgs/{org}/hooks"] {
         let path = |suffix: &str| format!("{prefix}{suffix}");
@@ -182,12 +194,14 @@ pub fn table() -> Vec<ApiRoute> {
     routes.extend(teams::routes());
     routes.extend(releases::routes());
     routes.extend(forks::routes());
+    // Milestone 3: commit statuses (S).
+    routes.extend(statuses::routes());
     routes
 }
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
-const FRAGMENTS: [(&str, &str); 8] = [
+const FRAGMENTS: [(&str, &str); 9] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
     ("pulls", include_str!("openapi/pulls.json")),
@@ -197,6 +211,8 @@ const FRAGMENTS: [(&str, &str); 8] = [
     ("teams", include_str!("openapi/teams.json")),
     ("releases", include_str!("openapi/releases.json")),
     ("forks", include_str!("openapi/forks.json")),
+    // Milestone 3: commit statuses (S).
+    ("statuses", include_str!("openapi/statuses.json")),
 ];
 
 /// The served document: `openapi.json` with every fragment's paths and schemas merged in.
@@ -230,11 +246,15 @@ pub fn routes() -> Router<AppState> {
     let (streaming, buffered): (Vec<_>, Vec<_>) = table().into_iter().partition(|entry| entry.streaming);
     let mut router = Router::new();
     for entry in buffered {
-        router = router.route(&format!("{PREFIX}{}", entry.path), entry.handler);
+        if let Some(handler) = entry.handler {
+            router = router.route(&format!("{PREFIX}{}", entry.path), handler);
+        }
     }
     let mut streams = Router::new();
     for entry in streaming {
-        streams = streams.route(&format!("{PREFIX}{}", entry.path), entry.handler);
+        if let Some(handler) = entry.handler {
+            streams = streams.route(&format!("{PREFIX}{}", entry.path), handler);
+        }
     }
     let streams = streams
         .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, HeaderValue::from_static("no-store")))

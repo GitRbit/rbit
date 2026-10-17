@@ -1,0 +1,365 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/statuses/{sha}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "sha",
+          "in": "path",
+          "required": true,
+          "description": "The full commit id (40 or 64 hexadecimal digits). The commit must exist in the repository; for a pull request from a fork its head does.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createCommitStatus",
+        "tags": [
+          "statuses"
+        ],
+        "summary": "Report the state of a check on a commit (write scope and write access). Every report is kept; the latest per context counts. At most 1000 per commit and context.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitStatusBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {
+              "Location": {
+                "description": "The commit's statuses URL",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitStatus"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/commits/{ref}/statuses": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "ref",
+          "in": "path",
+          "required": true,
+          "description": "A branch (may contain /), tag or commit id. A branch whose name ends in /status or /statuses cannot be addressed here; use its commit id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listCommitStatuses",
+        "tags": [
+          "statuses"
+        ],
+        "summary": "Every status of the commit a branch, tag or id names, newest first",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of statuses",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CommitStatus"
+                  }
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/commits/{ref}/status": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "ref",
+          "in": "path",
+          "required": true,
+          "description": "A branch (may contain /), tag or commit id. A branch whose name ends in /status or /statuses cannot be addressed here; use its commit id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getCombinedCommitStatus",
+        "tags": [
+          "statuses"
+        ],
+        "summary": "The combined status of the commit a branch, tag or id names: failure if any latest status is failure or error, pending if there are none or any is pending, success otherwise",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The combined status; `statuses` is paginated, `total_count` counts every context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CombinedCommitStatus"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CommitStatusState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "success",
+          "failure",
+          "error"
+        ]
+      },
+      "CommitStatus": {
+        "type": "object",
+        "required": [
+          "url",
+          "id",
+          "state",
+          "description",
+          "target_url",
+          "context",
+          "created_at",
+          "updated_at",
+          "creator"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CommitStatusState"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 140
+          },
+          "target_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "context": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "creator": {
+            "description": "The account that reported it; null once deleted.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CommitStatusBody": {
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/CommitStatusState"
+          },
+          "target_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "An absolute http or https URL without credentials, e.g. the build's page."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 140,
+            "description": "One line, at most 140 characters."
+          },
+          "context": {
+            "type": "string",
+            "maxLength": 255,
+            "default": "default",
+            "description": "The name of the check, e.g. ci/build. Case-sensitive."
+          }
+        }
+      },
+      "CombinedCommitStatus": {
+        "type": "object",
+        "required": [
+          "state",
+          "statuses",
+          "sha",
+          "total_count",
+          "repository",
+          "commit_url",
+          "url"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "success",
+              "failure"
+            ]
+          },
+          "statuses": {
+            "type": "array",
+            "description": "The latest status of each context, by context.",
+            "items": {
+              "$ref": "#/components/schemas/CommitStatus"
+            }
+          },
+          "sha": {
+            "type": "string"
+          },
+          "total_count": {
+            "type": "integer"
+          },
+          "repository": {
+            "$ref": "#/components/schemas/Repository"
+          },
+          "commit_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      }
+    }
+  }
+}
