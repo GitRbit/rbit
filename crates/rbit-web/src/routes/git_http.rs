@@ -198,7 +198,7 @@ fn git_protocol(headers: &HeaderMap) -> Option<&str> {
 
 /// Why a Git request was refused.
 #[derive(Debug)]
-enum Denied {
+pub(super) enum Denied {
     /// Ask the client for (better) credentials.
     Challenge,
     Forbidden,
@@ -256,11 +256,11 @@ fn remote_error(service: Service, message: &str) -> Response {
 
 /// Who is making a Git request, and how far their credential reaches.
 #[derive(Debug)]
-struct GitCaller {
-    user: User,
+pub(super) struct GitCaller {
+    pub(super) user: User,
     /// `Some` when authenticated with a personal access token, whose scope caps access.
     /// Password authentication carries the user's full access.
-    token_scope: Option<TokenScope>,
+    pub(super) token_scope: Option<TokenScope>,
 }
 
 /// Resolves credentials and checks that they grant `service` on the repository.
@@ -310,7 +310,7 @@ async fn authorize(
 
 /// `Ok(None)` for anonymous requests; a challenge for wrong credentials.
 /// A password that looks like a personal access token is checked as one, never as a password.
-async fn authenticate(state: &AppState, client: &Client, headers: &HeaderMap) -> Result<Option<GitCaller>, Denied> {
+pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &HeaderMap) -> Result<Option<GitCaller>, Denied> {
     let Some((login, password)) = basic_credentials(headers) else {
         return Ok(None);
     };

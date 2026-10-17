@@ -364,6 +364,9 @@ pub async fn blob(
         }
         Err(error) => return Err(ServiceError::from(error).into()),
     };
+    // Milestone 3: a pointer file shows its Git LFS object instead (L).
+    let (view, lfs) = super::lfs::lfs_blob(&state, &loaded.ctx, viewer.user(), view, max_bytes).await;
+    let lfs_stored = lfs.map(|lfs| lfs.stored);
 
     let name = file_name(&path).to_owned();
     let text = view.text().map(str::to_owned);
@@ -371,6 +374,7 @@ pub async fn blob(
     let language = text.as_ref().and_then(|t| state.highlighter.language_name(&name, t));
 
     let content = match text {
+        _ if lfs_stored == Some(true) && image_content_type(&path).is_some() => BlobContent::Image,
         _ if view.data.is_none() => BlobContent::TooLarge,
         None => BlobContent::Binary,
         Some(text) if is_markdown(&name) => {
@@ -407,6 +411,7 @@ pub async fn blob(
         content,
         edit_url: (editable && is_text).then(|| urls.edit("edit", &revision, &path)),
         delete_url: editable.then(|| urls.edit("delete", &revision, &path)),
+        lfs_stored,
     }
     .into_response())
 }
@@ -426,6 +431,10 @@ pub async fn raw(
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let image_type = image_content_type(&path);
     let view = ctx.reader.blob(revision, path, MAX_RAW_BYTES).await.map_err(ServiceError::from)?;
+    // Milestone 3: a pointer file serves its Git LFS object, streamed (L).
+    if let Some(response) = super::lfs::lfs_raw(&state, &ctx, viewer.user(), &view, image_type).await {
+        return Ok(response);
+    }
     let Some(data) = view.data else {
         return Err(WebError::BadRequest("file is too large to download through the web interface; clone the repository instead".into()));
     };

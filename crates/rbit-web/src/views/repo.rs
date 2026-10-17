@@ -225,6 +225,8 @@ pub enum BlobContent {
     Markdown(String),
     Binary,
     TooLarge,
+    /// An image stored with Git LFS, shown from the raw URL.
+    Image,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -246,6 +248,9 @@ pub struct BlobPage {
     // editor only for text it can display).
     pub edit_url: Option<String>,
     pub delete_url: Option<String>,
+    /// `Some` for a Git LFS pointer file: whether the server has its object (shown in
+    /// place of the pointer when it does).
+    pub lfs_stored: Option<bool>,
 }
 
 /// Commits grouped under a calendar-day heading.

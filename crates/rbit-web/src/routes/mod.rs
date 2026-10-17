@@ -16,6 +16,7 @@ mod history;
 mod home;
 mod issues;
 mod labels;
+mod lfs;
 mod listing;
 mod milestones;
 mod mirrors;
@@ -74,6 +75,8 @@ pub fn router(state: AppState) -> Router {
         .merge(releases::file_routes(&state))
         // Milestone 3: editing files in the browser (E): streaming uploads.
         .merge(edits::upload_routes(&state))
+        // Milestone 3: Git LFS (L). Streams like Git traffic: no page layers.
+        .merge(lfs::routes())
         // Before any route: a hover preload must never reach a side-effecting handler.
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))
