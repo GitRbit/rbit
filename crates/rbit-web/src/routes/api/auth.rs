@@ -1,8 +1,8 @@
 //! Who is calling the API: anonymous, or the owner of a personal access token.
 //!
-//! Tokens arrive as `Authorization: Bearer rit_…` (or GitHub's `token rit_…`); cookies are
-//! never read, so the API needs no CSRF protection and a browser session cannot be
-//! ridden. Presented tokens are throttled per client address (`ApiAuth`; invalid ones cost
+//! Tokens arrive as `Authorization: Bearer rbit_…` (or GitHub's `token rbit_…`; the legacy
+//! `rit_…` spelling works too); cookies are never read, so the API needs no CSRF
+//! protection and a browser session cannot be ridden. Presented tokens are throttled per client address (`ApiAuth`; invalid ones cost
 //! extra), authenticated requests per account and anonymous ones per address
 //! (`ApiRequest`). Expired tokens and tokens of suspended accounts are refused like
 //! unknown ones. With `[api] enabled = false` every request is answered 404 here.
@@ -203,9 +203,9 @@ mod tests {
     #[test]
     fn reads_bearer_and_token_schemes() {
         let token = |value: &'static str| presented_token(&HeaderValue::from_static(value)).map(str::to_owned);
-        assert_eq!(token("Bearer rit_abc").as_deref(), Some("rit_abc"));
-        assert_eq!(token("bearer   rit_abc ").as_deref(), Some("rit_abc"));
-        assert_eq!(token("token rit_abc").as_deref(), Some("rit_abc"));
+        assert_eq!(token("Bearer rbit_abc").as_deref(), Some("rbit_abc"));
+        assert_eq!(token("bearer   rbit_abc ").as_deref(), Some("rbit_abc"));
+        assert_eq!(token("token rbit_abc").as_deref(), Some("rbit_abc"));
         assert_eq!(token("Basic YWxpY2U6cGFzcw=="), None);
         assert_eq!(token("Bearer"), None);
         assert_eq!(token("Bearer "), None);

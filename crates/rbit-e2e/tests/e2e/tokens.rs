@@ -35,6 +35,12 @@ async fn token_scopes_cap_git_access_and_revocation_is_immediate() {
     // A read token clones a private repository but cannot push.
     let clone = git.clone(&server.git_url_as("alice", "vault", "alice", &read));
     assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
+
+    // Tokens issued before the `rbit_` prefix read `rit_…`; they still clone.
+    let legacy = read.replacen("rbit_", "rit_", 1);
+    let legacy_clone = git.clone(&server.git_url_as("alice", "vault", "alice", &legacy));
+    assert_eq!(git.ok(&legacy_clone, &["rev-parse", "HEAD"]).trim(), sample.head);
+
     git.commit_file(&clone, "notes.txt", "read tokens cannot push this\n");
     let refused = git.fails(&clone, &["push", &server.git_url_as("alice", "vault", "alice", &read), "HEAD:refs/heads/main"]);
     assert!(refused.contains("403"), "a read token gets 403 on push: {refused}");
@@ -52,7 +58,7 @@ async fn token_scopes_cap_git_access_and_revocation_is_immediate() {
     git.clone(&server.git_url_as("alice", "vault", "alice", &write));
 
     // A made-up token is a wrong credential, never a password attempt.
-    let forged = format!("rit_{}", "A".repeat(43));
+    let forged = format!("rbit_{}", "A".repeat(43));
     server.client().get_basic(upload, "alice", &forged).await.expect_status(StatusCode::UNAUTHORIZED);
 }
 

@@ -50,10 +50,11 @@ Clone and push over HTTPS with your username and password:
 git clone http://localhost:3000/<owner>/<repo>.git
 ```
 
-Instead of your account password you can use a personal access token (`rit_…`) as the Git
+Instead of your account password you can use a personal access token (`rbit_…`) as the Git
 password — required once two-factor authentication is enabled. Tokens are scoped (`read`
 can clone and fetch, `write` can also push, `admin` can also change repository settings,
-webhooks and delete through the API), can expire, and can be revoked individually.
+webhooks and delete through the API), can expire, and can be revoked individually. Tokens
+issued by earlier releases start with `rit_…` and keep working.
 
 With `[ssh] enabled = true`, add a public key under **Settings → SSH keys** and use the SSH
 URL from the repository's **Clone** menu.
@@ -61,7 +62,7 @@ URL from the repository's **Clone** menu.
 The same tokens authenticate the REST API:
 
 ```bash
-curl -H "Authorization: Bearer rit_…" http://localhost:3000/api/v1/user
+curl -H "Authorization: Bearer rbit_…" http://localhost:3000/api/v1/user
 ```
 
 `GET /api/v1/openapi.json` describes every endpoint.

@@ -76,9 +76,27 @@ async fn create_authenticate_revoke() {
 #[tokio::test]
 async fn unknown_and_malformed_secrets_are_rejected() {
     let fixture = Fixture::new().await;
-    for secret in ["", "hunter2", "rit_", "rit_tooshort", &AccessTokenSecret::generate().encode()] {
+    for secret in ["", "hunter2", "rbit_", "rbit_tooshort", "rit_", "rit_tooshort", &AccessTokenSecret::generate().encode()] {
         assert!(fixture.tokens().authenticate(secret).await.unwrap().is_none(), "{secret:?}");
     }
+}
+
+/// Tokens issued before the `rbit_` prefix were `rit_` + the same 43 characters, and the
+/// stored digest covers only those characters: such a token keeps authenticating.
+#[tokio::test]
+async fn tokens_with_the_legacy_prefix_still_authenticate() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let (token, secret) = fixture.tokens().create(&alice, input("old laptop", TokenScope::Write)).await.unwrap();
+    let legacy = secret.replacen(AccessTokenSecret::PREFIX, AccessTokenSecret::LEGACY_PREFIX, 1);
+    assert!(legacy.starts_with("rit_") && legacy.ends_with(&token.hint));
+
+    let (user, scope) = fixture.tokens().authenticate(&legacy).await.unwrap().unwrap();
+    assert_eq!(user.id(), alice.id());
+    assert_eq!(scope, TokenScope::Write);
+
+    fixture.tokens().revoke(&alice, token.id).await.unwrap();
+    assert!(fixture.tokens().authenticate(&legacy).await.unwrap().is_none(), "revoking covers both spellings");
 }
 
 #[tokio::test]

@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 <h2 class="text-xl font-semibold tracking-tight">Access tokens</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink">/api/v1</span> takes it as <span class="font-mono text-ink">Authorization: Bearer</span>.</p>
+<p class="mt-1 text-[13px] text-ink-muted">Use a token instead of your password for Git over HTTPS: enter your username <span class="font-mono text-ink">{{ username }}</span> and paste the token when Git asks for a password. The REST API at <span class="font-mono text-ink">/api/v1</span> takes it as <span class="font-mono text-ink">Authorization: Bearer</span>. Tokens start with <span class="font-mono text-ink">rbit_</span>; tokens from earlier releases start with <span class="font-mono text-ink">rit_</span> and keep working.</p>
 
 {% if let Some(created) = created %}
 {#- hx-history="false" keeps this page (and the secret) out of htmx's localStorage history cache. -#}

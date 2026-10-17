@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(response.headers()[header::WWW_AUTHENTICATE].to_str().unwrap().starts_with("Bearer"));
         assert_eq!(json["message"], "Requires authentication");
-        let (response, _) = fixture.send("GET", "/api/v1/user", Some("rit_not-a-real-token"), None).await;
+        let (response, _) = fixture.send("GET", "/api/v1/user", Some("rbit_not-a-real-token"), None).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
         let (response, json) = fixture.send("GET", "/api/v1/user", Some(&read), None).await;

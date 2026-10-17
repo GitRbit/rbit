@@ -10,8 +10,6 @@ use crate::views::{
     layout::Page,
 };
 
-/// Prefix every token secret starts with; shown before the hint so users recognise it.
-const TOKEN_PREFIX: &str = "rit_";
 /// Expiry preselected in the create form.
 const DEFAULT_EXPIRY: Option<u32> = Some(30);
 /// Form value of the "No expiration" choice.
@@ -269,7 +267,8 @@ impl AccountPage {
 #[derive(Debug, Clone)]
 pub struct TokenRow {
     pub name: String,
-    /// e.g. `rit_…a1b2`.
+    /// e.g. `…a1b2`: the last characters of the secret. No prefix: the stored hint does not
+    /// record whether a token was issued as `rbit_…` or, before that, as `rit_…`.
     pub hint: String,
     pub scope_label: &'static str,
     /// e.g. `Created Oct 15, 2026`.
@@ -294,7 +293,7 @@ impl TokenRow {
         };
         Self {
             name: token.name.clone(),
-            hint: format!("{TOKEN_PREFIX}…{}", token.hint),
+            hint: format!("…{}", token.hint),
             scope_label: scope_label(token.scope),
             created: format!("Created {}", token.created_at.date()),
             created_iso: token.created_at.iso8601(),
@@ -476,7 +475,7 @@ mod tests {
     #[test]
     fn row_formats_metadata() {
         let row = TokenRow::new(&token(Some(Timestamp(NOW.0 + 30 * DAY)), None), NOW);
-        assert_eq!(row.hint, "rit_…a1b2");
+        assert_eq!(row.hint, "…a1b2");
         assert_eq!(row.scope_label, "Write");
         assert_eq!(row.created, "Created Oct 5, 2026");
         assert_eq!(row.last_used, "Never used");

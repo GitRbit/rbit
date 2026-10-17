@@ -4,7 +4,7 @@
 //!
 //! * [`password`] — Argon2id hashing tuned to OWASP recommendations.
 //! * [`session`] — unguessable session tokens; only their digests are ever stored.
-//! * [`access_token`] — personal access token secrets (`rit_…`), likewise stored as digests.
+//! * [`access_token`] — personal access token secrets (`rbit_…`; legacy `rit_…`), likewise stored as digests.
 //! * [`policy`] — who may read, write or administer a repository.
 //! * [`totp`] — time-based one-time passwords (RFC 6238) and recovery codes.
 //! * [`webauthn`] — passkeys and security keys as a second factor.

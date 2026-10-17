@@ -1,8 +1,8 @@
 //! Git smart-HTTP protocol endpoints.
 //!
 //! Authentication is HTTP Basic: username or email + password, or any username + a
-//! personal access token (`rit_…`) whose scope caps what the request may do. Cookies are
-//! ignored here.
+//! personal access token (`rbit_…`, or the legacy `rit_…`) whose scope caps what the request
+//! may do. Cookies are ignored here.
 //! Suspended users are refused whichever credential they present.
 //! Anonymous users may fetch public repositories. When access is missing the server
 //! answers `401` with a `WWW-Authenticate` challenge so Git prompts for credentials.

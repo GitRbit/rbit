@@ -336,7 +336,7 @@ impl Client {
         let page = self.post("/settings/tokens", &[("name", name), ("scope", scope), ("expires", "never")]).await;
         page.expect_status(StatusCode::OK);
         let secret = attribute_after(&page.body, "id=\"new-token\"", "value").expect("the created token is shown");
-        assert!(secret.starts_with("rit_"), "unexpected token format: {secret}");
+        assert!(secret.starts_with("rbit_"), "unexpected token format: {secret}");
         secret
     }
 

@@ -304,7 +304,10 @@ async fn tokens_read_the_api_and_page_through_repositories() {
     assert_eq!((me["login"].as_str(), me["type"].as_str()), (Some("alice"), Some("User")));
     assert_eq!(me["html_url"], server.url("/alice"));
     Api::new(&server, None).get("/user").await.expect(StatusCode::UNAUTHORIZED);
-    let forged = Api::new(&server, Some(&format!("rit_{}", "A".repeat(43)))).get("/user").await;
+    // The same token written with the legacy `rit_` prefix of earlier releases.
+    let legacy = Api::new(&server, Some(&token.replacen("rbit_", "rit_", 1))).get("/user").await;
+    assert_eq!(legacy.expect(StatusCode::OK)["login"], "alice");
+    let forged = Api::new(&server, Some(&format!("rbit_{}", "A".repeat(43)))).get("/user").await;
     forged.expect(StatusCode::UNAUTHORIZED);
     assert!(forged.header("www-authenticate").is_some_and(|value| value.starts_with("Bearer")));
 
