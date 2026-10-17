@@ -450,3 +450,48 @@ async fn drafts_requests_and_hidden_repositories() {
         pulls.list(&fixture.repo(&fixture.alice, "alice").await, &rbit_storage::sqlite::pulls::PullFilter::default(), 1).await.unwrap();
     assert_eq!((list.total, list.open, list.closed, list.items.len()), (1, 1, 0, 1));
 }
+
+#[tokio::test]
+async fn branch_protection_gates_merges_and_head_branch_deletion() {
+    use rbit_core::protection::RuleSettings;
+    use rbit_services::protection::ProtectionInput;
+
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let protection = &fixture.services.protection;
+    let repo = fixture.repo(&fixture.alice, "alice").await;
+    let rule =
+        |pattern: &str, settings: RuleSettings| ProtectionInput { pattern: pattern.into(), settings, users: Vec::new(), teams: Vec::new() };
+    let main = RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() };
+    protection.create(&fixture.alice, &repo, &rule("main", main)).await.unwrap();
+    protection
+        .create(&fixture.alice, &repo, &rule("feature", RuleSettings { deny_force_push: false, ..RuleSettings::default() }))
+        .await
+        .unwrap();
+
+    let number = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    pulls.check_unknown().await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    let merge_box = pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap();
+    assert!(merge_box.rules.is_protected() && merge_box.evaluation.is_blocked() && !merge_box.evaluation.can_merge());
+    assert!(!merge_box.can_delete_head, "the head branch is protected against deletion");
+    let refused = pulls.merge(&fixture.alice, &ctx, Fixture::merge_input(MergeStrategy::Squash)).await.unwrap_err();
+    assert!(matches!(&refused, MergeFailure::Blocked(message) if message.contains("approval")), "{refused}");
+    let bypass = MergeInput { bypass: true, ..Fixture::merge_input(MergeStrategy::Squash) };
+    assert!(
+        matches!(pulls.merge(&fixture.alice, &ctx, bypass).await, Err(MergeFailure::Blocked(_))),
+        "no bypass without allow_admin_bypass"
+    );
+
+    // A reader's approval does not count; a writer's does.
+    pulls.submit_review(&fixture.bob, &fixture.open_pull(&fixture.bob, number).await, ReviewVerdict::Approve, "").await.unwrap();
+    assert!(!pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().evaluation.can_merge());
+    pulls.submit_review(&fixture.carol, &fixture.open_pull(&fixture.carol, number).await, ReviewVerdict::Approve, "").await.unwrap();
+    assert!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().evaluation.can_merge());
+    let input = MergeInput { delete_head_branch: true, ..Fixture::merge_input(MergeStrategy::Squash) };
+    pulls.merge(&fixture.alice, &ctx, input).await.unwrap();
+    assert!(repo.reader.commit_id("refs/heads/feature".into()).await.is_ok(), "the protected head branch is kept");
+    let merged = fixture.open_pull(&fixture.alice, number).await;
+    assert!(merged.pull.is_merged());
+    assert!(matches!(pulls.delete_head(&fixture.alice, &merged).await, Err(ServiceError::Invalid(_))));
+}
