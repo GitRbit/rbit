@@ -18,14 +18,23 @@ pub enum AuditCategory {
     TwoFactor,
     Sessions,
     Tokens,
-    /// Collaborators, teams, transfers and webhooks (milestone 2).
+    /// Collaborators, teams, transfers, webhooks and branch protection (milestone 2).
     RepositoryAccess,
+    /// Issues and pull requests deleted (milestone 2 wave B).
+    RepositoryContent,
     Administration,
 }
 
 impl AuditCategory {
-    pub const ALL: [Self; 6] =
-        [Self::Authentication, Self::TwoFactor, Self::Sessions, Self::Tokens, Self::RepositoryAccess, Self::Administration];
+    pub const ALL: [Self; 7] = [
+        Self::Authentication,
+        Self::TwoFactor,
+        Self::Sessions,
+        Self::Tokens,
+        Self::RepositoryAccess,
+        Self::RepositoryContent,
+        Self::Administration,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -34,6 +43,7 @@ impl AuditCategory {
             Self::Sessions => "sessions",
             Self::Tokens => "tokens",
             Self::RepositoryAccess => "repository_access",
+            Self::RepositoryContent => "repository_content",
             Self::Administration => "administration",
         }
     }
@@ -49,6 +59,7 @@ impl AuditCategory {
             Self::Sessions => "Sessions",
             Self::Tokens => "Access tokens",
             Self::RepositoryAccess => "Repository access",
+            Self::RepositoryContent => "Repository content",
             Self::Administration => "Administration",
         }
     }
@@ -92,10 +103,15 @@ pub enum AuditAction {
     WebhookChanged,
     WebhookDeleted,
     OrgPermissionChanged,
+    BranchProtectionCreated,
+    BranchProtectionChanged,
+    BranchProtectionDeleted,
+    BranchProtectionBypassed,
+    IssueDeleted,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 35] = [
+    pub const ALL: [Self; 40] = [
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -131,6 +147,11 @@ impl AuditAction {
         Self::WebhookChanged,
         Self::WebhookDeleted,
         Self::OrgPermissionChanged,
+        Self::BranchProtectionCreated,
+        Self::BranchProtectionChanged,
+        Self::BranchProtectionDeleted,
+        Self::BranchProtectionBypassed,
+        Self::IssueDeleted,
     ];
 
     /// Stable identifier stored in the database.
@@ -171,6 +192,11 @@ impl AuditAction {
             Self::WebhookChanged => "webhook_changed",
             Self::WebhookDeleted => "webhook_deleted",
             Self::OrgPermissionChanged => "org_permission_changed",
+            Self::BranchProtectionCreated => "branch_protection_created",
+            Self::BranchProtectionChanged => "branch_protection_changed",
+            Self::BranchProtectionDeleted => "branch_protection_deleted",
+            Self::BranchProtectionBypassed => "branch_protection_bypassed",
+            Self::IssueDeleted => "issue_deleted",
         }
     }
 
@@ -209,7 +235,12 @@ impl AuditAction {
             | Self::WebhookCreated
             | Self::WebhookChanged
             | Self::WebhookDeleted
-            | Self::OrgPermissionChanged => AuditCategory::RepositoryAccess,
+            | Self::OrgPermissionChanged
+            | Self::BranchProtectionCreated
+            | Self::BranchProtectionChanged
+            | Self::BranchProtectionDeleted
+            | Self::BranchProtectionBypassed => AuditCategory::RepositoryAccess,
+            Self::IssueDeleted => AuditCategory::RepositoryContent,
         }
     }
 
@@ -251,6 +282,11 @@ impl AuditAction {
             Self::WebhookChanged => "Changed a webhook",
             Self::WebhookDeleted => "Deleted a webhook",
             Self::OrgPermissionChanged => "Changed an organization's member permission",
+            Self::BranchProtectionCreated => "Added a branch protection rule",
+            Self::BranchProtectionChanged => "Changed a branch protection rule",
+            Self::BranchProtectionDeleted => "Deleted a branch protection rule",
+            Self::BranchProtectionBypassed => "Bypassed branch protection",
+            Self::IssueDeleted => "Deleted an issue",
         }
     }
 

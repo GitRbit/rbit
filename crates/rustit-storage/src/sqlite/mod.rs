@@ -7,14 +7,20 @@ pub mod audit;
 pub mod collaborators;
 pub mod forks;
 pub mod instance;
+pub mod issue_meta;
+pub mod issue_search;
 pub mod mirrors;
+pub mod notifications;
 pub mod orgs;
 pub mod preferences;
 pub mod profiles;
+pub mod protection;
+pub mod pulls;
 pub mod recovery;
 pub mod releases;
 pub mod repo_settings;
 mod repositories;
+pub mod reviews;
 mod rows;
 pub mod ssh_keys;
 pub mod stars;
@@ -149,6 +155,32 @@ impl Database {
 
     pub fn preferences(&self) -> preferences::PreferenceStore {
         preferences::PreferenceStore::new(self.pool.clone())
+    }
+
+    // Milestone 2 wave B. `issues()` (the shared issue core) arrives with T0.
+
+    pub fn issue_meta(&self) -> issue_meta::IssueMetaStore {
+        issue_meta::IssueMetaStore::new(self.pool.clone())
+    }
+
+    pub fn issue_search(&self) -> issue_search::IssueSearchStore {
+        issue_search::IssueSearchStore::new(self.pool.clone())
+    }
+
+    pub fn notifications(&self) -> notifications::NotificationStore {
+        notifications::NotificationStore::new(self.pool.clone())
+    }
+
+    pub fn pulls(&self) -> pulls::PullStore {
+        pulls::PullStore::new(self.pool.clone())
+    }
+
+    pub fn reviews(&self) -> reviews::ReviewStore {
+        reviews::ReviewStore::new(self.pool.clone())
+    }
+
+    pub fn branch_protection(&self) -> protection::BranchProtectionStore {
+        protection::BranchProtectionStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.
