@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="text-xl font-semibold tracking-tight">Notifications</h1>
+    <nav class="flex gap-4 text-[13px] sm:ml-4" aria-label="Show">
+      <a href="{{ unread_url }}" class="tab" {% if !showing_all %}aria-current="page"{% endif %}>Unread</a>
+      <a href="{{ all_url }}" class="tab" {% if showing_all %}aria-current="page"{% endif %}>All</a>
+    </nav>
+    {% if page.has_unread_notifications %}
+    <form method="post" action="{{ mark_all_url }}" class="ml-auto">
+      <button type="submit" class="btn h-11 sm:h-8">{% call ui::icon("check", "size-3.5") %}{% endcall %}Mark all as read</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if groups.is_empty() %}
+  <div class="box mt-5">
+    {% if showing_all %}
+    {% call ui::empty_state("bell", "No notifications", "You hear here about issues and pull requests you take part in: ones you opened, commented on, are assigned to or were mentioned in.") %}{% endcall %}
+    {% else %}
+    {% call ui::empty_state("bell", "All caught up", "Nothing unread. Older notifications are under All.") %}{% endcall %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% for group in groups %}
+  <section class="box mt-5 overflow-hidden" aria-label="{{ group.full_name }}">
+    <h2 class="box-header text-[13px] font-medium"><a href="{{ group.url }}" class="flex items-center gap-2 hover:underline hover:underline-offset-4">{% call ui::icon("repo", "size-3.5 text-ink-muted") %}{% endcall %}{{ group.full_name }}</a></h2>
+    <ul>
+      {% for row in group.rows %}
+      <li class="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 {% if !row.unread %}text-ink-muted{% endif %}">
+        <span class="mt-0.5 shrink-0 {{ row.icon_class }}" title="{{ row.state_label }}">{% call ui::icon(row.icon, "size-4") %}{% endcall %}<span class="sr-only">{{ row.state_label }}</span></span>
+        <div class="min-w-0 flex-1">
+          <a href="{{ row.url }}" class="break-words {% if row.unread %}font-medium text-ink{% endif %} hover:underline hover:underline-offset-4">{{ row.title }} <span class="font-normal text-ink-faint">{{ row.number }}</span></a>
+          <p class="mt-0.5 text-xs text-ink-faint">{{ row.reason }} · <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time></p>
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          {% if row.unread %}
+          <span class="mr-1 size-2 rounded-full bg-inverted" role="img" aria-label="Unread"></span>
+          <form method="post" action="{{ row.read_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="Mark as read" title="Mark as read">{% call ui::icon("check", "size-3.5") %}{% endcall %}</button></form>
+          {% endif %}
+          <form method="post" action="{{ row.unsubscribe_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="Unsubscribe" title="Unsubscribe">{% call ui::icon("eye-off", "size-3.5") %}{% endcall %}</button></form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endfor %}
+  {% call ui::pagination(pagination) %}{% endcall %}
+</div>
+{% endblock %}
