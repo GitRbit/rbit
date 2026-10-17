@@ -13,21 +13,32 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
 - **Axum + Askama + htmx**: compiled server-side templates, SPA-like navigation without a JS framework.
 - **SQLite + redb + bare Git repositories**: relational data, hot key/value data, and Git's own storage format.
 - **Git over HTTPS and SSH**: smart HTTP (protocol v2) and a built-in SSH server with user and deploy keys.
+- **Git LFS**: batch API, streamed transfers, file locking and `git-lfs-authenticate` over SSH; objects are stored
+  once and shared by forks; the browser shows the stored file, not the pointer.
 - **Secure by default**: Argon2id passwords, two-factor authentication with passkeys or TOTP, rate limiting, hashed session
   and token secrets, strict CSP, origin-checked forms, an audit log.
+- **External sign-in**: OpenID Connect providers and GitHub, with PKCE and verified ID tokens; link providers to
+  existing accounts or let them register new ones.
 - **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
 - **Collaboration**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
 - **Repository essentials**: releases with attached files, `.zip`/`.tar.gz` archives, blame, compare, forks,
   pull mirrors, README relative links and images.
+- **Edit in the browser**: create, edit, rename, delete and upload files as one commit, directly or on a new
+  branch with a pull request; branch protection applies.
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
-  GitHub-style filters, and an in-app notification inbox.
+  GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
+  one-click unsubscribe.
 - **Pull requests**: within a repository or across forks, line comments, reviews and review requests,
   mergeability checks, and merging by merge commit, squash or rebase.
-- **Branch protection**: no force pushes or deletion, required pull requests and approvals, restricted
-  pushers — enforced over HTTPS and SSH and for merges.
-- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1) and HMAC-signed, GitHub-shaped webhooks
-  (push, issues, pull requests, reviews, …) with a persistent, retrying delivery queue.
+- **Branch protection**: no force pushes or deletion, required pull requests, approvals and status checks,
+  restricted pushers — enforced over HTTPS and SSH and for merges.
+- **Commit statuses**: a GitHub-compatible status API for external CI, with checks shown on pull requests and
+  commits.
+- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1: repositories, issues, pull requests,
+  collaborators, teams, releases with file uploads, forks, statuses, …) and HMAC-signed, GitHub-shaped webhooks
+  (push, issues, pull requests, reviews, releases, collaborators, statuses, …) with a persistent, retrying
+  delivery queue.
 - **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
@@ -108,6 +119,9 @@ issued by earlier releases start with `rit_…` and keep working.
 With `[ssh] enabled = true`, add a public key under **Settings → SSH keys** and use the SSH
 URL from the repository's **Clone** menu.
 
+[Git LFS](https://git-lfs.com) needs no setup: `git lfs track` and push as usual, over
+HTTPS or SSH, with the same credentials.
+
 The same tokens authenticate the REST API:
 
 ```bash
@@ -126,7 +140,7 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | Section | Purpose | Key settings |
 |---|---|---|
 | `[server]` | HTTP listener and identity | `bind`, `public_url`, `site_name`, `open_registration` (default for the runtime setting) |
-| `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files) |
+| `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files, LFS objects) |
 | `[security]` | Sessions and abuse protection | `session_lifetime_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit` |
 | `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes` |
 | `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password` |
@@ -134,10 +148,14 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[operations]` | Maintenance and metrics | `metrics`, `metrics_token`, `warm_caches_on_push`, `maintenance_interval_minutes`, `job_concurrency`, insights cache limits |
 | `[api]` | REST API | `enabled`, `default_page_size`, `max_page_size` |
 | `[webhooks]` | Outgoing deliveries | `enabled`, `allow_private_addresses`, `timeout_seconds`, `max_attempts`, `concurrency`, `delivery_retention_days` |
-| `[releases]` | Release files | `max_asset_bytes`, `max_assets_per_release`, `upload_timeout_seconds` |
+| `[releases]` | Release files (web and API uploads) | `max_asset_bytes`, `max_assets_per_release`, `upload_timeout_seconds` |
 | `[mirrors]` | Pull mirrors | `enabled`, `default_interval_minutes`, `min_interval_minutes`, `fetch_timeout_seconds`, `allow_private_addresses` |
 | `[issues]` | Issues and notifications | `scan_commit_limit`, `notifications`, `notification_retention_days` |
 | `[pulls]` | Pull requests | `merge_timeout_seconds`, `max_concurrent_merges`, `mergeability_concurrency`, `max_commits`, `noreply_domain` |
+| `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`) |
+| `[editor]` | Editing and uploading files in the browser | `max_upload_bytes`, `max_upload_files`, `upload_timeout_seconds` |
+| `[lfs]` | Git Large File Storage | `enabled`, `max_object_bytes`, `token_lifetime_seconds` |
+| `[auth]` | External sign-in; register `{public_url}/login/{id}/callback` at the provider | `timeout_seconds`, `allow_private_addresses`, `[[auth.providers]]` (`kind` = `oidc` \| `github`, `id`, `name`, `issuer` / `base_url`, `client_id`, `client_secret`, `scopes`, `allow_registration`, `trust_email`, `trust_mfa`) |
 
 Site name, registration, who may create organisations and the default repository
 visibility can also be changed at runtime by administrators under **Site administration →
@@ -149,7 +167,7 @@ Settings**.
 |---|---|
 | `rbit serve` | Run the web (and SSH, if enabled) server — the default |
 | `rbit migrate` | Apply database migrations and exit |
-| `rbit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, manifest) |
+| `rbit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, LFS objects, manifest) |
 | `rbit user create <name> <email> [--admin]` | Create an account (password read from stdin) |
 
 ## Development
@@ -178,7 +196,7 @@ the browser, home-screen, and installable-app icons, and commit the generated PN
 |---|---|
 | `rbit-core` | Domain types, validated names, permissions, configuration |
 | `rbit-storage` | SQLite (sqlx) and redb persistence |
-| `rbit-auth` | Password hashing, session and token secrets, TOTP, passkeys (WebAuthn), access policy |
+| `rbit-auth` | Password hashing, session and token secrets, TOTP, passkeys (WebAuthn), OpenID Connect token checks, access policy |
 | `rbit-git` | Repository storage, read model, diffs, blame, compare, archives, forks, mirrors, languages, maintenance (gitoxide) |
 | `rbit-transport` | Git smart protocol: stateless (HTTP) and interactive (SSH) modes |
 | `rbit-services` | Application use-cases, domain events, background jobs, webhook delivery |

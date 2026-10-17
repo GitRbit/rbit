@@ -103,10 +103,13 @@ delivery_retention_days = 14
 
 [releases]
 # Files attached to releases live in <data_dir>/attachments (included in backups).
-# Largest attached file, in bytes (512 MiB). Raise the reverse proxy's body limit to match.
+# Largest attached file, in bytes (512 MiB), for web and API uploads
+# (POST /api/v1/repos/{owner}/{repo}/releases/{id}/assets). Raise the reverse proxy's
+# body limit to match.
 max_asset_bytes = 536870912
 max_assets_per_release = 50
-# Upper bound for one upload; uploads are exempt from the 30-second page timeout.
+# Upper bound for one upload (web or API); uploads are exempt from the 30-second page and
+# API timeouts.
 upload_timeout_seconds = 3600
 
 [mirrors]
@@ -140,3 +143,67 @@ mergeability_concurrency = 2
 max_commits = 250
 # Domain of the addresses in commits rbit makes; empty = "noreply.<host of server.public_url>".
 noreply_domain = ""
+
+[notifications]
+# Email notifications, on top of the in-app inbox ([issues] notifications). They need a
+# [mail] transport; only verified addresses receive them. Users choose in
+# Settings -> Notifications; every email has a one-click unsubscribe link built from
+# server.public_url.
+email = true
+# What users who never chose get: "off", "participating" or "all".
+default_email = "participating"
+
+[editor]
+# Editing and uploading files in the browser. Text edits are limited by
+# [repository] max_render_bytes instead (the editor is only offered for files the
+# browser displays).
+# Largest file that may be uploaded through the web interface, in bytes (50 MiB).
+# Raise the reverse proxy's body limit to match.
+max_upload_bytes = 52428800
+# Files one upload (one commit) may add.
+max_upload_files = 100
+# Upper bound for one upload request; uploads bypass the 30-second page timeout.
+upload_timeout_seconds = 600
+
+[lfs]
+# Serve the Git LFS API (batch, transfers, locks) under /<owner>/<repo>.git/info/lfs and
+# `git-lfs-authenticate` over SSH. Objects live in <data_dir>/lfs (included in backups).
+enabled = true
+# Largest object a client may upload, in bytes (2 GiB). Raise the reverse proxy's body
+# limit to match, and turn off its request buffering for LFS uploads.
+max_object_bytes = 2147483648
+# How long the signed headers handed to clients stay valid, in seconds.
+token_lifetime_seconds = 3600
+
+[auth]
+# External sign-in with OpenID Connect providers and GitHub; off until a provider is
+# listed. Register {public_url}/login/{id}/callback as the redirect URI at the provider.
+# Secrets can come from RBIT_AUTH__PROVIDERS__<N>__CLIENT_SECRET (N = position, from 0,
+# or the provider id in upper case with '-' as '_').
+# Upper bound for one request to a provider.
+timeout_seconds = 10
+# Allow providers on loopback/private addresses and plain-http issuers (on-premises IdPs).
+allow_private_addresses = false
+
+# [[auth.providers]]
+# kind = "oidc"
+# id = "sso"                       # lower-case slug, used in URLs; don't change it later
+# name = "Company SSO"             # "Sign in with Company SSO"
+# issuer = "https://sso.example.com/realms/main"
+# client_id = "rbit"
+# client_secret = "change-me"      # prefer RBIT_AUTH__PROVIDERS__SSO__CLIENT_SECRET
+# scopes = ["openid", "email", "profile"]
+# # true: when the site's registration is open; "always": even when closed; false: never.
+# allow_registration = true
+# # Link a first sign-in to the account with the same verified email (both sides verified).
+# trust_email = false
+# # Skip rbit's own 2FA when the ID token reports MFA in `amr`.
+# trust_mfa = false
+
+# [[auth.providers]]
+# kind = "github"
+# id = "github"
+# name = "GitHub"
+# client_id = "Iv1.0123456789abcdef"
+# client_secret = "change-me"      # prefer RBIT_AUTH__PROVIDERS__GITHUB__CLIENT_SECRET
+# # base_url = "https://github.example.com"   # GitHub Enterprise Server
