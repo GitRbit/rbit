@@ -223,7 +223,8 @@ fn moved_permanently(method: &Method, location: &str) -> Response {
 
 // ------------------------------------------------------------------ navigation caching
 
-/// Sent by the htmx preload extension on hover/touch preloads (see `assets/nav.js`).
+/// Sent by the preloader (`assets/preload.js`) on every preload, so the server can tell a
+/// preload from a navigation.
 pub const PRELOAD_HEADER: &str = "hx-preloaded";
 
 /// Sent by `assets/nav.js` on every htmx request: a per-page-load value that changes
@@ -231,12 +232,15 @@ pub const PRELOAD_HEADER: &str = "hx-preloaded";
 /// before a form post is never served from the browser cache after it.
 pub const NAV_EPOCH_HEADER: &str = "rbit-nav-epoch";
 
-/// How long a preloaded page stays fresh in the browser cache: long enough to cover the
-/// gap between hovering a link and clicking it, short enough that it can't go stale.
-pub const PRELOAD_MAX_AGE_SECONDS: u32 = 10;
+/// How long a preloaded page stays fresh in the browser cache, and (rendered into
+/// `base.html`) how long the preloader treats a URL as preloaded: long enough to cover the
+/// gap between seeing or hovering a link and clicking it, short enough that it can't go
+/// stale. The navigation epoch makes it safe across the viewer's own changes: any form
+/// post changes the cache key, so nothing preloaded before it is reused after it.
+pub const PRELOAD_MAX_AGE_SECONDS: u32 = 30;
 
 /// Paths a preload must never reach because a `GET` there has side effects, consumes a
-/// secret, or is a download or Git traffic. `nav.js` skips these links too; this is the
+/// secret, or is a download or Git traffic. `preload.js` (`NO_PRELOAD`) skips these links too; this is the
 /// authoritative check.
 fn is_unsafe_to_preload(path: &str) -> bool {
     // The security pages and the second sign-in step issue secrets and passkey challenges;
@@ -269,7 +273,7 @@ pub async fn preload_guard(request: Request, next: Next) -> Response {
 ///
 /// * Every page is `private` (it may show the viewer's own data) and must be
 ///   revalidated (`no-cache`), with a weak `ETag` so a revisit costs a `304`.
-/// * A page fetched by a hover preload is instead fresh for
+/// * A page fetched by a preload is instead fresh for
 ///   [`PRELOAD_MAX_AGE_SECONDS`], so the click that follows is answered from the
 ///   browser cache without a round trip.
 /// * `Vary` keeps htmx requests (and each navigation epoch) apart from full page loads.
@@ -412,6 +416,14 @@ mod tests {
     async fn preloaded_pages_are_briefly_fresh() {
         let response = send("/page", &[("HX-Request", "true"), ("HX-Preloaded", "true")]).await;
         assert_eq!(response.headers()[header::CACHE_CONTROL], format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}"));
+    }
+
+    #[test]
+    fn the_preloader_shares_the_freshness_window() {
+        // preload.js reads its window from <body data-preload-fresh>, rendered from the constant.
+        let base = include_str!("../templates/base.html");
+        assert!(base.contains("data-preload-fresh=\"{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}\""));
+        assert_eq!(PRELOAD_MAX_AGE_SECONDS, 30);
     }
 
     #[tokio::test]

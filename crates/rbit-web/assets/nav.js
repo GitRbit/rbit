@@ -1,10 +1,8 @@
 // Navigation speed and polish on top of htmx's boosted links (hx-boost on <body>).
 // Every page works without this file; it only makes moving between pages faster.
 //
-// * Preloading: eligible links get `preload="mouseover always"` for the vendored htmx
-//   preload extension (enabled with hx-ext on <body>), so a page starts loading after a
-//   ~100 ms hover or on touchstart. The server keeps a preloaded page fresh for a few
-//   seconds, so the click is answered from the browser cache.
+// * Preloading lives in preload.js; it sends the same headers as the navigation that
+//   follows (`navigationHeaders`), so the click is answered from the browser cache.
 // * Navigation epoch: every htmx request carries a per-page-load value that changes
 //   after any state-changing request. HTML varies on it, so a page preloaded before a
 //   form post is never served after it.
@@ -22,6 +20,9 @@ const PARTIAL_HEADER = "Rbit-Partial";
 const newEpoch = () => `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`;
 let epoch = newEpoch();
 
+/** The current navigation epoch; preload.js forgets its preloads when it changes. */
+export const navigationEpoch = () => epoch;
+
 /** The repository the current page belongs to (`/owner/repo`), if any. */
 function currentScope() {
   return document.querySelector("[data-repo-scope]")?.getAttribute("data-repo-scope") ?? null;
@@ -35,43 +36,16 @@ function partialScope(url) {
   return pathname === scope || pathname.startsWith(`${scope}/`) ? scope : null;
 }
 
-// Mirrors `middleware::is_unsafe_to_preload` (the server's answer is authoritative; this
-// only avoids sending requests that would be refused).
-const NO_PRELOAD = [
-  /^\/logout(\/|$)/,
-  /^\/settings\/security/,
-  // The second sign-in step, and (milestone 3, O) external sign-in under /login/{provider}.
-  /^\/login\//,
-  /^\/email\/verify\//,
-  /^\/password\/reset\//,
-  /^\/(api|assets)\//,
-  /^\/sw\.js$/,
-  /^\/(healthz|readyz|metrics)$/,
-  /^\/[^/]+\/[^/]+\/(raw|archive|info|git-upload-pack|git-receive-pack)(\/|$)/,
-  /^\/[^/]+\/[^/]+\/releases\/download\//,
-  /^\/[^/]+\/[^/]+\.git(\/|$)/i,
-];
-
-/** Whether hovering `link` may fetch its target ahead of the click. */
-function isPreloadable(link) {
-  if (!(link instanceof HTMLAnchorElement) || !link.hasAttribute("href")) return false;
-  if (link.hasAttribute("download") || link.hasAttribute("preload")) return false;
-  if (link.target && link.target !== "_self") return false;
-  // Only boosted links: htmx swaps them in, so the preloaded response is actually used.
-  if (link.closest("[hx-boost]")?.getAttribute("hx-boost") !== "true") return false;
-  if (link.closest("[data-no-preload]")) return false;
-  const url = new URL(link.href, location.href);
-  if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
-  // In-page anchors and links to the page itself.
-  if (url.pathname === location.pathname && url.search === location.search) return false;
-  return !NO_PRELOAD.some((pattern) => pattern.test(url.pathname));
+/**
+ * The headers a boosted GET of `url` sends from this page — every header the server's
+ * `Vary` names. A preload sending exactly these shares the navigation's cache entry.
+ */
+export function navigationHeaders(url) {
+  const headers = { "HX-Request": "true", [EPOCH_HEADER]: epoch };
+  const scope = partialScope(url);
+  if (scope) headers[PARTIAL_HEADER] = scope;
+  return headers;
 }
-
-// htmx processes each boosted link individually; marking it here, before the preload
-// extension's `afterProcessNode` hook runs for it, opts it in.
-document.addEventListener("htmx:beforeProcessNode", (event) => {
-  if (isPreloadable(event.target)) event.target.setAttribute("preload", "mouseover always");
-});
 
 document.addEventListener("htmx:configRequest", (event) => {
   const detail = event.detail;

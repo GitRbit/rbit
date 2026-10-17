@@ -7,6 +7,9 @@ import "./theme-picker.js";
 // Preloading, partial swaps, progress and focus for boosted navigation.
 import "./nav.js";
 
+// Preloading boosted links on hover, press, touch and (for a few) visibility.
+import "./preload.js";
+
 // Instant list filters (dashboard repository list).
 import "./filter.js";
 

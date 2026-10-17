@@ -229,7 +229,7 @@
   {% endif %}
   <span class="text-xs text-ink-muted">Page {{ pager.page }} of {{ pager.page_count }}</span>
   {% if let Some(url) = pager.next_url %}
-  <a href="{{ url }}" class="btn" rel="next">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   {% else %}
   <span class="btn pointer-events-none opacity-50" aria-hidden="true">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</span>
   {% endif %}

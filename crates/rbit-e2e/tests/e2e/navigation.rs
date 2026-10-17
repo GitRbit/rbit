@@ -1,5 +1,5 @@
-//! Boosted navigation: partial responses between pages of one repository, through the
-//! real router and templates.
+//! Boosted navigation: partial responses between pages of one repository, and the
+//! preload guard, through the real router and templates.
 //!
 //! Frontend virtualization wave, workstream P (preloading), owns this file.
 
@@ -46,4 +46,22 @@ async fn pages_of_the_same_repository_are_sent_partially() {
     let hidden = server.client().get_with("/alice/secret/issues", &[("HX-Request", "true"), ("Rbit-Partial", "/alice/secret")]).await;
     hidden.expect_status(StatusCode::NOT_FOUND);
     assert!(hidden.header("rbit-partial").is_none() && !hidden.contains("repo-subnav"));
+}
+
+#[tokio::test]
+async fn preloads_stay_fresh_for_the_shared_window_and_never_reach_side_effects() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "demo", "public").await;
+
+    let preload = alice.get_with("/alice/demo/issues", &[PARTIAL[0], PARTIAL[1], ("HX-Preloaded", "true")]).await;
+    preload.expect_status(StatusCode::OK);
+    assert_eq!(preload.header("cache-control"), Some("private, max-age=30"));
+    assert_eq!(preload.header("rbit-partial"), Some("true"));
+    // The page tells the preloader the same window.
+    alice.get("/alice/demo").await.expect_contains(&["data-preload-fresh=\"30\"", "data-preload=\"visible\""]);
+
+    let guarded = alice.get_with("/alice/demo/archive/main.zip", &[("HX-Request", "true"), ("HX-Preloaded", "true")]).await;
+    guarded.expect_status(StatusCode::NO_CONTENT);
+    assert_eq!(guarded.header("cache-control"), Some("no-store"));
 }

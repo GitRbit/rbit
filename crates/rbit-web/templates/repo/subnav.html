@@ -7,17 +7,18 @@
 <p class="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
 {% endif %}
 {#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository;
-    the markers are where `partial.rs` cuts them out for partial responses (the div must open exactly so). -#}
+    the markers are where `partial.rs` cuts them out for partial responses (the div must open exactly so).
+    `data-preload="visible"`: the tabs are preloaded once visible and the browser is idle (preload.js). -#}
 <!--partial:subnav-->
 <div id="repo-subnav" data-repo-scope="{{ header.home_url }}" class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
   <nav class="-mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
-    <a class="tab" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
-    <a class="tab" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
-    <a class="tab" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
-    <a class="tab" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
-    <a class="tab" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
-    <a class="tab" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
-    <a class="tab" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
+    <a class="tab" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
+    <a class="tab" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
+    <a class="tab" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
+    <a class="tab" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
+    <a class="tab" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
+    <a class="tab" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
+    <a class="tab" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
     {% if header.can_admin %}
     <a class="tab" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
     {% endif %}

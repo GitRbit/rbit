@@ -24,17 +24,18 @@
   {%- endif %}
   <script src="{{ page.asset("theme.js") }}"></script>
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
-  <script src="{{ page.asset("vendor/htmx-preload.min.js") }}" defer></script>
   <script src="{{ page.asset("app.js") }}" type="module"></script>
   {#- app.js's imports (rewritten to these same hashed URLs when served), fetched in parallel with it. -#}
   <link rel="modulepreload" href="{{ page.asset("nav.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("preload.js") }}">
   <link rel="modulepreload" href="{{ page.asset("theme-picker.js") }}">
   <link rel="modulepreload" href="{{ page.asset("filter.js") }}">
   <link rel="modulepreload" href="{{ page.asset("diff.js") }}">
   <link rel="modulepreload" href="{{ page.asset("blocks.js") }}">
   <link rel="modulepreload" href="{{ page.asset("passkey.js") }}">
 </head>
-<body hx-boost="true" hx-ext="preload" class="flex min-h-dvh flex-col">
+{#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
+<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}" class="flex min-h-dvh flex-col">
   <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">

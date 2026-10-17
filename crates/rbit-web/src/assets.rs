@@ -225,7 +225,7 @@ mod tests {
     fn a_module_url_changes_with_its_imports() {
         let app = served("app.js").expect("app.js is embedded");
         let source = std::str::from_utf8(&app.bytes).unwrap();
-        for module in ["nav.js", "theme-picker.js", "filter.js", "diff.js", "blocks.js", "passkey.js"] {
+        for module in ["nav.js", "preload.js", "theme-picker.js", "filter.js", "diff.js", "blocks.js", "passkey.js"] {
             let expected = format!("\"./{module}?v={}\"", served(module).unwrap().hash);
             assert!(source.contains(&expected), "app.js should import {expected}");
         }
