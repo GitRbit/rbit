@@ -303,7 +303,7 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
 
 **Components** (`styles/app.css`): `.box`, `.box-header`, `.row`, `.btn` (`-primary`,
 `-ghost`, `-danger`, `-icon`), `.input`, `.label`, `.hint`, `.badge`, `.tab`, `.menu`,
-`.code-view`, `.diff-view`, `.prose-rustit`. Icons and shared fragments are Askama macros in
+`.code-lines`, `.diff-view`, `.prose-rustit`. Icons and shared fragments are Askama macros in
 `templates/macros.html` — never add another `macros.html` inside a template subfolder
 (Askama resolves imports relative to the importing template first).
 
@@ -328,6 +328,19 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
 - gitoxide with `max-performance-safe` (parallel pack decoding, fast SHA-1, zlib-rs).
 - SQLite tuned: WAL, `synchronous = NORMAL`, memory-mapped I/O, prepared statement cache.
 - Streaming Git transport: pack data is never buffered in memory.
+- One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
+  Git reads share opened config, refs and pack indexes instead of reopening them.
+- Navigation: `hx-boost` plus the htmx preload extension (`assets/nav.js` marks eligible
+  links; 100 ms hover intent, touchstart on touch screens). Within a repository only
+  `<main>` swaps and the tabs update out of band. `middleware::preload_guard` answers
+  preloads of side-effecting or heavy paths with `204`; `middleware::html_caching` makes
+  HTML `private, no-cache` with a weak `ETag` (revisits cost a `304`), preloads briefly
+  fresh, varying on `HX-Request` and a per-page-load navigation epoch so nothing preloaded
+  before a form post is shown after it. Secret-showing pages carry `hx-history="false"`.
+- Large files and diffs: one block per line with `content-visibility: auto`, line numbers
+  drawn by CSS, per-file diffs laid out only near the viewport.
+- JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
+  so every module can be `immutable` and still update on deploy.
 - Planned: redb caches for last-commit-per-path and language statistics, invalidated by
   push events.
 
