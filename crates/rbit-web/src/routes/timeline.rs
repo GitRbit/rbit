@@ -13,7 +13,8 @@
 use axum::{
     Form, Router,
     extract::{Path, State},
-    response::Redirect,
+    http::{StatusCode, header::LOCATION},
+    response::{IntoResponse, Redirect, Response},
     routing::post,
 };
 use rbit_core::{CommentId, IssueNumber, StateReason, User};
@@ -49,6 +50,13 @@ async fn open(state: &AppState, user: &User, owner: &str, repo: &str, number: &s
 /// `303` to the thread's canonical page, scrolled to `anchor`.
 fn back(ctx: &IssueContext, anchor: &str) -> Redirect {
     Redirect::to(&ThreadUrls::for_context(ctx).at(anchor))
+}
+
+/// `301 Moved Permanently` to `url`: a thread number opened under the other kind's path
+/// (`/issues/{n}` for a pull request, `/pull/{n}` for an issue), as GitHub answers. Only
+/// for threads the viewer may see; hidden ones are 404 before this is reached.
+pub(super) fn moved_to_kind(url: &str) -> Response {
+    (StatusCode::MOVED_PERMANENTLY, [(LOCATION, url.to_owned())]).into_response()
 }
 
 fn parse_comment_id(id: &str) -> WebResult<CommentId> {
@@ -208,6 +216,13 @@ async fn set_lock(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kind_redirects_are_a_true_301() {
+        let moved = moved_to_kind("/alice/demo/pull/3");
+        assert_eq!(moved.status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(moved.headers().get(LOCATION).and_then(|value| value.to_str().ok()), Some("/alice/demo/pull/3"));
+    }
 
     #[test]
     fn state_values_and_comment_ids_are_strict() {

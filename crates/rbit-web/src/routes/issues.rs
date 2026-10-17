@@ -278,7 +278,7 @@ async fn show(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let ctx = state.services.timeline.open(viewer.user(), loaded.ctx.clone(), number).await?;
     if ctx.issue.is_pull() {
-        return Ok(Redirect::permanent(&ThreadUrls::for_context(&ctx).page).into_response());
+        return Ok(super::timeline::moved_to_kind(&ThreadUrls::for_context(&ctx).page));
     }
     let after = params.after.as_deref().and_then(TimelineCursor::parse);
     let options = TimelineOptions { edit: params.edit.as_deref(), ..TimelineOptions::default() };

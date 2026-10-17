@@ -303,6 +303,13 @@ async fn conflicts_api_merges_and_hidden_repositories() {
     let moved = alice.get(&format!("/alice/demo/pull/{number}/files")).await;
     moved.expect_status(StatusCode::MOVED_PERMANENTLY);
     assert_eq!(moved.location(), Some(format!("/alice/demo/issues/{number}").as_str()));
+    let moved = alice.get(&format!("/alice/demo/pull/{number}")).await;
+    moved.expect_status(StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(moved.location(), Some(format!("/alice/demo/issues/{number}").as_str()));
+    // And the other way: a pull request number under /issues is the same true 301.
+    let moved = alice.get("/alice/demo/issues/2").await;
+    moved.expect_status(StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(moved.location(), Some("/alice/demo/pull/2"));
     let (status, _) = api.send(reqwest::Method::GET, &format!("/repos/alice/demo/pulls/{number}"), None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "an issue is not a pull request");
 
@@ -320,6 +327,7 @@ async fn conflicts_api_merges_and_hidden_repositories() {
         "/alice/secret/pull/1",
         "/alice/secret/pull/1/files",
         "/alice/secret/pull/1/commits",
+        "/alice/secret/issues/1",
         "/alice/secret/pulls/new?head=feature",
         "/alice/demo/pull/99",
         "/alice/demo/pull/abc",

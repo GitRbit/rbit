@@ -99,11 +99,6 @@ async fn open_for_post(state: &AppState, user: &User, owner: &str, repo: &str, n
     }
 }
 
-/// `301` for an issue number under `/pull/{n}`.
-fn moved(url: &str) -> Response {
-    (axum::http::StatusCode::MOVED_PERMANENTLY, [(axum::http::header::LOCATION, url.to_owned())]).into_response()
-}
-
 fn ref_context(ctx: &PullContext, refs: rbit_services::references::ReferenceSet) -> RefContext {
     let repo = &ctx.repo().repo;
     let urls = RepoUrls::new(repo.owner.name.as_str(), repo.repo.name.as_str());
@@ -422,7 +417,7 @@ async fn conversation(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let ctx = match open_thread(&state, viewer.user(), loaded.ctx.clone(), &number).await? {
         Opened::Pull(ctx) => *ctx,
-        Opened::Issue(url) => return Ok(moved(&url)),
+        Opened::Issue(url) => return Ok(super::timeline::moved_to_kind(&url)),
     };
     let user = viewer.user();
     let after = query.after.as_deref().and_then(TimelineCursor::parse);
@@ -493,7 +488,7 @@ async fn commits(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let ctx = match open_thread(&state, viewer.user(), loaded.ctx.clone(), &number).await? {
         Opened::Pull(ctx) => *ctx,
-        Opened::Issue(url) => return Ok(moved(&url)),
+        Opened::Issue(url) => return Ok(super::timeline::moved_to_kind(&url)),
     };
     let changes = state.services.pulls.changes(&ctx, DiffLimits { max_files: 0, ..DiffLimits::default() }).await.ok();
     let commits: Vec<CommitView> =
@@ -526,7 +521,7 @@ async fn files(
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let ctx = match open_thread(&state, viewer.user(), loaded.ctx.clone(), &number).await? {
         Opened::Pull(ctx) => *ctx,
-        Opened::Issue(url) => return Ok(moved(&url)),
+        Opened::Issue(url) => return Ok(super::timeline::moved_to_kind(&url)),
     };
     let user = viewer.user();
     let pulls = &state.services.pulls;
