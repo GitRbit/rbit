@@ -13,7 +13,7 @@
       {% else if let Some(due) = milestone.due %}<span class="{% if milestone.overdue %}text-danger{% endif %}">{% if milestone.overdue %}Past due by{% else %}Due by{% endif %} {{ due }}</span>
       {% else %}No due date{% endif %}
     </p>
-    {% if !description_html.is_empty() %}<div class="prose-rustit mt-3">{{ description_html|safe }}</div>{% endif %}
+    {% if !description_html.is_empty() %}<div class="prose-rbit mt-3">{{ description_html|safe }}</div>{% endif %}
   </div>
   <div>
     {% include "issues/milestone_progress.html" %}
