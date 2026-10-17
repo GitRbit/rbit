@@ -23,8 +23,7 @@ pub struct SearchFilter {
     pub state: Option<IssueState>,
     /// Closed as merged (pull requests).
     pub merged: bool,
-    /// Draft pull requests. Draft state lives in the pull request workstream's tables;
-    /// until it adopts this store, a draft filter matches nothing.
+    /// Draft pull requests (`pull_requests.is_draft`).
     pub draft: bool,
     pub locked: bool,
     pub author: Option<AccountId>,
@@ -100,7 +99,7 @@ macro_rules! search_where {
          AND (?2 IS NULL OR i.kind = ?2) \
          AND (?3 IS NULL OR i.state = ?3) \
          AND (?4 = 0 OR i.state_reason = 'merged') \
-         AND (?5 = 0) \
+         AND (?5 = 0 OR EXISTS (SELECT 1 FROM pull_requests p WHERE p.issue_id = i.id AND p.is_draft = 1)) \
          AND (?6 = 0 OR i.locked = 1) \
          AND (?7 IS NULL OR i.author_id = ?7) \
          AND (?8 IS NULL OR EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id AND ia.user_id = ?8)) \

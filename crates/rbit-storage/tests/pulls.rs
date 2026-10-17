@@ -151,6 +151,11 @@ async fn heads_mergeability_drafts_and_merges() {
     // Drafts are not checked.
     assert!(store.set_draft(two.id, true, Timestamp(40)).await.unwrap());
     assert!(!store.set_draft(two.id, true, Timestamp(41)).await.unwrap());
+    // The issue search's draft filter reads the same column.
+    let drafts =
+        rbit_storage::sqlite::issue_search::SearchFilter { draft: true, ..rbit_storage::sqlite::issue_search::SearchFilter::new(demo) };
+    let found: Vec<u32> = database.issue_search().search(&drafts, 25, 0).await.unwrap().iter().map(|issue| issue.number.get()).collect();
+    assert_eq!(found, [two.number.get()]);
     assert_eq!(store.unknown_mergeability(10).await.unwrap().len(), 1);
     assert!(store.set_base(two.id, "release", Timestamp(42)).await.unwrap());
     assert_eq!(store.find(two.id).await.unwrap().unwrap().base_branch, "release");
