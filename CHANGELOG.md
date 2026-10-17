@@ -7,6 +7,171 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Milestone 3 — ready to open-source
+
+rbit is now open source under **MIT OR Apache-2.0** (it was AGPL-3.0-or-later), at
+github.com/rbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
+Apple silicon) and Windows with SHA-256 sums, and a multi-architecture image at
+`ghcr.io/rbit/rbit`. The milestone also brings commit statuses for external CI, more of the
+REST API, email notifications, editing files in the browser, Git LFS and sign-in with
+OpenID Connect providers and GitHub.
+
+<!-- Milestone 3 workstreams still in progress: W (wave B stretch items: migrations 0023,
+0025) and M (import and push mirrors: migrations 0038, 0039). Add their entries to the
+lists below when they are merged. -->
+
+#### Upgrade notes
+
+- Database migrations `0033_commit_statuses`, `0034_notification_email`, `0036_lfs` and
+  `0037_external_identities` run automatically at start-up (or with `rbit migrate`). Take a
+  backup first; migrations only move forward. They add tables (commit statuses and required
+  checks, notification email settings and the email outbox, the `server_secrets` key store,
+  Git LFS objects, links and locks, linked sign-in identities) and one column,
+  `branch_protections.require_status_checks` (off), so existing data and protection rules
+  are unchanged. `0035` is unused on purpose.
+- **Personal access tokens now start with `rbit_`.** Existing `rit_…` tokens keep working
+  unchanged, over Git and the API; nothing needs to be regenerated. Secret scanners and
+  scripts that recognise tokens by prefix should accept both. The token list shows hints
+  as `…a1b2`.
+- **Email notifications are on by default.** With a `[mail]` transport configured, users
+  with a verified address start receiving email for threads they take part in
+  (`[notifications] default_email = "participating"`). Set `default_email = "off"` to make
+  it opt-in, or `[notifications] email = false` to send none. Unsubscribe links use
+  `server.public_url`.
+- **Git LFS is on by default** (`[lfs] enabled = false` keeps the endpoints and
+  `git-lfs-authenticate` off). Behind a reverse proxy, allow request bodies up to
+  `[lfs] max_object_bytes` (default 2 GiB) and turn off request buffering for
+  `/*/info/lfs/objects/*` (nginx: `client_max_body_size`, `proxy_request_buffering off`).
+  Web uploads (`[editor] max_upload_bytes`, 50 MiB per file) need the same allowance.
+- **Backups use format 3.** `rbit backup` also copies Git LFS objects into `lfs/` and the
+  manifest gains `lfs_objects` and `missing_lfs_objects`. When restoring, copy `lfs/` along
+  with `rbit.db`, `repositories/` and `attachments/` (see
+  [docs/deployment.md](docs/deployment.md#backups)). Older backups restore as before.
+- New data directory `<data_dir>/lfs` (Git LFS objects, back it up); LFS uploads in
+  progress live in `<data_dir>/tmp/lfs`, which is never backed up.
+- New configuration sections `[editor]`, `[lfs]`, `[notifications]` and `[auth]`; every
+  key is optional and documented in [deploy/rbit.example.toml](deploy/rbit.example.toml).
+  External sign-in stays off until `[[auth.providers]]` are configured; providers are
+  validated at start-up and every problem is reported at once. Client secrets can also
+  come from `RBIT_AUTH__PROVIDERS__<N>__CLIENT_SECRET` (`<N>` the position from 0, or the
+  provider's id in upper case with `-` as `_`).
+- Webhooks: the events `member` and `status` are new; existing hooks are not subscribed to
+  them until you tick them.
+
+#### Added
+
+- **Commit statuses**, compatible with GitHub's commit status API: external CI reports
+  `pending`, `success`, `failure` or `error` per check (`context`) on a commit with
+  `POST /api/v1/repos/{owner}/{repo}/statuses/{sha}` (a `write` token); read them with
+  `GET …/commits/{ref}/statuses` and the combined status with `GET …/commits/{ref}/status`.
+  The pull request merge box lists the head's checks with links to their details; commit
+  lists and the commit page show a combined status mark.
+- **Required status checks** in branch protection: list the required contexts, and pull
+  requests into matching branches merge only when each one's latest status on the head is
+  `success` (administrators may bypass where the rule allows it). Statuses nobody requires
+  are shown but never block, and status checks never affect pushes.
+- **REST API: collaborators, teams, releases and forks.**
+  `GET /repos/{owner}/{repo}/collaborators`, `GET|PUT|DELETE …/collaborators/{username}`
+  and `…/collaborators/{username}/permission`; organisation teams under
+  `/orgs/{org}/teams` with members (`…/memberships/{username}`) and repository grants
+  (`…/repos/{owner}/{repo}`); releases (`…/releases`, `/latest`, `/tags/{tag}`, `/{id}`)
+  with attached files — uploaded through the release's `upload_url`
+  (`POST …/releases/{id}/assets?name=`, the raw body is the file, streamed under the
+  `[releases]` limits) and downloaded with `Accept: application/octet-stream`; forks
+  (`GET|POST …/forks`). Shaped like GitHub's and documented in the OpenAPI document.
+- **Webhooks** `member` (a collaborator added, changing permission or removed) and
+  `status` (a commit status reported), with GitHub's payload shapes.
+- **Email notifications**: mentions, assignments, review requests, reviews, comments and
+  state changes on threads you take part in are also emailed to verified addresses
+  (Settings → Notifications: off / participating / everything). Messages thread per issue
+  (`Message-ID` / `In-Reply-To`), say why you got them, and carry a one-click unsubscribe
+  link (RFC 8058 `List-Unsubscribe-Post`). Rate limited per address, never sent to the
+  actor or to anyone who can no longer read the repository.
+- **Edit files in the browser**: create (with new directories), edit, rename or move,
+  delete and upload files from the repository pages, one commit each, on the current
+  branch or on a new branch followed by a pull request. Branch protection applies exactly
+  as for pushes; a branch that moved meanwhile is reported, never silently rebased. Commits
+  made this way trigger webhooks, `fixes #n` and everything else a push does, and are
+  authored with your noreply address, like merges. Git LFS pointer files, binaries and
+  files too large to display cannot be edited in the browser (they can be deleted or
+  replaced by an upload).
+- **Git LFS.** The server side of Git Large File Storage: the batch API and basic
+  transfers under `/{owner}/{repo}.git/info/lfs` (also without `.git`), with streamed
+  uploads checked against their SHA-256 and size; the locks API (`git lfs lock`, `locks`,
+  `unlock`, lock verification on push); and `git-lfs-authenticate` over SSH. The same
+  credentials as Git over HTTP (password or personal access token) or SSH keys; transfers
+  use short-lived signed headers. Objects are stored once under `<data_dir>/lfs` however
+  many repositories use them, forks share their parent's objects, and objects no
+  repository uses are removed by maintenance after a day. The blob page shows the stored
+  file (with a "Stored with Git LFS" badge) instead of the pointer, and Raw serves it.
+- **Sign in with OpenID Connect providers** (Keycloak, Authentik, Google, Entra ID, …) and
+  **GitHub** (github.com or Enterprise Server), configured as `[[auth.providers]]`.
+  Authorization code flow with PKCE, signed state, nonce and full ID token validation
+  (RS256/ES256, key rotation). First sign-ins register an account when allowed
+  (`allow_registration`), or link to an existing one from Settings → Security; linking by
+  email only with `trust_email` and verified addresses on both sides. Two-factor
+  authentication still applies unless `trust_mfa` and the provider reports MFA. Linked
+  accounts are listed with unlink; the last way to sign in can't be removed. Accounts
+  registered through a provider have no password until a reset link sets one.
+- New audit actions "Linked a sign-in provider" and "Unlinked a sign-in provider"
+  (category "Sign-in"); sign-ins through a provider record the provider's name.
+- **Open-source project files**: `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY.md`,
+  `CONTRIBUTING.md`, `SECURITY.md` (private vulnerability reports through GitHub security
+  advisories), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `ROADMAP.md`, issue forms
+  and a pull request template.
+- A **release workflow**: version tags build and publish the binaries, their checksums,
+  release notes from this changelog, and the container image. The image carries OCI
+  labels (source, license, documentation, version).
+- `cargo deny` checks dependency licenses and RustSec advisories in CI (`deny.toml`).
+
+#### Changed
+
+- **License:** MIT OR Apache-2.0 instead of AGPL-3.0-or-later, in every crate, the
+  front-end package and the OpenAPI document.
+- New personal access tokens are `rbit_…` (`rit_…` is still accepted everywhere).
+- Pull requests no longer show "No status checks — not supported yet": the checks line
+  appears when the head has statuses, and only required checks can block a merge.
+- Release objects in webhook payloads and the API carry GitHub's API links: `url`,
+  `assets_url`, `upload_url` and each file's `url`.
+- **Granting a team `owner/name` of a different owner is refused** instead of silently
+  granting the organisation's repository of that name (web form and API).
+- The blob page of a Git LFS pointer shows the stored object (text, Markdown, code or an
+  image) instead of the pointer text; "Object not on this server" when it is missing.
+- Blob and tree pages offer Edit, Delete, Add file and Upload to writers on branches
+  (never on pull mirrors).
+- Settings has a **Notifications** section; Settings → Security lists sign-in methods
+  when providers are configured. Settings pages no longer overflow a 375 px screen.
+- Everything under `/login/` (provider sign-in starts included) is no longer preloaded on
+  hover.
+
+#### Security
+
+- `server_secrets` holds server-generated keys (the notification unsubscribe key and the
+  external sign-in key, 256 bits each, created on first use). Like webhook secrets they
+  are stored raw, because HMAC needs the key.
+- `POST /email/unsubscribe/{token}` is the single path exempt from the cross-site request
+  check: mail clients send RFC 8058 one-click unsubscribes from their own origin. The
+  token is an HMAC of the account id and can only turn that account's notification emails
+  off; `GET` only shows a confirmation, so link scanners unsubscribe nobody.
+- Git LFS: object ids are validated before they name a path; uploads are checked against
+  size and SHA-256 before they are placed; an object stored for an unrelated repository is
+  never linked without a fresh upload, so knowing an object id never grants its content.
+  Transfer headers are HMAC-signed, short-lived, scoped to one repository (and one
+  object), re-check the holder's current access, and failures are throttled like Git
+  credentials.
+- External sign-in: identities are keyed by the provider's stable subject, never by
+  email; an unverified address never links anything; the flow state lives in a signed,
+  10-minute `HttpOnly; SameSite=Lax` cookie and must match exactly; starting a link from
+  settings needs a session-bound token; callbacks are throttled per address; suspended
+  accounts are refused. Provider requests use the webhooks' outbound address guard, no
+  redirects and a 1 MiB response cap.
+- Web edits never check files out (scratch repository, scratch index and `commit-tree`),
+  validate every path (no `..`, no `.git` in any spelling), stream uploads to disk, and
+  reach the branch only through one compare-and-swap `update-ref`. No email address is
+  written into commits made in the browser.
+- Notification emails go only to verified addresses, re-check read access at send time,
+  are deduplicated and rate limited per address, and carry no `Reply-To`.
+
 ### Fixed
 
 - A webhook created right after an event (for example a push) no longer receives that
