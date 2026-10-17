@@ -144,6 +144,10 @@ async fn every_filter_and_order() {
     assert_eq!(fixture.numbers(&sorted(IssueSort::UpdatedAsc)).await, [3, 1, 2]);
     assert_eq!(fixture.numbers(&sorted(IssueSort::CommentsDesc)).await, [2, 3, 1]);
 
+    assert_eq!(fixture.numbers(&SearchFilter { any_assignee: true, ..base() }).await, [2]);
+    assert_eq!(fixture.numbers(&SearchFilter { any_milestone: true, ..base() }).await, [3]);
+    assert_eq!(fixture.numbers(&SearchFilter { updated_since: Some(Timestamp(70)), ..base() }).await, [2, 1]);
+
     let store = fixture.database.issue_search();
     let open_bugs = SearchFilter { state: Some(IssueState::Open), labels: names(&["bug"]), ..SearchFilter::new(fixture.repo) };
     assert_eq!(store.state_counts(&open_bugs).await.unwrap(), (2, 1), "tab counts ignore the state but honour the rest");

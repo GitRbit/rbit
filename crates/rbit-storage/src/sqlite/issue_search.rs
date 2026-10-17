@@ -41,6 +41,12 @@ pub struct SearchFilter {
     /// Free-text words (title and body), the last one matched as a prefix.
     pub text: Vec<String>,
     pub sort: IssueSort,
+    /// Only threads with at least one assignee (the API's `assignee=*`).
+    pub any_assignee: bool,
+    /// Only threads in some milestone (the API's `milestone=*`).
+    pub any_milestone: bool,
+    /// Only threads updated at or after this time (the API's `since`).
+    pub updated_since: Option<rbit_core::Timestamp>,
 }
 
 impl SearchFilter {
@@ -63,6 +69,9 @@ impl SearchFilter {
             no_milestone: false,
             text: Vec::new(),
             sort: IssueSort::default(),
+            any_assignee: false,
+            any_milestone: false,
+            updated_since: None,
         }
     }
 }
@@ -82,7 +91,9 @@ pub fn fts_expression(words: &[String]) -> Option<String> {
 /// `WHERE` clause of every list query, with numbered parameters:
 /// `?1` repo, `?2` kind, `?3` state, `?4` merged, `?5` draft, `?6` locked, `?7` author,
 /// `?8` assignee, `?9` no assignee, `?10` labels (JSON), `?11` excluded labels (JSON),
-/// `?12` no label, `?13` milestone title, `?14` no milestone, `?15` FTS expression.
+/// `?12` no label, `?13` milestone title, `?14` no milestone, `?15` FTS expression,
+/// `?18` some assignee, `?19` some milestone, `?20` updated since (`?16` and `?17` are a
+/// page's limit and offset).
 macro_rules! search_where {
     () => {
         "WHERE i.repo_id = ?1 \
@@ -102,7 +113,10 @@ macro_rules! search_where {
          AND (?13 IS NULL OR EXISTS (SELECT 1 FROM issue_milestones im JOIN milestones m ON m.id = im.milestone_id \
               WHERE im.issue_id = i.id AND m.title = ?13)) \
          AND (?14 = 0 OR NOT EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)) \
-         AND (?15 IS NULL OR i.id IN (SELECT rowid FROM issues_fts WHERE issues_fts MATCH ?15)) "
+         AND (?15 IS NULL OR i.id IN (SELECT rowid FROM issues_fts WHERE issues_fts MATCH ?15)) \
+         AND (?18 = 0 OR EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id)) \
+         AND (?19 = 0 OR EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)) \
+         AND (?20 IS NULL OR i.updated_at >= ?20) "
     };
 }
 
@@ -120,7 +134,8 @@ macro_rules! search_page {
     };
 }
 
-/// Binds `?1`–`?15` of [`search_where!`] (with `state` overridden by the caller).
+/// Binds `?1`–`?15` of [`search_where!`] (with `state` overridden by the caller); the
+/// caller binds `?16` and `?17` and then [`bind_extra!`] binds `?18`–`?20`.
 macro_rules! bind_filter {
     ($query:expr, $filter:expr, $state:expr, $fts:expr) => {
         $query
@@ -139,6 +154,13 @@ macro_rules! bind_filter {
             .bind($filter.milestone.as_deref())
             .bind($filter.no_milestone)
             .bind($fts)
+    };
+}
+
+/// Binds `?18`–`?20` of [`search_where!`].
+macro_rules! bind_extra {
+    ($query:expr, $filter:expr) => {
+        $query.bind($filter.any_assignee).bind($filter.any_milestone).bind($filter.updated_since.map(|at| at.0))
     };
 }
 
@@ -220,18 +242,17 @@ impl IssueSearchStore {
             IssueSort::CommentsDesc => search_page!("i.comment_count DESC, i.number DESC"),
         };
         let fts = fts_expression(&filter.text);
-        let rows: Vec<Row> = bind_filter!(sqlx::query_as(sql), filter, filter.state, fts)
+        let query = bind_filter!(sqlx::query_as(sql), filter, filter.state, fts)
             .bind(i64::from(limit))
-            .bind(i64::try_from(offset).unwrap_or(i64::MAX))
-            .fetch_all(&self.pool)
-            .await?;
+            .bind(i64::try_from(offset).unwrap_or(i64::MAX));
+        let rows: Vec<Row> = bind_extra!(query, filter).fetch_all(&self.pool).await?;
         rows.into_iter().map(Issue::try_from).collect()
     }
 
     /// How many threads match `filter`, ignoring its state: `(open, closed)`, for the tabs.
     pub async fn state_counts(&self, filter: &SearchFilter) -> Result<(u64, u64), StorageError> {
         let fts = fts_expression(&filter.text);
-        let (open, closed): (i64, i64) = bind_filter!(
+        let query = bind_filter!(
             sqlx::query_as(concat!(
                 "SELECT COALESCE(SUM(i.state = 'open'), 0), COALESCE(SUM(i.state = 'closed'), 0) FROM issues i ",
                 search_where!()
@@ -240,8 +261,9 @@ impl IssueSearchStore {
             None::<IssueState>,
             fts
         )
-        .fetch_one(&self.pool)
-        .await?;
+        .bind(0_i64)
+        .bind(0_i64);
+        let (open, closed): (i64, i64) = bind_extra!(query, filter).fetch_one(&self.pool).await?;
         Ok((count(open), count(closed)))
     }
 

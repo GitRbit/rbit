@@ -9,7 +9,9 @@
 //! `IssueStore::touch`. Validation (name lengths, colours, limits) is the services'; the
 //! schema's `CHECK`s are the last line of defence.
 
-use rbit_core::{Account, AccountId, IssueId, IssueState, LabelId, MilestoneId, RepoId, Timestamp, issue::LabelSnapshot};
+use rbit_core::{
+    Account, AccountId, CommentId, IssueId, IssueNumber, IssueState, LabelId, MilestoneId, RepoId, Timestamp, issue::LabelSnapshot,
+};
 use sqlx::SqlitePool;
 
 use super::rows::AccountRow;
@@ -767,6 +769,19 @@ impl IssueMetaStore {
         }
         tx.commit().await?;
         Ok(())
+    }
+
+    /// The thread of `repo` that comment `id` belongs to, as `(issue, number)`: for the
+    /// API's repository-wide comment endpoints.
+    pub async fn comment_thread(&self, repo: RepoId, id: CommentId) -> Result<Option<(IssueId, IssueNumber)>, StorageError> {
+        let row: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT i.id, i.number FROM issue_comments c JOIN issues i ON i.id = c.issue_id WHERE c.id = ? AND i.repo_id = ?",
+        )
+        .bind(id.0)
+        .bind(repo.0)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(|(issue, number)| Ok((IssueId(issue), IssueNumber::try_from(number).map_err(|e| corrupt("issue number", e))?))).transpose()
     }
 
     /// The accounts (users and organisations) among `names`, case-insensitively, in one

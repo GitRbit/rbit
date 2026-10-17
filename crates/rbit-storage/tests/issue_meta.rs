@@ -236,6 +236,17 @@ async fn new_threads_get_their_metadata_at_once_and_mentions_resolve() {
     assert_eq!(store.assignees_of(&[issue]).await.unwrap()[0].1.id, bob.id());
     assert_eq!(store.milestones_of(&[issue]).await.unwrap()[0].id, milestone.id);
 
+    let comment = fixture
+        .database
+        .issues()
+        .add_comment(issue, fixture.alice.id(), &IssueText::comment("Hi").unwrap(), Timestamp(3))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(store.comment_thread(fixture.repo, comment.id).await.unwrap().map(|(id, n)| (id, n.get())), Some((issue, 1)));
+    let other = repo(&fixture.database, &fixture.alice, "other").await;
+    assert_eq!(store.comment_thread(other, comment.id).await.unwrap(), None, "only within the repository");
+
     let found = store.accounts_named(&["BOB".to_owned(), "nobody".to_owned(), "alice".to_owned()]).await.unwrap();
     assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"]);
 }
