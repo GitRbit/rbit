@@ -10,7 +10,8 @@
 //!   members and repositories. Members may leave a team themselves.
 //! * Team members must be members of the organisation (enforced atomically by the store;
 //!   leaving the organisation removes them from its teams).
-//! * A team is only granted repositories of its own organisation.
+//! * A team is only granted repositories of its own organisation (naming another owner
+//!   is refused, not silently redirected to the organisation's repository of that name).
 
 use rbit_core::{
     Account, AccountKind, OrgRole, Organization, User,
@@ -171,6 +172,17 @@ impl TeamService {
         Ok(())
     }
 
+    /// Adds the organisation member called `username` to the team unless they are on it
+    /// already (the API's idempotent `PUT`). Returns whether they were added.
+    pub async fn ensure_member(&self, actor: &User, team: &TeamContext, username: &str) -> Result<bool, ServiceError> {
+        self.require_manager(actor, &team.org).await?;
+        let user = self.find_user(username).await?;
+        if self.store().is_member(team.team.id, user.id).await? {
+            return Ok(false);
+        }
+        self.add_member(actor, team, user.name.as_str()).await.map(|()| true)
+    }
+
     /// Removes `username` from the team: managers may remove anyone, members themselves.
     pub async fn remove_member(&self, actor: &User, team: &TeamContext, username: &str) -> Result<(), ServiceError> {
         let user = self.find_user(username).await?;
@@ -223,7 +235,11 @@ impl TeamService {
 
     async fn find_repository(&self, team: &TeamContext, name: &str) -> Result<OwnedRepository, ServiceError> {
         let name = name.trim();
-        let name = name.rsplit_once('/').map_or(name, |(_, repo)| repo);
+        let name = match name.split_once('/') {
+            Some((owner, repo)) if owner.eq_ignore_ascii_case(team.org.name().as_str()) => repo,
+            Some(_) => return Err(not_in_org(team, name)),
+            None => name,
+        };
         if name.is_empty() {
             return Err(ServiceError::Invalid("enter a repository name".to_owned()));
         }

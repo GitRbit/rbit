@@ -14,7 +14,7 @@
 //!
 //! The routes come from one table, [`table`]; wave B areas append theirs from child
 //! modules (`issues`, `notifications`, `pulls`, `protection`), milestone 3 too
-//! (`collaborators`). `openapi.json` plus one fragment per
+//! (`collaborators`, `teams`). `openapi.json` plus one fragment per
 //! area (`openapi/<area>.json`, merged once at start-up) documents the same set, and a
 //! test keeps the two equal.
 
@@ -30,6 +30,7 @@ mod pagination;
 mod protection;
 mod pulls;
 mod repos;
+mod teams;
 #[cfg(test)]
 mod test_support;
 
@@ -159,18 +160,20 @@ pub fn table() -> Vec<ApiRoute> {
     routes.extend(protection::routes());
     // Milestone 3: REST API continuation (A).
     routes.extend(collaborators::routes());
+    routes.extend(teams::routes());
     routes
 }
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
-const FRAGMENTS: [(&str, &str); 5] = [
+const FRAGMENTS: [(&str, &str); 6] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
     ("pulls", include_str!("openapi/pulls.json")),
     ("protection", include_str!("openapi/protection.json")),
     // Milestone 3: REST API continuation (A).
     ("collaborators", include_str!("openapi/collaborators.json")),
+    ("teams", include_str!("openapi/teams.json")),
 ];
 
 /// The served document: `openapi.json` with every fragment's paths and schemas merged in.

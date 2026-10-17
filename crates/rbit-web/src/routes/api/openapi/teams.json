@@ -1,0 +1,769 @@
+{
+  "paths": {
+    "/orgs/{org}/teams": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listTeams",
+        "tags": [
+          "teams"
+        ],
+        "summary": "The organisation's teams, by name",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of teams",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Team"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTeam",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Create a team",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation. A taken name is 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/teams/{team_slug}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "team_slug",
+          "in": "path",
+          "required": true,
+          "description": "The team's name (its URL name).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getTeam",
+        "tags": [
+          "teams"
+        ],
+        "summary": "One team",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateTeam",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Rename a team or change its description",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation. Absent fields keep their value; `description: null` clears it.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The changed team",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Team"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTeam",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Delete a team, its memberships and repository grants",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/teams/{team_slug}/members": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "team_slug",
+          "in": "path",
+          "required": true,
+          "description": "The team's name (its URL name).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listTeamMembers",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Members of a team, by name",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of members",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Account"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/teams/{team_slug}/memberships/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "team_slug",
+          "in": "path",
+          "required": true,
+          "description": "The team's name (its URL name).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/username"
+        }
+      ],
+      "get": {
+        "operationId": "getTeamMembership",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Whether a user is on the team",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404. Users who are not on the team are 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The membership",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMembership"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "addTeamMember",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Add an organisation member to the team",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation. Only members of the organisation can join its teams (422 otherwise).",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The membership (also when they already were on the team)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamMembership"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeTeamMember",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Remove a user from the team",
+        "description": "Owners remove anyone, members themselves (an `admin` token either way). Users who are not on the team are 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/teams/{team_slug}/repos": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "team_slug",
+          "in": "path",
+          "required": true,
+          "description": "The team's name (its URL name).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listTeamRepositories",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Repositories the team was granted that the caller may read, by name",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of repositories, with the team's permission",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeamRepository"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "team_slug",
+          "in": "path",
+          "required": true,
+          "description": "The team's name (its URL name).",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "checkTeamRepository",
+        "tags": [
+          "teams"
+        ],
+        "summary": "The team's permission on a repository",
+        "description": "Teams are visible to members of the organisation and site administrators; everyone else gets 404. Repositories the team has no access to are 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository, with the team's permission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamRepository"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setTeamRepository",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Grant the team a repository of its organisation, or change its permission",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation. The permission defaults to `write` (GitHub's `push`); repositories of other owners are 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamRepositoryBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Granted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeTeamRepository",
+        "tags": [
+          "teams"
+        ],
+        "summary": "Revoke the team's access to a repository",
+        "description": "Organisation owners (and site administrators) with an `admin` token; 403 for other members, 404 for everyone outside the organisation. Repositories the team has no access to are 404.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Team": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "privacy",
+          "permission",
+          "url",
+          "html_url",
+          "members_url",
+          "repositories_url",
+          "parent",
+          "created_at",
+          "organization"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "description": "The same as `name` (team names are URL names)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "privacy": {
+            "type": "string",
+            "enum": [
+              "closed"
+            ],
+            "description": "Teams are visible to the organisation's members."
+          },
+          "permission": {
+            "type": "string",
+            "enum": [
+              "pull"
+            ],
+            "description": "GitHub's legacy default; grants are per repository."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "html_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "members_url": {
+            "type": "string",
+            "description": "A URI template: `…/members{/member}`."
+          },
+          "repositories_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "parent": {
+            "type": "null",
+            "description": "rbit has no nested teams."
+          },
+          "members_count": {
+            "type": "integer"
+          },
+          "repos_count": {
+            "type": "integer"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organization": {
+            "$ref": "#/components/schemas/Account"
+          }
+        }
+      },
+      "TeamBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Required when creating."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 350
+          }
+        }
+      },
+      "TeamMembership": {
+        "type": "object",
+        "required": [
+          "url",
+          "role",
+          "state"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "member"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active"
+            ]
+          }
+        }
+      },
+      "TeamRepository": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Repository"
+          },
+          {
+            "type": "object",
+            "required": [
+              "role_name"
+            ],
+            "properties": {
+              "role_name": {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "write",
+                  "admin"
+                ],
+                "description": "The team's permission; `permissions` describes it too."
+              }
+            }
+          }
+        ]
+      },
+      "TeamRepositoryBody": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "admin",
+              "pull",
+              "push"
+            ],
+            "description": "`pull` means `read` and `push` means `write`; absent means `write`."
+          }
+        }
+      }
+    }
+  }
+}

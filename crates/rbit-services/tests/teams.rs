@@ -160,6 +160,13 @@ async fn members_must_belong_to_the_organisation_and_may_leave() {
     teams.remove_member(&fixture.bob, &core, "bob").await.unwrap();
     invalid(teams.remove_member(&fixture.olga, &core, "bob").await, "not on this team");
 
+    // The API's idempotent add: only managers, only organisation members, once.
+    assert!(teams.ensure_member(&fixture.olga, &core, "bob").await.unwrap(), "added");
+    assert!(!teams.ensure_member(&fixture.olga, &core, " bob ").await.unwrap(), "already on the team");
+    invalid(teams.ensure_member(&fixture.olga, &core, "eve").await, "not a member of acme");
+    assert!(matches!(teams.ensure_member(&fixture.bob, &core, "bob").await, Err(ServiceError::Forbidden)));
+    teams.remove_member(&fixture.bob, &core, "bob").await.unwrap();
+
     // Leaving the organisation leaves its teams.
     teams.add_member(&fixture.olga, &core, "bob").await.unwrap();
     fixture.services.orgs.leave(&fixture.bob, &fixture.acme).await.unwrap();
@@ -184,7 +191,8 @@ async fn team_grants_give_their_members_access() {
     invalid(teams.set_repository(&fixture.olga, &core, "", Permission::Read).await, "enter a repository name");
     let personal = CreateRepository { name: "dotfiles".into(), description: String::new(), visibility: Visibility::Public };
     fixture.services.repositories.create(&fixture.olga, personal).await.unwrap();
-    invalid(teams.set_repository(&fixture.olga, &core, "olga/dotfiles", Permission::Read).await, "no repository called dotfiles");
+    invalid(teams.set_repository(&fixture.olga, &core, "olga/dotfiles", Permission::Read).await, "no repository called olga/dotfiles");
+    invalid(teams.set_repository(&fixture.olga, &core, "olga/rocket", Permission::Read).await, "no repository called olga/rocket");
     assert!(matches!(teams.set_repository(&fixture.bob, &core, "rocket", Permission::Read).await, Err(ServiceError::Forbidden)));
 
     // The team page shows readable repositories only: Eve could not open it anyway, and an

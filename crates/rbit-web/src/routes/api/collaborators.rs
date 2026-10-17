@@ -125,7 +125,7 @@ pub struct CollaboratorBody {
 }
 
 /// rbit's permission for a requested name (GitHub's `pull` and `push` included); absent
-/// means `write`, GitHub's default (`push`).
+/// means `write`, GitHub's default (`push`). Teams use it for repository grants too.
 pub(super) fn requested_permission(name: Option<&str>) -> ApiResult<Permission> {
     match name.map(str::trim) {
         None | Some("push") => Ok(Permission::Write),
