@@ -12,6 +12,7 @@ mod edits;
 mod essentials;
 mod harness;
 mod issues;
+mod lfs;
 mod notification_email;
 mod orgs;
 mod protection;

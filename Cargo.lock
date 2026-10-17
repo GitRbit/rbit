@@ -4185,6 +4185,7 @@ dependencies = [
  "hmac",
  "rbit-core",
  "rbit-services",
+ "rbit-ssh",
  "rbit-storage",
  "rbit-web",
  "reqwest",

@@ -28,6 +28,8 @@ tokio.workspace = true
 serde_json.workspace = true
 hmac.workspace = true
 sha2.workspace = true
+# L: Git LFS over SSH needs the SSH server beside the HTTP one.
+rbit-ssh.workspace = true
 
 [lints]
 workspace = true
