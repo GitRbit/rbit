@@ -439,19 +439,20 @@
 
 /* ---------------------------------------------------------------- Syntax highlighting */
 
-.hl-comment { color: var(--syntax-comment); }
-.hl-string, .hl-markup.hl-raw { color: var(--syntax-string); }
-.hl-constant.hl-numeric, .hl-constant.hl-language, .hl-constant.hl-character { color: var(--syntax-number); }
-.hl-keyword, .hl-storage { color: var(--syntax-keyword); }
-.hl-entity.hl-name.hl-function, .hl-support.hl-function, .hl-meta.hl-function-call { color: var(--syntax-function); }
-.hl-entity.hl-name.hl-type, .hl-entity.hl-name.hl-class, .hl-support.hl-type, .hl-support.hl-class,
-.hl-storage.hl-type { color: var(--syntax-type); }
-.hl-entity.hl-name.hl-tag { color: var(--syntax-tag); }
-.hl-entity.hl-other.hl-attribute-name { color: var(--syntax-attribute); }
-.hl-markup.hl-heading { color: var(--ink); font-weight: 600; }
-.hl-markup.hl-bold { font-weight: 600; }
-.hl-markup.hl-italic { font-style: italic; }
-.hl-invalid { color: var(--danger); }
+/* render/highlight.rs resolves each token's scopes to at most one colour class plus
+   b (semibold) and i (italic), on flat spans; unstyled text has no span. */
+.c { color: var(--syntax-comment); }
+.s { color: var(--syntax-string); }
+.n { color: var(--syntax-number); }
+.k { color: var(--syntax-keyword); }
+.f { color: var(--syntax-function); }
+.t { color: var(--syntax-type); }
+.g { color: var(--syntax-tag); }
+.a { color: var(--syntax-attribute); }
+.h { color: var(--ink); font-weight: 600; }
+.x { color: var(--danger); }
+.b { font-weight: 600; }
+.i { font-style: italic; }
 
 /* ---------------------------------------------------------------- Scheme-dependent visibility */
 
