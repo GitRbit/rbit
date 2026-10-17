@@ -36,7 +36,7 @@ pub async fn show(State(state): State<AppState>, caller: Caller, Path((owner, na
 /// The full repository object of single-repository responses: with `permissions` and,
 /// for a fork, GitHub's `parent` (omitted when the caller may not read the parent or it
 /// was deleted).
-async fn detail(state: &AppState, caller: &Caller, ctx: &RepoContext) -> ApiResult<Value> {
+pub(super) async fn detail(state: &AppState, caller: &Caller, ctx: &RepoContext) -> ApiResult<Value> {
     let forks = &state.services.forks;
     let base = state.config.server.base_url();
     let fork = forks.is_fork(ctx.repo.repo.id).await?;

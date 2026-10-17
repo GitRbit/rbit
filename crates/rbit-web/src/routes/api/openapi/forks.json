@@ -1,0 +1,145 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/forks": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listForks",
+        "tags": [
+          "forks"
+        ],
+        "summary": "Direct forks the caller may read, newest first",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of repositories",
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Repository"
+                  }
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFork",
+        "tags": [
+          "forks"
+        ],
+        "summary": "Fork the repository",
+        "description": "Anyone who can read the repository, with a `write` token, into their own account or an organisation where they may create repositories. The fork keeps the parent's visibility, description and default branch; branches and tags are copied. Sends the `fork` webhook.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Forked (synchronously; 202 as on GitHub)",
+            "headers": {
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repository"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ForkBody": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "description": "The organisation to fork into; absent means the caller's account."
+          },
+          "name": {
+            "type": "string",
+            "description": "The fork's name; absent means the parent's."
+          },
+          "default_branch_only": {
+            "type": "boolean",
+            "description": "Accepted for compatibility and ignored: every branch and tag is copied."
+          }
+        }
+      }
+    }
+  }
+}

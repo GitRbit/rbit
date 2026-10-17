@@ -127,11 +127,21 @@ impl ForkService {
 
     /// Forks of `repo` the viewer may read, newest first.
     pub async fn list(&self, viewer: Option<&User>, repo: &RepoContext) -> Result<Vec<OwnedRepository>, ServiceError> {
-        Ok(self
-            .ctx
-            .database
-            .forks()
-            .list_readable(repo.repo.repo.id, viewer.map(User::id), viewer.is_some_and(|v| v.is_admin), MAX_LISTED_FORKS)
-            .await?)
+        Ok(self.page(viewer, repo, MAX_LISTED_FORKS, 0).await?.0)
+    }
+
+    /// `limit` forks of `repo` the viewer may read from `offset`, newest first, and how
+    /// many they may read in all (for the API's pages).
+    pub async fn page(
+        &self,
+        viewer: Option<&User>,
+        repo: &RepoContext,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<OwnedRepository>, u64), ServiceError> {
+        let (viewer, is_admin) = (viewer.map(User::id), viewer.is_some_and(|v| v.is_admin));
+        let store = self.ctx.database.forks();
+        let forks = store.list_readable(repo.repo.repo.id, viewer, is_admin, limit, offset).await?;
+        Ok((forks, store.count_readable(repo.repo.repo.id, viewer, is_admin).await?))
     }
 }

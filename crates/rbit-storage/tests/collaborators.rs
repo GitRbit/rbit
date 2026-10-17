@@ -90,7 +90,7 @@ async fn collaborators_see_private_forks_shared_with_them() {
     database.collaborators().add(fork, alice.id(), Permission::Read, bob.id()).await.unwrap();
 
     assert_eq!(forks.count_readable(parent, Some(alice.id()), false).await.unwrap(), 1, "a collaborator reads the private fork");
-    let listed = forks.list_readable(parent, Some(alice.id()), false, 10).await.unwrap();
+    let listed = forks.list_readable(parent, Some(alice.id()), false, 10, 0).await.unwrap();
     assert_eq!(listed.iter().map(OwnedRepository::full_name).collect::<Vec<_>>(), ["bob/lib"]);
     assert_eq!(forks.count_readable(parent, Some(carol.id()), false).await.unwrap(), 0, "owning the parent grants nothing on forks");
     assert_eq!(forks.count_readable(parent, None, false).await.unwrap(), 0);

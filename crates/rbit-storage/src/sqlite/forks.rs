@@ -86,13 +86,15 @@ impl ForkStore {
         Ok(u64::try_from(count).unwrap_or_default())
     }
 
-    /// Direct forks of `parent` that the viewer may read, newest first.
+    /// Direct forks of `parent` that the viewer may read, newest first: `limit` from
+    /// `offset`.
     pub async fn list_readable(
         &self,
         parent: RepoId,
         viewer: Option<AccountId>,
         viewer_is_admin: bool,
         limit: u32,
+        offset: u32,
     ) -> Result<Vec<OwnedRepository>, StorageError> {
         let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
             "SELECT ",
@@ -100,12 +102,13 @@ impl ForkStore {
             " FROM repo_forks f JOIN repositories r ON r.id = f.repo_id JOIN accounts o ON o.id = r.owner_id \
              WHERE f.parent_id = ?1 AND ",
             readable_by!("?2", "?3"),
-            " ORDER BY f.created_at DESC, r.id DESC LIMIT ?4"
+            " ORDER BY f.created_at DESC, r.id DESC LIMIT ?4 OFFSET ?5"
         ))
         .bind(parent.0)
         .bind(viewer.map(|id| id.0))
         .bind(viewer_is_admin)
         .bind(limit)
+        .bind(offset)
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(OwnedRepository::try_from).collect()

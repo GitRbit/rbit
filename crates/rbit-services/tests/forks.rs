@@ -100,6 +100,12 @@ async fn a_fork_copies_refs_and_settings_and_remembers_its_parent() {
     assert!(matches!(forks.fork(&bob, &as_bob, ForkInput::default()).await, Err(ServiceError::Conflict(_))));
     let renamed = forks.fork(&bob, &as_bob, ForkInput { owner: String::new(), name: "demo-2".into() }).await.unwrap();
     assert_eq!(renamed.repo.name.as_str(), "demo-2");
+    // Pages, newest first, with the total.
+    let (page, total) = forks.page(None, &parent, 1, 0).await.unwrap();
+    assert_eq!((page[0].full_name(), total), ("bob/demo-2".to_owned(), 2));
+    let (page, _) = forks.page(None, &parent, 1, 1).await.unwrap();
+    assert_eq!(page[0].full_name(), "bob/demo");
+    assert!(forks.page(None, &parent, 1, 2).await.unwrap().0.is_empty());
     // Organisations bob does not belong to are refused.
     let other = ForkInput { owner: "alice".into(), name: "copy".into() };
     assert!(matches!(forks.fork(&bob, &as_bob, other).await, Err(ServiceError::Invalid(_))));
