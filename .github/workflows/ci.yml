@@ -34,6 +34,20 @@ jobs:
       # Pedantic lints are enabled workspace-wide in Cargo.toml; warnings fail the build.
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+  deny:
+    name: Licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # A prebuilt cargo-deny binary: compiling it would take longer than the check.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      # deny.toml lists the allowed licenses and the ignored advisories (each with a reason).
+      # Advisories come from the RustSec database, so a new advisory can fail an unchanged
+      # commit: that is the point.
+      - run: cargo deny --locked check licenses advisories
+
   test:
     name: Tests (${{ matrix.os }})
     strategy:

@@ -1,0 +1,60 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+#
+# CI runs `cargo deny check licenses advisories` on every push and pull request. Run the
+# same locally with `cargo install cargo-deny --locked` first.
+
+[graph]
+# Every platform a release is built for, so platform-specific crates (windows-sys,
+# security-framework, ...) are checked too, and crates for no supported target are not.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = false
+
+[advisories]
+# RustSec advisories: vulnerabilities fail the check, as do yanked versions in Cargo.lock.
+# Unmaintained crates are reported only when we depend on them directly; a transitive one
+# is for its parent crate to replace.
+unmaintained = "workspace"
+yanked = "deny"
+# Each ignored advisory needs a reason; revisit them when the crate in question changes.
+ignore = [
+    # Marvin attack: timing side channel in RSA *private-key* operations (decryption and
+    # signing), unpatched upstream. rbit only verifies RSA signatures with public keys
+    # (WebAuthn RS256 passkeys, users' ssh-rsa keys); the SSH host key is always Ed25519
+    # (rbit-ssh/src/host_key.rs refuses anything else), so no private RSA key exists.
+    { id = "RUSTSEC-2023-0071", reason = "rbit performs no RSA private-key operations" },
+]
+
+[licenses]
+# rbit is MIT OR Apache-2.0, so every dependency must be compatible with distributing the
+# binary under both. These are the licenses actually found in the tree (`cargo deny list`);
+# add to this list deliberately, never to silence a check.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    # Mozilla's CA certificates (webpki-roots).
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    # File-level copyleft, used unmodified (cssparser and dtoa-short via ammonia, uluru via gix).
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The workspace's own crates are not published to crates.io.
+ignore = true
