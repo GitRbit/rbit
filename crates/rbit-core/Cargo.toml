@@ -10,6 +10,8 @@ license.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
+# I: references are scanned only in Markdown text (not code or link text).
+pulldown-cmark.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

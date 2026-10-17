@@ -4170,6 +4170,7 @@ name = "rbit-core"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "pulldown-cmark",
  "serde",
  "serde_json",
  "thiserror",
