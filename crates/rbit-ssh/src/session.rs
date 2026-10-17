@@ -11,6 +11,10 @@
 //! command list and asks `ProtectionService::check_push` (after the access, mirror and
 //! old-name checks of [`Connection::authorize`]), and only then does
 //! `git receive-pack --stateless-rpc` run on the replayed input.
+//!
+//! `git-lfs-authenticate <repo> <upload|download>` (Git LFS) prints the repository's LFS
+//! endpoint with a short-lived signed header as JSON, after the same checks as a fetch
+//! (download) or push (upload); it is refused when `[lfs] enabled` is off.
 
 // Every handler method is written as `async fn` for uniformity, whether or not it awaits.
 #![allow(clippy::unused_async_trait_impl)]
@@ -27,7 +31,9 @@ use std::{
 };
 
 use rbit_core::User;
-use rbit_services::{PendingPush, RepoContext, ServiceError, ThrottleScope, protection::PushActor, ssh_keys::SshIdentity};
+use rbit_services::{
+    PendingPush, RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, protection::PushActor, ssh_keys::SshIdentity,
+};
 use rbit_transport::{
     ReceiveOptions, Service, TransportError, is_safe_protocol_header,
     receive::{self, CommandLimits, Intercept},
@@ -44,7 +50,7 @@ use tokio::{
 };
 
 use crate::{
-    command::{self, GitCommand},
+    command::{self, GitCommand, LfsAuthenticate},
     server::Shared,
 };
 
@@ -145,6 +151,31 @@ impl Connection {
         Ok(ctx)
     }
 
+    /// Answers `git-lfs-authenticate`: `{href, header, expires_in}` for the HTTP LFS API,
+    /// with the access a fetch (download) or push (upload) over SSH would have.
+    async fn lfs_authenticate(&self, identity: &SshIdentity, request: &LfsAuthenticate) -> Result<String, String> {
+        let lfs = &self.shared.services.lfs;
+        if !lfs.enabled() {
+            return Err("Git LFS is not enabled on this server".to_owned());
+        }
+        let ctx = self.authorize(identity, &request.as_git_command()).await?;
+        let subject = match identity {
+            SshIdentity::User { user, .. } => TokenSubject::User(user.id()),
+            SshIdentity::Deploy { key, .. } => TokenSubject::DeployKey(*key),
+        };
+        let token = lfs.issue(&ctx, subject, request.operation, None);
+        let href = format!("{}/{}.git/info/lfs", self.shared.config.server.base_url(), ctx.repo.full_name());
+        let answer = serde_json::json!({
+            "href": href,
+            "header": { "Authorization": token.authorization },
+            "expires_in": token.expires_in,
+        });
+        Ok(format!(
+            "{answer}
+"
+        ))
+    }
+
     /// `Hi alice! …`, shown to `ssh git@host`.
     fn greeting(&self) -> String {
         let site = self.shared.services.instance.current().site_name;
@@ -173,6 +204,16 @@ fn finish_with_message(session: &mut Session, channel: ChannelId, message: &str,
     session.channel_success(channel)?;
     session.extended_data(channel, STDERR, message.as_bytes().to_vec())?;
     session.exit_status_request(channel, status)?;
+    session.eof(channel)?;
+    session.close(channel)
+}
+
+/// Accepts a request, writes `output` to the client's stdout and ends the channel
+/// successfully.
+fn finish_with_output(session: &mut Session, channel: ChannelId, output: &[u8]) -> Result<(), russh::Error> {
+    session.channel_success(channel)?;
+    session.data(channel, output.to_vec())?;
+    session.exit_status_request(channel, 0)?;
     session.eof(channel)?;
     session.close(channel)
 }
@@ -293,6 +334,28 @@ impl Handler for Connection {
         let (Some(pending), Some(identity)) = (self.channels.remove(&channel), self.identity.clone()) else {
             return session.channel_failure(channel);
         };
+        // Milestone 3: Git LFS (L).
+        if let Some(request) = command::parse_lfs_authenticate(data) {
+            let answer = match request {
+                Ok(request) => self.lfs_authenticate(&identity, &request).await,
+                Err(error) => Err(error.to_string()),
+            };
+            return match answer {
+                Ok(json) => finish_with_output(session, channel, json.as_bytes()),
+                Err(message) => {
+                    tracing::info!(peer = %self.peer, reason = %message, "SSH git-lfs-authenticate refused");
+                    finish_with_message(
+                        session,
+                        channel,
+                        &format!(
+                            "ERROR: {message}
+"
+                        ),
+                        FAILURE,
+                    )
+                }
+            };
+        }
         let command = match command::parse(data) {
             Ok(command) => command,
             Err(error) => {

@@ -8,7 +8,8 @@
 //!   (refused while suspended) or a repository deploy key; failures are throttled per
 //!   client address (`ThrottleScope::SshAuth`). The SSH user name is ignored.
 //! * **Commands** ([`command`]): only `git-upload-pack` / `git-receive-pack` with a
-//!   strictly parsed `owner/repo[.git]` path. No shell is ever started, no PTY, X11,
+//!   strictly parsed `owner/repo[.git]` path, and Git LFS's `git-lfs-authenticate`
+//!   (a signed header for the HTTP LFS API). No shell is ever started, no PTY, X11,
 //!   agent or port forwarding is granted; `ssh git@host` just prints a greeting.
 //! * **Authorisation**: identical to Git over HTTP. User keys go through
 //!   `RepositoryService::open`; deploy keys reach only their repository, read-only

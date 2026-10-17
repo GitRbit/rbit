@@ -4285,6 +4285,7 @@ dependencies = [
  "rbit-storage",
  "rbit-transport",
  "russh",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

@@ -15,6 +15,8 @@ russh.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+# L: Git LFS (`git-lfs-authenticate` answers JSON).
+serde_json.workspace = true
 
 [dev-dependencies]
 rbit-storage.workspace = true

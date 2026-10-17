@@ -7,9 +7,13 @@
 //!
 //! Accepted repository spellings: `owner/repo`, `owner/repo.git`, each optionally with a
 //! leading `/` (from `ssh://` URLs), optionally in single or double quotes.
+//!
+//! Git LFS asks for HTTP credentials with `git-lfs-authenticate <repo> <upload|download>`
+//! ([`parse_lfs_authenticate`]); the same repository spellings apply.
 
 use std::fmt;
 
+use rbit_core::lfs::{LfsOid, LfsOperation};
 use rbit_transport::Service;
 
 /// Longest command accepted; real ones are short.
@@ -32,6 +36,23 @@ impl GitCommand {
     }
 }
 
+/// `git-lfs-authenticate`: the client wants the LFS endpoint and a header for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LfsAuthenticate {
+    pub owner: String,
+    /// The repository name without any `.git` suffix.
+    pub repo: String,
+    pub operation: LfsOperation,
+}
+
+impl LfsAuthenticate {
+    /// The Git command whose access rules apply: fetching for downloads, pushing for uploads.
+    pub fn as_git_command(&self) -> GitCommand {
+        let service = if self.operation.is_write() { Service::ReceivePack } else { Service::UploadPack };
+        GitCommand { service, owner: self.owner.clone(), repo: self.repo.clone() }
+    }
+}
+
 /// Why a command was refused; the message is shown to the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandError {
@@ -39,6 +60,8 @@ pub enum CommandError {
     Unsupported,
     /// A Git command whose repository argument is malformed.
     BadPath,
+    /// `git-lfs-authenticate` with an operation other than `upload` or `download`.
+    BadLfsOperation,
 }
 
 impl fmt::Display for CommandError {
@@ -48,6 +71,7 @@ impl fmt::Display for CommandError {
                 f.write_str("only Git commands are available over SSH (git clone, fetch, pull and push); there is no shell access")
             }
             Self::BadPath => f.write_str("the repository must be given as owner/repository, e.g. git@host:alice/project.git"),
+            Self::BadLfsOperation => f.write_str("git-lfs-authenticate needs the operation: upload or download"),
         }
     }
 }
@@ -62,6 +86,30 @@ pub fn parse(command: &[u8]) -> Result<GitCommand, CommandError> {
     let service = Service::from_wire_name(program).ok_or(CommandError::Unsupported)?;
     let (owner, repo) = parse_path(argument.trim()).ok_or(CommandError::BadPath)?;
     Ok(GitCommand { service, owner: owner.to_owned(), repo: repo.to_owned() })
+}
+
+/// Parses `git-lfs-authenticate <repo> <operation> [<oid>]` (old clients add the object
+/// id, which is ignored). `None` when the command is not `git-lfs-authenticate` at all.
+pub fn parse_lfs_authenticate(command: &[u8]) -> Option<Result<LfsAuthenticate, CommandError>> {
+    if command.len() > MAX_COMMAND_LEN {
+        return None;
+    }
+    let command = std::str::from_utf8(command).ok()?;
+    let mut words = command.split_whitespace();
+    if words.next()? != "git-lfs-authenticate" {
+        return None;
+    }
+    let parsed = (|| {
+        let (owner, repo) = words.next().and_then(parse_path).ok_or(CommandError::BadPath)?;
+        let operation = words.next().and_then(LfsOperation::parse).ok_or(CommandError::BadLfsOperation)?;
+        match (words.next(), words.next()) {
+            (None, None) => {}
+            (Some(oid), None) if LfsOid::parse(oid).is_ok() => {}
+            _ => return Err(CommandError::Unsupported),
+        }
+        Ok(LfsAuthenticate { owner: owner.to_owned(), repo: repo.to_owned(), operation })
+    })();
+    Some(parsed)
 }
 
 /// `'owner/repo.git'` → `("owner", "repo")`.
@@ -122,6 +170,26 @@ mod tests {
         }
         assert_eq!(parse(&[0xff, 0xfe]), Err(CommandError::Unsupported));
         assert_eq!(parse("git-upload-pack 'a/b'".repeat(100).as_bytes()), Err(CommandError::Unsupported));
+    }
+
+    #[test]
+    fn parses_git_lfs_authenticate() {
+        let parse = |command: &str| parse_lfs_authenticate(command.as_bytes());
+        let expected = LfsAuthenticate { owner: "alice".into(), repo: "assets".into(), operation: LfsOperation::Download };
+        assert_eq!(parse("git-lfs-authenticate 'alice/assets.git' download"), Some(Ok(expected.clone())));
+        assert_eq!(parse("git-lfs-authenticate /alice/assets download"), Some(Ok(expected.clone())));
+        let with_oid = format!("git-lfs-authenticate alice/assets.git download {}", "a".repeat(64));
+        assert_eq!(parse(&with_oid), Some(Ok(expected)));
+        let upload = parse("git-lfs-authenticate alice/assets upload").unwrap().unwrap();
+        assert_eq!(upload.as_git_command().service, Service::ReceivePack);
+        assert_eq!(upload.as_git_command().full_name(), "alice/assets");
+
+        assert_eq!(parse("git-upload-pack 'alice/assets.git'"), None, "not an LFS command");
+        assert_eq!(parse("git-lfs-authenticate '../x' download"), Some(Err(CommandError::BadPath)));
+        assert_eq!(parse("git-lfs-authenticate alice/assets"), Some(Err(CommandError::BadLfsOperation)));
+        assert_eq!(parse("git-lfs-authenticate alice/assets delete"), Some(Err(CommandError::BadLfsOperation)));
+        assert_eq!(parse("git-lfs-authenticate alice/assets download; rm -rf /"), Some(Err(CommandError::BadLfsOperation)));
+        assert_eq!(parse("git-lfs-authenticate alice/assets download x y"), Some(Err(CommandError::Unsupported)));
     }
 
     #[test]

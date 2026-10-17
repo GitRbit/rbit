@@ -28,6 +28,10 @@ struct Harness {
 
 impl Harness {
     async fn start() -> Self {
+        Self::start_with(|_| {}).await
+    }
+
+    async fn start_with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
         let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
@@ -35,6 +39,7 @@ impl Harness {
         config.storage.data_dir = dir.path().join("data");
         config.ssh.enabled = true;
         config.ssh.bind = "127.0.0.1:0".parse().unwrap();
+        configure(&mut config);
         let config = Arc::new(config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
@@ -381,4 +386,60 @@ async fn every_kind_of_push_works_through_the_two_step_exchange() {
 
     let mut harness = harness;
     harness.server.take().unwrap().shutdown().await;
+}
+
+async fn lfs_authenticate(harness: &Harness, key: &Path, operation: &str) -> Output {
+    harness.ssh(key, Some(&format!("git-lfs-authenticate 'alice/assets.git' {operation}"))).await
+}
+
+/// Milestone 3: Git LFS (L). `git-lfs-authenticate` hands out the HTTP endpoint and a
+/// signed header, with the access a fetch or push over SSH would have.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn git_lfs_authenticate_returns_a_signed_header() {
+    if !openssh_available() {
+        return;
+    }
+    let harness = Harness::start().await;
+    let alice = harness.user("alice").await;
+    let bob = harness.user("bob").await;
+    let repo = CreateRepository { name: "assets".to_owned(), description: String::new(), visibility: Visibility::Private };
+    harness.services.repositories.create(&alice, repo).await.unwrap();
+    let (alice_key, alice_public) = harness.key("alice_key");
+    let (bob_key, bob_public) = harness.key("bob_key");
+    let (deploy_key, deploy_public) = harness.key("deploy_key");
+    harness.services.ssh_keys.add_user_key(&alice, AddSshKey { title: String::new(), key: alice_public }).await.unwrap();
+    harness.services.ssh_keys.add_user_key(&bob, AddSshKey { title: String::new(), key: bob_public }).await.unwrap();
+    let ctx = harness.services.repositories.open(Some(&alice), "alice", "assets").await.unwrap();
+    let input = AddDeployKey { title: "ci".to_owned(), key: deploy_public, allow_write: false };
+    harness.services.ssh_keys.add_deploy_key(&alice, &ctx, input).await.unwrap();
+
+    for (operation, write) in [("download", false), ("upload", true)] {
+        let output = lfs_authenticate(&harness, &alice_key, operation).await;
+        assert_ok(&output);
+        let answer: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(answer["href"], "http://localhost:3000/alice/assets.git/info/lfs");
+        assert_eq!(answer["expires_in"], 3600);
+        let header = answer["header"]["Authorization"].as_str().unwrap();
+        let grant = harness.services.lfs.verify_token(header.strip_prefix("Bearer ").unwrap()).unwrap();
+        assert_eq!((grant.repo, grant.write, grant.object.clone()), (ctx.repo.repo.id, write, None));
+        let granted = harness.services.lfs.open_granted(grant, "alice", "assets").await.unwrap();
+        assert_eq!(granted.ctx.access.can_write(), write);
+    }
+
+    // The same refusals as Git over SSH.
+    assert_refused(&lfs_authenticate(&harness, &bob_key, "download").await, "not found");
+    assert_ok(&lfs_authenticate(&harness, &deploy_key, "download").await);
+    assert_refused(&lfs_authenticate(&harness, &deploy_key, "upload").await, "read-only");
+    assert_refused(&lfs_authenticate(&harness, &alice_key, "delete").await, "upload or download");
+
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+
+    let mut disabled = Harness::start_with(|config| config.lfs.enabled = false).await;
+    let carol = disabled.user("carol").await;
+    let (carol_key, carol_public) = disabled.key("carol_key");
+    disabled.services.ssh_keys.add_user_key(&carol, AddSshKey { title: String::new(), key: carol_public }).await.unwrap();
+    let refused = disabled.ssh(&carol_key, Some("git-lfs-authenticate carol/anything download")).await;
+    assert_refused(&refused, "Git LFS is not enabled");
+    disabled.server.take().unwrap().shutdown().await;
 }
