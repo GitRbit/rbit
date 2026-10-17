@@ -198,6 +198,7 @@ impl Theme {
     /// What the header's light/dark toggle switches to: the scheme's own sibling of the other
     /// variant when it has one, otherwise the built-in theme of the other variant. System
     /// becomes Dark here; `theme-picker.js` picks the side opposite the device's scheme.
+    #[must_use]
     pub fn toggled(self) -> Self {
         match self {
             Self::System | Self::Light => Self::Dark,
