@@ -8,6 +8,13 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
 - **Secure by default**: Argon2id passwords, TOTP two-factor authentication, rate limiting, hashed session
   and token secrets, strict CSP, origin-checked forms, an audit log.
 - **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
+- **Collaboration**: collaborators and organisation teams with read/write/admin permissions, repository transfer
+  with redirects from old names.
+- **Repository essentials**: releases with attached files, `.zip`/`.tar.gz` archives, blame, compare, forks,
+  pull mirrors, README relative links and images.
+- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1) and HMAC-signed webhooks with a persistent,
+  retrying delivery queue.
+- **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
 
@@ -35,10 +42,19 @@ git clone http://localhost:3000/<owner>/<repo>.git
 
 Instead of your account password you can use a personal access token (`rit_…`) as the Git
 password — required once two-factor authentication is enabled. Tokens are scoped (`read`
-can clone and fetch, `write` can also push), can expire, and can be revoked individually.
+can clone and fetch, `write` can also push, `admin` can also change repository settings,
+webhooks and delete through the API), can expire, and can be revoked individually.
 
 With `[ssh] enabled = true`, add a public key under **Settings → SSH keys** and use the SSH
 URL from the repository's **Clone** menu.
+
+The same tokens authenticate the REST API:
+
+```bash
+curl -H "Authorization: Bearer rit_…" http://localhost:3000/api/v1/user
+```
+
+`GET /api/v1/openapi.json` describes every endpoint.
 
 ## Configuration
 
@@ -50,12 +66,16 @@ lives in [deploy/rustit.example.toml](deploy/rustit.example.toml).
 | Section | Purpose | Key settings |
 |---|---|---|
 | `[server]` | HTTP listener and identity | `bind`, `public_url`, `site_name`, `open_registration` (default for the runtime setting) |
-| `[storage]` | Data location | `data_dir` (SQLite, redb, repositories) |
+| `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files) |
 | `[security]` | Sessions and abuse protection | `session_lifetime_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit` |
 | `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes` |
 | `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password` |
 | `[ssh]` | Built-in SSH server | `enabled`, `bind`, `public_host`, `public_port`, `host_key_path`, connection limits and timeouts |
 | `[operations]` | Maintenance and metrics | `metrics`, `metrics_token`, `warm_caches_on_push`, `maintenance_interval_minutes`, `job_concurrency`, insights cache limits |
+| `[api]` | REST API | `enabled`, `default_page_size`, `max_page_size` |
+| `[webhooks]` | Outgoing deliveries | `enabled`, `allow_private_addresses`, `timeout_seconds`, `max_attempts`, `concurrency`, `delivery_retention_days` |
+| `[releases]` | Release files | `max_asset_bytes`, `max_assets_per_release`, `upload_timeout_seconds` |
+| `[mirrors]` | Pull mirrors | `enabled`, `default_interval_minutes`, `min_interval_minutes`, `fetch_timeout_seconds`, `allow_private_addresses` |
 
 Site name, registration, who may create organisations and the default repository
 visibility can also be changed at runtime by administrators under **Site administration →
@@ -89,11 +109,11 @@ them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH 
 | `rustit-core` | Domain types, validated names, permissions, configuration |
 | `rustit-storage` | SQLite (sqlx) and redb persistence |
 | `rustit-auth` | Password hashing, session and token secrets, TOTP, access policy |
-| `rustit-git` | Repository storage, read model, diffs, languages, maintenance (gitoxide) |
+| `rustit-git` | Repository storage, read model, diffs, blame, compare, archives, forks, mirrors, languages, maintenance (gitoxide) |
 | `rustit-transport` | Git smart protocol: stateless (HTTP) and interactive (SSH) modes |
-| `rustit-services` | Application use-cases, domain events, background jobs |
+| `rustit-services` | Application use-cases, domain events, background jobs, webhook delivery |
 | `rustit-mail` | Email rendering and delivery (SMTP, log) |
 | `rustit-ssh` | Built-in SSH server for Git over SSH |
-| `rustit-web` | Routes, templates, assets, metrics |
+| `rustit-web` | Routes, REST API, templates, themes, assets, metrics |
 | `rustit-server` | The `rustit` binary: CLI, configuration, backups |
 | `rustit-e2e` | End-to-end and Git compatibility tests (test-only) |
