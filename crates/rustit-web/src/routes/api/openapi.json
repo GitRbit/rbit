@@ -766,7 +766,7 @@
           }
         }
       },
-      "HookEvent": { "type": "string", "enum": ["push", "repository", "release", "fork"] },
+      "HookEvent": { "type": "string", "enum": ["push", "repository", "release", "fork", "issues", "issue_comment", "pull_request", "pull_request_review"] },
       "HookBody": {
         "type": "object",
         "properties": {
@@ -789,7 +789,7 @@
         "properties": {
           "id": { "type": "integer" },
           "guid": { "type": "string", "description": "Sent as `X-Rustit-Delivery` and `X-GitHub-Delivery`." },
-          "event": { "type": "string", "enum": ["push", "repository", "release", "fork", "ping"] },
+          "event": { "type": "string", "enum": ["push", "repository", "release", "fork", "issues", "issue_comment", "pull_request", "pull_request_review", "ping"] },
           "action": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/DeliveryStatus" },
           "status_code": { "type": ["integer", "null"], "description": "HTTP status of the latest attempt." },

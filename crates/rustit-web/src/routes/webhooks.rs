@@ -122,6 +122,10 @@ pub struct HookFormInput {
     event_repository: Option<String>,
     event_release: Option<String>,
     event_fork: Option<String>,
+    event_issues: Option<String>,
+    event_issue_comment: Option<String>,
+    event_pull_request: Option<String>,
+    event_pull_request_review: Option<String>,
 }
 
 impl HookFormInput {
@@ -131,6 +135,10 @@ impl HookFormInput {
             (WebhookEvent::Repository, &self.event_repository),
             (WebhookEvent::Release, &self.event_release),
             (WebhookEvent::Fork, &self.event_fork),
+            (WebhookEvent::Issues, &self.event_issues),
+            (WebhookEvent::IssueComment, &self.event_issue_comment),
+            (WebhookEvent::PullRequest, &self.event_pull_request),
+            (WebhookEvent::PullRequestReview, &self.event_pull_request_review),
         ];
         ticked.into_iter().filter(|(_, value)| value.is_some()).map(|(event, _)| event).collect()
     }

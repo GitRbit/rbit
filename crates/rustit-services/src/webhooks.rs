@@ -725,7 +725,7 @@ mod tests {
             [WebhookEvent::Push, WebhookEvent::Release, WebhookEvent::Fork]
         );
         assert_eq!(parse_events(&names(&["ping", "repository"])).unwrap(), [WebhookEvent::Repository]);
-        assert!(matches!(parse_events(&names(&["issues"])), Err(ServiceError::Invalid(message)) if message.contains("issues")));
+        assert!(matches!(parse_events(&names(&["discussion"])), Err(ServiceError::Invalid(message)) if message.contains("discussion")));
         assert!(matches!(parse_events(&names(&["ping"])), Err(ServiceError::Invalid(_))));
         assert!(matches!(parse_events(&[]), Err(ServiceError::Invalid(_))));
     }

@@ -20,35 +20,9 @@ pub struct RefSnapshot {
     targets: BTreeMap<String, String>,
 }
 
-/// One ref changed by a push. `before: None` means the ref was created, `after: None`
-/// that it was deleted. Ids are full hexadecimal object ids.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RefUpdate {
-    /// Full ref name, e.g. `refs/heads/main` or `refs/tags/v1.0`.
-    pub name: String,
-    pub before: Option<String>,
-    pub after: Option<String>,
-}
-
-impl RefUpdate {
-    pub fn is_created(&self) -> bool {
-        self.before.is_none()
-    }
-
-    pub fn is_deleted(&self) -> bool {
-        self.after.is_none()
-    }
-
-    /// The branch name, when this updates `refs/heads/…`.
-    pub fn branch(&self) -> Option<&str> {
-        self.name.strip_prefix("refs/heads/")
-    }
-
-    /// The tag name, when this updates `refs/tags/…`.
-    pub fn tag(&self) -> Option<&str> {
-        self.name.strip_prefix("refs/tags/")
-    }
-}
+/// Defined in `rustit-core` so the push gate in `rustit-transport` can describe the
+/// updates a client requests with the same type.
+pub use rustit_core::ref_update::RefUpdate;
 
 impl RefSnapshot {
     /// A snapshot from `(full name, object id)` pairs.

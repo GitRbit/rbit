@@ -5,9 +5,11 @@
 //! submodule so they can evolve independently.
 
 mod api;
+mod issues;
 mod mail;
 mod mirrors;
 mod operations;
+mod pulls;
 mod releases;
 mod security;
 mod ssh;
@@ -18,9 +20,11 @@ use std::{net::SocketAddr, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub use api::ApiConfig;
+pub use issues::IssueConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use mirrors::MirrorConfig;
 pub use operations::OperationsConfig;
+pub use pulls::PullConfig;
 pub use releases::ReleaseConfig;
 pub use security::{ProxyNetwork, ProxyNetworkError, SecurityConfig};
 pub use ssh::SshConfig;
@@ -40,6 +44,8 @@ pub struct Config {
     pub webhooks: WebhookConfig,
     pub releases: ReleaseConfig,
     pub mirrors: MirrorConfig,
+    pub issues: IssueConfig,
+    pub pulls: PullConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +113,12 @@ impl StorageConfig {
     /// Files attached to releases: `<attachments_dir>/<repo_id>/<asset_id>`.
     pub fn attachments_dir(&self) -> PathBuf {
         self.data_dir.join("attachments")
+    }
+
+    /// Scratch space for merges and object overlays (`<tmp_dir>/merges`, `<tmp_dir>/overlays`).
+    /// Its contents are disposable: swept at start-up and never backed up.
+    pub fn tmp_dir(&self) -> PathBuf {
+        self.data_dir.join("tmp")
     }
 }
 

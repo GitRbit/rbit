@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(decode_events(&encoded).unwrap(), events);
         assert_eq!(decode_events("[]").unwrap(), Vec::new());
         assert_eq!(decode_events(r#"[ "fork" , "push" ]"#).unwrap(), [WebhookEvent::Fork, WebhookEvent::Push]);
-        assert!(decode_events(r#"["issues"]"#).is_err());
+        assert!(decode_events(r#"["discussion"]"#).is_err());
         assert!(decode_events("push").is_err());
     }
 }

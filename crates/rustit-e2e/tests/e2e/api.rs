@@ -451,7 +451,7 @@ async fn a_hook_created_through_the_api_receives_a_signed_push() {
     Api::new(&server, Some(&bob.create_token("bob", "admin").await)).get(hooks).await.expect(StatusCode::FORBIDDEN);
     let invalid = admin.post(hooks, serde_json::json!({ "config": { "url": "ftp://example.com" } })).await;
     assert_eq!(invalid.expect(StatusCode::UNPROCESSABLE_ENTITY)["errors"][0]["field"], "config.url");
-    let unknown = admin.post(hooks, serde_json::json!({ "config": { "url": receiver.url }, "events": ["issues"] })).await;
+    let unknown = admin.post(hooks, serde_json::json!({ "config": { "url": receiver.url }, "events": ["discussion"] })).await;
     assert_eq!(unknown.expect(StatusCode::UNPROCESSABLE_ENTITY)["errors"][0]["field"], "events");
 
     let created = admin.post(hooks, body).await;

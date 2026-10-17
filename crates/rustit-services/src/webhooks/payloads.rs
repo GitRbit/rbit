@@ -343,7 +343,12 @@ pub fn ping(hook_json: &Value, hook_id: i64, context: Option<(&str, Value)>, sen
 pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
     match event {
         WebhookEvent::Push | WebhookEvent::Fork | WebhookEvent::Ping => None,
-        WebhookEvent::Repository | WebhookEvent::Release => payload.get("action").and_then(Value::as_str).map(str::to_owned),
+        WebhookEvent::Repository
+        | WebhookEvent::Release
+        | WebhookEvent::Issues
+        | WebhookEvent::IssueComment
+        | WebhookEvent::PullRequest
+        | WebhookEvent::PullRequestReview => payload.get("action").and_then(Value::as_str).map(str::to_owned),
     }
 }
 

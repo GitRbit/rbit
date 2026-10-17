@@ -22,6 +22,8 @@ pub enum NameError {
     Reserved { kind: &'static str, value: String },
     #[error("that does not look like a valid email address")]
     InvalidEmail,
+    #[error("{kind} must be a positive whole number")]
+    NotANumber { kind: &'static str },
 }
 
 /// Top-level paths that would collide with application routes if used as an account name.
@@ -33,6 +35,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
     "explore",
     "favicon.ico",
     "healthz",
+    "issues",
     "login",
     "logout",
     "manifest.webmanifest",
@@ -44,6 +47,7 @@ const RESERVED_ACCOUNT_NAMES: &[&str] = &[
     "organizations",
     "orgs",
     "password",
+    "pulls",
     "readyz",
     "robots.txt",
     "settings",
@@ -212,6 +216,13 @@ mod tests {
     #[test]
     fn reserved_account_names_are_case_insensitive() {
         assert!(matches!("Settings".parse::<AccountName>(), Err(NameError::Reserved { .. })));
+    }
+
+    #[test]
+    fn dashboards_are_reserved_account_names() {
+        for name in ["issues", "Pulls", "notifications"] {
+            assert!(matches!(name.parse::<AccountName>(), Err(NameError::Reserved { .. })), "{name}");
+        }
     }
 
     #[test]

@@ -370,7 +370,7 @@ async fn management_is_validated_scoped_bounded_and_audited() {
     let invalid = |result: Result<_, ServiceError>| matches!(result, Err(ServiceError::Invalid(_)));
     assert!(invalid(webhooks.create(&alice, target, input("ftp://example.com/", &["push"], None)).await));
     assert!(invalid(webhooks.create(&alice, target, input("https://user:pw@example.com/", &["push"], None)).await));
-    assert!(invalid(webhooks.create(&alice, target, input("https://example.com/", &["issues"], None)).await));
+    assert!(invalid(webhooks.create(&alice, target, input("https://example.com/", &["discussion"], None)).await));
     assert!(invalid(webhooks.create(&alice, target, input("https://example.com/", &[], None)).await));
 
     let hook = webhooks.create(&alice, target, input("https://example.com/a", &["push", "fork"], Some("s"))).await.unwrap();

@@ -32,13 +32,30 @@ pub enum WebhookEvent {
     Release,
     /// A repository was forked.
     Fork,
+    /// An issue was opened, edited, closed, reopened, labelled, assigned, … (wave B, I).
+    Issues,
+    /// A comment on an issue or pull request was created, edited or deleted (wave B, I).
+    IssueComment,
+    /// A pull request was opened, synchronised, closed or merged, … (wave B, P).
+    PullRequest,
+    /// A pull request review was submitted, edited or dismissed (wave B, P).
+    PullRequestReview,
     /// Sent once when a hook is created (and on request) to check the receiver.
     Ping,
 }
 
 impl WebhookEvent {
     /// The events a hook can subscribe to, in display order. `ping` is always sent.
-    pub const SUBSCRIBABLE: [Self; 4] = [Self::Push, Self::Repository, Self::Release, Self::Fork];
+    pub const SUBSCRIBABLE: [Self; 8] = [
+        Self::Push,
+        Self::Repository,
+        Self::Release,
+        Self::Fork,
+        Self::Issues,
+        Self::IssueComment,
+        Self::PullRequest,
+        Self::PullRequestReview,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -46,19 +63,16 @@ impl WebhookEvent {
             Self::Repository => "repository",
             Self::Release => "release",
             Self::Fork => "fork",
+            Self::Issues => "issues",
+            Self::IssueComment => "issue_comment",
+            Self::PullRequest => "pull_request",
+            Self::PullRequestReview => "pull_request_review",
             Self::Ping => "ping",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "push" => Some(Self::Push),
-            "repository" => Some(Self::Repository),
-            "release" => Some(Self::Release),
-            "fork" => Some(Self::Fork),
-            "ping" => Some(Self::Ping),
-            _ => None,
-        }
+        Self::SUBSCRIBABLE.into_iter().chain([Self::Ping]).find(|event| event.as_str() == value)
     }
 
     pub const fn label(self) -> &'static str {
@@ -67,6 +81,10 @@ impl WebhookEvent {
             Self::Repository => "Repositories",
             Self::Release => "Releases",
             Self::Fork => "Forks",
+            Self::Issues => "Issues",
+            Self::IssueComment => "Issue comments",
+            Self::PullRequest => "Pull requests",
+            Self::PullRequestReview => "Pull request reviews",
             Self::Ping => "Pings",
         }
     }
@@ -77,6 +95,10 @@ impl WebhookEvent {
             Self::Repository => "Repositories created, deleted or transferred.",
             Self::Release => "Releases published.",
             Self::Fork => "Repositories forked.",
+            Self::Issues => "Issues opened, edited, closed, reopened, labeled, assigned, locked or deleted.",
+            Self::IssueComment => "Comments on issues and pull requests created, edited or deleted.",
+            Self::PullRequest => "Pull requests opened, updated, closed, merged, labeled, assigned or given reviewers.",
+            Self::PullRequestReview => "Pull request reviews submitted, edited or dismissed.",
             Self::Ping => "Sent when the webhook is created.",
         }
     }
@@ -339,7 +361,10 @@ mod tests {
         for event in WebhookEvent::SUBSCRIBABLE.into_iter().chain([WebhookEvent::Ping]) {
             assert_eq!(WebhookEvent::parse(event.as_str()), Some(event));
         }
-        assert_eq!(WebhookEvent::parse("issues"), None);
+        assert_eq!(WebhookEvent::parse("issues"), Some(WebhookEvent::Issues));
+        assert_eq!(WebhookEvent::parse("pull_request_review"), Some(WebhookEvent::PullRequestReview));
+        assert_eq!(WebhookEvent::parse("pull_request_review_comment"), None, "out of scope in wave B");
+        assert_eq!(WebhookEvent::parse("Push"), None);
         assert!(!WebhookEvent::SUBSCRIBABLE.contains(&WebhookEvent::Ping), "ping is implicit");
     }
 
