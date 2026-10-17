@@ -17,7 +17,7 @@
 //! a timeout after which the process is killed. Which remotes are acceptable at all
 //! (addresses, schemes) is decided by the caller.
 
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{collections::HashSet, net::IpAddr, path::Path, process::Stdio, time::Duration};
 
 use rbit_core::lfs::{LfsPointer, MAX_POINTER_BYTES};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -25,6 +25,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use crate::{
     GitError,
     archive::{git_command, null_device},
+    process::bounded_output,
 };
 
 /// Longest error excerpt kept from Git's output.
@@ -40,6 +41,50 @@ pub struct Remote<'a> {
     pub authorization: Option<&'a str>,
     /// Allow `file://` URLs (tests only).
     pub allow_local: bool,
+    /// The addresses approved by the caller's outbound policy. Git connects only to
+    /// these addresses while retaining the URL's host for HTTP and TLS.
+    pub resolution: Option<&'a ResolvedHost>,
+}
+
+/// One DNS answer approved before a remote operation. Passing it to Git prevents a
+/// second DNS lookup from bypassing the caller's private-address checks.
+#[derive(Debug, Clone)]
+pub struct ResolvedHost {
+    host: String,
+    port: u16,
+    addresses: Vec<IpAddr>,
+}
+
+impl ResolvedHost {
+    pub fn new(host: &str, port: u16, addresses: Vec<IpAddr>) -> Result<Self, GitError> {
+        // Do not allow curl's wildcard, removal or expiration syntax in the host.
+        let valid_host = host.parse::<IpAddr>().is_ok()
+            || (!host.is_empty()
+                && !host.starts_with('-')
+                && host.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')));
+        if !valid_host || port == 0 || addresses.is_empty() {
+            return Err(failed("invalid resolved remote host"));
+        }
+        Ok(Self { host: host.to_owned(), port, addresses })
+    }
+
+    pub(crate) fn apply(&self, command: &mut tokio::process::Command) {
+        // Literal addresses do not use DNS; older libcurl versions cannot use IPv6
+        // literals in the HOST part of CURLOPT_RESOLVE.
+        if self.host.parse::<IpAddr>().is_ok() {
+            return;
+        }
+        let addresses = self
+            .addresses
+            .iter()
+            .map(|address| match address {
+                IpAddr::V4(address) => address.to_string(),
+                IpAddr::V6(address) => format!("[{address}]"),
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        command.arg("-c").arg(format!("http.curloptResolve={}:{}:{addresses}", self.host, self.port));
+    }
 }
 
 impl std::fmt::Debug for Remote<'_> {
@@ -70,7 +115,14 @@ fn remote_command(git_binary: &Path, repo_path: &Path, remote: Remote<'_>) -> to
         "http.followRedirects=false",
         "-c",
         "core.askPass=",
+        "-c",
+        "http.proxy=",
+        "-c",
+        "http.curloptResolve=",
     ]);
+    if let Some(resolution) = remote.resolution {
+        resolution.apply(&mut command);
+    }
     command.arg("-c").arg(hooks_path_option());
     if let Some(header) = remote.authorization {
         command
@@ -95,9 +147,10 @@ fn failed(message: &str) -> GitError {
 
 /// Runs `command` with `timeout`.
 async fn run(command: &mut tokio::process::Command, timeout: Duration) -> Result<(), RemoteError> {
-    command.stdout(Stdio::null()).stderr(Stdio::piped());
-    let output =
-        tokio::time::timeout(timeout, command.output()).await.map_err(|_| RemoteError::TimedOut(timeout))?.map_err(GitError::from)?;
+    let output = tokio::time::timeout(timeout, bounded_output(command, 0, MAX_ERROR_LEN * 4))
+        .await
+        .map_err(|_| RemoteError::TimedOut(timeout))?
+        .map_err(GitError::from)?;
     if output.status.success() {
         return Ok(());
     }
@@ -158,37 +211,42 @@ pub async fn push_mirror(git_binary: &Path, repo_path: &Path, remote: Remote<'_>
 pub async fn lfs_pointers(git_binary: &Path, repo_path: &Path) -> Result<Vec<LfsPointer>, GitError> {
     let mut list = git_command(git_binary, Some(repo_path));
     list.args(["cat-file", "--batch-all-objects", "--unordered", "--batch-check=%(objectname) %(objecttype) %(objectsize)"]);
-    let output = list.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await?;
-    if !output.status.success() {
-        return Err(failed(String::from_utf8_lossy(&output.stderr).trim()));
-    }
-    let max = u64::try_from(MAX_POINTER_BYTES).unwrap_or(u64::MAX);
-    let candidates: Vec<String> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split(' ');
-            let (id, kind, size) = (fields.next()?, fields.next()?, fields.next()?.parse::<u64>().ok()?);
-            (kind == "blob" && (MIN_POINTER_BYTES..=max).contains(&size)).then(|| id.to_owned())
-        })
-        .collect();
-    if candidates.is_empty() {
-        return Ok(Vec::new());
-    }
+    let mut inventory = list.stdout(Stdio::piped()).stderr(Stdio::null()).spawn()?;
+    let listed = inventory.stdout.take().ok_or_else(|| failed("cat-file has no inventory"))?;
 
     let mut read = git_command(git_binary, Some(repo_path));
     read.args(["cat-file", "--batch"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     let mut child = read.spawn()?;
     let mut stdin = child.stdin.take().ok_or_else(|| failed("cat-file has no input"))?;
     let stdout = child.stdout.take().ok_or_else(|| failed("cat-file has no output"))?;
-    let writer = tokio::spawn(async move {
-        for id in candidates {
-            stdin.write_all(id.as_bytes()).await?;
-            stdin.write_all(b"\n").await?;
+    let feed = async move {
+        // Backpressure connects the inventory directly to the blob reader: neither the
+        // complete object listing nor the candidate ids accumulate in memory.
+        let mut lines = BufReader::new(listed).lines();
+        let max = u64::try_from(MAX_POINTER_BYTES).unwrap_or(u64::MAX);
+        while let Some(line) = lines.next_line().await? {
+            let mut fields = line.split(' ');
+            let (Some(id), Some(kind), Some(size)) = (fields.next(), fields.next(), fields.next()) else { continue };
+            if kind == "blob" && size.parse::<u64>().is_ok_and(|size| (MIN_POINTER_BYTES..=max).contains(&size)) {
+                stdin.write_all(id.as_bytes()).await?;
+                stdin.write_all(b"\n").await?;
+            }
         }
         stdin.shutdown().await
-    });
+    };
+    let ((), pointers, read_status, list_status) = tokio::try_join!(feed, read_pointers(stdout), child.wait(), inventory.wait())?;
+    for status in [read_status, list_status] {
+        if !status.success() {
+            return Err(failed(&format!("cat-file failed ({status})")));
+        }
+    }
+    Ok(pointers)
+}
+
+async fn read_pointers(stdout: impl tokio::io::AsyncRead + Unpin) -> std::io::Result<Vec<LfsPointer>> {
     let mut reader = BufReader::new(stdout);
     let mut pointers = Vec::new();
+    let mut seen = HashSet::new();
     let mut header = String::new();
     loop {
         header.clear();
@@ -196,20 +254,44 @@ pub async fn lfs_pointers(git_binary: &Path, repo_path: &Path) -> Result<Vec<Lfs
             break;
         }
         // `<id> blob <size>` (or `<id> missing`), then the content and a newline.
-        let Some(size) = header.trim_end().rsplit(' ').next().and_then(|size| size.parse::<usize>().ok()) else { continue };
+        let Some(size) = header.trim_end().rsplit(' ').next().and_then(|size| size.parse::<u64>().ok()) else { continue };
+        let size = usize::try_from(size).map_err(|_| std::io::Error::other("cat-file returned an oversized pointer candidate"))?;
+        if size > MAX_POINTER_BYTES {
+            return Err(std::io::Error::other("cat-file returned an oversized pointer candidate"));
+        }
         let mut content = vec![0; size + 1];
         reader.read_exact(&mut content).await?;
         content.pop();
         if let Some(pointer) = LfsPointer::parse(&content)
-            && !pointers.contains(&pointer)
+            && seen.insert((pointer.oid.clone(), pointer.size))
         {
             pointers.push(pointer);
         }
     }
-    writer.await??;
-    let status = child.wait().await?;
-    if !status.success() {
-        return Err(failed(&format!("cat-file failed ({status})")));
-    }
     Ok(pointers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pinned_hosts_cannot_inject_curl_resolution_directives() {
+        for host in ["", "*", "+example.com", "-example.com", "-example.com:443", "a,b", "a:443:127.0.0.1"] {
+            assert!(ResolvedHost::new(host, 443, vec!["93.184.216.34".parse().unwrap()]).is_err(), "{host}");
+        }
+        assert!(ResolvedHost::new("example.com", 443, Vec::new()).is_err());
+        let resolution =
+            ResolvedHost::new("example.com", 443, vec!["93.184.216.34".parse().unwrap(), "2606:4700::1111".parse().unwrap()]).unwrap();
+        let mut command = tokio::process::Command::new("git");
+        resolution.apply(&mut command);
+        let args: Vec<_> = command.as_std().get_args().map(|arg| arg.to_string_lossy()).collect();
+        assert_eq!(args, ["-c", "http.curloptResolve=example.com:443:93.184.216.34,[2606:4700::1111]"]);
+    }
+
+    #[tokio::test]
+    async fn oversized_pointer_responses_are_rejected_before_allocation() {
+        let response = format!("{} blob 18446744073709551615\n", "a".repeat(40));
+        assert!(read_pointers(response.as_bytes()).await.is_err());
+    }
 }

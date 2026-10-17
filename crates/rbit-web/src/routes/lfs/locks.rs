@@ -55,6 +55,7 @@ async fn list(
     headers: HeaderMap,
 ) -> Result<Response, LfsError> {
     let authorized = authorize(&state, &client, &headers, &owner, &repo).await?;
+    authorized.require_repository_token()?;
     let query = LockQuery { path: params.path, id: params.id, cursor: params.cursor, limit: params.limit };
     let page = state.services.lfs.list_locks(&authorized.ctx, &query).await?;
     let mut body = json!({ "locks": locks_json(&page.locks) });
@@ -79,6 +80,7 @@ async fn create(
     body: Bytes,
 ) -> Result<Response, LfsError> {
     let authorized = authorize(&state, &client, &headers, &owner, &repo).await?;
+    authorized.require_repository_token()?;
     authorized.require_write(&state, false).await?;
     let request: CreateRequest = parse_json(&body)?;
     match state.services.lfs.create_lock(&authorized.ctx, authorized.user.as_ref(), &request.path).await? {
@@ -104,6 +106,7 @@ async fn verify(
     body: Bytes,
 ) -> Result<Response, LfsError> {
     let authorized = authorize(&state, &client, &headers, &owner, &repo).await?;
+    authorized.require_repository_token()?;
     authorized.require_write(&state, false).await?;
     let request: VerifyRequest = if body.is_empty() { VerifyRequest::default() } else { parse_json(&body)? };
     let lfs = &state.services.lfs;
@@ -130,6 +133,7 @@ async fn unlock(
     body: Bytes,
 ) -> Result<Response, LfsError> {
     let authorized = authorize(&state, &client, &headers, &owner, &repo).await?;
+    authorized.require_repository_token()?;
     authorized.require_write(&state, false).await?;
     let request: UnlockRequest = if body.is_empty() { UnlockRequest::default() } else { parse_json(&body)? };
     let lock = state.services.lfs.unlock(&authorized.ctx, authorized.user.as_ref(), &id, request.force).await?;

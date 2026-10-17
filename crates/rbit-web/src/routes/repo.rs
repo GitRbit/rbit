@@ -492,7 +492,7 @@ pub async fn commits(
 
 async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, page_number: usize) -> WebResult<CommitsPage> {
     let page_number = page_number.max(1);
-    let skip = (page_number - 1) * COMMITS_PER_PAGE;
+    let skip = commit_offset(page_number)?;
     // Fetch one extra to learn whether an older page exists.
     let mut history = loaded.ctx.reader.history(revision.clone(), skip, COMMITS_PER_PAGE + 1).await.map_err(ServiceError::from)?;
     let has_older = history.len() > COMMITS_PER_PAGE;
@@ -520,6 +520,11 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
     })
 }
 
+/// Reject overflowing offsets instead of panicking or wrapping back to earlier commits.
+fn commit_offset(page: usize) -> WebResult<usize> {
+    page.saturating_sub(1).checked_mul(COMMITS_PER_PAGE).ok_or_else(|| WebError::BadRequest("page number is too large".into()))
+}
+
 /// The image media type for `path`'s extension, for the types browsers display in `<img>`.
 fn image_content_type(path: &str) -> Option<&'static str> {
     let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
@@ -544,7 +549,16 @@ fn escape(text: &str) -> String {
 mod tests {
     use rbit_git::{RefKind, RefSummary};
 
-    use super::split_known_ref;
+    use super::{COMMITS_PER_PAGE, commit_offset, split_known_ref};
+
+    #[test]
+    fn commit_pagination_rejects_overflow() {
+        assert_eq!(commit_offset(0).unwrap(), 0);
+        assert_eq!(commit_offset(1).unwrap(), 0);
+        assert_eq!(commit_offset(2).unwrap(), COMMITS_PER_PAGE);
+        assert!(commit_offset(usize::MAX).is_err());
+        assert!(commit_offset(usize::MAX / COMMITS_PER_PAGE + 2).is_err());
+    }
 
     fn refs(names: &[&str]) -> Vec<RefSummary> {
         names.iter().map(|name| RefSummary { name: (*name).to_owned(), kind: RefKind::Branch, target: String::new() }).collect()

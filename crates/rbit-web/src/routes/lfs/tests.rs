@@ -287,6 +287,61 @@ async fn disabled_lfs_is_not_found() {
 }
 
 #[tokio::test]
+async fn transfer_tokens_cannot_expand_their_scope() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    fixture.repo(&alice, "assets", Visibility::Private).await;
+    let auth = fixture.basic(&alice, TokenScope::Write).await;
+    let content = b"allowed object".as_slice();
+    let other = b"another private object".as_slice();
+    fixture.push_object("alice/assets", &auth, content).await;
+    fixture.push_object("alice/assets", &auth, other).await;
+    let locks = "/alice/assets/info/lfs/locks";
+    let (_, lock) = fixture.json("POST", locks, Some(&auth), &json!({ "path": "design.psd" })).await;
+    let unlock = format!("{locks}/{}/unlock", lock["lock"]["id"].as_str().unwrap());
+
+    for (operation, object) in [("download", content), ("upload", b"new object".as_slice())] {
+        let (status, answer) = fixture.batch("alice/assets", Some(&auth), operation, &[object]).await;
+        assert_eq!(status, StatusCode::OK);
+        let token = answer["objects"][0]["actions"][operation]["header"]["Authorization"].as_str().unwrap();
+        assert_eq!(fixture.batch("alice/assets", Some(token), "download", &[other]).await.0, StatusCode::FORBIDDEN);
+        assert_eq!(fixture.batch("alice/assets", Some(token), "upload", &[other]).await.0, StatusCode::FORBIDDEN);
+        for (method, path, body) in [
+            ("GET", locks.to_owned(), Value::Null),
+            ("POST", locks.to_owned(), json!({ "path": "other.psd" })),
+            ("POST", format!("{locks}/verify"), json!({})),
+            ("POST", unlock.clone(), json!({ "force": true })),
+        ] {
+            assert_eq!(fixture.json(method, &path, Some(token), &body).await.0, StatusCode::FORBIDDEN, "{operation}: {path}");
+        }
+    }
+    assert_eq!(fixture.json("GET", locks, Some(&auth), &Value::Null).await.1["locks"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn download_batch_reports_the_stored_size() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    fixture.repo(&alice, "assets", Visibility::Private).await;
+    let auth = fixture.basic(&alice, TokenScope::Write).await;
+    let content = b"actual object bytes";
+    fixture.push_object("alice/assets", &auth, content).await;
+    let (status, answer) = fixture
+        .json(
+            "POST",
+            "/alice/assets/info/lfs/objects/batch",
+            Some(&auth),
+            &json!({
+                "operation": "download",
+                "objects": [{ "oid": oid(content), "size": 1 }],
+            }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(answer["objects"][0]["size"], content.len());
+}
+
+#[tokio::test]
 async fn locks_can_be_created_listed_verified_and_released() {
     let fixture = Fixture::new(|_| {}).await;
     let alice = fixture.user("alice").await;

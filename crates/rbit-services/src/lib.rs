@@ -9,6 +9,7 @@ pub mod admin;
 pub mod archives;
 pub mod audit;
 pub mod collaborators;
+mod credentials;
 pub mod error;
 pub mod events;
 // Milestone 3: external sign-in (O).
@@ -44,6 +45,7 @@ pub mod timeline;
 pub mod tokens;
 pub mod transfers;
 pub mod two_factor;
+mod uploads;
 pub mod webhooks;
 // Milestone 3: editing files in the browser (E).
 pub mod edits;
@@ -201,20 +203,26 @@ impl Services {
         // same services (LFS placement shares a lock with the orphan sweep).
         let releases = ReleaseService::new(ctx.clone());
         let lfs = LfsService::new(ctx.clone());
+        let accounts = AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone());
 
         Ok(Self {
-            accounts: AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone()),
+            accounts: accounts.clone(),
             audit: AuditService::new(ctx.clone()),
             jobs: JobService::new(ctx.clone()),
             mail: mail.clone(),
-            recovery: RecoveryService::builder(ctx.clone()).mail(mail).throttle(throttle.clone()).instance(instance.clone()).build(),
+            recovery: RecoveryService::builder(ctx.clone())
+                .mail(mail)
+                .throttle(throttle.clone())
+                .instance(instance.clone())
+                .accounts(accounts.clone())
+                .build(),
             ssh_keys: SshKeyService::new(ctx.clone()),
             throttle: throttle.clone(),
             two_factor: TwoFactorService::new(ctx.clone(), instance.clone()),
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
-            profiles: ProfileService::new(ctx.clone()),
+            profiles: ProfileService::new(ctx.clone(), accounts),
             pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
             collaborators: CollaboratorService::new(ctx.clone()),

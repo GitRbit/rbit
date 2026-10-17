@@ -8,7 +8,10 @@ use std::{
     time::Duration,
 };
 
-use rbit_git::remote::{Remote, RemoteError, fetch_import, lfs_pointers, push_mirror};
+use rbit_git::{
+    mirror::{fetch_mirror, upstream_default_branch},
+    remote::{Remote, RemoteError, ResolvedHost, fetch_import, lfs_pointers, push_mirror},
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const TIMEOUT: Duration = Duration::from_secs(60);
@@ -48,7 +51,7 @@ fn refs(repo: &Path) -> Vec<String> {
 }
 
 fn local(url: &str) -> Remote<'_> {
-    Remote { url, authorization: None, allow_local: true }
+    Remote { url, authorization: None, allow_local: true, resolution: None }
 }
 
 /// A work tree with `main`, a `feature` branch, a tag and a pull request head, pushed
@@ -137,7 +140,7 @@ async fn credentials_travel_in_a_header_not_in_the_command_line() {
     let dir = tempfile::tempdir().unwrap();
     let target = bare(dir.path(), "target.git");
     let url = format!("http://{address}/a/b.git");
-    let remote = Remote { url: &url, authorization: Some("Basic c2VjcmV0"), allow_local: false };
+    let remote = Remote { url: &url, authorization: Some("Basic c2VjcmV0"), allow_local: false, resolution: None };
     let result = fetch_import(Path::new("git"), &target, remote, false, TIMEOUT).await;
     assert!(matches!(result, Err(RemoteError::Failed(_))), "{result:?}");
     let request = server.await.unwrap();
@@ -156,6 +159,7 @@ async fn lfs_pointers_are_found_in_history() {
     let pointer = format!("version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize 12345\n");
     commit(&work, "big.bin", &pointer);
     commit(&work, "copy.bin", &pointer);
+    commit(&work, "extension.bin", &format!("{pointer}x-extension retained\n"));
     commit(&work, "big.bin", &"not a pointer, but long enough to be considered at all\n".repeat(3));
     let pointers = lfs_pointers(Path::new("git"), &work.join(".git")).await.unwrap();
     assert_eq!(pointers.len(), 1, "each object once, also when it left the latest tree");
@@ -163,4 +167,43 @@ async fn lfs_pointers_are_found_in_history() {
 
     let empty = bare(dir.path(), "empty.git");
     assert_eq!(lfs_pointers(Path::new("git"), &empty).await.unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn every_remote_operation_uses_the_approved_address_and_keeps_the_http_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = bare(dir.path(), "target.git");
+    // A repository proxy must not move DNS or the connection outside the approved
+    // addresses. The per-command policy overrides this deliberately unusable proxy.
+    git(&target, &["config", "http.proxy", "http://127.0.0.1:1"]);
+    for operation in ["import", "push", "mirror", "head"] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let read = socket.read(&mut buffer).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&buffer[..read]);
+            }
+            socket.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        let host = "rbit-dns-pinning.invalid";
+        let url = format!("http://{host}:{}/repo.git", address.port());
+        let resolution = ResolvedHost::new(host, address.port(), vec![address.ip()]).unwrap();
+        let remote = Remote { url: &url, authorization: None, allow_local: false, resolution: Some(&resolution) };
+        let git = Path::new("git");
+        let refused = match operation {
+            "import" => fetch_import(git, &target, remote, false, TIMEOUT).await.is_err(),
+            "push" => push_mirror(git, &target, remote, TIMEOUT).await.is_err(),
+            "mirror" => fetch_mirror(git, &target, &url, Some(&resolution), TIMEOUT).await.is_err(),
+            _ => upstream_default_branch(git, &url, Some(&resolution), TIMEOUT).await.is_err(),
+        };
+        assert!(refused, "the test server refuses {operation}");
+        let request = tokio::time::timeout(Duration::from_secs(10), server).await.expect("Git did not reach the pinned address").unwrap();
+        assert!(request.to_ascii_lowercase().contains(&format!("host: {host}:{}\r\n", address.port())), "{operation}: {request}");
+    }
 }

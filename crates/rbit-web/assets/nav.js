@@ -33,6 +33,8 @@ const NO_PRELOAD = [
   /^\/(healthz|readyz|metrics)$/,
   /^\/[^/]+\/[^/]+\/(raw|archive|info|git-upload-pack|git-receive-pack)(\/|$)/,
   /^\/[^/]+\/[^/]+\/releases\/download\//,
+  // Thread views mark notifications read when opened.
+  /^\/[^/]+\/[^/]+\/(issues|pull)\/\d+(\/|$)/,
   /^\/[^/]+\/[^/]+\.git(\/|$)/i,
 ];
 

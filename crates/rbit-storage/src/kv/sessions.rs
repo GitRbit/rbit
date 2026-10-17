@@ -96,9 +96,32 @@ impl SessionStore {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let tx = db.begin_write().map_err(kv_error)?;
+            remove(&tx, &digest)?;
             tx.open_table(SESSIONS).map_err(kv_error)?.insert(&digest, encoded.as_slice()).map_err(kv_error)?;
             tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?.insert((record.account_id.0, &digest), ()).map_err(kv_error)?;
             tx.commit().map_err(kv_error)
+        })
+        .await?
+    }
+
+    /// Renews a live session atomically, without recreating a revoked or expired one.
+    /// Concurrent requests can only move its timestamps forward.
+    pub async fn renew(&self, digest: [u8; 32], expires_at: Timestamp, last_seen_at: Timestamp) -> Result<bool, StorageError> {
+        let db = Arc::clone(&self.db);
+        tokio::task::spawn_blocking(move || {
+            let tx = db.begin_write().map_err(kv_error)?;
+            {
+                let mut table = tx.open_table(SESSIONS).map_err(kv_error)?;
+                let record = table.get(&digest).map_err(kv_error)?.and_then(|value| SessionRecord::decode(value.value()));
+                let Some(mut record) = record.filter(|record| !record.is_expired()) else {
+                    return Ok(false);
+                };
+                record.expires_at = record.expires_at.max(expires_at);
+                record.last_seen_at = record.last_seen_at.max(last_seen_at);
+                table.insert(&digest, record.encode()?.as_slice()).map_err(kv_error)?;
+            }
+            tx.commit().map_err(kv_error)?;
+            Ok(true)
         })
         .await?
     }
@@ -115,7 +138,22 @@ impl SessionStore {
 
         match record {
             Some(record) if record.is_expired() => {
-                self.delete(digest).await?;
+                let db = Arc::clone(&self.db);
+                tokio::task::spawn_blocking(move || {
+                    let tx = db.begin_write().map_err(kv_error)?;
+                    let expired = tx
+                        .open_table(SESSIONS)
+                        .map_err(kv_error)?
+                        .get(&digest)
+                        .map_err(kv_error)?
+                        .and_then(|value| SessionRecord::decode(value.value()))
+                        .is_none_or(|record| record.is_expired());
+                    if expired {
+                        remove(&tx, &digest)?;
+                    }
+                    tx.commit().map_err(kv_error)
+                })
+                .await??;
                 Ok(None)
             }
             other => Ok(other),
@@ -272,6 +310,46 @@ mod tests {
 
         assert_eq!(store.delete_for_account(AccountId(7), None).await.unwrap(), 1);
         assert_eq!(store.list_for_account(AccountId(7)).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn renewal_never_restores_revoked_or_expired_sessions() {
+        let (_dir, store) = store();
+        let original = record(7, 3600);
+        store.put([1; 32], original.clone()).await.unwrap();
+        let stale = store.get([1; 32]).await.unwrap().unwrap();
+        store.delete_for_account(AccountId(7), None).await.unwrap();
+        assert!(!store.renew([1; 32], stale.expires_at, stale.last_seen_at).await.unwrap());
+        assert!(store.get([1; 32]).await.unwrap().is_none());
+        assert_eq!(store.list_for_account(AccountId(7)).await.unwrap().len(), 0);
+
+        store.put([2; 32], record(7, -1)).await.unwrap();
+        assert!(!store.renew([2; 32], original.expires_at, original.last_seen_at).await.unwrap());
+        assert!(store.get([2; 32]).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn renewal_does_not_regress_timestamps() {
+        let (_dir, store) = store();
+        let original = record(7, 3600);
+        store.put([1; 32], original.clone()).await.unwrap();
+        let later = Timestamp(original.expires_at.0 + 3600);
+        assert!(store.renew([1; 32], later, original.last_seen_at).await.unwrap());
+        assert!(store.renew([1; 32], original.expires_at, Timestamp(original.last_seen_at.0 - 10)).await.unwrap());
+        let renewed = store.get([1; 32]).await.unwrap().unwrap();
+        assert_eq!(renewed.expires_at, later);
+        assert_eq!(renewed.last_seen_at, original.last_seen_at);
+        assert_eq!(renewed.account_id, original.account_id);
+    }
+
+    #[tokio::test]
+    async fn replacing_a_session_updates_its_account_index() {
+        let (_dir, store) = store();
+        store.put([1; 32], record(7, 3600)).await.unwrap();
+        store.put([1; 32], record(8, 3600)).await.unwrap();
+        assert_eq!(store.list_for_account(AccountId(7)).await.unwrap().len(), 0);
+        assert_eq!(store.delete_for_account(AccountId(7), None).await.unwrap(), 0);
+        assert_eq!(store.list_for_account(AccountId(8)).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

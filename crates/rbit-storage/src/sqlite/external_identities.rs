@@ -9,10 +9,10 @@
 //! account together with its identity, and unlinking an identity only while the account
 //! keeps another way to sign in.
 
-use rbit_core::{Account, AccountId, AccountKind, Timestamp, User};
+use rbit_core::{AccountId, Timestamp, User};
 use sqlx::SqlitePool;
 
-use super::accounts::NewUser;
+use super::accounts::{NewUser, insert_user};
 use crate::StorageError;
 
 /// A linked identity.
@@ -201,45 +201,16 @@ impl ExternalIdentityStore {
         new: NewUser,
         email_verified: bool,
         identity: NewExternalIdentity<'_>,
+        registration_open: bool,
     ) -> Result<Result<User, LinkConflict>, StorageError> {
         let now = Timestamp::now();
         let mut tx = self.pool.begin().await?;
-        let id: i64 = sqlx::query_scalar(
-            "INSERT INTO accounts (kind, name, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING id",
-        )
-        .bind(AccountKind::User.as_str())
-        .bind(new.name.as_str())
-        .bind(new.display_name.as_deref())
-        .bind(now.0)
-        .bind(now.0)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| StorageError::from_insert(e, "username"))?;
-        sqlx::query("INSERT INTO user_logins (account_id, email, password_hash, is_admin, email_verified_at) VALUES (?, ?, ?, ?, ?)")
-            .bind(id)
-            .bind(new.email.as_str())
-            .bind(&new.password_hash)
-            .bind(new.is_admin)
-            .bind(email_verified.then_some(now.0))
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "email"))?;
-        if let Err(conflict) = insert(&mut tx, AccountId(id), identity, now).await? {
+        let user = insert_user(&mut tx, new, Some(registration_open), email_verified).await?;
+        if let Err(conflict) = insert(&mut tx, user.id(), identity, now).await? {
             return Ok(Err(conflict));
         }
         tx.commit().await?;
-        Ok(Ok(User {
-            account: Account {
-                id: AccountId(id),
-                kind: AccountKind::User,
-                name: new.name,
-                display_name: new.display_name,
-                bio: None,
-                created_at: now,
-            },
-            email: new.email,
-            is_admin: new.is_admin,
-        }))
+        Ok(Ok(user))
     }
 }
 

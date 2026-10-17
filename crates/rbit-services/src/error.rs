@@ -45,6 +45,7 @@ impl ServiceError {
 impl From<StorageError> for ServiceError {
     fn from(error: StorageError) -> Self {
         match error {
+            StorageError::RegistrationClosed => Self::RegistrationClosed,
             StorageError::Conflict(field) => Self::Conflict(field),
             other => Self::internal(other),
         }

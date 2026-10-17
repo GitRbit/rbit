@@ -58,9 +58,8 @@ use rbit_core::{
     repository::OwnedRepository,
 };
 use rbit_storage::sqlite::lfs::LfsStore;
-use sha2::{Digest, Sha256};
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
+    io::AsyncRead,
     sync::{
         Mutex,
         broadcast::{Receiver, error::RecvError},
@@ -70,6 +69,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use self::tokens::TokenKey;
 pub use self::tokens::{LfsGrant, TokenSubject};
+use crate::uploads::{ReceivedUpload, receive};
 use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, releases::human_bytes, repositories::viewer_grants};
 
 /// How long an object no repository links any more is kept before maintenance removes it
@@ -292,6 +292,7 @@ impl LfsService {
 
         let mut answers = Vec::with_capacity(objects.len());
         for object in objects {
+            let mut response_size = object.size;
             let outcome = match (LfsOid::parse(&object.oid), u64::try_from(object.size)) {
                 (Err(error), _) => BatchOutcome::Invalid(error.to_string()),
                 (_, Err(_)) => BatchOutcome::Invalid("the size cannot be negative".to_owned()),
@@ -303,6 +304,7 @@ impl LfsService {
                     }
                     match (operation, linked.get(&oid).copied()) {
                         (LfsOperation::Download, Some(stored)) => {
+                            response_size = i64::try_from(stored).map_err(ServiceError::internal)?;
                             BatchOutcome::Download(self.issue(repo, subject, operation, Some((&oid, stored))))
                         }
                         (LfsOperation::Download, None) => BatchOutcome::Missing,
@@ -314,7 +316,7 @@ impl LfsService {
                     }
                 }
             };
-            answers.push(BatchObject { oid: object.oid.clone(), size: object.size, outcome });
+            answers.push(BatchObject { oid: object.oid.clone(), size: response_size, outcome });
         }
         Ok(answers)
     }
@@ -387,17 +389,32 @@ impl LfsService {
                 return Err(ServiceError::internal(error));
             }
         };
-        let refusal = match received {
+        let refusal = match received.as_ref() {
             None => Some(format!("the upload is larger than the announced {size} bytes")),
-            Some((received, _)) if received != size => Some(format!("received {received} bytes, but the object has {size}")),
-            Some((_, digest)) if LfsOid::from_digest(digest) != *oid => Some("the content does not match the object id".to_owned()),
+            Some(upload) if upload.size != size => Some(format!("received {} bytes, but the object has {size}", upload.size)),
+            Some(upload) if LfsOid::from_digest(upload.digest) != *oid => Some("the content does not match the object id".to_owned()),
             Some(_) => None,
         };
         if let Some(refusal) = refusal {
             remove_quietly(&tmp).await;
             return Err(ServiceError::Invalid(refusal));
         }
+        let received = received.expect("validated upload is present");
+        let service = self.clone();
+        let repo_id = repo.repo.repo.id;
+        let owned_oid = oid.clone();
+        // Complete placement and its database transaction even if the request ends.
+        // Otherwise cancellation after rename would leave an object outside pruning.
+        self.inner
+            .tasks
+            .spawn(async move { service.place_object(repo_id, &owned_oid, received, tmp).await })
+            .await
+            .map_err(ServiceError::internal)??;
+        tracing::info!(repo = %repo.repo.full_name(), %oid, size, "LFS object stored");
+        Ok(())
+    }
 
+    async fn place_object(&self, repo: RepoId, oid: &LfsOid, mut received: ReceivedUpload, tmp: PathBuf) -> Result<(), ServiceError> {
         let _placing = self.inner.objects.lock().await;
         let target = self.object_path(oid);
         if self.bytes_present(oid).await {
@@ -415,8 +432,10 @@ impl LfsService {
                 return Err(ServiceError::internal(error));
             }
         }
-        self.db().record_object(oid, size, repo.repo.repo.id).await?;
-        tracing::info!(repo = %repo.repo.full_name(), %oid, size, "LFS object stored");
+        // The target may already be shared, and a database error does not establish
+        // whether COMMIT took effect. Never remove its bytes on an uncertain outcome.
+        self.db().record_object(oid, received.size, repo).await?;
+        received.placed();
         Ok(())
     }
 
@@ -545,30 +564,6 @@ impl LfsService {
     }
 }
 
-/// Streams `body` into a new file at `path`, hashing it: `Ok(None)` once more than
-/// `limit` bytes arrive (the caller deletes the partial file).
-async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -> io::Result<Option<(u64, [u8; 32])>> {
-    let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(path).await?;
-    let mut hasher = Sha256::new();
-    let mut size: u64 = 0;
-    let mut buffer = vec![0u8; 64 * 1024];
-    loop {
-        let read = body.read(&mut buffer).await?;
-        if read == 0 {
-            break;
-        }
-        size += read as u64;
-        if size > limit {
-            return Ok(None);
-        }
-        hasher.update(&buffer[..read]);
-        file.write_all(&buffer[..read]).await?;
-    }
-    file.flush().await?;
-    file.sync_all().await?;
-    Ok(Some((size, hasher.finalize().into())))
-}
-
 /// Removes `*.part` files in `dir` older than `age`; returns how many.
 async fn sweep_stale_uploads(dir: &Path, age: Duration) -> usize {
     let Ok(mut entries) = tokio::fs::read_dir(dir).await else { return 0 };
@@ -609,15 +604,71 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn completed_upload_finishes_after_its_request_is_cancelled() {
+        use rbit_core::{Config, Visibility};
+        use rbit_storage::{Database, KvStore, NewUser};
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = dir.path().join("data");
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
+        let owner = database
+            .accounts()
+            .create_user(NewUser {
+                name: "alice".parse().unwrap(),
+                email: "alice@example.com".parse().unwrap(),
+                display_name: None,
+                password_hash: "test".to_owned(),
+                is_admin: false,
+            })
+            .await
+            .unwrap();
+        services
+            .repositories
+            .create(
+                &owner,
+                crate::CreateRepository { name: "assets".to_owned(), description: String::new(), visibility: Visibility::Private },
+            )
+            .await
+            .unwrap();
+        let repo = services.repositories.open(Some(&owner), "alice", "assets").await.unwrap();
+        let oid = LfsOid::parse("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824").unwrap();
+        let lfs = &services.lfs;
+        let placing = lfs.inner.objects.lock().await;
+        let service = lfs.clone();
+        let target = oid.clone();
+        let upload_repo = repo.clone();
+        let request = tokio::spawn(async move { service.store(&upload_repo, &target, 5, b"hello".as_slice()).await });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while lfs.inner.tasks.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+
+        request.abort();
+        assert!(request.await.unwrap_err().is_cancelled());
+        drop(placing);
+        lfs.shutdown().await;
+        lfs.verify(&repo, &oid, 5).await.unwrap();
+        assert_eq!(tokio::fs::read(lfs.object_path(&oid)).await.unwrap(), b"hello");
+        assert_eq!(std::fs::read_dir(lfs.tmp_dir()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
     async fn uploads_stop_at_the_announced_size() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.part");
         let mut body: &[u8] = b"hello world";
-        assert_eq!(receive(&mut body, &path, 5).await.unwrap(), None);
+        assert!(receive(&mut body, &path, 5).await.unwrap().is_none());
         let mut body: &[u8] = b"hello";
-        let (size, digest) = receive(&mut body, &dir.path().join("b.part"), 5).await.unwrap().unwrap();
-        assert_eq!(size, 5);
-        assert_eq!(LfsOid::from_digest(digest).as_str(), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        let upload = receive(&mut body, &dir.path().join("b.part"), 5).await.unwrap().unwrap();
+        assert_eq!(upload.size, 5);
+        assert_eq!(LfsOid::from_digest(upload.digest).as_str(), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
     }
 
     #[tokio::test]

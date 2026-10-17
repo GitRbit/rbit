@@ -88,12 +88,7 @@ pub async fn rate_limit(State(state): State<AppState>, request: Request, next: N
                 return response;
             };
             let page = Page::new(&state, None, request.uri().path()).with_theme(Theme::from_headers(request.headers())).titled(info.title);
-            let (mut parts, _) = response.into_parts();
-            let rendered = ErrorPage { page, info }.into_response();
-            if let Some(content_type) = rendered.headers().get(header::CONTENT_TYPE) {
-                parts.headers.insert(header::CONTENT_TYPE, content_type.clone());
-            }
-            Response::from_parts(parts, rendered.into_body())
+            render_error_response(response, ErrorPage { page, info })
         }
     }
 }
@@ -137,7 +132,11 @@ fn is_cross_site(headers: &HeaderMap) -> bool {
     origin_host != host.to_str().ok()
 }
 
-/// Adds defensive headers to every HTML response.
+/// Adds defensive headers to responses that can depend on a browser session.
+///
+/// Default to private, revalidated caching even for raw files, downloads and errors.
+/// Cookie authentication alone does not prevent a shared HTTP cache from storing them.
+/// This layer wraps HTML caching so explicit page and handler cache policies win.
 pub async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
@@ -156,6 +155,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     for (name, value) in defaults {
         headers.entry(name).or_insert(HeaderValue::from_static(value));
     }
+    headers.entry(header::CACHE_CONTROL).or_insert(HeaderValue::from_static("private, no-cache"));
     response
 }
 
@@ -182,7 +182,18 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
         return moved_permanently(&method, &location);
     }
     let page = Page::new(&state, viewer.user(), &path).with_theme(theme).titled(info.title);
-    (info.status, ErrorPage { page, info }).into_response()
+    render_error_response(response, ErrorPage { page, info })
+}
+
+/// Replaces the body without discarding protocol headers such as `Retry-After`.
+fn render_error_response(response: Response, page: impl IntoResponse) -> Response {
+    let (mut parts, _) = response.into_parts();
+    let rendered = page.into_response();
+    if let Some(content_type) = rendered.headers().get(header::CONTENT_TYPE) {
+        parts.headers.insert(header::CONTENT_TYPE, content_type.clone());
+    }
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, rendered.into_body())
 }
 
 /// `path` (and `query`) rewritten to the current name of the repository its first two
@@ -252,6 +263,8 @@ fn is_unsafe_to_preload(path: &str) -> bool {
         || EXACT.contains(&path)
         || REPO_AREAS.contains(&repo_area)
         || (repo_area == "releases" && segments.get(4) == Some(&"download"))
+        // Opening a thread marks its notifications read, so hovering it must not.
+        || (matches!(repo_area, "issues" | "pull") && segments.get(4).is_some_and(|number| number.parse::<u64>().is_ok()))
         || segments.get(2).is_some_and(|repo| repo.to_ascii_lowercase().ends_with(".git"))
 }
 
@@ -355,7 +368,11 @@ mod tests {
             .route("/secret", get(|| async { ([(header::CACHE_CONTROL, "no-store")], axum::response::Html("<p>token</p>")) }))
             .route("/settings/security/two-factor", get(|| async { axum::response::Html("<p>new secret</p>") }))
             .route("/o/r/raw/main/file", get(|| async { "bytes" }))
+            .route("/o/r/issues/1", get(|| async { "thread opened" }))
+            .route("/o/r/pull/2", get(|| async { "thread opened" }))
+            .route("/missing", get(|| async { (StatusCode::NOT_FOUND, axum::response::Html("<p>not found</p>")) }))
             .layer(from_fn(html_caching))
+            .layer(from_fn(security_headers))
             .layer(from_fn(preload_guard))
     }
 
@@ -402,8 +419,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn raw_files_and_error_pages_are_never_shared_or_reused_without_validation() {
+        for path in ["/o/r/raw/main/file", "/missing"] {
+            let response = send(path, &[]).await;
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache", "{path}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rendering_errors_preserves_retry_after_and_replaces_body_metadata() {
+        let mut response = WebError::TooManyRequests { retry_after_seconds: 30 }.into_response();
+        response.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from_static("1"));
+        let rendered = render_error_response(response, axum::response::Html("<p>wait</p>"));
+        assert_eq!(rendered.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(rendered.headers()[header::RETRY_AFTER], "30");
+        assert_eq!(rendered.headers()[header::CONTENT_TYPE], "text/html; charset=utf-8");
+        assert!(!rendered.headers().contains_key(header::CONTENT_LENGTH));
+        assert_eq!(axum::body::to_bytes(rendered.into_body(), usize::MAX).await.unwrap(), "<p>wait</p>");
+    }
+
+    #[tokio::test]
     async fn side_effecting_paths_are_never_preloaded() {
-        for path in ["/settings/security/two-factor", "/o/r/raw/main/file"] {
+        for path in ["/settings/security/two-factor", "/o/r/raw/main/file", "/o/r/issues/1", "/o/r/pull/2"] {
             let response = send(path, &[("HX-Preloaded", "true")]).await;
             assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
             assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
@@ -430,6 +467,9 @@ mod tests {
             // Milestone 3 (O): start and finish external sign-in.
             "/login/github",
             "/login/corp/callback",
+            // Opening an issue or pull request marks its notifications read.
+            "/a/b/issues/1",
+            "/a/b/pull/2",
         ] {
             assert!(is_unsafe_to_preload(path), "{path}");
         }
@@ -442,6 +482,8 @@ mod tests {
             "/a/b/blob/main/raw/archive.rs",
             "/a/b/commits/main",
             "/settings/profile",
+            "/a/b/issues",
+            "/a/b/pulls",
         ] {
             assert!(!is_unsafe_to_preload(path), "{path}");
         }

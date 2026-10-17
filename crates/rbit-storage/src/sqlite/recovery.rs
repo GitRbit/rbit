@@ -189,6 +189,44 @@ impl RecoveryStore {
         row.map(EmailTokenRecord::try_from).transpose()
     }
 
+    /// Redeems a reset link, replaces the password, verifies its address and revokes
+    /// every other reset link in one transaction. Concurrent links cannot both win,
+    /// and email changes or suspension before the write invalidate the reset.
+    pub async fn reset_password(
+        &self,
+        digest: &[u8; 32],
+        password_hash: &str,
+        now: Timestamp,
+    ) -> Result<Option<EmailTokenRecord>, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let row: Option<TokenRow> = sqlx::query_as(concat!(
+            "UPDATE email_tokens AS t SET used_at = ?1 WHERE ",
+            honoured!(),
+            " AND EXISTS (SELECT 1 FROM user_logins l WHERE l.account_id = t.account_id AND l.suspended_at IS NULL) \
+             RETURNING account_id, email, expires_at"
+        ))
+        .bind(now.seconds())
+        .bind(digest.as_slice())
+        .bind(TokenPurpose::Reset.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else { return Ok(None) };
+        let record = EmailTokenRecord::try_from(row)?;
+        sqlx::query("UPDATE user_logins SET password_hash = ?, email_verified_at = ? WHERE account_id = ?")
+            .bind(password_hash)
+            .bind(now.seconds())
+            .bind(record.account_id.0)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE email_tokens SET used_at = ? WHERE account_id = ? AND purpose = 'reset' AND used_at IS NULL")
+            .bind(now.seconds())
+            .bind(record.account_id.0)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(Some(record))
+    }
+
     /// Uses up every outstanding token of `purpose` for the account. Returns how many.
     pub async fn revoke_all(&self, account_id: AccountId, purpose: TokenPurpose) -> Result<u64, StorageError> {
         let result = sqlx::query("UPDATE email_tokens SET used_at = ? WHERE account_id = ? AND purpose = ? AND used_at IS NULL")

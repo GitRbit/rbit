@@ -170,6 +170,13 @@ pub fn parse_rfc3339(value: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 60 {
         return None;
     }
+    // A numeric day in 1..=31 can still be invalid for its month or leap year.
+    time::Date::from_calendar_date(
+        i32::try_from(year).ok()?,
+        time::Month::try_from(u8::try_from(month).ok()?).ok()?,
+        u8::try_from(day).ok()?,
+    )
+    .ok()?;
     let mut rest = &value[19..];
     if let Some(fraction) = rest.strip_prefix('.') {
         let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
@@ -187,10 +194,14 @@ pub fn parse_rfc3339(value: &str) -> Option<i64> {
                 _ => return None,
             };
             let (hours, minutes) = zone.split_once(':')?;
-            if hours.len() != 2 || minutes.len() != 2 {
+            if hours.len() != 2 || minutes.len() != 2 || !hours.bytes().chain(minutes.bytes()).all(|byte| byte.is_ascii_digit()) {
                 return None;
             }
-            sign * (hours.parse::<i64>().ok()? * 3600 + minutes.parse::<i64>().ok()? * 60)
+            let (hours, minutes) = (hours.parse::<i64>().ok()?, minutes.parse::<i64>().ok()?);
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
+            sign * (hours * 3600 + minutes * 60)
         }
     };
     // Days from the civil date (Howard Hinnant's algorithm).
@@ -949,6 +960,7 @@ mod tests {
         assert_eq!(parse_rfc3339("2025-10-09T08:53:20Z"), Some(1_760_000_000));
         assert_eq!(parse_rfc3339("2025-10-09T10:53:20+02:00"), Some(1_760_000_000));
         assert_eq!(parse_rfc3339("2025-10-09T08:53:20.123Z"), Some(1_760_000_000));
+        assert!(parse_rfc3339("2024-02-29T00:00:00Z").is_some());
         for bad in [
             "",
             "2025-10-09",
@@ -957,6 +969,14 @@ mod tests {
             "2025-10-09T08:53:20+0200",
             "2025-10-09 08:53:20Z",
             "x025-10-09T08:53:20Z",
+            "2025-02-29T00:00:00Z",
+            "2024-02-30T00:00:00Z",
+            "2025-04-31T00:00:00Z",
+            "2025-10-09T08:53:20+24:00",
+            "2025-10-09T08:53:20+00:60",
+            "2025-10-09T08:53:20+-1:00",
+            "2025-10-09T08:53:20+00:-1",
+            "2025-10-09T08:53:20++1:00",
         ] {
             assert_eq!(parse_rfc3339(bad), None, "{bad}");
         }

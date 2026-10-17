@@ -149,6 +149,22 @@ async fn recovery_codes_are_single_use() {
 }
 
 #[tokio::test]
+async fn a_pending_sign_in_can_only_be_completed_once_even_with_different_proofs() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let (_, _, codes) = fixture.enrol(&alice).await;
+    let pending = fixture.pending("alice").await;
+    let client = client();
+    let (first, second) = tokio::join!(
+        fixture.services.complete_sign_in(&pending, &codes[0], &client),
+        fixture.services.complete_sign_in(&pending, &codes[1], &client),
+    );
+    assert_eq!(usize::from(first.is_ok()) + usize::from(second.is_ok()), 1);
+    let failure = if first.is_err() { first } else { second };
+    assert!(matches!(failure, Err(ServiceError::NotFound)), "{failure:?}");
+}
+
+#[tokio::test]
 async fn disabling_needs_the_password_and_a_code() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice").await;

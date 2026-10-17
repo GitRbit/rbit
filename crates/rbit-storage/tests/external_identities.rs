@@ -96,7 +96,7 @@ async fn unlinking_keeps_a_way_to_sign_in() {
 async fn registering_creates_the_account_and_its_identity_together() {
     let fx = Fixture::new().await;
     let store = fx.database.external_identities();
-    let user = store.register(new_user("carol", ""), true, identity("corp", "c")).await.unwrap().unwrap();
+    let user = store.register(new_user("carol", ""), true, identity("corp", "c"), true).await.unwrap().unwrap();
     assert_eq!(store.find("corp", "c").await.unwrap().unwrap().account_id, user.id());
     assert!(!store.has_password(user.id()).await.unwrap());
     assert_eq!(
@@ -105,14 +105,20 @@ async fn registering_creates_the_account_and_its_identity_together() {
         "addresses compare case-insensitively"
     );
 
-    let unverified = store.register(new_user("dave", ""), false, identity("corp", "d")).await.unwrap().unwrap();
+    let unverified = store.register(new_user("dave", ""), false, identity("corp", "d"), true).await.unwrap().unwrap();
     assert_eq!(store.account_with_verified_email("dave@example.com").await.unwrap(), None, "never by an unverified address");
     assert_eq!(fx.database.accounts().find_user(unverified.id()).await.unwrap().unwrap().name().as_str(), "dave");
 
     // The identity is taken: nothing is created.
-    assert!(matches!(store.register(new_user("erin", ""), true, identity("corp", "c")).await.unwrap(), Err(LinkConflict::IdentityTaken)));
+    assert!(matches!(
+        store.register(new_user("erin", ""), true, identity("corp", "c"), true).await.unwrap(),
+        Err(LinkConflict::IdentityTaken)
+    ));
     assert!(fx.database.accounts().find_login("erin").await.unwrap().is_none());
     // The username is taken: a conflict, as with password sign-up, and no identity.
-    assert!(matches!(store.register(new_user("carol", ""), true, identity("corp", "z")).await, Err(StorageError::Conflict("username"))));
+    assert!(matches!(
+        store.register(new_user("carol", ""), true, identity("corp", "z"), true).await,
+        Err(StorageError::Conflict("username"))
+    ));
     assert!(store.find("corp", "z").await.unwrap().is_none());
 }

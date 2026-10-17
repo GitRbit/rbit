@@ -1,5 +1,8 @@
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    #[error("registration is closed on this instance")]
+    RegistrationClosed,
+
     /// A uniqueness constraint was violated. The payload names the conflicting field
     /// (e.g. `"name"`, `"email"`) so callers can produce a precise message.
     #[error("{0} is already taken")]

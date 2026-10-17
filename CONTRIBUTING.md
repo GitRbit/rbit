@@ -56,6 +56,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm ci && npm run build          # must not change anything under crates/rbit-web/assets
+npm test                        # browser behavior regressions
 ```
 
 Clippy runs with the **pedantic** group enabled workspace-wide, and warnings fail the build.

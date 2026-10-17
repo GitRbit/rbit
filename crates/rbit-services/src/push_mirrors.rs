@@ -49,7 +49,7 @@ use rbit_core::{
     network::is_internal_address,
     push_mirror::{MAX_PUSH_MIRRORS, PushMirror, PushMirrorId, PushMirrorUrl, validate_secret, validate_username},
 };
-use rbit_git::remote::{Remote, RemoteError, push_mirror};
+use rbit_git::remote::{Remote, RemoteError, ResolvedHost, push_mirror};
 use rbit_storage::sqlite::push_mirrors::{NewPushMirror, PushMirrorChanges, PushMirrorStore, PushTarget};
 use tokio::sync::{Notify, Semaphore, broadcast::error::RecvError};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -141,10 +141,10 @@ impl PushMirrorService {
         Ok(url)
     }
 
-    async fn check_remote(&self, url: &PushMirrorUrl) -> Result<(), String> {
+    async fn check_remote(&self, url: &PushMirrorUrl) -> Result<Option<ResolvedHost>, String> {
         match url.remote() {
-            Some(remote) => check_public_host(remote.host(), remote.port(), self.config().allow_private_addresses).await,
-            None => Ok(()),
+            Some(remote) => check_public_host(remote.host(), remote.port(), self.config().allow_private_addresses).await.map(Some),
+            None => Ok(None),
         }
     }
 
@@ -242,7 +242,7 @@ impl PushMirrorService {
     async fn attempt(&self, context: &RepoContext, target: &PushTarget) -> Result<(), String> {
         let config = self.config();
         let url = PushMirrorUrl::parse(&target.mirror.url, config.allow_local_urls).map_err(|e| e.to_string())?;
-        self.check_remote(&url).await?;
+        let resolution = self.check_remote(&url).await?;
         let authorization = target.secret.as_deref().map(|secret| {
             let username = Some(target.mirror.username.as_str()).filter(|name| !name.is_empty()).unwrap_or(DEFAULT_USERNAME);
             basic_authorization(username, secret)
@@ -255,7 +255,12 @@ impl PushMirrorService {
         if refs.is_empty() {
             return Ok(());
         }
-        let remote = Remote { url: url.as_str(), authorization: authorization.as_deref(), allow_local: config.allow_local_urls };
+        let remote = Remote {
+            url: url.as_str(),
+            authorization: authorization.as_deref(),
+            allow_local: config.allow_local_urls,
+            resolution: resolution.as_ref(),
+        };
         let git = &self.inner.ctx.config.repository.git_binary;
         let timeout = Duration::from_secs(config.push_timeout_seconds.max(1));
         // A transfer moves the repository's directory; it waits for the push.
@@ -373,11 +378,18 @@ pub(crate) fn basic_authorization(username: &str, secret: &str) -> String {
 
 /// Checks that every address `host` resolves to is public (unless `allow_private`), as
 /// pull mirrors do before fetching. The error is shown to the user.
-pub(crate) async fn check_public_host(host: &str, port: u16, allow_private: bool) -> Result<(), String> {
-    if allow_private {
-        return Ok(());
-    }
-    let addresses: Vec<IpAddr> = match host.parse::<IpAddr>() {
+pub(crate) async fn check_public_host(host: &str, port: u16, allow_private: bool) -> Result<ResolvedHost, String> {
+    // URL clients recognize shortened, hexadecimal and octal IPv4 spellings before
+    // DNS. Classify their canonical address rather than relying on platform-specific
+    // getaddrinfo behavior, and use the canonical IDNA hostname for DNS pinning.
+    let canonical = if host.parse::<IpAddr>().is_ok() {
+        host.to_owned()
+    } else {
+        let parsed = reqwest::Url::parse(&format!("http://{host}:{port}/")).map_err(|_| format!("cannot resolve {host}"))?;
+        parsed.host_str().ok_or_else(|| format!("cannot resolve {host}"))?.to_owned()
+    };
+    let host = canonical.as_str();
+    let mut addresses: Vec<IpAddr> = match host.parse::<IpAddr>() {
         Ok(address) => vec![address],
         Err(_) => {
             tokio::net::lookup_host((host, port)).await.map_err(|_| format!("cannot resolve {host}"))?.map(|socket| socket.ip()).collect()
@@ -386,10 +398,12 @@ pub(crate) async fn check_public_host(host: &str, port: u16, allow_private: bool
     if addresses.is_empty() {
         return Err(format!("cannot resolve {host}"));
     }
-    if addresses.iter().any(|address| is_internal_address(*address)) {
+    if !allow_private && addresses.iter().any(|address| is_internal_address(*address)) {
         return Err(format!("{host} is not a public address; only servers on the internet can be reached"));
     }
-    Ok(())
+    addresses.sort_unstable();
+    addresses.dedup();
+    ResolvedHost::new(host, port, addresses).map_err(|_| format!("cannot resolve {host}"))
 }
 
 /// A push failure as shown on the settings page.
@@ -424,5 +438,9 @@ mod tests {
         assert!(check_public_host("10.1.2.3", 443, false).await.is_err());
         assert!(check_public_host("127.0.0.1", 443, true).await.is_ok());
         assert!(check_public_host("93.184.216.34", 443, false).await.is_ok());
+        for host in ["2130706433", "0x7f000001", "127.1", "0177.0.0.1"] {
+            assert!(check_public_host(host, 443, false).await.is_err(), "{host}");
+            assert!(check_public_host(host, 443, true).await.is_ok(), "{host}");
+        }
     }
 }

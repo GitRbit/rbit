@@ -2,12 +2,16 @@
 
 use std::{
     ffi::OsString,
+    future::Future,
+    io,
     path::{Path, PathBuf},
+    pin::Pin,
     process::{ExitStatus, Stdio},
+    task::{Context, Poll, ready},
 };
 
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf},
     process::{Child, ChildStdout, Command},
     sync::oneshot,
     task::JoinHandle,
@@ -38,9 +42,37 @@ pub struct ReceiveOptions {
 #[derive(Debug)]
 pub struct ServiceSession {
     /// The response body to stream back to the client.
-    pub output: ChildStdout,
+    pub output: ServiceOutput,
     /// Resolves with the exit status once git finishes; use it to trigger post-push work.
     pub completion: oneshot::Receiver<ExitStatus>,
+}
+
+/// A response stream that owns the lifetime of its Git exchange. Dropping it before
+/// completion kills Git and releases the request body and stderr readers.
+#[derive(Debug)]
+pub struct ServiceOutput {
+    stdout: ChildStdout,
+    finished: oneshot::Receiver<()>,
+    ended: bool,
+    _cancel: oneshot::Sender<()>,
+}
+
+impl AsyncRead for ServiceOutput {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+        if self.ended || buf.remaining() == 0 {
+            return Poll::Ready(Ok(()));
+        }
+        let before = buf.filled().len();
+        ready!(Pin::new(&mut self.stdout).poll_read(cx, buf))?;
+        if buf.filled().len() != before {
+            return Poll::Ready(Ok(()));
+        }
+        // Keep ownership until Git exits: dropping a fully read response must not kill
+        // a successful push between closing stdout and reporting its exit status.
+        let finished = ready!(Pin::new(&mut self.finished).poll(cx));
+        self.ended = true;
+        Poll::Ready(finished.map_err(|_| io::Error::other("git exchange was interrupted")))
+    }
 }
 
 /// Runs Git services as child processes with a scrubbed environment.
@@ -110,7 +142,7 @@ impl ProcessTransport {
     /// clients expect the capability advertisement directly.
     pub async fn advertise_refs(&self, service: Service, repo_path: &Path, protocol: Option<&str>) -> Result<Vec<u8>, TransportError> {
         let advertisement = self.advertisement(service, repo_path, protocol).await?;
-        let is_v2 = protocol.is_some_and(|p| p.split(':').any(|kv| kv == "version=2"));
+        let is_v2 = protocol.filter(|p| is_safe_protocol_header(p)).is_some_and(|p| p.split(':').any(|kv| kv == "version=2"));
         let mut body = Vec::with_capacity(advertisement.len() + 64);
         if !is_v2 {
             body.extend(pkt_line::encode(&format!("# service={}\n", service.wire_name())));
@@ -143,30 +175,53 @@ impl ProcessTransport {
         let output = child.stdout.take().expect("stdout is piped");
         let stderr = child.stderr.take().expect("stderr is piped");
 
-        tokio::spawn(async move {
+        let feed = AbortOnDrop(tokio::spawn(async move {
             if let Err(error) = tokio::io::copy(&mut request, &mut stdin).await {
                 tracing::debug!(%service, %error, "client request body ended early");
             }
             // Dropping stdin signals end-of-request to git.
-        });
+        }));
 
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                tracing::debug!(%service, "git: {line}");
+        let errors = AbortOnDrop(tokio::spawn(async move {
+            // Remote progress and error messages may have no newline at all. Drain
+            // with fixed memory and cap logging as well as the retained excerpt.
+            let mut stderr = stderr;
+            let mut buffer = [0_u8; 8192];
+            let mut remaining = 16 * 1024;
+            while let Ok(read) = stderr.read(&mut buffer).await {
+                if read == 0 {
+                    break;
+                }
+                let logged = read.min(remaining);
+                if logged > 0 {
+                    tracing::debug!(%service, stderr = %String::from_utf8_lossy(&buffer[..logged]), "git stderr");
+                    remaining -= logged;
+                }
             }
-        });
+        }));
 
         let (done, completion) = oneshot::channel();
+        let (finished_tx, finished) = oneshot::channel();
+        let (cancel, cancelled) = oneshot::channel::<()>();
         tokio::spawn(async move {
-            match child.wait().await {
+            let result = tokio::select! {
+                status = child.wait() => status,
+                _ = cancelled => {
+                    let _ = child.kill().await;
+                    child.wait().await
+                }
+            };
+            drop((feed, errors));
+            match result {
                 Ok(status) => {
                     let _ = done.send(status);
                 }
                 Err(error) => tracing::warn!(%service, %error, "failed to wait for git"),
             }
+            let _ = finished_tx.send(());
         });
 
+        let output = ServiceOutput { stdout: output, finished, ended: false, _cancel: cancel };
         Ok(ServiceSession { output, completion })
     }
 
@@ -263,8 +318,7 @@ where
         // Dropping stdin tells git the client has nothing more to say.
     }));
 
-    let (forwarded, reported) = tokio::join!(tokio::io::copy(&mut stdout, &mut output), tokio::io::copy(&mut stderr, &mut errors));
-    if let Err(error) = forwarded.and(reported) {
+    if let Err(error) = tokio::try_join!(tokio::io::copy(&mut stdout, &mut output), tokio::io::copy(&mut stderr, &mut errors)) {
         // The client went away: nobody drains git's pipes any more, so stop it rather
         // than wait for it to block forever.
         tracing::debug!(%service, %error, "client went away while git was responding");
@@ -388,5 +442,64 @@ mod tests {
         assert!(status.success(), "{}", String::from_utf8_lossy(&errors));
         assert!(output.is_empty(), "nothing to report: {}", String::from_utf8_lossy(&output));
         drop(server_side);
+    }
+
+    #[tokio::test]
+    async fn dropping_a_stateless_response_stops_git_and_releases_the_request() {
+        struct PendingRequest(Option<oneshot::Sender<()>>);
+        impl AsyncRead for PendingRequest {
+            fn poll_read(self: Pin<&mut Self>, _: &mut Context<'_>, _: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+                Poll::Pending
+            }
+        }
+        impl Drop for PendingRequest {
+            fn drop(&mut self) {
+                let _ = self.0.take().unwrap().send(());
+            }
+        }
+
+        let repo = bare_repository();
+        let (dropped, request_dropped) = oneshot::channel();
+        let session = ProcessTransport::new("git")
+            .serve(Service::UploadPack, repo.path(), None, ReceiveOptions::default(), PendingRequest(Some(dropped)))
+            .unwrap();
+        drop(session.output);
+        let stopped = async {
+            let status = session.completion.await.unwrap();
+            assert!(!status.success(), "an unfinished exchange must be killed");
+            request_dropped.await.unwrap();
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), stopped).await.expect("abandoned exchange stayed alive");
+    }
+
+    #[tokio::test]
+    async fn a_failed_output_does_not_wait_for_the_other_pipe() {
+        struct Disconnected;
+        impl AsyncWrite for Disconnected {
+            fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, _: &[u8]) -> Poll<io::Result<usize>> {
+                Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
+            }
+            fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+                Poll::Ready(Ok(()))
+            }
+            fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
+                Poll::Ready(Ok(()))
+            }
+        }
+
+        let repo = bare_repository();
+        let (input, _client) = tokio::io::duplex(64);
+        let transport = ProcessTransport::new("git");
+        let exchange = transport.serve_interactive(Service::UploadPack, repo.path(), None, input, Disconnected, tokio::io::sink());
+        let status = tokio::time::timeout(std::time::Duration::from_secs(10), exchange).await.expect("failed output hung").unwrap();
+        assert!(!status.success());
+    }
+
+    #[tokio::test]
+    async fn invalid_v2_header_keeps_the_v0_http_service_header() {
+        let repo = bare_repository();
+        let output =
+            ProcessTransport::new("git").advertise_refs(Service::UploadPack, repo.path(), Some("version=2:invalid\n")).await.unwrap();
+        assert!(output.starts_with(b"001e# service=git-upload-pack\n0000"));
     }
 }

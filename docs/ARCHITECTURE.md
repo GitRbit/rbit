@@ -137,6 +137,8 @@ push gate, §4.4); receive-pack entry points take `ReceiveOptions { deny_non_fas
 SSH keys and repository deploy keys, strictly parsed `git-upload-pack` / `git-receive-pack`
 exec requests and Git LFS's `git-lfs-authenticate` (§4.7), the same authorisation as HTTP, connection limits, throttled failures, and
 no shells, PTYs or forwarding. The Ed25519 host key is generated on first start.
+Each exec request rechecks the authenticated key and the holder's current permissions,
+so an existing connection cannot outlive key revocation or retain administrator status.
 `git-receive-pack` runs in two stateless steps so the push gate can decide between them
 (§4.4); `git-upload-pack` stays interactive.
 
@@ -145,6 +147,11 @@ transports; every message is rendered from Askama templates with text and HTML p
 `Mail.headers` (`MailHeaders`: `Message-ID`, `In-Reply-To`/`References`, one-click
 `List-Unsubscribe`) is written by the SMTP and log transports; `ThreadNotification` is the
 notification email (§5.1).
+
+`MailService` admits at most 1,024 queued or active messages and opens at most eight
+deliveries concurrently. Best-effort notifications that exceed the queue are dropped with
+a warning and `rbit_mail_dropped_total`; account recovery and verification wait for a slot
+up to the configured timeout. Delivery's timeout includes waiting for a relay slot.
 
 **`rbit-services`** — Use-cases with business rules, one service per area, all built from
 a shared `ServiceContext` (config, database, key/value store, repository storage):
@@ -189,8 +196,10 @@ pull request and Git LFS tasks; `Services::shutdown()` stops them (and the job q
 seconds.
 
 Services communicate through an in-process `EventBus` of `DomainEvent`s, so producers never
-depend on reactions such as cache warming, session revocation, verification email or
-webhooks. Subscribers ignore variants they do not handle, so adding one breaks nothing.
+depend on reactions such as cache warming, verification email or webhooks. Session
+revocation is a synchronous credential-update step: security enforcement cannot depend on
+delivery through a lossy broadcast channel. Subscribers ignore variants they do not handle,
+so adding one breaks nothing.
 `subscribe()` yields bare events; `subscribe_published()` yields them stamped with the
 newest webhook id reserved at publish time (`Published`), for the webhook subscriber (§4.3).
 
@@ -281,8 +290,15 @@ rename) before the owner changes in SQL, and moves it back if the database step 
 Release files never use a user-supplied name on disk and do not depend on the owner, so
 transfers move nothing. An upload streams into `tmp/<random>.part` while its SHA-256 and
 size are computed and is abandoned the moment it exceeds `[releases] max_asset_bytes`;
-only a complete file gets a `release_assets` row, after which it is synced and renamed
-into place (the row is removed again if the rename fails). Deleting a file removes the row
+only a complete, synced file gets a `release_assets` row, with the per-release file limit
+checked atomically by the insert. A tracked task owns the row and rename into place after
+the body is received, so client cancellation cannot interrupt placement (the row is removed
+again if the rename fails). Incomplete uploads remove their temporary files on cancellation.
+Placement and deletion hold an exclusive asset lock; downloads share read access until
+their file is open, then stream independently. This keeps reused numeric file ids from
+mixing old metadata with replacement bytes. Delayed repository cleanup preserves any
+currently referenced assets if the repository id has been reused.
+Deleting a file removes the row
 first, then the bytes, so a crash leaves at worst an orphaned file, never a row without
 bytes. `ReleaseService` removes `attachments/<repo_id>` when a repository is deleted and
 sweeps `.part` files older than a day at start-up. Downloads are always
@@ -924,10 +940,18 @@ organisation; changes are audited.
   broadcast, reserved, documentation and benchmarking ranges are refused, and IPv6 forms
   embedding an IPv4 address (mapped, compatible, NAT64, 6to4) are judged by that address.
   The check runs inside the HTTP client's DNS resolver at connection time, so DNS rebinding
-  cannot slip past it; address literals are checked before sending; proxy environment
-  variables are ignored. Pull mirrors use the same classifier right before each fetch.
+  cannot slip past it; address literals are checked using the HTTP client's parsed URL,
+  including numeric IPv4 spellings. The locally translated NAT64 range is refused.
+  Proxy environment variables are ignored. Pull mirrors, imports and push mirrors resolve
+  and validate addresses before invoking Git, pin its connections with `http.curloptResolve`,
+  disable proxies and refuse redirects, closing the second-DNS-lookup gap.
 
 ### 4.4 The push gate (branch protection)
+
+On Windows and macOS, branch protection also matches case aliases because repositories
+commonly use case-insensitive filesystems. Noncanonical `refs/heads/` namespace spellings
+are refused before Git, whose non-fast-forward check requires the canonical prefix;
+case aliases of the managed `refs/pull/` namespace are reserved too.
 
 `git receive-pack` runs without hooks and the tests boot the server in-process, so a
 `pre-receive` executable is not an option; the gate is in-process, in **both** receive
@@ -1028,7 +1052,9 @@ object and its size), HMAC-SHA256 under a 256-bit key drawn at start-up (a resta
 invalidates outstanding headers; clients ask again), verified in constant time. Nothing is
 stored, and `LfsService::open_granted` recomputes the holder's access on every use
 (suspension, removed collaborators and deleted deploy keys end a token early), capped at
-the token's read or write. Invalid tokens count as failed Git authentication. Downloads need
+the token's read or write. Object-scoped headers only authorize that object's transfer;
+batch and lock endpoints require repository-scoped credentials. Download batch replies use
+the stored object's size. Invalid tokens count as failed Git authentication. Downloads need
 read access; uploads, verify and locks write access (and an account for locks); pull mirrors
 refuse uploads; hidden repositories are 404 (401 with `LFS-Authenticate` to anonymous
 callers, so clients ask for credentials). Errors are `{"message": …}` as
@@ -1058,7 +1084,7 @@ links the object.
 | Repository access | One pure policy (`repo_access`) decides every check — pages, API, Git over HTTP and SSH — from the viewer's grants (organisation role and base permission, teams, collaborator entry); SQL listings use one readable-by predicate tested against it. Leaving an organisation revokes its team memberships and collaborator entries in the same transaction (trigger). |
 | Webhook secrets | **An exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored as given. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
 | Server keys | The other exception: `server_secrets` holds 256-bit keys rbit generates itself on first use and never shows — `notification_unsubscribe` (unsubscribe links) and `external-sign-in` (the sign-in flow cookie, PKCE verifiers and nonces). HMAC needs them raw. The Git LFS token key is never stored (drawn at start-up). |
-| Outbound requests (SSRF) | Webhook deliveries, mirror fetches and external sign-in requests refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; sign-in providers use the webhooks' guarded resolver (no redirects, no proxy, `https` only, 1 MiB responses); webhooks check inside the DNS resolver at connection time (no DNS rebinding), follow no redirects and ignore proxy variables; mirrors check right before each fetch, refuse redirects, and run `git` without prompts or credential helpers. See §4.3. |
+| Outbound requests (SSRF) | Webhook deliveries, remote Git operations and external sign-in requests refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; sign-in providers use the webhooks' guarded resolver (no redirects, no proxy, `https` only, 1 MiB responses); webhooks check inside the DNS resolver at connection time, follow no redirects and ignore proxy variables; remote Git pins validated addresses, refuses redirects/proxies, and runs without prompts or credential helpers. See §4.3. |
 | Release files | Stored by numeric id only; downloads are `application/octet-stream` + `attachment` + `nosniff`, so an uploaded HTML file can never render on the site's origin. The size limit is enforced while the upload streams; names are validated (no `/`, `\`, control characters or leading dots). |
 | CSRF | Unsafe methods require `Sec-Fetch-Site: same-origin` or a matching `Origin` header. Combined with `SameSite=Lax` cookies. **One exemption:** `POST /email/unsubscribe/{token}` (exactly that path shape, `middleware::is_one_click_unsubscribe`), which mail clients send from their own origin (RFC 8058); it needs no session, the signed token is the authorisation, and all it can do is turn that account's notification emails off. |
 | XSS | Askama auto-escapes. Markdown is rendered with `pulldown-cmark` then sanitised with `ammonia`. Strict CSP: `default-src 'self'`. |
@@ -1069,7 +1095,8 @@ links the object.
 | Two-factor | Passkeys / security keys (WebAuthn, bound to `server.public_url`; single-use challenges, signature counters must advance) and/or TOTP (RFC 6238, ±1 step, each code accepted once, confirmed at enrolment). 10 single-use recovery codes stored hashed, shared by all factors and removed with the last one. Removing a factor or regenerating codes requires the password plus a code or passkey. Enrolled accounts must use access tokens for Git over HTTP. |
 | Brute force | `ThrottleService` budgets per scope (sign-in, sign-up, 2FA, Git auth, SSH auth, email requests) keyed by account and by client address (larger shared budget); failures cost extra, success resets; 429 with `Retry-After`. Form posts are limited per address; issues, pull requests, comments and reviews per account (`Content`). |
 | Client address | `X-Forwarded-For` / `Forwarded` / `X-Forwarded-Proto` are honoured only from `[security] trusted_proxies`. |
-| Sessions | Listed per account; revoke one or all others; all other sessions end when the password changes. |
+| Sessions | Listed per account; revoke one or all others; renewal atomically updates an existing, unexpired session and cannot restore a revoked one. Password recovery and administrator resets immediately revoke every session; self-service changes preserve only the initiating session. Credential finalization continues after request cancellation. |
+| Registration and recovery | First-administrator assignment and closed-registration bootstrap are serialized in the account-creation transaction, including external sign-in. Password resets consume the token, validate its current email and account status, update the password and invalidate other reset tokens in one transaction. |
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
 | Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by rbit are checked against the same rules (`check_merge`). |
@@ -1260,7 +1287,7 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 - **Trait seams** at every external boundary: `GitTransport`, store traits in services,
   `PasswordHasher`. Swapping an implementation never changes callers.
 - **Event bus** — `services` emits `DomainEvent`s (§2) on a `tokio::broadcast` channel;
-  cache warming, session revocation, verification email, release-file clean-up and
+  cache warming, verification email, release-file clean-up and
   webhooks subscribe independently, and CI triggers or search indexing can join the same way.
 - **REST API** — new resources add rows to `api::table()` and paths to `openapi.json`; the
   route/document test keeps them in step.

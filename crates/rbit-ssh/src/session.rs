@@ -77,6 +77,7 @@ pub(crate) struct Connection {
     peer: SocketAddr,
     authenticated: Arc<AtomicBool>,
     identity: Option<SshIdentity>,
+    fingerprint: Option<String>,
     channels: HashMap<ChannelId, PendingChannel>,
     channel_slots: Arc<Semaphore>,
 }
@@ -88,6 +89,7 @@ impl Connection {
             peer,
             authenticated,
             identity: None,
+            fingerprint: None,
             channels: HashMap::new(),
             channel_slots: Arc::new(Semaphore::new(MAX_CHANNELS)),
         }
@@ -111,6 +113,16 @@ impl Connection {
                 None
             }
         }
+    }
+
+    /// A connection may open more commands long after authentication. Recheck its key
+    /// and load current account permissions before each one; key deletion and admin
+    /// demotion must also affect already connected clients.
+    async fn current_identity(&self, previous: &SshIdentity) -> Result<SshIdentity, String> {
+        let refused = || "this SSH key is no longer authorized; reconnect with a valid key".to_owned();
+        let fingerprint = self.fingerprint.as_deref().ok_or_else(refused)?;
+        let current = self.shared.services.ssh_keys.find_by_fingerprint(fingerprint).await.map_err(|error| internal(&error))?;
+        current.filter(|current| same_key_holder(previous, current)).ok_or_else(refused)
     }
 
     /// Opens the repository named by `command` with exactly the access HTTP would grant.
@@ -255,6 +267,7 @@ impl Handler for Connection {
             }
         }
         self.identity = Some(identity);
+        self.fingerprint = Some(rbit_services::ssh_keys::fingerprint(key));
         self.authenticated.store(true, Ordering::Release);
         Ok(Auth::Accept)
     }
@@ -334,6 +347,11 @@ impl Handler for Connection {
         let (Some(pending), Some(identity)) = (self.channels.remove(&channel), self.identity.clone()) else {
             return session.channel_failure(channel);
         };
+        let identity = match self.current_identity(&identity).await {
+            Ok(identity) => identity,
+            Err(message) => return finish_with_message(session, channel, &format!("ERROR: {message}\r\n"), FAILURE),
+        };
+        self.identity = Some(identity.clone());
         // Milestone 3: Git LFS (L).
         if let Some(request) = command::parse_lfs_authenticate(data) {
             let answer = match request {
@@ -373,6 +391,18 @@ impl Handler for Connection {
         session.channel_success(channel)?;
         tokio::spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending));
         Ok(())
+    }
+}
+
+/// A deleted key re-registered for another holder cannot turn an old authenticated
+/// connection into that holder's session.
+fn same_key_holder(previous: &SshIdentity, current: &SshIdentity) -> bool {
+    match (previous, current) {
+        (SshIdentity::User { key: old_key, user: old }, SshIdentity::User { key, user }) => old_key == key && old.id() == user.id(),
+        (SshIdentity::Deploy { key: old_key, repo: old, .. }, SshIdentity::Deploy { key, repo, .. }) => {
+            old_key == key && old.repo.id == repo.repo.id
+        }
+        _ => false,
     }
 }
 

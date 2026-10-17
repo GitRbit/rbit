@@ -5,9 +5,10 @@
 //! is never revealed to someone who doesn't know the password) and sessions stop resolving.
 //!
 //! Sessions are indexed by account, so users can list them, revoke one or sign out
-//! everywhere else. When a password changes ([`DomainEvent::PasswordChanged`]) every
-//! session of that user ends — except the one that made the change, which the web layer
-//! brackets with a [`PasswordChangeGuard`].
+//! everywhere else. Credential finalization awaits session revocation before returning,
+//! so enforcement cannot be lost on the event bus. Recovery and administrator resets end
+//! every session. Self-service changes preserve only the initiating session, which the web
+//! layer brackets with a [`PasswordChangeGuard`].
 
 use std::{
     collections::HashMap,
@@ -97,8 +98,7 @@ pub struct AccountService {
 }
 
 impl AccountService {
-    /// Also starts the subscriber that ends sessions after password changes (when called
-    /// inside a Tokio runtime, as `Services::new` always is).
+    /// Shares the session enforcement state with the services that change passwords.
     pub(crate) fn new(
         config: Arc<Config>,
         accounts: AccountStore,
@@ -107,9 +107,7 @@ impl AccountService {
         events: EventBus,
     ) -> Self {
         let audit = AuditService::from_store(accounts.audit_log());
-        let service = Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default() };
-        service.spawn_password_change_subscriber();
-        service
+        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default() }
     }
 
     /// Whether the public sign-up form is available (an instance setting administrators
@@ -124,7 +122,11 @@ impl AccountService {
         if !self.registration_open().await? {
             return Err(ServiceError::RegistrationClosed);
         }
-        self.create_user(input, None).await
+        let new = prepare_user(&self.config, input, false).await?;
+        let open = self.instance.current().registration == RegistrationMode::Open;
+        let user = self.accounts.register_user(new, open).await?;
+        self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
+        Ok(user)
     }
 
     /// Creates a user regardless of the registration setting (admin CLI, admin panel).
@@ -181,7 +183,7 @@ impl AccountService {
     /// deleted or suspended users are discarded.
     pub async fn resume_session(&self, token: &SessionToken) -> Result<Option<User>, ServiceError> {
         let digest = token.digest();
-        let Some(mut record) = self.sessions.get(digest).await? else {
+        let Some(record) = self.sessions.get(digest).await? else {
             return Ok(None);
         };
         let Some(user) = self.accounts.find_active_user(record.account_id).await? else {
@@ -194,10 +196,8 @@ impl AccountService {
         let renewed = self.session_expiry();
         let renew = renewed.seconds() - record.expires_at.seconds() > 24 * 60 * 60;
         let seen = now.seconds() - record.last_seen_at.seconds() >= LAST_SEEN_RESOLUTION_SECONDS;
-        if renew || seen {
-            record.expires_at = record.expires_at.max(renewed);
-            record.last_seen_at = now;
-            self.sessions.put(digest, record).await?;
+        if (renew || seen) && !self.sessions.renew(digest, renewed, now).await? {
+            return Ok(None);
         }
         Ok(Some(user))
     }
@@ -255,31 +255,19 @@ impl AccountService {
         PasswordChangeGuard { service: self.clone(), user, current: current.digest(), receiver: Some(self.events.subscribe()) }
     }
 
-    fn spawn_password_change_subscriber(&self) {
-        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-            return;
-        };
-        let mut receiver = self.events.subscribe();
-        // Hold the stores, not `self`: the subscriber must not keep the event bus alive.
-        let enforcer = SessionEnforcer { accounts: self.accounts.clone(), sessions: self.sessions.clone(), audit: self.audit.clone() };
-        let ledger = Arc::clone(&self.password_changes);
-        runtime.spawn(async move {
-            loop {
-                match receiver.recv().await {
-                    Ok(DomainEvent::PasswordChanged { user }) => {
-                        if ledger.on_event(user) {
-                            enforcer.end_all_sessions(user).await;
-                        }
-                    }
-                    Ok(_) => {}
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!(skipped, "session revocation fell behind the event bus");
-                        ledger.forget_consumed();
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        });
+    /// Recovery and administrative changes always revoke immediately, even while a
+    /// self-service request is in flight. A slow request must never postpone a reset.
+    pub(crate) async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
+        self.enforcer().end_sessions(user, None).await
+    }
+
+    /// A self-service change can retain its guarded current session. All other sessions
+    /// end when that request completes; without a guard they end before returning.
+    pub(crate) async fn password_changed_preserving_current(&self, user: AccountId) -> Result<(), ServiceError> {
+        if self.password_changes.on_event(user) {
+            self.enforcer().end_sessions(user, None).await?;
+        }
+        Ok(())
     }
 }
 
@@ -293,24 +281,21 @@ struct SessionEnforcer {
 
 impl SessionEnforcer {
     /// Ends the user's sessions (all of them, or all but `keep`) and records it.
-    async fn end_sessions(&self, user: AccountId, keep: Option<TokenDigest>) {
-        let removed = match self.sessions.delete_for_account(user, keep).await {
-            Ok(removed) => removed,
-            Err(error) => {
-                tracing::error!(%error, user = user.0, "failed to end sessions after a password change");
-                return;
-            }
-        };
+    async fn end_sessions(&self, user: AccountId, keep: Option<TokenDigest>) -> Result<(), ServiceError> {
+        let removed = self.sessions.delete_for_account(user, keep).await?;
         let mut entry = AuditEntry::new(AuditAction::SessionsRevokedAfterPasswordChange)
             .detail(format!("{removed} session{} ended", if removed == 1 { "" } else { "s" }));
         if let Ok(Some(found)) = self.accounts.find_user(user).await {
             entry = entry.by(&found);
         }
         self.audit.record(entry).await;
+        Ok(())
     }
 
     async fn end_all_sessions(&self, user: AccountId) {
-        self.end_sessions(user, None).await;
+        if let Err(error) = self.end_sessions(user, None).await {
+            tracing::error!(%error, user = user.0, "failed to end sessions after a password change");
+        }
     }
 }
 
@@ -344,8 +329,10 @@ impl PasswordChangeGuard {
         let enforcer = self.service.enforcer();
         if outcome.end_all {
             enforcer.end_all_sessions(self.user).await;
-        } else if outcome.end_others {
-            enforcer.end_sessions(self.user, Some(self.current)).await;
+        } else if outcome.end_others
+            && let Err(error) = enforcer.end_sessions(self.user, Some(self.current)).await
+        {
+            tracing::error!(%error, user = self.user.0, "failed to end other sessions after a password change");
         }
     }
 }
@@ -373,9 +360,8 @@ impl AccountService {
     }
 }
 
-/// Decides, per account, whether a `PasswordChanged` event ends every session or was
-/// made by a guarded request that keeps its own. The subscriber and the guards may see
-/// an event in either order; the counters make both orders reach the same result.
+/// Tracks committed password changes while a self-service request is in flight.
+/// Notification is synchronous: a guard never claims an event that might arrive later.
 #[derive(Debug, Default)]
 struct PasswordChangeLedger {
     accounts: Mutex<HashMap<AccountId, LedgerEntry>>,
@@ -385,10 +371,8 @@ struct PasswordChangeLedger {
 struct LedgerEntry {
     /// Guarded requests still running.
     in_flight: u32,
-    /// Events the subscriber saw while requests were in flight, not yet attributed.
+    /// Committed changes while requests were in flight, not yet attributed.
     deferred: u32,
-    /// Events a finished request claimed before the subscriber saw them.
-    consumed: u32,
 }
 
 /// What a finishing guard must do.
@@ -411,12 +395,9 @@ impl PasswordChangeLedger {
         let mut accounts = self.lock();
         let entry = accounts.entry(user).or_default();
         entry.in_flight = entry.in_flight.saturating_sub(1);
+        let changed_here = changed_here && entry.deferred > 0;
         if changed_here {
-            if entry.deferred > 0 {
-                entry.deferred -= 1;
-            } else {
-                entry.consumed += 1;
-            }
+            entry.deferred -= 1;
         }
         let end_all = entry.in_flight == 0 && entry.deferred > 0;
         if end_all {
@@ -428,16 +409,13 @@ impl PasswordChangeLedger {
         FinishOutcome { end_others: changed_here, end_all }
     }
 
-    /// The subscriber saw a password change; `true` means "end every session now".
+    /// A password change committed; `true` means "end every session now".
     fn on_event(&self, user: AccountId) -> bool {
         let mut accounts = self.lock();
         let Some(entry) = accounts.get_mut(&user) else {
             return true;
         };
-        let end_all = if entry.consumed > 0 {
-            entry.consumed -= 1;
-            false
-        } else if entry.in_flight > 0 {
+        let end_all = if entry.in_flight > 0 {
             entry.deferred += 1;
             false
         } else {
@@ -447,15 +425,6 @@ impl PasswordChangeLedger {
             accounts.remove(&user);
         }
         end_all
-    }
-
-    /// After the subscriber missed events, claims made for them can never be matched.
-    fn forget_consumed(&self) {
-        let mut accounts = self.lock();
-        for entry in accounts.values_mut() {
-            entry.consumed = 0;
-        }
-        accounts.retain(|_, entry| *entry != LedgerEntry::default());
     }
 }
 
@@ -489,19 +458,19 @@ pub(crate) async fn create_user(
     input: SignUp,
     is_admin: Option<bool>,
 ) -> Result<User, ServiceError> {
+    let new = prepare_user(config, input, is_admin.unwrap_or(false)).await?;
+    let user = if is_admin.is_some() { accounts.create_user(new).await? } else { accounts.register_user(new, true).await? };
+    tracing::info!(user = %user.name(), is_admin = user.is_admin, "account created");
+    Ok(user)
+}
+
+async fn prepare_user(config: &Config, input: SignUp, is_admin: bool) -> Result<NewUser, ServiceError> {
     let name: AccountName = input.username.trim().parse()?;
     let email: Email = input.email.trim().parse()?;
     validate_password(config, &input.password)?;
 
-    let is_admin = match is_admin {
-        Some(flag) => flag,
-        None => accounts.count_users().await? == 0,
-    };
     let password_hash = Passwords::hash(input.password).await?;
-    let user = accounts.create_user(NewUser { name, email, display_name: None, password_hash, is_admin }).await?;
-
-    tracing::info!(user = %user.name(), is_admin, "account created");
-    Ok(user)
+    Ok(NewUser { name, email, display_name: None, password_hash, is_admin })
 }
 
 fn validate_password(config: &Config, password: &str) -> Result<(), ServiceError> {
@@ -530,16 +499,16 @@ mod tests {
     }
 
     #[test]
-    fn own_change_seen_by_the_guard_first() {
+    fn a_guard_cannot_claim_a_future_change() {
         let ledger = PasswordChangeLedger::default();
         ledger.begin(ALICE);
-        assert_eq!(ledger.finish(ALICE, true), FinishOutcome { end_others: true, end_all: false });
-        assert!(!ledger.on_event(ALICE), "the subscriber skips the event the guard handled");
+        assert_eq!(ledger.finish(ALICE, true), FinishOutcome::default());
+        assert!(ledger.on_event(ALICE), "a later change must still revoke sessions");
         assert!(ledger.lock().is_empty());
     }
 
     #[test]
-    fn own_change_seen_by_the_subscriber_first() {
+    fn own_change_defers_until_the_guard_finishes() {
         let ledger = PasswordChangeLedger::default();
         ledger.begin(ALICE);
         assert!(!ledger.on_event(ALICE), "deferred while the request runs");
@@ -564,15 +533,6 @@ mod tests {
         assert!(!ledger.on_event(ALICE));
         assert_eq!(ledger.finish(ALICE, true), FinishOutcome { end_others: true, end_all: true });
         assert!(ledger.lock().is_empty());
-    }
-
-    #[test]
-    fn missed_events_drop_stale_claims() {
-        let ledger = PasswordChangeLedger::default();
-        ledger.begin(ALICE);
-        ledger.finish(ALICE, true);
-        ledger.forget_consumed();
-        assert!(ledger.on_event(ALICE));
     }
 
     #[test]

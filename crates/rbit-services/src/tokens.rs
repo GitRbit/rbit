@@ -52,25 +52,25 @@ impl AccessTokenService {
         if !Self::EXPIRY_CHOICES.contains(&input.expires_in_days) {
             return Err(ServiceError::Invalid("choose one of the offered expiration periods".to_owned()));
         }
-        if self.store.count_for_account(owner.id()).await? >= MAX_TOKENS_PER_USER {
-            return Err(ServiceError::Invalid(format!(
-                "you can have at most {MAX_TOKENS_PER_USER} access tokens; revoke one you no longer use"
-            )));
-        }
-
         let secret = AccessTokenSecret::generate();
         let expires_at = input.expires_in_days.map(|days| Timestamp(Timestamp::now().seconds() + i64::from(days) * SECONDS_PER_DAY));
         let token = self
             .store
-            .create(NewAccessToken {
-                account_id: owner.id(),
-                name: name.to_owned(),
-                digest: secret.digest(),
-                hint: secret.hint(),
-                scope: input.scope,
-                expires_at,
-            })
-            .await?;
+            .create_with_limit(
+                NewAccessToken {
+                    account_id: owner.id(),
+                    name: name.to_owned(),
+                    digest: secret.digest(),
+                    hint: secret.hint(),
+                    scope: input.scope,
+                    expires_at,
+                },
+                MAX_TOKENS_PER_USER,
+            )
+            .await?
+            .ok_or_else(|| {
+                ServiceError::Invalid(format!("you can have at most {MAX_TOKENS_PER_USER} access tokens; revoke one you no longer use"))
+            })?;
 
         tracing::info!(user = %owner.name(), token = token.id.0, scope = token.scope.as_str(), "access token created");
         let detail = format!("{} scope", token.scope.as_str());

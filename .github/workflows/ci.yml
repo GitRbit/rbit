@@ -76,6 +76,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm test
       # Vendored scripts and generated icons are committed; the build must not change them.
       - run: git diff --exit-code -- crates/rbit-web/assets
       - uses: actions/upload-artifact@v7

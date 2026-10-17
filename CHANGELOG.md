@@ -7,6 +7,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security and reliability audit
+
+- Make first-administrator registration, password reset consumption, two-factor state
+  changes, access-token limits and release-file limits atomic under concurrent requests.
+- Revoke sessions synchronously after credential changes; prevent session renewal from
+  restoring revoked sessions, reject stale password proofs, and complete credential
+  updates after request cancellation.
+- Recheck SSH keys and administrator status for every exec request, and enforce branch
+  protection across Windows ref-name case aliases.
+- Pin remote Git connections to validated DNS addresses, disable proxy overrides, and
+  validate numeric webhook hosts and IPv6 translation ranges consistently.
+- Restrict object-scoped Git LFS credentials to their object transfers, and report stored
+  object sizes accurately. Clean up cancelled uploads and finish file placement independently
+  of disconnected clients.
+- Keep private responses out of shared caches, make the offline page anonymous, limit
+  service-worker caching to versioned static assets, and prevent speculative thread loads
+  from marking notifications read. Reject unsafe redirect targets and invalid API dates.
+- Cancel abandoned Git subprocess streams, bound subprocess output and email work queues,
+  stream LFS pointer discovery, deduplicate object ids in linear time, and replace
+  exponential recursive `.gitattributes` matching with iterative matching.
+- Update vulnerable sanitizer and frontend build dependencies and replace a yanked
+  cryptography dependency; run browser-script regressions in CI.
+
 ### Milestone 3 — ready to open-source
 
 rbit is now open source under **MIT OR Apache-2.0** (it was AGPL-3.0-or-later), at

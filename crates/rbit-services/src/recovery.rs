@@ -9,7 +9,7 @@
 //! * **Password reset** — [`RecoveryService::request_password_reset`] answers the same way
 //!   whether or not an account uses the address, so it can't be used to discover who has an
 //!   account. The link is valid for an hour and works once; completing it publishes
-//!   [`DomainEvent::PasswordChanged`] (other sessions are then revoked) and, since it proves
+//!   [`DomainEvent::PasswordChanged`] after revoking sessions and, since it proves
 //!   control of the mailbox, also verifies the address. Suspended users can't reset.
 //! * **Verification** — sent when an account is created ([`DomainEvent::UserSignedUp`]) and
 //!   when its address changes ([`DomainEvent::EmailChanged`], which also notifies the previous
@@ -30,7 +30,7 @@ use rbit_storage::sqlite::recovery::{NewEmailToken, RecoveryAccount, RecoverySto
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
-use crate::{DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+use crate::{AccountService, DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
 /// How long a password-reset link works.
 pub const RESET_LIFETIME_SECONDS: i64 = 60 * 60;
@@ -90,6 +90,7 @@ pub struct RecoveryService {
     mail: MailService,
     throttle: Arc<dyn RequestThrottle>,
     instance: Option<InstanceService>,
+    accounts: Option<AccountService>,
 }
 
 /// Assembles a [`RecoveryService`] from shared services. Anything not supplied is built
@@ -101,6 +102,7 @@ pub struct RecoveryServiceBuilder {
     mail: Option<MailService>,
     throttle: Option<Arc<dyn RequestThrottle>>,
     instance: Option<InstanceService>,
+    accounts: Option<AccountService>,
 }
 
 impl RecoveryServiceBuilder {
@@ -125,12 +127,20 @@ impl RecoveryServiceBuilder {
         self
     }
 
+    /// Shares password-change session enforcement with signed-in request guards.
+    #[must_use]
+    pub fn accounts(mut self, accounts: AccountService) -> Self {
+        self.accounts = Some(accounts);
+        self
+    }
+
     pub fn build(self) -> RecoveryService {
         let ctx = self.ctx;
         RecoveryService {
             mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),
             throttle: self.throttle.unwrap_or_else(|| Arc::new(ThrottleService::new(ctx.clone()))),
             instance: self.instance,
+            accounts: self.accounts,
             ctx,
         }
     }
@@ -138,7 +148,7 @@ impl RecoveryServiceBuilder {
 
 impl RecoveryService {
     pub fn builder(ctx: ServiceContext) -> RecoveryServiceBuilder {
-        RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None }
+        RecoveryServiceBuilder { ctx, mail: None, throttle: None, instance: None, accounts: None }
     }
 
     fn audit(&self) -> AuditService {
@@ -193,18 +203,20 @@ impl RecoveryService {
         let hash = Passwords::hash(new_password).await?;
 
         let digest = parse_token(token)?;
-        let store = self.store();
-        // Consuming is the atomic step: of two concurrent submissions only one gets here.
-        let record = store.consume(&digest, TokenPurpose::Reset, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-        self.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
-        store.revoke_all(account.id, TokenPurpose::Reset).await?;
-        // The link reached the mailbox, which proves the address belongs to the user.
-        store.mark_verified(account.id, &record.email, Timestamp::now()).await?;
+        let service = self.clone();
+        crate::credentials::finish_update(async move {
+            service.store().reset_password(&digest, &hash, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
+            service.password_changed(account.id).await?;
 
-        tracing::info!(user = %account.name, "password reset by email link");
-        self.audit().record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str())).await;
-        self.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-        Ok(())
+            tracing::info!(user = %account.name, "password reset by email link");
+            service
+                .audit()
+                .record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str()))
+                .await;
+            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
+            Ok(())
+        })
+        .await
     }
 
     async fn reset_account(&self, token: &str) -> Result<RecoveryAccount, ServiceError> {
@@ -227,7 +239,7 @@ impl RecoveryService {
             link: format!("{}/password/reset/{token}", self.base_url()),
             valid_for: "1 hour".to_owned(),
         };
-        self.mail.send(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?);
+        self.mail.queue(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?).await;
         Ok(())
     }
 
@@ -284,7 +296,7 @@ impl RecoveryService {
             valid_for: "2 days".to_owned(),
             reason,
         };
-        self.mail.send(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?);
+        self.mail.queue(Mail::render(account.email.clone(), &message).map_err(ServiceError::internal)?).await;
         Ok(())
     }
 
@@ -316,13 +328,18 @@ impl RecoveryService {
         }
         validate_password(self.ctx.config.security.min_password_length, &new_password)?;
         let hash = Passwords::hash(new_password).await?;
-        self.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
-        self.store().revoke_all(account.id, TokenPurpose::Reset).await?;
+        let service = self.clone();
+        let actor = actor.clone();
+        crate::credentials::finish_update(async move {
+            service.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
+            service.password_changed(account.id).await?;
 
-        tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
-        self.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(actor).on(account.name.as_str())).await;
-        self.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-        Ok(())
+            tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
+            service.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(&actor).on(account.name.as_str())).await;
+            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
+            Ok(())
+        })
+        .await
     }
 
     // ------------------------------------------------------------------ background
@@ -401,6 +418,15 @@ impl RecoveryService {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
+        if let Some(accounts) = &self.accounts {
+            accounts.password_changed(user).await?;
+        } else {
+            self.ctx.kv.sessions().delete_for_account(user, None).await?;
+        }
+        Ok(())
+    }
 
     /// Stores a new token for the account's current address and returns the secret for the link.
     async fn issue(&self, account: &RecoveryAccount, purpose: TokenPurpose, lifetime: i64) -> Result<String, ServiceError> {

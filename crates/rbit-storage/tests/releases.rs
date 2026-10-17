@@ -129,3 +129,24 @@ async fn assets_are_unique_per_release_and_cascade() {
     store.delete(two).await.unwrap();
     assert!(store.assets(two).await.unwrap().is_empty(), "asset rows go with their release");
 }
+
+#[tokio::test]
+async fn concurrent_asset_uploads_cannot_exceed_the_release_limit() {
+    let (_dir, database, alice, repo) = setup().await;
+    let store = database.releases();
+    let id = store.create(release(repo, &alice, "v1", false, false)).await.unwrap();
+    let asset = |name| NewAsset {
+        release_id: id,
+        repo_id: repo,
+        name,
+        size: 3,
+        content_type: "application/zip",
+        sha256: [7; 32],
+        uploader_id: alice.id(),
+    };
+    assert!(store.insert_asset_limited(asset("disabled.zip"), 0).await.unwrap().is_none());
+    let (first, second) =
+        tokio::join!(store.insert_asset_limited(asset("first.zip"), 1), store.insert_asset_limited(asset("second.zip"), 1),);
+    assert_ne!(first.unwrap().is_some(), second.unwrap().is_some(), "exactly one upload claims the final slot");
+    assert_eq!(store.count_assets(id).await.unwrap(), 1);
+}

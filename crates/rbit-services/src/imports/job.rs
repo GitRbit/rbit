@@ -205,9 +205,10 @@ impl Job {
     async fn copy_repository(&mut self) -> Result<(), Fatal> {
         let url = self.clone_url()?;
         let config = &self.ctx().config;
-        super::check_source_host(config, url.host(), url.port()).await?;
+        let resolution = super::check_source_host(config, url.host(), url.port()).await?;
         let authorization = self.token_for(&url);
-        let remote = Remote { url: url.as_str(), authorization: authorization.as_deref(), allow_local: false };
+        let remote =
+            Remote { url: url.as_str(), authorization: authorization.as_deref(), allow_local: false, resolution: Some(&resolution) };
         let timeout = Duration::from_secs(config.imports.git_timeout_seconds.max(1));
         let fetched = {
             let _lease = self.ctx().repositories.lease(self.repo_id()).await;

@@ -91,7 +91,10 @@ impl Fixture {
         };
         let outbox = MemoryMailer::new();
         let throttle = RecordingThrottle::default();
-        let mut builder = RecoveryService::builder(ctx).throttle(throttle.clone()).instance(services.instance.clone());
+        let mut builder = RecoveryService::builder(ctx)
+            .throttle(throttle.clone())
+            .instance(services.instance.clone())
+            .accounts(services.accounts.clone());
         if transport != MailTransport::Disabled {
             builder = builder.mail(MailService::with_mailer(Arc::new(outbox.clone()), Duration::from_secs(5)));
         }
@@ -160,6 +163,8 @@ async fn reset_requests_do_not_reveal_whether_an_account_exists() {
 async fn reset_link_sets_a_new_password_once() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice", false).await;
+    let session = fixture.services.accounts.start_session(&alice).await.unwrap();
+    let guard = fixture.services.accounts.guard_password_change(alice.id(), &session);
     let mut events = fixture.services.events.subscribe();
 
     fixture.recovery.request_password_reset("alice@example.com", "198.51.100.1").await.unwrap();
@@ -172,6 +177,8 @@ async fn reset_link_sets_a_new_password_once() {
     assert!(fixture.recovery.reset_target(&token).await.is_ok());
 
     fixture.recovery.reset_password(&token, NEW_PASSWORD.to_owned()).await.unwrap();
+    assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none(), "revoked before the reset returns");
+    guard.finish(false).await;
     assert_eq!(events.recv().await.unwrap(), DomainEvent::PasswordChanged { user: alice.id() });
     assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
     assert!(fixture.services.accounts.authenticate("alice", PASSWORD.to_owned()).await.is_err());
@@ -340,6 +347,8 @@ async fn administrators_send_resets_and_set_passwords() {
     let fixture = Fixture::new().await;
     let admin = fixture.user("root", true).await;
     let alice = fixture.user("alice", false).await;
+    let session = fixture.services.accounts.start_session(&alice).await.unwrap();
+    let guard = fixture.services.accounts.guard_password_change(alice.id(), &session);
     let mut events = fixture.services.events.subscribe();
 
     assert!(matches!(fixture.recovery.admin_send_password_reset(&alice, admin.id()).await, Err(ServiceError::Forbidden)));
@@ -358,6 +367,8 @@ async fn administrators_send_resets_and_set_passwords() {
     // The emailed link stops working once an administrator has set the password.
     let token = token_in(&fixture.mail(1).await, "/password/reset/");
     fixture.recovery.admin_set_password(&admin, alice.id(), NEW_PASSWORD.to_owned()).await.unwrap();
+    assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none(), "revoked before the change returns");
+    guard.finish(false).await;
     assert_eq!(events.recv().await.unwrap(), DomainEvent::PasswordChanged { user: alice.id() });
     assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
     assert!(matches!(fixture.recovery.reset_target(&token).await, Err(ServiceError::NotFound)));

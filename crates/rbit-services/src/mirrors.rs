@@ -8,10 +8,9 @@
 //!   upstream ([`rbit_core::mirror::MirrorUrl`]: no credentials) — when
 //!   `[mirrors] enabled`. The interval is at least `min_interval_minutes`.
 //! * Before every fetch the upstream host is resolved and each address must be public
-//!   (not [`is_internal_address`]) unless `allow_private_addresses`; the fetch itself refuses
-//!   redirects (see [`rbit_git::mirror`]). Git resolves the name again when it
-//!   connects, so a DNS answer that changes in between is not caught; disabling
-//!   redirects and checking right before the fetch keeps that window small.
+//!   (not [`rbit_core::network::is_internal_address`]) unless `allow_private_addresses`; the fetch itself refuses
+//!   redirects (see [`rbit_git::mirror`]) and pins Git's connection to those approved
+//!   addresses, so DNS changes cannot redirect it into the private network.
 //! * A fetch replaces the mirror's branches and tags with the upstream's and is reported
 //!   through [`PushService`] with `pusher: None`, like any push. Its outcome (time and
 //!   error) is stored for the settings page; the next fetch is due an interval later.
@@ -27,7 +26,6 @@
 
 use std::{
     collections::HashSet,
-    net::IpAddr,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -38,12 +36,12 @@ use std::{
 use rbit_core::{
     RepoId, Timestamp, User, Visibility,
     mirror::{Mirror, MirrorUrl},
-    network::is_internal_address,
     repository::OwnedRepository,
 };
 use rbit_git::{
     RefKind,
     mirror::{FetchError, fetch_mirror, upstream_default_branch},
+    remote::ResolvedHost,
 };
 use rbit_storage::sqlite::{mirrors::MirrorStore, repo_settings::RepoGeneralSettings};
 use tokio::sync::{Notify, Semaphore};
@@ -141,25 +139,10 @@ impl MirrorService {
 
     /// Checks that every address of the upstream's host is public (unless private
     /// addresses are allowed).
-    async fn check_upstream(&self, url: &MirrorUrl) -> Result<(), ServiceError> {
-        if self.inner.ctx.config.mirrors.allow_private_addresses {
-            return Ok(());
-        }
-        let addresses: Vec<IpAddr> = match url.host().parse::<IpAddr>() {
-            Ok(address) => vec![address],
-            Err(_) => tokio::net::lookup_host((url.host(), url.port()))
-                .await
-                .map_err(|_| ServiceError::Invalid(format!("cannot resolve {}", url.host())))?
-                .map(|socket| socket.ip())
-                .collect(),
-        };
-        if addresses.is_empty() {
-            return Err(ServiceError::Invalid(format!("cannot resolve {}", url.host())));
-        }
-        if addresses.iter().any(|address| is_internal_address(*address)) {
-            return Err(ServiceError::Invalid(format!("{} is not a public address; mirrors can only fetch from the internet", url.host())));
-        }
-        Ok(())
+    async fn check_upstream(&self, url: &MirrorUrl) -> Result<ResolvedHost, ServiceError> {
+        crate::push_mirrors::check_public_host(url.host(), url.port(), self.inner.ctx.config.mirrors.allow_private_addresses)
+            .await
+            .map_err(ServiceError::Invalid)
     }
 
     // ------------------------------------------------------------------ management
@@ -242,7 +225,7 @@ impl MirrorService {
     }
 
     async fn fetch(&self, context: &RepoContext, mirror: &Mirror) -> Result<(), String> {
-        self.check_upstream(&mirror.url).await.map_err(|e| e.to_string())?;
+        let resolution = self.check_upstream(&mirror.url).await.map_err(|e| e.to_string())?;
         let config = &self.inner.ctx.config;
         let git = &config.repository.git_binary;
         let timeout = Duration::from_secs(config.mirrors.fetch_timeout_seconds);
@@ -250,19 +233,19 @@ impl MirrorService {
         let fetched = {
             // `git fetch` writes into the repository, so a transfer waits for it.
             let _lease = self.inner.ctx.repositories.lease(context.repo.repo.id).await;
-            fetch_mirror(git, &context.disk_path, mirror.url.as_str(), timeout).await
+            fetch_mirror(git, &context.disk_path, mirror.url.as_str(), Some(&resolution), timeout).await
         };
         match fetched {
             Ok(()) => self.inner.pushes.complete(pending).await,
             Err(error) => return Err(describe(&error)),
         }
-        self.adopt_default_branch(context, mirror).await;
+        self.adopt_default_branch(context, mirror, &resolution).await;
         Ok(())
     }
 
     /// After a fetch, when the repository's default branch does not exist (a new mirror
     /// of an upstream whose default is, say, `master`), adopt the upstream's.
-    async fn adopt_default_branch(&self, context: &RepoContext, mirror: &Mirror) {
+    async fn adopt_default_branch(&self, context: &RepoContext, mirror: &Mirror, resolution: &ResolvedHost) {
         let current = &context.repo.repo;
         let Ok(refs) = context.reader.refs().await else { return };
         let branches: Vec<&str> = refs.iter().filter(|r| r.kind == RefKind::Branch).map(|r| r.name.as_str()).collect();
@@ -270,7 +253,7 @@ impl MirrorService {
             return;
         }
         let git = &self.inner.ctx.config.repository.git_binary;
-        let upstream = upstream_default_branch(git, mirror.url.as_str(), HEAD_TIMEOUT).await.ok().flatten();
+        let upstream = upstream_default_branch(git, mirror.url.as_str(), Some(resolution), HEAD_TIMEOUT).await.ok().flatten();
         let Some(branch) = upstream.filter(|b| branches.contains(&b.as_str())).or_else(|| branches.first().map(|b| (*b).to_owned())) else {
             return;
         };

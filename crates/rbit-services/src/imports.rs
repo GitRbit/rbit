@@ -290,7 +290,7 @@ impl ImportService {
 }
 
 /// The address check for every host an import talks to (see the module docs).
-pub(crate) async fn check_source_host(config: &Config, host: &str, port: u16) -> Result<(), String> {
+pub(crate) async fn check_source_host(config: &Config, host: &str, port: u16) -> Result<rbit_git::remote::ResolvedHost, String> {
     check_public_host(host, port, config.imports.allow_private_addresses).await
 }
 

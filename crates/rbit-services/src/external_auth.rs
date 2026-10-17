@@ -823,15 +823,16 @@ impl Services {
         let email: Email = email.trim().parse()?;
         let identity = &pending.identity;
         let verified = identity.email_verified && identity.email.as_deref().is_some_and(|given| given.eq_ignore_ascii_case(email.as_str()));
-        let is_admin = external.inner.database.accounts().count_users().await? == 0;
-        let new_user = NewUser { name, email, display_name: None, password_hash: String::new(), is_admin };
+        let registration_open =
+            ExternalAuthService::may_register(&config, self.instance.current().registration == rbit_core::RegistrationMode::Open);
+        let new_user = NewUser { name, email, display_name: None, password_hash: String::new(), is_admin: false };
         let new = NewExternalIdentity {
             provider_id: &identity.provider_id,
             subject: &identity.subject,
             email: identity.email.as_deref(),
             username: identity.username.as_deref(),
         };
-        let user = match external.inner.database.external_identities().register(new_user, verified, new).await {
+        let user = match external.inner.database.external_identities().register(new_user, verified, new, registration_open).await {
             Ok(Ok(user)) => user,
             Ok(Err(_)) => {
                 external.end_registration(token);
@@ -849,7 +850,7 @@ impl Services {
             Err(error) => return Err(error.into()),
         };
         external.end_registration(token);
-        tracing::info!(user = %user.name(), provider = provider_id, is_admin, "account created through a sign-in provider");
+        tracing::info!(user = %user.name(), provider = provider_id, is_admin = user.is_admin, "account created through a sign-in provider");
         self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
         external.record(linked_entry(&user, &config, identity, client, ", new account")).await;
         external.record(AuditEntry::new(AuditAction::SignIn).by(&user).from_ip(client.ip).detail(config.name.clone())).await;

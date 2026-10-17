@@ -8,7 +8,8 @@
 //! Rules:
 //! * A rule names a [`BranchPattern`]: an exact branch name or a glob (`*` within one
 //!   path segment, `**` across segments, `?` one character other than `/`). Rules only
-//!   concern `refs/heads/*`; branch names are case-sensitive.
+//!   concern `refs/heads/*`. On Windows and macOS, case aliases share protection because
+//!   repositories commonly live on case-insensitive filesystems.
 //! * Every matching rule applies and the strictest value wins: any denial denies, the
 //!   highest approval count counts, and pusher restrictions intersect.
 //! * `allow_admin_bypass` lets repository administrators pass *that* rule; a matching rule
@@ -42,6 +43,7 @@ pub const PULL_REFS: &str = "refs/pull/";
 /// Refusal reasons, as the client shows them (`! [remote rejected] main -> main (…)`).
 pub mod reasons {
     pub const PULL_REFS: &str = "refs/pull/ is managed by rbit";
+    pub const NAMESPACE_CASE: &str = "use the canonical refs/heads/ namespace";
     pub const DELETION: &str = "protected branch: deleting it is not allowed";
     pub const RESTRICTED: &str = "protected branch: you are not allowed to push to it";
     pub const PULL_REQUEST: &str = "protected branch: changes must go through a pull request";
@@ -233,10 +235,11 @@ impl BranchPattern {
         tokens
     }
 
-    /// Whether `branch` (a name without `refs/heads/`) matches. Case-sensitive.
+    /// Whether `branch` (a name without `refs/heads/`) matches. Case aliases match on
+    /// Windows and macOS so filesystem aliases cannot escape protection.
     pub fn matches(&self, branch: &str) -> bool {
         if !self.is_glob() {
-            return self.0 == branch;
+            return ref_names_equal(&self.0, branch);
         }
         let tokens = self.tokens();
         let text: Vec<char> = branch.chars().collect();
@@ -248,7 +251,7 @@ impl BranchPattern {
             for s in (0..=text.len()).rev() {
                 let next = |t: usize, s: usize| matched[t * width + s];
                 let here = match tokens[t] {
-                    Token::Literal(c) => s < text.len() && text[s] == c && next(t + 1, s + 1),
+                    Token::Literal(c) => s < text.len() && ref_char_equal(text[s], c) && next(t + 1, s + 1),
                     Token::One => s < text.len() && text[s] != '/' && next(t + 1, s + 1),
                     Token::Star => next(t + 1, s) || (s < text.len() && text[s] != '/' && next(t, s + 1)),
                     Token::Globstar => {
@@ -262,6 +265,40 @@ impl BranchPattern {
         }
         matched[0]
     }
+}
+
+/// Whether two ref names can identify the same filesystem entry. Matching is
+/// conservatively case-insensitive on Windows and macOS, including Unicode case
+/// mappings; the original spelling is still used for every Git operation.
+fn ref_names_equal(left: &str, right: &str) -> bool {
+    if !cfg!(any(windows, target_os = "macos")) {
+        return left == right;
+    }
+    let mut right = right.chars();
+    left.chars().all(|left| right.next().is_some_and(|right| ref_char_equal(left, right))) && right.next().is_none()
+}
+
+fn ref_char_equal(left: char, right: char) -> bool {
+    left == right
+        || (cfg!(any(windows, target_os = "macos"))
+            && (left.to_lowercase().eq(right.to_lowercase()) || left.to_uppercase().eq(right.to_uppercase())))
+}
+
+fn namespace_refusal(name: &str) -> Option<&'static str> {
+    let (refs, rest) = name.split_once('/')?;
+    let (namespace, _) = rest.split_once('/')?;
+    if !ref_names_equal(refs, "refs") {
+        return None;
+    }
+    if ref_names_equal(namespace, "pull") {
+        return Some(reasons::PULL_REFS);
+    }
+    // Git's receive.denyNonFastForwards only recognises the exact refs/heads/
+    // spelling, even when its backing filesystem treats another spelling as equal.
+    if ref_names_equal(namespace, "heads") && (refs != "refs" || namespace != "heads") {
+        return Some(reasons::NAMESPACE_CASE);
+    }
+    None
 }
 
 impl FromStr for BranchPattern {
@@ -488,8 +525,8 @@ fn apply(rule: &ProtectionRule, pusher: &Pusher, update: &RefUpdate, outcome: &m
 pub fn decide_push(rules: &[ProtectionRule], pusher: &Pusher, updates: &[RefUpdate]) -> PushDecision {
     let mut decision = PushDecision::default();
     for update in updates {
-        if update.name.starts_with(PULL_REFS) {
-            decision.verdict.refusals.push(Refusal { name: update.name.clone(), reason: reasons::PULL_REFS.to_owned() });
+        if let Some(reason) = namespace_refusal(&update.name) {
+            decision.verdict.refusals.push(Refusal { name: update.name.clone(), reason: reason.to_owned() });
             continue;
         }
         if !pusher.access().can_write() {
@@ -603,7 +640,7 @@ mod tests {
     fn pattern_matching_table() {
         let table: &[(&str, &str, bool)] = &[
             ("main", "main", true),
-            ("main", "Main", false),
+            ("main", "Main", cfg!(any(windows, target_os = "macos"))),
             ("main", "main2", false),
             ("main", "x/main", false),
             ("*", "main", true),
@@ -611,7 +648,7 @@ mod tests {
             ("release/*", "release/1.0", true),
             ("release/*", "release/1.0/hotfix", false),
             ("release/*", "release", false),
-            ("release/*", "Release/1.0", false),
+            ("release/*", "Release/1.0", cfg!(any(windows, target_os = "macos"))),
             ("release/**", "release/1.0/hotfix", true),
             ("release/**", "release/1.0", true),
             ("release/**", "release", false),
@@ -903,5 +940,46 @@ mod tests {
         let bypassing = [rule("main", RuleSettings { allow_admin_bypass: true, ..RuleSettings::default() })];
         assert!(may_delete(&bypassing, &Actor::Admin.pusher(), "main") && !may_delete(&bypassing, &writer, "main"));
         assert!(is_protected(&rules, "tmp/x") && is_protected(&rules, "main") && !is_protected(&rules, "feature"));
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn filesystem_case_aliases_share_every_protection_check() {
+        let settings = RuleSettings { require_pull_request: true, required_approvals: 2, ..RuleSettings::default() };
+        let rules = [rule("main", settings), rule("résumé/*", settings)];
+        let writer = Actor::Writer.pusher();
+        for branch in ["MAIN", "Main", "RÉSUMÉ/Release"] {
+            assert!(is_protected(&rules, branch), "{branch}");
+            assert!(!may_delete(&rules, &writer, branch), "{branch}");
+            let merge = merge_rules(&rules, &writer, branch);
+            assert!(merge.require_pull_request && merge.required_approvals == 2, "{branch}");
+            let name = format!("refs/heads/{branch}");
+            let decision = decide_push(&rules, &writer, &[update(&name, Kind::Update)]);
+            assert_eq!(decision.verdict.refusals[0].reason, reasons::PULL_REQUEST);
+        }
+        assert!(pattern("résumé").matches("RÉSUMÉ"), "exact patterns use Unicode case mappings too");
+        assert!(pattern("RÉSUMÉ/*").matches("résumé/feature"), "case matching is symmetric");
+        assert!(!pattern("main").matches("main/other"));
+        assert!(!pattern("main").matches("maintain"));
+        assert!(!decide_push(&[], &writer, &[update("refs/heads/MixedCase", Kind::Create)]).verdict.is_refused());
+        let force = decide_push(&[rule("main", RuleSettings::default())], &writer, &[update("refs/heads/MAIN", Kind::Update)]);
+        assert!(force.verdict.deny_non_fast_forwards);
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn filesystem_namespace_aliases_are_refused_before_git() {
+        for actor in ACTORS {
+            for kind in [Kind::Create, Kind::Update, Kind::Delete] {
+                for name in ["refs/HEADS/main", "REFS/heads/main", "refs/Headſ/main"] {
+                    let decision = decide_push(&[], &actor.pusher(), &[update(name, kind)]);
+                    assert_eq!(decision.verdict.refusals[0].reason, reasons::NAMESPACE_CASE, "{name}");
+                }
+                for name in ["refs/PULL/1/head", "REFS/pull/1/head", "refs/Pull/1/merge"] {
+                    let decision = decide_push(&[], &actor.pusher(), &[update(name, kind)]);
+                    assert_eq!(decision.verdict.refusals[0].reason, reasons::PULL_REFS, "{name}");
+                }
+            }
+        }
     }
 }

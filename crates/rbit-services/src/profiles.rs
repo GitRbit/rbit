@@ -7,7 +7,7 @@ use rbit_core::{AccountId, Email, User};
 use rbit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
-use crate::{DomainEvent, ServiceContext, ServiceError};
+use crate::{AccountService, DomainEvent, ServiceContext, ServiceError};
 
 const MAX_DISPLAY_NAME_LEN: usize = 80;
 const MAX_BIO_LEN: usize = 300;
@@ -39,11 +39,12 @@ pub struct UpdateProfile {
 #[derive(Debug, Clone)]
 pub struct ProfileService {
     ctx: ServiceContext,
+    accounts: AccountService,
 }
 
 impl ProfileService {
-    pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self { ctx }
+    pub(crate) fn new(ctx: ServiceContext, accounts: AccountService) -> Self {
+        Self { ctx, accounts }
     }
 
     fn store(&self) -> ProfileStore {
@@ -80,8 +81,10 @@ impl ProfileService {
     /// if another account uses the address.
     pub async fn change_email(&self, user: &User, current_password: String, new_email: &str) -> Result<Email, ServiceError> {
         let email: Email = new_email.trim().parse()?;
-        self.verify_password(user, current_password).await?;
-        self.store().set_email(user.id(), &email).await?;
+        let verified = self.verify_password(user, current_password).await?;
+        if !self.store().set_email_if_password(user.id(), &email, &verified).await? {
+            return Err(ServiceError::InvalidCredentials);
+        }
         tracing::info!(user = %user.name(), "email changed");
         self.ctx.events.publish(DomainEvent::EmailChanged { user: user.id(), previous: user.email.to_string() });
         Ok(email)
@@ -90,13 +93,21 @@ impl ProfileService {
     /// Replaces the password after re-checking the current one.
     pub async fn change_password(&self, user: &User, current_password: String, new_password: String) -> Result<(), ServiceError> {
         self.validate_new_password(&new_password)?;
-        self.verify_password(user, current_password).await?;
+        let verified = self.verify_password(user, current_password).await?;
         let hash = Passwords::hash(new_password).await?;
-        self.store().set_password_hash(user.id(), &hash).await?;
-        tracing::info!(user = %user.name(), "password changed");
-        AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::PasswordChanged).by(user)).await;
-        self.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
-        Ok(())
+        let service = self.clone();
+        let user = user.clone();
+        crate::credentials::finish_update(async move {
+            if !service.store().set_password_hash_if_current(user.id(), &hash, &verified).await? {
+                return Err(ServiceError::InvalidCredentials);
+            }
+            service.accounts.password_changed_preserving_current(user.id()).await?;
+            tracing::info!(user = %user.name(), "password changed");
+            AuditService::new(service.ctx.clone()).record(AuditEntry::new(AuditAction::PasswordChanged).by(&user)).await;
+            service.ctx.events.publish(DomainEvent::PasswordChanged { user: user.id() });
+            Ok(())
+        })
+        .await
     }
 
     fn validate_new_password(&self, password: &str) -> Result<(), ServiceError> {
@@ -112,12 +123,12 @@ impl ProfileService {
     }
 
     /// [`ServiceError::InvalidCredentials`] unless `password` is the user's current password.
-    async fn verify_password(&self, user: &User, password: String) -> Result<(), ServiceError> {
+    async fn verify_password(&self, user: &User, password: String) -> Result<String, ServiceError> {
         if password.len() > MAX_PASSWORD_LEN * 4 {
             return Err(ServiceError::InvalidCredentials);
         }
         let hash = self.store().password_hash(user.id()).await?.ok_or(ServiceError::NotFound)?;
-        if Passwords::verify(password, hash).await? { Ok(()) } else { Err(ServiceError::InvalidCredentials) }
+        if Passwords::verify(password, hash.clone()).await? { Ok(hash) } else { Err(ServiceError::InvalidCredentials) }
     }
 }
 

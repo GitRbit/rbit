@@ -175,18 +175,27 @@ impl TwoFactorStore {
     /// had no other factor, `recovery_digests` become its recovery codes (`Some(true)`);
     /// otherwise its codes are kept (`Some(false)`). `None` if there was no pending
     /// enrolment.
-    pub async fn confirm(&self, account: AccountId, step: u64, recovery_digests: &[[u8; 32]]) -> Result<Option<bool>, StorageError> {
-        let mut tx = self.pool.begin().await?;
+    pub async fn confirm(
+        &self,
+        account: AccountId,
+        secret: &[u8],
+        step: u64,
+        recovery_digests: &[[u8; 32]],
+    ) -> Result<Option<bool>, StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let first_factor = !has_factor(&mut tx, account).await?;
-        let confirmed =
-            sqlx::query("UPDATE two_factor SET confirmed_at = ?, last_used_step = ? WHERE account_id = ? AND confirmed_at IS NULL")
-                .bind(Timestamp::now().seconds())
-                .bind(step_value(step))
-                .bind(account.0)
-                .execute(&mut *tx)
-                .await?
-                .rows_affected()
-                == 1;
+        let confirmed = sqlx::query(
+            "UPDATE two_factor SET confirmed_at = ?, last_used_step = ? \
+             WHERE account_id = ? AND secret = ? AND confirmed_at IS NULL",
+        )
+        .bind(Timestamp::now().seconds())
+        .bind(step_value(step))
+        .bind(account.0)
+        .bind(secret)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            == 1;
         if !confirmed {
             return Ok(None);
         }
@@ -199,13 +208,14 @@ impl TwoFactorStore {
 
     /// Accepts time step `step` for an enabled account, unless it (or a later one) was
     /// already accepted. `true` means the code may be honoured.
-    pub async fn claim_step(&self, account: AccountId, step: u64) -> Result<bool, StorageError> {
+    pub async fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> Result<bool, StorageError> {
         let result = sqlx::query(
-            "UPDATE two_factor SET last_used_step = ?1 WHERE account_id = ?2 AND confirmed_at IS NOT NULL \
+            "UPDATE two_factor SET last_used_step = ?1 WHERE account_id = ?2 AND secret = ?3 AND confirmed_at IS NOT NULL \
              AND (last_used_step IS NULL OR last_used_step < ?1)",
         )
         .bind(step_value(step))
         .bind(account.0)
+        .bind(secret)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
@@ -231,13 +241,20 @@ impl TwoFactorStore {
 
     /// Replaces every recovery code of an enabled account. `false` if 2FA is not enabled.
     pub async fn replace_recovery_codes(&self, account: AccountId, digests: &[[u8; 32]]) -> Result<bool, StorageError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         if !has_factor(&mut tx, account).await? {
             return Ok(false);
         }
         replace_codes(&mut tx, account, digests).await?;
         tx.commit().await?;
         Ok(true)
+    }
+
+    /// Discards only an unconfirmed authenticator enrolment. Confirmation racing this
+    /// operation must never turn cancellation into removal of an enabled factor.
+    pub async fn cancel_enrolment(&self, account: AccountId) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM two_factor WHERE account_id = ? AND confirmed_at IS NULL").bind(account.0).execute(&self.pool).await?;
+        Ok(())
     }
 
     /// Removes the authenticator app (confirmed or pending), and the recovery codes too if
@@ -281,7 +298,7 @@ impl TwoFactorStore {
         passkey: &NewPasskey<'_>,
         recovery_digests: &[[u8; 32]],
     ) -> Result<PasskeyAdded, StorageError> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let inserted = sqlx::query(
             "INSERT INTO passkeys (account_id, credential_id, public_key, algorithm, sign_count, transports, name, created_at) \

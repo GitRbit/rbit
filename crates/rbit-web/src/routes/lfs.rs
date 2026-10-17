@@ -189,6 +189,14 @@ impl Authorized {
             _ => Ok(()),
         }
     }
+
+    /// Object transfer credentials cannot mint new grants or inspect/change locks.
+    fn require_repository_token(&self) -> Result<(), LfsError> {
+        if self.object.is_some() {
+            return Err(LfsError::new(StatusCode::FORBIDDEN, "this token is only for an object transfer"));
+        }
+        Ok(())
+    }
 }
 
 /// Resolves the credentials and opens `owner/repo` (old names too) for them.
@@ -273,6 +281,7 @@ async fn batch(
     body: Bytes,
 ) -> Result<Response, LfsError> {
     let authorized = authorize(&state, &client, &headers, &owner, &repo).await?;
+    authorized.require_repository_token()?;
     let request: BatchRequest = parse_json(&body)?;
     let operation = LfsOperation::parse(&request.operation)
         .ok_or_else(|| LfsError::new(StatusCode::UNPROCESSABLE_ENTITY, "the operation must be upload or download"))?;

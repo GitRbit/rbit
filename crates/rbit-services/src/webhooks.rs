@@ -323,9 +323,7 @@ impl WebhookService {
 
     fn validate_url(&self, input: &str) -> Result<WebhookUrl, ServiceError> {
         let url = WebhookUrl::parse(input).map_err(|error| ServiceError::Invalid(error.to_string()))?;
-        if !self.allow_private() && url.targets_internal_host() {
-            return Err(ServiceError::Invalid(format!("{} is an internal address; webhooks can only reach public hosts", url.host())));
-        }
+        delivery::target_url(&url, self.allow_private()).map_err(ServiceError::Invalid)?;
         Ok(url)
     }
 

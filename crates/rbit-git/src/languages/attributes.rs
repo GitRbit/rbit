@@ -161,13 +161,26 @@ impl Pattern {
 
 /// Matches pattern segments against path segments, `**` spanning zero or more segments.
 fn match_segments(pattern: &[String], path: &[&str]) -> bool {
-    match pattern.split_first() {
-        None => path.is_empty(),
-        Some((first, rest)) if first == "**" => (0..=path.len()).any(|skip| match_segments(rest, &path[skip..])),
-        Some((first, rest)) => {
-            path.split_first().is_some_and(|(name, remaining)| match_segment(first, name) && match_segments(rest, remaining))
+    let (mut p, mut n) = (0, 0);
+    // Only the latest ** needs to absorb more directories after a mismatch. Recursing
+    // over every split lets repository-controlled patterns take exponential time.
+    let mut backtrack = None;
+    while n < path.len() {
+        if pattern.get(p).is_some_and(|segment| segment == "**") {
+            backtrack = Some((p, n));
+            p += 1;
+        } else if pattern.get(p).is_some_and(|segment| match_segment(segment, path[n])) {
+            p += 1;
+            n += 1;
+        } else if let Some((star, absorbed)) = backtrack {
+            p = star + 1;
+            n = absorbed + 1;
+            backtrack = Some((star, n));
+        } else {
+            return false;
         }
     }
+    pattern[p..].iter().all(|segment| segment == "**")
 }
 
 /// Matches one segment with `*` (any run of characters) and `?` (one character).
@@ -241,6 +254,16 @@ mod tests {
         assert!(matches("**/generated/*.rs", "a/b/generated/x.rs"));
         assert!(matches("docs/**/*.html", "docs/api/v1/index.html"));
         assert!(!matches("docs/**/*.html", "site/docs/index.html"));
+    }
+
+    #[test]
+    fn repeated_double_stars_do_not_enumerate_directory_partitions() {
+        let pattern = format!("{}missing", "**/a/".repeat(32));
+        let path = "a/".repeat(64);
+        assert!(!matches(&pattern, path.trim_end_matches('/')));
+        assert!(matches(&pattern, &format!("{path}missing")));
+        let path = vec!["a"; 4096].join("/");
+        assert!(matches(&path, &path));
     }
 
     #[test]

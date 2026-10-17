@@ -5,6 +5,7 @@
   "description": "Build-time front-end tooling for rbit. Nothing here runs in production.",
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/tests/*.test.mjs",
     "build": "npm run vendor && npm run build:css",
     "dev": "node scripts/dev.mjs",
     "build:css": "tailwindcss -i crates/rbit-web/styles/app.css -o crates/rbit-web/assets/app.css --minify",
@@ -20,5 +21,9 @@
     "htmx-ext-preload": "2.1.2",
     "htmx.org": "2.0.11",
     "tailwindcss": "4.3.3"
+  },
+  "overrides": {
+    "@parcel/watcher": "2.6.0",
+    "postcss-selector-parser": "7.1.6"
   }
 }

@@ -9,9 +9,9 @@
 //! checked), and a timeout after which the process is killed. Which upstream URLs are
 //! acceptable at all is decided by the caller.
 
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{path::Path, time::Duration};
 
-use crate::{GitError, archive::git_command};
+use crate::{GitError, archive::git_command, process::bounded_output, remote::ResolvedHost};
 
 /// Longest error excerpt kept from Git's output.
 const MAX_ERROR_LEN: usize = 500;
@@ -28,7 +28,7 @@ pub enum FetchError {
 }
 
 /// A `git` command restricted for talking to an upstream (see the module docs).
-fn remote_command(git_binary: &Path, repo_path: Option<&Path>) -> tokio::process::Command {
+fn remote_command(git_binary: &Path, repo_path: Option<&Path>, resolution: Option<&ResolvedHost>) -> tokio::process::Command {
     let mut command = git_command(git_binary, repo_path);
     command.env("GIT_ALLOW_PROTOCOL", "http:https").args([
         "-c",
@@ -37,15 +37,23 @@ fn remote_command(git_binary: &Path, repo_path: Option<&Path>) -> tokio::process
         "http.followRedirects=false",
         "-c",
         "core.askPass=",
+        "-c",
+        "http.proxy=",
+        "-c",
+        "http.curloptResolve=",
     ]);
+    if let Some(resolution) = resolution {
+        resolution.apply(&mut command);
+    }
     command
 }
 
 /// Runs `command` with `timeout`, returning its standard output.
 async fn run(command: &mut tokio::process::Command, timeout: Duration) -> Result<Vec<u8>, FetchError> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let output =
-        tokio::time::timeout(timeout, command.output()).await.map_err(|_| FetchError::TimedOut(timeout))?.map_err(GitError::from)?;
+    let output = tokio::time::timeout(timeout, bounded_output(command, 64 * 1024, MAX_ERROR_LEN * 4))
+        .await
+        .map_err(|_| FetchError::TimedOut(timeout))?
+        .map_err(GitError::from)?;
     if output.status.success() {
         return Ok(output.stdout);
     }
@@ -59,11 +67,17 @@ async fn run(command: &mut tokio::process::Command, timeout: Duration) -> Result
 
 /// Fetches `url` into the bare repository at `repo_path`, replacing its branches and
 /// tags with the upstream's.
-pub async fn fetch_mirror(git_binary: &Path, repo_path: &Path, url: &str, timeout: Duration) -> Result<(), FetchError> {
+pub async fn fetch_mirror(
+    git_binary: &Path,
+    repo_path: &Path,
+    url: &str,
+    resolution: Option<&ResolvedHost>,
+    timeout: Duration,
+) -> Result<(), FetchError> {
     if !tokio::fs::try_exists(repo_path.join("HEAD")).await.map_err(GitError::from)? {
         return Err(GitError::NotFound("repository").into());
     }
-    let mut command = remote_command(git_binary, Some(repo_path));
+    let mut command = remote_command(git_binary, Some(repo_path), resolution);
     command
         .args(["fetch", "--quiet", "--prune", "--force", "--no-write-fetch-head", "--"])
         .arg(url)
@@ -72,8 +86,13 @@ pub async fn fetch_mirror(git_binary: &Path, repo_path: &Path, url: &str, timeou
 }
 
 /// The branch the upstream's `HEAD` points at (its default branch), if it says.
-pub async fn upstream_default_branch(git_binary: &Path, url: &str, timeout: Duration) -> Result<Option<String>, FetchError> {
-    let mut command = remote_command(git_binary, None);
+pub async fn upstream_default_branch(
+    git_binary: &Path,
+    url: &str,
+    resolution: Option<&ResolvedHost>,
+    timeout: Duration,
+) -> Result<Option<String>, FetchError> {
+    let mut command = remote_command(git_binary, None, resolution);
     command.args(["ls-remote", "--symref", "--"]).arg(url).arg("HEAD");
     let stdout = run(&mut command, timeout).await?;
     Ok(parse_symref(&String::from_utf8_lossy(&stdout)))
@@ -108,7 +127,7 @@ mod tests {
         let local = source.to_string_lossy().into_owned();
         let file_url = format!("file://{}", local.replace('\\', "/"));
         for url in [local.as_str(), file_url.as_str()] {
-            let result = fetch_mirror(Path::new("git"), &target, url, Duration::from_secs(30)).await;
+            let result = fetch_mirror(Path::new("git"), &target, url, None, Duration::from_secs(30)).await;
             assert!(matches!(result, Err(FetchError::Failed(_))), "{url}: {result:?}");
         }
     }

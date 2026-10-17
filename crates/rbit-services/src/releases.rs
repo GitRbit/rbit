@@ -24,11 +24,12 @@
 //! Deleting a file removes the row first, then the bytes, so a crash in between leaves
 //! an orphaned file rather than a row without bytes.
 //!
-//! [`ReleaseService::spawn_background`] removes a repository's directory when the
-//! repository is deleted and, at start-up, sweeps `tmp/*.part` files older than a day
-//! (uploads interrupted by a crash).
+//! [`ReleaseService::spawn_background`] removes unreferenced files when a repository
+//! is deleted, preserving current assets if its id was reused before cleanup, and at
+//! start-up sweeps `tmp/*.part` files older than a day (uploads interrupted by a crash).
 
 use std::{
+    collections::HashSet,
     fmt::Write as _,
     io,
     path::{Path, PathBuf},
@@ -45,13 +46,16 @@ use rbit_core::{
 };
 use rbit_git::GitError;
 use rbit_storage::sqlite::releases::{NewAsset, NewRelease, ReleaseChanges, ReleaseStore};
-use sha2::{Digest, Sha256};
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
-    sync::broadcast::{Receiver, error::RecvError},
+    io::AsyncRead,
+    sync::{
+        RwLock,
+        broadcast::{Receiver, error::RecvError},
+    },
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+use crate::uploads::{ReceivedUpload, receive};
 use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError};
 
 /// Releases per page of the releases list.
@@ -115,6 +119,9 @@ struct Inner {
     ctx: ServiceContext,
     /// Tags created for releases are reported like pushes.
     pushes: PushService,
+    /// Asset ids can be reused after deletion. Keep metadata and file operations
+    /// together so old operations cannot act on replacement bytes.
+    assets: RwLock<()>,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     started: AtomicBool,
@@ -125,6 +132,7 @@ impl ReleaseService {
         Self {
             inner: Arc::new(Inner {
                 pushes: PushService::new(ctx.clone()),
+                assets: RwLock::new(()),
                 ctx,
                 shutdown: CancellationToken::new(),
                 tasks: TaskTracker::new(),
@@ -331,14 +339,22 @@ impl ReleaseService {
     pub async fn delete(&self, repo: &RepoContext, id: ReleaseId) -> Result<(), ServiceError> {
         Self::require_writer(repo)?;
         let repo_id = repo.repo.repo.id;
-        let release = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        let assets = self.store().assets(release.id).await?;
-        self.store().delete(release.id).await?;
-        for asset in assets {
-            self.remove_file(repo_id, asset.id).await;
-        }
-        tracing::info!(repo = %repo.repo.full_name(), tag = release.tag_name, "release deleted");
-        Ok(())
+        let service = self.clone();
+        self.inner
+            .tasks
+            .spawn(async move {
+                let _assets = service.inner.assets.write().await;
+                let release = service.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+                let assets = service.store().assets(release.id).await?;
+                service.store().delete(release.id).await?;
+                for asset in assets {
+                    service.remove_file(repo_id, asset.id).await;
+                }
+                tracing::info!(repo = repo_id.0, tag = release.tag_name, "release deleted");
+                Ok(())
+            })
+            .await
+            .map_err(ServiceError::internal)?
     }
 
     // ------------------------------------------------------------------ attached files
@@ -371,7 +387,7 @@ impl ReleaseService {
         tokio::fs::create_dir_all(&tmp_dir).await.map_err(ServiceError::internal)?;
         let tmp = tmp_dir.join(format!("{}.part", random_hex()?));
         let received = receive(&mut body, &tmp, config.max_asset_bytes).await;
-        let (size, sha256) = match received {
+        let received = match received {
             Ok(Some(received)) => received,
             Ok(None) => {
                 remove_quietly(&tmp).await;
@@ -382,29 +398,56 @@ impl ReleaseService {
                 return Err(ServiceError::internal(error));
             }
         };
-
         let content_type: String = content_type.trim().chars().filter(|c| !c.is_control()).take(MAX_CONTENT_TYPE_LEN).collect();
-        let inserted = self
-            .store()
-            .insert_asset(NewAsset {
-                release_id: release.id,
-                repo_id,
-                name,
-                size,
-                content_type: if content_type.is_empty() { "application/octet-stream" } else { &content_type },
-                sha256,
-                uploader_id: actor.id(),
+        let name = name.to_owned();
+        let uploader_id = actor.id();
+        let limit = config.max_assets_per_release;
+        let service = self.clone();
+        // Once bytes are complete, own the row-and-file placement independently of the
+        // HTTP request: cancellation must not leave a committed row without its file.
+        let asset = self
+            .inner
+            .tasks
+            .spawn(async move {
+                let new = NewAsset {
+                    release_id: release.id,
+                    repo_id,
+                    name: &name,
+                    size: received.size,
+                    content_type: if content_type.is_empty() { "application/octet-stream" } else { &content_type },
+                    sha256: received.digest,
+                    uploader_id,
+                };
+                service.place_asset(new, received, tmp, limit).await
             })
-            .await;
+            .await
+            .map_err(ServiceError::internal)??;
+        tracing::info!(repo = %repo.repo.full_name(), name = asset.name, size = asset.size, "release file uploaded");
+        Ok(asset)
+    }
+
+    async fn place_asset(
+        &self,
+        new: NewAsset<'_>,
+        mut received: ReceivedUpload,
+        tmp: PathBuf,
+        limit: u32,
+    ) -> Result<ReleaseAsset, ServiceError> {
+        let _assets = self.inner.assets.write().await;
+        let inserted = self.store().insert_asset_limited(new, limit).await;
         let asset = match inserted {
-            Ok(asset) => asset,
+            Ok(Some(asset)) => asset,
+            Ok(None) => {
+                remove_quietly(&tmp).await;
+                return Err(ServiceError::Invalid(format!("a release can have at most {limit} files")));
+            }
             Err(error) => {
                 remove_quietly(&tmp).await;
                 return Err(error.into());
             }
         };
 
-        let target = self.asset_path(repo_id, asset.id);
+        let target = self.asset_path(asset.repo_id, asset.id);
         let placed = async {
             if let Some(parent) = target.parent() {
                 tokio::fs::create_dir_all(parent).await?;
@@ -419,13 +462,14 @@ impl ReleaseService {
             }
             return Err(ServiceError::internal(error));
         }
-        tracing::info!(repo = %repo.repo.full_name(), tag = release.tag_name, name, size, "release file uploaded");
+        received.placed();
         Ok(asset)
     }
 
     /// Opens file `name` of the release of `tag` for download, if the viewer may see the
     /// release, and counts the download (best effort).
     pub async fn open_asset(&self, repo: &RepoContext, tag: &str, name: &str) -> Result<AssetDownload, ServiceError> {
+        let _assets = self.inner.assets.read().await;
         let release = self.by_tag(repo, tag).await?.release;
         let asset = self.store().find_asset(release.id, name).await?.ok_or(ServiceError::NotFound)?;
         self.open_file(asset).await
@@ -440,6 +484,7 @@ impl ReleaseService {
 
     /// Opens file `id` for download, like [`Self::open_asset`].
     pub async fn open_asset_by_id(&self, repo: &RepoContext, id: ReleaseAssetId) -> Result<AssetDownload, ServiceError> {
+        let _assets = self.inner.assets.read().await;
         let (_, asset) = self.asset(repo, id).await?;
         self.open_file(asset).await
     }
@@ -464,11 +509,19 @@ impl ReleaseService {
     pub async fn delete_asset(&self, repo: &RepoContext, id: ReleaseId, asset: ReleaseAssetId) -> Result<(), ServiceError> {
         Self::require_writer(repo)?;
         let repo_id = repo.repo.repo.id;
-        let release = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
-        let asset = self.store().assets(release.id).await?.into_iter().find(|a| a.id == asset).ok_or(ServiceError::NotFound)?;
-        self.store().delete_asset(asset.id).await?;
-        self.remove_file(repo_id, asset.id).await;
-        Ok(())
+        let service = self.clone();
+        self.inner
+            .tasks
+            .spawn(async move {
+                let _assets = service.inner.assets.write().await;
+                let release = service.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+                let asset = service.store().assets(release.id).await?.into_iter().find(|a| a.id == asset).ok_or(ServiceError::NotFound)?;
+                service.store().delete_asset(asset.id).await?;
+                service.remove_file(repo_id, asset.id).await;
+                Ok(())
+            })
+            .await
+            .map_err(ServiceError::internal)?
     }
 
     async fn remove_file(&self, repo: RepoId, asset: ReleaseAssetId) {
@@ -528,39 +581,41 @@ impl ReleaseService {
         }
     }
 
-    /// Removes `<attachments_dir>/<repo_id>` (every file of the repository's releases).
+    /// Removes unreferenced files after repository deletion. A delayed event may name
+    /// an id since reused by another repository, whose current files must survive.
     pub(crate) async fn remove_repository_files(&self, repo: RepoId) {
-        let dir = self.attachments_dir().join(repo.0.to_string());
-        match tokio::fs::remove_dir_all(&dir).await {
-            Ok(()) => tracing::info!(repo = repo.0, "removed the release files of a deleted repository"),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => tracing::warn!(%error, path = %dir.display(), "cannot remove the release files of a deleted repository"),
+        let service = self.clone();
+        let removal = self.inner.tasks.spawn(async move {
+            let _assets = service.inner.assets.write().await;
+            if let Err(error) = service.remove_unreferenced_files(repo).await {
+                tracing::warn!(%error, repo = repo.0, "cannot remove the release files of a deleted repository");
+            }
+        });
+        if let Err(error) = removal.await {
+            tracing::warn!(%error, repo = repo.0, "release file removal task failed");
         }
     }
-}
 
-/// Streams `body` into a new file at `path`, hashing it. `Ok(None)` once it exceeds
-/// `limit` bytes (the caller deletes the partial file).
-async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -> io::Result<Option<(u64, [u8; 32])>> {
-    let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(path).await?;
-    let mut hasher = Sha256::new();
-    let mut size: u64 = 0;
-    let mut buffer = vec![0u8; 64 * 1024];
-    loop {
-        let read = body.read(&mut buffer).await?;
-        if read == 0 {
-            break;
+    async fn remove_unreferenced_files(&self, repo: RepoId) -> Result<(), ServiceError> {
+        let keep: HashSet<_> = self.store().asset_ids_for_repo(repo).await?.into_iter().map(|id| id.0.to_string()).collect();
+        let dir = self.attachments_dir().join(repo.0.to_string());
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(ServiceError::internal(error)),
+        };
+        while let Some(entry) = entries.next_entry().await.map_err(ServiceError::internal)? {
+            if entry.file_name().to_str().is_some_and(|name| keep.contains(name)) {
+                continue;
+            }
+            tokio::fs::remove_file(entry.path()).await.map_err(ServiceError::internal)?;
         }
-        size += read as u64;
-        if size > limit {
-            return Ok(None);
+        drop(entries);
+        if keep.is_empty() {
+            tokio::fs::remove_dir(&dir).await.map_err(ServiceError::internal)?;
         }
-        hasher.update(&buffer[..read]);
-        file.write_all(&buffer[..read]).await?;
+        Ok(())
     }
-    file.flush().await?;
-    file.sync_all().await?;
-    Ok(Some((size, hasher.finalize().into())))
 }
 
 /// Removes `*.part` files in `dir` older than `age`; returns how many.
@@ -612,6 +667,175 @@ pub fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        service: ReleaseService,
+        owner: User,
+        repo: RepoContext,
+        release: ReleaseId,
+    }
+
+    impl Fixture {
+        async fn new() -> Self {
+            use rbit_core::{Config, Visibility};
+            use rbit_storage::{Database, KvStore, NewUser};
+
+            let dir = tempfile::tempdir().unwrap();
+            let mut config = Config::default();
+            config.storage.data_dir = dir.path().join("data");
+            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+            let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+            let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
+            let owner = database
+                .accounts()
+                .create_user(NewUser {
+                    name: "alice".parse().unwrap(),
+                    email: "alice@example.com".parse().unwrap(),
+                    display_name: None,
+                    password_hash: "test".to_owned(),
+                    is_admin: false,
+                })
+                .await
+                .unwrap();
+            services
+                .repositories
+                .create(
+                    &owner,
+                    crate::CreateRepository { name: "assets".to_owned(), description: String::new(), visibility: Visibility::Private },
+                )
+                .await
+                .unwrap();
+            let repo = services.repositories.open(Some(&owner), "alice", "assets").await.unwrap();
+            let release = database
+                .releases()
+                .create(NewRelease {
+                    repo_id: repo.repo.repo.id,
+                    tag_name: "v1",
+                    name: "v1",
+                    notes: "",
+                    is_draft: false,
+                    is_prerelease: false,
+                    author_id: owner.id(),
+                })
+                .await
+                .unwrap();
+            Self { _dir: dir, service: services.releases, owner, repo, release }
+        }
+
+        async fn upload(&self, name: &str, bytes: &[u8]) -> ReleaseAsset {
+            self.service.upload_asset(&self.repo, &self.owner, self.release, name, "application/octet-stream", bytes).await.unwrap()
+        }
+    }
+
+    async fn wait_for_tasks(service: &ReleaseService, count: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while service.inner.tasks.len() != count {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn completed_asset_upload_survives_request_cancellation() {
+        let fixture = Fixture::new().await;
+        let assets = fixture.service.inner.assets.write().await;
+        let service = fixture.service.clone();
+        let repo = fixture.repo.clone();
+        let owner = fixture.owner.clone();
+        let id = fixture.release;
+        let request = tokio::spawn(async move {
+            service.upload_asset(&repo, &owner, id, "file.bin", "application/octet-stream", b"complete".as_slice()).await
+        });
+        wait_for_tasks(&fixture.service, 1).await;
+        request.abort();
+        assert!(request.await.unwrap_err().is_cancelled());
+        drop(assets);
+        wait_for_tasks(&fixture.service, 0).await;
+
+        let asset = fixture.service.store().find_asset(id, "file.bin").await.unwrap().unwrap();
+        assert_eq!(tokio::fs::read(fixture.service.asset_path(asset.repo_id, asset.id)).await.unwrap(), b"complete");
+        assert_eq!(std::fs::read_dir(fixture.service.attachments_dir().join("tmp")).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancelled_deletion_keeps_row_and_file_together_before_id_reuse() {
+        let fixture = Fixture::new().await;
+        let old = fixture.upload("old.bin", b"old").await;
+        let assets = fixture.service.inner.assets.write().await;
+        let service = fixture.service.clone();
+        let repo = fixture.repo.clone();
+        let id = fixture.release;
+        let old_id = old.id;
+        let request = tokio::spawn(async move { service.delete_asset(&repo, id, old_id).await });
+        wait_for_tasks(&fixture.service, 1).await;
+        request.abort();
+        assert!(request.await.unwrap_err().is_cancelled());
+        assert!(fixture.service.store().find_asset(id, "old.bin").await.unwrap().is_some(), "row stays until file access is exclusive");
+        drop(assets);
+        wait_for_tasks(&fixture.service, 0).await;
+        assert!(fixture.service.store().find_asset(id, "old.bin").await.unwrap().is_none());
+        assert!(!fixture.service.asset_path(old.repo_id, old.id).exists());
+
+        let replacement = fixture.upload("new.bin", b"replacement").await;
+        assert_eq!(replacement.id, old_id, "exercise SQLite's asset id reuse");
+        let download = fixture.service.open_asset(&fixture.repo, "v1", "new.bin").await.unwrap();
+        assert_eq!(download.asset.name, "new.bin");
+        assert_eq!(tokio::fs::read(fixture.service.asset_path(replacement.repo_id, replacement.id)).await.unwrap(), b"replacement");
+    }
+
+    #[tokio::test]
+    async fn delayed_repository_cleanup_preserves_reused_ids_current_assets() {
+        use rbit_core::Visibility;
+        use rbit_storage::NewRepository;
+
+        let fixture = Fixture::new().await;
+        let old = fixture.upload("old.bin", b"old").await;
+        let orphan = fixture.upload("orphan.bin", b"orphan").await;
+        let database = &fixture.service.inner.ctx.database;
+        let repo_id = fixture.repo.repo.repo.id;
+        database.repo_settings().delete(repo_id).await.unwrap();
+        let replacement = database
+            .repositories()
+            .create(NewRepository {
+                owner_id: fixture.owner.id(),
+                name: "replacement".parse().unwrap(),
+                description: None,
+                visibility: Visibility::Private,
+                default_branch: "main".to_owned(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(replacement.id, repo_id, "exercise repository id reuse");
+        let release = database
+            .releases()
+            .create(NewRelease {
+                repo_id,
+                tag_name: "new",
+                name: "new",
+                notes: "",
+                is_draft: false,
+                is_prerelease: false,
+                author_id: fixture.owner.id(),
+            })
+            .await
+            .unwrap();
+        let mut repo = fixture.repo.clone();
+        repo.repo.repo = replacement;
+        let current = fixture
+            .service
+            .upload_asset(&repo, &fixture.owner, release, "current.bin", "application/octet-stream", b"current".as_slice())
+            .await
+            .unwrap();
+        assert_eq!(current.id, old.id, "the file path is reused too");
+
+        fixture.service.remove_repository_files(repo_id).await;
+        assert_eq!(tokio::fs::read(fixture.service.asset_path(repo_id, current.id)).await.unwrap(), b"current");
+        assert!(!fixture.service.asset_path(repo_id, orphan.id).exists(), "unreferenced old files are removed");
+    }
 
     #[test]
     fn limits_read_naturally() {

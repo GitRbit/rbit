@@ -252,9 +252,7 @@ impl TwoFactorService {
 
     /// Discards a pending (unconfirmed) enrolment.
     pub async fn cancel_enrolment(&self, user: &User) -> Result<(), ServiceError> {
-        if self.store.find(user.id()).await?.is_some_and(|record| !record.is_enabled()) {
-            self.store.disable(user.id()).await?;
-        }
+        self.store.cancel_enrolment(user.id()).await?;
         Ok(())
     }
 
@@ -267,8 +265,8 @@ impl TwoFactorService {
         let secret = TotpSecret::from_bytes(&record.secret).ok_or_else(|| ServiceError::Invalid("start the setup again".to_owned()))?;
         let step = secret.verify(code, Timestamp::now().seconds()).ok_or(ServiceError::InvalidCredentials)?;
         let codes = new_recovery_codes();
-        let Some(first_factor) = self.store.confirm(user.id(), step, &digests(user, &codes)).await? else {
-            return Err(ServiceError::Invalid("an authenticator app is already set up".to_owned()));
+        let Some(first_factor) = self.store.confirm(user.id(), &record.secret, step, &digests(user, &codes)).await? else {
+            return Err(ServiceError::Invalid("the authenticator setup changed; start again".to_owned()));
         };
         self.audit.record(AuditEntry::new(AuditAction::TwoFactorEnabled).by(user).from_ip(client.ip).detail("authenticator app")).await;
         Ok(first_factor.then_some(codes))
@@ -297,7 +295,7 @@ impl TwoFactorService {
         };
         let secret = TotpSecret::from_bytes(&record.secret).ok_or(ServiceError::InvalidCredentials)?;
         match secret.verify(code, Timestamp::now().seconds()) {
-            Some(step) if self.store.claim_step(user.id(), step).await? => Ok(SecondFactor::Authenticator),
+            Some(step) if self.store.claim_step(user.id(), &record.secret, step).await? => Ok(SecondFactor::Authenticator),
             _ => Err(ServiceError::InvalidCredentials),
         }
     }
@@ -460,9 +458,10 @@ impl TwoFactorService {
         }
     }
 
-    /// How the pending sign-in's first step was passed (`password` once it is gone).
-    fn pending_method(&self, token: &SessionToken) -> String {
-        self.lock_pending().get(&token.digest()).map_or_else(|| "password".to_owned(), |entry| entry.method.clone())
+    /// Claims a successfully verified sign-in exactly once, provided it has not expired
+    /// or been cancelled while its proof was being checked.
+    fn finish_pending(&self, token: &SessionToken) -> Option<String> {
+        self.lock_pending().remove(&token.digest()).filter(|entry| entry.started.elapsed() < PENDING_SIGN_IN_TTL).map(|entry| entry.method)
     }
 
     /// Takes the pending sign-in's passkey challenge, so each works once.
@@ -575,9 +574,8 @@ impl Services {
         let challenge = matches!(proof, SecondFactorProof::Passkey(_)).then(|| self.two_factor.take_pending_challenge(pending)).flatten();
         match self.two_factor.verify(&user, proof, challenge).await {
             Ok(factor) => {
+                let method = self.two_factor.finish_pending(pending).ok_or(ServiceError::NotFound)?;
                 self.throttle.reset(ThrottleScope::TwoFactor, &key);
-                let method = self.two_factor.pending_method(pending);
-                self.two_factor.end_pending(pending);
                 let entry = match factor {
                     SecondFactor::Authenticator => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and authenticator code")),
                     SecondFactor::Passkey => AuditEntry::new(AuditAction::SignIn).detail(format!("{method} and passkey")),

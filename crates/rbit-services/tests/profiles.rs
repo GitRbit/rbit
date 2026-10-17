@@ -127,6 +127,7 @@ async fn change_password() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice").await;
     let new_password = "a much better passphrase";
+    let session = fixture.services.accounts.start_session(&alice).await.unwrap();
 
     let wrong = fixture.profiles().change_password(&alice, "wrong".to_owned(), new_password.to_owned()).await;
     assert!(matches!(wrong, Err(ServiceError::InvalidCredentials)));
@@ -136,6 +137,7 @@ async fn change_password() {
     assert!(matches!(long, Err(ServiceError::Invalid(_))));
 
     fixture.profiles().change_password(&alice, PASSWORD.to_owned(), new_password.to_owned()).await.unwrap();
+    assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none(), "revoked before the change returns");
     let hash = fixture.database.profiles().password_hash(alice.id()).await.unwrap().unwrap();
     assert!(hash.starts_with("$argon2id$"));
     assert!(Passwords::verify(new_password.to_owned(), hash.clone()).await.unwrap());

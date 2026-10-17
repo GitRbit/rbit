@@ -36,7 +36,7 @@ async-compression = { version = "0.4", features = ["tokio", "gzip"] }
 askama = "0.16"
 askama_web = { version = "0.16", features = ["axum-0.8", "tracing-0.1"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
-ammonia = "4.2"
+ammonia = "4.2.4"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 rust-embed = "8.13"
 mime_guess = "2.0"

@@ -15,6 +15,10 @@ use rbit_services::{
     ssh_keys::{AddDeployKey, AddSshKey},
 };
 use rbit_storage::{Database, KvStore, NewUser};
+use russh::{
+    ChannelMsg, client,
+    keys::{PrivateKey, PrivateKeyWithHashAlg, PublicKeyOrCertificate, ssh_key::private::Ed25519Keypair},
+};
 
 const NULL_DEVICE: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
@@ -171,6 +175,187 @@ fn openssh_available() -> bool {
     }
     eprintln!("skipping Git-over-SSH test: the OpenSSH client (`ssh`, `ssh-keygen`) is not installed");
     false
+}
+
+struct PersistentClient;
+
+#[allow(clippy::unused_async_trait_impl)]
+impl client::Handler for PersistentClient {
+    type Error = russh::Error;
+
+    async fn check_server_key(&mut self, _: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
+        Ok(true)
+    }
+}
+
+async fn persistent_client(harness: &Harness, key: PrivateKey) -> client::Handle<PersistentClient> {
+    let config = client::Config { inactivity_timeout: Some(std::time::Duration::from_secs(30)), ..Default::default() };
+    let mut client = client::connect(Arc::new(config), ("127.0.0.1", harness.port), PersistentClient).await.unwrap();
+    assert!(client.authenticate_publickey("git", PrivateKeyWithHashAlg::new(Arc::new(key), None)).await.unwrap().success());
+    client
+}
+
+async fn persistent_exec(client: &client::Handle<PersistentClient>, command: &str) -> (u32, String) {
+    let work = async {
+        let mut channel = client.channel_open_session().await.unwrap();
+        channel.exec(true, command).await.unwrap();
+        let mut status = None;
+        let mut output = Vec::new();
+        while let Some(message) = channel.wait().await {
+            match message {
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => output.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+                _ => {}
+            }
+        }
+        (status.expect("command exited"), String::from_utf8(output).unwrap())
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), work).await.unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn revoked_keys_cannot_run_more_commands_on_an_authenticated_connection() {
+    let mut harness = Harness::start_with(|config| config.lfs.enabled = true).await;
+    let owner = harness.user("alice").await;
+    harness
+        .services
+        .repositories
+        .create(&owner, CreateRepository { name: "project".to_owned(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let repo = harness.services.repositories.open(Some(&owner), "alice", "project").await.unwrap();
+    let command = "git-lfs-authenticate alice/project download";
+    for deploy in [false, true] {
+        let key = PrivateKey::from(Ed25519Keypair::from_seed(&[if deploy { 42 } else { 43 }; 32]));
+        let public = key.public_key().to_openssh().unwrap();
+        let (user_key, deploy_key) = if deploy {
+            let input = AddDeployKey { title: "test".to_owned(), key: public, allow_write: false };
+            (None, Some(harness.services.ssh_keys.add_deploy_key(&owner, &repo, input).await.unwrap().id))
+        } else {
+            let input = AddSshKey { title: "test".to_owned(), key: public };
+            (Some(harness.services.ssh_keys.add_user_key(&owner, input).await.unwrap().id), None)
+        };
+        let client = persistent_client(&harness, key).await;
+        assert_eq!(persistent_exec(&client, command).await.0, 0);
+        if let Some(key) = user_key {
+            harness.services.ssh_keys.delete_user_key(&owner, key).await.unwrap();
+        }
+        if let Some(key) = deploy_key {
+            harness.services.ssh_keys.delete_deploy_key(&owner, &repo, key).await.unwrap();
+        }
+        let (status, message) = persistent_exec(&client, command).await;
+        assert_ne!(status, 0);
+        assert!(message.contains("no longer authorized"), "{message}");
+        client.disconnect(russh::Disconnect::ByApplication, "done", "").await.unwrap();
+    }
+    harness.server.take().unwrap().shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn admin_demotion_applies_to_an_authenticated_ssh_connection() {
+    let mut harness = Harness::start_with(|config| config.lfs.enabled = true).await;
+    let owner = harness.user("alice").await;
+    let former_admin = harness.user("bob").await;
+    harness.database.admin().set_admin(owner.id(), true).await.unwrap();
+    harness.database.admin().set_admin(former_admin.id(), true).await.unwrap();
+    harness
+        .services
+        .repositories
+        .create(&owner, CreateRepository { name: "private".to_owned(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[44; 32]));
+    harness
+        .services
+        .ssh_keys
+        .add_user_key(&former_admin, AddSshKey { title: "admin".to_owned(), key: key.public_key().to_openssh().unwrap() })
+        .await
+        .unwrap();
+    let client = persistent_client(&harness, key).await;
+    let command = "git-lfs-authenticate alice/private download";
+    assert_eq!(persistent_exec(&client, command).await.0, 0);
+    harness.database.admin().set_admin(former_admin.id(), false).await.unwrap();
+    let (status, message) = persistent_exec(&client, command).await;
+    assert_ne!(status, 0);
+    assert!(message.contains("not found"), "{message}");
+    client.disconnect(russh::Disconnect::ByApplication, "done", "").await.unwrap();
+    harness.server.take().unwrap().shutdown().await;
+}
+
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn case_aliases_cannot_delete_protected_or_managed_refs_over_ssh() {
+    let mut harness = Harness::start().await;
+    let owner = harness.user("alice").await;
+    harness
+        .services
+        .repositories
+        .create(&owner, CreateRepository { name: "project".to_owned(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let repo = harness.services.repositories.open(Some(&owner), "alice", "project").await.unwrap();
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[45; 32]));
+    harness
+        .services
+        .ssh_keys
+        .add_user_key(&owner, AddSshKey { title: "test".to_owned(), key: key.public_key().to_openssh().unwrap() })
+        .await
+        .unwrap();
+    let work = harness.workdir("seed");
+    let unused_key = Path::new("unused");
+    assert_ok(&harness.git(unused_key, &work, &["init", "-q", "-b", "main"]).await);
+    std::fs::write(work.join("README"), "hello\n").unwrap();
+    assert_ok(&harness.git(unused_key, &work, &["add", "README"]).await);
+    assert_ok(&harness.git(unused_key, &work, &["commit", "-q", "-m", "initial"]).await);
+    assert_ok(
+        &harness.git(unused_key, &work, &["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:main", "HEAD:refs/pull/1/head"]).await,
+    );
+    let original = repo.reader.commit_id("main".to_owned()).await.unwrap();
+    let rule = rbit_services::protection::ProtectionInput {
+        pattern: "main".to_owned(),
+        settings: rbit_core::protection::RuleSettings::default(),
+        users: Vec::new(),
+        teams: Vec::new(),
+        contexts: Vec::new(),
+    };
+    harness.services.protection.create(&owner, &repo, &rule).await.unwrap();
+    let client = persistent_client(&harness, key).await;
+
+    for name in ["refs/heads/MAIN", "refs/HEADS/main", "refs/PULL/1/head"] {
+        let exchange = async {
+            let mut channel = client.channel_open_session().await.unwrap();
+            channel.exec(true, "git-receive-pack alice/project").await.unwrap();
+            let mut advertisement = Vec::new();
+            while let Some(message) = channel.wait().await {
+                if let ChannelMsg::Data { data } = message {
+                    advertisement.extend_from_slice(&data);
+                    if advertisement.ends_with(b"0000") {
+                        break;
+                    }
+                }
+            }
+            assert!(advertisement.ends_with(b"0000"));
+            // Send the real old id under a different spelling, which aliases the same
+            // loose ref on NTFS. A normal Git client would send a create command here.
+            let mut command = rbit_transport::pkt_line::encode(&format!("{original} {} {name}\0report-status\n", "0".repeat(40)));
+            command.extend_from_slice(b"0000");
+            channel.data(command.as_slice()).await.unwrap();
+            channel.eof().await.unwrap();
+            let mut report = Vec::new();
+            while let Some(message) = channel.wait().await {
+                if let ChannelMsg::Data { data } = message {
+                    report.extend_from_slice(&data);
+                }
+            }
+            String::from_utf8(report).unwrap()
+        };
+        let report = tokio::time::timeout(std::time::Duration::from_secs(10), exchange).await.unwrap();
+        assert!(report.contains(&format!("ng {name} ")), "{name}: {report}");
+        assert_eq!(repo.reader.commit_id("main".to_owned()).await.unwrap(), original);
+        assert_eq!(repo.reader.commit_id("refs/pull/1/head".to_owned()).await.unwrap(), original);
+    }
+    client.disconnect(russh::Disconnect::ByApplication, "done", "").await.unwrap();
+    harness.server.take().unwrap().shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -174,6 +174,18 @@ pub fn build_client(allow_private: bool, timeout: Duration) -> Result<reqwest::C
         .build()
 }
 
+/// Checks the same canonical URL the HTTP client will use. Numeric IPv4 spellings
+/// such as `127.1` or `0x7f000001` become address literals in reqwest and never reach
+/// its guarded resolver, even though `std::net::IpAddr` rejects their original form.
+pub(super) fn target_url(url: &WebhookUrl, allow_private: bool) -> Result<reqwest::Url, String> {
+    let target = reqwest::Url::parse(url.as_str()).map_err(|error| format!("invalid webhook URL: {error}"))?;
+    let host = target.host_str().unwrap_or_default().trim_start_matches('[').trim_end_matches(']');
+    if !allow_private && (url.targets_internal_host() || host.parse::<IpAddr>().is_ok_and(is_internal_address)) {
+        return Err(format!("{host} is an internal address, which webhooks may not reach"));
+    }
+    Ok(target)
+}
+
 /// The result of one attempt.
 #[derive(Debug)]
 pub struct Attempt {
@@ -206,16 +218,17 @@ pub async fn attempt(client: Option<&reqwest::Client>, delivery: &ClaimedDeliver
         Ok(url) => url,
         Err(error) => return refuse(record, error.to_string()),
     };
-    if !allow_private && url.literal_ip().is_some_and(is_internal_address) {
-        return refuse(record, format!("{} is an internal address, which webhooks may not reach", url.host()));
-    }
+    let target = match target_url(&url, allow_private) {
+        Ok(target) => target,
+        Err(error) => return refuse(record, error),
+    };
     let Some(client) = client else {
         record.error = Some("the HTTP client could not be initialised; see the server log".to_owned());
         return Attempt { record, succeeded: false, permanent: false };
     };
 
     let started = Instant::now();
-    let mut request = client.post(url.as_str()).body(delivery.payload.clone());
+    let mut request = client.post(target).body(delivery.payload.clone());
     for (name, value) in &headers {
         request = request.header(name.as_str(), value.as_str());
     }

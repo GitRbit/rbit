@@ -22,6 +22,7 @@
 //! ```
 
 use std::{
+    collections::HashMap,
     io,
     pin::Pin,
     task::{Context, Poll},
@@ -76,7 +77,7 @@ pub struct PushCommand {
 impl PushCommand {
     /// As a [`RefUpdate`]: zero ids become `None`.
     pub fn update(&self) -> RefUpdate {
-        let id = |value: &str| (value != ZERO_ID).then(|| value.to_owned());
+        let id = |value: &str| (!is_zero_id(value)).then(|| value.to_owned());
         RefUpdate { name: self.name.clone(), before: id(&self.old), after: id(&self.new) }
     }
 }
@@ -249,7 +250,7 @@ pub async fn intercept<R: AsyncRead + Unpin>(mut input: R, limits: CommandLimits
     }
 
     let list = CommandList::new(commands, capabilities, shallow);
-    let remaining = if list.commands().iter().all(|command| command.new == ZERO_ID) {
+    let remaining = if list.commands().iter().all(|command| is_zero_id(&command.new)) {
         if !list.is_empty() && list.has_capability("push-options") {
             // No pack follows, so read the push options too: then nothing is left to wait for.
             while let Pkt::Line(_) = reader.next(&mut input, false).await? {}
@@ -268,6 +269,10 @@ fn malformed(message: &str) -> ReceiveError {
 /// A full lower-case hexadecimal object id (SHA-1 or SHA-256).
 fn is_object_id(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_zero_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte == b'0')
 }
 
 /// `old SP new SP ref`.
@@ -380,9 +385,13 @@ pub fn refusal(commands: &CommandList, refusals: &[Refusal]) -> Vec<u8> {
         return Vec::new();
     }
     let mut report = Vec::new();
+    let mut reasons = HashMap::with_capacity(refusals.len());
+    for refusal in refusals {
+        reasons.entry(refusal.name.as_str()).or_insert(refusal.reason.as_str());
+    }
     pkt_line(&mut report, b"unpack ok\n");
     for command in commands.commands() {
-        let reason = refusals.iter().find(|refusal| refusal.name == command.name).map_or(DECLINED, |refusal| refusal.reason.as_str());
+        let reason = reasons.get(command.name.as_str()).copied().unwrap_or(DECLINED);
         pkt_line(&mut report, format!("ng {} {}\n", command.name, one_line(reason)).as_bytes());
     }
     report.extend_from_slice(b"0000");
@@ -501,6 +510,22 @@ mod tests {
         assert!(updates[1].is_deleted() && updates[1].before.as_deref() == Some(id.as_str()));
         assert!(list.wants_report() && list.has_capability("agent") && !list.has_capability("side-band-64k"));
         assert!(!list.is_empty() && CommandList::default().is_empty());
+    }
+
+    #[tokio::test]
+    async fn sha256_deletions_do_not_wait_for_a_pack() {
+        let zero = "0".repeat(64);
+        let line = format!("{} {zero} refs/heads/main\0report-status", "1".repeat(64));
+        let mut request = Vec::new();
+        pkt_line(&mut request, line.as_bytes());
+        request.extend_from_slice(b"0000");
+        let Intercept::Read { commands, input } = intercept(request.as_slice(), CommandLimits::default()).await.unwrap() else {
+            panic!("commands were not read");
+        };
+        assert!(commands.updates()[0].is_deleted());
+        assert_eq!(input.remaining(), Remaining::Nothing);
+        let creation = PushCommand { old: zero, new: "2".repeat(64), name: "refs/heads/new".to_owned() };
+        assert!(creation.update().is_created());
     }
 
     #[test]

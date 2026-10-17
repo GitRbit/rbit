@@ -69,6 +69,18 @@ async fn duplicate_digest_is_a_conflict() {
 }
 
 #[tokio::test]
+async fn concurrent_token_creation_cannot_exceed_the_account_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let store = database.access_tokens();
+    let alice = create_user(&database, "alice").await;
+    let (first, second) =
+        tokio::join!(store.create_with_limit(new_token(&alice, "one", 1), 1), store.create_with_limit(new_token(&alice, "two", 2), 1),);
+    assert_ne!(first.unwrap().is_some(), second.unwrap().is_some());
+    assert_eq!(store.count_for_account(alice.id()).await.unwrap(), 1);
+}
+
+#[tokio::test]
 async fn only_the_owner_can_delete() {
     let dir = tempfile::tempdir().unwrap();
     let database = open_database(&dir).await;

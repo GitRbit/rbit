@@ -47,6 +47,7 @@ fn is_internal_v6(ip: Ipv6Addr) -> bool {
         || (segments[0] & 0xffc0) == 0xfe80 // link-local
         || (segments[0] & 0xffc0) == 0xfec0 // site-local (deprecated)
         || (segments[0] & 0xff00) == 0xff00 // multicast
+        || segments[..3] == [0x0064, 0xff9b, 1] // local-use IPv4/IPv6 translation (RFC 8215)
         || (segments[0] == 0x2001 && segments[1] == 0x0db8) // documentation
         || (segments[0] & 0xfff0) == 0x3ff0 // documentation (3fff::/20)
         || (segments[0] == 0x0100 && segments[1..4] == [0, 0, 0]) // discard-only
@@ -62,7 +63,7 @@ fn embedded_v4(ip: Ipv6Addr) -> Option<Ipv4Addr> {
     match ip.segments() {
         [0, 0, 0, 0, 0, 0xffff, high, low] | [0x0064, 0xff9b, 0, 0, 0, 0, high, low] | [0x2002, high, low, ..] => Some(v4(high, low)),
         // `::` and `::1` are handled as IPv6 themselves.
-        [0, 0, 0, 0, 0, 0, high, low] if high != 0 => Some(v4(high, low)),
+        [0, 0, 0, 0, 0, 0, high, low] if high != 0 || low > 1 => Some(v4(high, low)),
         _ => None,
     }
 }
@@ -134,6 +135,8 @@ mod tests {
             "2001:db8::1",
             "3fff::1",
             "100::1",
+            "64:ff9b:1::a00:1",
+            "64:ff9b:1:ffff:ffff:ffff:ffff:ffff",
         ] {
             assert!(internal(address), "{address} is internal");
         }
@@ -149,6 +152,8 @@ mod tests {
             "::ffff:10.0.0.1",
             "::ffff:169.254.169.254",
             "::127.0.0.1",
+            "::0.0.0.2",
+            "::0.0.255.255",
             "64:ff9b::10.0.0.1",
             "2002:c0a8:0101::1",
             "2002:7f00:0001::",

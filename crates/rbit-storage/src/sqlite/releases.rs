@@ -249,10 +249,17 @@ impl ReleaseStore {
 
     /// Records an uploaded file; [`StorageError::Conflict`] when the name is taken.
     pub async fn insert_asset(&self, new: NewAsset<'_>) -> Result<ReleaseAsset, StorageError> {
+        self.insert_asset_limited(new, u32::MAX).await?.ok_or_else(|| StorageError::Corrupt("too many release assets".to_owned()))
+    }
+
+    /// Records an uploaded file only while the release remains below its limit. The
+    /// check and insert share a write statement, so simultaneous uploads cannot race it.
+    pub async fn insert_asset_limited(&self, new: NewAsset<'_>, limit: u32) -> Result<Option<ReleaseAsset>, StorageError> {
         let size = i64::try_from(new.size).map_err(|_| StorageError::Corrupt("asset too large".to_owned()))?;
-        let row: AssetRow = sqlx::query_as(
+        let row: Option<AssetRow> = sqlx::query_as(
             "INSERT INTO release_assets (release_id, repo_id, name, size, content_type, sha256, uploader_id, created_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 \
+             WHERE (SELECT COUNT(*) FROM release_assets WHERE release_id = ?1) < ?9 \
              RETURNING id, release_id, repo_id, name, size, content_type, sha256, download_count, uploader_id, created_at",
         )
         .bind(new.release_id.0)
@@ -263,10 +270,11 @@ impl ReleaseStore {
         .bind(new.sha256.as_slice())
         .bind(new.uploader_id.0)
         .bind(Timestamp::now().seconds())
-        .fetch_one(&self.pool)
+        .bind(limit)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| StorageError::from_insert(e, "a file with this name"))?;
-        row.try_into()
+        row.map(ReleaseAsset::try_from).transpose()
     }
 
     pub async fn delete_asset(&self, id: ReleaseAssetId) -> Result<(), StorageError> {
@@ -303,6 +311,14 @@ impl ReleaseStore {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM release_assets WHERE release_id = ?").bind(release.0).fetch_one(&self.pool).await?;
         Ok(u32::try_from(count).unwrap_or(u32::MAX))
+    }
+
+    /// File ids still referenced by a repository, for cleaning up delayed deletion
+    /// events without removing assets of a newly created repository with a reused id.
+    pub async fn asset_ids_for_repo(&self, repo: RepoId) -> Result<Vec<ReleaseAssetId>, StorageError> {
+        let ids: Vec<i64> =
+            sqlx::query_scalar("SELECT id FROM release_assets WHERE repo_id = ?").bind(repo.0).fetch_all(&self.pool).await?;
+        Ok(ids.into_iter().map(ReleaseAssetId).collect())
     }
 
     pub async fn find_asset(&self, release: ReleaseId, name: &str) -> Result<Option<ReleaseAsset>, StorageError> {

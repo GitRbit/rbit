@@ -114,8 +114,8 @@ async fn a_password_change_elsewhere_ends_every_session() {
     // As a password reset or an administrator would: no session of Alice's is involved.
     fixture.services.profiles.change_password(&alice, PASSWORD.to_owned(), NEW_PASSWORD.to_owned()).await.unwrap();
 
-    assert!(fixture.eventually_dead(&first).await);
-    assert!(fixture.eventually_dead(&second).await);
+    assert!(!fixture.is_live(&first).await, "revocation completes before the password change returns");
+    assert!(!fixture.is_live(&second).await);
     assert!(fixture.is_live(&bobs).await);
 }
 
@@ -129,8 +129,6 @@ async fn changing_your_own_password_keeps_the_current_session() {
 
     let guard = accounts.guard_password_change(alice.id(), &current);
     fixture.services.profiles.change_password(&alice, PASSWORD.to_owned(), NEW_PASSWORD.to_owned()).await.unwrap();
-    // Let the subscriber run first, as it may in production.
-    tokio::time::sleep(Duration::from_millis(50)).await;
     guard.finish(true).await;
 
     assert!(!fixture.is_live(&other).await);

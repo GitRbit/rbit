@@ -39,10 +39,17 @@ impl AccessTokenStore {
     }
 
     pub async fn create(&self, new: NewAccessToken) -> Result<AccessToken, StorageError> {
+        self.create_with_limit(new, i64::MAX).await?.ok_or_else(|| sqlx::Error::RowNotFound.into())
+    }
+
+    /// Inserts a token only while the owner's count is below `limit`, atomically with
+    /// insertion. Concurrent requests cannot bypass the per-account resource limit.
+    pub async fn create_with_limit(&self, new: NewAccessToken, limit: i64) -> Result<Option<AccessToken>, StorageError> {
         let now = Timestamp::now().seconds();
-        let row: AccessTokenRow = sqlx::query_as(
+        let row: Option<AccessTokenRow> = sqlx::query_as(
             "INSERT INTO access_tokens (account_id, name, token_digest, hint, scope, created_at, expires_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?) \
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 \
+             WHERE (SELECT COUNT(*) FROM access_tokens WHERE account_id = ?1) < ?8 \
              RETURNING id, account_id, name, hint, scope, created_at, last_used_at, expires_at",
         )
         .bind(new.account_id.0)
@@ -52,10 +59,11 @@ impl AccessTokenStore {
         .bind(new.scope.as_str())
         .bind(now)
         .bind(new.expires_at.map(Timestamp::seconds))
-        .fetch_one(&self.pool)
+        .bind(limit)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| StorageError::from_insert(e, "token"))?;
-        row.try_into()
+        row.map(AccessToken::try_from).transpose()
     }
 
     /// Tokens owned by `account_id`, newest first.

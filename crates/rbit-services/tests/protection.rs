@@ -325,6 +325,34 @@ async fn merges_deletions_and_protected_branches() {
     assert_eq!(names.len(), 3);
 }
 
+#[cfg(any(windows, target_os = "macos"))]
+#[tokio::test]
+async fn case_aliases_cannot_bypass_push_merge_or_deletion_rules() {
+    let fixture = Fixture::new().await;
+    let protection = &fixture.services.protection;
+    let admin = fixture.repo(&fixture.olga).await;
+    let writer = fixture.repo(&fixture.bob).await;
+    let reviewed = RuleSettings { require_pull_request: true, required_approvals: 2, ..RuleSettings::default() };
+    for pattern in ["main", "résumé/*"] {
+        protection.create(&fixture.olga, &admin, &input(pattern, reviewed)).await.unwrap();
+    }
+    for branch in ["MAIN", "RÉSUMÉ/Release"] {
+        let name = format!("refs/heads/{branch}");
+        let verdict = fixture.push(&fixture.bob, vec![update(&name, Some(ID), Some(ID))]).await;
+        assert_eq!(verdict.refusals[0].reason, reasons::PULL_REQUEST, "{branch}");
+        let deletion = fixture.push(&fixture.bob, vec![update(&name, Some(ID), None)]).await;
+        assert_eq!(deletion.refusals[0].reason, reasons::DELETION, "{branch}");
+        assert!(!protection.may_delete_branch(&writer, &fixture.bob, branch).await.unwrap(), "{branch}");
+        let merge = protection.check_merge(&writer, &fixture.bob, branch).await.unwrap();
+        assert!(merge.require_pull_request && merge.required_approvals == 2, "{branch}");
+    }
+    let verdict = fixture.push(&fixture.bob, vec![update("refs/HEADS/main", Some(ID), Some(ID))]).await;
+    assert_eq!(verdict.refusals[0].reason, reasons::NAMESPACE_CASE);
+    let verdict = fixture.push(&fixture.olga, vec![update("refs/PULL/1/head", Some(ID), None)]).await;
+    assert_eq!(verdict.refusals[0].reason, reasons::PULL_REFS);
+    assert!(!fixture.push(&fixture.bob, vec![update("refs/heads/MixedCase", None, Some(ID))]).await.is_refused());
+}
+
 // Milestone 3: required status checks (S).
 #[tokio::test]
 async fn required_status_checks_are_validated_and_reach_the_merge_rules() {

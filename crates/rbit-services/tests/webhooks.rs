@@ -574,7 +574,18 @@ async fn internal_targets_are_refused_unless_allowed() {
     let webhooks = &fixture.services.webhooks;
     let target = HookTarget::Repository(&repo);
 
-    for url in [receiver.url.as_str(), "http://localhost:9/", "http://[::1]/", "http://169.254.169.254/latest", "http://10.0.0.1/"] {
+    for url in [
+        receiver.url.as_str(),
+        "http://localhost:9/",
+        "http://[::1]/",
+        "http://169.254.169.254/latest",
+        "http://10.0.0.1/",
+        "http://2130706433/",
+        "http://0x7f000001/",
+        "http://127.1/",
+        "http://0177.0.0.1/",
+        "http://127.0.0.1./",
+    ] {
         let refused = webhooks.create(&alice, target, input(url, &["push"], None)).await;
         assert!(matches!(&refused, Err(ServiceError::Invalid(message)) if message.contains("internal address")), "{url}: {refused:?}");
     }
@@ -582,7 +593,15 @@ async fn internal_targets_are_refused_unless_allowed() {
     // Hooks that slipped past configuration (e.g. a name that now resolves internally)
     // are refused when delivering, without contacting the target and without retries.
     let port = receiver.url.trim_start_matches("http://127.0.0.1:").trim_end_matches("/hook");
-    for url in [receiver.url.clone(), format!("http://localhost:{port}/hook")] {
+    for url in [
+        receiver.url.clone(),
+        format!("http://localhost:{port}/hook"),
+        format!("http://2130706433:{port}/hook"),
+        format!("http://0x7f000001:{port}/hook"),
+        format!("http://127.1:{port}/hook"),
+        format!("http://0177.0.0.1:{port}/hook"),
+        format!("http://127.0.0.1.:{port}/hook"),
+    ] {
         let new = NewWebhook {
             id: None,
             owner: WebhookOwner::Repository(repo.repo.repo.id),
