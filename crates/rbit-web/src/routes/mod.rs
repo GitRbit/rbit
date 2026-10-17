@@ -9,6 +9,7 @@ mod auth;
 mod blame;
 mod collaborators;
 mod compare;
+mod edits;
 mod forks;
 mod git_http;
 mod history;
@@ -71,6 +72,8 @@ pub fn router(state: AppState) -> Router {
         .merge(api::routes())
         .merge(archives::routes(&state))
         .merge(releases::file_routes(&state))
+        // Milestone 3: editing files in the browser (E): streaming uploads.
+        .merge(edits::upload_routes(&state))
         // Before any route: a hover preload must never reach a side-effecting handler.
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))
@@ -132,6 +135,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(protection::routes())
         // Milestone 3: email notifications (N).
         .merge(notification_email::routes())
+        // Milestone 3: editing files in the browser (E).
+        .merge(edits::routes(state))
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

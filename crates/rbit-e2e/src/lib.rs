@@ -308,6 +308,23 @@ impl Client {
         Response::read(self.http.post(self.url(path)).multipart(form).send().await).await
     }
 
+    // Milestone 3: editing files in the browser (E).
+    /// `POST path` as `multipart/form-data` with text `fields` and any number of `files`
+    /// (`(field, file name, contents)`), in that order, as a browser sends a form with
+    /// `<input type="file" multiple>`.
+    pub async fn post_multipart(&self, path: &str, fields: &[(&str, &str)], files: &[(&str, &str, Vec<u8>)]) -> Response {
+        let mut form = multipart::Form::new();
+        for (name, value) in fields {
+            form = form.text((*name).to_owned(), (*value).to_owned());
+        }
+        for (field, file_name, contents) in files {
+            let part = multipart::Part::bytes(contents.clone()).file_name((*file_name).to_owned());
+            let part = part.mime_str("application/octet-stream").expect("a valid content type");
+            form = form.part((*field).to_owned(), part);
+        }
+        Response::read(self.http.post(self.url(path)).multipart(form).send().await).await
+    }
+
     /// Submits the sign-up form for `username` with [`PASSWORD`].
     pub async fn sign_up(&self, username: &str) -> Response {
         let email = format!("{username}@example.test");

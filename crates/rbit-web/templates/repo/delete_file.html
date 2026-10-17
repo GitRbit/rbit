@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-2xl">
+  <h1 class="text-xl font-semibold tracking-tight break-words">Delete <span class="font-mono text-lg">{{ path }}</span></h1>
+  <p class="mt-1 text-[13px] text-ink-muted">On <span class="font-mono text-xs">{{ commit.branch }}</span>. The file stays in the history; a directory left empty disappears.</p>
+
+  <form method="post" action="{{ action_url }}" class="mt-6" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    {% include "repo/commit_box.html" %}
+    <div class="mt-6 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-danger">Delete file</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

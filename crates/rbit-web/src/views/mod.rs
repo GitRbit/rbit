@@ -12,6 +12,7 @@ pub mod collaborators;
 pub mod commit;
 pub mod compare;
 pub mod components;
+pub mod edits;
 pub mod errors;
 pub mod forks;
 pub mod home;

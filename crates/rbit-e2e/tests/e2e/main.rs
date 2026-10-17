@@ -8,6 +8,7 @@ mod api;
 mod api_workflow;
 mod compatibility;
 mod edge;
+mod edits;
 mod essentials;
 mod harness;
 mod issues;

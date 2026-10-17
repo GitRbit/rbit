@@ -350,6 +350,9 @@ impl EditService {
                 RefUpdate { name: format!("refs/heads/{}", input.branch), before: Some(tip.clone()), after: Some(tip.clone()) }
             }
             CommitTarget::NewBranch(name) => {
+                if name.is_empty() {
+                    return Err(EditFailure::Invalid("enter a name for the new branch".to_owned()));
+                }
                 if !is_valid_branch_name(name) {
                     return Err(EditFailure::Invalid(format!("{name} is not a valid branch name")));
                 }

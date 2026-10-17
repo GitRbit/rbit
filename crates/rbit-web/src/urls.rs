@@ -99,6 +99,12 @@ impl RepoUrls {
     pub fn archive(&self, revision: &str, extension: &str) -> String {
         format!("{}/archive/{}{extension}", self.base, encode_path(revision))
     }
+
+    // Milestone 3: editing files in the browser (E).
+    /// A page of the file editor: `action` is `new`, `edit`, `delete` or `upload`.
+    pub fn edit(&self, action: &str, branch: &str, path: &str) -> String {
+        join(&self.base, action, branch, path)
+    }
 }
 
 /// What a link inside a rendered document points at.

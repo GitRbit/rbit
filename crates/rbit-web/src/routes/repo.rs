@@ -129,6 +129,14 @@ impl RepoPage {
         }
     }
 
+    /// Whether the viewer may edit files on `revision` in the browser (Milestone 3, E):
+    /// write access, not a mirror, and `revision` is a branch.
+    pub(super) fn can_edit_on(&self, revision: &str) -> bool {
+        self.ctx.access.can_write()
+            && self.mirror_url.is_none()
+            && self.refs.iter().any(|r| r.kind == RefKind::Branch && r.name == revision)
+    }
+
     pub(super) fn switcher(&self, current: &str, link: impl Fn(&str) -> String) -> RefSwitcher {
         RefSwitcher::new(&self.refs, current, self.default_branch(), link)
     }
@@ -243,6 +251,7 @@ async fn render_tree(
         .collect();
 
     let title = if path.is_empty() { loaded.ctx.repo.full_name() } else { format!("{path} · {}", loaded.ctx.repo.full_name()) };
+    let editable = loaded.can_edit_on(&revision);
     Ok(TreePage {
         page: page.titled(title),
         header: loaded.header(state, "code"),
@@ -258,6 +267,8 @@ async fn render_tree(
         languages,
         latest_release,
         collaborator,
+        new_file_url: editable.then(|| urls.edit("new", &revision, &path)),
+        upload_url: editable.then(|| urls.edit("upload", &revision, &path)),
     })
 }
 
@@ -379,6 +390,8 @@ pub async fn blob(
     };
 
     let urls = &loaded.urls;
+    let editable = loaded.can_edit_on(&revision);
+    let is_text = matches!(content, BlobContent::Code(_) | BlobContent::Markdown(_));
     Ok(BlobPage {
         page: page.titled(format!("{path} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "code"),
@@ -392,6 +405,8 @@ pub async fn blob(
         blame_url: urls.blame(&revision, &path),
         raw_url: urls.raw(&revision, &path),
         content,
+        edit_url: (editable && is_text).then(|| urls.edit("edit", &revision, &path)),
+        delete_url: editable.then(|| urls.edit("delete", &revision, &path)),
     }
     .into_response())
 }

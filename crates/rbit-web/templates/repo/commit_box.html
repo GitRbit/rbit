@@ -1,0 +1,41 @@
+{#- The commit section shared by the file editor, the delete confirmation and the upload
+    form (`commit`: views::edits::CommitBox; `conflict`: Option<Conflict>). -#}
+{% if let Some(conflict) = conflict %}
+<div class="box mb-5 border-line-strong px-4 py-3 text-[13px]" role="alert">
+  <p class="font-medium">{% if conflict.current_short.is_some() %}{{ conflict.branch }} changed since you started{% else %}{{ conflict.branch }} no longer exists{% endif %}</p>
+  {% if let Some(current) = conflict.current_short %}
+  <p class="mt-1 text-ink-muted">It now points at <span class="font-mono">{{ current }}</span>. Nothing was committed. <a class="link" href="{{ conflict.history_url }}">Review the new commits</a>, then commit again: your changes are kept below and will be committed on top of the new version.</p>
+  {% else %}
+  <p class="mt-1 text-ink-muted">Nothing was committed. Commit to a new branch instead; your changes are kept below.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<input type="hidden" name="commit" value="{{ commit.parent }}">
+<fieldset class="box mt-6 overflow-hidden">
+  <legend class="sr-only">Commit changes</legend>
+  <div class="px-4 pt-4">
+    <label class="label" for="commit-title">Commit message</label>
+    <input class="input" id="commit-title" name="title" value="{{ commit.title }}" placeholder="{{ commit.title_placeholder }}" maxlength="255" autocomplete="off">
+    <label class="label mt-4" for="commit-description">Extended description <span class="font-normal text-ink-faint">optional</span></label>
+    <textarea class="input h-24 resize-y py-2 text-[13px]" id="commit-description" name="description" rows="3">{{ commit.description }}</textarea>
+  </div>
+  <div class="mt-4 divide-y divide-line border-t border-line">
+    <label class="flex items-start gap-3 px-4 py-3 {% if commit.direct_allowed() %}cursor-pointer hover:bg-subtle has-checked:bg-subtle{% else %}text-ink-faint{% endif %}">
+      <input type="radio" name="target" value="branch" class="mt-1 accent-(--ink)" {% if !commit.direct_allowed() %}disabled{% else if !commit.new_branch_selected %}checked{% endif %}>
+      <span class="min-w-0">
+        <span class="block font-medium">Commit directly to <span class="font-mono text-xs">{{ commit.branch }}</span></span>
+        {% if let Some(reason) = commit.protected_reason %}
+        <span class="block text-[13px]">Not allowed: {{ reason }}.</span>
+        {% endif %}
+      </span>
+    </label>
+    <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+      <input type="radio" name="target" value="new" class="mt-1 accent-(--ink)" {% if commit.new_branch_selected || !commit.direct_allowed() %}checked{% endif %}>
+      <span class="min-w-0 flex-1">
+        <span class="block font-medium">Create a new branch and start a pull request</span>
+        <input class="input mt-2 font-mono text-xs" name="new_branch" value="{{ commit.new_branch }}" aria-label="New branch name" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </span>
+    </label>
+  </div>
+</fieldset>

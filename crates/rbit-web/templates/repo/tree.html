@@ -9,6 +9,8 @@
       {% include "repo/ref_switcher.html" %}
       {% if breadcrumbs.len() > 1 %}{% include "repo/breadcrumbs.html" %}{% endif %}
       <a href="{{ history_url }}" class="btn btn-ghost ml-auto">{% call ui::icon("history", "size-3.5") %}{% endcall %}History</a>
+      {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add file</a>{% endif %}
+      {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="Upload files" title="Upload files">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
 
     <section class="box overflow-hidden" aria-label="Files">

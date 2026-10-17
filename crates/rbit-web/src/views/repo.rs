@@ -211,6 +211,9 @@ pub struct TreePage {
     pub latest_release: Option<LatestRelease>,
     /// Set when the viewer is a collaborator without admin rights, to offer leaving.
     pub collaborator: Option<CollaboratorAccess>,
+    // Milestone 3: editing files in the browser (E); set for writers on a branch.
+    pub new_file_url: Option<String>,
+    pub upload_url: Option<String>,
 }
 
 /// How a file's contents are presented.
@@ -239,6 +242,10 @@ pub struct BlobPage {
     pub blame_url: String,
     pub raw_url: String,
     pub content: BlobContent,
+    // Milestone 3: editing files in the browser (E); set for writers on a branch (the
+    // editor only for text it can display).
+    pub edit_url: Option<String>,
+    pub delete_url: Option<String>,
 }
 
 /// Commits grouped under a calendar-day heading.

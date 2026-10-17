@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-2xl">
+  <h1 class="text-xl font-semibold tracking-tight">Upload files</h1>
+  <p class="mt-1 text-[13px] text-ink-muted break-words">Into <span class="font-mono text-xs">{{ directory }}</span> on <span class="font-mono text-xs">{{ commit.branch }}</span>. Files with the same name are replaced.</p>
+
+  {#- Not boosted: the files stream to the server as an ordinary form submission. -#}
+  <form method="post" action="{{ action_url }}" enctype="multipart/form-data" class="mt-6" hx-boost="false" novalidate>
+    {% call ui::form_error(error) %}{% endcall %}
+    <label class="label" for="upload-files">Files</label>
+    <input class="input h-auto cursor-pointer py-2 text-[13px]" id="upload-files" type="file" name="files" multiple required>
+    <p class="hint">Up to {{ max_files }} files of at most {{ max_file_size }} each, committed together.</p>
+    {% include "repo/commit_box.html" %}
+    <div class="mt-6 flex flex-wrap items-center gap-2">
+      <button type="submit" class="btn btn-primary">Commit changes</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
