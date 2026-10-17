@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "npm run vendor && npm run build:css",
+    "dev": "node scripts/dev.mjs",
     "build:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --minify",
     "watch:css": "tailwindcss -i crates/rustit-web/styles/app.css -o crates/rustit-web/assets/app.css --watch",
     "vendor": "node scripts/vendor.mjs",
