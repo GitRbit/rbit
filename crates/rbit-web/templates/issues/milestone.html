@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-4"><a href="{{ milestones_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Milestones</a></div>
+
+<header class="grid gap-4 border-b border-line pb-5 sm:grid-cols-[minmax(0,1fr)_16rem] sm:gap-8">
+  <div class="min-w-0">
+    <h1 class="break-words text-xl font-semibold tracking-tight">{{ milestone.title }}</h1>
+    <p class="mt-1 text-[13px] text-ink-muted">
+      {% if milestone.closed %}<span class="state-badge state-badge-closed">Closed</span>
+      {% else if let Some(due) = milestone.due %}<span class="{% if milestone.overdue %}text-danger{% endif %}">{% if milestone.overdue %}Past due by{% else %}Due by{% endif %} {{ due }}</span>
+      {% else %}No due date{% endif %}
+    </p>
+    {% if !description_html.is_empty() %}<div class="prose-rustit mt-3">{{ description_html|safe }}</div>{% endif %}
+  </div>
+  <div>
+    {% include "issues/milestone_progress.html" %}
+    {% if can_write %}
+    <div class="mt-3 flex flex-wrap gap-2">
+      <a href="{{ milestone.edit_url }}" class="btn h-11 flex-1 sm:h-8">Edit</a>
+      <form method="post" action="{{ milestone.state_url }}" class="flex-1"><input type="hidden" name="state" value="{% if milestone.closed %}open{% else %}closed{% endif %}"><button type="submit" class="btn h-11 w-full sm:h-8">{% if milestone.closed %}Reopen{% else %}Close{% endif %}</button></form>
+    </div>
+    {% endif %}
+  </div>
+</header>
+
+<div class="box mt-6">
+  <nav class="box-header flex items-center gap-4 text-[13px]" aria-label="State">
+    <a href="{{ open_url }}" class="{% if !showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if !showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ milestone.open_issues }}</span> Open</a>
+    <a href="{{ closed_url }}" class="{% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ milestone.closed_issues }}</span> Closed</a>
+    <a href="{{ milestone.issues_url }}" class="ml-auto text-xs text-ink-muted hover:text-ink">Search these issues</a>
+  </nav>
+  {% if rows.is_empty() %}
+  {% call ui::empty_state("milestone", "Nothing here", "Issues and pull requests added to this milestone appear here.") %}{% endcall %}
+  {% else %}
+  {% include "issues/rows.html" %}
+  {% endif %}
+</div>
+{% call ui::pagination(pagination) %}{% endcall %}
+{% endblock %}

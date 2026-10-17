@@ -1,0 +1,11 @@
+{#- A milestone's progress bar (an SVG rectangle whose `width` is the percentage) and counts; expects
+    `milestone: MilestoneView`. -#}
+<svg class="block h-1.5 w-full overflow-hidden rounded-full" viewBox="0 0 100 2" preserveAspectRatio="none" role="img" aria-label="{{ milestone.percent }}% complete">
+  <rect width="100" height="2" class="fill-subtle"/>
+  <rect width="{{ milestone.percent }}" height="2" class="fill-success"/>
+</svg>
+<p class="mt-1.5 flex flex-wrap gap-x-3 text-xs text-ink-muted">
+  <span><span class="font-medium text-ink">{{ milestone.percent }}%</span> complete</span>
+  <span>{{ milestone.open_issues }} open</span>
+  <span>{{ milestone.closed_issues }} closed</span>
+</p>
