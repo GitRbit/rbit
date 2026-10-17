@@ -43,9 +43,9 @@ use crate::{
         components::Pagination,
         layout::Page,
         pulls::{
-            ClosedBoxView, LabelView, ListTabs, MergeBoxView, NewPullPage, PullCommitsPage, PullFileView, PullFilesPage, PullHeaderView,
-            PullListPage, PullPage, PullRowView, PullUrls, ReviewCommentView, ReviewFormView, ReviewView, ReviewersView, files_at,
-            interleave, line_anchor, review_anchor,
+            ClosedBoxView, LabelView, ListTabs, MergeBoxView, NewPullPage, PullCommitsPage, PullCountsFragment, PullCountsView,
+            PullFileView, PullFilesPage, PullHeaderView, PullListPage, PullPage, PullRowView, PullUrls, ReviewCommentView, ReviewFormView,
+            ReviewView, ReviewersView, files_at, interleave, line_anchor, review_anchor,
         },
         repo::CommitView,
         timeline::{TimelineOptions, thread},
@@ -59,6 +59,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/pull/{number}", get(conversation))
         .route("/{owner}/{repo}/pull/{number}/commits", get(commits))
         .route("/{owner}/{repo}/pull/{number}/files", get(files))
+        .route("/{owner}/{repo}/pull/{number}/counts/{spec}", get(counts))
         .route("/{owner}/{repo}/pull/{number}/merge", post(merge))
         .route("/{owner}/{repo}/pull/{number}/draft", post(draft))
         .route("/{owner}/{repo}/pull/{number}/base", post(change_base))
@@ -158,15 +159,26 @@ fn review_form(ctx: &PullContext, data: &ReviewData, viewer: Option<&User>) -> O
     })
 }
 
-async fn header(state: &AppState, ctx: &PullContext, active: &'static str) -> PullHeaderView {
-    let (commits, files) = match state.services.pulls.changes(ctx, DiffLimits::default()).await {
-        Ok(changes) => (changes.ahead, changes.files.len()),
+/// The header of a tab that does not diff (Conversation, Commits): the counts a Files
+/// changed tab remembered for the compared commits, or slots that [`counts`] fills in
+/// after the page has painted. `ahead` is what the tab already knows.
+async fn header_without_diff(state: &AppState, ctx: &PullContext, active: &'static str, ahead: Option<usize>) -> PullHeaderView {
+    let pulls = &state.services.pulls;
+    let (counts, counts_url) = match pulls.compared_ids(ctx).await {
+        Ok((base, head)) => {
+            if let Some(counts) = pulls.cached_counts(&base, &head).await {
+                (PullCountsView::known(counts.ahead, counts.files), None)
+            } else {
+                let url = format!("{}/counts/{base}...{head}", PullUrls::for_context(ctx).page);
+                (PullCountsView { commits: ahead, files: None }, Some(url))
+            }
+        }
         Err(error) => {
             tracing::debug!(%error, "cannot compare the pull request");
-            (0, 0)
+            (PullCountsView::known(ahead.unwrap_or(0), 0), None)
         }
     };
-    PullHeaderView::new(ctx, commits, files, active)
+    PullHeaderView::new(ctx, counts, counts_url, active)
 }
 
 fn title(ctx: &PullContext, suffix: &str) -> String {
@@ -424,8 +436,12 @@ async fn conversation(
     let options =
         TimelineOptions { edit: query.edit.as_deref(), head_branch: Some(&ctx.pull.head_branch), base_branch: Some(&ctx.pull.base_branch) };
     let pulls = &state.services.pulls;
-    let thread = thread(&state, &ctx.thread, user, after, options).await?;
-    let data = pulls.reviews(user, &ctx).await?;
+    let (thread, data, pull_header) = tokio::join!(
+        thread(&state, &ctx.thread, user, after, options),
+        pulls.reviews(user, &ctx),
+        header_without_diff(&state, &ctx, "conversation", None),
+    );
+    let (thread, data) = (thread?, data?);
     let (reviews, _) = review_views(&state, &ctx, &data, user).await?;
     let urls = PullUrls::for_context(&ctx);
     let is_open = ctx.issue().state == IssueState::Open;
@@ -465,7 +481,7 @@ async fn conversation(
     let view = PullPage {
         page: page.titled(title(&ctx, "")),
         header: loaded.header(&state, "pulls"),
-        pull: header(&state, &ctx, "conversation").await,
+        pull: pull_header,
         thread,
         entries,
         merge_box,
@@ -491,13 +507,14 @@ async fn commits(
         Opened::Issue(url) => return Ok(super::timeline::moved_to_kind(&url)),
     };
     let changes = state.services.pulls.changes(&ctx, DiffLimits { max_files: 0, ..DiffLimits::default() }).await.ok();
+    let pull_header = header_without_diff(&state, &ctx, "commits", changes.as_ref().map(|c| c.ahead)).await;
     let commits: Vec<CommitView> =
         changes.as_ref().map(|c| c.commits.iter().map(|commit| CommitView::new(commit, &loaded.urls)).collect()).unwrap_or_default();
     let more_commits = changes.as_ref().is_some_and(|c| c.ahead > c.commits.len());
     let view = PullCommitsPage {
         page: page.titled(title(&ctx, " · Commits")),
         header: loaded.header(&state, "pulls"),
-        pull: header(&state, &ctx, "commits").await,
+        pull: pull_header,
         commits,
         more_commits,
     };
@@ -525,9 +542,15 @@ async fn files(
     };
     let user = viewer.user();
     let pulls = &state.services.pulls;
-    let changes = pulls.changes(&ctx, DiffLimits::default()).await.ok();
-    let data = pulls.reviews(user, &ctx).await?;
-    let (_, comments) = review_views(&state, &ctx, &data, user).await?;
+    // The diff and the reviews are independent; a failed diff shows an empty tab.
+    let (changes, reviews) = tokio::join!(pulls.changes(&ctx, DiffLimits::default()), async {
+        let data = pulls.reviews(user, &ctx).await?;
+        let (_, comments) = review_views(&state, &ctx, &data, user).await?;
+        WebResult::Ok((data, comments))
+    });
+    let changes = changes.ok();
+    let (data, comments) = reviews?;
+    let counts = changes.as_ref().map_or_else(|| PullCountsView::known(0, 0), |c| PullCountsView::known(c.ahead, c.files.len()));
     let urls = PullUrls::for_context(&ctx);
     let can_comment = user.is_some() && ctx.thread.permissions.can_comment;
     let (files, additions, deletions, truncated) = match &changes {
@@ -542,7 +565,7 @@ async fn files(
     let view = PullFilesPage {
         page: page.titled(title(&ctx, " · Files changed")),
         header: loaded.header(&state, "pulls"),
-        pull: header(&state, &ctx, "files").await,
+        pull: PullHeaderView::new(&ctx, counts, None, "files"),
         files,
         additions,
         deletions,
@@ -554,6 +577,29 @@ async fn files(
         outdated_count: comments.iter().filter(|comment| comment.outdated).count(),
     };
     Ok(view.into_response())
+}
+
+/// `GET /{owner}/{repo}/pull/{n}/counts/{base}...{head}`: the header counts of comparing
+/// two commit ids, as out-of-band swaps into the slots of the Conversation and Commits
+/// tabs. The ids pin the answer, so it never changes.
+async fn counts(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, number, spec)): Path<(String, String, String, String)>,
+) -> WebResult<Response> {
+    let (base, head) = spec
+        .split_once("...")
+        .filter(|(base, head)| super::history::is_full_commit_id(base) && super::history::is_full_commit_id(head))
+        .ok_or(WebError::NotFound)?;
+    let repo = super::repo::open_pinned(&state, &viewer, &owner, &repo).await?;
+    let Opened::Pull(ctx) = open_thread(&state, viewer.user(), repo, &number).await? else {
+        return Err(WebError::NotFound);
+    };
+    let counts = state.services.pulls.counts_between(&ctx, base, head).await.map_err(|error| match error {
+        ServiceError::Internal(_) => WebError::from(error),
+        _ => WebError::NotFound,
+    })?;
+    Ok(PullCountsFragment { counts: PullCountsView::known(counts.ahead, counts.files) }.into_response())
 }
 
 // ------------------------------------------------------------------ forms

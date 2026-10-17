@@ -45,6 +45,7 @@ use rbit_core::{
     repository::OwnedRepository,
 };
 use rbit_git::{CommitSummary, DiffLimits, compare::Comparison, overlay::Overlay, pull_refs};
+use rbit_storage::kv::CachedComparisonCounts;
 use rbit_storage::sqlite::{
     issues::NewIssue,
     pulls::{CreatedPull, NewPull},
@@ -53,6 +54,19 @@ use tokio::sync::{Notify, Semaphore};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use rbit_storage::sqlite::pulls::{PullFilter, PullSort, PullStateFilter};
+
+/// What a pull request's header counts: commits ahead and changed files.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PullCounts {
+    pub ahead: usize,
+    pub files: usize,
+}
+
+impl PullCounts {
+    pub fn of(comparison: &Comparison) -> Self {
+        Self { ahead: comparison.ahead, files: comparison.files.len() }
+    }
+}
 
 pub use self::{
     merging::{MergeBox, MergeFailure, MergeInput},
@@ -419,7 +433,7 @@ impl PullService {
 
     /// The ids this pull request compares: `(base, head)`. Merged pull requests keep
     /// showing what was merged; open ones compare the base branch's tip with the head.
-    async fn compared_ids(&self, ctx: &PullContext) -> Result<(String, String), ServiceError> {
+    pub async fn compared_ids(&self, ctx: &PullContext) -> Result<(String, String), ServiceError> {
         if let (Some(base), Some(head)) = (&ctx.pull.merged_base_sha, &ctx.pull.merged_head_sha) {
             return Ok((base.clone(), head.clone()));
         }
@@ -429,10 +443,56 @@ impl PullService {
 
     /// The comparison behind the Commits and Files changed tabs: from the merge base to
     /// the head, inside the base repository (`refs/pull/{n}/head` holds the head).
+    ///
+    /// With the default file limit the counts are remembered (see [`Self::cached_counts`]),
+    /// so the other tabs can show them without diffing.
     pub async fn changes(&self, ctx: &PullContext, limits: DiffLimits) -> Result<Comparison, ServiceError> {
         let (base, head) = self.compared_ids(ctx).await?;
         let max_commits = self.ctx().config.pulls.max_commits;
-        Ok(ctx.repo().reader.compare(base, head, limits, max_commits).await?)
+        let comparison = ctx.repo().reader.compare(base.clone(), head.clone(), limits, max_commits).await?;
+        if limits.max_files == DiffLimits::default().max_files {
+            self.remember_counts(&base, &head, PullCounts::of(&comparison)).await;
+        }
+        Ok(comparison)
+    }
+
+    /// The header counts of comparing `head` against `base` (full commit ids) when a
+    /// Files changed tab or [`Self::counts_between`] computed them before. Cache failures
+    /// are logged and read as a miss.
+    pub async fn cached_counts(&self, base: &str, head: &str) -> Option<PullCounts> {
+        match self.ctx().kv.insights().comparison_counts(base, head).await {
+            Ok(counts) => counts.map(|counts| PullCounts {
+                ahead: usize::try_from(counts.ahead).unwrap_or(usize::MAX),
+                files: usize::try_from(counts.files).unwrap_or(usize::MAX),
+            }),
+            Err(error) => {
+                tracing::warn!(%error, "comparison cache read failed");
+                None
+            }
+        }
+    }
+
+    /// The header counts of comparing `head` against `base` (commit ids) in `ctx`'s
+    /// base repository: cached, or computed with the default diff limits and remembered.
+    pub async fn counts_between(&self, ctx: &PullContext, base: &str, head: &str) -> Result<PullCounts, ServiceError> {
+        if let Some(counts) = self.cached_counts(base, head).await {
+            return Ok(counts);
+        }
+        let comparison = ctx.repo().reader.compare(base.to_owned(), head.to_owned(), DiffLimits::default(), 0).await?;
+        let counts = PullCounts::of(&comparison);
+        // Keyed by the ids the comparison resolved, so a short id never fills the cache.
+        self.remember_counts(&comparison.base.id, &comparison.head.id, counts).await;
+        Ok(counts)
+    }
+
+    async fn remember_counts(&self, base: &str, head: &str, counts: PullCounts) {
+        let cached = CachedComparisonCounts {
+            ahead: u64::try_from(counts.ahead).unwrap_or(u64::MAX),
+            files: u64::try_from(counts.files).unwrap_or(u64::MAX),
+        };
+        if let Err(error) = self.ctx().kv.insights().put_comparison_counts(base, head, cached).await {
+            tracing::warn!(%error, "comparison cache write failed");
+        }
     }
 
     /// The commits of the pull request, newest first (at most `[pulls] max_commits`).

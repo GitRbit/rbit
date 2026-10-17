@@ -120,6 +120,62 @@ impl PullUrls {
 
 // ------------------------------------------------------------------ header and tabs
 
+/// A lazily filled count in the pull request header. The header and
+/// [`PullCountsFragment`] both take the element ids from [`count_slot`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CountSlot {
+    /// "3 commits" in the "wants to merge" sentence.
+    CommitsPhrase,
+    /// The Commits tab's badge.
+    Commits,
+    /// The Files changed tab's badge.
+    Files,
+}
+
+/// The DOM id of a header count slot.
+pub const fn count_slot(slot: CountSlot) -> &'static str {
+    match slot {
+        CountSlot::CommitsPhrase => "pull-commits-phrase",
+        CountSlot::Commits => "pull-commit-count",
+        CountSlot::Files => "pull-file-count",
+    }
+}
+
+/// The header's counts; `None` until a deferred request fills them in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PullCountsView {
+    pub commits: Option<usize>,
+    pub files: Option<usize>,
+}
+
+impl PullCountsView {
+    pub fn known(commits: usize, files: usize) -> Self {
+        Self { commits: Some(commits), files: Some(files) }
+    }
+
+    /// "1 commit", "3 commits", or just "commits" while unknown (also the no-JS text).
+    pub fn commits_phrase(&self) -> String {
+        match self.commits {
+            Some(1) => "1 commit".to_owned(),
+            Some(count) => format!("{count} commits"),
+            None => "commits".to_owned(),
+        }
+    }
+
+    /// A badge's text: the count, or a dash while unknown.
+    fn badge(count: Option<usize>) -> String {
+        count.map_or_else(|| "\u{2013}".to_owned(), |count| count.to_string())
+    }
+
+    pub fn commits_badge(&self) -> String {
+        Self::badge(self.commits)
+    }
+
+    pub fn files_badge(&self) -> String {
+        Self::badge(self.files)
+    }
+}
+
 /// Title, state and "alice wants to merge 3 commits into `main` from `alice:feature`".
 #[derive(Debug, Clone)]
 pub struct PullHeaderView {
@@ -129,7 +185,6 @@ pub struct PullHeaderView {
     pub author: ActorView,
     /// "wants to merge", "merged" or "proposed to merge".
     pub verb: &'static str,
-    pub commit_count: usize,
     pub base_branch: String,
     pub base_url: String,
     pub head_label: String,
@@ -137,12 +192,14 @@ pub struct PullHeaderView {
     pub urls: PullUrls,
     /// `conversation`, `commits` or `files`.
     pub active: &'static str,
-    pub file_count: usize,
+    pub counts: PullCountsView,
+    /// Where missing counts come from ([`PullCountsFragment`]); `None` when all are known.
+    pub counts_url: Option<String>,
     pub is_draft: bool,
 }
 
 impl PullHeaderView {
-    pub fn new(ctx: &PullContext, commit_count: usize, file_count: usize, active: &'static str) -> Self {
+    pub fn new(ctx: &PullContext, counts: PullCountsView, counts_url: Option<String>, active: &'static str) -> Self {
         let issue = ctx.issue();
         let repo = &ctx.repo().repo;
         let urls = RepoUrls::new(repo.owner.name.as_str(), repo.repo.name.as_str());
@@ -158,7 +215,6 @@ impl PullHeaderView {
             badge,
             author: ActorView::new(ctx.thread.author.as_ref()),
             verb,
-            commit_count,
             base_url: urls.tree(&ctx.pull.base_branch, ""),
             base_branch: ctx.pull.base_branch.clone(),
             head_label: ctx.head_label(),
@@ -168,13 +224,30 @@ impl PullHeaderView {
                 .map(|head| RepoUrls::new(head.owner.name.as_str(), head.repo.name.as_str()).tree(&ctx.pull.head_branch, "")),
             urls: PullUrls::for_context(ctx),
             active,
-            file_count,
+            counts,
+            counts_url,
             is_draft: ctx.pull.is_draft,
         }
     }
 
-    pub fn commits_label(&self) -> &'static str {
-        if self.commit_count == 1 { "commit" } else { "commits" }
+    /// For templates: the id of a count slot.
+    pub fn slot(&self, slot: CountSlot) -> &'static str {
+        count_slot(slot)
+    }
+}
+
+/// `GET …/pull/{n}/counts/{base}...{head}`: the header counts as out-of-band swaps into
+/// the slots of `pulls/header.html`.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "pulls/counts.html")]
+pub struct PullCountsFragment {
+    pub counts: PullCountsView,
+}
+
+impl PullCountsFragment {
+    /// For templates: the id of a count slot.
+    pub fn slot(&self, slot: CountSlot) -> &'static str {
+        count_slot(slot)
     }
 }
 
@@ -922,6 +995,40 @@ mod tests {
         }
     }
 
+    fn commits_page(pull: PullHeaderView) -> String {
+        PullCommitsPage { page: page(), header: RepoHeader::default(), pull, commits: Vec::new(), more_commits: false }.render().unwrap()
+    }
+
+    #[test]
+    fn deferred_counts_render_empty_slots_and_one_trigger() {
+        let mut view = header_view();
+        view.counts = PullCountsView { commits: Some(2), files: None };
+        view.counts_url = Some("/alice/demo/pull/3/counts/a...b".to_owned());
+        let html = commits_page(view);
+        assert_eq!(html.matches(r#"hx-get="/alice/demo/pull/3/counts/a...b""#).count(), 1, "{html}");
+        for slot in [CountSlot::CommitsPhrase, CountSlot::Commits, CountSlot::Files] {
+            assert_eq!(html.matches(&format!(r#"id="{}""#, count_slot(slot))).count(), 1, "{slot:?}");
+        }
+        assert!(html.contains(">2 commits</span>"), "{html}");
+        assert!(html.contains(">\u{2013}</span>"), "the unknown file count is a dash: {html}");
+        assert!(!html.contains("hx-swap-oob"));
+
+        let known = commits_page(header_view());
+        assert!(!known.contains("/counts/"), "no request when the counts are known");
+        assert!(known.contains(">1 commit</span>"));
+    }
+
+    #[test]
+    fn the_counts_fragment_is_only_out_of_band_slots() {
+        let html = PullCountsFragment { counts: PullCountsView::known(1, 12) }.render().unwrap();
+        assert_eq!(html.matches("<span").count(), 3, "{html}");
+        assert_eq!(html.matches(r#"hx-swap-oob="true""#).count(), 3, "{html}");
+        for (slot, text) in [(CountSlot::CommitsPhrase, ">1 commit<"), (CountSlot::Commits, ">1<"), (CountSlot::Files, ">12<")] {
+            assert!(html.contains(&format!(r#"id="{}""#, count_slot(slot))), "{slot:?}");
+            assert!(html.contains(text), "{text}: {html}");
+        }
+    }
+
     fn header_view() -> PullHeaderView {
         PullHeaderView {
             title: "Fix <the> crash".to_owned(),
@@ -929,14 +1036,14 @@ mod tests {
             badge: StateBadge::draft(),
             author: ActorView::ghost(),
             verb: "wants to merge",
-            commit_count: 1,
             base_branch: "main".to_owned(),
             base_url: "/alice/demo/tree/main".to_owned(),
             head_label: "bob:fix".to_owned(),
             head_url: None,
             urls: PullUrls::new("alice", "demo", 3),
             active: "files",
-            file_count: 1,
+            counts: PullCountsView::known(1, 1),
+            counts_url: None,
             is_draft: true,
         }
     }
