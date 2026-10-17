@@ -1,9 +1,8 @@
 //! The push gate's view of `git receive-pack`: the command list a client sends before
 //! its pack, read before git sees it, and the refusal report sent instead of running git.
 //!
-//! Milestone 2 workstream B (branch protection) owns this file. P0 provides the types,
-//! [`Replay`] and [`drain`] complete, and inert stubs of [`intercept`] (nothing is read)
-//! and [`refusal`] (an empty report) — see `docs/design/milestone-2b.md` §4.
+//! Milestone 2 workstream B (branch protection) owns this file; the contract is
+//! `docs/design/milestone-2b.md` §4.
 //!
 //! A receive-pack request starts with pkt-lines `old new ref[\0capabilities]`
 //! (optionally preceded by `shallow <id>` lines) ending in a flush packet; push options
@@ -202,13 +201,152 @@ impl<R: AsyncRead + Unpin> AsyncRead for Replay<R> {
     }
 }
 
-/// Reads the command section from `input` (bounded by `limits`).
+/// The largest pkt-line git sends (the 4 length bytes included).
+const MAX_PKT_LEN: usize = 65520;
+
+/// Reads the command section from `input` (bounded by `limits`): optional `shallow` lines,
+/// the commands (capabilities after a NUL on the first) and the flush packet, plus — when
+/// every command is a deletion — the push options, so that nothing else is expected (see
+/// [`Remaining`]). Reads exactly those bytes, never into the pack; memory stays bounded
+/// by `limits` whatever the client sends.
 ///
-/// Stub: reads nothing and returns [`Intercept::Unread`], so git sees the request exactly
-/// as before. Workstream B implements the parsing.
-#[expect(clippy::unused_async, reason = "stub until workstream B implements the parser")]
-pub async fn intercept<R: AsyncRead + Unpin>(input: R, _limits: CommandLimits) -> Result<Intercept<R>, ReceiveError> {
-    Ok(Intercept::Unread(input))
+/// Always returns [`Intercept::Read`]; an empty stream counts as an empty command list.
+/// Signed pushes (`push-cert`) are malformed here: Rbit never advertises them.
+pub async fn intercept<R: AsyncRead + Unpin>(mut input: R, limits: CommandLimits) -> Result<Intercept<R>, ReceiveError> {
+    let mut reader = PktReader { saved: Vec::new(), limits };
+    let mut commands = Vec::new();
+    let mut capabilities = Vec::new();
+    let mut shallow = Vec::new();
+    loop {
+        let line = match reader.next(&mut input, true).await? {
+            Pkt::Eof | Pkt::Flush => break,
+            Pkt::Line(line) => line,
+        };
+        if commands.is_empty()
+            && let Some(id) = line.strip_prefix("shallow ")
+        {
+            if !is_object_id(id) {
+                return Err(malformed("invalid shallow line"));
+            }
+            shallow.push(id.to_owned());
+            continue;
+        }
+        if line.starts_with("push-cert") {
+            return Err(malformed("signed pushes are not supported"));
+        }
+        let command = match line.split_once('\0') {
+            Some((command, requested)) if commands.is_empty() => {
+                capabilities = requested.split(' ').filter(|capability| !capability.is_empty()).map(str::to_owned).collect();
+                command
+            }
+            Some(_) => return Err(malformed("capabilities after the first command")),
+            None => line.as_str(),
+        };
+        if commands.len() == limits.max_commands {
+            return Err(ReceiveError::TooManyCommands { max: limits.max_commands });
+        }
+        commands.push(parse_command(command)?);
+    }
+
+    let list = CommandList::new(commands, capabilities, shallow);
+    let remaining = if list.commands().iter().all(|command| command.new == ZERO_ID) {
+        if !list.is_empty() && list.has_capability("push-options") {
+            // No pack follows, so read the push options too: then nothing is left to wait for.
+            while let Pkt::Line(_) = reader.next(&mut input, false).await? {}
+        }
+        Remaining::Nothing
+    } else {
+        Remaining::ToEnd
+    };
+    Ok(Intercept::Read { commands: list, input: Replay::new(reader.saved, input, remaining) })
+}
+
+fn malformed(message: &str) -> ReceiveError {
+    ReceiveError::Malformed(message.to_owned())
+}
+
+/// A full lower-case hexadecimal object id (SHA-1 or SHA-256).
+fn is_object_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// `old SP new SP ref`.
+fn parse_command(line: &str) -> Result<PushCommand, ReceiveError> {
+    let mut parts = line.splitn(3, ' ');
+    let (Some(old), Some(new), Some(name)) = (parts.next(), parts.next(), parts.next()) else {
+        return Err(malformed("invalid command line"));
+    };
+    if !is_object_id(old) || !is_object_id(new) || old.len() != new.len() {
+        return Err(malformed("invalid object id in a command"));
+    }
+    if name.is_empty() || name.contains(|c: char| c.is_control() || c == ' ') {
+        return Err(malformed("invalid ref name in a command"));
+    }
+    Ok(PushCommand { old: old.to_owned(), new: new.to_owned(), name: name.to_owned() })
+}
+
+/// One pkt-line as [`PktReader`] reads it.
+enum Pkt {
+    Line(String),
+    Flush,
+    /// The stream ended before the first byte of the request.
+    Eof,
+}
+
+/// Reads pkt-lines one at a time, exactly, keeping every byte read.
+struct PktReader {
+    saved: Vec<u8>,
+    limits: CommandLimits,
+}
+
+impl PktReader {
+    /// The next pkt-line. `eof_ok`: an empty stream is [`Pkt::Eof`] rather than an error.
+    async fn next<R: AsyncRead + Unpin>(&mut self, input: &mut R, eof_ok: bool) -> Result<Pkt, ReceiveError> {
+        let mut header = [0; 4];
+        let first = input.read(&mut header).await?;
+        if first == 0 {
+            return if eof_ok && self.saved.is_empty() { Ok(Pkt::Eof) } else { Err(malformed("the request ended early")) };
+        }
+        read_rest(input, &mut header[first..]).await?;
+        let length = std::str::from_utf8(&header)
+            .ok()
+            .filter(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .and_then(|digits| usize::from_str_radix(digits, 16).ok())
+            .ok_or_else(|| malformed("invalid pkt-line length"))?;
+        self.reserve(header.len())?;
+        self.saved.extend_from_slice(&header);
+        if length == 0 {
+            return Ok(Pkt::Flush);
+        }
+        if length <= header.len() || length > MAX_PKT_LEN {
+            return Err(malformed("invalid pkt-line length"));
+        }
+        let payload_len = length - header.len();
+        self.reserve(payload_len)?;
+        let start = self.saved.len();
+        self.saved.resize(start + payload_len, 0);
+        read_rest(input, &mut self.saved[start..]).await?;
+        let payload = &self.saved[start..];
+        let payload = payload.strip_suffix(b"\n").unwrap_or(payload);
+        let line = std::str::from_utf8(payload).map_err(|_| malformed("a command line is not UTF-8"))?;
+        Ok(Pkt::Line(line.to_owned()))
+    }
+
+    fn reserve(&self, more: usize) -> Result<(), ReceiveError> {
+        if self.saved.len() + more > self.limits.max_bytes {
+            return Err(ReceiveError::TooLarge { max: self.limits.max_bytes });
+        }
+        Ok(())
+    }
+}
+
+/// `read_exact` that reports an early end of the stream as malformed input.
+async fn read_rest<R: AsyncRead + Unpin>(input: &mut R, buffer: &mut [u8]) -> Result<(), ReceiveError> {
+    match input.read_exact(buffer).await {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => Err(malformed("the request ended early")),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Reads and discards what is left of a refused request — as much as git would have
@@ -227,15 +365,66 @@ pub async fn drain<R: AsyncRead + Unpin>(input: Replay<R>) {
     }
 }
 
+/// The reason given for refs of a refused push that were not refused themselves.
+pub const DECLINED: &str = "push declined: another ref in this push was refused";
+
 /// The response to send instead of running git when `refusals` is not empty: `unpack ok`,
-/// `ng <ref> <reason>` per refused ref and `ng <ref> push declined: …` for the others,
-/// framed for `report-status`/`report-status-v2` and `side-band-64k`/`side-band` as the
-/// client requested. Empty when the client requested no report (the glue then answers
+/// `ng <ref> <reason>` per refused ref and `ng <ref> push declined: …` for the others (in
+/// the client's order), framed for `report-status`/`report-status-v2` and
+/// `side-band-64k`/`side-band` as the client requested. With a side band, a band-2
+/// `Rbit: <ref>: <reason>` message per refusal comes first and a flush packet last, as
+/// git sends them. Empty when the client requested no report (the glue then answers
 /// HTTP 403 / SSH stderr with [`refusal_message`]).
-///
-/// Stub: an empty report. Workstream B implements it.
-pub fn refusal(_commands: &CommandList, _refusals: &[Refusal]) -> Vec<u8> {
-    Vec::new()
+pub fn refusal(commands: &CommandList, refusals: &[Refusal]) -> Vec<u8> {
+    if !commands.wants_report() {
+        return Vec::new();
+    }
+    let mut report = Vec::new();
+    pkt_line(&mut report, b"unpack ok\n");
+    for command in commands.commands() {
+        let reason = refusals.iter().find(|refusal| refusal.name == command.name).map_or(DECLINED, |refusal| refusal.reason.as_str());
+        pkt_line(&mut report, format!("ng {} {}\n", command.name, one_line(reason)).as_bytes());
+    }
+    report.extend_from_slice(b"0000");
+
+    let band_size = if commands.has_capability("side-band-64k") {
+        MAX_PKT_LEN - 5
+    } else if commands.has_capability("side-band") {
+        1000 - 5
+    } else {
+        return report;
+    };
+    let mut framed = Vec::with_capacity(report.len() + 64);
+    for refusal in refusals {
+        let message = format!("Rbit: {}: {}\n", one_line(&refusal.name), one_line(&refusal.reason));
+        for chunk in message.as_bytes().chunks(band_size) {
+            band(&mut framed, 2, chunk);
+        }
+    }
+    for chunk in report.chunks(band_size) {
+        band(&mut framed, 1, chunk);
+    }
+    framed.extend_from_slice(b"0000");
+    framed
+}
+
+/// Appends `payload` as one pkt-line, cut to what a pkt-line can hold.
+fn pkt_line(out: &mut Vec<u8>, payload: &[u8]) {
+    let payload = &payload[..payload.len().min(MAX_PKT_LEN - 4)];
+    out.extend_from_slice(format!("{:04x}", payload.len() + 4).as_bytes());
+    out.extend_from_slice(payload);
+}
+
+/// Appends `data` as one side-band packet on `channel`.
+fn band(out: &mut Vec<u8>, channel: u8, data: &[u8]) {
+    out.extend_from_slice(format!("{:04x}", data.len() + 5).as_bytes());
+    out.push(channel);
+    out.extend_from_slice(data);
+}
+
+/// `text` with control characters turned into spaces, so it stays one report line.
+fn one_line(text: &str) -> String {
+    text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
 }
 
 /// A plain-text explanation of `refusals`, one line per refused ref, for clients that
@@ -288,13 +477,12 @@ mod tests {
         tokio::io::AsyncWriteExt::shutdown(&mut client).await.unwrap();
     }
 
-    #[tokio::test]
-    async fn the_stub_intercept_reads_nothing() {
-        let input: &[u8] = b"0000";
-        match intercept(input, CommandLimits::default()).await.unwrap() {
-            Intercept::Unread(rest) => assert_eq!(rest, b"0000"),
-            Intercept::Read { .. } => panic!("the stub must not read"),
-        }
+    #[test]
+    fn report_lines_stay_on_one_line() {
+        assert_eq!(one_line("a\nb\rc"), "a b c");
+        let mut out = Vec::new();
+        pkt_line(&mut out, b"unpack ok\n");
+        assert_eq!(out, b"000eunpack ok\n");
     }
 
     #[test]
