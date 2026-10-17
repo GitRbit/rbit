@@ -811,6 +811,34 @@
   @apply whitespace-pre pl-3 pr-6;
 }
 
+/* Blame (repo/blame.html): hunks one after another in the file's blocks. A hunk header is
+   exactly two rows (`HEADER_ROWS` in src/views/blame.rs), its hairline included, so
+   blocks keep their exact height. The scroller is a size container so the header's
+   text can be as wide as the visible area and stay there (sticky) while long lines
+   scroll sideways; its band spans the whole scroll width like the lines. */
+.blame-scroll {
+  container-type: inline-size;
+}
+
+.code-lines.blame-lines {
+  @apply pt-0;
+}
+
+.blame-hunk {
+  @apply border-t border-line bg-subtle font-sans text-xs;
+  height: calc(2 * var(--row-h));
+}
+
+/* The first header sits right under the toolbar's own hairline. */
+.blame-lines > .vblock:first-child > .blame-hunk:first-child {
+  border-top-color: transparent;
+}
+
+.blame-hunk-info {
+  @apply sticky left-0 flex h-full min-w-0 items-center gap-2 px-4 leading-4;
+  width: 100cqw;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* A still bar across the whole width instead of a sweeping one. */
   .nav-busy #page-progress,
