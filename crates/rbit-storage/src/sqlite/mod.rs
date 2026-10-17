@@ -5,6 +5,8 @@ mod accounts;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
+// Milestone 3: external sign-in (O).
+pub mod external_identities;
 pub mod forks;
 pub mod instance;
 pub mod issue_meta;
@@ -213,6 +215,12 @@ impl Database {
 
     pub fn lfs(&self) -> lfs::LfsStore {
         lfs::LfsStore::new(self.pool.clone())
+    }
+
+    // Milestone 3: external sign-in (O).
+
+    pub fn external_identities(&self) -> external_identities::ExternalIdentityStore {
+        external_identities::ExternalIdentityStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

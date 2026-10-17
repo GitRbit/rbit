@@ -428,3 +428,24 @@ async fn notification_email_tables_start_empty() {
     sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&db.raw).await.unwrap();
     assert_eq!(db.count("SELECT COUNT(*) FROM notification_email_settings").await, 0, "deleting the account removes its preference");
 }
+
+// Milestone 3: external sign-in (O).
+#[tokio::test]
+async fn external_identity_table_starts_empty() {
+    let db = upgraded().await;
+    assert!(db.exists("table", "external_identities").await);
+    assert_eq!(db.count("SELECT COUNT(*) FROM external_identities").await, 0);
+    let store = db.database.external_identities();
+    assert_eq!(store.list_for_account(ALICE).await.unwrap().len(), 0);
+    assert!(store.has_password(ALICE).await.unwrap(), "existing users keep their passwords");
+
+    let identity = rbit_storage::sqlite::external_identities::NewExternalIdentity {
+        provider_id: "corp",
+        subject: "alice",
+        email: None,
+        username: None,
+    };
+    store.link(ALICE, identity, Timestamp(1)).await.unwrap().unwrap();
+    sqlx::query("DELETE FROM accounts WHERE id = 1").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM external_identities").await, 0, "deleting the account removes its identities");
+}

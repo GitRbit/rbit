@@ -110,10 +110,13 @@ pub enum AuditAction {
     BranchProtectionDeleted,
     BranchProtectionBypassed,
     IssueDeleted,
+    // Milestone 3: external sign-in (O).
+    ExternalIdentityLinked,
+    ExternalIdentityUnlinked,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 44] = [
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -156,6 +159,8 @@ impl AuditAction {
         Self::BranchProtectionDeleted,
         Self::BranchProtectionBypassed,
         Self::IssueDeleted,
+        Self::ExternalIdentityLinked,
+        Self::ExternalIdentityUnlinked,
     ];
 
     /// Stable identifier stored in the database.
@@ -203,6 +208,8 @@ impl AuditAction {
             Self::BranchProtectionDeleted => "branch_protection_deleted",
             Self::BranchProtectionBypassed => "branch_protection_bypassed",
             Self::IssueDeleted => "issue_deleted",
+            Self::ExternalIdentityLinked => "external_identity_linked",
+            Self::ExternalIdentityUnlinked => "external_identity_unlinked",
         }
     }
 
@@ -217,7 +224,9 @@ impl AuditAction {
             | Self::TwoFactorFailed
             | Self::RecoveryCodeUsed
             | Self::PasswordChanged
-            | Self::PasswordReset => AuditCategory::Authentication,
+            | Self::PasswordReset
+            | Self::ExternalIdentityLinked
+            | Self::ExternalIdentityUnlinked => AuditCategory::Authentication,
             Self::TwoFactorEnabled
             | Self::TwoFactorDisabled
             | Self::RecoveryCodesRegenerated
@@ -299,6 +308,8 @@ impl AuditAction {
             Self::BranchProtectionDeleted => "Deleted a branch protection rule",
             Self::BranchProtectionBypassed => "Bypassed branch protection",
             Self::IssueDeleted => "Deleted an issue",
+            Self::ExternalIdentityLinked => "Linked a sign-in provider",
+            Self::ExternalIdentityUnlinked => "Unlinked a sign-in provider",
         }
     }
 
