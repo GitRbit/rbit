@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<section class="mx-auto max-w-2xl">
+  <a href="{{ list_url }}" class="btn btn-ghost -ml-2.5">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Push mirrors</a>
+  <h1 class="mt-3 break-all text-xl font-semibold tracking-tight">Edit push mirror</h1>
+  <p class="mt-1 break-all font-mono text-xs text-ink-muted">{{ mirror.url }}</p>
+
+  <form method="post" action="{{ mirror.edit_url }}" class="box mt-6" novalidate>
+    <div class="p-4">
+      {% call ui::form_error(error) %}{% endcall %}
+      {% include "repo/push_mirror_fields.html" %}
+      <label class="mt-5 flex cursor-pointer items-start gap-3">
+        <input type="checkbox" name="enabled" value="on" class="mt-1 accent-(--ink)" {% if form.enabled %}checked{% endif %}>
+        <span>
+          <span class="block font-medium">Enabled</span>
+          <span class="block text-[13px] text-ink-muted">A paused mirror keeps its settings and is not pushed.</span>
+        </span>
+      </label>
+    </div>
+    <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
+      <a href="{{ list_url }}" class="btn">Cancel</a>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

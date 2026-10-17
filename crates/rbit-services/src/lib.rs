@@ -47,6 +47,8 @@ pub mod two_factor;
 pub mod webhooks;
 // Milestone 3: editing files in the browser (E).
 pub mod edits;
+// Milestone 3: importing and push mirrors (M).
+pub mod push_mirrors;
 
 use std::sync::Arc;
 
@@ -95,6 +97,8 @@ pub use two_factor::TwoFactorService;
 pub use webhooks::WebhookService;
 // Milestone 3: editing files in the browser (E).
 pub use edits::EditService;
+// Milestone 3: importing and push mirrors (M).
+pub use push_mirrors::PushMirrorService;
 
 /// The infrastructure every service is built from. Cheap to clone (all handles are `Arc`s).
 #[derive(Debug, Clone)]
@@ -161,6 +165,8 @@ pub struct Services {
     pub lfs: LfsService,
     // Milestone 3: external sign-in (O).
     pub external_auth: ExternalAuthService,
+    // Milestone 3: importing and push mirrors (M).
+    pub push_mirrors: PushMirrorService,
 }
 
 impl Services {
@@ -227,6 +233,8 @@ impl Services {
             lfs: LfsService::new(ctx.clone()),
             // Milestone 3: external sign-in (O).
             external_auth,
+            // Milestone 3: importing and push mirrors (M).
+            push_mirrors: PushMirrorService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
@@ -246,6 +254,8 @@ impl Services {
         self.notifications.spawn_background();
         self.pulls.spawn_background();
         self.lfs.spawn_background();
+        // Milestone 3: importing and push mirrors (M).
+        self.push_mirrors.spawn_background();
     }
 
     /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
@@ -261,6 +271,8 @@ impl Services {
             self.notifications.shutdown(),
             self.pulls.shutdown(),
             self.lfs.shutdown(),
+            // Milestone 3: importing and push mirrors (M).
+            self.push_mirrors.shutdown(),
         );
     }
 }

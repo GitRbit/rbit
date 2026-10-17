@@ -87,6 +87,8 @@ fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     cards.extend(webhooks::repo_settings_cards(header));
     cards.extend(mirrors::repo_settings_cards(header));
     cards.extend(protection::repo_settings_cards(header));
+    // Milestone 3: importing and push mirrors (M).
+    cards.extend(super::push_mirrors::repo_settings_cards(header));
     cards
 }
 

@@ -28,6 +28,7 @@ mod ops;
 mod orgs;
 mod protection;
 mod pulls;
+mod push_mirrors;
 mod pwa;
 mod recovery;
 mod releases;
@@ -144,6 +145,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(edits::routes(state))
         // Milestone 3: external sign-in (O).
         .merge(external_auth::routes())
+        // Milestone 3: importing and push mirrors (M).
+        .merge(push_mirrors::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

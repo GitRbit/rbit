@@ -29,6 +29,8 @@ pub mod notifications;
 pub mod org;
 pub mod protection;
 pub mod pulls;
+// Milestone 3: importing and push mirrors (M).
+pub mod push_mirrors;
 pub mod pwa;
 pub mod recovery;
 pub mod refs;

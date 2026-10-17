@@ -1,0 +1,24 @@
+{#- The fields of the add and edit forms; expects `form` (a `PushMirrorForm`) and `allow_local`. -#}
+<label class="label" for="push-mirror-url">Remote URL</label>
+<input class="input font-mono text-xs" id="push-mirror-url" name="url" value="{{ form.url }}" {% if !allow_local %}type="url"{% endif %} inputmode="url" placeholder="https://github.com/acme/rocket.git" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="2048" required>
+<p class="hint">An <span class="font-mono">https://</span> or <span class="font-mono">http://</span> URL without a user name or password in it.</p>
+
+<div class="mt-5 grid gap-x-3 gap-y-5 sm:grid-cols-2">
+  <div>
+    <label class="label" for="push-mirror-username">User name <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input" id="push-mirror-username" name="username" value="{{ form.username }}" maxlength="255" autocomplete="off" autocapitalize="none" spellcheck="false">
+  </div>
+  <div>
+    <label class="label" for="push-mirror-secret">Password or token <span class="font-normal text-ink-faint">optional</span></label>
+    <input class="input font-mono text-xs" id="push-mirror-secret" name="secret" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="Configured — leave blank to keep it"{% endif %}>
+  </div>
+</div>
+<p class="hint">Sent to the remote over HTTP Basic authentication. It cannot be shown again.</p>
+
+<label class="mt-5 flex cursor-pointer items-start gap-3">
+  <input type="checkbox" name="sync_on_push" value="on" class="mt-1 accent-(--ink)" {% if form.sync_on_push %}checked{% endif %}>
+  <span>
+    <span class="block font-medium">Push after every push</span>
+    <span class="block text-[13px] text-ink-muted">A few seconds after this repository changes. Every mirror is also pushed on a schedule.</span>
+  </span>
+</label>
