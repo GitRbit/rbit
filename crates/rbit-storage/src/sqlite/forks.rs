@@ -1,6 +1,7 @@
 //! Fork relationships: which repository a fork was created from.
 //!
-//! Milestone 2 workstream R (repository essentials) owns this file. Keep row types here rather than in `rows.rs`.
+//! Milestone 2 workstream R (repository essentials) owns this file; wave B's pull request
+//! workstream (P) adds the fork network query. Keep row types here rather than in `rows.rs`.
 
 use std::collections::HashSet;
 
@@ -18,6 +19,9 @@ macro_rules! owned_repo_columns {
          o.bio AS owner_bio, o.created_at AS owner_created_at"
     };
 }
+
+/// How many fork levels a network spans at most, up from a repository and down from its root.
+pub const MAX_NETWORK_DEPTH: u32 = 10;
 
 #[derive(Debug, Clone)]
 pub struct ForkStore {
@@ -102,6 +106,32 @@ impl ForkStore {
         .bind(viewer.map(|id| id.0))
         .bind(viewer_is_admin)
         .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(OwnedRepository::try_from).collect()
+    }
+    /// The repositories of `repo`'s fork network that the viewer may read (`repo`
+    /// itself included when readable), ordered by owner and name. The network is
+    /// everything reachable from the root of `repo`'s fork chain, following `repo_forks`
+    /// at most [`MAX_NETWORK_DEPTH`] levels up and down. The viewer is bound at `?2`, the
+    /// site-administrator flag at `?3`.
+    pub async fn network_readable(
+        &self,
+        repo: RepoId,
+        viewer: Option<AccountId>,
+        viewer_is_admin: bool,
+    ) -> Result<Vec<OwnedRepository>, StorageError> {
+        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
+            "WITH RECURSIVE up (id, depth) AS (SELECT ?1, 0 UNION SELECT f.parent_id, up.depth + 1 FROM repo_forks f              JOIN up ON f.repo_id = up.id WHERE f.parent_id IS NOT NULL AND up.depth < ?4),              root (id) AS (SELECT id FROM up ORDER BY depth DESC LIMIT 1),              down (id, depth) AS (SELECT id, 0 FROM root UNION SELECT f.repo_id, down.depth + 1 FROM repo_forks f              JOIN down ON f.parent_id = down.id WHERE down.depth < ?4)              SELECT DISTINCT ",
+            owned_repo_columns!(),
+            " FROM down JOIN repositories r ON r.id = down.id JOIN accounts o ON o.id = r.owner_id WHERE ",
+            readable_by!("?2", "?3"),
+            " ORDER BY o.name, r.name"
+        ))
+        .bind(repo.0)
+        .bind(viewer.map(|id| id.0))
+        .bind(viewer_is_admin)
+        .bind(MAX_NETWORK_DEPTH)
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter().map(OwnedRepository::try_from).collect()
