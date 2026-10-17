@@ -23,6 +23,7 @@
         <div class="flex items-center gap-2">
           <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.name }}</a>
           {% if row.is_default %}<span class="badge">default</span>{% endif %}
+          {% if row.protected %}<span class="badge" title="A branch protection rule applies to this branch">{% call ui::icon("shield", "size-3") %}{% endcall %}Protected</span>{% endif %}
         </div>
         <p class="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
           <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>

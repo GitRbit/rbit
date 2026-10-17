@@ -1,4 +1,8 @@
 //! Branch and tag listings.
+//!
+//! Milestone 2 workstream B (branch protection) adds the "Protected" badge: branches some
+//! rule protects (`ProtectionService::protected_branches`) are marked with
+//! [`RefsPage::with_protected`].
 
 use askama::Template;
 use askama_web::WebTemplate;
@@ -25,6 +29,8 @@ pub struct RefRow {
     pub tar_url: String,
     /// The branch compared against the default branch (other branches only).
     pub compare_url: Option<String>,
+    /// A branch protection rule matches this branch.
+    pub protected: bool,
 }
 
 impl RefRow {
@@ -43,6 +49,7 @@ impl RefRow {
             tar_url: urls.archive(&detail.name, ".tar.gz"),
             is_default,
             commit: CommitView::new(&detail.commit, urls),
+            protected: false,
         }
     }
 }
@@ -55,4 +62,78 @@ pub struct RefsPage {
     pub header: RepoHeader,
     pub kind: &'static str,
     pub rows: Vec<RefRow>,
+}
+
+impl RefsPage {
+    /// Marks the branches named in `protected` (on the branches page only).
+    #[must_use]
+    pub fn with_protected(mut self, protected: &[String]) -> Self {
+        if self.kind == "branch" {
+            for row in &mut self.rows {
+                row.protected = protected.contains(&row.name);
+            }
+        }
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::views::components::Avatar;
+
+    fn row(name: &str) -> RefRow {
+        let commit = CommitView {
+            id: "1".repeat(40),
+            short_id: "1111111".to_owned(),
+            summary: "Initial commit".to_owned(),
+            author: "Alice".to_owned(),
+            avatar: Avatar::default(),
+            when: "today".to_owned(),
+            when_iso: String::new(),
+            date: String::new(),
+            browse_url: String::new(),
+            url: "/acme/rocket/commit/1111111".to_owned(),
+        };
+        RefRow {
+            name: name.to_owned(),
+            url: format!("/acme/rocket/tree/refs/heads/{name}"),
+            is_default: name == "main",
+            commit,
+            zip_url: String::new(),
+            tar_url: String::new(),
+            compare_url: None,
+            protected: false,
+        }
+    }
+
+    fn page(kind: &'static str) -> RefsPage {
+        RefsPage {
+            page: Page {
+                site_name: "Rbit".to_owned(),
+                title: None,
+                viewer: None,
+                path: "/acme/rocket/branches".to_owned(),
+                theme: crate::themes::Theme::System,
+                has_unread_notifications: false,
+            },
+            header: RepoHeader { owner: "acme".to_owned(), name: "rocket".to_owned(), active_tab: "branches", ..RepoHeader::default() },
+            kind,
+            rows: vec![row("main"), row("feature")],
+        }
+    }
+
+    #[test]
+    fn protected_branches_carry_a_badge() {
+        let protected = ["main".to_owned()];
+        let branches = page("branch").with_protected(&protected);
+        assert!(branches.rows[0].protected && !branches.rows[1].protected);
+        let html = branches.render().unwrap();
+        assert_eq!(html.matches("Protected</span>").count(), 1);
+        assert!(!html.contains("style="));
+
+        let tags = page("tag").with_protected(&protected);
+        assert!(!tags.rows[0].protected, "tags are never marked");
+        assert!(!page("branch").render().unwrap().contains("Protected</span>"));
+    }
 }
