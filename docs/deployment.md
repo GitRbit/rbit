@@ -182,7 +182,8 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     add_header Strict-Transport-Security "max-age=63072000" always;
 
-    # Pushes can be arbitrarily large; Rustit streams them to git.
+    # Pushes can be arbitrarily large; Rustit streams them to git and enforces its own
+    # limit on release uploads ([releases] max_asset_bytes).
     client_max_body_size 0;
 
     location / {
@@ -241,6 +242,9 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rustit_jobs_total` | counter | `job` (`warm_caches`, `git_gc`, `prune_insights_cache`), `outcome` (`ok`, `error`) |
 | `rustit_job_duration_seconds` | histogram | `job` |
 | `rustit_insights_cache_entries` | gauge | — (after each prune) |
+| `rustit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
+| `rustit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
+| `rustit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.
@@ -268,6 +272,17 @@ Rustit runs its own maintenance; no cron jobs are needed.
   `insights_cache_max_age_days` and `insights_cache_max_entries`. An idle instance does
   nothing else.
 - At most `job_concurrency` jobs run at once. Expired sessions are purged hourly.
+- **Webhook deliveries** run from a queue in SQLite: at most `[webhooks] concurrency` at
+  once, retried with backoff up to `max_attempts`, and the delivery log is pruned daily to
+  `delivery_retention_days`. Nothing is lost across restarts.
+- **Pull mirrors** are fetched when due (checked every 30 s, at most two fetches at once).
+- **Release files** of a deleted repository are removed in the background; temporary
+  files of uploads interrupted by a crash are swept at start-up.
+
+Webhooks and mirrors make outbound HTTP(S) requests, so the host needs outbound access to
+wherever users point them. Internal addresses are refused unless
+`allow_private_addresses` is set in `[webhooks]` or `[mirrors]`; set it only on a trusted
+instance (for example to reach a CI server on the same network).
 
 ## Backups
 

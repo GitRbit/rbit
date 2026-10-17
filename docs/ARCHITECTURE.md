@@ -66,9 +66,13 @@ sub-modules grouped by concept (e.g. `storage::sqlite::repositories::users`).
 
 ### Crate responsibilities
 
-**`rustit-core`** — Validated value types (`Username`, `RepoName`, `Email`, `BranchName`),
-domain entities (`User`, `Repository`, `Visibility`), the `RepoAccess` permission lattice,
-and the shared `Config` model. Pure Rust, trivially unit-testable.
+**`rustit-core`** — Validated value types (`Username`, `RepoName`, `Email`, `BranchName`,
+`TeamName`, `WebhookUrl`, `MirrorUrl`), domain entities (`User`, `Repository`,
+`Visibility`, `Release`, `Webhook`), the `RepoAccess` permission lattice with the grant
+levels `Permission` (`read`/`write`/`admin`) and `BasePermission` (`none`/`read`/`write`),
+`network::is_internal_address` (the one classifier of addresses outbound requests must not
+reach, shared by webhooks and mirrors), and the shared `Config` model. Pure Rust, trivially
+unit-testable.
 
 **`rustit-storage`**
 - `sqlite/` — `sqlx` pool (WAL, foreign keys, busy timeout), embedded migrations, and one
@@ -79,12 +83,21 @@ and the shared `Config` model. Pure Rust, trivially unit-testable.
 **`rustit-auth`** — `PasswordHasher` (Argon2id, OWASP parameters), `SessionToken` and
 `AccessTokenSecret` (256-bit random, only SHA-256 digests are persisted), TOTP (RFC 6238,
 own implementation verified against the RFC test vectors) with recovery codes, and the
-`repo_access` policy (who may read, write or administer a repository).
+pure `repo_access(viewer, repo, &Grants)` policy (who may read, write or administer a
+repository). Callers look up `Grants` — the viewer's organisation role, the organisation's
+base permission, the best team grant and the collaborator permission — in one query, and
+the policy takes the **maximum** of the public baseline, site admin, owner, organisation
+role, base permission, team and collaborator grants; nothing lowers access below the
+public baseline. It is tested exhaustively against an independent reference table, and
+the SQL listings use one readable-by predicate that a test checks against the policy.
 
-**`rustit-git`** — `RepositoryStorage` (where bare repos live on disk, creation, deletion)
-and `RepositoryReader` (refs, trees, blobs, commit history) built on **gitoxide** (`gix`).
-Repos are always opened with *isolated* options: no system/global config, no hooks
-executed on read.
+**`rustit-git`** — `RepositoryStorage` (where bare repos live on disk, creation, deletion,
+`relocate` for transfers) and `RepositoryReader` (refs, trees, blobs, commit history, ref
+snapshots, `new_commits`, blame, compare/merge base) built on **gitoxide** (`gix`), plus
+`archive` (`git archive`, streamed), `fork` (`git clone --bare --local`, branches and tags
+only) and `mirror` (`git fetch --prune` of branches and tags, no redirects, no prompts or
+credential helpers). Repos are always opened with *isolated* options: no system/global
+config, no hooks executed on read; every `git` process gets a scrubbed environment.
 
 **`rustit-transport`** — The Git smart protocol. `ProcessTransport` runs
 `git upload-pack/receive-pack` with a scrubbed environment in two modes: *stateless*
@@ -108,15 +121,32 @@ roles), `AccessTokenService`, `ProfileService`, `RepoSettingsService`, `StarServ
 `InsightsService` (languages, last commit per entry, cached), `InstanceService` (runtime
 settings), `AdminService` (statistics, moderation), `ThrottleService` (rate limits),
 `TwoFactorService`, `AuditService`, `MailService`, `RecoveryService` (password reset, email
-verification), `SshKeyService` and `JobService` (background work). Services communicate
-through an in-process `EventBus` of `DomainEvent`s (`RepositoryPushed` with the pusher and
-the ref updates, repository created/deleted/transferred/forked, `ReleasePublished`,
-`UserSignedUp`, `PasswordChanged`, `EmailChanged`), so producers never depend on reactions
-such as cache warming, session revocation, verification email or webhooks. Both Git
-transports report pushes through `PushService`, which diffs ref snapshots taken before and
-after `receive-pack` (it runs without hooks). This is the only
-layer that combines storage, git and auth. It is HTTP-agnostic so a future REST/GraphQL
-API, CLI admin commands and background jobs all reuse it.
+verification), `SshKeyService`, `JobService` (background work) and
+`PreferenceService` (the stored theme). Milestone 2 wave A added `CollaboratorService`,
+`TeamService` and `TransferService` (access), `WebhookService` (hooks, queue, delivery
+worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` when busy),
+`ReleaseService` (releases and attached files), `ForkService` and `MirrorService`
+(scheduled fetches). `Services::spawn_background()` starts the webhook, release and mirror
+tasks; `Services::shutdown()` stops them (and the job queue) within about ten seconds.
+
+Services communicate through an in-process `EventBus` of `DomainEvent`s, so producers never
+depend on reactions such as cache warming, session revocation, verification email or
+webhooks. Subscribers ignore variants they do not handle, so adding one breaks nothing.
+
+| Event | Fields | Published by |
+|---|---|---|
+| `RepositoryPushed` | `repo`, `pusher: Option<AccountId>` (`None` for deploy keys and mirror fetches), `updates: Vec<RefUpdate>` (`name`, `before`, `after`; ordered by name) | `PushService::complete` (HTTP, SSH, mirror fetches, tags created for releases) |
+| `RepositoryCreated` | `repo`, `actor` | `RepositoryService::create_in` (not forks) |
+| `RepositoryDeleted` | `repo`, `owner`, `full_name` (as it was), `actor` | repository settings, site administration |
+| `RepositoryTransferred` | `repo`, `from`, `to`, `actor` | `TransferService` |
+| `RepositoryForked` | `repo`, `parent`, `actor` | `ForkService` |
+| `ReleasePublished` | `repo`, `release`, `actor` | `ReleaseService` (created as non-draft, or a draft published) |
+| `UserSignedUp`, `PasswordChanged`, `EmailChanged` | `user` (`previous` address for email) | `AccountService`, `AdminService`, `ProfileService`, `RecoveryService` |
+
+Both Git transports report pushes through `PushService`, which diffs ref snapshots taken
+before and after `receive-pack` (it runs without hooks). This is the only layer that
+combines storage, git and auth. It is HTTP-agnostic: the web pages, the REST API, CLI
+admin commands and background jobs all reuse it.
 
 **`rustit-web`** — Axum 0.8 application:
 ```
@@ -130,6 +160,8 @@ rustit-web/src/
 ├── extract.rs          # Viewer, SignedIn, SiteAdmin, Page extractors
 ├── middleware.rs       # sessions, rate limiting, security headers, CSRF origin check
 ├── routes/             # one module per area; each feature exposes its own routes()
+│   └── api/            # REST API /api/v1: route table, token auth, JSON errors, pagination, openapi.json
+├── themes/             # generated theme catalog (tinted-theming schemes)
 ├── views/              # view models + Askama template structs
 └── templates/          # *.html (Askama), organised by area
 ```
@@ -156,12 +188,28 @@ SSH server and background jobs, graceful shutdown.
 <data_dir>/
 ├── rustit.db            # SQLite (+ -wal, -shm)
 ├── rustit.redb          # redb key/value store
-└── repositories/
-    └── <owner_id>/<repo_id>.git   # bare repositories, addressed by immutable IDs
+├── repositories/
+│   └── <owner_id>/<repo_id>.git   # bare repositories, addressed by immutable IDs
+└── attachments/
+    ├── <repo_id>/<asset_id>       # files attached to releases, named by id only
+    └── tmp/<random>.part          # uploads in progress
 ```
 
 Repositories are addressed by numeric IDs, not names, so renaming a user or repository
-is a single SQL update — no filesystem moves, no path-traversal surface.
+is a single SQL update — no filesystem moves, no path-traversal surface. A transfer moves
+the directory to the new owner's folder (`rustit_git::relocate`, a same-filesystem
+rename) before the owner changes in SQL, and moves it back if the database step fails.
+
+Release files never use a user-supplied name on disk and do not depend on the owner, so
+transfers move nothing. An upload streams into `tmp/<random>.part` while its SHA-256 and
+size are computed and is abandoned the moment it exceeds `[releases] max_asset_bytes`;
+only a complete file gets a `release_assets` row, after which it is synced and renamed
+into place (the row is removed again if the rename fails). Deleting a file removes the row
+first, then the bytes, so a crash leaves at worst an orphaned file, never a row without
+bytes. `ReleaseService` removes `attachments/<repo_id>` when a repository is deleted and
+sweeps `.part` files older than a day at start-up. Downloads are always
+`application/octet-stream` with `Content-Disposition: attachment`, `nosniff` and an
+`ETag` from the digest.
 
 ### 3.3 SQLite schema
 
@@ -169,13 +217,14 @@ is a single SQL update — no filesystem moves, no path-traversal surface.
 accounts           id, kind(user|organization), name UNIQUE NOCASE, display_name, bio, created_at, updated_at
 user_logins        account_id → accounts, email UNIQUE NOCASE, password_hash, is_admin, suspended_at
 account_profiles   account_id → accounts, website, location                       (users)
-org_profiles       account_id → accounts, description, website                    (organisations)
+org_profiles       account_id → accounts, description, website,
+                   member_permission(none|read|write) DEFAULT 'write'             (organisations)
 org_members        org_id → accounts, user_id → accounts, role(owner|member)
 repositories       id, owner_id → accounts, name NOCASE, description, visibility(public|private),
                    default_branch, created_at, updated_at, pushed_at, UNIQUE(owner_id, name)
 stars              account_id → accounts, repo_id → repositories, created_at
-access_tokens      id, account_id → accounts, name, token_digest BLOB UNIQUE, hint, scope(read|write),
-                   created_at, last_used_at, expires_at
+access_tokens      id, account_id → accounts, name, token_digest BLOB UNIQUE, hint,
+                   scope(read|write|admin), created_at, last_used_at, expires_at
 instance_settings  key PRIMARY KEY, value, updated_at       (administrator overrides of config defaults)
 two_factor         account_id → accounts, secret, created_at, confirmed_at, last_used_step (replay guard)
 recovery_codes     account_id → accounts, code_digest, used_at
@@ -186,11 +235,65 @@ ssh_keys           id, account_id → accounts, title, public_key, algorithm, fi
                    created_at, last_used_at
 deploy_keys        id, repo_id → repositories, title, public_key, algorithm, fingerprint UNIQUE,
                    read_only, created_at, last_used_at
+
+-- milestone 2 wave A
+collaborators      (repo_id → repositories, user_id → accounts) PK, permission(read|write|admin),
+                   added_by → accounts SET NULL, created_at
+teams              id, org_id → accounts, name NOCASE, description, created_at, UNIQUE(org_id, name)
+team_members       (team_id → teams, user_id → accounts) PK
+team_repositories  (team_id → teams, repo_id → repositories) PK, permission(read|write|admin)
+user_preferences   account_id → accounts PK, theme (slug, 1–64 chars or NULL), updated_at
+webhooks           id, repo_id → repositories | org_id → accounts (exactly one), url, secret,
+                   events (JSON array), active, created_by → accounts SET NULL, created_at, updated_at
+webhook_deliveries id, hook_id → webhooks, guid UNIQUE, event, action, payload,
+                   status(pending|delivering|succeeded|failed), attempts, next_attempt_at,
+                   last_attempt_at, request_headers, response_status, response_headers,
+                   response_body, duration_ms, error, created_at
+releases           id, repo_id → repositories, tag_name, name, notes, is_draft, is_prerelease,
+                   author_id → accounts SET NULL, created_at, updated_at, published_at,
+                   UNIQUE(repo_id, tag_name)
+release_assets     id, release_id → releases, repo_id → repositories, name, size, content_type,
+                   sha256 BLOB(32), download_count, uploader_id → accounts SET NULL, created_at,
+                   UNIQUE(release_id, name)
+repo_forks         repo_id → repositories PK, parent_id → repositories SET NULL, created_at
+repo_mirrors       repo_id → repositories PK, url, interval_minutes, next_sync_at, last_sync_at,
+                   last_error, created_at
+repo_redirects     (owner_id → accounts, name NOCASE) PK, repo_id → repositories, created_at
 ```
 
-Migrations live in `crates/rustit-storage/migrations/` and are embedded in the binary
-(`0001_initial` … `0008_ssh_keys`). Secrets (passwords, sessions, tokens, recovery codes,
-email links) are only ever stored hashed.
+Unless marked `SET NULL`, references cascade on delete.
+
+**Triggers.** `ssh_keys_fingerprint_not_a_deploy_key` / `deploy_keys_fingerprint_not_a_user_key`
+keep a fingerprint in only one of the two key tables. `org_members_revoke_grants` (after a
+row of `org_members` is deleted, however that happens) removes the user's team memberships
+in that organisation and their collaborator entries on its repositories in the same
+transaction. `repo_redirects_on_create` (after insert into `repositories`) and
+`repo_redirects_on_move` (after `owner_id`/`name` change, ignoring changes of letter case
+only) keep `repo_redirects` right for every way a repository arrives at or leaves a
+location: leaving `owner/name` records it as a redirect, arriving there removes any
+redirect from it, so an existing repository always wins over an old name.
+
+**Migrations** live in `crates/rustit-storage/migrations/` and are embedded in the binary:
+
+| | Milestone 1 | | Milestone 2 wave A |
+|---|---|---|---|
+| `0001` | `initial` (accounts, logins, members, repositories) | `0009` | `access` (collaborators, teams, base permission, revoke trigger) |
+| `0002` | `access_tokens` | `0010` | `preferences` (`user_preferences`) |
+| `0003` | `organizations` (`org_profiles`) | `0011` | `webhooks` (hooks, delivery queue) |
+| `0004` | `administration` (instance settings, suspension) | `0012` | `token_scopes` (rebuilds `access_tokens` for `admin`, keeping every id) |
+| `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) |
+| `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` |
+| `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) |
+
+`crates/rustit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
+(`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
+that every row survives and the new defaults and triggers apply to old rows. Wave B
+reserves `0017`–`0031` ([design/milestone-2b.md](design/milestone-2b.md)).
+
+Secrets (passwords, sessions, tokens, recovery codes, email links) are only ever stored
+hashed — with one documented exception: **webhook secrets** are stored as given, because
+signing a delivery with HMAC needs the raw value (see §5).
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
 (`/rustit` can be either). Timestamps are Unix seconds (`INTEGER`).
@@ -212,6 +315,25 @@ name, registration (open/closed), who may create organisations and the default r
 visibility at runtime from `/admin/settings`. Overrides are stored in `instance_settings`
 and served from memory by `InstanceService` (a synchronous snapshot per request).
 
+### 3.6 Backups
+
+`rustit backup --output DIR` (in `rustit-server`) writes a directory that mirrors the data
+directory, so restoring is a copy:
+
+```
+DIR/
+├── rustit.db                      # SQLite, written with VACUUM INTO (one read transaction)
+├── repositories/<owner>/<id>.git  # git clone --mirror --no-local of every repository in that snapshot
+├── attachments/<repo>/<asset>     # every release file listed in that snapshot (not attachments/tmp)
+└── manifest.json                  # written last; its presence marks a complete backup
+```
+
+The manifest records `format` (currently **2**; 1 had no `attachments/`), the Rustit
+version, the time, and counts (accounts, repositories, attachments) plus the ids of
+repositories and attachments that disappeared between the snapshot and the copy. Release
+files are written once and never changed, so a plain copy is consistent. redb is not
+backed up: it holds only sessions and rebuildable caches.
+
 ---
 
 ## 4. Request lifecycle
@@ -223,13 +345,27 @@ TCP → hyper → tower layers:
   ├── /assets/*, /sw.js, /manifest.webmanifest   immutable, content-hashed, embedded
   ├── /healthz, /readyz, /metrics                operations (metrics optional, token-gated)
   ├── /{owner}/{repo}.git/…                       smart HTTP (Basic auth or token; throttled; streaming)
+  ├── /api/v1/…                                   REST API (own layers, below; no cookies, no CSRF)
+  ├── /{owner}/{repo}/archive/{rev}.zip|.tar.gz   archives (session + security headers; streamed, no timeout)
+  ├── /{owner}/{repo}/releases/{id}/assets        uploads (session + CSRF + headers; upload_timeout_seconds,
+  │   /{owner}/{repo}/releases/download/…           body limit max_asset_bytes + 1 MiB) and downloads
   └── HTML routes
-        Compression → Timeout → body limit (1 MiB) → SecurityHeaders → CsrfOriginCheck
+        Compression → Timeout (30 s) → body limit (1 MiB) → SecurityHeaders → CsrfOriginCheck
         → rate_limit (unsafe requests, per client address) → session → error pages
         → extractors → handler → service → view model → Askama
 
 SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/receive-pack
 ```
+
+**Old names redirect.** When a page answers 404 and its first two path segments name a
+repository's *old* location (`repo_redirects`) that the viewer may read, the error-page
+layer answers `301` (`308` for anything but `GET`/`HEAD`, so forms keep their method) to the
+same path under the current name; redirects are not cacheable, because a new repository
+may take the old name at any time and then wins. Git over HTTP and SSH serve the
+repository directly under an old name (`RepositoryService::open_following_renames`).
+
+**Pull mirrors refuse pushes** in both transports (`403` over HTTP, an error message over
+SSH), checked after access so only people who could otherwise push learn it is a mirror.
 
 **HTMX conventions**
 - `<body hx-boost="true">` turns every link and form into an AJAX swap with history support,
@@ -239,6 +375,101 @@ SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/re
 - `htmx.config.allowEval = false` and no inline scripts, so CSP can forbid `unsafe-inline`
   and `unsafe-eval` for scripts.
 
+### 4.1 Page routes added in milestone 2 wave A
+
+| Area | Routes |
+|---|---|
+| Collaborators | `/{owner}/{repo}/settings/collaborators` (list, add), `…/{user}/permission`, `…/{user}/remove`; a collaborator can leave from the repository sidebar |
+| Teams | `/{org}/teams`, `/{org}/teams/new`, `/{org}/teams/{team}` (members, repositories), `/{org}/teams/{team}/settings`, `…/settings/delete`; base permission at `/{org}/settings/permission` |
+| Transfer | `/{owner}/{repo}/settings/transfer` (danger zone; confirm by typing `owner/name`) |
+| Webhooks | `/{owner}/{repo}/settings/hooks` and `/{org}/settings/hooks`: list, `new`, `{id}` (edit), `{id}/ping`, `{id}/delete`, `{id}/deliveries/{delivery}` and `…/redeliver` |
+| Releases | `/{owner}/{repo}/releases`, `…/releases/tag/{tag}`, `…/releases/new`, `…/releases/{id}/edit`, `…/{id}/delete`, `…/{id}/assets` (upload), `…/{id}/assets/{asset}/delete`, `…/releases/download/{tag}/{name}` |
+| Code | `/{owner}/{repo}/blame/{rev}/{path}`, `/{owner}/{repo}/compare` and `/compare/{base}...{head}`, `/{owner}/{repo}/archive/{rev}.zip` / `.tar.gz` |
+| Forks | `/{owner}/{repo}/fork` (form, create), `/{owner}/{repo}/forks` |
+| Mirrors | `/new/mirror`, `/{owner}/{repo}/settings/mirror` (interval), `…/sync`, `…/remove` |
+| Appearance | `/themes` (gallery, choose), `/settings/appearance` |
+
+Repository settings sub-pages answer 404 to everyone but repository administrators.
+New second-level paths under `/{owner}/` are reserved repository names.
+
+### 4.2 REST API (`/api/v1`)
+
+`rustit-web/src/routes/api/` is merged outside the page router with its own layers:
+1 MiB bodies, a 30 s timeout, gzip, `X-Content-Type-Options: nosniff`, `Cache-Control:
+no-store`. Every handler goes through the same services as the pages.
+
+- **Authentication** — `Authorization: Bearer rit_…` (or GitHub's `token rit_…`). Cookies
+  are never read, so the API needs no CSRF protection and a browser session cannot be
+  ridden. Anonymous callers read public data. Unknown or expired tokens and tokens of
+  suspended accounts are refused with 401 and `WWW-Authenticate: Bearer`. Presented tokens
+  are throttled per client address (`ApiAuth`, failures cost extra); requests per account,
+  or per address when anonymous (`ApiRequest`); 429 with `Retry-After`.
+- **Scopes** — `read` allows `GET` only; `write` also mutations that need write access (and
+  Git push); `admin` also repository settings, webhooks and deletion. A token never exceeds
+  its owner's access (`TokenScope::limit`).
+- **Errors** — `{"message": …}`, plus `"errors": [{"field", "message"}]` for 422. 401, 403
+  (only for things the caller may see), **404 for anything the caller may not know exists**,
+  409, 413, 422, 429. Unknown `/api/…` paths answer a JSON 404 from an explicit catch-all;
+  with `[api] enabled = false` everything under `/api` answers 404.
+- **Representation and pagination** — `snake_case`, numeric `id`s, RFC 3339 UTC
+  timestamps, absolute `html_url`/`clone_url` from `server.public_url`, explicit `null`s.
+  Lists take `?page=` (1-based) and `?per_page=` (`[api] default_page_size` /
+  `max_page_size`) and answer with `Link` (`first`, `prev`, `next`, `last`) and
+  `X-Total-Count`.
+- **Endpoints (wave A)** — `GET /version`, `GET /openapi.json`; `GET /user`,
+  `GET|POST /user/repos`, `GET /user/starred`, `PUT|DELETE /user/starred/{owner}/{repo}`;
+  `GET /users/{name}`, `GET /users/{name}/repos`; `GET /orgs/{org}`, `GET /orgs/{org}/members`,
+  `GET|POST /orgs/{org}/repos`; `GET|PATCH|DELETE /repos/{owner}/{repo}`,
+  `…/branches`, `…/branches/{branch}` (may contain `/`), `…/tags`, `…/commits?sha=&page=`,
+  `…/commits/{ref}`; webhooks under `/repos/{owner}/{repo}/hooks` and `/orgs/{org}/hooks`:
+  `GET|POST`, `GET|PATCH|DELETE /{id}`, `POST /{id}/pings`, `GET /{id}/deliveries`,
+  `GET /{id}/deliveries/{delivery}`, `POST /{id}/deliveries/{delivery}/attempts` (redeliver).
+- **OpenAPI** — `openapi.json` is a hand-written OpenAPI 3.1 document embedded in the
+  binary. The router is built from one route table (`api::table()`), and a test asserts that
+  the documented paths and methods equal the registered ones.
+
+### 4.3 Webhooks
+
+Repository hooks fire for that repository; organisation hooks for every repository of the
+organisation (and are the only ones to see deletions). Repository administrators and
+organisation owners manage them in the UI and the API; at most 20 per repository or
+organisation; changes are audited.
+
+- **Fields** — `url` (`http`/`https`, ≤ 2048 bytes, no credentials in it; internal address
+  literals and `localhost` names are rejected when saved), optional `secret` (write-only), `events` (`push`,
+  `repository`, `release`, `fork`; a `ping` is sent on creation), `active`. Bodies are
+  always `application/json`.
+- **Payloads** follow GitHub's shapes so existing receivers work: `push` (one delivery per
+  changed ref: `ref`, `before`/`after` with 40 zeros for creation and deletion, `created`,
+  `deleted`, up to 20 `commits` plus `total_commits`, `head_commit`, `pusher`, `compare`),
+  `repository` (`created`, `deleted`, `transferred`), `release` (`published`), `fork`,
+  `ping` (`zen`, `hook_id`, `hook`); all with `sender`, and with `repository` (and
+  `organization` for organisation-owned repositories) where one applies.
+- **Headers** — `User-Agent: Rustit-Hookshot/<version>`, `X-Rustit-Event`,
+  `X-Rustit-Delivery` (random id), `X-Rustit-Hook-Id` and GitHub's `X-GitHub-Event`,
+  `X-GitHub-Delivery`, `X-GitHub-Hook-ID`. With a secret: `X-Rustit-Signature-256` and
+  `X-Hub-Signature-256`, both `sha256=<lower-case hex HMAC-SHA256 of the body>`.
+- **Delivery queue** — persisted in `webhook_deliveries`, so a restart loses nothing. The
+  `DomainEvent` subscriber only inserts `pending` rows; a worker claims due rows
+  (`delivering`; rows claimed when the process stopped return to the queue at start-up),
+  runs at most `[webhooks] concurrency` requests at once, applies `timeout_seconds` to the
+  whole exchange, never follows redirects, and treats 2xx as success. Anything else is
+  retried with exponential backoff and jitter (≈ 10 s, 1 min, 10 min, 1 h, 6 h) until
+  `max_attempts`, then `failed`; a refused target fails at once. Every attempt records the
+  request headers, response status, headers (≤ 64) and the first 64 KiB of the body,
+  duration and error. A daily task drops finished deliveries older than
+  `delivery_retention_days`. With `[webhooks] enabled = false` hooks can be configured but
+  nothing is queued or sent. Each attempt increments
+  `rustit_webhook_attempts_total{outcome}` (`succeeded`, `retrying`, `failed`).
+- **SSRF** — unless `allow_private_addresses`, every address a target resolves to must pass
+  `rustit_core::network::is_internal_address`: loopback, private (RFC 1918), shared/CGNAT
+  (`100.64.0.0/10`), link-local, unique-local (`fc00::/7`), multicast, unspecified,
+  broadcast, reserved, documentation and benchmarking ranges are refused, and IPv6 forms
+  embedding an IPv4 address (mapped, compatible, NAT64, 6to4) are judged by that address.
+  The check runs inside the HTTP client's DNS resolver at connection time, so DNS rebinding
+  cannot slip past it; address literals are checked before sending; proxy environment
+  variables are ignored. Pull mirrors use the same classifier right before each fetch.
+
 ---
 
 ## 5. Security model
@@ -247,12 +478,16 @@ SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/re
 |---|---|
 | Passwords | Argon2id (m = 19 MiB, t = 2, p = 1 — OWASP 2024), hashed on the blocking pool. |
 | Sessions | 32 random bytes from the OS CSPRNG, base64url in an `HttpOnly; SameSite=Lax` cookie (`Secure` behind HTTPS). Only SHA-256 digest stored. Sliding expiry. |
-| Access tokens | `rit_` + 256 random bits; only the SHA-256 digest is stored, plus a 4-character hint. Used as the Git HTTP password; scope (`read`/`write`) caps the owner's access, so a read token can clone but never push. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
+| Access tokens | `rit_` + 256 random bits; only the SHA-256 digest is stored, plus a 4-character hint. Used as the Git HTTP password and as the API bearer token; scope (`read`/`write`/`admin`) caps the owner's access, so a read token can clone but never push, and only an admin token changes settings, webhooks or deletes. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
+| Repository access | One pure policy (`repo_access`) decides every check — pages, API, Git over HTTP and SSH — from the viewer's grants (organisation role and base permission, teams, collaborator entry); SQL listings use one readable-by predicate tested against it. Leaving an organisation revokes its team memberships and collaborator entries in the same transaction (trigger). |
+| Webhook secrets | **The one exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored as given. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
+| Outbound requests (SSRF) | Webhook deliveries and mirror fetches refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; webhooks check inside the DNS resolver at connection time (no DNS rebinding), follow no redirects and ignore proxy variables; mirrors check right before each fetch, refuse redirects, and run `git` without prompts or credential helpers. See §4.3. |
+| Release files | Stored by numeric id only; downloads are `application/octet-stream` + `attachment` + `nosniff`, so an uploaded HTML file can never render on the site's origin. The size limit is enforced while the upload streams; names are validated (no `/`, `\`, control characters or leading dots). |
 | CSRF | Unsafe methods require `Sec-Fetch-Site: same-origin` or a matching `Origin` header. Combined with `SameSite=Lax` cookies. |
 | XSS | Askama auto-escapes. Markdown is rendered with `pulldown-cmark` then sanitised with `ammonia`. Strict CSP: `default-src 'self'`. |
 | Path traversal | `RepoName`/`Username` reject anything outside `[A-Za-z0-9._-]`, leading dots and reserved names. On-disk paths use numeric IDs only. |
 | Git config injection | Repos opened with isolated gix options; transport processes run with a scrubbed environment and `GIT_CONFIG_NOSYSTEM=1`. |
-| Enumeration | Private repositories return **404**, never 403, to unauthorised viewers. |
+| Enumeration | Private repositories return **404**, never 403, to unauthorised viewers — in pages and in the API. Old-name redirects are only issued to viewers who may read the repository. |
 | Headers | `X-Content-Type-Options`, `Referrer-Policy`, `frame-ancestors 'none'`, `Permissions-Policy`. |
 | Two-factor | TOTP (RFC 6238, ±1 step, each code accepted once), confirmed at enrolment; 10 single-use recovery codes stored hashed; disabling requires password + code. Enrolled accounts must use access tokens for Git over HTTP. |
 | Brute force | `ThrottleService` budgets per scope (sign-in, sign-up, 2FA, Git auth, SSH auth, email requests) keyed by account and by client address (larger shared budget); failures cost extra, success resets; 429 with `Retry-After`. Form posts are limited per address. |
@@ -260,7 +495,7 @@ SSH (separate listener, rustit-ssh): public-key auth → exec git-upload-pack/re
 | Sessions | Listed per account; revoke one or all others; all other sessions end when the password changes. |
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
-| Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`). |
+| Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`), as are repository access changes (category "Repository access": collaborators added/changed/removed, teams created/changed/deleted, transfers, webhooks created/changed/deleted, an organisation's member permission changed). |
 
 ---
 
@@ -341,8 +576,9 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
   drawn by CSS, per-file diffs laid out only near the viewport.
 - JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
   so every module can be `immutable` and still update on deploy.
-- Planned: redb caches for last-commit-per-path and language statistics, invalidated by
-  push events.
+- redb caches for last-commit-per-path and language statistics, keyed by commit id (never
+  stale) and warmed after pushes.
+- Archives and release downloads stream; uploads are hashed while they stream to disk.
 
 ---
 
@@ -350,9 +586,11 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
 
 - **Trait seams** at every external boundary: `GitTransport`, store traits in services,
   `PasswordHasher`. Swapping an implementation never changes callers.
-- **Event bus (planned)** — `services` emits domain events (`RepositoryPushed`,
-  `UserSignedUp`) on a `tokio::broadcast` channel; webhooks, CI triggers, search indexing
-  and cache invalidation subscribe independently.
+- **Event bus** — `services` emits `DomainEvent`s (§2) on a `tokio::broadcast` channel;
+  cache warming, session revocation, verification email, release-file clean-up and
+  webhooks subscribe independently, and CI triggers or search indexing can join the same way.
+- **REST API** — new resources add rows to `api::table()` and paths to `openapi.json`; the
+  route/document test keeps them in step.
 - **Feature crates** — new areas (issues, pull requests, CI, packages) arrive as new
   crates (`rustit-issues`, …) contributing services and a `Router` that `rustit-web` merges.
 
@@ -365,7 +603,8 @@ gallery: by family and variant, searchable, live preview on hover, plain-form fa
 | **1 — Foundation** ✓ | Accounts, sessions, repository create/browse, code/tree/blob/commits views, smart-HTTP clone & push, README rendering, syntax highlighting, PWA shell, light/dark theme. |
 | **2 — Collaboration** ✓ | Commit diffs, branches/tags pages, personal access tokens, organisations with roles, stars, language breakdown, last commit per entry, user/repository settings, administration panel, runtime instance settings, suspension. |
 | **M1 — Safe to self-host** ✓ | Rate limiting, trusted proxies, session management, TOTP two-factor, audit log, email (SMTP) with password reset and verification, SSH server with user and deploy keys, background jobs and maintenance, metrics and health checks, backups, Docker/systemd/CI, end-to-end and property tests. |
-| M2 — A real forge | Collaborators and teams, issues, pull requests with review and merge strategies, branch protection, webhooks and a REST API, releases, archives, blame, forks and mirrors. |
+| **M2 wave A — A real forge** ✓ | Collaborators, teams and organisation base permission, repository transfer with old-name redirects, REST API `/api/v1` with token scopes and OpenAPI, signed webhooks with a persistent delivery queue, README relative links, archives, blame, compare, releases with attached files, forks, pull mirrors, the theme gallery. |
+| M2 wave B | Issues, pull requests with review and merge strategies, branch protection, API endpoints for wave A's resources ([design/milestone-2b.md](design/milestone-2b.md)). |
 | 3 — Workflow | Issues, labels, milestones, pull requests with merge strategies, code review. |
 | 4 — Platform | Webhooks, REST API (+ OpenAPI), actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |
