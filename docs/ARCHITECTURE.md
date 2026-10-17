@@ -31,7 +31,9 @@ rbit/
 ├── rustfmt.toml               # formatting standard (checked in CI)
 ├── package.json               # Tailwind v4 CLI, htmx, icon rendering (build-time only)
 ├── Dockerfile, deploy/        # container image, systemd unit, example production config
-├── .github/workflows/ci.yml   # fmt, clippy -D warnings, tests (Linux + Windows), builds
+├── deny.toml                  # cargo deny: allowed licenses, advisories
+├── .github/workflows/ci.yml   # fmt, clippy -D warnings, tests (Linux + Windows), builds, cargo deny
+├── .github/workflows/release.yml  # v* tags: binaries, SHA256SUMS, GitHub release, ghcr.io image
 ├── docs/                      # ARCHITECTURE.md, deployment.md, design/ (per-phase contracts)
 └── crates/
     ├── rbit-core/           # Domain model and configuration. No I/O, no async.
@@ -78,14 +80,21 @@ reference and mention scanner (`references`: `#12`, `owner/repo#12`, `@name`, cl
 keywords, outside code only), the issue search language (`issue_query`), pull request rules
 (`pull`: approval tally, merge requirements via `evaluate`), and the pure branch protection
 decisions (`protection`: patterns, `check_push`, merge rules) together with `ref_update`'s
-`RefUpdate`. Pure Rust, trivially unit-testable.
+`RefUpdate`. Milestone 3 added `status` (commit status states, contexts, reports and the
+pure combined-state and required-checks decisions), `file_edit` (`FilePath` — no `..`, `.`
+or empty parts, no `.git` in any spelling, no control characters or backslashes, ≤ 255 bytes
+per part and 1024 in all — line endings, default commit titles), `lfs` (object ids, pointer
+files, locks) and the `[editor]`, `[lfs]`, `[notifications]` and `[auth]` configuration
+sections. Pure Rust, trivially unit-testable.
 
 **`rbit-storage`**
 - `sqlite/` — `sqlx` pool (WAL, foreign keys, busy timeout), embedded migrations, and one
   *store* per aggregate (`UserStore`, `RepositoryStore`). Stores map rows ↔ domain types.
   Wave B: `IssueStore` (`Database::issues()`, the only writer of the thread core),
   `issue_meta()`, `issue_search()` (FTS5 and filters), `notifications()`, `pulls()`,
-  `reviews()` and `branch_protection()`.
+  `reviews()` and `branch_protection()`. Milestone 3: `commit_statuses()`,
+  `notification_email()`, `server_secrets()` (named, server-generated keys, created on
+  first use with `get_or_insert`), `lfs()` and `external_identities()`.
 - `kv/` — a `redb` database with typed table definitions. Used for sessions and derived,
   rebuildable data (caches). Everything in redb can be lost without losing user data.
 
@@ -94,7 +103,8 @@ decisions (`protection`: patterns, `check_push`, merge rules) together with `ref
 own implementation verified against the RFC test vectors) with recovery codes, a minimal
 WebAuthn relying party for passkeys (`webauthn`: no attestation, ES256/EdDSA/RS256, a small
 CBOR/COSE reader; origin, RP ID, challenge, user presence, signature and counter checked on
-every ceremony), and the pure `repo_access(viewer, repo, &Grants)` policy (who may read, write or administer a
+every ceremony), OpenID Connect support for external sign-in (`oidc`: the sealed `Flow`
+cookie, PKCE, JWK sets and `verify_id_token`), and the pure `repo_access(viewer, repo, &Grants)` policy (who may read, write or administer a
 repository). Callers look up `Grants` — the viewer's organisation role, the organisation's
 base permission, the best team grant and the collaborator permission — in one query, and
 the policy takes the **maximum** of the public baseline, site admin, owner, organisation
@@ -112,7 +122,8 @@ config, no hooks executed on read; every `git` process gets a scrubbed environme
 added `overlay` (throw-away bare repositories under `<data_dir>/tmp/overlays` whose
 `objects/info/alternates` list two repositories, for cross-fork compares), `merge` (merges,
 squashes, rebases and trial merges without a working tree, §3.7) and `pull_refs`
-(`refs/pull/{n}/head`).
+(`refs/pull/{n}/head`). Milestone 3 added `edit` (`EditWorkspace`: commits made in the
+browser, §3.8), which shares the merge's hand-over (fetch + `update-ref` compare-and-swap).
 
 **`rbit-transport`** — The Git smart protocol. `ProcessTransport` runs
 `git upload-pack/receive-pack` with a scrubbed environment in two modes: *stateless*
@@ -124,13 +135,16 @@ push gate, §4.4); receive-pack entry points take `ReceiveOptions { deny_non_fas
 
 **`rbit-ssh`** — The built-in SSH server (russh): public-key authentication against user
 SSH keys and repository deploy keys, strictly parsed `git-upload-pack` / `git-receive-pack`
-exec requests, the same authorisation as HTTP, connection limits, throttled failures, and
+exec requests and Git LFS's `git-lfs-authenticate` (§4.7), the same authorisation as HTTP, connection limits, throttled failures, and
 no shells, PTYs or forwarding. The Ed25519 host key is generated on first start.
 `git-receive-pack` runs in two stateless steps so the push gate can decide between them
 (§4.4); `git-upload-pack` stays interactive.
 
 **`rbit-mail`** — A `Mailer` trait with SMTP (lettre over rustls), log and disabled
 transports; every message is rendered from Askama templates with text and HTML parts.
+`Mail.headers` (`MailHeaders`: `Message-ID`, `In-Reply-To`/`References`, one-click
+`List-Unsubscribe`) is written by the SMTP and log transports; `ThreadNotification` is the
+notification email (§5.1).
 
 **`rbit-services`** — Use-cases with business rules, one service per area, all built from
 a shared `ServiceContext` (config, database, key/value store, repository storage):
@@ -156,8 +170,22 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
-`Services::spawn_background()` starts the webhook, release, mirror, issue, notification and
-pull request tasks; `Services::shutdown()` stops them (and the job queue) within about ten
+Milestone 3 added:
+
+| Service | Responsibility |
+|---|---|
+| `StatusService` (`statuses`) | Commit statuses: `create` (write access, a full id that exists in the repository — for fork pull requests the head is found in the base repository as `refs/pull/{n}/head`), lists, the combined status per commit and for many commits, and the `status` webhook payload (`statuses::hooks`). `PullService::handle_status` re-evaluates open pull requests whose head received a status. |
+| `NotificationEmailService` (`notification_email`) | Mails what the inbox fan-out writes (§5.1): preferences, the outbox/dedup claim, the per-address budget, threading headers and signed unsubscribe links. |
+| `EditService` (`edits`) | Editing files in the browser (§3.8): authorisation, read-only repositories, the push gate, the author identity, line endings, uploads, and the `PushService` wrapping. |
+| `LfsService` (`lfs`) | Git LFS: objects stored once under `<data_dir>/lfs` and linked per repository (fork networks share where readable), the batch decisions, signed transfer tokens (`lfs::tokens`), locks (`lfs::locks`), `store` for anything that brings objects into a repository, link copies for new forks and orphan clean-up. |
+| `ExternalAuthService` (`external_auth`) | Sign-in with OpenID Connect providers and GitHub (§5.2): the flow cookie, the code exchange and ID token checks (HTTP in `external_auth/client.rs`), linking, unlinking and the register step; `Services::complete_external_sign_in` applies the linking rules. |
+
+`CollaboratorService` gained `set` (idempotent add-or-change) and `access_of` (a user's
+effective access from every grant), `TeamService` `ensure_member`, `ReleaseService` and
+`ForkService` paged listings — what the REST API continuation needed.
+
+`Services::spawn_background()` starts the webhook, release, mirror, issue, notification,
+pull request and Git LFS tasks; `Services::shutdown()` stops them (and the job queue) within about ten
 seconds.
 
 Services communicate through an in-process `EventBus` of `DomainEvent`s, so producers never
@@ -168,7 +196,7 @@ newest webhook id reserved at publish time (`Published`), for the webhook subscr
 
 | Event | Fields | Published by |
 |---|---|---|
-| `RepositoryPushed` | `repo`, `pusher: Option<AccountId>` (`None` for deploy keys and mirror fetches), `updates: Vec<RefUpdate>` (`name`, `before`, `after`; ordered by name) | `PushService::complete` (HTTP, SSH, mirror fetches, tags created for releases, pull request merges and head-branch deletions) |
+| `RepositoryPushed` | `repo`, `pusher: Option<AccountId>` (`None` for deploy keys and mirror fetches), `updates: Vec<RefUpdate>` (`name`, `before`, `after`; ordered by name) | `PushService::complete` (HTTP, SSH, mirror fetches, tags created for releases, pull request merges and head-branch deletions, commits made in the browser) |
 | `Issue` | `repo`, `issue`, `number`, `kind` (`issue` \| `pull`), `actor: Option<AccountId>` (`None` for deploy-key pushes and mirrors), `action: IssueAction` | `TimelineService` (`Edited`, `Closed`, `Reopened`, `Locked`, `Unlocked`, for both kinds), `IssueService` (`Opened` for issues, `Deleted`, `Labeled`/`Unlabeled`, `Assigned`/`Unassigned`, `Milestoned`/`Demilestoned` — also on pull requests), `PullService` (`Opened` for pulls, `Synchronized`, `ReviewRequested`/`ReviewRequestRemoved`, `ConvertedToDraft`/`ReadyForReview`, `Closed { reason: Merged }`) |
 | `IssueComment` | `repo`, `issue`, `number`, `kind`, `comment`, `actor`, `action` (`Created`, `Edited { previous_body }`, `Deleted { snapshot }`) | `TimelineService` (comments on issues and pull requests) |
 | `PullRequestReview` | `repo`, `pull`, `number`, `review`, `actor`, `action` (`Submitted`, `Edited`, `Dismissed`) | `PullService` (reviews) |
@@ -178,6 +206,8 @@ newest webhook id reserved at publish time (`Published`), for the webhook subscr
 | `RepositoryForked` | `repo`, `parent`, `actor` | `ForkService` |
 | `ReleasePublished` | `repo`, `release`, `actor` | `ReleaseService` (created as non-draft, or a draft published) |
 | `UserSignedUp`, `PasswordChanged`, `EmailChanged` | `user` (`previous` address for email) | `AccountService`, `AdminService`, `ProfileService`, `RecoveryService` |
+| `CollaboratorChanged` (milestone 3) | `repo`, `user`, `actor`, `change` (`Added(permission)`, `Changed { from, to }`, `Removed`) | `CollaboratorService` (added, permission changed, removed; nothing when the permission stays the same) |
+| `CommitStatus` (milestone 3) | `repo`, `status`, `sha` (full id), `actor` | `StatusService::create` (webhooks; the pull request service re-evaluates open pull requests with that head) |
 
 Events carry ids, plus only what cannot be read back later (previous titles and bodies,
 snapshots of deleted rows); subscribers (webhooks, notifications, references, pull request
@@ -233,9 +263,11 @@ SSH server and background jobs, graceful shutdown.
 ├── attachments/
 │   ├── <repo_id>/<asset_id>       # files attached to releases, named by id only
 │   └── tmp/<random>.part          # uploads in progress
+├── lfs/<aa>/<bb>/<oid>            # Git LFS objects, named by SHA-256, stored once
 └── tmp/                           # scratch space, swept at start-up, never backed up
-    ├── merges/<random>            # scratch repositories of merges and trial merges
-    └── overlays/<random>          # object overlays for cross-fork compares
+    ├── merges/<random>            # scratch repositories of merges, trial merges and web edits
+    ├── overlays/<random>          # object overlays for cross-fork compares
+    └── lfs/<random>.part          # LFS uploads in progress
 ```
 
 Data directories created before the rename to rbit keep working: `rustit.db` and
@@ -256,6 +288,24 @@ bytes. `ReleaseService` removes `attachments/<repo_id>` when a repository is del
 sweeps `.part` files older than a day at start-up. Downloads are always
 `application/octet-stream` with `Content-Disposition: attachment`, `nosniff` and an
 `ETag` from the digest.
+
+Git LFS objects are content-addressed: `<data_dir>/lfs/<aa>/<bb>/<oid>` holds an object
+once however many repositories use it, and `lfs_repo_objects` says which may. An upload
+streams into `tmp/lfs/<random>.part` while its SHA-256 and size are computed, is refused
+unless both match the announced object (and the size fits `[lfs] max_object_bytes`), and is
+then renamed into place (or discarded when the bytes exist) and linked; bytes are placed
+before the row is written, under a process-wide mutex shared with the orphan sweep, so a
+sweep never deletes bytes an upload just relied on. **Which objects a repository may use:**
+those linked to it and, where the requester can read them, those of its fork network
+(`ForkStore::network_readable`), which are then linked to it too (lazily, on first use), so
+they survive the other repository's deletion; new forks copy their parent's links in the
+background (`RepositoryForked`). The same rule decides whether an upload can be skipped: an
+object stored only for an unrelated or unreadable repository must be uploaded again —
+proving possession — before it is linked, so an object id alone never grants content.
+Deleting a repository unlinks its objects (cascade; a trigger stamps
+`lfs_objects.unlinked_at`); maintenance removes objects unlinked for 24 hours, row first
+(re-checked in the `DELETE`, so a link added meanwhile wins), then bytes. Interrupted
+uploads older than a day are swept at start-up.
 
 ### 3.3 SQLite schema
 
@@ -360,6 +410,29 @@ branch_protection_teams (rule_id → branch_protections, team_id → teams) PK
 -- passkeys
 passkeys           id, account_id → accounts, credential_id BLOB UNIQUE, public_key (COSE), algorithm
                    (-7 | -8 | -257), sign_count, transports, name, created_at, last_used_at
+
+-- milestone 3: commit statuses (S)
+commit_statuses    id, repo_id → repositories, sha (40 or 64 lower-case hex), state(pending|success|
+                   failure|error), context (1–255), description (≤ 140), target_url (≤ 2048),
+                   creator_id SET NULL, created_at, updated_at; index (repo_id, sha, context, id):
+                   the highest id per (repo, sha, context) is current, ≤ 1000 rows per triple
+                   (+ branch_protections.require_status_checks, default 0)
+branch_protection_required_checks (rule_id → branch_protections, context) PK       (≤ 50 per rule)
+
+-- milestone 3: email notifications (N)
+notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at
+notification_emails id, account_id → accounts, issue_id → issues, dedup_key, created_at,
+                   UNIQUE(account_id, issue_id, dedup_key); index on created_at (pruned with the inbox)
+server_secrets     name PK, secret BLOB, created_at        (server-generated keys, stored raw — §5)
+
+-- milestone 3: Git LFS (L)
+lfs_objects        oid PK (64 hex), size, created_at, unlinked_at (stamped when a link is deleted)
+lfs_repo_objects   (repo_id → repositories, oid → lfs_objects) PK, created_at; WITHOUT ROWID, index on oid
+lfs_locks          id, repo_id → repositories, path, owner_id → accounts, created_at, UNIQUE(repo_id, path)
+
+-- milestone 3: external sign-in (O)
+external_identities id, account_id → accounts, provider_id, subject, email, username, created_at,
+                   last_used_at, UNIQUE(provider_id, subject), UNIQUE(account_id, provider_id)
 ```
 
 Unless marked `SET NULL`, references cascade on delete.
@@ -377,31 +450,37 @@ redirect from it, so an existing repository always wins over an old name.
 full-text index in step with `issues`, including rows removed by cascades.
 `branch_protection_teams_follow_owner` (after `repositories.owner_id` changes) drops allowed
 teams that do not belong to the new owner, so a transferred repository keeps its rules but
-the former organisation's teams no longer let anyone push.
+the former organisation's teams no longer let anyone push. `lfs_repo_objects_unlinked`
+(after a row of `lfs_repo_objects` is deleted, cascades included) stamps the object's
+`unlinked_at`, which starts its 24-hour grace period.
 
 **Migrations** live in `crates/rbit-storage/migrations/` and are embedded in the binary:
 
-| | Milestone 1 | | Milestone 2 wave A | | Milestone 2 wave B |
-|---|---|---|---|---|---|
-| `0001` | `initial` (accounts, logins, members, repositories) | `0009` | `access` (collaborators, teams, base permission, revoke trigger) | `0017` | `issues_core` (counters, issues, comments, events) |
-| `0002` | `access_tokens` | `0010` | `preferences` (`user_preferences`) | `0018` | `issue_metadata` (labels, milestones, assignees, reference dedupe) |
-| `0003` | `organizations` (`org_profiles`) | `0011` | `webhooks` (hooks, delivery queue) | `0019` | `notifications` (subscriptions, inbox) |
-| `0004` | `administration` (instance settings, suspension) | `0012` | `token_scopes` (rebuilds `access_tokens` for `admin`, keeping every id) | `0020` | `issue_search` (FTS5 index and triggers, rebuilt from existing rows) |
-| `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` |
-| `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) |
-| `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) |
+| | Milestone 1 | | Milestone 2 wave A | | Milestone 2 wave B | | Milestone 3 |
+|---|---|---|---|---|---|---|---|
+| `0001` | `initial` (accounts, logins, members, repositories) | `0009` | `access` (collaborators, teams, base permission, revoke trigger) | `0017` | `issues_core` (counters, issues, comments, events) | `0033` | `commit_statuses` (statuses, required checks) |
+| `0002` | `access_tokens` | `0010` | `preferences` (`user_preferences`) | `0018` | `issue_metadata` (labels, milestones, assignees, reference dedupe) | `0034` | `notification_email` (settings, outbox, `server_secrets`) |
+| `0003` | `organizations` (`org_profiles`) | `0011` | `webhooks` (hooks, delivery queue) | `0019` | `notifications` (subscriptions, inbox) | `0036` | `lfs` (objects, links, locks, unlink trigger) |
+| `0004` | `administration` (instance settings, suspension) | `0012` | `token_scopes` (rebuilds `access_tokens` for `admin`, keeping every id) | `0020` | `issue_search` (FTS5 index and triggers, rebuilt from existing rows) | `0037` | `external_identities` |
+| `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
+| `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
+| `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | | |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
-that every row survives, the new defaults and triggers apply to old rows, and wave B's
-tables exist and start empty. `0023` and `0025` (spares) and `0026`–`0031` (reserved for
-the API continuation) are unused; `0032` was taken by passkeys before wave B landed (sqlx
-applies missing lower versions in order, so the gaps are harmless).
+that every row survives, the new defaults and triggers apply to old rows, and the tables of
+wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
+continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
+reserved for milestone 3's W and `0038`, `0039` for M, both still in progress. `0032` was
+taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
+the gaps are harmless).
 
 Secrets (passwords, sessions, tokens, recovery codes, email links) are only ever stored
-hashed — with one documented exception: **webhook secrets** are stored as given, because
-signing a delivery with HMAC needs the raw value (see §5).
+hashed — with two documented exceptions, both because HMAC needs the raw key: **webhook
+secrets** are stored as given, and **`server_secrets`** holds keys rbit generates itself
+(256 bits from the OS, created on first use): `notification_unsubscribe` signs
+unsubscribe links and `external-sign-in` seals the sign-in flow cookie (see §5).
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
 (`/rbit` can be either). Timestamps are Unix seconds (`INTEGER`).
@@ -433,13 +512,16 @@ DIR/
 ├── rbit.db                      # SQLite, written with VACUUM INTO (one read transaction)
 ├── repositories/<owner>/<id>.git  # git clone --mirror --no-local of every repository in that snapshot
 ├── attachments/<repo>/<asset>     # every release file listed in that snapshot (not attachments/tmp)
+├── lfs/<aa>/<bb>/<oid>            # every Git LFS object listed in that snapshot
 └── manifest.json                  # written last; its presence marks a complete backup
 ```
 
-The manifest records `format` (currently **2**; 1 had no `attachments/`), the rbit
-version, the time, and counts (accounts, repositories, attachments) plus the ids of
-repositories and attachments that disappeared between the snapshot and the copy. Release
-files are written once and never changed, so a plain copy is consistent. redb is not
+The manifest records `format` (currently **3**; 2 had no `lfs/`, 1 no `attachments/`), the
+rbit version, the time, and counts (accounts, repositories, attachments, `lfs_objects`) plus
+the ids of repositories, attachments and LFS objects that disappeared between the snapshot
+and the copy (`missing_lfs_objects` for the last). Release files and LFS objects are written
+once and never changed, so a plain copy is consistent; uploads in progress live in
+`attachments/tmp` and `<data_dir>/tmp` and are skipped. redb is not
 backed up: it holds only sessions and rebuildable caches, and neither is `<data_dir>/tmp`
 (merge and overlay scratch space). Issues, pull requests, reviews and protection rules are
 rows in `rbit.db`; pull request heads (`refs/pull/{n}/head`) are refs of the base
@@ -517,8 +599,8 @@ every minute, so nothing is lost across restarts.
 
 The ref update does not go through `receive-pack`, so no hooks run and the push gate is not
 involved: protection is applied before merging by `ProtectionService::check_merge`
-(approvals from writers' latest reviews, changes requested, allowed pushers, admin bypass —
-audited as `BranchProtectionBypassed`). The update is wrapped in `PushService::begin` /
+(approvals from writers' latest reviews, changes requested, allowed pushers, required status
+checks (milestone 3), admin bypass — audited as `BranchProtectionBypassed`). The update is wrapped in `PushService::begin` /
 `complete` with the merger as pusher, so `RepositoryPushed` (webhooks, commit references)
 fires as for any push. Merges are serialised per base repository and bounded instance-wide
 (`max_concurrent_merges`), limited by `merge_timeout_seconds` (children are killed on drop),
@@ -533,6 +615,68 @@ head branch afterwards needs `ProtectionService::may_delete_branch` and write ac
 head repository; it is an `update-ref -d` with the expected id, reported through
 `PushService` too.
 
+**Checks (milestone 3).** The merge box reads the head's latest statuses in the base
+repository (where fork heads live as `refs/pull/{n}/head`). Rules with
+`require_status_checks` contribute their contexts (`MergeRules.required_contexts`: the
+union of the matching rules, sorted, deduplicated) and `Requirement::RequiredChecks` is met
+only when each required context's latest status on the head is `success` — a protection
+requirement, so an administrator whose rules allow bypass may skip it. Statuses nobody
+requires produce an informational line ("All checks have passed", "Some checks were not
+successful") that never blocks, as on GitHub; status checks never affect the push gate.
+When a status arrives, `PullService::handle_status` marks stale or unknown mergeability of
+open pull requests with that head as unknown and wakes the worker; the checks themselves are
+always read live.
+
+### 3.8 Editing files in the browser
+
+Writers edit, create, rename, delete and upload files at
+`/{owner}/{repo}/{new,edit,delete,upload}/{branch}/{path…}` (pages answer 404 to everyone
+else, to pull mirrors and for anything that is not a branch). Like merges, a web edit never
+checks anything out:
+
+1. **Checks before any object is written** (`EditService::check`): write access, not a pull
+   mirror (`EditService::read_only_reason` is the one place archived repositories will join),
+   the branch exists, for a direct commit the form's commit is still the tip, for a new
+   branch a valid unused name (`{user}-patch-{n}` by default), then the push gate —
+   `ProtectionService::check_push` with a `PushActor` for the user and one `RefUpdate`,
+   exactly as a push would be decided, bypasses audited. A refusal of the branch itself
+   makes the form preselect a new branch (and the form shows that up front through
+   `branch_update_refusal`, which does not audit); after committing to a new branch the user
+   lands on the new pull request page.
+2. **Workspace** (`rbit_git::edit::EditWorkspace`): a scratch bare repository under
+   `<data_dir>/tmp/merges/<random>` whose only object source is the repository (the merge's
+   overlay), holding a repository lease so a transfer cannot move the repository meanwhile.
+   Contents become blobs with `git hash-object -w --no-filters --stdin`, streamed and
+   bounded (uploads never sit in memory; no attributes or line-ending filters apply).
+3. **Tree checks** against the parent's tree: new files and move targets must be free (a
+   file the same edit removes frees its name), edited, moved and deleted paths must be files
+   (not submodules or directories), no path runs through an existing file or another written
+   path, none is written twice. Edits and moves keep the mode (executable, symlink).
+4. **Tree and commit**: `read-tree <parent>`, one `update-index -z --add --remove
+   --index-info` on a scratch index (paths only ever on stdin), `write-tree` (a tree equal
+   to the parent's is refused: "there are no changes to commit"), then `commit-tree` with
+   the parent as the only parent. Author = committer = the user with their **noreply
+   address** (`<username>@<[pulls] noreply_domain>`), exactly as for merges.
+5. **Hand-over** (shared with merges): the repository fetches the commit from the workspace,
+   then `update-ref refs/heads/<branch> <new> <commit the form was opened at>`. A branch that
+   moved is a 409 page (nothing committed, the text kept, the form rebased on the new tip),
+   never a rebase; a new branch expects the zero id, so an existing branch is never
+   overwritten.
+6. **Downstream**: the git work is wrapped in `PushService::begin`/`complete`, so
+   `RepositoryPushed` drives webhooks, commit references (`fixes #n`), cache warm-up and
+   mergeability exactly as for a push.
+
+Browsers submit textareas with CRLF: submitted text is normalised to LF and written in the
+file's existing style (CRLF when at least as many lines end in CRLF as in LF), LF for new
+files; nothing else changes. Uploads are stored byte for byte. The editor is offered only
+for text the browser would display — not for binaries, files over `[repository]
+max_render_bytes` or **Git LFS pointer files**, which can still be deleted or replaced by an
+upload. Limits: editor forms accept `6 × max_render_bytes + 256 KiB`; uploads stream
+outside the page router (like release files) under `[editor] max_upload_bytes` per file,
+`max_upload_files` per commit and `upload_timeout_seconds`; committing is bounded by
+`[pulls] merge_timeout_seconds`. Commit titles default to `Create <path>`, `Update <path>`,
+`Rename <a> to <b>`, `Delete <path>` and `Add files via upload`.
+
 ---
 
 ## 4. Request lifecycle
@@ -544,10 +688,12 @@ TCP → hyper → tower layers:
   ├── /assets/*, /sw.js, /manifest.webmanifest   immutable, content-hashed, embedded
   ├── /healthz, /readyz, /metrics                operations (metrics optional, token-gated)
   ├── /{owner}/{repo}.git/…                       smart HTTP (Basic auth or token; throttled; streaming)
+  ├── /{owner}/{repo}[.git]/info/lfs/…           Git LFS API (Basic auth, token or signed lfs1 header; streaming, §4.7)
   ├── /api/v1/…                                   REST API (own layers, below; no cookies, no CSRF)
   ├── /{owner}/{repo}/archive/{rev}.zip|.tar.gz   archives (session + security headers; streamed, no timeout)
   ├── /{owner}/{repo}/releases/{id}/assets        uploads (session + CSRF + headers; upload_timeout_seconds,
   │   /{owner}/{repo}/releases/download/…           body limit max_asset_bytes + 1 MiB) and downloads
+  ├── /{owner}/{repo}/upload/{branch}/{dir…}       browser uploads (session + CSRF + headers; [editor] limits, §3.8)
   └── HTML routes
         Compression → Timeout (30 s) → body limit (1 MiB) → SecurityHeaders → CsrfOriginCheck
         → rate_limit (unsafe requests, per client address) → session → error pages
@@ -555,6 +701,7 @@ TCP → hyper → tower layers:
 
 SSH (separate listener, rbit-ssh): public-key auth → exec git-upload-pack (interactive)
   or git-receive-pack (advertisement → push gate → stateless receive-pack, §4.4)
+  or git-lfs-authenticate (prints a signed LFS header, §4.7)
 ```
 
 **Old names redirect.** When a page answers 404 and its first two path segments name a
@@ -599,7 +746,8 @@ New second-level paths under `/{owner}/` are reserved repository names.
 1 MiB bodies, a 30 s timeout, gzip, `X-Content-Type-Options: nosniff`, `Cache-Control:
 no-store`. Every handler goes through the same services as the pages.
 
-- **Authentication** — `Authorization: Bearer rit_…` (or GitHub's `token rit_…`). Cookies
+- **Authentication** — `Authorization: Bearer rbit_…` (or GitHub's `token rbit_…`; tokens
+  issued before 0.1 as `rit_…` are accepted too). Cookies
   are never read, so the API needs no CSRF protection and a browser session cannot be
   ridden. Anonymous callers read public data. Unknown or expired tokens and tokens of
   suspended accounts are refused with 401 and `WWW-Authenticate: Bearer`. Presented tokens
@@ -649,10 +797,45 @@ no-store`. Every handler goes through the same services as the pages.
     `GET|POST /pulls/{number}/comments`, `GET|POST|DELETE /pulls/{number}/requested_reviewers`.
   - *Branch protection* — `GET|POST /branch_protections`, `GET|PATCH|DELETE
     /branch_protections/{id}` (repository administrators with an `admin` token; 404 when the
-    repository is hidden, 403 otherwise).
+    repository is hidden, 403 otherwise). Since milestone 3 the rule carries
+    `require_status_checks` and `required_status_checks`.
+- **Endpoints (milestone 3)** — `read` for `GET`, `write` for statuses, release and fork
+  changes (deleting a release or a release file included, as for labels), `admin` for
+  collaborators (reads included: the data is administrators-only) and team management:
+  - *Commit statuses* — `POST /repos/{owner}/{repo}/statuses/{sha}` (write access; 201 with
+    `Location`; 422 naming `state`, `target_url`, `description`, `context` or `sha`),
+    `GET …/commits/{ref}/statuses` (newest first) and `GET …/commits/{ref}/status` (combined
+    state, latest per context). A reference may contain `/`, so both are served below the
+    `…/commits/{*reference}` wildcard by `statuses::commit_or_statuses`, which hands every
+    other reference to the commit endpoint; the table lists them as `route_in_wildcard`
+    entries (documented, not registered). A branch whose name ends in `/status` or
+    `/statuses` can be addressed there only by commit id.
+  - *Collaborators* — `GET /repos/{owner}/{repo}/collaborators` (direct collaborators),
+    `GET|PUT|DELETE …/collaborators/{username}` (`PUT` `{permission}` → 201 added / 204
+    changed; `pull`/`push`/`admin`, `triage`/`maintain` are 422; a collaborator may remove
+    themselves), `GET …/collaborators/{username}/permission` (the effective access from every
+    grant, `none` included).
+  - *Teams* — `GET|POST /orgs/{org}/teams`, `GET|PATCH|DELETE /orgs/{org}/teams/{team_slug}`
+    (slug = name), `GET …/members`, `GET|PUT|DELETE …/memberships/{username}` (idempotent
+    `PUT`), `GET …/repos`, `GET|PUT|DELETE …/repos/{owner}/{repo}` (`{permission}`; only the
+    organisation's own repositories — another owner's `owner/name` is refused). Visible to
+    organisation members and site administrators only.
+  - *Releases* — `GET|POST …/releases`, `GET …/releases/latest`, `GET …/releases/tags/{tag}`,
+    `GET|PATCH|DELETE …/releases/{release_id}`, `GET|POST …/releases/{release_id}/assets`
+    (`POST ?name=` with the file as the raw body, GitHub's `upload_url`),
+    `GET|DELETE …/releases/assets/{asset_id}` (`Accept: application/octet-stream` streams
+    the file). Drafts exist only for writers; a release whose tag does not exist creates it at
+    `target_commitish`, reported like a push.
+  - *Forks* — `GET|POST …/forks` (`{organization, name}` → 202 with the repository and its
+    `parent`).
+- **Streaming routes** — a table entry marked `.streaming()` (the release file upload and
+  download) is served without the 1 MiB body limit, the 30 s timeout and compression:
+  `api::routes()` merges those routes after the shared layers. Their handlers bound
+  themselves: `[releases] max_asset_bytes` (413, at once from `Content-Length`, otherwise
+  as the bytes arrive) and `upload_timeout_seconds` (408).
 - **OpenAPI** — `openapi.json` is a hand-written OpenAPI 3.1 document embedded in the
   binary, merged at start-up with one fragment per area (`api/openapi/{issues,
-  notifications,pulls,protection}.json`). The router is built from one route table
+  notifications,pulls,protection,collaborators,teams,releases,forks,statuses}.json`). The router is built from one route table
   (`api::table()`), and a test asserts that the documented paths and methods equal the
   registered ones and that fragments never define a path or schema twice.
 
@@ -665,8 +848,9 @@ organisation; changes are audited.
 
 - **Fields** — `url` (`http`/`https`, ≤ 2048 bytes, no credentials in it; internal address
   literals and `localhost` names are rejected when saved), optional `secret` (write-only), `events` (`push`,
-  `repository`, `release`, `fork`, and since wave B `issues`, `issue_comment`,
-  `pull_request`, `pull_request_review`; a `ping` is sent on creation), `active`. Bodies are
+  `repository`, `release`, `fork`, since wave B `issues`, `issue_comment`,
+  `pull_request`, `pull_request_review`, and since milestone 3 `member` and `status`; a
+  `ping` is sent on creation), `active`. Bodies are
   always `application/json`.
 - **Payloads** follow GitHub's shapes so existing receivers work: `push` (one delivery per
   changed ref: `ref`, `before`/`after` with 40 zeros for creation and deletion, `created`,
@@ -691,9 +875,22 @@ organisation; changes are audited.
   - `pull_request_review` — `submitted`, `edited`, `dismissed`, with `review` (`state` in
     lower case, `commit_id`, `submitted_at`, `html_url`).
 
-  No payload contains an email address. `WebhookService::handle_event` routes
-  `DomainEvent::Issue { kind: issue }` and `IssueComment` to `issues::hooks::payload`, and
-  `Issue { kind: pull }` and `PullRequestReview` to `pulls::hooks::payload`.
+  Milestone 3:
+  - `member` — `added`, `edited` (`changes.permission.from`/`to` plus GitHub's older
+    `old_permission.from`), `removed`, with `member`; collaborators only (team grants and
+    memberships are not reported);
+  - `status` — no `action`; `id`, `sha`, `name`, `state`, `context`, `description`,
+    `target_url`, `commit` (message, author, committer, parents), `branches` whose tip it is
+    (with `protected`), timestamps;
+  - the `release` object (also in the API) now carries `url`, `assets_url`, `upload_url`
+    (`…/assets{?name,label}`) and each asset's `url`.
+
+  No payload contains an account's email address; like `push`, `status` carries the commit
+  author's name and address from the commit itself (`commit.commit.author`).
+  `WebhookService::handle_event` routes `DomainEvent::Issue { kind: issue }` and
+  `IssueComment` to `issues::hooks::payload`, `Issue { kind: pull }` and
+  `PullRequestReview` to `pulls::hooks::payload`, and `CommitStatus` to
+  `statuses::hooks::payload`.
 - **Headers** — `User-Agent: rbit-Hookshot/<version>`, `X-Rbit-Event`,
   `X-Rbit-Delivery` (random id), `X-Rbit-Hook-Id` and GitHub's `X-GitHub-Event`,
   `X-GitHub-Delivery`, `X-GitHub-Hook-ID`. With a secret: `X-Rbit-Signature-256` and
@@ -792,6 +989,63 @@ The repository tabs gain **Issues** and **Pull requests** with open counts (one 
 query). Every new page opens the repository through `RepositoryService::open`, so hidden
 repositories, unknown numbers and malformed ids are 404.
 
+### 4.6 Page routes added in milestone 3
+
+| Area | Routes |
+|---|---|
+| Editing files | `/{owner}/{repo}/new/{branch}/{dir…}`, `…/edit/{branch}/{path…}`, `…/delete/{branch}/{path…}` (page router, body limit `6 × max_render_bytes + 256 KiB`), `…/upload/{branch}/{dir…}` (outside the page router, streaming); pencil and trash buttons on the blob page, "Add file" and "Upload files" on tree pages, for writers on branches of non-mirrors |
+| Commit statuses | the merge box lists the head's checks (state, context, description, "Required", "Expected" for required contexts without a report, "Details" with `rel="nofollow noopener noreferrer"`); `/{owner}/{repo}/commit/{revision}` shows a combined mark and the checks (`#checks`); commit lists show the mark per commit; the branch protection form gains "Require status checks to pass" and the required contexts |
+| Email notifications | `GET\|POST /settings/notifications` (off / participating / all, the address and why mail may not arrive), `GET\|POST /email/unsubscribe/{token}` (confirmation page; the POST turns emails off) |
+| External sign-in | `GET /login/{id}` (start), `GET /login/{id}/callback`, `GET\|POST /login/{id}/register` (choose a username), `GET /settings/security/linked/{id}?token=…` (link start, token bound to the session), `POST /settings/security/linked/{id}/unlink`; buttons on the sign-in page, "Sign-in methods" under Settings → Security |
+| Git LFS | the blob page shows the object a pointer names (with a "Stored with Git LFS" badge, LFS images inline) and `raw` streams it |
+
+Starting a sign-in or a link is a link, not a form: CSP `form-action 'self'` also applies to
+the redirect a form post leads to, which would block the way to the provider. Everything
+under `/login/` is excluded from hover preloading.
+
+### 4.7 Git LFS
+
+`routes/lfs.rs` (and `lfs/locks.rs`) serve the batch API, basic transfers and the locks API
+under both `/{owner}/{repo}.git/info/lfs/…` and `/{owner}/{repo}/info/lfs/…` (old names from
+renames and transfers work as for smart HTTP), merged beside smart HTTP without the page
+layers: no sessions, CSRF check, compression or timeout; JSON bodies are capped at 1 MiB,
+uploads stream.
+
+| Route | |
+|---|---|
+| `POST …/objects/batch` | `operation` `upload`/`download`, `transfers` must include `basic` (422), `hash_algo` must be `sha256` (409), ≤ 1000 objects. Per object: `actions.download`, or `actions.upload` + `actions.verify` (each with `href`, `header.Authorization`, `expires_in`), nothing when already stored, or `error` 404 / 422 / 413. |
+| `GET …/objects/{oid}` | The bytes, streamed (`application/octet-stream`, `Content-Length`, `nosniff`). |
+| `PUT …/objects/{oid}` | The body is the object; its size is the transfer token's, else `Content-Length` (411 without). |
+| `POST …/objects/{oid}/verify` | `{oid, size}` → 200 once stored and linked. |
+| `GET …/locks`, `POST …/locks`, `POST …/locks/verify`, `POST …/locks/{id}/unlock` | Locks per repository (`ref` is accepted and ignored); 409 when a path is locked already; forcing someone else's unlock needs administrator access. |
+
+Authentication is smart HTTP's own (`git_http::authenticate`: Basic with password or
+personal access token, throttled, two-factor accounts need a token, the token's scope caps
+access) or a short-lived `Authorization: Bearer lfs1.<payload>.<mac>` header that the batch
+API and `git-lfs-authenticate` hand out: a fixed binary payload (repository, subject —
+anonymous, user or deploy key —, read or write, expiry, and for transfer actions the one
+object and its size), HMAC-SHA256 under a 256-bit key drawn at start-up (a restart
+invalidates outstanding headers; clients ask again), verified in constant time. Nothing is
+stored, and `LfsService::open_granted` recomputes the holder's access on every use
+(suspension, removed collaborators and deleted deploy keys end a token early), capped at
+the token's read or write. Invalid tokens count as failed Git authentication. Downloads need
+read access; uploads, verify and locks write access (and an account for locks); pull mirrors
+refuse uploads; hidden repositories are 404 (401 with `LFS-Authenticate` to anonymous
+callers, so clients ask for credentials). Errors are `{"message": …}` as
+`application/vnd.git-lfs+json`. With `[lfs] enabled = false` every route answers 404 and the
+SSH command is refused.
+
+Over SSH, `git-lfs-authenticate <repo> <upload|download> [oid]` is parsed as strictly as the
+Git commands and authorised exactly like a fetch (download) or push (upload) — deploy keys
+(read-only ones cannot upload), mirrors, old names, suspension; it prints `{"href":
+"<public_url>/<owner>/<repo>.git/info/lfs", "header": {"Authorization": "Bearer lfs1…"},
+"expires_in": …}`. The pure-SSH `git-lfs-transfer` protocol is not implemented; clients fall
+back to `git-lfs-authenticate` + HTTP.
+
+`LfsService::store(&RepoContext, &LfsOid, size, reader)` is the one way objects enter a
+repository (HTTP uploads use it; an importer can too): it verifies size and SHA-256 and
+links the object.
+
 ---
 
 ## 5. Security model
@@ -800,12 +1054,13 @@ repositories, unknown numbers and malformed ids are 404.
 |---|---|
 | Passwords | Argon2id (m = 19 MiB, t = 2, p = 1 — OWASP 2024), hashed on the blocking pool. |
 | Sessions | 32 random bytes from the OS CSPRNG, base64url in an `HttpOnly; SameSite=Lax` cookie (`Secure` behind HTTPS). Only SHA-256 digest stored. Sliding expiry. |
-| Access tokens | `rit_` + 256 random bits; only the SHA-256 digest is stored, plus a 4-character hint. Used as the Git HTTP password and as the API bearer token; scope (`read`/`write`/`admin`) caps the owner's access, so a read token can clone but never push, and only an admin token changes settings, webhooks or deletes. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
+| Access tokens | `rbit_` + 256 random bits (`rit_` from earlier releases is still accepted: the digest covers only the random part); only the SHA-256 digest is stored, plus a 4-character hint shown as `…a1b2`. Used as the Git HTTP password and as the API bearer token; scope (`read`/`write`/`admin`) caps the owner's access, so a read token can clone but never push, and only an admin token changes settings, webhooks or deletes. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
 | Repository access | One pure policy (`repo_access`) decides every check — pages, API, Git over HTTP and SSH — from the viewer's grants (organisation role and base permission, teams, collaborator entry); SQL listings use one readable-by predicate tested against it. Leaving an organisation revokes its team memberships and collaborator entries in the same transaction (trigger). |
-| Webhook secrets | **The one exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored as given. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
-| Outbound requests (SSRF) | Webhook deliveries and mirror fetches refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; webhooks check inside the DNS resolver at connection time (no DNS rebinding), follow no redirects and ignore proxy variables; mirrors check right before each fetch, refuse redirects, and run `git` without prompts or credential helpers. See §4.3. |
+| Webhook secrets | **An exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored as given. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
+| Server keys | The other exception: `server_secrets` holds 256-bit keys rbit generates itself on first use and never shows — `notification_unsubscribe` (unsubscribe links) and `external-sign-in` (the sign-in flow cookie, PKCE verifiers and nonces). HMAC needs them raw. The Git LFS token key is never stored (drawn at start-up). |
+| Outbound requests (SSRF) | Webhook deliveries, mirror fetches and external sign-in requests refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; sign-in providers use the webhooks' guarded resolver (no redirects, no proxy, `https` only, 1 MiB responses); webhooks check inside the DNS resolver at connection time (no DNS rebinding), follow no redirects and ignore proxy variables; mirrors check right before each fetch, refuse redirects, and run `git` without prompts or credential helpers. See §4.3. |
 | Release files | Stored by numeric id only; downloads are `application/octet-stream` + `attachment` + `nosniff`, so an uploaded HTML file can never render on the site's origin. The size limit is enforced while the upload streams; names are validated (no `/`, `\`, control characters or leading dots). |
-| CSRF | Unsafe methods require `Sec-Fetch-Site: same-origin` or a matching `Origin` header. Combined with `SameSite=Lax` cookies. |
+| CSRF | Unsafe methods require `Sec-Fetch-Site: same-origin` or a matching `Origin` header. Combined with `SameSite=Lax` cookies. **One exemption:** `POST /email/unsubscribe/{token}` (exactly that path shape, `middleware::is_one_click_unsubscribe`), which mail clients send from their own origin (RFC 8058); it needs no session, the signed token is the authorisation, and all it can do is turn that account's notification emails off. |
 | XSS | Askama auto-escapes. Markdown is rendered with `pulldown-cmark` then sanitised with `ammonia`. Strict CSP: `default-src 'self'`. |
 | Path traversal | `RepoName`/`Username` reject anything outside `[A-Za-z0-9._-]`, leading dots and reserved names. On-disk paths use numeric IDs only. |
 | Git config injection | Repos opened with isolated gix options; transport processes run with a scrubbed environment and `GIT_CONFIG_NOSYSTEM=1`. |
@@ -818,14 +1073,18 @@ repositories, unknown numbers and malformed ids are 404.
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
 | Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by rbit are checked against the same rules (`check_merge`). |
+| Web edits | Never check files out (scratch repository, scratch index, `commit-tree`); paths are validated `FilePath`s (no `..`, `.git` in any spelling, control characters or backslashes) and reach git only on stdin; uploads stream to disk under `[editor]` limits; the push gate decides exactly as for a push; the branch moves only through the merge's lease-protected `update-ref`; commits carry the noreply address. Mirrors are read-only. |
+| Commit statuses | Write access and a full commit id that exists in the repository; `target_url` follows the webhook URL rules (absolute `http`/`https`, no credentials) and is linked with `rel="nofollow noopener noreferrer"`; ≤ 1000 statuses per (repository, commit, context); required checks only block merges, never pushes. |
+| Git LFS | Object ids are validated SHA-256 hex before they name a path; uploads are checked against size and digest before they are placed; an object stored for another repository is never linked without a fresh upload (or read access through the fork network). Transfer headers are HMAC-signed, short-lived, scoped to one repository (and one object), verified in constant time, and re-check the holder's current access; failures are throttled like Git credentials. Objects are served as `application/octet-stream` with `nosniff`; the raw view keeps its sandbox CSP. |
+| External sign-in | Code flow with PKCE `S256`; state in a signed, 10-minute `rbit_oauth` cookie (`HttpOnly; SameSite=Lax; Path=/login`), matched exactly in constant time; nonce and verifier derived server-side from the state; ID tokens RS256 (≥ 2048 bits) / ES256 only with `iss`, `aud`/`azp`, `exp`/`iat`/`nbf` (± 60 s) and `nonce` checked; identities keyed by the provider's subject; linking by email only with `trust_email` and verified addresses on both sides; link starts need a session-bound token; callbacks throttled per address (`ExternalSignIn`); suspended accounts refused; the last way to sign in cannot be unlinked (enforced in SQL); two-factor still applies unless `trust_mfa` and the token reports MFA. Client secrets never appear in `Debug` output. |
 | Merges | Computed without a working tree in a scratch repository under `<data_dir>/tmp` (`merge-tree --write-tree` + `commit-tree`), so no checkout filters, hooks or editors run; the base repository changes only through one lease-protected `update-ref`; hardened `git` (no system/global config, null hooks path, no prompts, `--end-of-options`, validated ids and names only); bounded time and concurrency; scratch directories removed on every exit path and swept at start-up. |
 | Issues and pull requests | 404 for hidden repositories and unknown or malformed numbers; one pure permission table (§3.7); every Markdown body goes through reference rendering and then `ammonia`; label colours appear only as validated `#rrggbb` SVG `fill`s (no inline `style=`); creation and edits are throttled (`ThrottleScope::Content`). Pending reviews are visible to their author only. |
-| Privacy | No email address in any page, payload, API object or rbit-made commit (noreply addresses); notifications only reach people who can read the repository (§5.1); `@name` links for any existing account, so a mention never reveals whether someone has access; cross-references are shown only to viewers of the source; `owner/repo#N` is never looked up when rendering. |
-| Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`), as are repository access changes (category "Repository access": collaborators added/changed/removed, teams created/changed/deleted, transfers, webhooks created/changed/deleted, an organisation's member permission changed, branch protection rules created/changed/deleted and bypassed) and deleted issues (category "Repository content"). |
+| Privacy | No email address in any page, payload, API object or rbit-made commit (merges and web edits use noreply addresses); notification emails go to verified addresses only, without `Reply-To`; notifications only reach people who can read the repository (§5.1); `@name` links for any existing account, so a mention never reveals whether someone has access; cross-references are shown only to viewers of the source; `owner/repo#N` is never looked up when rendering. |
+| Audit | Sign-ins, 2FA changes, session revocations, token changes, password changes and every administrator action are recorded in `audit_events` (`/admin/audit`), as are repository access changes (category "Repository access": collaborators added/changed/removed, teams created/changed/deleted, transfers, webhooks created/changed/deleted, an organisation's member permission changed, branch protection rules created/changed/deleted and bypassed) and deleted issues (category "Repository content"). External sign-ins record the provider (and "provider MFA" when it replaced rbit's second step); linking and unlinking a provider are audited under "Sign-in". |
 
 ### 5.1 Notifications
 
-In-app only (no email). One row per (user, thread) in `notifications`, upserted unread with
+In the app, and by email since milestone 3 (below). One row per (user, thread) in `notifications`, upserted unread with
 the strongest reason (`review_requested` > `assigned` > `mention` > `author` > `comment` >
 `manual`).
 
@@ -843,6 +1102,62 @@ the strongest reason (`review_requested` > `assigned` > `mention` > `author` > `
   lazily; visiting a thread marks it read (the one GET with a side effect); read rows older
   than `[issues] notification_retention_days` (90) are pruned daily. The header's unread dot
   is one indexed `EXISTS`. `[issues] notifications = false` turns everything off.
+
+**Email (milestone 3).** `NotificationEmailService` (`rbit-services/src/notification_email.rs`)
+mails what the inbox fan-out writes: `NotificationService::handle_event` passes the
+recipients and reasons it stored to `deliver`, which keeps verified, non-suspended
+recipients other than the actor whose preference (`notification_email_settings`, default
+`[notifications] default_email`) wants the reason (`participating` = every reason but
+manual subscriptions, `all` adds those), re-checks read access with grants from the current
+repository row, claims a dedup key in `notification_emails` (`opened`, `comment-{id}`,
+`review-{id}`, or `{action}-{unix second}` for repeatable actions such as `closed`), spends
+the recipient's `ThrottleScope::NotificationEmail` budget (30, then one every two minutes;
+throttled mail is skipped, the inbox keeps it) and queues the message on `MailService`. Mail
+failures never fail the inbox fan-out. Nothing is sent or claimed with `[mail] transport =
+"disabled"`, `[notifications] email = false` or `[issues] notifications = false`.
+
+Messages (`[owner/repo] Title (#N)`, `Re: ` after the first; a headline, an excerpt of at
+most 1000 characters of the Markdown source, a link to the comment or review, why the
+recipient got it) thread on `<owner/repo/{issues|pulls}/N@host>`: the opening message
+carries it as `Message-ID`, later ones get their own id plus `In-Reply-To`/`References`.
+Renaming or transferring a repository therefore starts new threads in mail clients. Each
+message carries `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+pointing at `/email/unsubscribe/{account id}.{HMAC-SHA256}` (key `notification_unsubscribe`
+in `server_secrets`, verified in constant time); `GET` confirms (link scanners must not
+unsubscribe), `POST` sets the preference to `off` — the one CSRF exemption (§5). Outbox rows
+are pruned with the inbox (`notification_retention_days`).
+
+### 5.2 External sign-in
+
+Providers are configured as `[[auth.providers]]` (`kind = "oidc"` with an `issuer`, or
+`"github"` with an optional Enterprise `base_url`) and validated at start-up, every problem
+reported at once. Because figment cannot index into an array of tables, `rbit-server` takes
+`RBIT_AUTH__PROVIDERS__<N>__CLIENT_SECRET` / `…__CLIENT_ID` out of figment and applies them
+with `AuthConfig::apply_provider_env` (`<N>` is the position or the upper-cased id).
+
+`ExternalAuthService` runs the authorization code flow with PKCE `S256`: a `Flow`
+(provider, random 256-bit state, `next`, linking account, issue time) is sealed with
+HMAC-SHA256 under the `external-sign-in` key into the `rbit_oauth` cookie; the PKCE verifier
+and the nonce are HMACs of the state, so nothing is stored server-side. One flow per browser
+at a time. The callback requires the exact state, exchanges the code and verifies the ID
+token with `rbit_auth::oidc` (discovery cached for an hour, issuer equal to the configured
+one; keys by `kid`, one refetch on an unknown key, which is how rotation works); email from
+`email` + `email_verified`, or the userinfo endpoint with the same `sub`. GitHub uses
+`/login/oauth/authorize` with PKCE, `/user` (the numeric id is the subject) and only the
+verified primary address from `/user/emails`.
+
+`Services::complete_external_sign_in` decides by the provider's subject: (1) a known
+identity signs in as its account (suspended accounts are refused; an account with 2FA
+continues at `/login/two-factor`, unless `trust_mfa` and `amr` contains `mfa`); (2) an
+unknown identity arriving from a link started in Settings → Security (same session) is
+linked to that account; (3) with `trust_email`, a provider-verified address equal to an
+account's verified address links and signs in; (4) when registration is allowed
+(`allow_registration`: `true` follows the site's registration setting, `"always"` ignores
+it, `false` never) the user chooses a username at `/login/{id}/register` (pending state in
+memory for 15 minutes); (5) otherwise a page explains how to link. An unverified address
+never links anything. Accounts registered this way store an empty password hash, which never
+verifies, until a reset link sets one (Git over HTTPS needs a token meanwhile). Unlinking
+refuses the last way to sign in, atomically in SQL.
 
 ---
 
@@ -953,13 +1268,31 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   existing crates (one module per layer, each with its own `routes()`, store, service and
   API fragment). Larger future areas (CI, packages) can still arrive as crates contributing
   services and a `Router` that `rbit-web` merges.
-- **Status checks** — merge requirements already carry a checks state
-  (`ChecksStatus::NotConfigured`; `Pending`, `Passing`, `Failing` exist for a future status
-  API), so a CI integration only has to produce it.
+- **Status checks** — any external CI reports through the commit status API (§4.2) and
+  branch protection can require its contexts (§3.7); a runner protocol could build on the
+  same statuses without changing merges.
+- **Server keys** — `server_secrets` is generic: a feature that needs its own HMAC key
+  calls `get_or_insert` with a new name.
 
 ---
 
-## 9. Roadmap
+## 9. Releases and packaging
+
+A `v*` tag runs `.github/workflows/release.yml`: the tag must equal the workspace version
+and `CHANGELOG.md` must have a `## [X.Y.Z]` section, whose body becomes the release notes
+(a pre-release tag such as `v0.1.0-rc.1` falls back to `## [Unreleased]`). The stylesheet
+is built once and embedded into every binary. Binaries are built natively (Linux x86_64 and
+aarch64 on Ubuntu 22.04 runners for a glibc 2.35 baseline, macOS both architectures on
+Apple silicon, Windows x86_64), archived with the licenses, docs and deployment examples,
+and published with `SHA256SUMS`. The image `ghcr.io/rbit/rbit` (amd64, arm64) packages
+those same Linux binaries through the Dockerfile's `BINARY=prebuilt` stage instead of
+compiling under emulation; a plain `docker build .` still compiles from source. CI checks
+licenses and advisories with `cargo deny` (`deny.toml`); each ignored advisory carries its
+reason. rbit is licensed MIT OR Apache-2.0.
+
+---
+
+## 10. Roadmap
 
 | Phase | Scope |
 |---|---|
@@ -968,6 +1301,7 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 | **M1 — Safe to self-host** ✓ | Rate limiting, trusted proxies, session management, TOTP two-factor, audit log, email (SMTP) with password reset and verification, SSH server with user and deploy keys, background jobs and maintenance, metrics and health checks, backups, Docker/systemd/CI, end-to-end and property tests. |
 | **M2 wave A — A real forge** ✓ | Collaborators, teams and organisation base permission, repository transfer with old-name redirects, REST API `/api/v1` with token scopes and OpenAPI, signed webhooks with a persistent delivery queue, README relative links, archives, blame, compare, releases with attached files, forks, pull mirrors, the theme gallery. |
 | **M2 wave B — Workflow** ✓ | Issues with labels, milestones, assignees, references and search; in-app notifications; pull requests across forks with line comments, reviews, mergeability and merge/squash/rebase; branch protection enforced over HTTP and SSH; REST endpoints and `issues`/`issue_comment`/`pull_request`/`pull_request_review` webhooks ([design/milestone-2b.md](design/milestone-2b.md)). |
-| Next | CI integration (commit statuses feeding the required-checks placeholder), API endpoints for collaborators, teams, releases and forks, email notifications, a gitoxide transport behind a switch. |
+| **M3 — Ready to open-source** (in progress) | Done: MIT OR Apache-2.0, community files and release packaging, `rbit_` tokens; commit statuses and required checks; REST API for collaborators, teams, releases and forks, `member` and `status` webhooks; email notifications; editing files in the browser; Git LFS; external sign-in with OpenID Connect and GitHub ([design/milestone-3.md](design/milestone-3.md)). In progress: wave B stretch items (W) and importing plus push mirrors (M). |
+| Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses, email digests. |
 | Later — Platform | Actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |
