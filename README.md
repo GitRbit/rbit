@@ -4,6 +4,10 @@
 
 # rbit
 
+[![CI](https://github.com/rbit/rbit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rbit/rbit/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
+[![Latest release](https://img.shields.io/github/v/release/rbit/rbit?include_prereleases&sort=semver)](https://github.com/rbit/rbit/releases)
+
 A fast, self-hosted Git platform written in Rust — one binary, no external services.
 
 - **Axum + Askama + htmx**: compiled server-side templates, SPA-like navigation without a JS framework.
@@ -28,19 +32,64 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design,
-[docs/HANDOFF.md](docs/HANDOFF.md) for the current state and next steps, and
-[docs/deployment.md](docs/deployment.md) for running it in production.
+See [docs/deployment.md](docs/deployment.md) for running it in production,
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design, [ROADMAP.md](ROADMAP.md) for
+what comes next, and [docs/HANDOFF.md](docs/HANDOFF.md) for the project's current state.
 
-## Quick start
+## Install
+
+rbit needs **Git** on the server at run time (the transports, `git gc` and backups use the
+`git` executable). Everything else is inside the binary: templates, styles, scripts and the
+database migrations.
+
+### Release binaries
+
+Every [release](https://github.com/rbit/rbit/releases) has archives for Linux (x86_64 and
+aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64), plus a
+`SHA256SUMS` file. Each archive holds the `rbit` binary, the licenses, this README, the
+changelog, the example configuration and the systemd unit.
+
+```bash
+version=0.1.0                       # the release you want
+target=x86_64-unknown-linux-gnu     # or aarch64-unknown-linux-gnu, aarch64-apple-darwin, ...
+curl -LO "https://github.com/rbit/rbit/releases/download/v$version/rbit-$version-$target.tar.gz"
+curl -LO "https://github.com/rbit/rbit/releases/download/v$version/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS   # macOS: shasum -a 256 --check --ignore-missing
+tar -xzf "rbit-$version-$target.tar.gz"
+./rbit-$version-$target/rbit serve  # http://localhost:3000, data in ./data
+```
+
+For a real server (a system user, TLS in front, systemd, backups) follow
+[docs/deployment.md](docs/deployment.md).
+
+### Container image
+
+Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the GitHub
+Container Registry for every release, tagged with the version (`0.1.0`, `0.1`) and `latest`:
+
+```bash
+docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \
+  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com \
+  ghcr.io/rbit/rbit:latest
+```
+
+The image runs as an unprivileged user, keeps everything under `/data`, and has a health
+check on `/healthz`. Add `-p 2222:2222 -e RBIT_SSH__ENABLED=true` for Git over SSH.
+
+### From source
 
 Requirements: Rust 1.90+, Git, and Node.js (build-time only, for Tailwind CSS).
 
 ```bash
-npm install
+npm ci
 npm run build        # vendors htmx and builds the stylesheet
-cargo run            # serves http://localhost:3000
+cargo run            # serves http://localhost:3000, data in ./data
 ```
+
+`cargo build --release` produces `target/release/rbit`; `docker build -t rbit .` builds the
+image from source.
+
+## First steps
 
 The first account you create becomes the site administrator.
 
@@ -105,20 +154,23 @@ Settings**.
 
 ## Development
 
-The orange frog is rbit's logo and mascot. The original artwork lives in
-[`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
-the README and landing page. After replacing it, run `npm run icons` to regenerate
-the browser, home-screen, and installable-app icons, and commit the generated PNGs.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains the setup, the live development server
+(`npm run dev`), the quality gate and the rules for commits and pull requests. In short:
 
 ```bash
-npm run watch:css                      # rebuild CSS on template changes
+npm run dev                            # rebuild and restart on every change, data in ./data-live
+cargo fmt --all --check                # rustfmt.toml pins the style
+cargo clippy --workspace --all-targets -- -D warnings   # pedantic lints, workspace-wide
 cargo test --workspace                 # unit, integration, property and end-to-end tests
-cargo clippy --workspace --all-targets # pedantic lints are enabled workspace-wide
-cargo fmt --all                        # rustfmt.toml pins the style
 ```
 
 The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports and drives
 them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH client.
+
+The orange frog is rbit's logo and mascot. The original artwork lives in
+[`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
+the README and landing page. After replacing it, run `npm run icons` to regenerate
+the browser, home-screen, and installable-app icons, and commit the generated PNGs.
 
 ## Workspace
 
@@ -135,3 +187,29 @@ them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH 
 | `rbit-web` | Routes, REST API, templates, themes, assets, metrics |
 | `rbit-server` | The `rbit` binary: CLI, configuration, backups |
 | `rbit-e2e` | End-to-end and Git compatibility tests (test-only) |
+
+## Community
+
+- **Questions and ideas:** [discussions](https://github.com/rbit/rbit/discussions) and
+  [feature requests](https://github.com/rbit/rbit/issues/new?template=feature_request.yml);
+  [ROADMAP.md](ROADMAP.md) says what is planned and what is out of scope.
+- **Bugs:** [open an issue](https://github.com/rbit/rbit/issues/new?template=bug_report.yml).
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md). Everyone taking part follows the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Security:** please report vulnerabilities privately, as described in
+  [SECURITY.md](SECURITY.md) — never in a public issue.
+
+## License
+
+rbit is licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option. Bundled third-party material (htmx, the tinted-theming schemes, ...) keeps
+its own license; see [THIRD-PARTY.md](THIRD-PARTY.md).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for
+inclusion in rbit by you, as defined in the Apache-2.0 license, shall be dual licensed as
+above, without any additional terms or conditions.
