@@ -221,3 +221,21 @@ async fn references_are_recorded_once() {
     assert!(!store.record_cross_ref(target, source, Timestamp(1)).await.unwrap());
     assert!(store.record_cross_ref(source, target, Timestamp(1)).await.unwrap());
 }
+
+#[tokio::test]
+async fn new_threads_get_their_metadata_at_once_and_mentions_resolve() {
+    let fixture = Fixture::new().await;
+    let store = fixture.database.issue_meta();
+    let bob = user(&fixture.database, "bob").await;
+    let issue = fixture.issue(IssueKind::Issue, "Crash").await;
+    let bug = store.create_label(fixture.repo, &label("bug", "#d73a4a"), Timestamp(1)).await.unwrap();
+    let fields = MilestoneFields { title: "v1".to_owned(), description: String::new(), due_on: None };
+    let milestone = store.create_milestone(fixture.repo, &fields, Timestamp(1)).await.unwrap();
+    store.attach(issue, &[bug.id], &[bob.id()], Some(milestone.id), fixture.alice.id(), Timestamp(2)).await.unwrap();
+    assert_eq!(store.labels_of(&[issue]).await.unwrap().len(), 1);
+    assert_eq!(store.assignees_of(&[issue]).await.unwrap()[0].1.id, bob.id());
+    assert_eq!(store.milestones_of(&[issue]).await.unwrap()[0].id, milestone.id);
+
+    let found = store.accounts_named(&["BOB".to_owned(), "nobody".to_owned(), "alice".to_owned()]).await.unwrap();
+    assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"]);
+}

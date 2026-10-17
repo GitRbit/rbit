@@ -721,6 +721,69 @@ impl IssueMetaStore {
             .rows_affected();
         Ok(added > 0)
     }
+
+    // ------------------------------------------------------------------ creation and lookups
+
+    /// Gives a new thread its labels, assignees (assigned `by`) and milestone in one
+    /// transaction (all already validated by the caller).
+    pub async fn attach(
+        &self,
+        issue: IssueId,
+        labels: &[LabelId],
+        assignees: &[AccountId],
+        milestone: Option<MilestoneId>,
+        by: AccountId,
+        at: Timestamp,
+    ) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
+        for label in labels {
+            sqlx::query("INSERT INTO issue_labels (issue_id, label_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
+                .bind(issue.0)
+                .bind(label.0)
+                .bind(at.0)
+                .execute(&mut *tx)
+                .await?;
+        }
+        for user in assignees {
+            sqlx::query(
+                "INSERT INTO issue_assignees (issue_id, user_id, assigned_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING",
+            )
+            .bind(issue.0)
+            .bind(user.0)
+            .bind(by.0)
+            .bind(at.0)
+            .execute(&mut *tx)
+            .await?;
+        }
+        if let Some(milestone) = milestone {
+            sqlx::query(
+                "INSERT INTO issue_milestones (issue_id, milestone_id) VALUES (?, ?) \
+                 ON CONFLICT (issue_id) DO UPDATE SET milestone_id = excluded.milestone_id",
+            )
+            .bind(issue.0)
+            .bind(milestone.0)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The accounts (users and organisations) among `names`, case-insensitively, in one
+    /// query: for resolving `@name` mentions.
+    pub async fn accounts_named(&self, names: &[String]) -> Result<Vec<Account>, StorageError> {
+        if names.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows: Vec<AccountRow> = sqlx::query_as(
+            "SELECT id, kind, name, display_name, bio, created_at FROM accounts \
+             WHERE lower(name) IN (SELECT lower(value) FROM json_each(?)) ORDER BY name",
+        )
+        .bind(json_strings(names))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Account::try_from).collect()
+    }
 }
 
 #[cfg(test)]
