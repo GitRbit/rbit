@@ -5,10 +5,23 @@
 //! (cache warming, maintenance, email, webhooks later) react independently. Publishing never
 //! blocks or fails: with no subscribers an event is simply dropped, and a subscriber that
 //! falls behind skips the oldest events rather than slowing producers down.
+//!
+//! Subscribers react *after* an event happened, sometimes noticeably later. Webhooks must
+//! only see events that happened while a hook existed, so the bus also hands out webhook
+//! ids ([`EventBus::reserve_webhook_id`]) and stamps every event with the newest one
+//! reserved when it was published ([`Published`]): a hook with a larger id was created
+//! after the event. The stamp is taken in the same atomic counter that allocates the ids,
+//! so it orders events and hook creations exactly, with no clock involved.
+
+use std::sync::{
+    Arc,
+    atomic::{AtomicI64, Ordering},
+};
 
 use rbit_core::{
     AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
     issue::{CommentAction, IssueAction, ReviewAction},
+    webhook::WebhookId,
 };
 pub use rbit_git::RefUpdate;
 use tokio::sync::broadcast;
@@ -80,9 +93,22 @@ pub enum DomainEvent {
     PullRequestReview { repo: RepoId, pull: IssueId, number: IssueNumber, review: ReviewId, actor: AccountId, action: ReviewAction },
 }
 
+/// An event with the point at which it was published, for subscribers that must know what
+/// existed then (see [`EventBus::subscribe_published`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Published {
+    pub event: DomainEvent,
+    /// The newest webhook id reserved when the event was published. Hooks with a larger
+    /// id were created after the event and do not receive it.
+    pub newest_webhook: WebhookId,
+}
+
 #[derive(Debug, Clone)]
 pub struct EventBus {
     sender: broadcast::Sender<DomainEvent>,
+    published: broadcast::Sender<Published>,
+    /// The newest webhook id handed out (or found in the database at start-up).
+    newest_webhook: Arc<AtomicI64>,
 }
 
 impl Default for EventBus {
@@ -93,19 +119,48 @@ impl Default for EventBus {
 
 impl EventBus {
     pub fn new() -> Self {
-        Self { sender: broadcast::channel(CHANNEL_CAPACITY).0 }
+        Self {
+            sender: broadcast::channel(CHANNEL_CAPACITY).0,
+            published: broadcast::channel(CHANNEL_CAPACITY).0,
+            newest_webhook: Arc::new(AtomicI64::new(0)),
+        }
     }
 
     /// Publishes an event to every current subscriber.
     pub fn publish(&self, event: DomainEvent) {
         tracing::debug!(?event, "domain event");
-        // An error only means there are no subscribers right now, which is fine.
+        // Errors only mean there are no subscribers right now, which is fine.
+        if self.published.receiver_count() > 0 {
+            let _ = self.published.send(Published { event: event.clone(), newest_webhook: self.newest_webhook() });
+        }
         let _ = self.sender.send(event);
     }
 
     /// A new subscription; it receives events published from now on.
     pub fn subscribe(&self) -> broadcast::Receiver<DomainEvent> {
         self.sender.subscribe()
+    }
+
+    /// A new subscription to events stamped with what existed when they were published.
+    pub fn subscribe_published(&self) -> broadcast::Receiver<Published> {
+        self.published.subscribe()
+    }
+
+    /// The newest webhook id reserved so far: the stamp an event published now gets.
+    pub fn newest_webhook(&self) -> WebhookId {
+        WebhookId(self.newest_webhook.load(Ordering::SeqCst))
+    }
+
+    /// Reserves the id of a webhook about to be created. Events published from now on carry
+    /// a stamp of at least this id; events published before carry a smaller one.
+    pub(crate) fn reserve_webhook_id(&self) -> WebhookId {
+        WebhookId(self.newest_webhook.fetch_add(1, Ordering::SeqCst) + 1)
+    }
+
+    /// Makes sure reserved ids stay above `existing`, the newest id already stored. Called
+    /// at start-up, before anything is published.
+    pub(crate) fn note_existing_webhooks(&self, existing: WebhookId) {
+        self.newest_webhook.fetch_max(existing.0, Ordering::SeqCst);
     }
 }
 
@@ -122,6 +177,23 @@ mod tests {
         let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), pusher: Some(AccountId(1)), updates: Vec::new() };
         bus.publish(pushed.clone());
         assert_eq!(subscriber.recv().await.unwrap(), pushed);
+    }
+
+    #[tokio::test]
+    async fn events_are_stamped_with_the_newest_webhook_id_reserved_before_them() {
+        let bus = EventBus::new();
+        bus.note_existing_webhooks(WebhookId(4));
+        let mut subscriber = bus.subscribe_published();
+        let event = DomainEvent::UserSignedUp { user: AccountId(1) };
+
+        bus.publish(event.clone());
+        assert_eq!(bus.reserve_webhook_id(), WebhookId(5));
+        bus.publish(event.clone());
+        bus.note_existing_webhooks(WebhookId(2));
+        assert_eq!(bus.reserve_webhook_id(), WebhookId(6), "ids never go back");
+
+        assert_eq!(subscriber.recv().await.unwrap(), Published { event: event.clone(), newest_webhook: WebhookId(4) });
+        assert_eq!(subscriber.recv().await.unwrap(), Published { event, newest_webhook: WebhookId(5) });
     }
 
     #[test]

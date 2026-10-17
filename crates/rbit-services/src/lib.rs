@@ -148,6 +148,8 @@ impl Services {
             repositories: RepositoryStorage::new(config.storage.repositories_dir()),
             events: EventBus::new(),
         };
+        // Before anything is published: new hook ids (and event stamps) start above these.
+        ctx.events.note_existing_webhooks(database.webhooks().max_id().await?);
         let instance = InstanceService::load(&ctx).await?;
         // Shared so recovery emails use the same delivery queue and the same rate limits.
         let mail = MailService::new(ctx.clone());

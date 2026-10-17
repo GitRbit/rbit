@@ -51,6 +51,10 @@ macro_rules! select_delivery {
 /// service's decision.
 #[derive(Debug, Clone)]
 pub struct NewWebhook {
+    /// The id to store the hook under; `None` lets SQLite choose. The service passes one
+    /// reserved from the event bus, so events can tell which hooks existed when they
+    /// happened.
+    pub id: Option<WebhookId>,
     pub owner: WebhookOwner,
     pub url: WebhookUrl,
     pub secret: Option<String>,
@@ -284,9 +288,10 @@ impl WebhookStore {
         let now = Timestamp::now().seconds();
         let (repo_id, org_id) = owner_columns(new.owner);
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO webhooks (repo_id, org_id, url, secret, events, active, created_by, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            "INSERT INTO webhooks (id, repo_id, org_id, url, secret, events, active, created_by, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
+        .bind(new.id.map(|id| id.0))
         .bind(repo_id)
         .bind(org_id)
         .bind(new.url.as_str())
@@ -299,6 +304,12 @@ impl WebhookStore {
         .fetch_one(&self.pool)
         .await?;
         self.find(new.owner, WebhookId(id)).await?.ok_or_else(|| corrupt("webhook", "missing after insert"))
+    }
+
+    /// The largest hook id in use, or 0 without hooks.
+    pub async fn max_id(&self) -> Result<WebhookId, StorageError> {
+        let id: Option<i64> = sqlx::query_scalar("SELECT MAX(id) FROM webhooks").fetch_one(&self.pool).await?;
+        Ok(WebhookId(id.unwrap_or_default()))
     }
 
     pub async fn count_for(&self, owner: WebhookOwner) -> Result<i64, StorageError> {

@@ -163,6 +163,8 @@ seconds.
 Services communicate through an in-process `EventBus` of `DomainEvent`s, so producers never
 depend on reactions such as cache warming, session revocation, verification email or
 webhooks. Subscribers ignore variants they do not handle, so adding one breaks nothing.
+`subscribe()` yields bare events; `subscribe_published()` yields them stamped with the
+newest webhook id reserved at publish time (`Published`), for the webhook subscriber (§4.3).
 
 | Event | Fields | Published by |
 |---|---|---|
@@ -708,6 +710,17 @@ organisation; changes are audited.
   `delivery_retention_days`. With `[webhooks] enabled = false` hooks can be configured but
   nothing is queued or sent. Each attempt increments
   `rbit_webhook_attempts_total{outcome}` (`succeeded`, `retrying`, `failed`).
+- **Which hooks get an event** — as on GitHub, only hooks that existed when it happened,
+  although the subscriber may handle it later. `WebhookService::create` reserves the new
+  hook's id from the `EventBus` (an atomic counter, seeded at start-up with the largest
+  stored id), and `publish` stamps each event with the newest id reserved so far; the
+  subscriber skips hooks with a larger id. One counter orders both, so this is exact
+  without timestamps (whose seconds could not order a push and a hook created just after
+  it). Deleting or deactivating a hook takes effect at once: an event the subscriber has
+  not yet queued is not delivered to it, even if it happened while the hook was active
+  (switching a hook off is how an administrator stops traffic, and the gap is normally
+  milliseconds). `active` is judged when queueing, so a hook reactivated in that gap does
+  get the event; deliveries already queued for a deactivated hook are still sent.
 - **SSRF** — unless `allow_private_addresses`, every address a target resolves to must pass
   `rbit_core::network::is_internal_address`: loopback, private (RFC 1918), shared/CGNAT
   (`100.64.0.0/10`), link-local, unique-local (`fc00::/7`), multicast, unspecified,

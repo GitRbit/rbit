@@ -12,6 +12,13 @@
 //! * **Queueing.** A background subscriber turns [`DomainEvent`]s into one `pending`
 //!   delivery per subscribed, active hook (one per changed ref for pushes) and does nothing
 //!   else. Hooks get a `ping` when created.
+//! * **Which hooks.** Like GitHub, a hook receives only events that happened after it was
+//!   created, even when the subscriber gets to an event later: hook ids are reserved from
+//!   the [`crate::EventBus`], which stamps each event with the newest id reserved when it
+//!   was published ([`Published`]), and hooks with a larger id are skipped. Deletion and
+//!   deactivation take effect at once: an event not yet queued when its hook is deleted or
+//!   switched off is not delivered to it (already queued deliveries of an inactive hook
+//!   are still sent; deleting a hook drops its queue).
 //! * **Delivering.** A worker claims due deliveries, runs at most `[webhooks] concurrency`
 //!   requests at once (see [`delivery`] for the client and its address guard), treats 2xx
 //!   as success and retries everything else with exponential backoff and jitter until
@@ -48,6 +55,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     DomainEvent, OrgContext, RepoContext, ServiceContext, ServiceError,
     audit::{AuditAction, AuditEntry, AuditService},
+    events::Published,
 };
 
 /// Hooks per repository or organisation.
@@ -226,7 +234,9 @@ impl WebhookService {
             return Err(ServiceError::Invalid(format!("a {kind} can have at most {MAX_HOOKS_PER_OWNER} webhooks; delete one first")));
         }
 
-        let new = NewWebhook { owner, url, secret, events, active: input.active, created_by: Some(actor.id()) };
+        // Reserved last, so events published from here on reach the new hook.
+        let id = Some(self.inner.ctx.events.reserve_webhook_id());
+        let new = NewWebhook { id, owner, url, secret, events, active: input.active, created_by: Some(actor.id()) };
         let hook = self.inner.store.create(new).await?;
         tracing::info!(target = %target.name(), hook = hook.id.0, host = hook.url.host(), by = %actor.name(), "webhook created");
         self.audit(AuditAction::WebhookCreated, actor, target, &hook).await;
@@ -354,15 +364,25 @@ impl WebhookService {
 
     // ------------------------------------------------------------------ events
 
-    /// Queues deliveries for `event` to every subscribed, active hook. Called by the
-    /// background subscriber; public so tests and tools can drive it directly.
+    /// Queues deliveries for `event`, as if it had just been published, to every subscribed,
+    /// active hook. Public so tests and tools can drive the queue directly.
     pub async fn handle_event(&self, event: &DomainEvent) -> Result<usize, ServiceError> {
+        self.queue_event(event, self.inner.ctx.events.newest_webhook()).await
+    }
+
+    /// Queues deliveries for a published event to every subscribed hook that is active and
+    /// existed when it was published. What the background subscriber does with each event.
+    pub async fn handle_published(&self, published: &Published) -> Result<usize, ServiceError> {
+        self.queue_event(&published.event, published.newest_webhook).await
+    }
+
+    /// Queues `event` for the subscribed, active hooks with ids up to `newest`.
+    async fn queue_event(&self, event: &DomainEvent, newest: WebhookId) -> Result<usize, ServiceError> {
         let base = self.base_url().to_owned();
-        let store = &self.inner.store;
         let queued = match event {
             DomainEvent::RepositoryPushed { repo, pusher, updates } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = store.subscribed(Some(*repo), &org_of(&owned.owner), WebhookEvent::Push).await?;
+                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Push).await?;
                 if hooks.is_empty() || updates.is_empty() {
                     return Ok(0);
                 }
@@ -406,7 +426,7 @@ impl WebhookService {
             }
             DomainEvent::RepositoryCreated { repo, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = store.subscribed(Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let repository = payloads::repository(&owned, &base, false);
                 let payload =
@@ -416,7 +436,7 @@ impl WebhookService {
             DomainEvent::RepositoryDeleted { repo, owner, full_name, actor } => {
                 // The repository's own hooks went with it; only its organisation's remain.
                 let Some(org) = self.inner.ctx.database.orgs().find(*owner).await? else { return Ok(0) };
-                let hooks = store.subscribed(None, &[*owner], WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, None, &[*owner], WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let repository = payloads::deleted_repository(repo.0, full_name, Some(&org.account), &base);
                 let mut payload = payloads::repository_event("deleted", &repository, sender.as_ref(), &base);
@@ -428,28 +448,28 @@ impl WebhookService {
                 let Some(previous) = self.account(*from).await? else { return Ok(0) };
                 let mut orgs = org_of(&owned.owner);
                 orgs.extend(org_of(&previous));
-                let hooks = store.subscribed(Some(*repo), &orgs, WebhookEvent::Repository).await?;
+                let hooks = self.subscribed(newest, Some(*repo), &orgs, WebhookEvent::Repository).await?;
                 let sender = self.account(*actor).await?;
                 let payload = payloads::transferred(&owned, self.is_fork(*repo).await?, &previous, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
             DomainEvent::RepositoryForked { repo, parent, actor } => {
                 let (Some(forkee), Some(origin)) = (self.repository(*repo).await?, self.repository(*parent).await?) else { return Ok(0) };
-                let hooks = store.subscribed(Some(*parent), &org_of(&origin.owner), WebhookEvent::Fork).await?;
+                let hooks = self.subscribed(newest, Some(*parent), &org_of(&origin.owner), WebhookEvent::Fork).await?;
                 let sender = self.account(*actor).await?;
                 let payload = payloads::fork(&forkee, &origin, self.is_fork(*parent).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Fork, &payload).await?.len()
             }
             DomainEvent::ReleasePublished { repo, release, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
-                let hooks = store.subscribed(Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
+                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
                 let Some(release) = self.release_json(&owned, *release, &base).await? else { return Ok(0) };
                 let sender = self.account(*actor).await?;
                 let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
             DomainEvent::Issue { .. } | DomainEvent::IssueComment { .. } | DomainEvent::PullRequestReview { .. } => {
-                self.queue_payload(self.workflow_payload(event, &base).await?).await?
+                self.queue_payload(self.workflow_payload(event, &base).await?, newest).await?
             }
             _ => 0,
         };
@@ -473,10 +493,24 @@ impl WebhookService {
 
     /// Queues `payload` (if any) for the hooks of its repository and organisation that
     /// subscribe to its event; the delivery's `action` is the body's `action` field.
-    async fn queue_payload(&self, payload: Option<HookPayload>) -> Result<usize, ServiceError> {
+    async fn queue_payload(&self, payload: Option<HookPayload>, newest: WebhookId) -> Result<usize, ServiceError> {
         let Some(HookPayload { repo, event, body }) = payload else { return Ok(0) };
-        let hooks = self.inner.store.subscribed(Some(repo.repo.id), &org_of(&repo.owner), event).await?;
+        let hooks = self.subscribed(newest, Some(repo.repo.id), &org_of(&repo.owner), event).await?;
         Ok(self.queue(hooks, event, &body).await?.len())
+    }
+
+    /// The active hooks of `repo` and `orgs` subscribed to `event` that existed when an
+    /// event stamped `newest` was published.
+    async fn subscribed(
+        &self,
+        newest: WebhookId,
+        repo: Option<RepoId>,
+        orgs: &[AccountId],
+        event: WebhookEvent,
+    ) -> Result<Vec<WebhookId>, ServiceError> {
+        let mut hooks = self.inner.store.subscribed(repo, orgs, event).await?;
+        hooks.retain(|hook| *hook <= newest);
+        Ok(hooks)
     }
 
     async fn repository(&self, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {
@@ -530,7 +564,7 @@ impl WebhookService {
             return;
         }
         // Subscribe before returning so no event published after start-up is missed.
-        let events = self.inner.ctx.events.subscribe();
+        let events = self.inner.ctx.events.subscribe_published();
         let service = self.clone();
         self.inner.tasks.spawn(async move { service.listen(events).await });
         let service = self.clone();
@@ -550,16 +584,16 @@ impl WebhookService {
         }
     }
 
-    async fn listen(self, mut events: tokio::sync::broadcast::Receiver<DomainEvent>) {
+    async fn listen(self, mut events: tokio::sync::broadcast::Receiver<Published>) {
         loop {
             let event = tokio::select! {
                 () = self.inner.shutdown.cancelled() => break,
                 event = events.recv() => event,
             };
             match event {
-                Ok(event) => {
-                    if let Err(error) = self.handle_event(&event).await {
-                        tracing::warn!(%error, ?event, "cannot queue webhook deliveries");
+                Ok(published) => {
+                    if let Err(error) = self.handle_published(&published).await {
+                        tracing::warn!(%error, event = ?published.event, "cannot queue webhook deliveries");
                     }
                 }
                 Err(RecvError::Lagged(skipped)) => {

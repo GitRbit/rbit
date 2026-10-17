@@ -11,7 +11,7 @@ use std::{
 
 use rbit_core::{
     Config, OrgRole, Timestamp, User, Visibility,
-    webhook::{DeliveryStatus, WebhookEvent, WebhookOwner, WebhookUrl},
+    webhook::{DeliveryStatus, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
 use rbit_services::{
     CreateRepository, DomainEvent, RepoContext, ServiceError, Services,
@@ -19,7 +19,7 @@ use rbit_services::{
     forks::ForkInput,
     orgs::CreateOrganization,
     releases::ReleaseInput,
-    webhooks::{HookTarget, MAX_HOOKS_PER_OWNER, WebhookInput, delivery::signature},
+    webhooks::{HookTarget, MAX_HOOKS_PER_OWNER, WebhookInput, WebhookService, delivery::signature},
 };
 use rbit_storage::{
     Database, KvStore, NewUser,
@@ -142,7 +142,9 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<Received> {
 
 struct Fixture {
     _dir: tempfile::TempDir,
+    config: Arc<Config>,
     database: Database,
+    kv: KvStore,
     services: Services,
 }
 
@@ -158,8 +160,9 @@ impl Fixture {
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-        let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
-        Self { _dir: dir, database, services }
+        let config = Arc::new(config);
+        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+        Self { _dir: dir, config, database, kv, services }
     }
 
     async fn user(&self, name: &str) -> User {
@@ -286,6 +289,109 @@ async fn a_push_is_signed_delivered_and_retried_after_a_server_error() {
     assert!(!push_delivery.request_headers.iter().any(|(_, value)| value.contains("It's a secret")));
     let hook = webhooks.get(HookTarget::Repository(&repo), hook.id).await.unwrap();
     assert_eq!(hook.last_delivery.map(|last| last.status), Some(DeliveryStatus::Succeeded));
+}
+
+/// The events of a hook's delivery log, oldest first.
+async fn logged_events(webhooks: &WebhookService, target: HookTarget<'_>, hook: WebhookId) -> Vec<WebhookEvent> {
+    let mut events: Vec<_> = webhooks.deliveries(target, hook, 1, 100).await.unwrap().deliveries.iter().map(|d| d.event).collect();
+    events.reverse();
+    events
+}
+
+/// Publishes a push of `head` to `main` of `repo` on the bus.
+fn publish_push(fixture: &Fixture, repo: &RepoContext, pusher: &User, head: &str) {
+    let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some(head.to_owned()) };
+    fixture.services.events.publish(DomainEvent::RepositoryPushed {
+        repo: repo.repo.repo.id,
+        pusher: Some(pusher.id()),
+        updates: vec![update],
+    });
+}
+
+#[tokio::test]
+async fn a_hook_never_receives_events_that_happened_before_it_was_created() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let repo = fixture.repo(&alice, "alice", "demo").await;
+    let receiver = Receiver::start(&[]).await;
+    let webhooks = &fixture.services.webhooks;
+    let target = HookTarget::Repository(&repo);
+    let older = webhooks.create(&alice, target, input(&receiver.url, &["push"], None)).await.unwrap();
+
+    // The subscriber's view of the bus, driven by hand: the push is published, then a hook
+    // is added before the push is handled, as when the subscriber runs behind.
+    let head = push_two_commits(&repo);
+    let mut bus = fixture.services.events.subscribe_published();
+    publish_push(&fixture, &repo, &alice, &head);
+    let push = bus.recv().await.unwrap();
+    let newer = webhooks.create(&alice, target, input(&receiver.url, &["push"], None)).await.unwrap();
+    assert_eq!(webhooks.handle_published(&push).await.unwrap(), 1, "only the hook that existed at the push");
+
+    // A push after both hooks exist reaches both.
+    publish_push(&fixture, &repo, &alice, &head);
+    assert_eq!(webhooks.handle_published(&bus.recv().await.unwrap()).await.unwrap(), 2);
+
+    assert_eq!(logged_events(webhooks, target, older.id).await, [WebhookEvent::Ping, WebhookEvent::Push, WebhookEvent::Push]);
+    assert_eq!(logged_events(webhooks, target, newer.id).await, [WebhookEvent::Ping, WebhookEvent::Push]);
+}
+
+#[tokio::test]
+async fn hooks_stored_before_start_up_receive_events_and_new_ids_go_above_them() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let repo = fixture.repo(&alice, "alice", "demo").await;
+    let receiver = Receiver::start(&[]).await;
+    let stored = NewWebhook {
+        id: Some(WebhookId(10)),
+        owner: WebhookOwner::Repository(repo.repo.repo.id),
+        url: WebhookUrl::parse(&receiver.url).unwrap(),
+        secret: None,
+        events: vec![WebhookEvent::Push],
+        active: true,
+        created_by: None,
+    };
+    let existing = fixture.database.webhooks().create(stored).await.unwrap();
+
+    // As after a restart: the services start over a database that already has hook 10.
+    let services = Services::new(Arc::clone(&fixture.config), &fixture.database, &fixture.kv).await.unwrap();
+    let mut bus = services.events.subscribe_published();
+    let head = push_two_commits(&repo);
+    let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some(head) };
+    services.events.publish(DomainEvent::RepositoryPushed { repo: repo.repo.repo.id, pusher: Some(alice.id()), updates: vec![update] });
+    let push = bus.recv().await.unwrap();
+    let created = services.webhooks.create(&alice, HookTarget::Repository(&repo), input(&receiver.url, &["push"], None)).await.unwrap();
+    assert_eq!(created.id, WebhookId(11), "new ids continue after the stored ones");
+    assert_eq!(services.webhooks.handle_published(&push).await.unwrap(), 1);
+    let target = HookTarget::Repository(&repo);
+    assert_eq!(logged_events(&services.webhooks, target, existing.id).await, [WebhookEvent::Push]);
+    assert_eq!(logged_events(&services.webhooks, target, created.id).await, [WebhookEvent::Ping]);
+}
+
+#[tokio::test]
+async fn deleting_or_deactivating_a_hook_stops_events_not_yet_queued() {
+    let fixture = Fixture::new(|_| {}).await;
+    let alice = fixture.user("alice").await;
+    let repo = fixture.repo(&alice, "alice", "demo").await;
+    let receiver = Receiver::start(&[]).await;
+    let webhooks = &fixture.services.webhooks;
+    let target = HookTarget::Repository(&repo);
+    let kept = webhooks.create(&alice, target, input(&receiver.url, &["push"], None)).await.unwrap();
+    let deleted = webhooks.create(&alice, target, input(&receiver.url, &["push"], None)).await.unwrap();
+    let paused = webhooks.create(&alice, target, input(&receiver.url, &["push"], None)).await.unwrap();
+
+    // All three existed and were active when the push happened; by the time it is handled
+    // one is deleted and one switched off.
+    let head = push_two_commits(&repo);
+    let mut bus = fixture.services.events.subscribe_published();
+    publish_push(&fixture, &repo, &alice, &head);
+    let push = bus.recv().await.unwrap();
+    webhooks.delete(&alice, target, deleted.id).await.unwrap();
+    webhooks.update(&alice, target, paused.id, WebhookInput { active: false, ..input(&receiver.url, &["push"], None) }).await.unwrap();
+    assert_eq!(webhooks.handle_published(&push).await.unwrap(), 1, "only the hook still there and on");
+
+    assert_eq!(logged_events(webhooks, target, kept.id).await, [WebhookEvent::Ping, WebhookEvent::Push]);
+    assert_eq!(logged_events(webhooks, target, paused.id).await, [WebhookEvent::Ping]);
+    assert!(matches!(webhooks.deliveries(target, deleted.id, 1, 10).await, Err(ServiceError::NotFound)));
 }
 
 #[tokio::test]
@@ -477,6 +583,7 @@ async fn internal_targets_are_refused_unless_allowed() {
     let port = receiver.url.trim_start_matches("http://127.0.0.1:").trim_end_matches("/hook");
     for url in [receiver.url.clone(), format!("http://localhost:{port}/hook")] {
         let new = NewWebhook {
+            id: None,
             owner: WebhookOwner::Repository(repo.repo.repo.id),
             url: WebhookUrl::parse(&url).unwrap(),
             secret: None,

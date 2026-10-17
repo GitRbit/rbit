@@ -56,6 +56,7 @@ impl Fixture {
 
     fn hook(&self, owner: WebhookOwner, events: &[WebhookEvent]) -> NewWebhook {
         NewWebhook {
+            id: None,
             owner,
             url: WebhookUrl::parse("https://hooks.example.com/rbit").unwrap(),
             secret: Some("s3cret".to_owned()),
@@ -139,6 +140,24 @@ async fn hooks_are_scoped_to_their_owner_and_secrets_are_write_only() {
     assert!(!store.delete(other, hook.id).await.unwrap());
     assert!(store.delete(repo, hook.id).await.unwrap());
     assert!(store.find(repo, hook.id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn hooks_can_be_stored_under_a_chosen_id() {
+    let fixture = Fixture::new().await;
+    let store = fixture.store();
+    let repo = WebhookOwner::Repository(fixture.repo);
+    assert_eq!(store.max_id().await.unwrap(), WebhookId(0), "no hooks yet");
+
+    let chosen = store.create(NewWebhook { id: Some(WebhookId(41)), ..fixture.hook(repo, &[WebhookEvent::Push]) }).await.unwrap();
+    assert_eq!(chosen.id, WebhookId(41));
+    let next = store.create(fixture.hook(repo, &[WebhookEvent::Push])).await.unwrap();
+    assert_eq!(next.id, WebhookId(42), "without one, SQLite picks the next");
+    assert_eq!(store.max_id().await.unwrap(), WebhookId(42));
+    assert!(
+        store.create(NewWebhook { id: Some(WebhookId(41)), ..fixture.hook(repo, &[WebhookEvent::Push]) }).await.is_err(),
+        "ids are unique"
+    );
 }
 
 #[tokio::test]

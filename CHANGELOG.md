@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A webhook created right after an event (for example a push) no longer receives that
+  event's delivery: hooks only get events that happened while they existed, as on GitHub.
+  A hook deleted or deactivated before an event is queued does not receive it either.
+
 ### Milestone 2 — wave B
 
 The collaboration layer, second half: issues, pull requests with review and merging, and
