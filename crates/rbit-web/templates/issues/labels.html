@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <a href="{{ issues_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Issues</a>
+  <a href="{{ milestones_url }}" class="btn btn-ghost">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}Milestones</a>
+</div>
+{% call ui::form_error(error) %}{% endcall %}
+
+{% if can_write %}
+<details class="box mb-6" {% if error.0.is_some() %}open{% endif %}>
+  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New label</summary>
+  <form method="post" action="{{ create_url }}" class="grid gap-3 border-t border-line p-4 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+    <label class="block"><span class="label">Name</span><input class="input" name="name" value="{{ form.name }}" maxlength="50" required></label>
+    <label class="block"><span class="label">Description <span class="font-normal text-ink-faint">optional</span></span><input class="input" name="description" value="{{ form.description }}" maxlength="100"></label>
+    <label class="block"><span class="label">Colour</span><input class="input h-11 w-full cursor-pointer p-1 sm:h-9 sm:w-16" type="color" name="color" value="{{ form.color }}"></label>
+    <button type="submit" class="btn btn-primary h-11 sm:h-9">Create label</button>
+  </form>
+</details>
+{% endif %}
+
+<section class="box" aria-labelledby="labels-title">
+  <h1 id="labels-title" class="box-header text-[13px] font-medium">{% call ui::icon("tag", "size-3.5 text-ink-muted") %}{% endcall %}{{ labels.len() }} {% if labels.len() == 1 %}label{% else %}labels{% endif %}</h1>
+  {% if labels.is_empty() %}
+  {% call ui::empty_state("tag", "No labels yet", "Labels sort issues and pull requests: bug, enhancement, good first issue…") %}{% endcall %}
+  {% if can_write %}
+  <form method="post" action="{{ defaults_url }}" class="flex justify-center pb-8"><button type="submit" class="btn">Create default labels</button></form>
+  {% endif %}
+  {% else %}
+  <ul>
+    {% for label in labels %}
+    <li class="border-b border-line px-4 py-3 last:border-b-0">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a href="{{ label.issues_url }}" class="label-chip hover:border-line-strong"><svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ label.color }}"/></svg><span class="truncate">{{ label.name }}</span></a>
+        <span class="min-w-0 flex-1 truncate text-[13px] text-ink-muted">{{ label.description }}</span>
+        <a href="{{ label.issues_url }}" class="text-xs text-ink-faint hover:text-ink-muted">{{ label.open_issues }} open {% if label.open_issues == 1 %}issue{% else %}issues{% endif %}</a>
+      </div>
+      {% if can_write %}
+      <details class="mt-2">
+        <summary class="cursor-pointer text-xs text-ink-muted hover:text-ink">Edit</summary>
+        <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <form method="post" action="{{ label.update_url }}" class="grid flex-1 gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end">
+            <label class="block"><span class="label">Name</span><input class="input" name="name" value="{{ label.name }}" maxlength="50" required></label>
+            <label class="block"><span class="label">Description</span><input class="input" name="description" value="{{ label.description }}" maxlength="100"></label>
+            <label class="block"><span class="label">Colour</span><input class="input h-11 w-full cursor-pointer p-1 sm:h-9 sm:w-16" type="color" name="color" value="{{ label.color }}"></label>
+            <button type="submit" class="btn h-11 sm:h-9">Save</button>
+          </form>
+          <form method="post" action="{{ label.delete_url }}" hx-confirm="Delete the label “{{ label.name }}”? It is removed from every issue.">
+            <button type="submit" class="btn btn-danger h-11 w-full sm:h-9">Delete</button>
+          </form>
+        </div>
+      </details>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
