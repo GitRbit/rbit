@@ -60,6 +60,20 @@ pub async fn read(git_binary: &Path, repo: &Path, number: u32) -> Result<Option<
     Ok(Some(id))
 }
 
+/// Deletes branch `branch` of the repository at `repo` if it still points at `expected`
+/// (the merged head); `false` when it moved or is gone.
+pub async fn delete_branch(git_binary: &Path, repo: &Path, branch: &str, expected: &str) -> Result<bool, GitError> {
+    let full = branch_ref(branch)?;
+    validate_id(expected)?;
+    let output = hardened(git_binary, Some(repo))
+        .args(["update-ref", "--no-deref", "-m", "rbit: delete merged head branch", "-d", "--end-of-options"])
+        .arg(full)
+        .arg(expected)
+        .output()
+        .await?;
+    Ok(output.status.success())
+}
+
 /// `refs/heads/{branch}` for a valid branch name (never an option).
 pub(crate) fn branch_ref(branch: &str) -> Result<String, GitError> {
     let full = format!("refs/heads/{branch}");

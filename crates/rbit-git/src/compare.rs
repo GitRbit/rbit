@@ -1,6 +1,7 @@
 //! Comparing two revisions: merge base, commits ahead and behind, and the diff.
 //!
-//! Milestone 2 workstream R (repository essentials) owns this file.
+//! Milestone 2 workstream R (repository essentials) owns this file; wave B's pull request
+//! workstream (P) adds ancestry and path lookups.
 //!
 //! The comparison answers "what would merging `head` into `base` bring in": the commits
 //! reachable from `head` but not from `base`, and the diff from their merge base to
@@ -92,6 +93,34 @@ impl RepositoryReader {
                 files,
                 truncated,
             })
+        })
+        .await
+    }
+
+    /// Whether `ancestor` is reachable from `descendant` (a commit is its own ancestor).
+    pub async fn is_ancestor(&self, ancestor: String, descendant: String) -> Result<bool, GitError> {
+        self.with_repo(move |repo| {
+            let ancestor = resolve_commit(repo, &ancestor)?;
+            let descendant = resolve_commit(repo, &descendant)?;
+            if ancestor == descendant {
+                return Ok(true);
+            }
+            Ok(repo.merge_base(ancestor, descendant).map_err(GitError::backend)?.is_some_and(|base| base.detach() == ancestor))
+        })
+        .await
+    }
+
+    /// The object id of each of `paths` as of `revision` (`None` where the path does not
+    /// exist), e.g. to tell whether a file changed between two commits.
+    pub async fn path_ids(&self, revision: String, paths: Vec<String>) -> Result<Vec<Option<String>>, GitError> {
+        self.with_repo(move |repo| {
+            let tree = repo.find_commit(resolve_commit(repo, &revision)?).map_err(GitError::backend)?.tree().map_err(GitError::backend)?;
+            paths
+                .iter()
+                .map(|path| {
+                    Ok(tree.lookup_entry_by_path(path).map_err(GitError::backend)?.map(|entry| entry.object_id().to_hex().to_string()))
+                })
+                .collect()
         })
         .await
     }

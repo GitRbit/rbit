@@ -114,3 +114,23 @@ async fn pull_heads_follow_the_branch_and_survive_the_forks_deletion() {
     assert!(pull_refs::fetch(git_binary, &parent, &parent, "--upload-pack=evil", 4).await.is_err());
     assert!(pull_refs::fetch(git_binary, &parent, &parent, "missing", 4).await.is_err());
 }
+
+#[tokio::test]
+async fn ancestry_paths_and_branch_deletion() {
+    let (_dir, parent, _fork) = network();
+    let reader = RepositoryReader::new(parent.clone());
+    let main = reader.commit_id("main".into()).await.unwrap();
+    let first = reader.history(main.clone(), 1, 1).await.unwrap()[0].id.clone();
+    assert!(reader.is_ancestor(first.clone(), main.clone()).await.unwrap());
+    assert!(reader.is_ancestor(main.clone(), main.clone()).await.unwrap());
+    assert!(!reader.is_ancestor(main.clone(), first.clone()).await.unwrap());
+
+    let ids = reader.path_ids(main.clone(), vec!["main.txt".into(), "README.md".into(), "missing".into()]).await.unwrap();
+    assert!(ids[0].is_some() && ids[1].is_some() && ids[2].is_none());
+    assert_eq!(reader.path_ids(first.clone(), vec!["main.txt".into()]).await.unwrap(), [None]);
+
+    let git_binary = Path::new("git");
+    assert!(!pull_refs::delete_branch(git_binary, &parent, "main", &first).await.unwrap(), "only at the expected id");
+    assert!(pull_refs::delete_branch(git_binary, &parent, "main", &main).await.unwrap());
+    assert!(reader.commit_id("refs/heads/main".into()).await.is_err());
+}
