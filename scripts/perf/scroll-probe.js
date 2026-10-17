@@ -37,7 +37,7 @@
     maxSweepMs = 60_000,
   } = options;
 
-  const LINE = ".code-line, .diff-view .vblock > div";
+  const LINE = ".code-line, .diff-view tr, .diff-view .vblock > div";
   const BLOCK = ".vblock, .code-lines, .diff-file[open]";
   const CHROME = "header.site-header, .site-subnav, .diff-file-header, .diff-toolbar, .diff-sidebar";
   const frame = () => new Promise((done) => requestAnimationFrame(done));
@@ -62,7 +62,7 @@
   const dom = {
     elements: document.getElementsByTagName("*").length,
     codeLines: document.querySelectorAll(".code-line").length,
-    diffRows: document.querySelectorAll(".diff-view .vblock > div").length,
+    diffRows: document.querySelectorAll(".diff-view tr, .diff-view .vblock > div").length,
     diffFiles: document.querySelectorAll(".diff-file").length,
     scrollHeight: scroller.scrollHeight,
     viewport: [innerWidth, innerHeight],
