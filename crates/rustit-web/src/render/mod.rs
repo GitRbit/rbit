@@ -2,6 +2,7 @@
 
 mod highlight;
 mod markdown;
+pub mod references;
 
 pub use highlight::Highlighter;
 pub use markdown::render_markdown;

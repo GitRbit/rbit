@@ -13,10 +13,16 @@ mod forks;
 mod git_http;
 mod history;
 mod home;
+mod issues;
+mod labels;
 mod listing;
+mod milestones;
 mod mirrors;
+mod notifications;
 mod ops;
 mod orgs;
+mod protection;
+mod pulls;
 mod pwa;
 mod recovery;
 mod releases;
@@ -114,6 +120,13 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(mirrors::routes())
         // Frontend wave: themes (T).
         .merge(themes::routes())
+        // Milestone 2 wave B (the shared timeline routes arrive with T0).
+        .merge(issues::routes())
+        .merge(labels::routes())
+        .merge(milestones::routes())
+        .merge(notifications::routes())
+        .merge(pulls::routes())
+        .merge(protection::routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

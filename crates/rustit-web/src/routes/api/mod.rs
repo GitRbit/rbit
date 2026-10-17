@@ -12,18 +12,24 @@
 //! from `server.public_url`, explicit `null`s; lists are paginated with `?page=` and
 //! `?per_page=` and answer with `Link` and `X-Total-Count` (see [`pagination`]).
 //!
-//! The routes come from one table, [`table`]; `openapi.json` documents the same set, and
-//! a test keeps the two equal.
+//! The routes come from one table, [`table`]; wave B areas append theirs from child
+//! modules (`issues`, `notifications`, `pulls`, `protection`). `openapi.json` plus one
+//! fragment per area (`openapi/<area>.json`, merged once at start-up) documents the same
+//! set, and a test keeps the two equal.
 
 mod accounts;
 mod auth;
 mod error;
 mod hooks;
+mod issues;
 mod json;
+mod notifications;
 mod pagination;
+mod protection;
+mod pulls;
 mod repos;
 
-use std::{borrow::Cow, time::Duration};
+use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
 use auth::Caller;
 use axum::{
@@ -35,6 +41,7 @@ use axum::{
     routing::{MethodFilter, MethodRouter, any, on},
 };
 use error::ApiError;
+use serde_json::Value;
 use tower_http::{compression::CompressionLayer, set_header::SetResponseHeaderLayer, timeout::TimeoutLayer};
 
 use crate::AppState;
@@ -141,7 +148,48 @@ pub fn table() -> Vec<ApiRoute> {
             route(Post, path("/{id}/deliveries/{delivery}/attempts"), hooks::redeliver),
         ]);
     }
+    // Milestone 2 wave B: each area owns its routes and its `openapi/<area>.json` fragment.
+    routes.extend(issues::routes());
+    routes.extend(notifications::routes());
+    routes.extend(pulls::routes());
+    routes.extend(protection::routes());
     routes
+}
+
+/// The `OpenAPI` fragments of wave B's areas, merged into [`OPENAPI`]. Each is shaped
+/// `{"paths": {…}, "components": {"schemas": {…}}}`.
+const FRAGMENTS: [(&str, &str); 4] = [
+    ("issues", include_str!("openapi/issues.json")),
+    ("notifications", include_str!("openapi/notifications.json")),
+    ("pulls", include_str!("openapi/pulls.json")),
+    ("protection", include_str!("openapi/protection.json")),
+];
+
+/// The served document: `openapi.json` with every fragment's paths and schemas merged in.
+/// Built once; a test checks it documents exactly [`table`] and that no fragment repeats a
+/// path or schema name.
+static DOCUMENT: LazyLock<String> = LazyLock::new(|| merged_document().0.to_string());
+
+/// The merged document and every path or schema name defined more than once (the first
+/// definition wins).
+fn merged_document() -> (Value, Vec<String>) {
+    let mut document: Value = serde_json::from_str(OPENAPI).expect("openapi.json is valid JSON");
+    let mut duplicates = Vec::new();
+    for (area, fragment) in FRAGMENTS {
+        let fragment: Value = serde_json::from_str(fragment).unwrap_or_else(|error| panic!("openapi/{area}.json is invalid: {error}"));
+        for (section, pointer) in [("paths", "/paths"), ("schemas", "/components/schemas")] {
+            let Some(entries) = fragment.pointer(pointer).and_then(Value::as_object) else { continue };
+            let Some(target) = document.pointer_mut(pointer).and_then(Value::as_object_mut) else { continue };
+            for (name, value) in entries {
+                if target.contains_key(name) {
+                    duplicates.push(format!("{section} {name} (openapi/{area}.json)"));
+                } else {
+                    target.insert(name.clone(), value.clone());
+                }
+            }
+        }
+    }
+    (document, duplicates)
 }
 
 pub fn routes() -> Router<AppState> {
@@ -162,7 +210,7 @@ pub fn routes() -> Router<AppState> {
 
 /// `GET /openapi.json`
 async fn openapi(_caller: Caller) -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/json")], OPENAPI)
+    ([(header::CONTENT_TYPE, "application/json")], DOCUMENT.as_str())
 }
 
 /// Every other path under `/api`.
@@ -193,7 +241,13 @@ mod tests {
 
     #[test]
     fn openapi_documents_exactly_the_routes() {
-        let document: Value = serde_json::from_str(OPENAPI).expect("openapi.json is valid JSON");
+        let (document, duplicates) = merged_document();
+        assert!(duplicates.is_empty(), "defined more than once: {duplicates:?}");
+        assert_eq!(serde_json::from_str::<Value>(&DOCUMENT).unwrap(), document, "the served document is the merged one");
+        for (area, fragment) in FRAGMENTS {
+            let fragment: Value = serde_json::from_str(fragment).unwrap();
+            assert!(fragment["paths"].is_object() && fragment["components"]["schemas"].is_object(), "openapi/{area}.json shape");
+        }
         assert_eq!(document["openapi"].as_str().map(|v| v.starts_with("3.1")), Some(true), "OpenAPI 3.1");
         assert_eq!(document["servers"][0]["url"], PREFIX);
 
