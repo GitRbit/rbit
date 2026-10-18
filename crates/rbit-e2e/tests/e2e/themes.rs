@@ -34,7 +34,10 @@ async fn anonymous_visitors_choose_a_theme_without_javascript() {
     let cookie = chosen.header("set-cookie").expect("the choice is remembered");
     assert!(cookie.contains(&format!("rbit-theme={DRACULA}")) && cookie.contains("Max-Age=31536000"), "{cookie}");
     assert_eq!(rendered_theme(&visitor).await.as_deref(), Some(DRACULA));
-    visitor.get("/explore").await.expect_contains(&[&format!("/assets/themes/{DRACULA}.css?v="), "data-scheme=\"dark\""]);
+    visitor
+        .get("/explore")
+        .await
+        .expect_contains(&[&format!("<style data-theme-stylesheet data-theme=\"{DRACULA}\">"), "data-scheme=\"dark\""]);
 
     // The picker script gets an empty answer; unknown themes and open redirects are refused.
     visitor.post("/themes", &[("theme", "light"), ("js", "1")]).await.expect_status(StatusCode::NO_CONTENT);

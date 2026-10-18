@@ -45,7 +45,7 @@ async fn pages_of_the_same_repository_are_sent_partially() {
     alice.create_repo("alice", "secret", "private").await;
     let hidden = server.client().get_with("/alice/secret/issues", &[("HX-Request", "true"), ("Rbit-Partial", "/alice/secret")]).await;
     hidden.expect_status(StatusCode::NOT_FOUND);
-    assert!(hidden.header("rbit-partial").is_none() && !hidden.contains("repo-subnav"));
+    assert!(hidden.header("rbit-partial").is_none() && !hidden.contains("id=\"repo-subnav\""));
 }
 
 #[tokio::test]

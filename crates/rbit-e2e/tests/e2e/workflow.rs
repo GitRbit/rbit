@@ -53,7 +53,7 @@ async fn page_with(client: &Client, path: &str, needle: &str) -> String {
 
 /// Whether the header bell shows the unread dot for `client`.
 async fn has_unread(client: &Client) -> bool {
-    client.get("/").await.contains("notification-dot")
+    client.get("/").await.contains("<span class=\"notification-dot\"")
 }
 
 // ------------------------------------------------------------------ a webhook receiver
@@ -187,7 +187,7 @@ async fn an_issue_is_fixed_through_a_protected_reviewed_pull_request() {
     // Bob pushes his branch: the commit message's `refs #1` shows on the issue.
     git.ok(&work, &["push", "--quiet", "origin", "fix-crash"]);
     page_with(&alice, "/alice/demo/issues/1", &format!("/alice/demo/commit/{fix}")).await;
-    alice.get("/alice/demo/issues/1").await.expect_contains(&["referenced this in commit", "state-badge-open"]);
+    alice.get("/alice/demo/issues/1").await.expect_contains(&["referenced this in commit", "class=\"state-badge state-badge-open\""]);
 
     // He opens a pull request that fixes the issue and asks alice to review it.
     bob.post(
@@ -246,7 +246,7 @@ async fn an_issue_is_fixed_through_a_protected_reviewed_pull_request() {
     assert_ne!(squash, fix, "a squash makes a new commit");
 
     // The merge closed the issue (main is the default branch), with the event on its timeline.
-    let issue = page_with(&alice, "/alice/demo/issues/1", "state-badge-closed").await;
+    let issue = page_with(&alice, "/alice/demo/issues/1", "class=\"state-badge state-badge-closed\"").await;
     assert!(issue.contains("closed this as completed in"), "{issue}");
     let closed = delivery(&inbox, "issues", |body| body["action"] == "closed").await;
     assert_eq!((closed["issue"]["number"].as_u64(), closed["issue"]["state"].as_str()), (Some(1), Some("closed")));

@@ -16,6 +16,9 @@ use hmac::{Hmac, KeyInit, Mac};
 use rbit_e2e::{Client, Git, PASSWORD, Sample, StatusCode, TestServer};
 use sha2::Sha256;
 
+const OPEN_BADGE: &str = "class=\"state-badge state-badge-open\"";
+const CLOSED_BADGE: &str = "class=\"state-badge state-badge-closed\"";
+
 /// Polls `check` until it holds, for at most 20 seconds.
 async fn eventually<F, Fut>(what: &str, mut check: F)
 where
@@ -31,7 +34,7 @@ where
 
 /// Whether the header bell shows the unread dot for `client`.
 async fn has_unread(client: &Client) -> bool {
-    client.get("/").await.contains("notification-dot")
+    client.get("/").await.contains("<span class=\"notification-dot\"")
 }
 
 /// A JSON API call with a bearer token.
@@ -161,7 +164,7 @@ async fn triage_notifications_references_and_webhooks() {
     opened.expect_redirect("/alice/demo/issues/1");
 
     let page = alice.get("/alice/demo/issues/1").await;
-    page.expect_status(StatusCode::OK).expect_contains(&["Crash on start", "state-badge-open", "Edit labels", "bug", "bob"]);
+    page.expect_status(StatusCode::OK).expect_contains(&["Crash on start", OPEN_BADGE, "Edit labels", "bug", "bob"]);
     assert!(!page.contains("style="), "no inline styles");
     alice.get("/alice/demo/issues").await.expect_contains(&["Crash on start", "1</span> Open"]);
     alice.get("/alice/demo/issues?q=is%3Aopen+label%3Abug+crash").await.expect_contains(&["Crash on start"]);
@@ -211,11 +214,11 @@ async fn triage_notifications_references_and_webhooks() {
         async move { alice.get("/alice/demo/issues/1").await.contains(short) }
     })
     .await;
-    alice.get("/alice/demo/issues/1").await.expect_contains(&["state-badge-open"]);
+    alice.get("/alice/demo/issues/1").await.expect_contains(&[OPEN_BADGE]);
     git.ok(&clone, &["push", "--quiet", "origin", "fix:main"]);
     eventually("the issue to close", || {
         let alice = &alice;
-        async move { alice.get("/alice/demo/issues/1").await.contains("state-badge-closed") }
+        async move { alice.get("/alice/demo/issues/1").await.contains(CLOSED_BADGE) }
     })
     .await;
     alice.get("/alice/demo/issues?q=is%3Aclosed").await.expect_contains(&["Crash on start"]);

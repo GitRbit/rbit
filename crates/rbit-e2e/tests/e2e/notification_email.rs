@@ -9,7 +9,7 @@ use rbit_e2e::{Client, MailLog, StatusCode, TestServer};
 
 /// Whether the header bell shows the unread dot for `client`.
 async fn has_unread(client: &Client) -> bool {
-    client.get("/").await.contains("notification-dot")
+    client.get("/").await.contains("<span class=\"notification-dot\"")
 }
 
 /// Signs up `name` and follows the verification link the server emailed.

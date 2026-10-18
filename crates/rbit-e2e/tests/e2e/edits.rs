@@ -107,7 +107,7 @@ async fn editing_a_file_in_the_browser() {
     assert_eq!(bytes, b"# Sample project\n\nHello from the end-to-end suite.\nEdited in the browser.", "LF kept, nothing appended");
     eventually("issue 1 to close", || {
         let alice = &alice;
-        async move { alice.get("/alice/demo/issues/1").await.contains("state-badge-closed") }
+        async move { alice.get("/alice/demo/issues/1").await.contains("class=\"state-badge state-badge-closed\"") }
     })
     .await;
 
