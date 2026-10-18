@@ -68,6 +68,12 @@ property tests, and an end-to-end suite (`crates/rbit-e2e`) that boots servers o
 ports and drives them with an HTTP client and the real `git` CLI. Run one crate's tests with
 `cargo test -p rbit-services`, one test with `cargo test -p rbit-e2e -- pulls::`.
 
+To exercise full upstream repositories against the development server, run
+`npm run test:realworld -- http://localhost:3000`. It loads the real rbit repository and
+Git's full history, verifies HTTP push/clone integrity and checks repository browsing.
+See [the performance harness](scripts/perf/README.md#real-repositories) for setup,
+generated credentials, reports and the separate synthetic scrolling workload.
+
 ## How the code is organised
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) is the map: the crates, the schema, the routes,

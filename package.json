@@ -5,6 +5,7 @@
   "description": "Build-time front-end tooling for rbit. Nothing here runs in production.",
   "type": "module",
   "scripts": {
+    "test:realworld": "node scripts/perf/realworld.mjs",
     "test": "node --test scripts/tests/*.test.mjs",
     "build": "npm run vendor && npm run build:css",
     "dev": "node scripts/dev.mjs",
