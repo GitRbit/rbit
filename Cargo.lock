@@ -4207,6 +4207,7 @@ dependencies = [
  "gix",
  "proptest",
  "rbit-core",
+ "sha2 0.11.1",
  "similar",
  "tempfile",
  "thiserror",
@@ -4270,9 +4271,11 @@ dependencies = [
  "rbit-storage",
  "reqwest",
  "rustls",
+ "same-file",
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "sqlx",
  "ssh-key",
  "tempfile",
  "thiserror",
@@ -4312,6 +4315,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

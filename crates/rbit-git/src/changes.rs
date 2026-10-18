@@ -1,10 +1,12 @@
 //! Commit details (what a commit changed) and branch/tag listings.
 
+use std::ops::ControlFlow;
+
 use gix::{ObjectId, bstr::ByteSlice, objs::tree::EntryMode};
 
 use crate::{
     ChangeStatus, CommitDetail, FileDiff, FileDiffBody, GitError, RefDetail, RefKind, RepositoryReader,
-    diff::{diff_bytes, is_binary},
+    diff::{diff_bytes_bounded, is_binary},
     reader::{resolve_commit, summarize},
 };
 
@@ -80,24 +82,71 @@ pub(crate) fn diff_trees(
     new_tree: &gix::Tree<'_>,
     limits: DiffLimits,
 ) -> Result<(Vec<FileDiff>, bool), GitError> {
-    let options = gix::diff::Options::default().with_rewrites(Some(gix::diff::Rewrites::default()));
-    let changes = repo.diff_tree_to_tree(old_tree, Some(new_tree), options).map_err(GitError::backend)?;
+    let (changes, omitted) = bounded_changes(repo, old_tree, new_tree, limits.max_files)?;
 
     let mut files = Vec::new();
     let mut budget = limits.max_total_lines;
-    let mut truncated = false;
     for change in changes {
         let Some((path, old_path, status, old, new)) = describe(change) else { continue };
-        if files.len() == limits.max_files {
-            truncated = true;
-            break;
-        }
         files.push(file_diff(repo, path, old_path, status, old, new, &limits, &mut budget)?);
     }
 
     // Files skipped once the line budget ran out make the listing incomplete too.
-    let truncated = truncated || files.iter().any(|f| !f.stats_known || matches!(f.body, FileDiffBody::TooLarge));
+    let truncated = omitted || files.iter().any(|f| !f.stats_known || matches!(f.body, FileDiffBody::TooLarge));
     Ok((files, truncated))
+}
+
+/// Retain only the visible prefix of classified changes, stopping at the first omitted
+/// file. Keep gitoxide's rewrite settings and emission order: rename detection can still
+/// require discovering all candidates, but modifications can fill the page before that
+/// work is needed. Directory changes do not consume the file budget.
+fn bounded_changes(
+    repo: &gix::Repository,
+    old_tree: Option<&gix::Tree<'_>>,
+    new_tree: &gix::Tree<'_>,
+    max_files: usize,
+) -> Result<(Vec<gix::object::tree::diff::ChangeDetached>, bool), GitError> {
+    let mut cache = repo
+        .diff_resource_cache(gix::diff::blob::pipeline::Mode::ToGit, gix::diff::blob::pipeline::WorktreeRoots::default())
+        .map_err(GitError::backend)?;
+    // With no output requested, only the existence of a changed file matters; its
+    // rename classification and ordering cannot affect the empty result.
+    let rewrites = (max_files != 0).then(gix::diff::Rewrites::default);
+    let options = gix::diff::Options::default().with_rewrites(rewrites);
+    let empty_tree = repo.empty_tree();
+    let old_tree = old_tree.unwrap_or(&empty_tree);
+    let mut changes = Vec::new();
+    let mut omitted = false;
+    let result = gix::diff::tree_with_rewrites(
+        gix::objs::TreeRefIter::from_bytes(&old_tree.data, old_tree.id.kind()),
+        gix::objs::TreeRefIter::from_bytes(&new_tree.data, new_tree.id.kind()),
+        &mut cache,
+        &mut gix::diff::tree::State::default(),
+        &repo.objects,
+        |change| {
+            // Rewrite tracking can invoke the callback again in a later phase after
+            // Break. Never retain or inspect further changes once the limit is known.
+            if omitted {
+                return Ok(ControlFlow::Break(()));
+            }
+            if change.entry_mode().is_tree() || change.source_entry_mode_and_id().0.is_tree() {
+                return Ok(ControlFlow::Continue(()));
+            }
+            if changes.len() == max_files {
+                omitted = true;
+                return Ok(ControlFlow::Break(()));
+            }
+            changes.push(change.into_owned());
+            Ok(ControlFlow::Continue(()))
+        },
+        options.into(),
+    );
+    match result {
+        Ok(_) => {}
+        Err(gix::diff::tree::Error::Cancelled) if omitted => {}
+        Err(error) => return Err(GitError::backend(error)),
+    }
+    Ok((changes, omitted))
 }
 
 /// Normalises gitoxide's change into (path, old path, status, old side, new side).
@@ -169,8 +218,8 @@ fn file_diff(
         return Ok(summary(FileDiffBody::Binary, true));
     }
 
-    let changes = diff_bytes(&old_data, &new_data);
-    if changes.hunks.is_empty() {
+    let (changes, over_budget) = diff_bytes_bounded(&old_data, &new_data, *budget);
+    if !over_budget && changes.hunks.is_empty() {
         return Ok(summary(FileDiffBody::ModeOnly, true));
     }
 
@@ -183,13 +232,12 @@ fn file_diff(
         stats_known: true,
         body: FileDiffBody::TooLarge,
     };
-    let lines = changes.line_count();
-    if lines > *budget {
-        // Keep the counts (they are already computed) but don't render a diff that would
-        // exceed the page budget; nothing after this file is diffed either.
+    if over_budget {
+        // Keep exact counts without allocating display lines that cannot be shown;
+        // nothing after this file is diffed either.
         *budget = 0;
     } else {
-        *budget -= lines;
+        *budget -= changes.line_count();
         file.body = FileDiffBody::Text(changes.hunks);
     }
     Ok(file)
@@ -204,4 +252,97 @@ fn read_side(repo: &gix::Repository, side: Side, limits: &DiffLimits) -> Result<
         return Ok(None);
     }
     Ok(Some(repo.find_blob(id).map_err(GitError::backend)?.take_data()))
+}
+
+#[cfg(test)]
+mod tests {
+    use gix::objs::tree::EntryKind;
+
+    use super::*;
+
+    fn tree<'a>(repo: &'a gix::Repository, entries: &[(&str, EntryKind, ObjectId)]) -> gix::Tree<'a> {
+        let mut entries = entries
+            .iter()
+            .map(|(name, kind, id)| gix::objs::tree::Entry { mode: (*kind).into(), filename: (*name).into(), oid: *id })
+            .collect::<Vec<_>>();
+        entries.sort();
+        let id = repo.write_object(gix::objs::Tree { entries }).unwrap();
+        repo.find_tree(id).unwrap()
+    }
+
+    #[test]
+    fn bounded_changes_keep_the_full_diff_prefix_including_renames() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = gix::init_bare(dir.path()).unwrap();
+        let blob = |text| repo.write_blob(text).unwrap().detach();
+        let before = blob("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n");
+        let after = blob("one\ntwo\nthree\nfour\nfive\nsix\nseven\nEIGHT\n");
+        let exact = blob("another file with entirely distinct content\n");
+        let nested = tree(&repo, &[("inside.txt", EntryKind::Blob, blob("nested file\n"))]);
+        let old = tree(
+            &repo,
+            &[
+                ("edit.txt", EntryKind::Blob, blob("old\n")),
+                ("exact-before.txt", EntryKind::Blob, exact),
+                ("fuzzy-before.txt", EntryKind::Blob, before),
+                ("old-dir", EntryKind::Tree, nested.id),
+            ],
+        );
+        let new = tree(
+            &repo,
+            &[
+                ("edit.txt", EntryKind::Blob, blob("new\n")),
+                ("exact-after.txt", EntryKind::Blob, exact),
+                ("fuzzy-after.txt", EntryKind::Blob, after),
+                ("new-dir", EntryKind::Tree, nested.id),
+                ("unrelated.txt", EntryKind::Blob, blob("unrelated addition\n")),
+            ],
+        );
+        // The previous eager implementation is the reference for classification and
+        // ordering, including directory moves and similarity-based rename matching.
+        let options = gix::diff::Options::default().with_rewrites(Some(gix::diff::Rewrites::default()));
+        let expected = repo
+            .diff_tree_to_tree(Some(&old), Some(&new), options)
+            .unwrap()
+            .into_iter()
+            .filter(|change| describe(change.clone()).is_some())
+            .collect::<Vec<_>>();
+        for path in ["exact-after.txt", "fuzzy-after.txt", "new-dir/inside.txt"] {
+            assert!(
+                expected.iter().any(|change| {
+                    describe(change.clone()).is_some_and(|(name, _, status, _, _)| name == path && status == ChangeStatus::Renamed)
+                }),
+                "{path}: {expected:?}"
+            );
+        }
+        for limit in 0..=expected.len() + 1 {
+            let (actual, omitted) = bounded_changes(&repo, Some(&old), &new, limit).unwrap();
+            assert_eq!(actual, expected[..limit.min(expected.len())], "file limit {limit}");
+            assert_eq!(omitted, limit < expected.len());
+        }
+    }
+
+    #[test]
+    fn file_limits_stop_before_an_unneeded_subtree_is_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = gix::init_bare(dir.path()).unwrap();
+        let before = repo.write_blob("old\n").unwrap().detach();
+        let after = repo.write_blob("new\n").unwrap().detach();
+        let missing = ObjectId::from_hex(b"ffffffffffffffffffffffffffffffffffffffff").unwrap();
+        let old = tree(&repo, &[("a.txt", EntryKind::Blob, before), ("b.txt", EntryKind::Blob, before)]);
+        let new =
+            tree(&repo, &[("a.txt", EntryKind::Blob, after), ("b.txt", EntryKind::Blob, after), ("z-late", EntryKind::Tree, missing)]);
+        let limits = DiffLimits { max_files: 1, ..DiffLimits::default() };
+        let (files, omitted) = diff_trees(&repo, Some(&old), &new, limits).unwrap();
+        assert!(omitted);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "a.txt");
+        assert_eq!((files[0].additions, files[0].deletions), (1, 1));
+        // No timing assertion: the missing tree makes any unnecessary traversal fail.
+        assert!(bounded_changes(&repo, Some(&old), &new, usize::MAX).is_err());
+        let (files, omitted) = bounded_changes(&repo, None, &new, 0).unwrap();
+        assert!(files.is_empty() && omitted, "a zero-file budget needs no rename discovery");
+        let (files, omitted) = bounded_changes(&repo, Some(&old), &old, 0).unwrap();
+        assert!(files.is_empty() && !omitted, "an unchanged tree is not truncated");
+    }
 }

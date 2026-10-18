@@ -1,6 +1,9 @@
-//! Atomic first-user selection across password and external registration.
+//! Atomic first-user selection and bounded bulk user lookups.
 
 use rbit_storage::{Database, NewUser, StorageError, sqlite::external_identities::NewExternalIdentity};
+
+#[path = "common/query_count.rs"]
+mod query_count;
 
 fn user(name: &str) -> NewUser {
     NewUser {
@@ -65,4 +68,37 @@ async fn explicit_admin_creation_keeps_the_requested_role() {
     admin.is_admin = true;
     assert!(accounts.create_user(admin).await.unwrap().is_admin);
     assert!(!accounts.register_user(user("carol"), true).await.unwrap().is_admin);
+}
+
+#[tokio::test]
+async fn bulk_users_deduplicate_and_preserve_suspension_semantics_across_batches() {
+    use rbit_core::AccountId;
+
+    let dir = tempfile::tempdir().unwrap();
+    let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+    let accounts = database.accounts();
+    let alice = accounts.create_user(user("alice")).await.unwrap();
+    let bob = accounts.create_user(user("bob")).await.unwrap();
+    database.admin().set_suspended(bob.id(), true).await.unwrap();
+    let mut ids = vec![bob.id(), alice.id(), bob.id()];
+    // Real users sort into the second batch, between unknown IDs on either side.
+    ids.extend((-300..0).map(AccountId));
+    ids.extend((10_000..10_300).map(AccountId));
+    assert_eq!(accounts.find_users(&[]).await.unwrap().len(), 0);
+    let queries = query_count::QueryCounter::new();
+    let all = queries.measure(accounts.find_users(&ids)).await.unwrap();
+    assert_eq!(queries.queries().len(), 3, "602 unique IDs require three bounded lookups, not one query per user");
+    assert_eq!(all.iter().map(rbit_core::User::id).collect::<Vec<_>>(), [alice.id(), bob.id()]);
+    assert_eq!(all[0].email, alice.email);
+    let active = accounts.find_active_users(&ids).await.unwrap();
+    assert_eq!(active.iter().map(rbit_core::User::id).collect::<Vec<_>>(), [alice.id()]);
+    database.admin().set_suspended(bob.id(), false).await.unwrap();
+    assert_eq!(accounts.find_active_users(&ids).await.unwrap().len(), 2, "bulk lookups do not cache authorization state");
+
+    let queries = query_count::QueryCounter::new();
+    let repositories = database.repositories();
+    let grants = queries.measure(repositories.grants_for(rbit_core::RepoId(999_999), alice.id(), &ids)).await.unwrap();
+    assert_eq!(queries.queries().len(), 3, "grant lookups grow with batches, including denied users");
+    assert_eq!(grants.len(), 602);
+    assert!(grants.values().all(|grant| *grant == rbit_storage::sqlite::collaborators::ViewerGrants::default()));
 }

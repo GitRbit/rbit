@@ -16,6 +16,7 @@
 //! `success` (a protection requirement, so an allowed bypass skips it). Other statuses
 //! are shown but never block.
 
+use rbit_auth::policy::{Grants, repo_access};
 use rbit_core::{
     StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
@@ -146,10 +147,22 @@ impl PullService {
     /// Reviews counted for `rules`: latest decisive review per current writer.
     pub(super) async fn tally(&self, ctx: &PullContext, rules: &MergeRules) -> Result<ReviewTally, ServiceError> {
         let reviews = self.ctx().database.reviews().reviews(ctx.issue().id).await?;
+        let reviewers: Vec<_> = reviews.iter().filter_map(|review| review.reviewer).collect();
+        let users = self.ctx().database.accounts().find_users(&reviewers).await?;
+        let repo = &ctx.repo().repo;
+        let need_grants: Vec<_> = users.iter().filter(|user| !user.is_admin && user.id() != repo.repo.owner_id).map(User::id).collect();
+        let grants = self.ctx().database.repositories().grants_for(repo.repo.id, repo.repo.owner_id, &need_grants).await?;
         let mut writers = std::collections::HashSet::new();
-        for reviewer in reviews.iter().filter_map(|review| review.reviewer) {
-            if !writers.contains(&reviewer) && self.access_of(reviewer, &ctx.repo().repo).await?.can_write() {
-                writers.insert(reviewer);
+        for user in users {
+            let stored = grants.get(&user.id()).copied().unwrap_or_default();
+            let grants = Grants {
+                org_role: stored.org_role,
+                org_base: stored.org_base.permission(),
+                team: stored.team,
+                collaborator: stored.collaborator,
+            };
+            if repo_access(Some(&user), repo, &grants).can_write() {
+                writers.insert(user.id());
             }
         }
         Ok(tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id)))

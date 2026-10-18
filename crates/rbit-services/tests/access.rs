@@ -175,6 +175,7 @@ async fn sql_listings_agree_with_the_policy() {
 
     let fan_account = fan.account.clone();
     let viewers = [None, Some(&root), Some(&olga), Some(&alice), Some(&bob), Some(&carol), Some(&dave), Some(&eve), Some(&fan)];
+    assert_bulk_grants(&fixture, &repos, &viewers).await;
     for viewer in viewers {
         let label = viewer.map_or("anonymous".to_owned(), |user| user.name().to_string());
         let mut readable = BTreeSet::new();
@@ -217,6 +218,23 @@ async fn sql_listings_agree_with_the_policy() {
     assert_eq!(fixture.access(Some(&eve), "open", "priv").await, RepoAccess::None);
     let dashboard = names(&fixture.services.repositories.list_for_dashboard(&carol).await.unwrap());
     assert_eq!(dashboard, BTreeSet::from(["alice/priv".to_owned(), "closed/priv".to_owned()]), "shared repositories reach the dashboard");
+}
+
+/// Bulk lookup and single-viewer authorization must agree for the fixture's full
+/// matrix, with duplicate and unknown IDs spanning multiple query batches.
+async fn assert_bulk_grants(fixture: &Fixture, repos: &[(String, &str, rbit_core::RepoId)], viewers: &[Option<&User>]) {
+    let mut viewer_ids: Vec<_> = viewers.iter().flatten().map(|user| user.id()).collect();
+    viewer_ids.extend((10_000..10_300).map(rbit_core::AccountId));
+    viewer_ids.push(viewer_ids[0]);
+    let store = fixture.database.repositories();
+    for (owner, name, id) in repos {
+        let owned = store.find_by_path(owner, name).await.unwrap().unwrap();
+        let batch = store.grants_for(*id, owned.owner.id, &viewer_ids).await.unwrap();
+        assert_eq!(batch.len(), viewer_ids.len() - 1);
+        for viewer in viewers.iter().flatten() {
+            assert_eq!(batch[&viewer.id()], store.grants(*id, owned.owner.id, viewer.id()).await.unwrap());
+        }
+    }
 }
 
 fn invalid(result: Result<(), ServiceError>, needle: &str) {

@@ -9,10 +9,16 @@
 //! upserted unread on new activity with the strongest reason. Who may receive what is
 //! the service's decision; this store only records it.
 
+use std::collections::{BTreeMap, HashMap};
+
 use rbit_core::{AccountId, IssueId, IssueKind, IssueNumber, IssueState, RepoId, StateReason, Timestamp};
 use sqlx::SqlitePool;
 
 use crate::StorageError;
+
+/// Maximum recipients in one fan-out transaction, keeping SQLite's writer available
+/// between batches even for threads with many subscribers.
+pub const NOTIFICATION_BATCH_SIZE: usize = 100;
 
 /// Why a user hears about a thread, weakest first; the strongest wins.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -80,6 +86,15 @@ macro_rules! rank {
 pub struct Subscription {
     pub reason: NotificationReason,
     pub subscribed: bool,
+}
+
+/// One already-authorized recipient of an activity. Direct participation is optional;
+/// an explicit unsubscribe is never overwritten by automatic participation.
+#[derive(Debug, Clone, Copy)]
+pub struct NotificationRecipient {
+    pub user: AccountId,
+    pub reason: NotificationReason,
+    pub participation: Option<NotificationReason>,
 }
 
 /// One inbox row with what it needs to be shown.
@@ -273,6 +288,114 @@ impl NotificationStore {
     }
 
     // ------------------------------------------------------------------ the inbox
+
+    /// Records an activity for already-authorized recipients in bounded transactions.
+    /// Returns each recipient's event/subscription reason, independently of a stronger
+    /// reason already in their unread inbox. Duplicate recipients are combined.
+    pub async fn notify_many(
+        &self,
+        issue: IssueId,
+        repo: RepoId,
+        actor: Option<AccountId>,
+        at: Timestamp,
+        recipients: &[NotificationRecipient],
+    ) -> Result<Vec<(AccountId, NotificationReason)>, StorageError> {
+        let mut unique = BTreeMap::<AccountId, NotificationRecipient>::new();
+        for recipient in recipients {
+            unique
+                .entry(recipient.user)
+                .and_modify(|existing| {
+                    existing.reason = existing.reason.max(recipient.reason);
+                    existing.participation = existing.participation.max(recipient.participation);
+                })
+                .or_insert(*recipient);
+        }
+        let recipients: Vec<_> = unique.into_values().collect();
+        let mut notified = Vec::with_capacity(recipients.len());
+        for batch in recipients.chunks(NOTIFICATION_BATCH_SIZE) {
+            notified.extend(self.notify_batch(issue, repo, actor, at, batch).await?);
+        }
+        Ok(notified)
+    }
+
+    async fn notify_batch(
+        &self,
+        issue: IssueId,
+        repo: RepoId,
+        actor: Option<AccountId>,
+        at: Timestamp,
+        recipients: &[NotificationRecipient],
+    ) -> Result<Vec<(AccountId, NotificationReason)>, StorageError> {
+        let input: Vec<_> =
+            recipients.iter().map(|r| (r.user.0, r.reason.as_str(), r.participation.map(NotificationReason::as_str))).collect();
+        let input = serde_json::to_string(&input).map_err(|error| StorageError::Corrupt(format!("notification recipients: {error}")))?;
+        // Acquire the writer before reading subscriptions: another subscription update
+        // must not turn a read-then-write snapshot into SQLITE_BUSY_SNAPSHOT.
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        if recipients.iter().any(|recipient| recipient.participation.is_some()) {
+            sqlx::query(concat!(
+                "INSERT INTO issue_subscriptions (issue_id, user_id, reason, subscribed, updated_at) \
+                 SELECT ?1, json_extract(value, '$[0]'), json_extract(value, '$[2]'), 1, ?2 FROM json_each(?3) \
+                 WHERE json_extract(value, '$[2]') IS NOT NULL \
+                 ON CONFLICT (issue_id, user_id) DO UPDATE SET reason = excluded.reason, updated_at = excluded.updated_at \
+                 WHERE subscribed = 1 AND ",
+                rank!("excluded.reason"),
+                " > ",
+                rank!("issue_subscriptions.reason")
+            ))
+            .bind(issue.0)
+            .bind(at.0)
+            .bind(&input)
+            .execute(&mut *tx)
+            .await?;
+        }
+        let subscriptions: Vec<(i64, String)> = sqlx::query_as(
+            "SELECT user_id, reason FROM issue_subscriptions WHERE issue_id = ?1 AND subscribed = 1 \
+             AND user_id IN (SELECT json_extract(value, '$[0]') FROM json_each(?2))",
+        )
+        .bind(issue.0)
+        .bind(&input)
+        .fetch_all(&mut *tx)
+        .await?;
+        let subscriptions: HashMap<AccountId, NotificationReason> = subscriptions
+            .into_iter()
+            .map(|(user, reason)| {
+                let reason =
+                    NotificationReason::parse(&reason).ok_or_else(|| StorageError::Corrupt(format!("subscription reason: {reason}")))?;
+                Ok((AccountId(user), reason))
+            })
+            .collect::<Result<_, StorageError>>()?;
+        let notified: Vec<_> = recipients
+            .iter()
+            .map(|recipient| {
+                let reason = subscriptions.get(&recipient.user).map_or(recipient.reason, |reason| (*reason).max(recipient.reason));
+                (recipient.user, reason)
+            })
+            .collect();
+        let rows: Vec<_> = notified.iter().map(|(user, reason)| (user.0, reason.as_str())).collect();
+        let rows = serde_json::to_string(&rows).map_err(|error| StorageError::Corrupt(format!("notification recipients: {error}")))?;
+        sqlx::query(concat!(
+            "INSERT INTO notifications (user_id, issue_id, repo_id, reason, unread, last_actor_id, updated_at) \
+             SELECT json_extract(value, '$[0]'), ?1, ?2, json_extract(value, '$[1]'), 1, ?3, ?4 FROM json_each(?5) WHERE 1 \
+             ON CONFLICT (user_id, issue_id) DO UPDATE SET \
+             reason = CASE WHEN notifications.unread = 1 AND ",
+            rank!("notifications.reason"),
+            " > ",
+            rank!("excluded.reason"),
+            " THEN notifications.reason ELSE excluded.reason END, \
+             unread = 1, last_actor_id = excluded.last_actor_id, updated_at = MAX(notifications.updated_at, excluded.updated_at), \
+             repo_id = excluded.repo_id"
+        ))
+        .bind(issue.0)
+        .bind(repo.0)
+        .bind(actor.map(|a| a.0))
+        .bind(at.0)
+        .bind(rows)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(notified)
+    }
 
     /// Marks `issue` unread in `user`'s inbox for `reason` (by `actor`). An unread row
     /// keeps the stronger of its reason and `reason`; a read one takes `reason`.

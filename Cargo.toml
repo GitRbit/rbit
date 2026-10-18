@@ -50,6 +50,7 @@ redb = "4.4"
 gix = { version = "0.89", default-features = false, features = ["revision", "blob-diff", "max-performance-safe", "sha1"] }
 
 similar = "3.2"
+same-file = "1.0"
 
 # Crypto
 argon2 = { version = "0.6", features = ["zeroize"] }

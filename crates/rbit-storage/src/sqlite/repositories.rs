@@ -5,6 +5,8 @@
 //! `'static` SQL fragment; `rbit-services/tests/access.rs` checks that the two agree on
 //! a fixture matrix.
 
+use std::collections::HashMap;
+
 use rbit_core::{
     Account, AccountId, OrgRole, RepoId, RepoName, RepoSort, Repository, Timestamp, Visibility,
     membership::{BasePermission, Permission},
@@ -17,6 +19,37 @@ use super::{
     rows::{AccountRow, OwnedRepositoryRow, RepositoryRow},
 };
 use crate::StorageError;
+
+const GRANT_QUERY_BATCH_SIZE: usize = 256;
+
+#[derive(sqlx::FromRow)]
+struct GrantsRow {
+    user_id: i64,
+    role: Option<String>,
+    base: Option<String>,
+    team: Option<i64>,
+    collaborator: Option<String>,
+}
+
+fn parse_grants(
+    role: Option<&str>,
+    base: Option<&str>,
+    team: Option<i64>,
+    collaborator: Option<&str>,
+) -> Result<ViewerGrants, StorageError> {
+    let org_role =
+        role.map(|value| OrgRole::parse(value).ok_or_else(|| StorageError::Corrupt(format!("organization role: {value}")))).transpose()?;
+    let org_base = base
+        .map(|value| BasePermission::parse(value).ok_or_else(|| StorageError::Corrupt(format!("base permission: {value}"))))
+        .transpose()?
+        .unwrap_or_default();
+    let team = team.map(|rank| match rank {
+        3 => Permission::Admin,
+        2 => Permission::Write,
+        _ => Permission::Read,
+    });
+    Ok(ViewerGrants { org_role, org_base, team, collaborator: collaborator.map(parse_permission).transpose()? })
+}
 
 /// Builds a static `SELECT` of repositories joined with their owner, with owner columns
 /// aliased to match [`OwnedRepositoryRow`]. Takes one or more trailing SQL fragments.
@@ -230,21 +263,45 @@ impl RepositoryStore {
         .bind(viewer.0)
         .fetch_one(&self.pool)
         .await?;
-        let org_role = match role.as_deref() {
-            None => None,
-            Some(value) => Some(OrgRole::parse(value).ok_or_else(|| StorageError::Corrupt(format!("organization role: {value}")))?),
-        };
-        let org_base = match base.as_deref() {
-            None => BasePermission::default(),
-            Some(value) => BasePermission::parse(value).ok_or_else(|| StorageError::Corrupt(format!("base permission: {value}")))?,
-        };
-        let team = match team {
-            None => None,
-            Some(3) => Some(Permission::Admin),
-            Some(2) => Some(Permission::Write),
-            Some(_) => Some(Permission::Read),
-        };
-        Ok(ViewerGrants { org_role, org_base, team, collaborator: collaborator.as_deref().map(parse_permission).transpose()? })
+        parse_grants(role.as_deref(), base.as_deref(), team, collaborator.as_deref())
+    }
+
+    /// Fresh grants for all requested users, deduplicated and queried in bounded batches.
+    /// Users with no grants still have an entry, with the owner's default base permission.
+    pub async fn grants_for(
+        &self,
+        repo: RepoId,
+        owner: AccountId,
+        users: &[AccountId],
+    ) -> Result<HashMap<AccountId, ViewerGrants>, StorageError> {
+        let mut ids: Vec<i64> = users.iter().map(|id| id.0).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut grants = HashMap::with_capacity(ids.len());
+        for batch in ids.chunks(GRANT_QUERY_BATCH_SIZE) {
+            let rows: Vec<GrantsRow> = sqlx::query_as(
+                "SELECT v.value AS user_id, \
+                 (SELECT role FROM org_members WHERE org_id = ?1 AND user_id = v.value) AS role, \
+                 (SELECT member_permission FROM org_profiles WHERE account_id = ?1) AS base, \
+                 (SELECT MAX(CASE tr.permission WHEN 'admin' THEN 3 WHEN 'write' THEN 2 ELSE 1 END) \
+                  FROM team_repositories tr JOIN team_members tm ON tm.team_id = tr.team_id JOIN teams t ON t.id = tr.team_id \
+                  WHERE tr.repo_id = ?2 AND t.org_id = ?1 AND tm.user_id = v.value) AS team, \
+                 (SELECT permission FROM collaborators WHERE repo_id = ?2 AND user_id = v.value) AS collaborator \
+                 FROM json_each(?3) v",
+            )
+            .bind(owner.0)
+            .bind(repo.0)
+            .bind(format!("{batch:?}"))
+            .fetch_all(&self.pool)
+            .await?;
+            for row in rows {
+                grants.insert(
+                    AccountId(row.user_id),
+                    parse_grants(row.role.as_deref(), row.base.as_deref(), row.team, row.collaborator.as_deref())?,
+                );
+            }
+        }
+        Ok(grants)
     }
 
     /// Moves repository `repo` to `new_owner` in one transaction: the owner changes, team

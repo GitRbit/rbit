@@ -29,10 +29,12 @@
 //! first use (`server_secrets`): unforgeable, and nothing to store per message. Using it
 //! turns notification emails off for that account.
 
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use hmac::{Hmac, KeyInit, Mac};
-use rbit_auth::repo_access;
 use rbit_core::{
     AccountId, Email, Issue, IssueId, IssueKind, RepoId, StateReason, Timestamp, User,
     config::EmailPreference,
@@ -43,12 +45,13 @@ use rbit_mail::{
     Mail,
     messages::{MailHeaders, ThreadNotification},
 };
-use rbit_storage::sqlite::notifications::NotificationReason;
+use rbit_storage::sqlite::notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason};
 use sha2::Sha256;
 use tokio::sync::OnceCell;
 
 use crate::{
-    DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService, repositories::viewer_grants,
+    DomainEvent, InstanceService, MailService, ServiceContext, ServiceError, ThrottleScope, ThrottleService,
+    notifications::can_read_with_grants,
 };
 
 /// The `server_secrets` row whose key signs unsubscribe links.
@@ -196,35 +199,53 @@ impl NotificationEmailService {
         };
         let now = Timestamp::now();
         let Some(activity) = self.activity(event, &thread, actor_name.as_deref(), now).await? else { return Ok(()) };
-        // Access is decided now, from the current repository row.
-        let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(()) };
         let store = database.notification_email();
         let default = self.ctx.config.notifications.default_email;
 
-        for &(user_id, reason) in recipients {
-            if Some(user_id) == actor {
-                continue;
+        let mut unique = BTreeMap::<AccountId, NotificationReason>::new();
+        for &(user, reason) in recipients.iter().filter(|(user, _)| Some(*user) != actor) {
+            unique.entry(user).and_modify(|current| *current = (*current).max(reason)).or_insert(reason);
+        }
+        let recipients: Vec<_> = unique.into_iter().collect();
+        for batch in recipients.chunks(NOTIFICATION_BATCH_SIZE) {
+            // Ownership or visibility can change while earlier batches are delivered.
+            let Some(owned) = database.admin().find_repository(repo).await? else { break };
+            let ids: Vec<_> = batch.iter().map(|(user, _)| *user).collect();
+            // This fresh read includes suspension, verification and preference. Inbox
+            // authorization is deliberately not reused for external delivery.
+            let users = store.recipients(&ids).await?;
+            let reasons: HashMap<_, _> = batch.iter().copied().collect();
+            let users: Vec<_> = users
+                .into_iter()
+                .filter_map(|recipient| {
+                    let reason = *reasons.get(&recipient.user.id())?;
+                    wants(recipient.preference.unwrap_or(default), reason).then_some((recipient.user, reason))
+                })
+                .collect();
+            let grant_ids: Vec<_> = users
+                .iter()
+                .map(|(user, _)| user)
+                .filter(|user| !user.is_admin && user.id() != owned.repo.owner_id)
+                .map(User::id)
+                .collect();
+            let grants = database.repositories().grants_for(repo, owned.repo.owner_id, &grant_ids).await?;
+            let users: Vec<_> = users.into_iter().filter(|(user, _)| can_read_with_grants(user, &owned, grants.get(&user.id()))).collect();
+            // Rendering may fail (including initializing the unsubscribe signing key).
+            // Finish the bounded batch before claiming any of its delivery keys.
+            let mut rendered = Vec::with_capacity(users.len());
+            for (user, reason) in users {
+                let mail = self.render(&owned, &thread, &activity, reason, user.email.clone(), user.id()).await?;
+                rendered.push((user, mail));
             }
-            let Some(account) = database.recovery().find_account(user_id).await? else { continue };
-            if account.suspended || account.email_verified_at.is_none() {
-                continue;
+            let ids: Vec<_> = rendered.iter().map(|(user, _)| user.id()).collect();
+            let claimed = store.claim_many(&ids, issue, &activity.key, now).await?;
+            for (user, mail) in rendered.into_iter().filter(|(user, _)| claimed.contains(&user.id())) {
+                if let Err(error) = self.throttle.check(ThrottleScope::NotificationEmail, &user.email.as_str().to_lowercase()) {
+                    tracing::info!(%error, user = %user.name(), "notification email skipped: too many recently");
+                    continue;
+                }
+                self.mail.send(mail);
             }
-            if !wants(store.preference(user_id).await?.unwrap_or(default), reason) {
-                continue;
-            }
-            let Some(viewer) = database.accounts().find_active_user(user_id).await? else { continue };
-            if !self.can_read(&viewer, &owned).await? {
-                continue;
-            }
-            if !store.claim(user_id, issue, &activity.key, now).await? {
-                continue;
-            }
-            if let Err(error) = self.throttle.check(ThrottleScope::NotificationEmail, &account.email.as_str().to_lowercase()) {
-                tracing::info!(%error, user = %account.name, "notification email skipped: too many recently");
-                continue;
-            }
-            let mail = self.render(&owned, &thread, &activity, reason, account.email, user_id).await?;
-            self.mail.send(mail);
         }
         Ok(())
     }
@@ -232,11 +253,6 @@ impl NotificationEmailService {
     /// Deletes outbox rows created before `cutoff` (the inbox's retention).
     pub(crate) async fn prune(&self, cutoff: Timestamp) -> Result<u64, ServiceError> {
         Ok(self.ctx.database.notification_email().prune(cutoff).await?)
-    }
-
-    async fn can_read(&self, user: &User, repo: &OwnedRepository) -> Result<bool, ServiceError> {
-        let grants = viewer_grants(&self.ctx.database.repositories(), Some(user), repo).await?;
-        Ok(repo_access(Some(user), repo, &grants).can_read())
     }
 
     /// What `event` did to `thread`, or `None` for events that send no email.

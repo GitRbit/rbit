@@ -10,6 +10,7 @@ license.workspace = true
 rbit-core.workspace = true
 gix = { workspace = true, features = ["blame"] }
 similar.workspace = true
+sha2.workspace = true
 async-compression.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

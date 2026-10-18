@@ -9,6 +9,9 @@ use sqlx::SqlitePool;
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
 
+/// Keep each bulk lookup small enough to share the pool with interactive requests.
+const USER_QUERY_BATCH_SIZE: usize = 256;
+
 /// Builds a static `SELECT` over users (account ⋈ login) with the given trailing clause.
 /// SQL stays a compile-time literal, so it can never contain interpolated user input.
 macro_rules! select_user {
@@ -108,6 +111,40 @@ impl AccountStore {
         let row: Option<UserRow> =
             sqlx::query_as(select_user!("WHERE a.id = ? AND l.suspended_at IS NULL")).bind(id.0).fetch_optional(&self.pool).await?;
         Ok(row.map(UserRow::into_user_and_hash).transpose()?.map(|(user, _)| user))
+    }
+
+    /// Users among `ids`, including suspended users, as in [`Self::find_user`].
+    /// Unknown IDs and duplicates are omitted; results are ordered by account ID.
+    pub async fn find_users(&self, ids: &[AccountId]) -> Result<Vec<User>, StorageError> {
+        self.users_by_ids(ids, false).await
+    }
+
+    /// Active users among `ids`, applying the same suspension check as
+    /// [`Self::find_active_user`] without one database round trip per recipient.
+    pub async fn find_active_users(&self, ids: &[AccountId]) -> Result<Vec<User>, StorageError> {
+        self.users_by_ids(ids, true).await
+    }
+
+    async fn users_by_ids(&self, ids: &[AccountId], active_only: bool) -> Result<Vec<User>, StorageError> {
+        let mut ids: Vec<i64> = ids.iter().map(|id| id.0).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut users = Vec::new();
+        for batch in ids.chunks(USER_QUERY_BATCH_SIZE) {
+            let rows: Vec<UserRow> = sqlx::query_as(
+                "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, '' AS password_hash \
+                 FROM accounts a JOIN user_logins l ON l.account_id = a.id \
+                 WHERE a.id IN (SELECT value FROM json_each(?1)) AND (?2 = 0 OR l.suspended_at IS NULL) ORDER BY a.id",
+            )
+            .bind(format!("{batch:?}"))
+            .bind(active_only)
+            .fetch_all(&self.pool)
+            .await?;
+            for row in rows {
+                users.push(row.into_user_and_hash()?.0);
+            }
+        }
+        Ok(users)
     }
 
     /// Whether the user is suspended. Unknown ids are reported as not suspended.

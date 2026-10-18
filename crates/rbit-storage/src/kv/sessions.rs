@@ -26,6 +26,9 @@ const LEGACY_SESSIONS: TableDefinition<'_, &[u8; 32], &[u8; 16]> = TableDefiniti
 /// Longest user-agent string kept per session.
 const MAX_USER_AGENT_LEN: usize = 256;
 
+/// Expiry scanning is read-only; each cleanup transaction touches at most this many keys.
+const PURGE_BATCH_SIZE: usize = 256;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRecord {
     pub account_id: AccountId,
@@ -217,31 +220,56 @@ impl SessionStore {
         .await?
     }
 
-    /// Deletes every expired session. Intended for a periodic background task.
+    /// Deletes expired sessions from a read snapshot, rechecking each candidate under
+    /// a short write transaction. Active sessions never hold up other database writers
+    /// while they are scanned; renewal or replacement after the snapshot remains safe.
     pub async fn purge_expired(&self) -> Result<usize, StorageError> {
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
             let now = Timestamp::now();
-            let tx = db.begin_write().map_err(kv_error)?;
-            let expired: Vec<[u8; 32]> = {
-                let table = tx.open_table(SESSIONS).map_err(kv_error)?;
-                let mut expired = Vec::new();
-                for entry in table.iter().map_err(kv_error)? {
-                    let (key, value) = entry.map_err(kv_error)?;
-                    if SessionRecord::decode(value.value()).is_none_or(|record| record.expires_at <= now) {
-                        expired.push(*key.value());
+            let snapshot = db.begin_read().map_err(kv_error)?;
+            let table = snapshot.open_table(SESSIONS).map_err(kv_error)?;
+            let mut expired = Vec::with_capacity(PURGE_BATCH_SIZE);
+            let mut removed = 0;
+            for entry in table.iter().map_err(kv_error)? {
+                let (key, value) = entry.map_err(kv_error)?;
+                if SessionRecord::decode(value.value()).is_none_or(|record| record.expires_at <= now) {
+                    expired.push(*key.value());
+                    if expired.len() == PURGE_BATCH_SIZE {
+                        removed += remove_expired_batch(&db, &expired, now)?;
+                        expired.clear();
                     }
                 }
-                expired
-            };
-            for digest in &expired {
-                remove(&tx, digest)?;
             }
-            tx.commit().map_err(kv_error)?;
-            Ok(expired.len())
+            removed += remove_expired_batch(&db, &expired, now)?;
+            Ok(removed)
         })
         .await?
     }
+}
+
+/// A snapshot may contain keys that another request has replaced or revoked.
+/// Check their current value atomically with removal, and count only existing rows.
+fn remove_expired_batch(db: &redb::Database, digests: &[[u8; 32]], now: Timestamp) -> Result<usize, StorageError> {
+    if digests.is_empty() {
+        return Ok(0);
+    }
+    let tx = db.begin_write().map_err(kv_error)?;
+    let mut removed = 0;
+    for digest in digests {
+        let expired = tx
+            .open_table(SESSIONS)
+            .map_err(kv_error)?
+            .get(digest)
+            .map_err(kv_error)?
+            .is_some_and(|value| SessionRecord::decode(value.value()).is_none_or(|record| record.expires_at <= now));
+        if expired {
+            remove(&tx, digest)?;
+            removed += 1;
+        }
+    }
+    tx.commit().map_err(kv_error)?;
+    Ok(removed)
 }
 
 /// Removes a session and its index entry inside an open write transaction.
@@ -359,5 +387,55 @@ mod tests {
         store.put([2; 32], record(1, 3600)).await.unwrap();
         assert_eq!(store.purge_expired().await.unwrap(), 1);
         assert_eq!(store.delete_for_account(AccountId(1), None).await.unwrap(), 1, "the purged session left no index entry");
+    }
+
+    #[tokio::test]
+    async fn scanning_live_sessions_never_waits_for_the_writer() {
+        let (_dir, store) = store();
+        store.put([1; 32], record(1, 3600)).await.unwrap();
+        let writer = store.db.begin_write().unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), store.purge_expired()).await;
+        drop(writer);
+        assert_eq!(result.expect("a read-only expiry scan must not acquire the write lock").unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn cleanup_rechecks_replaced_and_revoked_candidates() {
+        let (_dir, store) = store();
+        let now = Timestamp::now();
+        store.put([1; 32], record(1, -1)).await.unwrap();
+        store.put([2; 32], record(1, -1)).await.unwrap();
+        store.put([3; 32], record(1, -1)).await.unwrap();
+        // These keys were collected by an earlier read snapshot.
+        let candidates = [[1; 32], [2; 32], [3; 32]];
+        store.put([1; 32], record(2, 3600)).await.unwrap();
+        store.delete([2; 32]).await.unwrap();
+        assert_eq!(remove_expired_batch(&store.db, &candidates, now).unwrap(), 1);
+        assert_eq!(store.get([1; 32]).await.unwrap().unwrap().account_id, AccountId(2));
+        assert_eq!(store.delete_for_account(AccountId(1), None).await.unwrap(), 0);
+        assert_eq!(store.delete_for_account(AccountId(2), None).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn purge_spans_multiple_batches_without_missing_keys_or_indexes() {
+        let (_dir, store) = store();
+        let count = PURGE_BATCH_SIZE * 2 + 1;
+        let tx = store.db.begin_write().unwrap();
+        {
+            let mut sessions = tx.open_table(SESSIONS).unwrap();
+            let mut index = tx.open_table(ACCOUNT_SESSIONS).unwrap();
+            let expired = record(1, -1).encode().unwrap();
+            for id in 0..count {
+                let mut digest = [0; 32];
+                digest[..8].copy_from_slice(&u64::try_from(id).unwrap().to_be_bytes());
+                sessions.insert(&digest, expired.as_slice()).unwrap();
+                index.insert((1, &digest), ()).unwrap();
+            }
+        }
+        tx.commit().unwrap();
+        store.put([255; 32], record(1, 3600)).await.unwrap();
+        assert_eq!(store.purge_expired().await.unwrap(), count);
+        assert_eq!(store.purge_expired().await.unwrap(), 0);
+        assert_eq!(store.delete_for_account(AccountId(1), None).await.unwrap(), 1);
     }
 }

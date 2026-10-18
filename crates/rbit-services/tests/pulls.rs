@@ -248,6 +248,25 @@ async fn a_fork_pull_request_follows_pushes_and_outlives_the_fork() {
 }
 
 #[tokio::test]
+async fn review_tally_rechecks_grants_for_repeated_former_writers() {
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let number = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    for verdict in [ReviewVerdict::Comment, ReviewVerdict::RequestChanges, ReviewVerdict::Approve] {
+        pulls.submit_review(&fixture.carol, &ctx, verdict, "Review").await.unwrap();
+    }
+    let repo = fixture.repo(&fixture.alice, "alice").await;
+    assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals, [fixture.carol.id()]);
+    fixture.services.collaborators.change(&fixture.alice, &repo, "carol", Permission::Read).await.unwrap();
+    assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals.len(), 0);
+    fixture.services.collaborators.change(&fixture.alice, &repo, "carol", Permission::Write).await.unwrap();
+    assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals, [fixture.carol.id()]);
+    fixture.services.collaborators.remove(&fixture.alice, &repo, "carol").await.unwrap();
+    assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals.len(), 0);
+}
+
+#[tokio::test]
 #[expect(clippy::too_many_lines, reason = "one scenario from mergeability to the last merge")]
 async fn mergeability_reviews_and_every_merge_strategy() {
     let fixture = Fixture::new().await;

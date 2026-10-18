@@ -1,12 +1,15 @@
 //! Thread subscriptions and the notification inbox (workstream I) against a real,
 //! migrated SQLite database.
 
+#[path = "common/query_count.rs"]
+mod query_count;
+
 use rbit_core::{IssueId, IssueKind, IssueText, IssueTitle, RepoId, Timestamp, User, Visibility};
 use rbit_storage::{
     Database, NewRepository, NewUser,
     sqlite::{
         issues::NewIssue,
-        notifications::{NotificationReason as Reason, Subscription},
+        notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason as Reason, NotificationRecipient, Subscription},
     },
 };
 
@@ -16,6 +19,53 @@ struct Fixture {
     alice: User,
     bob: User,
     repo: RepoId,
+}
+
+#[tokio::test]
+async fn batch_fanout_preserves_reasons_and_optouts_with_bounded_sql_work() {
+    let fixture = Fixture::new().await;
+    let store = fixture.database.notifications();
+    let issue = fixture.issue("Batch").await;
+    let count = NOTIFICATION_BATCH_SIZE * 2 + 5;
+    let mut users = Vec::new();
+    for index in 0..count {
+        users.push(user(&fixture.database, &format!("batch{index}")).await);
+    }
+    store.participate(issue, users[0].id(), Reason::Author, Timestamp(1)).await.unwrap();
+    store.set_subscribed(issue, users[0].id(), false, Timestamp(2)).await.unwrap();
+    store.participate(issue, users[1].id(), Reason::Assigned, Timestamp(1)).await.unwrap();
+    store.notify(users[2].id(), issue, fixture.repo, Reason::ReviewRequested, None, Timestamp(1)).await.unwrap();
+    store.notify(users[3].id(), issue, fixture.repo, Reason::Assigned, None, Timestamp(1)).await.unwrap();
+    store.mark_issue_read(users[3].id(), issue).await.unwrap();
+    let mut recipients: Vec<_> = users
+        .iter()
+        .map(|user| NotificationRecipient { user: user.id(), reason: Reason::Comment, participation: Some(Reason::Mention) })
+        .collect();
+    recipients.push(recipients[0]);
+
+    let counter = query_count::QueryCounter::new();
+    let notified =
+        counter.measure(store.notify_many(issue, fixture.repo, Some(fixture.alice.id()), Timestamp(5), &recipients)).await.unwrap();
+    assert_eq!(notified.len(), count, "duplicate recipients are combined");
+    assert_eq!(notified[0], (users[0].id(), Reason::Comment), "an unsubscribed reason is not restored");
+    assert_eq!(notified[1], (users[1].id(), Reason::Assigned), "active subscription keeps its stronger reason");
+    assert_eq!(notified[2], (users[2].id(), Reason::Mention), "email gets the event reason, not the existing unread reason");
+    assert_eq!(store.subscription(issue, users[0].id()).await.unwrap(), Some(Subscription { reason: Reason::Author, subscribed: false }));
+    assert_eq!(store.list(users[2].id(), true, 10, 0).await.unwrap()[0].reason, Reason::ReviewRequested);
+    assert_eq!(store.list(users[3].id(), true, 10, 0).await.unwrap()[0].reason, Reason::Mention, "a read row takes the new reason");
+
+    let queries = counter.queries();
+    let writes: Vec<_> = queries.iter().filter(|(sql, _)| sql.starts_with("INSERT INTO notifications ")).collect();
+    let batches = count.div_ceil(NOTIFICATION_BATCH_SIZE);
+    assert_eq!(writes.len(), batches, "one inbox write per batch: {queries:?}");
+    assert_eq!(writes.iter().map(|(_, rows)| rows).sum::<u64>(), u64::try_from(count).unwrap());
+    assert!(writes.iter().all(|(_, rows)| *rows <= u64::try_from(NOTIFICATION_BATCH_SIZE).unwrap()));
+    assert_eq!(queries.iter().filter(|(sql, _)| sql.starts_with("INSERT INTO issue_subscriptions ")).count(), batches);
+    assert_eq!(queries.iter().filter(|(sql, _)| sql.starts_with("SELECT user_id, reason FROM issue_subscriptions")).count(), batches);
+
+    let empty = query_count::QueryCounter::new();
+    assert_eq!(empty.measure(store.notify_many(issue, fixture.repo, None, Timestamp(6), &[])).await.unwrap(), []);
+    assert!(empty.queries().is_empty(), "empty fan-out does no SQL work");
 }
 
 async fn user(database: &Database, name: &str) -> User {

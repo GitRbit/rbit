@@ -10,7 +10,7 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use rbit_git::blame::{Blame, BlameLimits};
+use rbit_git::blame::Blame;
 use rbit_services::ServiceError;
 
 use super::repo::RepoPage;
@@ -44,22 +44,26 @@ async fn show(
     let urls = &loaded.urls;
     let file_name = path.rsplit_once('/').map_or(path.as_str(), |(_, name)| name).to_owned();
 
-    let blame = loaded.ctx.reader.blame(revision.clone(), path.clone(), BlameLimits::default()).await.map_err(ServiceError::from)?;
+    let resolved = state.services.blame.blame(&loaded.ctx, &revision, &path).await?;
+    let blame = &resolved.result;
     // The banner shows the revision's commit even when the file is not blamed.
-    let latest = match &blame {
+    let latest = match blame.as_ref() {
         Blame::Blamed(blamed) => blamed.commit.clone(),
         Blame::Binary | Blame::TooLarge => {
-            loaded.ctx.reader.blob(revision.clone(), path.clone(), 0).await.map_err(ServiceError::from)?.commit
+            loaded.ctx.reader.blob(resolved.commit_id, path.clone(), 0).await.map_err(ServiceError::from)?.commit
         }
     };
-    let content = match blame {
-        Blame::Blamed(mut blamed) => {
+    let content = match blame.as_ref() {
+        Blame::Blamed(blamed) => {
             let highlighter = state.clone();
             let name = file_name.clone();
-            let text = std::mem::take(&mut blamed.text);
-            let lines = tokio::task::spawn_blocking(move || highlighter.highlighter.highlight_lines(&name, &text))
-                .await
-                .map_err(WebError::internal)?;
+            let shared = std::sync::Arc::clone(blame);
+            let lines = tokio::task::spawn_blocking(move || match shared.as_ref() {
+                Blame::Blamed(file) => highlighter.highlighter.highlight_lines(&name, &file.text),
+                _ => Vec::new(),
+            })
+            .await
+            .map_err(WebError::internal)?;
             BlameContent::Hunks(BlameHunkView::build(&blamed.hunks, &lines, urls))
         }
         Blame::Binary => BlameContent::Binary,

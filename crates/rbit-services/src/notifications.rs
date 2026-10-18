@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-use rbit_auth::repo_access;
+use rbit_auth::{Grants, repo_access};
 use rbit_core::{
     AccountId, IssueId, RepoId, Timestamp, User,
     issue::{CommentAction, IssueAction, ReviewAction},
@@ -36,6 +36,10 @@ use rbit_core::{
     repository::OwnedRepository,
 };
 pub use rbit_storage::sqlite::notifications::{Notification, NotificationReason, Subscription};
+use rbit_storage::sqlite::{
+    collaborators::ViewerGrants,
+    notifications::{NOTIFICATION_BATCH_SIZE, NotificationRecipient},
+};
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -46,6 +50,16 @@ pub const NOTIFICATIONS_PER_PAGE: u32 = 50;
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
+
+pub(crate) fn can_read_with_grants(user: &User, repo: &OwnedRepository, stored: Option<&ViewerGrants>) -> bool {
+    let grants = stored.map_or_else(Grants::default, |stored| Grants {
+        org_role: stored.org_role,
+        org_base: stored.org_base.permission(),
+        team: stored.team,
+        collaborator: stored.collaborator,
+    });
+    repo_access(Some(user), repo, &grants).can_read()
+}
 
 /// One page of a user's inbox, rows of unreadable repositories already removed.
 #[derive(Debug, Clone)]
@@ -285,22 +299,8 @@ impl NotificationService {
         if recipients.is_empty() && direct.is_empty() {
             return Ok(());
         }
-        let Some(owned) = self.ctx.database.admin().find_repository(repo).await? else { return Ok(()) };
-        let mut notified = Vec::new();
-        for (user_id, reason) in recipients {
-            // Suspended users resolve to nothing; access is decided now, with grants.
-            let Some(user) = self.ctx.database.accounts().find_active_user(user_id).await? else { continue };
-            if !self.can_read(&user, &owned).await? {
-                continue;
-            }
-            if let Some(direct) = direct.get(&user_id) {
-                store.participate(issue, user_id, *direct, now).await?;
-            }
-            let subscription = store.subscription(issue, user_id).await?;
-            let reason = subscription.filter(|s| s.subscribed).map_or(reason, |s| s.reason.max(reason));
-            store.notify(user_id, issue, repo, reason, actor, now).await?;
-            notified.push((user_id, reason));
-        }
+        let recipients: Vec<_> = recipients.into_iter().collect();
+        let notified = self.notify_recipients(repo, issue, actor, now, &recipients, &direct).await?;
         // The inbox is written; email is best effort and never fails the fan-out.
         if let Some(email) = &self.email
             && let Err(error) = email.deliver(event, repo, issue, actor, &notified).await
@@ -308,6 +308,42 @@ impl NotificationService {
             tracing::warn!(%error, issue = issue.0, "cannot send notification emails");
         }
         Ok(())
+    }
+
+    async fn notify_recipients(
+        &self,
+        repo: RepoId,
+        issue: IssueId,
+        actor: Option<AccountId>,
+        at: Timestamp,
+        recipients: &[(AccountId, NotificationReason)],
+        direct: &BTreeMap<AccountId, NotificationReason>,
+    ) -> Result<Vec<(AccountId, NotificationReason)>, ServiceError> {
+        let database = &self.ctx.database;
+        let mut notified = Vec::with_capacity(recipients.len());
+        for batch in recipients.chunks(NOTIFICATION_BATCH_SIZE) {
+            let Some(owned) = database.admin().find_repository(repo).await? else { break };
+            let ids: Vec<_> = batch.iter().map(|(id, _)| *id).collect();
+            // Refresh ownership, visibility, active users and grants for each batch.
+            // Authorization from an earlier batch or email delivery is not reused.
+            let users = database.accounts().find_active_users(&ids).await?;
+            let grant_ids: Vec<_> = users.iter().filter(|user| !user.is_admin && user.id() != owned.repo.owner_id).map(User::id).collect();
+            let grants = database.repositories().grants_for(repo, owned.repo.owner_id, &grant_ids).await?;
+            let reasons: HashMap<_, _> = batch.iter().copied().collect();
+            let authorized: Vec<_> = users
+                .iter()
+                .filter(|user| can_read_with_grants(user, &owned, grants.get(&user.id())))
+                .filter_map(|user| {
+                    reasons.get(&user.id()).map(|reason| NotificationRecipient {
+                        user: user.id(),
+                        reason: *reason,
+                        participation: direct.get(&user.id()).copied(),
+                    })
+                })
+                .collect();
+            notified.extend(database.notifications().notify_many(issue, repo, actor, at, &authorized).await?);
+        }
+        Ok(notified)
     }
 
     /// Adds the users mentioned in `text` who do not take part in `issue` yet.

@@ -1265,6 +1265,24 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 - Streaming Git transport: pack data is never buffered in memory.
 - One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
   Git reads share opened config, refs and pack indexes instead of reopening them.
+- Blame shares matching calculations and keeps at most 128 results with a 32 MiB
+  retained-size budget. At most four calculations run at once; a response timeout leaves
+  the work counted against that limit until it actually finishes. Every request checks
+  access and resolves the revision again; cached results hold no permissions or Git
+  repository readers. Reuse also checks repository identity, effective configuration,
+  HEAD, shallow boundaries, local attributes and the index. External filters/attributes,
+  custom diff drivers, replacements and inputs too large to fingerprint bypass reuse.
+- Diff file limits bound retained changes and stop traversal when possible. Rename
+  discovery can still require a full-tree scan. Hunk line budgets are checked before
+  allocating display strings; omitted hunks still contribute exact addition/deletion
+  counts.
+- Pull-request review tallies fetch unique reviewers and current grants in batches of
+  at most 256 IDs. Notification fan-out uses 100-recipient batches for permission reads,
+  inbox transactions and email deduplication claims; email refreshes active, verified
+  accounts, preferences and permissions after the inbox is written.
+- Session expiry scans use a read snapshot. Write transactions recheck and remove at
+  most 256 candidates at a time, so a scan does not monopolize the writer or remove a
+  session renewed since the snapshot.
 - Navigation: `hx-boost` plus the htmx preload extension (`assets/nav.js` marks eligible
   links; 100 ms hover intent, touchstart on touch screens). Within a repository only
   `<main>` swaps and the tabs update out of band. `middleware::preload_guard` answers

@@ -6,10 +6,27 @@
 //! Who receives what is the service's decision; this store only records preferences and
 //! claims dedup keys.
 
-use rbit_core::{AccountId, IssueId, Timestamp, config::EmailPreference};
+use std::collections::{BTreeSet, HashSet};
+
+use rbit_core::{AccountId, IssueId, Timestamp, User, config::EmailPreference};
 use sqlx::SqlitePool;
 
+use super::{notifications::NOTIFICATION_BATCH_SIZE, rows::UserRow};
 use crate::StorageError;
+
+/// An active user whose current address is verified, with their email preference.
+#[derive(Debug, Clone)]
+pub struct EmailRecipient {
+    pub user: User,
+    pub preference: Option<EmailPreference>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct RecipientRow {
+    #[sqlx(flatten)]
+    user: UserRow,
+    preference: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct NotificationEmailStore {
@@ -19,6 +36,34 @@ pub struct NotificationEmailStore {
 impl NotificationEmailStore {
     pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
+    }
+
+    /// Fresh account, address verification and preference data in one read per bounded
+    /// batch. Suspended, unverified and unknown users are omitted; IDs are deduplicated.
+    pub async fn recipients(&self, accounts: &[AccountId]) -> Result<Vec<EmailRecipient>, StorageError> {
+        let accounts: Vec<_> = accounts.iter().map(|id| id.0).collect::<BTreeSet<_>>().into_iter().collect();
+        let mut recipients = Vec::with_capacity(accounts.len());
+        for batch in accounts.chunks(NOTIFICATION_BATCH_SIZE) {
+            let ids = serde_json::to_string(batch).map_err(|error| StorageError::Corrupt(format!("email recipients: {error}")))?;
+            let rows: Vec<RecipientRow> = sqlx::query_as(
+                "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, '' AS password_hash, \
+                 s.email AS preference FROM accounts a JOIN user_logins l ON l.account_id = a.id \
+                 LEFT JOIN notification_email_settings s ON s.account_id = a.id \
+                 WHERE a.id IN (SELECT value FROM json_each(?)) AND l.suspended_at IS NULL AND l.email_verified_at IS NOT NULL \
+                 ORDER BY a.id",
+            )
+            .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
+            for row in rows {
+                let preference = row
+                    .preference
+                    .map(|value| EmailPreference::parse(&value).ok_or_else(|| StorageError::Corrupt(format!("email preference: {value}"))))
+                    .transpose()?;
+                recipients.push(EmailRecipient { user: row.user.into_user_and_hash()?.0, preference });
+            }
+        }
+        Ok(recipients)
     }
 
     /// The preference `account` chose, or `None` if it never chose one.
@@ -61,6 +106,36 @@ impl NotificationEmailStore {
         .await?
         .rows_affected();
         Ok(inserted > 0)
+    }
+
+    /// Claims one activity for many recipients, returning only the first-time winners.
+    /// Every statement commits at most [`NOTIFICATION_BATCH_SIZE`] claims; concurrent
+    /// fan-outs cannot both send the same recipient/activity pair.
+    pub async fn claim_many(
+        &self,
+        accounts: &[AccountId],
+        issue: IssueId,
+        key: &str,
+        at: Timestamp,
+    ) -> Result<HashSet<AccountId>, StorageError> {
+        let accounts: Vec<_> = accounts.iter().map(|id| id.0).collect::<BTreeSet<_>>().into_iter().collect();
+        let mut claimed = HashSet::with_capacity(accounts.len());
+        for batch in accounts.chunks(NOTIFICATION_BATCH_SIZE) {
+            let ids = serde_json::to_string(batch).map_err(|error| StorageError::Corrupt(format!("email recipients: {error}")))?;
+            let inserted: Vec<i64> = sqlx::query_scalar(
+                "INSERT INTO notification_emails (account_id, issue_id, dedup_key, created_at) \
+                 SELECT value, ?1, ?2, ?3 FROM json_each(?4) WHERE 1 \
+                 ON CONFLICT (account_id, issue_id, dedup_key) DO NOTHING RETURNING account_id",
+            )
+            .bind(issue.0)
+            .bind(key)
+            .bind(at.0)
+            .bind(ids)
+            .fetch_all(&self.pool)
+            .await?;
+            claimed.extend(inserted.into_iter().map(AccountId));
+        }
+        Ok(claimed)
     }
 
     /// Deletes outbox rows created before `before`; returns how many.

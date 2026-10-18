@@ -8,6 +8,7 @@ pub mod accounts;
 pub mod admin;
 pub mod archives;
 pub mod audit;
+pub mod blame;
 pub mod collaborators;
 mod credentials;
 pub mod error;
@@ -63,6 +64,7 @@ pub use accounts::{AccountService, SignUp};
 pub use admin::AdminService;
 pub use archives::ArchiveService;
 pub use audit::AuditService;
+pub use blame::BlameService;
 pub use collaborators::CollaboratorService;
 pub use error::ServiceError;
 pub use events::{DomainEvent, EventBus};
@@ -120,6 +122,7 @@ pub struct Services {
     pub accounts: AccountService,
     pub admin: AdminService,
     pub audit: AuditService,
+    pub blame: BlameService,
     pub events: EventBus,
     pub insights: InsightsService,
     pub instance: InstanceService,
@@ -208,6 +211,7 @@ impl Services {
         Ok(Self {
             accounts: accounts.clone(),
             audit: AuditService::new(ctx.clone()),
+            blame: BlameService::new(),
             jobs: JobService::new(ctx.clone()),
             mail: mail.clone(),
             recovery: RecoveryService::builder(ctx.clone())

@@ -76,11 +76,39 @@ fn git_range(start: usize, len: usize) -> String {
 
 /// Diffs two blobs into hunks with surrounding context.
 pub fn diff_bytes(old: &[u8], new: &[u8]) -> TextChanges {
+    diff_bytes_bounded(old, new, usize::MAX).0
+}
+
+/// Keep exact addition/deletion counts, but omit all hunks when their display lines
+/// would exceed `max_lines`. The flag distinguishes an omitted body from identical text.
+pub(crate) fn diff_bytes_bounded(old: &[u8], new: &[u8], max_lines: usize) -> (TextChanges, bool) {
+    diff_bytes_with_display(old, new, max_lines, display)
+}
+
+fn diff_bytes_with_display(old: &[u8], new: &[u8], max_lines: usize, mut display_line: impl FnMut(&[u8]) -> String) -> (TextChanges, bool) {
     let old_lines = split_lines(old);
     let new_lines = split_lines(new);
     let ops = capture_diff_slices_deadline(Algorithm::Myers, &old_lines, &new_lines, Some(Instant::now() + DIFF_DEADLINE));
+    let groups = group_diff_ops(ops, CONTEXT_LINES);
+    let mut changes = TextChanges::default();
+    let mut rendered_lines = 0;
+    // Operations describe ranges, so count them without decoding or allocating a
+    // display String for each line. In particular, an oversized file renders nothing.
+    for op in groups.iter().flatten() {
+        let (tag, old, new) = op.as_tag_tuple();
+        if tag == DiffTag::Equal {
+            rendered_lines += old.len();
+        } else {
+            changes.deletions += old.len();
+            changes.additions += new.len();
+            rendered_lines += old.len() + new.len();
+        }
+    }
+    if rendered_lines > max_lines {
+        return (changes, true);
+    }
 
-    let line = |kind, old_index: Option<usize>, new_index: Option<usize>| {
+    let mut line = |kind, old_index: Option<usize>, new_index: Option<usize>| {
         let (source, index) = match (kind, old_index, new_index) {
             (LineKind::Added, _, Some(i)) | (LineKind::Context, None, Some(i)) => (&new_lines, i),
             (_, Some(i), _) => (&old_lines, i),
@@ -91,13 +119,12 @@ pub fn diff_bytes(old: &[u8], new: &[u8]) -> TextChanges {
             kind,
             old_number: old_index.map(|i| i + 1),
             new_number: new_index.map(|i| i + 1),
-            text: display(raw),
+            text: display_line(raw),
             missing_newline: index + 1 == source.len() && !raw.ends_with(b"\n"),
         }
     };
 
-    let mut changes = TextChanges::default();
-    for group in group_diff_ops(ops, CONTEXT_LINES) {
+    for group in groups {
         let (Some(first), Some(last)) = (group.first(), group.last()) else { continue };
         let old_range = first.old_range().start..last.old_range().end;
         let new_range = first.new_range().start..last.new_range().end;
@@ -111,8 +138,6 @@ pub fn diff_bytes(old: &[u8], new: &[u8]) -> TextChanges {
                     lines.extend(old_ops.zip(new_ops).map(|(o, n)| line(LineKind::Context, Some(o), Some(n))));
                 }
                 DiffTag::Delete | DiffTag::Insert | DiffTag::Replace => {
-                    changes.deletions += old_ops.len();
-                    changes.additions += new_ops.len();
                     lines.extend(old_ops.map(|o| line(LineKind::Removed, Some(o), None)));
                     lines.extend(new_ops.map(|n| line(LineKind::Added, None, Some(n))));
                 }
@@ -120,7 +145,7 @@ pub fn diff_bytes(old: &[u8], new: &[u8]) -> TextChanges {
         }
         changes.hunks.push(Hunk { header, lines });
     }
-    changes
+    (changes, false)
 }
 
 /// Git's heuristic: a NUL byte in the first 8000 bytes means binary.
@@ -192,5 +217,54 @@ mod tests {
         let changes = diff_bytes(b"a\nb", b"a\nc");
         let last_removed = changes.hunks[0].lines.iter().find(|l| l.kind == LineKind::Removed).unwrap();
         assert!(last_removed.missing_newline);
+    }
+
+    #[test]
+    fn over_budget_files_never_allocate_display_lines() {
+        let data = b"new line\n".repeat(20_000);
+        let (changes, omitted) = diff_bytes_with_display(b"", &data, 1, |_| panic!("an omitted line was rendered"));
+        assert!(omitted);
+        assert_eq!((changes.additions, changes.deletions), (20_000, 0));
+        assert!(changes.hunks.is_empty());
+    }
+
+    #[test]
+    fn display_budgets_preserve_counts_and_complete_hunks() {
+        use std::fmt::Write;
+
+        let mut old = String::new();
+        for i in 1..=30 {
+            writeln!(old, "{i}").unwrap();
+        }
+        let new = old.replace("2\n", "two\n").replace("28\n", "twenty-eight\n");
+        let cases: &[(&[u8], &[u8])] = &[
+            (b"", b""),
+            (b"same\n", b"same\n"),
+            (b"", b"first\nlast"),
+            (b"first\nlast", b""),
+            (b"a\rb\nc\r\n", b"a\rb\nC\r\n"),
+            (b"caf\xe9\n", b"caf\xe8"),
+            (old.as_bytes(), new.as_bytes()),
+        ];
+        for &(old, new) in cases {
+            let expected = diff_bytes(old, new);
+            let lines = expected.line_count();
+            for limit in [0, 1, lines.saturating_sub(1), lines, lines + 1] {
+                let mut displayed = 0;
+                let (actual, omitted) = diff_bytes_with_display(old, new, limit, |line| {
+                    displayed += 1;
+                    display(line)
+                });
+                assert_eq!((actual.additions, actual.deletions), (expected.additions, expected.deletions));
+                assert_eq!(omitted, lines > limit);
+                if omitted {
+                    assert_eq!(displayed, 0, "no partial hunks should be built and discarded");
+                    assert!(actual.hunks.is_empty());
+                } else {
+                    assert_eq!(displayed, lines);
+                    assert_eq!(format!("{:?}", actual.hunks), format!("{:?}", expected.hunks));
+                }
+            }
+        }
     }
 }

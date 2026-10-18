@@ -23,10 +23,11 @@ use rbit_storage::{
         reviews::NewReview,
     },
 };
+use sqlx::{Connection, SqliteConnection, sqlite::SqliteConnectOptions};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     database: Database,
     services: Services,
     /// The notification service, mailing into `outbox`.
@@ -74,7 +75,7 @@ impl Fixture {
         let carol = user(&database, "carol", false).await;
         let input = CreateRepository { name: "demo".to_owned(), description: String::new(), visibility };
         services.repositories.create(&alice, input).await.unwrap();
-        Self { _dir: dir, database, services, notifications, outbox, alice, bob, carol }
+        Self { dir, database, services, notifications, outbox, alice, bob, carol }
     }
 
     async fn repo(&self, viewer: &User) -> RepoContext {
@@ -253,6 +254,159 @@ async fn nobody_is_mailed_about_a_repository_they_cannot_read() {
     fixture.services.timeline.comment(&fixture.alice, &as_alice, "Anyone?").await.unwrap();
     fixture.deliver(&mut events).await;
     assert_eq!(fixture.mail_to("bob").len(), 1);
+}
+
+#[tokio::test]
+async fn email_batches_recheck_access_verification_preferences_and_deduplication() {
+    use rbit_storage::sqlite::notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason};
+
+    let fixture = Fixture::new(Visibility::Private, |_| {}).await;
+    let repo = fixture.repo(&fixture.alice).await;
+    let issue = fixture.create_issue("").await;
+    let email = &fixture.services.notification_email;
+    let subscriptions = fixture.database.notifications();
+    let mut expected = Vec::new();
+    for index in 0..(NOTIFICATION_BATCH_SIZE * 2 + 10) {
+        let user = user(&fixture.database, &format!("batch{index}"), index % 6 != 2).await;
+        if index % 6 != 0 {
+            fixture.database.repositories().grant_collaborator(repo.repo.repo.id, user.id(), Permission::Read).await.unwrap();
+        }
+        if index % 6 == 1 {
+            fixture.database.admin().set_suspended(user.id(), true).await.unwrap();
+        }
+        if index % 6 == 3 {
+            email.set_preference(&user, EmailPreference::Off).await.unwrap();
+        }
+        let reason = if index % 6 == 5 { NotificationReason::Manual } else { NotificationReason::Mention };
+        subscriptions.participate(issue.id, user.id(), reason, Timestamp(1)).await.unwrap();
+        if index % 6 == 4 {
+            expected.push(user.email.to_string());
+            subscriptions.participate(issue.id, user.id(), NotificationReason::Manual, Timestamp(1)).await.unwrap();
+        }
+    }
+    let context = fixture.open(&fixture.alice, issue.number).await;
+    let comment = fixture.services.timeline.comment(&fixture.alice, &context, "An update").await.unwrap();
+    let event = DomainEvent::IssueComment {
+        repo: repo.repo.repo.id,
+        issue: issue.id,
+        number: issue.number,
+        kind: IssueKind::Issue,
+        comment: comment.id,
+        actor: fixture.alice.id(),
+        action: rbit_core::issue::CommentAction::Created,
+    };
+    fixture.notifications.handle_event(&event).await.unwrap();
+    fixture.notifications.handle_event(&event).await.unwrap();
+    settle().await;
+    let mut actual: Vec<_> = fixture.outbox.sent().into_iter().map(|mail| mail.to.to_string()).collect();
+    actual.sort();
+    expected.sort();
+    assert_eq!(actual, expected, "only verified, active, authorized recipients who want mail, each once");
+}
+
+#[tokio::test]
+async fn rendering_failure_leaves_the_entire_email_batch_unclaimed() {
+    use rbit_storage::sqlite::notifications::NotificationReason;
+
+    let fixture = Fixture::new(Visibility::Public, |_| {}).await;
+    let issue = fixture.create_issue("").await;
+    let dave = user(&fixture.database, "dave", true).await;
+    for recipient in [&fixture.bob, &dave] {
+        fixture.database.notifications().participate(issue.id, recipient.id(), NotificationReason::Comment, Timestamp(1)).await.unwrap();
+    }
+    let context = fixture.open(&fixture.alice, issue.number).await;
+    let comment = fixture.services.timeline.comment(&fixture.alice, &context, "Retry after rendering works").await.unwrap();
+    let event = DomainEvent::IssueComment {
+        repo: context.repo.repo.repo.id,
+        issue: issue.id,
+        number: issue.number,
+        kind: IssueKind::Issue,
+        comment: comment.id,
+        actor: fixture.alice.id(),
+        action: rbit_core::issue::CommentAction::Created,
+    };
+    let options = SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));
+    let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+    sqlx::query(
+        "CREATE TRIGGER fail_notification_key BEFORE INSERT ON server_secrets \
+         WHEN NEW.name = 'notification_unsubscribe' \
+         BEGIN SELECT RAISE(ABORT, 'test signing key unavailable'); END",
+    )
+    .execute(&mut connection)
+    .await
+    .unwrap();
+    fixture.notifications.handle_event(&event).await.unwrap();
+    settle().await;
+    assert_eq!(fixture.outbox.sent(), []);
+    let claimed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notification_emails").fetch_one(&mut connection).await.unwrap();
+    assert_eq!(claimed, 0, "a rendering failure cannot consume any recipient's delivery key");
+
+    sqlx::query("DROP TRIGGER fail_notification_key").execute(&mut connection).await.unwrap();
+    fixture.notifications.handle_event(&event).await.unwrap();
+    settle().await;
+    assert_eq!(fixture.mail_to("bob").len(), 1);
+    assert_eq!(fixture.mail_to("dave").len(), 1, "later recipients remain eligible on retry");
+}
+
+#[tokio::test]
+async fn email_batches_refresh_repository_ownership() {
+    use rbit_storage::sqlite::notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason};
+
+    let fixture = Fixture::new(Visibility::Private, |_| {}).await;
+    let repo = fixture.repo(&fixture.alice).await;
+    let issue = fixture.create_issue("").await;
+    let mut recipients = Vec::new();
+    for index in 0..=NOTIFICATION_BATCH_SIZE {
+        let recipient = user(&fixture.database, &format!("transfer{index}"), true).await;
+        fixture.database.notifications().participate(issue.id, recipient.id(), NotificationReason::Comment, Timestamp(1)).await.unwrap();
+        if index < NOTIFICATION_BATCH_SIZE {
+            fixture.database.repositories().grant_collaborator(repo.repo.repo.id, recipient.id(), Permission::Read).await.unwrap();
+        }
+        recipients.push(recipient);
+    }
+    let old_owner = recipients.last().unwrap();
+    let context = fixture.open(&fixture.alice, issue.number).await;
+    let comment = fixture.services.timeline.comment(&fixture.alice, &context, "Ownership changes during delivery").await.unwrap();
+    let event = DomainEvent::IssueComment {
+        repo: repo.repo.repo.id,
+        issue: issue.id,
+        number: issue.number,
+        kind: IssueKind::Issue,
+        comment: comment.id,
+        actor: fixture.alice.id(),
+        action: rbit_core::issue::CommentAction::Created,
+    };
+    let options = SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));
+    let mut connection = SqliteConnection::connect_with(&options).await.unwrap();
+    sqlx::query("UPDATE repositories SET owner_id = ? WHERE id = ?")
+        .bind(old_owner.id().0)
+        .bind(repo.repo.repo.id.0)
+        .execute(&mut connection)
+        .await
+        .unwrap();
+    // The first delivery batch commits a transfer back to Alice. The old owner has
+    // no collaborator grant and must fail the next batch's fresh access check.
+    // Safe interpolation: only internal numeric fixture IDs and a batch-size constant.
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "CREATE TRIGGER transfer_after_email_batch AFTER INSERT ON notification_emails \
+         WHEN (SELECT COUNT(*) FROM notification_emails) = {NOTIFICATION_BATCH_SIZE} \
+         BEGIN UPDATE repositories SET owner_id = {} WHERE id = {}; END",
+        fixture.alice.id().0,
+        repo.repo.repo.id.0,
+    )))
+    .execute(&mut connection)
+    .await
+    .unwrap();
+    fixture.notifications.handle_event(&event).await.unwrap();
+    settle().await;
+    assert_eq!(fixture.outbox.sent().len(), NOTIFICATION_BATCH_SIZE);
+    assert!(fixture.mail_to(old_owner.name().as_str()).is_empty(), "ownership from the previous batch cannot authorize delivery");
+    let claimed: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notification_emails WHERE account_id = ?")
+        .bind(old_owner.id().0)
+        .fetch_one(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(claimed, 0, "denied recipients do not consume a delivery key");
 }
 
 #[tokio::test]

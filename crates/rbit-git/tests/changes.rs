@@ -103,3 +103,33 @@ async fn line_budget_caps_rendered_lines_and_flags_truncation() {
     assert!(first.stats_known && first.additions > 0);
     assert!(detail.files[1..].iter().all(|f| !f.stats_known));
 }
+
+#[tokio::test]
+async fn zero_and_exact_budgets_preserve_known_statistics() {
+    let (_dir, reader) = fixture();
+    // The root commit adds a.txt (three lines) and b.txt (one line), in that order.
+    for (budget, known, truncated) in
+        [(0, [false, false], true), (1, [true, false], true), (3, [true, false], true), (4, [true, true], false)]
+    {
+        let limits = DiffLimits { max_total_lines: budget, ..DiffLimits::default() };
+        let detail = reader.commit_detail("v1".into(), limits).await.unwrap();
+        assert_eq!(detail.truncated, truncated, "line budget {budget}");
+        assert_eq!(detail.files.iter().map(|file| file.stats_known).collect::<Vec<_>>(), known);
+        for (file, count) in detail.files.iter().zip([3, 1]) {
+            assert_eq!(file.additions, if file.stats_known { count } else { 0 });
+            assert_eq!(file.deletions, 0);
+        }
+        if budget == 1 {
+            assert!(matches!(detail.files[0].body, FileDiffBody::TooLarge));
+        } else if budget >= 3 {
+            assert!(matches!(detail.files[0].body, FileDiffBody::Text(ref hunks) if hunks[0].lines.len() == 3));
+        }
+    }
+    for (max_files, expected, truncated) in [(0, 0, true), (1, 1, true), (2, 2, false), (3, 2, false)] {
+        let limits = DiffLimits { max_files, ..DiffLimits::default() };
+        let detail = reader.commit_detail("v1".into(), limits).await.unwrap();
+        assert_eq!(detail.files.len(), expected);
+        assert_eq!(detail.truncated, truncated, "file budget {max_files}");
+        assert!(detail.files.iter().all(|file| file.stats_known && file.status == ChangeStatus::Added));
+    }
+}

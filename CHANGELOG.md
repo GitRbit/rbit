@@ -7,6 +7,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Performance
+
+- Reuse bounded blame results and share concurrent calculations for the same file and
+  revision. Limit active blame calculations even after a request times out, and keep
+  authorization checks fresh.
+- Stop retaining tree changes at the diff file limit and skip display-string allocation
+  for hunks beyond the line budget, preserving rename detection and line statistics.
+- Batch pull-request reviewer permissions and notification recipients, inbox writes and
+  email deduplication claims. Keep permission, suspension and email preference checks
+  fresh, with bounded notification write transactions.
+- Scan expired sessions without holding the database writer, then remove them in small
+  batches that recheck expiry and preserve concurrently renewed sessions.
+
 ### Security and reliability audit
 
 - Make first-administrator registration, password reset consumption, two-factor state

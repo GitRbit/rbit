@@ -5,15 +5,19 @@
 //! Built on gitoxide's `blame`, which walks history and diffs each version of the file.
 //! Its cost grows with the file's size and history, so a blame is bounded twice: files
 //! larger than [`BlameLimits::max_file_bytes`] are not blamed at all, and a blame that
-//! takes longer than [`BlameLimits::time_budget`] is abandoned. Either way the caller
-//! gets [`Blame::TooLarge`] and can show a notice instead.
+//! takes longer than [`BlameLimits::time_budget`] returns a fallback response. The
+//! blocking calculation continues until it finishes; a service sharing that work can
+//! keep its concurrency permit and reuse the eventual result. Both limits produce
+//! [`Blame::TooLarge`] so the caller can show a notice instead.
 
 use std::{
     collections::{HashMap, hash_map::Entry},
+    io::{self, Write},
     time::Duration,
 };
 
 use gix::{ObjectId, bstr::ByteSlice};
+use sha2::{Digest, Sha256};
 
 use crate::{
     CommitSummary, GitError, RepositoryReader,
@@ -68,10 +72,63 @@ pub enum Blame {
     TooLarge,
 }
 
+/// Effective configuration and HEAD used by the opened reader. Only a digest is
+/// retained, since repository configuration can contain credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BlameCacheInputs([u8; 32]);
+
 impl RepositoryReader {
+    /// Fingerprints the configuration snapshot actually used by this reader and
+    /// current HEAD (whose attributes Git uses even for historical blame). External
+    /// attributes, filters, custom diff drivers and object replacements can depend on
+    /// additional mutable state, so their results are deliberately not reused.
+    pub async fn blame_cache_inputs(&self) -> Result<Option<BlameCacheInputs>, GitError> {
+        self.with_repo(|repo| {
+            let config = repo.config_snapshot();
+            let file = config.plumbing();
+            if repo.common_dir() != repo.git_dir()
+                || repo.index_path() != repo.git_dir().join("index")
+                || config.string("core.attributesFile").is_some()
+                || file.sections_by_name("filter").is_some()
+                || file
+                    .sections_by_name("diff")
+                    .is_some_and(|mut sections| sections.any(|section| section.header().subsection_name().is_some()))
+                || repo.objects.store_ref().replacements().next().is_some()
+            {
+                return Ok(None);
+            }
+            let mut digest = ConfigDigest { hash: Sha256::new(), remaining: 64 * 1024 };
+            if file.write_to(&mut digest).is_err() {
+                return Ok(None);
+            }
+            let Ok(head) = repo.head_id() else { return Ok(None) };
+            digest.hash.update(head.as_bytes());
+            Ok(Some(BlameCacheInputs(digest.hash.finalize().into())))
+        })
+        .await
+    }
+
     /// Blames the file at `path` as of `revision`.
     pub async fn blame(&self, revision: String, path: String, limits: BlameLimits) -> Result<Blame, GitError> {
-        let work = self.with_repo(move |repo| {
+        match tokio::time::timeout(limits.time_budget, self.blame_complete(revision, path, limits.max_file_bytes, None)).await {
+            Ok(result) => result,
+            // The blocking task finishes on its own; its result is simply discarded.
+            Err(_) => Ok(Blame::TooLarge),
+        }
+    }
+
+    /// Waits for the actual blocking calculation, without a response deadline. A
+    /// supplied permit belongs to that calculation until it ends, even if its caller
+    /// is cancelled. `TooLarge` here means only that the file exceeds `max_file_bytes`.
+    pub async fn blame_complete(
+        &self,
+        revision: String,
+        path: String,
+        max_file_bytes: u64,
+        permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    ) -> Result<Blame, GitError> {
+        self.with_repo(move |repo| {
+            let _permit = permit;
             let commit = repo.find_commit(resolve_commit(repo, &revision)?).map_err(GitError::backend)?;
             let entry = commit
                 .tree()
@@ -82,7 +139,7 @@ impl RepositoryReader {
             if !entry.mode().is_blob() && !entry.mode().is_link() {
                 return Err(GitError::NotFound("file"));
             }
-            if repo.find_header(entry.object_id()).map_err(GitError::backend)?.size() > limits.max_file_bytes {
+            if repo.find_header(entry.object_id()).map_err(GitError::backend)?.size() > max_file_bytes {
                 return Ok(Blame::TooLarge);
             }
             let data = repo.find_blob(entry.object_id()).map_err(GitError::backend)?.take_data();
@@ -108,11 +165,27 @@ impl RepositoryReader {
                 });
             }
             Ok(Blame::Blamed(Box::new(FileBlame { commit: summarize(&commit)?, text: String::from_utf8_lossy(&data).into_owned(), hunks })))
-        });
-        match tokio::time::timeout(limits.time_budget, work).await {
-            Ok(result) => result,
-            // The blocking task finishes on its own; its result is simply discarded.
-            Err(_) => Ok(Blame::TooLarge),
+        })
+        .await
+    }
+}
+
+struct ConfigDigest {
+    hash: Sha256,
+    remaining: usize,
+}
+
+impl Write for ConfigDigest {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > self.remaining {
+            return Err(io::Error::other("blame configuration exceeds fingerprint limit"));
         }
+        self.remaining -= bytes.len();
+        self.hash.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
