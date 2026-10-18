@@ -110,6 +110,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}/commit/{revision}", get(history::commit))
         .route("/{owner}/{repo}/branches", get(history::branches))
         .route("/{owner}/{repo}/tags", get(history::tags))
+        .route("/{owner}/{repo}/language-files", get(repo::language_files))
         // Feature areas own their route tables.
         .merge(settings::routes())
         .merge(orgs::routes())

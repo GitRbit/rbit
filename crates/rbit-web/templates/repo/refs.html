@@ -3,11 +3,20 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<div class="mb-3 flex h-8 items-center">
+<div class="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-3">
   <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ rows.len() }}</span></h1>
+  {% if kind == "branch" %}
+  <nav class="flex gap-1" aria-label="Branch view">
+    <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>List</a>
+    <a href="{{ header.branches_url }}?view=tree" class="btn {% if graph.is_some() %}btn-primary{% endif %}" {% if graph.is_some() %}aria-current="page"{% endif %}>{% call ui::icon("branch", "size-3.5") %}{% endcall %}Git tree</a>
+  </nav>
+  {% endif %}
 </div>
 
 <div class="box">
+  {% if let Some(graph) = graph %}
+  {% include "repo/branch_graph.html" %}
+  {% else %}
   {% if rows.is_empty() %}
   {% if kind == "branch" %}
   {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
@@ -41,6 +50,7 @@
     </li>
     {% endfor %}
   </ul>
+  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

@@ -20,6 +20,8 @@ async fn private_repository_is_invisible_without_access() {
         "/alice/hidden-plans/raw/main/README.md",
         "/alice/hidden-plans/commits",
         "/alice/hidden-plans/branches",
+        "/alice/hidden-plans/branches?view=tree",
+        "/alice/hidden-plans/language-files?revision=main&language=Rust",
     ];
     for path in pages {
         anonymous.get(path).await.expect_status(StatusCode::NOT_FOUND);

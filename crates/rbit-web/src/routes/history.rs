@@ -1,6 +1,12 @@
 //! A single commit with its diff, and the branch and tag listings.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
+use serde::Deserialize;
+
+#[derive(Deserialize, Default)]
+pub struct RefsQuery {
+    view: Option<String>,
+}
 use rbit_git::{DiffLimits, RefKind};
 use rbit_services::ServiceError;
 
@@ -33,13 +39,19 @@ pub async fn commit(
 }
 
 /// `GET /{owner}/{repo}/branches`
-pub async fn branches(state: State<AppState>, viewer: Viewer, page: Page, path: Path<(String, String)>) -> WebResult<RefsPage> {
-    refs(state, viewer, page, path, RefKind::Branch).await
+pub async fn branches(
+    state: State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    path: Path<(String, String)>,
+    Query(query): Query<RefsQuery>,
+) -> WebResult<RefsPage> {
+    refs(state, viewer, page, path, RefKind::Branch, query.view.as_deref() == Some("tree")).await
 }
 
 /// `GET /{owner}/{repo}/tags`
 pub async fn tags(state: State<AppState>, viewer: Viewer, page: Page, path: Path<(String, String)>) -> WebResult<RefsPage> {
-    refs(state, viewer, page, path, RefKind::Tag).await
+    refs(state, viewer, page, path, RefKind::Tag, false).await
 }
 
 async fn refs(
@@ -48,6 +60,7 @@ async fn refs(
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
     kind: RefKind,
+    show_graph: bool,
 ) -> WebResult<RefsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let details = loaded.ctx.reader.ref_details(kind).await.map_err(ServiceError::from)?;
@@ -65,10 +78,20 @@ async fn refs(
         RefKind::Branch => state.services.protection.protected_branches(&loaded.ctx).await?,
         RefKind::Tag => Vec::new(),
     };
+    let graph = if show_graph {
+        let revisions = details.iter().map(|detail| detail.commit.id.clone()).collect();
+        let mut commits = loaded.ctx.reader.branch_history(revisions, 201).await.map_err(ServiceError::from)?;
+        let truncated = commits.len() > 200;
+        commits.truncate(200);
+        Some(crate::views::branch_graph::BranchGraph::new(&commits, &rows, &loaded.urls, truncated))
+    } else {
+        None
+    };
     Ok(RefsPage {
         page: page.titled(format!("{label} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, tab),
         kind: kind_name,
+        graph,
         rows,
     }
     .with_protected(&protected))

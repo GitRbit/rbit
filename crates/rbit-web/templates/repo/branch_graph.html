@@ -1,0 +1,30 @@
+{% if graph.rows.is_empty() %}
+{% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+{% else %}
+<div class="overflow-x-auto" aria-label="Branch commit graph">
+  <table class="branch-graph w-full text-[13px]">
+    <thead class="sr-only"><tr><th>Graph</th><th>Commit and branches</th><th>Author</th><th>Date</th><th>Commit ID</th></tr></thead>
+    <tbody>
+    {% for row in graph.rows %}
+    <tr>
+      <td class="branch-graph-lanes">
+        <svg width="{{ graph.width }}" height="48" viewBox="0 0 {{ graph.width }} 48" aria-hidden="true" class="block text-ink-muted">
+          {% for x in row.incoming %}<path d="M {{ x }} 0 V 24" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endfor %}
+          {% for edge in row.edges %}<path d="M {{ edge.x1 }} 24 C {{ edge.x1 }} 36 {{ edge.x2 }} 36 {{ edge.x2 }} 48" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endfor %}
+          <circle cx="{{ row.x }}" cy="24" r="4" fill="currentColor"/>
+        </svg>
+      </td>
+      <td class="min-w-64 px-3"><div class="flex items-center gap-2">
+        {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge shrink-0 hover:underline">{% call ui::icon("branch", "size-3") %}{% endcall %}{{ branch.0 }}</a>{% endfor %}
+        <a href="{{ row.commit.url }}" class="max-w-xl truncate hover:underline">{{ row.commit.summary }}</a>
+      </div></td>
+      <td class="whitespace-nowrap px-3 text-ink-muted">{{ row.commit.author }}</td>
+      <td class="whitespace-nowrap px-3 text-ink-faint"><time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></td>
+      <td class="px-3"><a href="{{ row.commit.url }}" class="link font-mono text-xs">{{ row.commit.short_id }}</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if graph.truncated %}<p class="border-t border-line p-4 text-xs text-ink-muted">Showing the latest 200 commits across branches. Lines at the bottom continue into older history. Open a branch’s history to explore further.</p>{% endif %}
+{% endif %}

@@ -69,6 +69,16 @@ async fn push_then_browse_every_view() {
 
     // Branches and tags.
     web.get("/alice/demo/branches").await.expect_status(StatusCode::OK).expect_contains(&[">main<", ">feature<"]);
+    web.get("/alice/demo/branches?view=tree").await.expect_status(StatusCode::OK).expect_contains(&[
+        "Branch commit graph",
+        "Feature work",
+        Sample::FIRST_MESSAGE,
+        Sample::SECOND_MESSAGE,
+        "aria-current=\"page\">",
+    ]);
+    let language_files = web.get("/alice/demo/language-files?revision=main&language=Rust").await;
+    language_files.expect_status(StatusCode::OK).expect_contains(&["Rust files", "src/main.rs", "data-outline-folder"]);
+    assert!(!language_files.contains("guide.txt"), "language browser includes only matching files");
     web.get("/alice/demo/tags").await.expect_status(StatusCode::OK).expect_contains(&[">v1.0<"]);
 
     // Anonymous clone of a public repository returns the same history.

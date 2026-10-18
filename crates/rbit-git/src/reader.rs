@@ -269,6 +269,22 @@ impl RepositoryReader {
         })
         .await
     }
+
+    /// A bounded history across all requested branch tips, with shared ancestors
+    /// visited once. The graph view orders this window with children before parents.
+    pub async fn branch_history(&self, revisions: Vec<String>, limit: usize) -> Result<Vec<CommitSummary>, GitError> {
+        self.with_repo(move |repo| {
+            let tips = revisions.iter().map(|revision| resolve_commit(repo, revision)).collect::<Result<Vec<_>, _>>()?;
+            repo.rev_walk(tips)
+                .sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst))
+                .all()
+                .map_err(GitError::backend)?
+                .take(limit)
+                .map(|info| summarize(&info.map_err(GitError::backend)?.object().map_err(GitError::backend)?))
+                .collect()
+        })
+        .await
+    }
 }
 
 /// The repository held by a pinned reader, opened on first use. Concurrent first calls

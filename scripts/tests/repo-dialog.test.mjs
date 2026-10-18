@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import vm from "node:vm";
+
+const source = await readFile(new URL("../../crates/rbit-web/assets/repo.js", import.meta.url), "utf8");
+
+function browser(fetch) {
+  const listeners = new Map();
+  const elements = [];
+  class Element {
+    constructor(tag) {
+      this.tag = tag;
+      this.dataset = {};
+      this.children = [];
+      this.listeners = new Map();
+      this.isConnected = true;
+    }
+    setAttribute() {}
+    append(...children) { this.children.push(...children); }
+    addEventListener(name, listener) { this.listeners.set(name, listener); }
+    showModal() { this.open = true; }
+    close() { this.open = false; this.listeners.get("close")?.(); }
+    remove() { this.isConnected = false; }
+    focus() {}
+    closest(selector) { return selector === "[data-language-files]" && this === trigger ? this : null; }
+  }
+  const trigger = new Element("button");
+  trigger.dataset.languageFilesUrl = "/owner/repo/language-files?revision=abc&language=Rust";
+  const document = {
+    body: new Element("body"),
+    addEventListener(name, handler, capture) { listeners.set(name, { handler, capture }); },
+    querySelector() { return elements.findLast(element => element.tag === "dialog" && element.isConnected) ?? null; },
+    createElement(tag) {
+      const element = new Element(tag);
+      elements.push(element);
+      return element;
+    },
+  };
+  vm.runInNewContext(source, { document, Element, AbortController, fetch, addEventListener() {} });
+  return { trigger, listeners, elements, document };
+}
+
+test("language click opens a modal and cannot reach htmx navigation", () => {
+  const requests = [];
+  const page = browser(url => {
+    requests.push(url);
+    return new Promise(() => {});
+  });
+  let prevented = false;
+  let stopped = false;
+  const click = page.listeners.get("click");
+  assert.equal(click.capture, true);
+  click.handler({
+    target: page.trigger,
+    preventDefault() { prevented = true; },
+    stopPropagation() { stopped = true; },
+  });
+  assert.equal(prevented, true);
+  assert.equal(stopped, true, "htmx must never receive the language control click");
+  assert.equal(page.document.querySelector().open, true, "dialog opens before the request finishes");
+  assert.deepEqual(requests, [page.trigger.dataset.languageFilesUrl]);
+});
+
+test("failed file loading offers an in-dialog retry without a page link", async () => {
+  let attempts = 0;
+  const page = browser(async () => { attempts += 1; throw new Error("Unavailable"); });
+  page.listeners.get("click").handler({ target: page.trigger, preventDefault() {}, stopPropagation() {} });
+  await new Promise(resolve => setImmediate(resolve));
+  const retry = page.elements.find(element => element.textContent === "Try again");
+  assert.equal(retry.tag, "button");
+  assert.equal(page.elements.some(element => element.tag === "a"), false);
+  retry.listeners.get("click")();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(attempts, 2);
+  assert.equal(page.document.querySelector().open, true);
+});
+
+test("language links restored from old page history also stay in a dialog", () => {
+  let requested;
+  const page = browser(url => { requested = url; return new Promise(() => {}); });
+  page.trigger.href = page.trigger.dataset.languageFilesUrl;
+  delete page.trigger.dataset.languageFilesUrl;
+  let stopped = false;
+  page.listeners.get("click").handler({
+    target: page.trigger,
+    preventDefault() {},
+    stopPropagation() { stopped = true; },
+  });
+  assert.equal(stopped, true);
+  assert.equal(requested, page.trigger.href);
+  assert.equal(page.document.querySelector().open, true);
+});

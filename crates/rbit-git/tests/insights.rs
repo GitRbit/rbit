@@ -95,6 +95,31 @@ fn names(entries: &[&str]) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn language_file_lists_match_attributes_and_revision() {
+    let (_dir, reader) = fixture();
+    assert_eq!(reader.language_files("main".into(), "Rust".into()).await.unwrap(), names(&["src/lib.rs", "src/main.rs"]));
+    assert_eq!(reader.language_files("main".into(), "HTML".into()).await.unwrap(), names(&["web/index.html"]));
+    assert_eq!(reader.language_files("attributes".into(), "HTML".into()).await.unwrap(), Vec::<String>::new());
+    assert_eq!(reader.language_files("attributes".into(), "PHP".into()).await.unwrap(), names(&["lib/helpers.inc"]));
+    assert_eq!(reader.language_files("main".into(), "Go".into()).await.unwrap(), Vec::<String>::new());
+    assert_eq!(reader.language_files("attributes".into(), "Go".into()).await.unwrap(), names(&["vendor/dep/lib.go"]));
+    assert_eq!(reader.language_files("main".into(), "Unknown".into()).await.unwrap(), Vec::<String>::new());
+    assert!(reader.language_files("missing".into(), "Rust".into()).await.is_err());
+}
+
+#[tokio::test]
+async fn branch_history_visits_shared_ancestors_once_and_keeps_merge_parents() {
+    let (_dir, reader) = fixture();
+    let commits = reader.branch_history(names(&["refs/heads/main", "refs/heads/side", "refs/heads/attributes"]), 200).await.unwrap();
+    let unique: std::collections::HashSet<_> = commits.iter().map(|commit| &commit.id).collect();
+    assert_eq!(unique.len(), commits.len());
+    assert_eq!(commits.len(), 6);
+    assert_eq!(commits.iter().find(|commit| commit.summary == "merge side").unwrap().parent_ids.len(), 2);
+    assert_eq!(reader.branch_history(names(&["main", "side"]), 2).await.unwrap().len(), 2);
+    assert!(reader.branch_history(Vec::new(), 200).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn language_stats_count_programming_and_markup_only() {
     let (_dir, reader) = fixture();
     let stats = reader.language_stats("main".into()).await.unwrap();

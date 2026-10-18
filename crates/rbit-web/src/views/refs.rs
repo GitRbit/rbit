@@ -61,6 +61,7 @@ pub struct RefsPage {
     pub page: Page,
     pub header: RepoHeader,
     pub kind: &'static str,
+    pub graph: Option<crate::views::branch_graph::BranchGraph>,
     pub rows: Vec<RefRow>,
 }
 
@@ -120,6 +121,7 @@ mod tests {
             },
             header: RepoHeader { owner: "acme".to_owned(), name: "rocket".to_owned(), active_tab: "branches", ..RepoHeader::default() },
             kind,
+            graph: None,
             rows: vec![row("main"), row("feature")],
         }
     }

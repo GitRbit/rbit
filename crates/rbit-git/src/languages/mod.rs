@@ -134,6 +134,40 @@ pub fn classify(path: &str, attributes: &LinguistAttributes) -> Option<&'static 
 }
 
 impl RepositoryReader {
+    /// Counted files for a language at this revision. `Other` uses the same grouping
+    /// as the language bar, including languages below the display threshold.
+    pub async fn language_files(&self, revision: String, name: String) -> Result<Vec<String>, GitError> {
+        self.with_repo(move |repo| {
+            let commit = repo.find_commit(resolve_commit(repo, &revision)?).map_err(GitError::backend)?;
+            let tree = commit.tree().map_err(GitError::backend)?;
+            let attributes = root_attributes(repo, &tree)?;
+            let mut collector = FileCollector::new(&attributes);
+            tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
+            let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
+            if name == "Other" {
+                for (language, id, _) in &collector.files {
+                    counts.entry(language.name).or_insert((language, 0)).1 += repo.find_header(*id).map_err(GitError::backend)?.size();
+                }
+            }
+            let stats = LanguageStats::from_byte_counts(counts.into_values());
+            let mut paths: Vec<_> = collector
+                .files
+                .into_iter()
+                .filter_map(|(language, _, path)| {
+                    let matches = if name == "Other" {
+                        !stats.languages.iter().any(|share| share.name == language.name)
+                    } else {
+                        language.name == name
+                    };
+                    matches.then_some(path)
+                })
+                .collect();
+            paths.sort();
+            Ok(paths)
+        })
+        .await
+    }
+
     /// The language breakdown of the tree at `revision`.
     pub async fn language_stats(&self, revision: String) -> Result<LanguageStats, GitError> {
         self.with_repo(move |repo| {
@@ -145,7 +179,7 @@ impl RepositoryReader {
             tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
 
             let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
-            for (language, id) in collector.files {
+            for (language, id, _) in collector.files {
                 let size = repo.find_header(id).map_err(GitError::backend)?.size();
                 counts.entry(language.name).or_insert((language, 0)).1 += size;
             }
@@ -175,7 +209,7 @@ struct FileCollector<'a> {
     attributes: &'a LinguistAttributes,
     /// Pruning is only safe when no attribute could re-include a default-excluded path.
     may_prune: bool,
-    files: Vec<(&'static Language, ObjectId)>,
+    files: Vec<(&'static Language, ObjectId, String)>,
 }
 
 impl<'a> FileCollector<'a> {
@@ -218,7 +252,7 @@ impl Visit for FileCollector<'_> {
         if matches!(entry.mode.kind(), GixEntryKind::Blob | GixEntryKind::BlobExecutable)
             && let Some(language) = classify(&self.current_path(), self.attributes)
         {
-            self.files.push((language, entry.oid.to_owned()));
+            self.files.push((language, entry.oid.to_owned(), self.current_path()));
         }
         Action::Continue(true)
     }

@@ -213,14 +213,19 @@ async fn render_tree(
     path: String,
 ) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
-    // The README needs the listing; the sidebar needs neither, so they run alongside.
+    let commit_id = reader.commit_id(revision.clone()).await.map_err(ServiceError::from)?;
+    // Pin the listing and language statistics to the same revision snapshot.
     let listing = async {
-        let view = reader.tree(revision.clone(), path.clone()).await?;
+        let view = reader.tree(commit_id.clone(), path.clone()).await?;
         let readme = reader.readme(view.commit.id.clone(), &view.entries, &path, state.services.repositories.max_render_bytes()).await?;
         Ok::<_, rbit_git::GitError>((view, readme))
     };
-    let (listing, languages, latest_release, collaborator) =
-        tokio::join!(listing, language_bar(state, &loaded), latest_release(state, &loaded), collaborator_access(state, viewer, &loaded));
+    let (listing, languages, latest_release, collaborator) = tokio::join!(
+        listing,
+        language_bar(state, &loaded, &commit_id),
+        latest_release(state, &loaded),
+        collaborator_access(state, viewer, &loaded)
+    );
     let (view, readme) = listing.map_err(ServiceError::from)?;
     let readme = readme.map(|(name, text)| {
         let is_markdown = is_markdown(&name);
@@ -265,6 +270,7 @@ async fn render_tree(
         readme,
         history_url: urls.commits(&revision),
         languages,
+        language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),
         latest_release,
         collaborator,
         new_file_url: editable.then(|| urls.edit("new", &revision, &path)),
@@ -285,11 +291,10 @@ async fn collaborator_access(state: &AppState, viewer: &Viewer, loaded: &RepoPag
     }
 }
 
-/// The sidebar language bar for the default branch. Insights are decoration: a failure
+/// The sidebar language bar for the selected revision. Insights are decoration: a failure
 /// is logged and the section omitted rather than failing the page.
-async fn language_bar(state: &AppState, loaded: &RepoPage) -> Option<LanguageBar> {
-    let revision = loaded.landing_revision()?;
-    match state.services.insights.languages(&loaded.ctx, &revision).await {
+async fn language_bar(state: &AppState, loaded: &RepoPage, revision: &str) -> Option<LanguageBar> {
+    match state.services.insights.languages(&loaded.ctx, revision).await {
         Ok(breakdown) => LanguageBar::new(&breakdown),
         Err(error) => {
             tracing::warn!(%error, repo = %loaded.ctx.repo.full_name(), "language statistics unavailable");
@@ -577,4 +582,31 @@ mod tests {
         assert_eq!(split("mainline/src"), None);
         assert_eq!(split("3f9a2c1/src"), None);
     }
+}
+
+#[derive(Deserialize)]
+pub struct LanguageFilesQuery {
+    revision: String,
+    language: String,
+}
+
+/// A full page without JavaScript; the language dialog extracts its file outline.
+pub async fn language_files(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<LanguageFilesQuery>,
+) -> WebResult<crate::views::repo_files::LanguageFilesPage> {
+    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    // Pin links to the same snapshot used to classify the files.
+    let tree = loaded.ctx.reader.tree(query.revision, String::new()).await.map_err(ServiceError::from)?;
+    let paths = loaded.ctx.reader.language_files(tree.commit.id.clone(), query.language.clone()).await.map_err(ServiceError::from)?;
+    Ok(crate::views::repo_files::LanguageFilesPage {
+        page: page.titled(format!("{} files · {}", query.language, loaded.ctx.repo.full_name())),
+        header: loaded.header(&state, "code"),
+        language: query.language,
+        count: paths.len(),
+        rows: crate::views::repo_files::file_rows(&paths, &loaded.urls, &tree.commit.id),
+    })
 }

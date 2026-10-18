@@ -205,8 +205,9 @@ pub struct TreePage {
     pub entry_commits_url: String,
     pub readme: Option<ReadmeView>,
     pub history_url: String,
-    /// Language breakdown of the default branch; `None` when empty or unavailable.
+    /// Language breakdown of the selected revision; `None` when empty or unavailable.
     pub languages: Option<LanguageBar>,
+    pub language_files_url: String,
     /// The latest published release, for the sidebar.
     pub latest_release: Option<LatestRelease>,
     /// Set when the viewer is a collaborator without admin rights, to offer leaving.
