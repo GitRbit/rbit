@@ -39,7 +39,7 @@
           {% if row.is_default %}<span class="badge">default</span>{% endif %}
           {% if row.protected %}<span class="badge" title="A branch protection rule applies to this branch">{% call ui::icon("shield", "size-3") %}{% endcall %}Protected</span>{% endif %}
         </div>
-        <p class="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
+        <p class="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
           <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>
           <span class="shrink-0 text-ink-faint">· {{ row.commit.author }} · <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></span>
         </p>

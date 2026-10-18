@@ -21,6 +21,7 @@ tokio.workspace = true
 tokio-util.workspace = true
 futures-util.workspace = true
 async-compression.workspace = true
+brotli.workspace = true
 
 askama.workspace = true
 askama_web.workspace = true

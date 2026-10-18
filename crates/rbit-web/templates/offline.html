@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
+{#- Rendered without the visitor's theme cookie: apply the stored theme before the first paint. -#}
+{% block theme_script %}<script src="{{ page.asset("theme.js") }}"></script>{% endblock %}
 {% block content %}
 <section class="auth-shell sm:py-20">
   <div class="card flex flex-col items-center text-center">

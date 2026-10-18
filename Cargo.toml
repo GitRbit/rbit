@@ -31,6 +31,8 @@ tower = "0.5"
 tower-http = { version = "0.7", features = ["trace", "compression-full", "timeout", "set-header", "limit"] }
 futures-util = "0.3"
 async-compression = { version = "0.4", features = ["tokio", "gzip"] }
+# Static assets are compressed once at the highest quality instead of per response.
+brotli = "9"
 
 # Templates & content
 askama = "0.16"

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="crates/rbit-web/assets/logo.png" width="280" alt="rbit logo — an orange frog mascot in a gear">
+  <img src="docs/logo.avif" width="280" height="281" alt="rbit logo — an orange frog mascot in a gear">
 </p>
 
 # rbit

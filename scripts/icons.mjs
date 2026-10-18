@@ -19,6 +19,8 @@ function render(size, file, scale = 1, background = false) {
 }
 
 render(32, "icon-32.png");
+// The site logo in the top bar and footer: 36px at up to ~2.7x density.
+render(96, "icon-96.png");
 render(192, "icon-192.png");
 render(512, "icon-512.png");
 // A square at 56% width fits entirely inside the maskable 40%-radius safe circle.

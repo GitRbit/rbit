@@ -172,9 +172,11 @@
 </a>
 {% endmacro %}
 
-{#- The rbit frog mascot, shared by every branded surface. -#}
-{% macro logo(class) %}
-<img class="{{ class }} object-contain" src="{{ crate::assets::url("icon-192.png") }}" width="192" height="192" alt="" aria-hidden="true">
+{#- The rbit frog mascot, shared by every branded surface. `px` is its rendered CSS size, so the
+    browser picks the small icon for the top bar (it is on every page's critical path) and the
+    larger one only where the mascot is shown big. -#}
+{% macro logo(class, px) %}
+<img class="{{ class }} object-contain" src="{{ crate::assets::url("icon-96.png") }}" srcset="{{ crate::assets::url("icon-96.png") }} 96w, {{ crate::assets::url("icon-192.png") }} 192w" sizes="{{ px }}px" width="96" height="96" alt="" aria-hidden="true">
 {% endmacro %}
 
 {% macro avatar(avatar, size) %}

@@ -109,11 +109,11 @@
           {%- for segment in languages.segments %}<rect x="{{ segment.x }}" width="{{ segment.width }}" height="1" fill="{{ segment.color }}"><title>{{ segment.name }} {{ segment.percent }}</title></rect>{% endfor -%}
         </svg>
       </div>
-      <ul class="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+      <ul class="mt-2.5 flex flex-wrap gap-x-4 text-xs">
         {% for segment in languages.segments %}
         <li class="flex items-center gap-1.5">
           <svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ segment.color }}"/></svg>
-          <button type="button" class="cursor-pointer font-medium text-ink hover:underline hover:underline-offset-4" data-language-files data-language-files-url="{{ language_files_url }}&amp;language={{ segment.name|urlencode }}" hx-boost="false" aria-haspopup="dialog">{{ segment.name }}</button>
+          <button type="button" class="inline-flex min-h-6 cursor-pointer items-center font-medium text-ink hover:underline hover:underline-offset-4" data-language-files data-language-files-url="{{ language_files_url }}&amp;language={{ segment.name|urlencode }}" hx-boost="false" aria-haspopup="dialog">{{ segment.name }}</button>
           <span class="text-ink-muted">{{ segment.percent }}</span>
         </li>
         {% endfor %}
