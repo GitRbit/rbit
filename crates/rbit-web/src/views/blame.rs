@@ -318,7 +318,7 @@ mod tests {
                 has_unread_notifications: false,
             },
             header: RepoHeader::default(),
-            switcher: RefSwitcher::new(&[], "main", "main", str::to_owned),
+            switcher: RefSwitcher::deferred(&[], "main", crate::views::ref_picker::RefPickerLinks::new(&urls, &Default::default())),
             breadcrumbs: Vec::new(),
             latest: CommitView::new(&commit("a"), &urls),
             file_name: "a.rs".to_owned(),

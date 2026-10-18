@@ -10,8 +10,8 @@
     <section class="mb-4 lg:hidden" aria-label="About">
       {% if let Some(description) = header.description %}<p class="text-[13px] text-ink-muted">{{ description }}</p>{% endif %}
       <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
-        <a href="{{ header.branches_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.branches.len() }}</span> {% if switcher.branches.len() == 1 %}branch{% else %}branches{% endif %}</span></a>
-        <a href="{{ header.tags_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.tags.len() }}</span> {% if switcher.tags.len() == 1 %}tag{% else %}tags{% endif %}</span></a>
+        <a href="{{ header.branches_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}branch{% else %}branches{% endif %}</span></a>
+        <a href="{{ header.tags_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}tag{% else %}tags{% endif %}</span></a>
         {% if header.is_private %}
         <span class="flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}Private</span>
         {% else %}
@@ -125,8 +125,8 @@
       <a href="{{ header.forks_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}{{ header.fork_count }} forks</a>
     </nav>
     <dl class="hidden space-y-2 border-t border-line pt-5 text-[13px] text-ink-muted lg:block">
-      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">Branches</dt><dd><a href="{{ header.branches_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.branches.len() }}</span> {% if switcher.branches.len() == 1 %}branch{% else %}branches{% endif %}</a></dd></div>
-      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">Tags</dt><dd><a href="{{ header.tags_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.tags.len() }}</span> {% if switcher.tags.len() == 1 %}tag{% else %}tags{% endif %}</a></dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">Branches</dt><dd><a href="{{ header.branches_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}branch{% else %}branches{% endif %}</a></dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">Tags</dt><dd><a href="{{ header.tags_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}tag{% else %}tags{% endif %}</a></dd></div>
       {% if header.is_private %}
       <div class="flex items-center gap-2">{% call ui::icon("lock", "size-3.5") %}{% endcall %}<dt class="sr-only">Visibility</dt><dd>Private</dd></div>
       {% else %}

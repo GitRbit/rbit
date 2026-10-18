@@ -36,6 +36,44 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn ref_picker_page_and_fragment_enforce_repository_visibility() {
+    let fixture = Fixture::new().await;
+    let owner = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "picker-owner".into(), email: "picker@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    let token = fixture.services.accounts.start_session(&owner).await.unwrap();
+    for (name, visibility) in [("public", Visibility::Public), ("private", Visibility::Private)] {
+        fixture
+            .services
+            .repositories
+            .create(&owner, CreateRepository { name: name.into(), description: String::new(), visibility })
+            .await
+            .unwrap();
+        for suffix in ["ref-picker", "ref-picker/options"] {
+            for signed_in in [false, true] {
+                let mut request = Request::builder().uri(format!("/picker-owner/{name}/{suffix}?q=missing&page=999"));
+                if signed_in {
+                    request = request.header(header::COOKIE, format!("rbit_session={}", token.encode()));
+                }
+                let response = fixture.router.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+                let expected = if name == "private" && !signed_in { StatusCode::NOT_FOUND } else { StatusCode::OK };
+                assert_eq!(response.status(), expected, "{name}/{suffix}, signed in: {signed_in}");
+                if expected == StatusCode::OK {
+                    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+                    assert!(String::from_utf8_lossy(&body).contains("No matching branches or tags."));
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn anonymous_theme_changes_reject_hostile_redirects_without_panicking() {
     let fixture = Fixture::new().await;
     for next in ["%2F%0A%2Fevil.example", "%2F%09%2Fevil.example", "%2F%00", "%2F%7F"] {

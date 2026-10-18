@@ -24,6 +24,7 @@ use crate::{
         forks::ForkedFrom,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
         layout::Page,
+        ref_picker::{RefPickerLinks, RefPickerQuery, RefTarget},
         releases::LatestRelease,
         repo::{
             BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
@@ -137,8 +138,9 @@ impl RepoPage {
             && self.refs.iter().any(|r| r.kind == RefKind::Branch && r.name == revision)
     }
 
-    pub(super) fn switcher(&self, current: &str, link: impl Fn(&str) -> String) -> RefSwitcher {
-        RefSwitcher::new(&self.refs, current, self.default_branch(), link)
+    pub(super) fn switcher(&self, current: &str, target: RefTarget, path: &str) -> RefSwitcher {
+        let query = RefPickerQuery { target, path: path.into(), current: current.into(), ..Default::default() };
+        RefSwitcher::deferred(&self.refs, current, RefPickerLinks::new(&self.urls, &query))
     }
 }
 
@@ -260,7 +262,7 @@ async fn render_tree(
     Ok(TreePage {
         page: page.titled(title),
         header: loaded.header(state, "code"),
-        switcher: loaded.switcher(&revision, |r| urls.tree(r, "")),
+        switcher: loaded.switcher(&revision, RefTarget::Tree, ""),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),
         parent_url: (!path.is_empty()).then(|| urls.tree(&revision, parent_path(&path))),
         latest: CommitView::new(&view.commit, urls),
@@ -399,7 +401,7 @@ pub async fn blob(
     Ok(BlobPage {
         page: page.titled(format!("{path} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "code"),
-        switcher: loaded.switcher(&revision, |r| urls.tree(r, "")),
+        switcher: loaded.switcher(&revision, RefTarget::Tree, ""),
         breadcrumbs: breadcrumbs(loaded.ctx.repo.repo.name.as_str(), urls, &revision, &path),
         latest: CommitView::new(&view.commit, urls),
         file_name: name,
@@ -512,7 +514,7 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
     Ok(CommitsPage {
         page: page.titled(format!("Commits · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(state, "commits"),
-        switcher: loaded.switcher(&revision, |r| urls.commits(r)),
+        switcher: loaded.switcher(&revision, RefTarget::Commits, ""),
         days: CommitDay::group(commits),
         newer_url: (page_number > 1).then(|| format!("{base}?page={}", page_number - 1)),
         older_url: has_older.then(|| format!("{base}?page={}", page_number + 1)),

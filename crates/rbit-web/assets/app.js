@@ -62,7 +62,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 // Close menus after htmx navigations so a boosted link inside a menu doesn't leave it open.
-document.addEventListener("htmx:afterSettle", () => {
+document.addEventListener("htmx:afterSettle", (event) => {
+  if (!event.detail.requestConfig?.boosted) return;
   for (const menu of document.querySelectorAll("details[data-menu][open]")) menu.removeAttribute("open");
 });
 
@@ -89,6 +90,15 @@ function trackSubnav() {
 
 trackSubnav();
 document.addEventListener("htmx:afterSettle", trackSubnav);
+
+// The branch picker can have thousands of refs. Load its first page only on open;
+// failed requests retain the fallback link and can be retried by reopening the menu.
+document.addEventListener("toggle", (event) => {
+  const picker = event.target;
+  if (picker instanceof HTMLDetailsElement && picker.open && picker.matches("[data-ref-picker]") && picker.querySelector("[data-ref-picker-unloaded]")) {
+    window.htmx?.trigger(picker, "rbit:open");
+  }
+}, true);
 
 if ("serviceWorker" in navigator) {
   addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));

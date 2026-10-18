@@ -21,6 +21,29 @@ function diffTop(layout) {
 
 const layoutOf = (element) => element.closest("[data-diff-layout]");
 
+// Index each mounted diff once. Scrolling must not traverse thousands of code rows
+// just to find the file containers and sidebar links. htmx swaps invalidate the index.
+const indexes = new WeakMap();
+let layouts = [];
+const pendingCollapse = new Set();
+
+function indexOf(layout) {
+  let index = indexes.get(layout);
+  if (index) return index;
+  const tree = layout.querySelector("[data-diff-tree]");
+  const button = layout.querySelector("[data-diff-collapse-all]");
+  index = {
+    files: [...layout.querySelectorAll(".diff-file")],
+    tree,
+    links: new Map([...(tree?.querySelectorAll("[data-diff-target]") ?? [])].map((link) => [link.dataset.diffTarget, link])),
+    current: tree?.querySelector('[aria-current="true"]') ?? null,
+    button,
+    parts: [...(button?.querySelectorAll("[data-when]") ?? [])],
+  };
+  indexes.set(layout, index);
+  return index;
+}
+
 // ---------------------------------------------------------------- collapsing files
 
 /** Collapses or expands `file`; a header that was stuck stays at the top of the diffs. */
@@ -34,7 +57,7 @@ function setOpen(file, open) {
 
 function setAllOpen(layout, open) {
   const anchor = currentFile(layout);
-  for (const file of layout.querySelectorAll(".diff-file")) {
+  for (const file of indexOf(layout).files) {
     if (file !== anchor) file.open = open;
   }
   // Keep the file being read in place while everything around it changes height.
@@ -46,11 +69,12 @@ function setAllOpen(layout, open) {
 }
 
 function syncCollapseAll(layout) {
-  const button = layout.querySelector("[data-diff-collapse-all]");
+  const { button, files, parts } = indexOf(layout);
   if (!button) return;
-  const expanded = [...layout.querySelectorAll(".diff-file")].some((file) => file.open);
-  button.dataset.state = expanded ? "expanded" : "collapsed";
-  for (const part of button.querySelectorAll("[data-when]")) {
+  const state = files.some((file) => file.open) ? "expanded" : "collapsed";
+  if (button.dataset.state === state) return;
+  button.dataset.state = state;
+  for (const part of parts) {
     part.classList.toggle("hidden", part.dataset.when !== button.dataset.state);
     part.classList.toggle("contents", part.dataset.when === button.dataset.state);
   }
@@ -60,7 +84,7 @@ function syncCollapseAll(layout) {
 
 /** The file whose header is at (or stuck to) the top of the diffs. */
 function currentFile(layout) {
-  const files = layout.querySelectorAll(".diff-file");
+  const { files } = indexOf(layout);
   const line = diffTop(layout) + 1;
   // Files are in document order, so the last one starting above the line is current.
   let low = 0;
@@ -79,13 +103,15 @@ function currentFile(layout) {
 }
 
 function markCurrent(layout) {
-  const tree = layout.querySelector("[data-diff-tree]");
-  if (!tree) return;
+  const index = indexOf(layout);
+  const { tree } = index;
+  if (!tree || (wide.matches ? layout.dataset.sidebar === "hidden" : !tree.closest(".diff-sidebar")?.open)) return;
   const file = currentFile(layout);
-  const item = file && tree.querySelector(`[data-diff-target="${CSS.escape(file.id)}"]`);
-  const previous = tree.querySelector('[aria-current="true"]');
+  const item = index.links.get(file?.id) ?? null;
+  const previous = index.current;
   if (item === previous) return;
   previous?.removeAttribute("aria-current");
+  index.current = item;
   if (!item) return;
   item.setAttribute("aria-current", "true");
   // Scroll only the tree, never the page.
@@ -97,10 +123,16 @@ function markCurrent(layout) {
 
 let frame = 0;
 function scheduleMark() {
-  if (frame) return;
+  if (frame || !layouts.length) return;
   frame = requestAnimationFrame(() => {
     frame = 0;
-    for (const layout of document.querySelectorAll("[data-diff-layout]")) markCurrent(layout);
+    for (const layout of pendingCollapse) {
+      if (layout.isConnected) syncCollapseAll(layout);
+    }
+    pendingCollapse.clear();
+    for (const layout of layouts) {
+      if (layout.isConnected) markCurrent(layout);
+    }
   });
 }
 
@@ -219,10 +251,11 @@ function toggleSidebar(layout) {
 }
 
 wide.addEventListener("change", () => {
-  for (const layout of document.querySelectorAll("[data-diff-layout]")) {
+  for (const layout of layouts) {
     if (wide.matches) layout.querySelector(".diff-sidebar")?.setAttribute("open", "");
     syncSidebarToggle(layout);
   }
+  scheduleMark();
 });
 
 // ---------------------------------------------------------------- clicks
@@ -285,11 +318,15 @@ document.addEventListener(
   (event) => {
     if (event.target instanceof HTMLDetailsElement && event.target.matches(".diff-sidebar")) {
       syncSidebarToggle(layoutOf(event.target));
+      scheduleMark();
       return;
     }
     const file = event.target instanceof HTMLDetailsElement && event.target.matches(".diff-file") ? event.target : null;
     const layout = file && layoutOf(file);
-    if (layout) syncCollapseAll(layout);
+    if (layout) {
+      pendingCollapse.add(layout);
+      scheduleMark();
+    }
   },
   true,
 );
@@ -297,8 +334,11 @@ document.addEventListener(
 // ---------------------------------------------------------------- set-up
 
 function init() {
+  layouts = [...document.querySelectorAll("[data-diff-layout]")];
   const hidden = readSidebarPreference() === "hidden";
-  for (const layout of document.querySelectorAll("[data-diff-layout]:not([data-ready])")) {
+  for (const layout of layouts) {
+    indexOf(layout);
+    if (layout.hasAttribute("data-ready")) continue;
     layout.dataset.ready = "";
     const sidebar = layout.querySelector(".diff-sidebar");
     if (sidebar) sidebar.open = wide.matches;
@@ -315,5 +355,28 @@ function init() {
 }
 
 init();
+// A fragment can replace files inside an existing layout. Refresh mounted indexes at
+// the next settle, regardless of which element initiated the request.
+document.addEventListener("htmx:afterSwap", () => {
+  for (const layout of layouts) indexes.delete(layout);
+});
+// Release strong references before htmx removes a page, including full-body swaps.
+document.addEventListener("htmx:beforeCleanupElement", (event) => {
+  const root = event.detail.elt;
+  if (layouts.length) layouts = layouts.filter((layout) => {
+    if (root !== layout && !root.contains(layout)) return true;
+    pendingCollapse.delete(layout);
+    indexes.delete(layout);
+    return false;
+  });
+  if (observedHeader && (root === observedHeader || root.contains(observedHeader))) {
+    headerObserver.disconnect();
+    observedHeader = null;
+  }
+  if (!layouts.length && frame) {
+    cancelAnimationFrame(frame);
+    frame = 0;
+  }
+});
 document.addEventListener("htmx:afterSettle", init);
 document.addEventListener("htmx:historyRestore", init);

@@ -1,0 +1,22 @@
+<div class="ref-picker-results" aria-label="Branches and tags">
+  <form method="get" action="{{ picker.action }}" hx-get="{{ picker.options_action }}" hx-target="closest .ref-picker-results" hx-swap="outerHTML" class="flex gap-2 p-2" role="search">
+    <input type="hidden" name="target" value="{{ picker.target }}">
+    <input type="hidden" name="path" value="{{ picker.path }}">
+    <input type="hidden" name="current" value="{{ picker.current }}">
+    <input type="search" name="q" value="{{ picker.query }}" class="input min-w-0 flex-1" placeholder="Find a branch or tag" aria-label="Find a branch or tag" maxlength="100">
+    <button type="submit" class="btn">Find</button>
+  </form>
+  {% for row in picker.rows %}
+  <a href="{{ row.link.url }}" class="menu-item {% if row.link.is_current %}bg-hover{% endif %}" data-ref-option>
+    <span class="min-w-0 flex-1 truncate font-mono text-xs">{{ row.link.name }}</span>
+    <span class="text-xs text-ink-faint">{{ row.kind }}</span>
+    {% if row.link.is_default %}<span class="badge">default</span>{% endif %}
+  </a>
+  {% endfor %}
+  {% if picker.total == 0 %}<p class="p-3 text-sm text-ink-muted">No matching branches or tags.</p>{% endif %}
+  <div class="flex items-center justify-between gap-2 border-t border-line p-2 text-xs text-ink-muted">
+    {% if let Some(previous) = picker.previous %}<a href="{{ previous.page }}" hx-get="{{ previous.options }}" hx-target="closest .ref-picker-results" hx-swap="outerHTML" class="btn">Previous</a>{% endif %}
+    <span>{{ picker.page }} / {{ picker.pages }} · {{ picker.total }} refs</span>
+    {% if let Some(next) = picker.next %}<a href="{{ next.page }}" hx-get="{{ next.options }}" hx-target="closest .ref-picker-results" hx-swap="outerHTML" class="btn">Next</a>{% endif %}
+  </div>
+</div>

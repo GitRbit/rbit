@@ -81,27 +81,25 @@ pub struct RefLink {
 /// The branch/tag dropdown.
 #[derive(Debug, Clone)]
 pub struct RefSwitcher {
+    pub picker: super::ref_picker::RefPickerLinks,
     pub current: String,
     pub current_is_tag: bool,
-    pub branches: Vec<RefLink>,
-    pub tags: Vec<RefLink>,
+    pub branch_count: usize,
+    pub tag_count: usize,
 }
 
 impl RefSwitcher {
-    /// Builds the dropdown; `link` maps a ref name to the URL it should open.
-    pub fn new(refs: &[RefSummary], current: &str, default_branch: &str, link: impl Fn(&str) -> String) -> Self {
-        let to_link = |r: &RefSummary| RefLink {
-            name: r.name.clone(),
-            url: link(&r.name),
-            is_current: r.name == current,
-            is_default: r.kind == RefKind::Branch && r.name == default_branch,
-        };
-        let (branches, tags): (Vec<_>, Vec<_>) = refs.iter().partition(|r| r.kind == RefKind::Branch);
+    /// Keep large ref collections out of every page; the menu loads a bounded page
+    /// on demand and retains a normal link when scripting is unavailable.
+    pub fn deferred(refs: &[RefSummary], current: &str, picker: super::ref_picker::RefPickerLinks) -> Self {
+        let display = current.strip_prefix("refs/heads/").or_else(|| current.strip_prefix("refs/tags/")).unwrap_or(current);
+        let branch_count = refs.iter().filter(|reference| reference.kind == RefKind::Branch).count();
         Self {
-            current: shorten_revision(current),
-            current_is_tag: tags.iter().any(|t| t.name == current),
-            branches: branches.into_iter().map(to_link).collect(),
-            tags: tags.into_iter().map(to_link).collect(),
+            current: shorten_revision(display),
+            current_is_tag: current.starts_with("refs/tags/") || refs.iter().any(|r| r.kind == RefKind::Tag && r.name == current),
+            picker,
+            branch_count,
+            tag_count: refs.len() - branch_count,
         }
     }
 }
@@ -379,7 +377,7 @@ mod tests {
                 has_unread_notifications: false,
             },
             header: RepoHeader::default(),
-            switcher: RefSwitcher::new(&[], "main", "main", str::to_owned),
+            switcher: RefSwitcher::deferred(&[], "main", crate::views::ref_picker::RefPickerLinks::new(&urls, &Default::default())),
             breadcrumbs: Vec::new(),
             latest: CommitView::new(&commit, &urls),
             file_name: "a.rs".to_owned(),

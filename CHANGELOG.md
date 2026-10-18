@@ -19,6 +19,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and consume preload bodies without retaining another complete HTML buffer.
 - Add paired HTTP measurements with executable hashes, raw samples and alternating run
   order. Reject invalid scroll probes and keep debug and release measurements separate.
+- Load branch/tag picker options only when opened, with 50 results per page and
+  server-side search. Keep paged links and search available without JavaScript.
+- Index mounted diff files and sidebar links once, coalesce bulk toggle updates, and
+  skip diff scroll work on other pages. Refresh indexes and header observation across
+  htmx navigation and history restores.
 - Reuse bounded blame results and share concurrent calculations for the same file and
   revision. Limit active blame calculations even after a request times out, and keep
   authorization checks fresh.

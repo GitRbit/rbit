@@ -32,6 +32,7 @@ mod pulls;
 mod push_mirrors;
 mod pwa;
 mod recovery;
+mod ref_picker;
 mod releases;
 mod repo;
 mod repo_create;
@@ -111,6 +112,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}/branches", get(history::branches))
         .route("/{owner}/{repo}/tags", get(history::tags))
         .route("/{owner}/{repo}/language-files", get(repo::language_files))
+        .route("/{owner}/{repo}/ref-picker", get(ref_picker::page))
+        .route("/{owner}/{repo}/ref-picker/options", get(ref_picker::options))
         // Feature areas own their route tables.
         .merge(settings::routes())
         .merge(orgs::routes())

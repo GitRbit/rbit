@@ -1,29 +1,12 @@
 {% import "macros.html" as ui %}
-{#- Branch/tag picker; expects a `switcher: RefSwitcher` field. Pure <details>, no JavaScript. -#}
-<details class="relative" data-menu>
+{#- Ref options are fetched on open; the ordinary link is the no-JavaScript fallback. -#}
+<details class="relative" data-menu data-ref-picker hx-get="{{ switcher.picker.options }}" hx-trigger="rbit:open" hx-target="find .ref-picker-results" hx-swap="outerHTML" hx-disinherit="hx-target hx-swap">
   <summary class="btn max-w-[14rem] cursor-pointer">
     {% if switcher.current_is_tag %}{% call ui::icon("tag", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}{% else %}{% call ui::icon("branch", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}{% endif %}
     <span class="truncate font-mono text-xs">{{ switcher.current }}</span>
     {% call ui::icon("chevron-down", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
   </summary>
   <div class="menu left-0 max-h-80 w-64 overflow-y-auto">
-    <p class="menu-label">Branches</p>
-    {% for item in switcher.branches %}
-    <a class="menu-item {% if item.is_current %}bg-hover{% endif %}" href="{{ item.url }}">
-      <span class="w-3.5 shrink-0">{% if item.is_current %}{% call ui::icon("check", "size-3.5") %}{% endcall %}{% endif %}</span>
-      <span class="truncate font-mono text-xs">{{ item.name }}</span>
-      {% if item.is_default %}<span class="badge ml-auto">default</span>{% endif %}
-    </a>
-    {% endfor %}
-    {% if !switcher.tags.is_empty() %}
-    <div class="menu-divider"></div>
-    <p class="menu-label">Tags</p>
-    {% for item in switcher.tags %}
-    <a class="menu-item {% if item.is_current %}bg-hover{% endif %}" href="{{ item.url }}">
-      <span class="w-3.5 shrink-0">{% if item.is_current %}{% call ui::icon("check", "size-3.5") %}{% endcall %}{% endif %}</span>
-      <span class="truncate font-mono text-xs">{{ item.name }}</span>
-    </a>
-    {% endfor %}
-    {% endif %}
+    <div class="ref-picker-results" data-ref-picker-unloaded><a class="menu-item" href="{{ switcher.picker.page }}" data-no-preload>Browse branches and tags</a></div>
   </div>
 </details>

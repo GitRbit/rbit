@@ -37,6 +37,7 @@ pub mod pulls;
 pub mod push_mirrors;
 pub mod pwa;
 pub mod recovery;
+pub mod ref_picker;
 pub mod refs;
 pub mod releases;
 pub mod repo;
