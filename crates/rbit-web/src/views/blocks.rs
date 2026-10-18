@@ -23,6 +23,14 @@
 /// 20,000-line file has 157), small enough that a block is about two screens tall.
 pub const BLOCK_ROWS: usize = 128;
 
+/// Diffs of at most this many rows render without blocks: the whole file is one
+/// containment boundary (`.diff-file[data-rows]`, app.css) outside its horizontal scroller.
+/// A boundary inside a scroller costs every frame (the browser maps it through the
+/// scroller's clip to decide whether it is near the viewport, and keeps the scroller's
+/// paint properties), so blocks only pay where laying out the whole file at once would
+/// be a long frame. See docs/design/frontend-virtualization.md for the measurements.
+pub const BLOCKED_ABOVE_ROWS: usize = 512;
+
 /// Granularity of [`column_class`]: `cols-8`, `cols-16`, … `cols-256` in app.css.
 const COLUMN_STEP: usize = 8;
 /// Wider than any view on any screen: a longer row scrolls anyway, its background (a

@@ -508,6 +508,12 @@
    declaration is the fallback for both: a full block, which `auto` replaces with the
    real height once the block has been rendered.
 
+   An open changed file (`.diff-file[data-rows]`, see Diffs) is contained the same way as
+   a whole: its header, any bar and placeholder are whole rows too, and `data-rows` counts
+   them. Containment outside the file's horizontal scroller is cheaper per frame than
+   blocks inside it, so only long diffs also have blocks (`BLOCKED_ABOVE_ROWS`). Its
+   borders are outside the placeholder (`contain-intrinsic-*` sizes the content box).
+
    The second declaration must not use `var()`: a declaration holding `var()` is only
    checked when computed, so browsers without typed `attr()` would keep it and end up
    with no placeholder height at all, instead of dropping it while parsing. */
@@ -519,6 +525,12 @@
   content-visibility: auto;
   contain-intrinsic-block-size: auto 160rem;
   contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 128) * 1.25rem);
+}
+
+.diff-file[open][data-rows] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 24rem;
+  contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 24) * 1.25rem);
 }
 
 /* A view of blocks is at least as wide as its widest row (`column_class` in
@@ -699,11 +711,25 @@
 
 /* Each changed file (also pulls/files.html, which has no `--diff-top`). `clip` rather than
    `hidden` keeps the rounded corners without making the box a scroll container, which
-   would stop the header from sticking. Off-screen content is skipped by the diff's
-   blocks, not by the file, so a file's height is exact before it is ever rendered. */
+   would stop the header from sticking. An open file off screen is skipped as a whole
+   (see Virtual blocks), so everything in it is a whole number of rows tall: the header
+   (`FILE_HEADER_ROWS`), the pull request's "View file" bar (`FILE_BAR_ROWS`), the
+   placeholder of a file without a diff (`PLACEHOLDER_ROWS`) and every diff row. The one
+   exception, the diff's horizontal scrollbar where the platform's scrollbars take space,
+   is added by blocks.js. */
 .diff-file {
   overflow: clip;
   scroll-margin-top: var(--diff-top, 7rem);
+}
+
+.diff-file > summary {
+  height: calc(2 * var(--row-h));
+  min-height: 0;
+}
+
+.diff-file-bar {
+  @apply flex items-center justify-end border-b border-line px-3;
+  height: calc(2 * var(--row-h));
 }
 
 .diff-file-header {
@@ -744,7 +770,9 @@
 .diffstat-none { background: var(--line-strong); }
 
 .diff-placeholder {
-  @apply px-4 py-6 text-center text-[13px] text-ink-muted;
+  @apply truncate px-4 text-center text-[13px] text-ink-muted;
+  height: calc(3 * var(--row-h));
+  line-height: calc(3 * var(--row-h));
 }
 
 /* A unified diff (repo/diff_rows.html): one horizontal scroller per file holding
@@ -787,10 +815,12 @@
   height: var(--row-h);
   padding-right: 1.5rem;
   white-space: pre;
-  /* A row never paints over its neighbours, whatever its text holds (the server already
-     shows line-breaking characters as symbols, see `row_char` in src/render/mod.rs).
-     `clip` leaves the horizontal axis alone, so long lines still scroll. */
-  overflow-y: clip;
+  /* No `overflow-y: clip`: a clip per row costs every frame (a clip node per row to walk
+     before paint and to layerize; about 13 % of the main thread's time scrolling a
+     100-file commit, see docs/design/frontend-virtualization.md). A row is still exactly
+     one row tall (`height`) and the server shows line-breaking characters as symbols
+     (`row_char` in src/render/mod.rs), so only an unusually tall glyph can draw past its
+     row. */
 }
 
 /* The sign, after the numbers (`order`), before the text. */
@@ -814,7 +844,7 @@
   @apply text-ink;
 }
 
-/* Inside the row, which clips vertically. */
+/* Inside the row, so neighbouring rows never cover it. */
 .diff-view a.num:focus-visible {
   outline-offset: -2px;
 }

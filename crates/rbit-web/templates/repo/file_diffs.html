@@ -73,7 +73,10 @@
       {% for row in tree.iter() %}
       {% if let Some(leaf) = row.file %}
       {% let file = files[leaf.index] %}
-      <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}" open>
+      {#- `data-rows`: the open file's exact height in rows, its placeholder while off
+          screen (app.css "Virtual blocks"); only diffs of more rows than
+          `BLOCKED_ABOVE_ROWS` also put their rows in blocks. -#}
+      <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}" data-rows="{{ file.rows() }}" open>
         <summary class="diff-file-header" title="Click to collapse or expand · Alt-click for every file">
           {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform duration-150 group-open:rotate-90") %}{% endcall %}
           <span class="status-mark status-{{ file.status_key }}" title="{{ file.status }}"><span class="sr-only">{{ file.status }}</span></span>
@@ -101,9 +104,13 @@
         {% when DiffBodyView::Text(text) %}
         <div class="diff-scroll"><div class="diff-view {{ text.width_classes }}">
           {%- for block in text.blocks %}
+          {%- if text.blocked %}
           <div class="vblock" data-rows="{{ block.len() }}">
+          {%- endif %}
             {%- for line in block.rows() %}{% call diff::row(line, "") %}{% endcall %}{% endfor -%}
+          {%- if text.blocked %}
           </div>
+          {%- endif %}
           {%- endfor %}
         </div></div>
         {% when DiffBodyView::Binary %}

@@ -1,9 +1,9 @@
 {#- Unified diff rows, shared by repo/file_diffs.html and pulls/files.html. Import with
     {% import "repo/diff_rows.html" as diff %}.
 
-    A diff body is `<div class="diff-scroll"><div class="diff-view diff-wN">` holding
-    `.vblock`s of rows (src/views/blocks.rs) and, on pull requests, comment threads between
-    them. Every row is exactly one `--row-h` tall (app.css "Diffs"): a line is the old and
+    A diff body is `<div class="diff-scroll"><div class="diff-view diff-wN">` holding its
+    rows: directly when the file is contained as a whole, in `.vblock`s (src/views/blocks.rs)
+    when it is long or, on pull requests, has comment threads between them. Every row is exactly one `--row-h` tall (app.css "Diffs"): a line is the old and
     new numbers then the text, its sign drawn by CSS so neither numbers nor sign are
     copied; hunk headers and end-of-file notes are the text alone. No whitespace may sit
     inside a row: rows are `white-space: pre`. -#}

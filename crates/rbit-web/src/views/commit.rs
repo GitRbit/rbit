@@ -14,7 +14,7 @@ use rbit_services::statuses::CombinedStatus;
 use crate::{
     urls::RepoUrls,
     views::{
-        blocks::{self, Block, blocks},
+        blocks::{self, BLOCKED_ABOVE_ROWS, Block, blocks},
         layout::Page,
         repo::{CommitView, RepoHeader},
         statuses::{CHECKS_ANCHOR, ChecksView, StatusMark},
@@ -113,11 +113,22 @@ pub fn width_classes(hunks: &[Hunk]) -> String {
     format!("{} {}", number_class(hunks), column_class(hunks))
 }
 
+/// Rows a changed file's header takes (`.diff-file > summary`, app.css), its hairline
+/// included.
+pub const FILE_HEADER_ROWS: usize = 2;
+/// Rows a file body that is not a diff takes ("Binary file not shown", `.diff-placeholder`).
+pub const PLACEHOLDER_ROWS: usize = 3;
+
 /// A file's text diff: its rows (hunk headers, lines and end-of-file notes, in order) in
 /// blocks of at most [`BLOCK_ROWS`](crate::views::blocks::BLOCK_ROWS).
 #[derive(Debug, Clone)]
 pub struct DiffTextView {
     pub blocks: Vec<Block<DiffLineView>>,
+    /// The number of rows: the diff's height in rows.
+    pub rows: usize,
+    /// Whether each block renders as its own `.vblock`: only in diffs of more than
+    /// [`BLOCKED_ABOVE_ROWS`]; shorter ones are contained as a whole file.
+    pub blocked: bool,
     /// See [`width_classes`].
     pub width_classes: String,
 }
@@ -132,7 +143,9 @@ impl DiffTextView {
                     .flat_map(|line| std::iter::once(DiffLineView::line(line)).chain(line.missing_newline.then(DiffLineView::eof))),
             )
         });
-        Self { blocks: blocks(rows), width_classes: width_classes(hunks) }
+        let blocks = blocks(rows);
+        let rows = blocks.iter().map(Block::len).sum();
+        Self { blocks, rows, blocked: rows > BLOCKED_ABOVE_ROWS, width_classes: width_classes(hunks) }
     }
 }
 
@@ -175,6 +188,17 @@ pub struct FileDiffView {
 const DIFFSTAT_BLOCKS: usize = 5;
 
 impl FileDiffView {
+    /// The file's height in rows while open, header included: `data-rows` on the file,
+    /// its exact placeholder height (see [`crate::views::blocks`]).
+    #[must_use]
+    pub fn rows(&self) -> usize {
+        FILE_HEADER_ROWS
+            + match &self.body {
+                DiffBodyView::Text(text) => text.rows,
+                _ => PLACEHOLDER_ROWS,
+            }
+    }
+
     /// The change bar: `DIFFSTAT_BLOCKS` cells, each `add`, `del` or `none`. A change of
     /// fewer lines than blocks fills only that many; either side keeps at least one block.
     pub fn diffstat(&self) -> [&'static str; DIFFSTAT_BLOCKS] {
@@ -464,6 +488,10 @@ pub(crate) mod tests {
         let source: Vec<&str> = changes.hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| line.text.as_str()).collect();
         assert_eq!(texts, source);
         assert_eq!(text.width_classes, "diff-w3 cols-24");
+        assert_eq!(text.rows, expected_rows);
+        assert!(text.blocked, "{expected_rows} rows is more than BLOCKED_ABOVE_ROWS");
+        let short = DiffTextView::new(&rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks);
+        assert_eq!((short.rows, short.blocked), (3, false));
     }
 
     #[test]
@@ -516,28 +544,51 @@ pub(crate) mod tests {
         truncated: bool,
     }
 
+    /// The rows inside each `<div class="vblock" data-rows="N">` of `html`, checked to be N.
+    fn block_rows(html: &str) -> Vec<usize> {
+        html.split(r#"<div class="vblock" data-rows=""#)
+            .skip(1)
+            .map(|block| {
+                let (rows, body) = block.split_once("\">").unwrap();
+                let rows: usize = rows.parse().unwrap();
+                let body = &body[..body.find("</div>\n").unwrap_or(body.len())];
+                assert_eq!(body.matches("<div class=\"diff-").count(), rows);
+                rows
+            })
+            .collect()
+    }
+
     #[test]
-    fn diffs_render_rows_in_exact_blocks_without_tables_or_inline_styles() {
+    fn diffs_render_rows_without_tables_or_inline_styles_and_say_their_height() {
         let old = numbered("", 200);
         let new = format!("{}<b>\n", old.replacen("5\n", "five\n", 1));
         let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
+        let rows = changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
         let mut view = file(0, "src/a.rs", changes.additions, changes.deletions);
         view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
-        let html = Diffs { files: vec![view], additions: 2, deletions: 1, truncated: false }.render().unwrap();
+        let mut binary = file(1, "logo.png", 0, 0);
+        binary.body = DiffBodyView::Binary;
+        let html = Diffs { files: vec![view, binary], additions: 2, deletions: 1, truncated: false }.render().unwrap();
         assert!(!html.contains("<table") && !html.contains("style="));
         assert!(html.contains(r#"<div class="diff-view diff-w3 cols-24">"#));
         assert!(html.contains(r#"<div class="diff-del"><span class="num">6</span><span class="num"></span>5</div>"#));
         assert!(html.contains(r#"<div class="diff-add"><span class="num"></span><span class="num">201</span>&#60;b&#62;</div>"#));
-        // Each block says how many rows it holds, and holds exactly that many.
-        let mut total = 0;
-        for block in html.split(r#"<div class="vblock" data-rows=""#).skip(1) {
-            let (rows, body) = block.split_once("\">").unwrap();
-            let rows: usize = rows.parse().unwrap();
-            let body = &body[..body.find('\n').unwrap_or(body.len())];
-            assert_eq!(body.matches("<div class=\"diff-").count(), rows);
-            total += rows;
-        }
-        assert_eq!(total, changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>());
+        // A short diff is contained as a whole file: its header and rows, no blocks.
+        assert!(html.contains(&format!(r#"data-path="src/a.rs" data-rows="{}" open>"#, FILE_HEADER_ROWS + rows)));
+        assert!(html.contains(&format!(r#"data-path="logo.png" data-rows="{}" open>"#, FILE_HEADER_ROWS + PLACEHOLDER_ROWS)));
+        assert_eq!(block_rows(&html), [0_usize; 0]);
+        let file_html = &html[html.find(r#"id="diff-0""#).unwrap()..html.find(r#"id="diff-1""#).unwrap()];
+        let row_count = |kind: &str| file_html.matches(&format!("<div class=\"diff-{kind}\">")).count();
+        assert_eq!(["hunk", "ctx", "add", "del", "eof"].map(row_count).iter().sum::<usize>(), rows);
+
+        // A long one also has blocks, each holding exactly the rows it says.
+        let long = numbered("", 600);
+        let changes = rbit_git::diff::diff_bytes(b"", long.as_bytes());
+        let mut view = file(0, "src/long.rs", 600, 0);
+        view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
+        let html = Diffs { files: vec![view], additions: 600, deletions: 0, truncated: false }.render().unwrap();
+        assert_eq!(block_rows(&html), [128, 128, 128, 128, 89]);
+        assert!(html.contains(&format!(r#"data-rows="{}" open>"#, FILE_HEADER_ROWS + 601)));
     }
 
     #[test]

@@ -56,7 +56,8 @@ async fn push_then_browse_every_view() {
     let feature_log = web.get("/alice/demo/commits/feature").await;
     feature_log.expect_status(StatusCode::OK).expect_contains(&["Feature work", Sample::FIRST_MESSAGE]);
 
-    // A commit with its diff: hunk headers as Git writes them, rows in exact-height blocks.
+    // A commit with its diff: hunk headers as Git writes them, each file exactly
+    // `data-rows` rows tall (short diffs have no blocks inside).
     let commit = web.get(&format!("/alice/demo/commit/{}", sample.head)).await;
     commit.expect_status(StatusCode::OK).expect_contains(&[
         Sample::SECOND_MESSAGE,
@@ -65,7 +66,7 @@ async fn push_then_browse_every_view() {
         "<div class=\"diff-hunk\">@@ -1,3 +1,3 @@</div>",
         "@@ -0,0 +1,2 @@",
         "hello, rbit",
-        "<div class=\"vblock\" data-rows=\"",
+        "data-path=\"src/main.rs\" data-rows=\"",
     ]);
     assert!(!commit.body.contains("<table"), "diffs are rows, not tables");
     web.get("/alice/demo/commit/0000000000000000000000000000000000000000").await.expect_status(StatusCode::NOT_FOUND);

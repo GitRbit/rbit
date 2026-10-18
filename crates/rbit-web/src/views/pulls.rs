@@ -29,9 +29,9 @@ use crate::{
     render::references::{RefContext, render_issue_markdown},
     urls::{RepoUrls, encode_path},
     views::{
-        blocks::{Block, Blocker},
+        blocks::{BLOCKED_ABOVE_ROWS, Block, Blocker},
         // `DiffBodyView` is matched by `repo/file_diffs.html` (the new pull request page).
-        commit::{DiffBodyView, DiffLineView, width_classes},
+        commit::{DiffBodyView, DiffLineView, FILE_HEADER_ROWS, PLACEHOLDER_ROWS, width_classes},
         compare::ComparePicker,
         components::Pagination,
         issues::IssueSidebar,
@@ -654,6 +654,15 @@ pub enum DiffPart {
 #[derive(Debug, Clone)]
 pub struct PullDiffText {
     pub parts: Vec<DiffPart>,
+    /// The number of rows, threads not counted.
+    pub rows: usize,
+    /// Whether the parts include a thread: comments and forms are not fixed-height rows,
+    /// so such a file has no exact height and is never contained as a whole.
+    pub has_threads: bool,
+    /// Whether each block of rows renders as its own `.vblock`: in diffs of more than
+    /// [`BLOCKED_ABOVE_ROWS`] rows, and around threads, where blocks are the only
+    /// containment with an exact height.
+    pub blocked: bool,
     /// See [`width_classes`].
     pub width_classes: String,
 }
@@ -681,7 +690,24 @@ pub struct PullFileView {
     pub body: PullDiffBody,
 }
 
+/// Rows the "View file" bar under a file's header takes (`.diff-file-bar`, app.css).
+pub const FILE_BAR_ROWS: usize = 2;
+
 impl PullFileView {
+    /// The open file's exact height in rows, chrome included: `data-rows` on the file, its
+    /// placeholder while off screen (see [`crate::views::blocks`]). None when comment
+    /// threads or the inline form make its height unknown; its blocks are contained
+    /// instead.
+    #[must_use]
+    pub fn rows(&self) -> Option<usize> {
+        let body = match &self.body {
+            PullDiffBody::Text(text) if text.has_threads => return None,
+            PullDiffBody::Text(text) => text.rows,
+            _ => PLACEHOLDER_ROWS,
+        };
+        Some(FILE_HEADER_ROWS + if self.view_url.is_some() { FILE_BAR_ROWS } else { 0 } + body)
+    }
+
     /// The file views of a pull request's diff with the visible, current comments placed
     /// under their lines; `form_at` opens the inline form at that anchor.
     pub fn list(
@@ -789,7 +815,15 @@ fn diff_text(
         }
     }
     parts.extend(rows.finish().into_iter().map(DiffPart::Rows));
-    PullDiffText { parts, width_classes: width_classes(hunks) }
+    let mut rows = 0;
+    let mut has_threads = false;
+    for part in &parts {
+        match part {
+            DiffPart::Rows(block) => rows += block.len(),
+            DiffPart::Thread(_) => has_threads = true,
+        }
+    }
+    PullDiffText { parts, rows, has_threads, blocked: has_threads || rows > BLOCKED_ABOVE_ROWS, width_classes: width_classes(hunks) }
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -1194,6 +1228,13 @@ mod tests {
         // hunk + 400 deletions + 300 additions, then the thread, then 100 additions.
         assert_eq!(sizes, ["128", "128", "128", "128", "128", "61", "thread", "100"]);
         assert_eq!(text.width_classes, "diff-w3 cols-24");
+        assert_eq!(text.rows, 801);
+        assert!(text.has_threads && text.blocked, "a thread's height is unknown, so its file keeps exact blocks");
+        // Without the thread, the same rows are blocked only for being more than BLOCKED_ABOVE_ROWS.
+        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), None, true);
+        assert!(!text.has_threads && text.blocked);
+        let short = diff_text(&rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks, "f", &urls, &mut HashMap::new(), None, true);
+        assert_eq!((short.rows, short.has_threads, short.blocked), (3, false, false));
     }
 
     #[test]
@@ -1226,7 +1267,12 @@ mod tests {
             line_url: format!("{}#{anchor}", urls.files),
             reply_to: 9,
         };
+        // Without threads a file's height is known: header, "View file" bar and rows.
+        let plain =
+            PullFileView::list(std::slice::from_ref(&file), &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[], None, true);
+        assert_eq!(plain[0].rows(), Some(FILE_HEADER_ROWS + FILE_BAR_ROWS + 4));
         let files = PullFileView::list(&[file], &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[comment], Some(&anchor), true);
+        assert_eq!(files[0].rows(), None, "a thread makes the height unknown");
         let html = PullFilesPage {
             page: page(),
             header: RepoHeader::default(),
@@ -1258,6 +1304,8 @@ mod tests {
         assert!(html.contains(&format!(r#"{link} tabindex="-1">2</a>B</div>"#)));
         // The thread and the form end the block: they sit between blocks, outside any.
         assert!(html.contains("</div>\n      <div class=\"diff-comment\">"));
+        assert!(html.contains(&format!(r#"<details id="{}" class="diff-file box group" open>"#, file_anchor("src/lib.rs"))));
+        assert!(html.contains(r#"<div class="vblock" data-rows="4">"#));
         assert!(!html.contains("<table"));
         assert_eq!(html.matches("Add single comment").count(), 1, "the form opens only at the requested line");
         for needle in ["id=\"r9\"", "<p>Why?</p>", "Pending", "Finish your review", "name=\"in_reply_to\" value=\"9\"", "Request changes"] {
