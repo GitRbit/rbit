@@ -11,6 +11,9 @@ credentials.
 | `serve.mjs` | Runs the debug build from `target/perf-build` on http://localhost:3005 with data in `target/perf/data`. |
 | `seed.mjs` | Signs up the test account `perf`, creates `perf/perf-fixture`, pushes both branches over HTTP and opens pull request #1. Rerunnable. |
 | `scroll-probe.js` | Evaluated in the page: DOM size, navigation timing, a rAF-driven scroll sweep, scrollbar-drag jumps, blank-line sampling, long animation frames, layout shifts. |
+| `trace.mjs` | Headless Edge: a DevTools trace of a scroll sweep per page, main-thread time per phase (style, layout, pre-paint, paint, `content-visibility` intersection checks, …). |
+| `sweep.mjs` | Headless Edge: scroll smoothness (fps, long frames), height changes and scroll corrections during a sweep, scrollbar-drag cost, and a check that every `content-visibility: auto` placeholder is exact. |
+| `edge.mjs` | What both share: launching headless Edge with its own profile, the DevTools protocol, the sweep, killing the browser's whole process tree on exit. |
 | `BASELINE.md` | The recorded baseline. |
 
 ## Reproduce
@@ -40,6 +43,47 @@ start equal.
 
 To start over: stop the server, delete `target/perf/data` (and `credentials.txt`), rerun
 `seed.mjs`. Rerunning `fixture.mjs` replaces only a directory it created itself.
+
+## Compare builds in headless Edge
+
+`trace.mjs` and `sweep.mjs` take named URLs and visit them in turn, round after round, so
+drift on the machine (a build, another browser) hits every page alike; they print the
+median and interquartile range per page. Run the builds to compare side by side, each on
+its own port with its own copy of the data, e.g. the debug build of an older commit from a
+worktree of it (debug builds read `assets/` from the directory they were built in, so build
+its `app.css` there too):
+
+```bash
+node scripts/perf/trace.mjs --rounds 5 --throttle 6 \
+  old=http://localhost:3032/perf/perf-fixture/compare/main...big-change \
+  new=http://localhost:3031/perf/perf-fixture/compare/main...big-change
+node scripts/perf/sweep.mjs --rounds 5 --throttle 6 old=… new=…
+```
+
+Options (both): `--rounds 5`, `--ms 6000` (sweep length cap; it also stops at the bottom),
+`--vps 5` (viewports per second), `--throttle 6` (CPU slowdown; 1 for none, where a
+healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every run). Set
+`PERF_BROWSER` to use another Chromium.
+
+- `trace.mjs` sums complete trace events on the renderer's main thread. `RunTask` is the
+  total; the phases nest inside it and partly in each other, so compare a phase with the
+  same phase. `computeIntersections` is mostly `content-visibility: auto` deciding which
+  elements are near the viewport: it grows with the number of such elements and with the
+  scroll containers between them and the viewport. The sweep reads `scrollHeight` every
+  frame, so `FunctionCall` includes forced layouts; they are the same for every page.
+- `sweep.mjs`: `over33` counts frames longer than two 60 Hz frames per sweep;
+  `heightChanges` and `corrections` must be 0 on a page whose placeholders are exact
+  (a change is the scrollbar thumb jumping, a correction the content jumping);
+  `placeholdersOff` lists `content-visibility: auto` elements whose placeholder (the
+  `contain-intrinsic-block-size` length plus padding and borders) is more than 2 px off
+  their rendered height, measured after the sweep with every element forced visible.
+- Fine-grained timing in a visible browser (the desktop Browser pane, a devtools
+  session) is not comparable: renderers there are throttled or paused when hidden and
+  share the machine with the UI. Use these scripts for numbers, a visible browser for
+  looks.
+- The browser is killed with its whole process tree when the script ends, even on an
+  error or Ctrl+C; on Windows it is found by its profile directory, because the process
+  Node starts hands over to another and exits.
 
 ## Pitfalls seen while recording the baseline
 
