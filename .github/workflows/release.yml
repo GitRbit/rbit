@@ -28,6 +28,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
   NODE_VERSION: "24"
   IMAGE: ghcr.io/gitrbit/rbit
 
@@ -136,6 +137,7 @@ jobs:
       NAME: rbit-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/prepare-build
       - uses: actions/download-artifact@v8
         with:
           name: app-css
