@@ -32,3 +32,7 @@ mod statuses;
 mod external_auth;
 // Milestone 3: importing and push mirrors (M).
 mod imports;
+// Frontend wave: deferred slots (S).
+mod slots;
+// Frontend wave: partial responses and preloading (P).
+mod navigation;

@@ -59,7 +59,9 @@ pub(in crate::routes) async fn lfs_blob(
         None
     };
     let is_binary = data.as_deref().is_some_and(is_binary);
-    (BlobView { commit: view.commit, size: download.size, data, is_binary }, Some(LfsBlob { stored: true }))
+    // Named by the object id, so caches never confuse it with the pointer file's blob.
+    let id = format!("lfs-sha256:{}", pointer.oid);
+    (BlobView { commit: view.commit, id, size: download.size, data, is_binary }, Some(LfsBlob { stored: true }))
 }
 
 /// `raw` for a pointer file whose object is stored: the object's bytes, streamed, typed

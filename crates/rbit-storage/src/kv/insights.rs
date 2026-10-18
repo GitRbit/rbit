@@ -1,7 +1,9 @@
-//! Cached repository insights: language statistics and last-commit-per-entry maps.
+//! Cached repository insights: language statistics, last-commit-per-entry maps and the
+//! counts of a comparison between two commits.
 //!
-//! Both are pure functions of a commit's content, so entries are keyed by commit id and
-//! never go stale; a push simply produces new keys. Values are `postcard`-encoded. A value
+//! All are pure functions of commit content, so entries are keyed by commit ids and never
+//! go stale (a commit id names its whole history, so the same pair of ids compares the
+//! same way in every repository of a fork network); a push simply produces new keys. Values are `postcard`-encoded. A value
 //! that no longer decodes (after a format change) is treated as a miss and overwritten.
 //!
 //! Because keys never go stale the cache would only grow, so every write also records
@@ -26,6 +28,9 @@ const LANGUAGE_STATS: TableDefinition<'_, &str, &[u8]> = TableDefinition::new("l
 /// `(commit id, directory path)` → encoded [`CachedLastCommits`].
 const TREE_LAST_COMMIT: TableDefinition<'_, (&str, &str), &[u8]> = TableDefinition::new("tree_last_commit");
 
+/// `(base commit id, head commit id)` → encoded [`CachedComparisonCounts`].
+const COMPARISON_COUNTS: TableDefinition<'_, (&str, &str), &[u8]> = TableDefinition::new("comparison_counts");
+
 /// `(entry kind, commit id, directory)` → Unix seconds when the entry was written.
 const ENTRY_WRITTEN: TableDefinition<'_, (u8, &str, &str), u64> = TableDefinition::new("insights_entry_written");
 
@@ -39,6 +44,8 @@ enum EntryKind {
     Languages = 0,
     /// [`TREE_LAST_COMMIT`].
     LastCommits = 1,
+    /// [`COMPARISON_COUNTS`]; the "directory" is the head commit id.
+    ComparisonCounts = 2,
 }
 
 impl EntryKind {
@@ -50,6 +57,7 @@ impl EntryKind {
         match tag {
             0 => Some(Self::Languages),
             1 => Some(Self::LastCommits),
+            2 => Some(Self::ComparisonCounts),
             _ => None,
         }
     }
@@ -129,6 +137,20 @@ impl CachedLastCommits {
     }
 }
 
+/// What a comparison of two commits counts, for headers that show the numbers without the
+/// diff (pull request tabs).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CachedComparisonCounts {
+    /// Commits in head but not in base.
+    pub ahead: u64,
+    /// Changed files, as the diff listed them (bounded by `max_files`).
+    pub files: u64,
+    /// The diff's file limit when it counted: `files` never exceeds it, so counts made
+    /// under another limit are not the same answer and readers treat them as a miss.
+    /// Entries written before this field existed no longer decode, so they are misses too.
+    pub max_files: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct InsightsCache {
     db: Arc<redb::Database>,
@@ -144,6 +166,7 @@ impl InsightsCache {
         let tx = self.db.begin_write().map_err(kv_error)?;
         tx.open_table(LANGUAGE_STATS).map_err(kv_error)?;
         tx.open_table(TREE_LAST_COMMIT).map_err(kv_error)?;
+        tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?;
         tx.open_table(ENTRY_WRITTEN).map_err(kv_error)?;
         tx.open_table(ENTRIES_BY_AGE).map_err(kv_error)?;
         tx.commit().map_err(kv_error)
@@ -216,6 +239,34 @@ impl InsightsCache {
         .await?
     }
 
+    /// The counts of comparing `head` against `base` (both full commit ids), if cached.
+    pub async fn comparison_counts(&self, base: &str, head: &str) -> Result<Option<CachedComparisonCounts>, StorageError> {
+        let db = Arc::clone(&self.db);
+        let (base, head) = (base.to_owned(), head.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let tx = db.begin_read().map_err(kv_error)?;
+            let table = tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?;
+            Ok(table.get((base.as_str(), head.as_str())).map_err(kv_error)?.and_then(|value| decode(value.value())))
+        })
+        .await?
+    }
+
+    pub async fn put_comparison_counts(&self, base: &str, head: &str, counts: CachedComparisonCounts) -> Result<(), StorageError> {
+        let db = Arc::clone(&self.db);
+        let (base, head) = (base.to_owned(), head.to_owned());
+        let value = encode(&counts)?;
+        tokio::task::spawn_blocking(move || {
+            let tx = db.begin_write().map_err(kv_error)?;
+            tx.open_table(COMPARISON_COUNTS)
+                .map_err(kv_error)?
+                .insert((base.as_str(), head.as_str()), value.as_slice())
+                .map_err(kv_error)?;
+            record_written(&tx, EntryKind::ComparisonCounts, &base, &head, unix_now())?;
+            tx.commit().map_err(kv_error)
+        })
+        .await?
+    }
+
     /// Removes entries older than `max_age`, then the oldest entries beyond `max_entries`,
     /// in one write transaction. `None` leaves that bound out.
     pub async fn prune(&self, max_age: Option<Duration>, max_entries: Option<u64>) -> Result<PruneReport, StorageError> {
@@ -250,6 +301,7 @@ fn prune_at(db: &redb::Database, limits: PruneLimits, now: u64) -> Result<PruneR
         let mut written = tx.open_table(ENTRY_WRITTEN).map_err(kv_error)?;
         let mut languages = tx.open_table(LANGUAGE_STATS).map_err(kv_error)?;
         let mut last_commits = tx.open_table(TREE_LAST_COMMIT).map_err(kv_error)?;
+        let mut comparisons = tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?;
 
         let mut remaining = by_age.len().map_err(kv_error)?;
         loop {
@@ -274,6 +326,9 @@ fn prune_at(db: &redb::Database, limits: PruneLimits, now: u64) -> Result<PruneR
                 Some(EntryKind::LastCommits) => {
                     last_commits.remove((commit_id.as_str(), directory.as_str())).map_err(kv_error)?;
                 }
+                Some(EntryKind::ComparisonCounts) => {
+                    comparisons.remove((commit_id.as_str(), directory.as_str())).map_err(kv_error)?;
+                }
                 None => {}
             }
             if expired {
@@ -296,7 +351,9 @@ fn adopt_untracked_entries(tx: &WriteTransaction) -> Result<(), StorageError> {
         let written = tx.open_table(ENTRY_WRITTEN).map_err(kv_error)?;
         let languages = tx.open_table(LANGUAGE_STATS).map_err(kv_error)?;
         let last_commits = tx.open_table(TREE_LAST_COMMIT).map_err(kv_error)?;
-        let stored = languages.len().map_err(kv_error)? + last_commits.len().map_err(kv_error)?;
+        // Comparison counts never existed untracked, but count towards the bookkeeping rows.
+        let comparisons = tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?.len().map_err(kv_error)?;
+        let stored = languages.len().map_err(kv_error)? + last_commits.len().map_err(kv_error)? + comparisons;
         if stored <= written.len().map_err(kv_error)? {
             return Ok(());
         }
@@ -391,6 +448,27 @@ mod tests {
         cache.put_last_commits("c1", "src", &last).await.unwrap();
         assert_eq!(cache.last_commits("c1", "src").await.unwrap(), Some(last));
         assert_eq!(cache.last_commits("c1", "").await.unwrap(), None, "keyed by directory too");
+
+        let counts = CachedComparisonCounts { ahead: 3, files: 12, max_files: 300 };
+        assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), None);
+        cache.put_comparison_counts("b1", "h1", counts).await.unwrap();
+        assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), Some(counts));
+        assert_eq!(cache.comparison_counts("h1", "b1").await.unwrap(), None, "ordered pair");
+        // An entry from before the file limit was recorded reads as a miss.
+        let old_format = postcard::to_stdvec(&(3_u64, 12_u64)).unwrap();
+        assert_eq!(decode::<CachedComparisonCounts>(&old_format), None);
+    }
+
+    #[tokio::test]
+    async fn prune_removes_comparison_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = open_cache(&dir);
+        cache.put_comparison_counts("b1", "h1", CachedComparisonCounts { ahead: 1, files: 1, max_files: 300 }).await.unwrap();
+        cache.put_language_stats("c1", &stats()).await.unwrap();
+        assert_eq!(cache.entry_count().await.unwrap(), 2);
+        let report = cache.prune(None, Some(0)).await.unwrap();
+        assert_eq!(report, PruneReport { expired: 0, evicted: 2, remaining: 0 });
+        assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), None);
     }
 
     #[tokio::test]

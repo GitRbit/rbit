@@ -30,12 +30,28 @@ pub async fn commit(
     Path((owner, repo, revision)): Path<(String, String, String)>,
 ) -> WebResult<CommitPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let detail = loaded.ctx.reader.commit_detail(revision, DiffLimits::default()).await.map_err(ServiceError::from)?;
+    // The revision is resolved first, so the diff and the statuses (Milestone 3, S) can be
+    // read at the same time, both for the commit it names. Even a full-length id is
+    // resolved: it may be an annotated tag's object, or a branch named with hex digits.
+    let id = loaded.ctx.reader.commit_id(revision).await.map_err(ServiceError::from)?;
+    let (detail, combined) = tokio::join!(
+        loaded.ctx.reader.commit_detail(id.clone(), DiffLimits::default()),
+        state.services.statuses.combined_for(&loaded.ctx, &id),
+    );
+    // The diff's error wins: an unknown commit is 404 whatever the statuses say.
+    let detail = detail.map_err(ServiceError::from)?;
+    let combined = combined?;
 
     let title = format!("{} · {}", detail.commit.summary, loaded.ctx.repo.full_name());
-    // Milestone 3 (S): the commit's combined status and checks.
-    let combined = state.services.statuses.combined_for(&loaded.ctx, &detail.commit.id).await?;
     Ok(CommitPage::new(page.titled(title), loaded.header(&state, "commits"), &detail, &loaded.urls).with_statuses(&combined))
+}
+
+/// Whether `revision` has the shape of a full commit id (SHA-1 or SHA-256, lowercase hex).
+/// Shape only: a branch or tag may have such a name (Git resolves it as a reference when
+/// no object has that id), so whether a URL pins its answer is decided by comparing the
+/// commit it resolved to with the URL's id.
+pub(super) fn is_full_commit_id(revision: &str) -> bool {
+    matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// `GET /{owner}/{repo}/branches`

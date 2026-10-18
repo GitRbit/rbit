@@ -19,7 +19,6 @@
     "@resvg/resvg-js": "2.6.2",
     "@tailwindcss/cli": "4.3.3",
     "@tailwindcss/typography": "0.5.20",
-    "htmx-ext-preload": "2.1.2",
     "htmx.org": "2.0.11",
     "tailwindcss": "4.3.3"
   },

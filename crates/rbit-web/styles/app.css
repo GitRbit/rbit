@@ -404,58 +404,6 @@
     display: none;
   }
 
-  /* Unified diff: old/new line numbers, then the line with its +/- sign. */
-  .diff-view {
-    @apply font-mono text-[12.5px] leading-5;
-    tab-size: 4;
-  }
-
-  .diff-view td.num {
-    @apply w-1 select-none px-2 text-right align-top text-ink-faint;
-  }
-
-  .diff-view td.num + td.num {
-    @apply pr-3;
-  }
-
-  .diff-view td.code {
-    @apply whitespace-pre pr-6;
-  }
-
-  .diff-view .sign {
-    @apply inline-block w-5 select-none pl-1.5 text-ink-faint;
-  }
-
-  .diff-view tr.diff-add {
-    background: color-mix(in oklab, var(--success) 11%, transparent);
-  }
-
-  .diff-view tr.diff-add .sign,
-  .diff-view tr.diff-add td.num {
-    color: var(--success);
-  }
-
-  .diff-view tr.diff-del {
-    background: color-mix(in oklab, var(--danger) 11%, transparent);
-  }
-
-  .diff-view tr.diff-del .sign,
-  .diff-view tr.diff-del td.num {
-    color: var(--danger);
-  }
-
-  .diff-view tr.diff-hunk td {
-    @apply bg-subtle py-1 text-ink-faint;
-  }
-
-  .diff-view tr.diff-eof td {
-    @apply text-[11px] text-ink-faint italic;
-  }
-
-  .diff-view tr.diff-hunk td.code {
-    @apply pl-1.5;
-  }
-
   .prose-rbit {
     @apply prose prose-sm max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold
       prose-headings:tracking-tight prose-h1:text-2xl prose-h2:border-b prose-h2:border-line prose-h2:pb-2
@@ -558,28 +506,26 @@
   .notification-dot {
     @apply pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full border border-canvas bg-inverted;
   }
-
-  /* A review comment thread inside a diff table row. */
-  .diff-comment {
-    @apply border-y border-line bg-subtle px-3 py-3 font-sans text-[13px] whitespace-normal text-ink;
-  }
 }
 
 /* ---------------------------------------------------------------- Syntax highlighting */
 
-.hl-comment { color: var(--syntax-comment); }
-.hl-string, .hl-markup.hl-raw { color: var(--syntax-string); }
-.hl-constant.hl-numeric, .hl-constant.hl-language, .hl-constant.hl-character { color: var(--syntax-number); }
-.hl-keyword, .hl-storage { color: var(--syntax-keyword); }
-.hl-entity.hl-name.hl-function, .hl-support.hl-function, .hl-meta.hl-function-call { color: var(--syntax-function); }
-.hl-entity.hl-name.hl-type, .hl-entity.hl-name.hl-class, .hl-support.hl-type, .hl-support.hl-class,
-.hl-storage.hl-type { color: var(--syntax-type); }
-.hl-entity.hl-name.hl-tag { color: var(--syntax-tag); }
-.hl-entity.hl-other.hl-attribute-name { color: var(--syntax-attribute); }
-.hl-markup.hl-heading { color: var(--ink); font-weight: 600; }
-.hl-markup.hl-bold { font-weight: 600; }
-.hl-markup.hl-italic { font-style: italic; }
-.hl-invalid { color: var(--danger); }
+/* render/highlight.rs resolves each token's scopes to at most one colour class plus
+   b (semibold) and i (italic), on flat spans; unstyled text has no span. The classes are
+   one letter to keep large files small, so they apply only inside highlighted code
+   (`.line-code`); `:where()` keeps the specificity of the bare classes. */
+:where(.line-code) .c { color: var(--syntax-comment); }
+:where(.line-code) .s { color: var(--syntax-string); }
+:where(.line-code) .n { color: var(--syntax-number); }
+:where(.line-code) .k { color: var(--syntax-keyword); }
+:where(.line-code) .f { color: var(--syntax-function); }
+:where(.line-code) .t { color: var(--syntax-type); }
+:where(.line-code) .g { color: var(--syntax-tag); }
+:where(.line-code) .a { color: var(--syntax-attribute); }
+:where(.line-code) .h { color: var(--ink); font-weight: 600; }
+:where(.line-code) .x { color: var(--danger); }
+:where(.line-code) .b { font-weight: 600; }
+:where(.line-code) .i { font-style: italic; }
 
 /* ---------------------------------------------------------------- Scheme-dependent visibility */
 
@@ -658,6 +604,81 @@
 #main:focus {
   outline: none;
 }
+
+/* ---------------------------------------------------------------- Virtual blocks */
+
+/* Long code and diff views are runs of `.vblock`s (src/views/blocks.rs): up to 128
+   fixed-height rows each. Off screen, a block skips style, layout and paint as a unit. Its
+   placeholder height is exact, so scrolling never shows blank lines or moves the
+   scrollbar: every row inside is exactly `--row-h` tall, and the block says how many rows
+   it holds in `data-rows`. Typed `attr()` reads that where supported; elsewhere blocks.js
+   sets the same height through the CSSOM (the CSP forbids `style=`). The first
+   declaration is the fallback for both: a full block, which `auto` replaces with the
+   real height once the block has been rendered.
+
+   An open changed file (`.diff-file[data-rows]`, see Diffs) is contained the same way as
+   a whole: its header, any bar and placeholder are whole rows too, and `data-rows` counts
+   them. Containment outside the file's horizontal scroller is cheaper per frame than
+   blocks inside it, so only long diffs also have blocks (`BLOCKED_ABOVE_ROWS`). Its
+   borders are outside the placeholder (`contain-intrinsic-*` sizes the content box).
+
+   The second declaration must not use `var()`: a declaration holding `var()` is only
+   checked when computed, so browsers without typed `attr()` would keep it and end up
+   with no placeholder height at all, instead of dropping it while parsing. */
+:root {
+  --row-h: 1.25rem;
+}
+
+.vblock {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 160rem;
+  contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 128) * 1.25rem);
+}
+
+.diff-file[open][data-rows] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 24rem;
+  contain-intrinsic-block-size: auto calc(attr(data-rows type(<number>), 24) * 1.25rem);
+}
+
+/* A view of blocks is at least as wide as its widest row (`column_class` in
+   src/views/blocks.rs), which the server knows before any block is rendered. Sizing the
+   view to its content instead (`width: max-content`) makes the browser measure every
+   rendered row again each time a block is laid out while scrolling, and leaves the
+   horizontal scrollbar to appear only once the widest block has been. Each view adds its
+   gutters to `--cols` columns. */
+.cols-8 { --cols: 8; }
+.cols-16 { --cols: 16; }
+.cols-24 { --cols: 24; }
+.cols-32 { --cols: 32; }
+.cols-40 { --cols: 40; }
+.cols-48 { --cols: 48; }
+.cols-56 { --cols: 56; }
+.cols-64 { --cols: 64; }
+.cols-72 { --cols: 72; }
+.cols-80 { --cols: 80; }
+.cols-88 { --cols: 88; }
+.cols-96 { --cols: 96; }
+.cols-104 { --cols: 104; }
+.cols-112 { --cols: 112; }
+.cols-120 { --cols: 120; }
+.cols-128 { --cols: 128; }
+.cols-136 { --cols: 136; }
+.cols-144 { --cols: 144; }
+.cols-152 { --cols: 152; }
+.cols-160 { --cols: 160; }
+.cols-168 { --cols: 168; }
+.cols-176 { --cols: 176; }
+.cols-184 { --cols: 184; }
+.cols-192 { --cols: 192; }
+.cols-200 { --cols: 200; }
+.cols-208 { --cols: 208; }
+.cols-216 { --cols: 216; }
+.cols-224 { --cols: 224; }
+.cols-232 { --cols: 232; }
+.cols-240 { --cols: 240; }
+.cols-248 { --cols: 248; }
+.cols-256 { --cols: 256; }
 
 /* ---------------------------------------------------------------- Diffs */
 
@@ -816,18 +837,27 @@
 .status-renamed::before { content: "→"; }
 .status-copied::before { content: "⧉"; font-weight: 400; }
 
-/* Each changed file. `clip` rather than `hidden` keeps the rounded corners without making
-   the box a scroll container, which would stop the header from sticking. Open files are
-   laid out only when scrolled near; `auto` remembers a file's real height once rendered
-   (only while open, so a collapsed file never keeps its expanded height). */
+/* Each changed file (also pulls/files.html, which has no `--diff-top`). `clip` rather than
+   `hidden` keeps the rounded corners without making the box a scroll container, which
+   would stop the header from sticking. An open file off screen is skipped as a whole
+   (see Virtual blocks), so everything in it is a whole number of rows tall: the header
+   (`FILE_HEADER_ROWS`), the pull request's "View file" bar (`FILE_BAR_ROWS`), the
+   placeholder of a file without a diff (`PLACEHOLDER_ROWS`) and every diff row. The one
+   exception, the diff's horizontal scrollbar where the platform's scrollbars take space,
+   is added by blocks.js. */
 .diff-file {
   overflow: clip;
-  scroll-margin-top: var(--diff-top);
+  scroll-margin-top: var(--diff-top, 7rem);
 }
 
-.diff-file[open] {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 24rem;
+.diff-file > summary {
+  height: calc(2 * var(--row-h));
+  min-height: 0;
+}
+
+.diff-file-bar {
+  @apply flex items-center justify-end border-b border-line px-3;
+  height: calc(2 * var(--row-h));
 }
 
 .diff-file-header {
@@ -868,25 +898,156 @@
 .diffstat-none { background: var(--line-strong); }
 
 .diff-placeholder {
-  @apply px-4 py-6 text-center text-[13px] text-ink-muted;
+  @apply truncate px-4 text-center text-[13px] text-ink-muted;
+  height: calc(3 * var(--row-h));
+  line-height: calc(3 * var(--row-h));
+}
+
+/* A unified diff (repo/diff_rows.html): one horizontal scroller per file holding
+   `.diff-view`, as wide as its longest rendered row so row backgrounds span the whole
+   scroll width. Its rows sit in `.vblock`s and each is exactly `--row-h` tall: a line
+   is two number cells then the text, its sign drawn from the row's kind; hunk headers and
+   end-of-file notes are text indented past the numbers. Numbers and signs are never
+   copied (`user-select`, generated content). `diff-w1` … `diff-w7` size the number
+   columns for the file's largest line number. `.diff-excerpt` is the numberless
+   excerpt above a review comment in the conversation. */
+.diff-scroll {
+  overflow-x: auto;
+  /* Lets comment threads between blocks be exactly as wide as the visible diff. */
+  container-type: inline-size;
+}
+
+.diff-view {
+  --num-w: 1ch;
+  --nums-w: calc(2 * var(--num-w) + 2.25rem);
+  @apply font-mono text-[12.5px];
+  min-width: max(100%, calc(var(--nums-w) + 2.75rem + var(--cols, 0) * 1ch));
+  line-height: var(--row-h);
+  tab-size: 4;
+}
+
+.diff-w2 { --num-w: 2ch; }
+.diff-w3 { --num-w: 3ch; }
+.diff-w4 { --num-w: 4ch; }
+.diff-w5 { --num-w: 5ch; }
+.diff-w6 { --num-w: 6ch; }
+.diff-w7 { --num-w: 7ch; }
+
+
+.diff-excerpt {
+  --nums-w: 0rem;
+}
+
+.diff-view :is(.diff-add, .diff-del, .diff-ctx, .diff-hunk, .diff-eof) {
+  display: flex;
+  height: var(--row-h);
+  padding-right: 1.5rem;
+  white-space: pre;
+  /* No `overflow-y: clip`: a clip per row costs every frame (a clip node per row to walk
+     before paint and to layerize; about 13 % of the main thread's time scrolling a
+     100-file commit, see docs/design/frontend-virtualization.md). A row is still exactly
+     one row tall (`height`) and the server shows line-breaking characters as symbols
+     (`row_char` in src/render/mod.rs), so only an unusually tall glyph can draw past its
+     row. */
+}
+
+/* The sign, after the numbers (`order`), before the text. */
+.diff-view :is(.diff-add, .diff-del, .diff-ctx)::before {
+  @apply w-5 shrink-0 pl-1.5 text-ink-faint;
+  content: " ";
+}
+
+.diff-view .num {
+  @apply shrink-0 select-none px-2 text-right text-ink-faint;
+  order: -1;
+  box-sizing: content-box;
+  width: var(--num-w);
+}
+
+.diff-view .num + .num {
+  @apply pr-3;
+}
+
+.diff-view a.num:hover {
+  @apply text-ink;
+}
+
+/* Inside the row, so neighbouring rows never cover it. */
+.diff-view a.num:focus-visible {
+  outline-offset: -2px;
+}
+
+.diff-view .diff-add {
+  background: color-mix(in oklab, var(--success) 11%, transparent);
+}
+
+.diff-view .diff-add::before {
+  content: "+";
+}
+
+.diff-view .diff-add::before,
+.diff-view .diff-add > .num {
+  color: var(--success);
+}
+
+.diff-view .diff-del {
+  background: color-mix(in oklab, var(--danger) 11%, transparent);
+}
+
+.diff-view .diff-del::before {
+  content: "-";
+}
+
+.diff-view .diff-del::before,
+.diff-view .diff-del > .num {
+  color: var(--danger);
+}
+
+.diff-view .diff-hunk {
+  @apply bg-subtle text-ink-faint;
+  padding-left: calc(var(--nums-w) + 0.375rem);
+}
+
+.diff-view .diff-eof {
+  @apply text-[11px] text-ink-faint italic;
+  padding-left: calc(var(--nums-w) + 1.25rem);
+}
+
+/* A linked line (#diff-…-R12) lands below the sticky top bar and tabs. */
+.diff-view [id] {
+  scroll-margin-top: 7rem;
+}
+
+/* Review comments and the inline form between blocks (pulls/files.html): pinned to the
+   left edge and as wide as the visible diff, so they stay in view whatever the code's
+   horizontal scroll. */
+.diff-comment {
+  @apply sticky left-0 border-y border-line bg-subtle p-3 font-sans text-[13px] whitespace-normal text-ink;
+  width: 100cqi;
 }
 
 /* ---------------------------------------------------------------- File viewer lines */
 
-/* One block per line (repo/blob.html). Lines off screen skip layout and paint until
-   scrolled near (`content-visibility`), so a file of thousands of lines appears as
-   fast as a short one, on a full load and on an htmx swap alike. */
+/* repo/blob.html and repo/blame.html. Lines come in virtual blocks (`.vblock`, see
+   Virtual blocks): a block off screen skips layout and paint as a unit, so a file of
+   thousands of lines appears as fast as a short one, on a full load and on an htmx swap
+   alike. Every line is exactly one `--row-h` tall (`height`, not `min-height`: a glyph
+   from a taller fallback font, an emoji say, must not grow it), which keeps each block's
+   placeholder exact. `.code-lines` is at least as wide as its widest line (`cols-N`,
+   see Virtual blocks), so line backgrounds span the horizontal scroll. */
 .code-lines {
-  @apply min-w-full py-3 font-mono text-[12.5px] leading-5;
-  width: max-content;
+  @apply py-3 font-mono text-[12.5px] leading-5;
+  /* The line number (w-14), the code's padding (pl-3, pr-6) and the widest line. */
+  min-width: max(100%, calc(5.75rem + var(--cols, 0) * 1ch));
   tab-size: 4;
 }
 
 .code-line {
   display: flex;
-  min-height: 1.25rem;
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 1.25rem;
+  height: var(--row-h);
+  line-height: var(--row-h);
+  /* Never paints over the next line (see the diff rows above). */
+  overflow-y: clip;
   /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
   scroll-margin-top: calc(var(--sticky-top, 6.25rem) + 1.5rem);
 }
@@ -910,6 +1071,34 @@
 
 .code-line .line-code {
   @apply whitespace-pre pl-2 pr-6 sm:pl-3;
+}
+
+/* Blame (repo/blame.html): hunks one after another in the file's blocks. A hunk header is
+   exactly two rows (`HEADER_ROWS` in src/views/blame.rs), its hairline included, so
+   blocks keep their exact height. The scroller is a size container so the header's
+   text can be as wide as the visible area and stay there (sticky) while long lines
+   scroll sideways; its band spans the whole scroll width like the lines. */
+.blame-scroll {
+  container-type: inline-size;
+}
+
+.code-lines.blame-lines {
+  @apply pt-0;
+}
+
+.blame-hunk {
+  @apply border-t border-line bg-subtle font-sans text-xs;
+  height: calc(2 * var(--row-h));
+}
+
+/* The first header sits right under the toolbar's own hairline. */
+.blame-lines > .vblock:first-child > .blame-hunk:first-child {
+  border-top-color: transparent;
+}
+
+.blame-hunk-info {
+  @apply sticky left-0 flex h-full min-w-0 items-center gap-2 px-4 leading-4;
+  width: 100cqw;
 }
 
 @media (prefers-reduced-motion: reduce) {

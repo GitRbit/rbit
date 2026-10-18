@@ -34,7 +34,7 @@
 {% if newer_url.is_some() || older_url.is_some() %}
 <nav class="mt-6 flex justify-center" aria-label="Pagination">
   {% if let Some(url) = newer_url %}<a class="btn rounded-r-none" href="{{ url }}">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Newer</a>{% else %}<span class="btn rounded-r-none opacity-50">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Newer</span>{% endif %}
-  {% if let Some(url) = older_url %}<a class="btn -ml-px rounded-l-none" href="{{ url }}">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>{% else %}<span class="btn -ml-px rounded-l-none opacity-50">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>{% endif %}
+  {% if let Some(url) = older_url %}<a class="btn -ml-px rounded-l-none" href="{{ url }}" data-preload="visible">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>{% else %}<span class="btn -ml-px rounded-l-none opacity-50">Older{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</span>{% endif %}
 </nav>
 {% endif %}
 {% endblock %}

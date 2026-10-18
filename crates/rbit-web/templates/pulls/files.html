@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
+{% import "repo/diff_rows.html" as diff %}
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
@@ -24,7 +25,9 @@
 
 <div class="space-y-4">
   {% for file in files %}
-  <details id="{{ file.anchor }}" class="diff-file box group scroll-mt-28 overflow-hidden" open>
+  {#- `data-rows`: the open file's exact height in rows, its placeholder while off screen
+      (app.css "Virtual blocks"); absent when threads make the height unknown. -#}
+  <details id="{{ file.anchor }}" class="diff-file box group"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %} open>
     <summary class="box-header cursor-pointer select-none gap-2 border-b-0 group-open:border-b">
       {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
       <span class="min-w-0 flex-1 truncate font-mono text-xs">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</span>
@@ -32,80 +35,77 @@
       {% if file.stats_known %}<span class="font-mono text-xs text-success">+{{ file.additions }}</span><span class="font-mono text-xs text-danger">−{{ file.deletions }}</span>{% endif %}
     </summary>
     {% if let Some(url) = file.view_url %}
-    <div class="flex justify-end border-b border-line px-3 py-1"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">View file</a></div>
+    <div class="diff-file-bar"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">View file</a></div>
     {% endif %}
     {% match file.body %}
-    {% when PullDiffBody::Text(hunks) %}
-    <div class="overflow-x-auto">
-      <table class="diff-view w-full border-collapse">
-        {% for hunk in hunks %}
-        <tbody>
-          <tr class="diff-hunk"><td class="num" colspan="2"></td><td class="code">{{ hunk.header }}</td></tr>
-          {% for row in hunk.rows %}
-          <tr id="{{ row.anchor }}" class="diff-{{ row.kind }} scroll-mt-28">
-            {% if can_comment %}
-            <td class="num"><a href="{{ row.comment_url }}" class="block min-w-6 hover:text-ink" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" aria-label="Comment on line {{ row.line }}">{{ row.old_number }}</a></td>
-            <td class="num"><a href="{{ row.comment_url }}" class="block min-w-6 hover:text-ink" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" tabindex="-1">{{ row.new_number }}</a></td>
-            {% else %}
-            <td class="num">{{ row.old_number }}</td>
-            <td class="num">{{ row.new_number }}</td>
-            {% endif %}
-            <td class="code"><span class="sign">{{ row.sign }}</span>{{ row.text }}</td>
-          </tr>
-          {% if row.missing_newline %}
-          <tr class="diff-eof"><td class="num" colspan="2"></td><td class="code"><span class="sign"></span>No newline at end of file</td></tr>
-          {% endif %}
-          {% if !row.comments.is_empty() %}
-          <tr><td colspan="3" class="diff-comment">
-            <div class="box overflow-hidden">
-              {% let show_hunk = false %}
-              {% for comment in row.comments %}{% include "pulls/review_comment.html" %}{% endfor %}
-              {% if can_comment %}
-              {% let last = row.comments.last() %}
-              {% if let Some(parent) = last %}
-              <form method="post" action="{{ pull.urls.line_comments }}" class="border-t border-line p-3">
-                <input type="hidden" name="in_reply_to" value="{{ parent.reply_to }}">
-                <label class="sr-only" for="{{ row.anchor }}-reply">Reply</label>
-                <textarea id="{{ row.anchor }}-reply" name="body" class="input h-16 resize-y py-2 text-[13px]" rows="2" maxlength="65536" placeholder="Reply…" required></textarea>
-                <div class="mt-2 flex justify-end gap-2">
-                  <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Add to review</button>
-                  <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Reply</button>
-                </div>
-              </form>
-              {% endif %}
-              {% endif %}
+    {% when PullDiffBody::Text(text) %}
+    <div class="diff-scroll"><div class="diff-view {{ text.width_classes }}">
+      {%- for part in text.parts %}
+      {%- match part %}
+      {%- when DiffPart::Rows(block) %}
+      {%- if text.blocked %}
+      <div class="vblock" data-rows="{{ block.len() }}">
+      {%- endif %}
+        {%- for row in block.rows() %}
+        {%- if can_comment && row.line.is_line() -%}
+        <div id="{{ row.anchor }}" class="diff-{{ row.line.kind }}"><a href="{{ row.comment_url }}" class="num" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" aria-label="Comment on line {{ row.number }}">{{ row.line.old_number }}</a><a href="{{ row.comment_url }}" class="num" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" tabindex="-1">{{ row.line.new_number }}</a>{{ row.line.text }}</div>
+        {%- else -%}
+        {% call diff::row(row.line, row.anchor) %}{% endcall %}
+        {%- endif %}
+        {%- endfor -%}
+      {%- if text.blocked %}
+      </div>
+      {%- endif %}
+      {%- when DiffPart::Thread(thread) %}
+      {%- if !thread.comments.is_empty() %}
+      <div class="diff-comment">
+        <div class="box overflow-hidden">
+          {% let show_hunk = false %}
+          {% for comment in thread.comments %}{% include "pulls/review_comment.html" %}{% endfor %}
+          {% if can_comment %}
+          {% let last = thread.comments.last() %}
+          {% if let Some(parent) = last %}
+          <form method="post" action="{{ pull.urls.line_comments }}" class="border-t border-line p-3">
+            <input type="hidden" name="in_reply_to" value="{{ parent.reply_to }}">
+            <label class="sr-only" for="{{ thread.anchor }}-reply">Reply</label>
+            <textarea id="{{ thread.anchor }}-reply" name="body" class="input h-16 resize-y py-2 text-[13px]" rows="2" maxlength="65536" placeholder="Reply…" required></textarea>
+            <div class="mt-2 flex justify-end gap-2">
+              <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Add to review</button>
+              <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Reply</button>
             </div>
-          </td></tr>
+          </form>
           {% endif %}
-          {% if row.show_form %}
-          <tr><td colspan="3" class="diff-comment">
-            <form method="post" action="{{ pull.urls.line_comments }}" class="box p-3">
-              <input type="hidden" name="path" value="{{ file.path }}">
-              <input type="hidden" name="side" value="{{ row.side }}">
-              <input type="hidden" name="line" value="{{ row.line }}">
-              <label class="label" for="{{ row.anchor }}-body">Comment on line {{ row.line }}</label>
-              <textarea id="{{ row.anchor }}-body" name="body" class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Markdown is supported" required autofocus></textarea>
-              <div class="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <a href="{{ pull.urls.files }}#{{ row.anchor }}" class="btn h-11 sm:h-8">Cancel</a>
-                <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Start a review</button>
-                <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Add single comment</button>
-              </div>
-            </form>
-          </td></tr>
           {% endif %}
-          {% endfor %}
-        </tbody>
-        {% endfor %}
-      </table>
-    </div>
+        </div>
+      </div>
+      {%- endif %}
+      {%- if thread.show_form %}
+      <div class="diff-comment">
+        <form method="post" action="{{ pull.urls.line_comments }}" class="box p-3">
+          <input type="hidden" name="path" value="{{ file.path }}">
+          <input type="hidden" name="side" value="{{ thread.side }}">
+          <input type="hidden" name="line" value="{{ thread.line }}">
+          <label class="label" for="{{ thread.anchor }}-body">Comment on line {{ thread.line }}</label>
+          <textarea id="{{ thread.anchor }}-body" name="body" class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Markdown is supported" required autofocus></textarea>
+          <div class="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <a href="{{ pull.urls.files }}#{{ thread.anchor }}" class="btn h-11 sm:h-8">Cancel</a>
+            <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Start a review</button>
+            <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Add single comment</button>
+          </div>
+        </form>
+      </div>
+      {%- endif %}
+      {%- endmatch %}
+      {%- endfor %}
+    </div></div>
     {% when PullDiffBody::Binary %}
-    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Binary file not shown.</p>
+    <p class="diff-placeholder">Binary file not shown.</p>
     {% when PullDiffBody::TooLarge %}
-    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Diff too large to display.</p>
+    <p class="diff-placeholder">Diff too large to display.</p>
     {% when PullDiffBody::Submodule { old, new } %}
-    <p class="px-4 py-6 text-center font-mono text-xs text-ink-muted">Submodule commit {{ old }} → {{ new }}</p>
+    <p class="diff-placeholder font-mono text-xs">Submodule commit {{ old }} → {{ new }}</p>
     {% when PullDiffBody::NoContentChanges %}
-    <p class="px-4 py-6 text-center text-[13px] text-ink-muted">No content changes.</p>
+    <p class="diff-placeholder">No content changes.</p>
     {% endmatch %}
   </details>
   {% else %}

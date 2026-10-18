@@ -26,15 +26,20 @@
   </div>
 
   {% match content %}
-  {% when BlobContent::Code(lines) %}
-  {#- One block per line rather than a table, so lines off screen skip layout
-      (`content-visibility`, see app.css); a long file lays out as fast as a short one.
-      No <a> per line either: the number is drawn by CSS from `data-line` (never copied
-      with the code) and nav.js turns a click into `#L…`. -#}
+  {% when BlobContent::Code(_) %}
+  {#- Lines in virtual blocks of up to 128 (`.vblock`, see app.css): a block off screen
+      skips layout as a unit, and its placeholder is exactly `data-rows` lines tall, so
+      a long file lays out as fast as a short one and scrolling never jumps. No <a> per
+      line either: the number is drawn by CSS from `data-line` (never copied with the
+      code) and nav.js turns a click into `#L…`. -#}
   <div class="overflow-x-auto">
-    <div class="code-lines">
-      {%- for line in lines %}
-      <div class="code-line" id="L{{ loop.index }}"><span class="line-number" data-line="{{ loop.index }}"></span><span class="line-code">{{ line|safe }}</span></div>
+    <div class="code-lines {{ self.code_columns() }}">
+      {%- for block in self.code_blocks() %}
+      <div class="vblock" data-rows="{{ block.len() }}">
+        {%- for line in block.rows() %}
+        <div class="code-line" id="L{{ line.number }}"><span class="line-number" data-line="{{ line.number }}"></span><span class="line-code">{{ line.html|safe }}</span></div>
+        {%- endfor %}
+      </div>
       {%- endfor %}
     </div>
   </div>

@@ -7,7 +7,12 @@ use rbit_git::{CommitSummary, RefKind, RefSummary};
 use crate::{
     urls::RepoUrls,
     views::{
-        collaborators::CollaboratorAccess, components::Avatar, forks::ForkedFrom, insights::LanguageBar, layout::Page,
+        blocks::{Block, blocks, column_class, markup_columns},
+        collaborators::CollaboratorAccess,
+        components::Avatar,
+        forks::ForkedFrom,
+        insights::LanguageBar,
+        layout::Page,
         releases::LatestRelease,
     },
 };
@@ -230,6 +235,21 @@ pub enum BlobContent {
     Image,
 }
 
+/// One line of the file viewer, as rendered in a block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodeLine<'a> {
+    /// 1-based line number (also the `#L…` anchor).
+    pub number: usize,
+    /// Highlighted (or escaped) HTML of the line.
+    pub html: &'a str,
+}
+
+/// Numbers `lines` (`lines[i]` is line `i + 1`) and splits them into virtual blocks
+/// (`.vblock`, see [`blocks`](crate::views::blocks)): every line is one row.
+pub fn code_blocks(lines: &[String]) -> Vec<Block<CodeLine<'_>>> {
+    blocks(lines.iter().enumerate().map(|(index, html)| CodeLine { number: index + 1, html }))
+}
+
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/blob.html")]
 pub struct BlobPage {
@@ -252,6 +272,26 @@ pub struct BlobPage {
     /// `Some` for a Git LFS pointer file: whether the server has its object (shown in
     /// place of the pointer when it does).
     pub lfs_stored: Option<bool>,
+}
+
+impl BlobPage {
+    /// The code's lines in virtual blocks; none unless the content is [`BlobContent::Code`].
+    /// Built here rather than by the handler so it keeps passing the highlighter's lines.
+    pub fn code_blocks(&self) -> Vec<Block<CodeLine<'_>>> {
+        match &self.content {
+            BlobContent::Code(lines) => code_blocks(lines),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The code's minimum width, from its widest line ([`column_class`]).
+    pub fn code_columns(&self) -> String {
+        let widest = match &self.content {
+            BlobContent::Code(lines) => lines.iter().map(|line| markup_columns(line)).max().unwrap_or(0),
+            _ => 0,
+        };
+        column_class(widest)
+    }
 }
 
 /// Commits grouped under a calendar-day heading.
@@ -303,5 +343,84 @@ mod tests {
     fn full_commit_ids_are_shortened() {
         assert_eq!(shorten_revision("0123456789abcdef0123456789abcdef01234567"), "0123456");
         assert_eq!(shorten_revision("main"), "main");
+    }
+
+    #[test]
+    fn code_blocks_number_every_line_once() {
+        let lines: Vec<String> = (1..=300).map(|n| format!("line {n}")).collect();
+        let blocks = code_blocks(&lines);
+        assert_eq!(blocks.iter().map(Block::len).collect::<Vec<_>>(), [128, 128, 44]);
+        let flat: Vec<CodeLine<'_>> = blocks.iter().flat_map(|block| block.rows().to_vec()).collect();
+        assert_eq!(flat.len(), 300);
+        assert!(flat.iter().enumerate().all(|(index, line)| line.number == index + 1 && line.html == lines[index]));
+    }
+
+    fn blob_page(content: BlobContent) -> BlobPage {
+        let urls = RepoUrls::new("o", "r");
+        let commit = CommitSummary {
+            id: "a".repeat(40),
+            short_id: "a".repeat(7),
+            summary: "First".into(),
+            body: None,
+            author_name: "Ada".into(),
+            author_email: "ada@example.com".into(),
+            authored_at: rbit_core::Timestamp(0),
+            parent_ids: Vec::new(),
+        };
+        BlobPage {
+            page: Page {
+                site_name: "rbit".to_owned(),
+                title: None,
+                viewer: None,
+                path: "/o/r/blob/main/a.rs".to_owned(),
+                theme: crate::themes::Theme::System,
+                has_unread_notifications: false,
+            },
+            header: RepoHeader::default(),
+            switcher: RefSwitcher::new(&[], "main", "main", str::to_owned),
+            breadcrumbs: Vec::new(),
+            latest: CommitView::new(&commit, &urls),
+            file_name: "a.rs".to_owned(),
+            size: "1 KB".to_owned(),
+            line_count: None,
+            language: None,
+            blame_url: "/o/r/blame/main/a.rs".to_owned(),
+            raw_url: "/o/r/raw/main/a.rs".to_owned(),
+            content,
+            edit_url: None,
+            delete_url: None,
+            lfs_stored: None,
+        }
+    }
+
+    #[test]
+    fn blob_lines_render_in_blocks_with_their_ids() {
+        let lines: Vec<String> = (1..=130).map(|n| format!("<b>line {n}</b>")).collect();
+        let html = blob_page(BlobContent::Code(lines)).render().unwrap();
+        assert!(!html.contains("style="), "no inline styles under the CSP");
+
+        let blocks: Vec<&str> = html.split(r#"<div class="vblock" data-rows=""#).skip(1).collect();
+        let rows: Vec<(usize, usize)> = blocks
+            .iter()
+            .map(|block| {
+                let (rows, body) = block.split_once('"').unwrap();
+                (rows.parse().unwrap(), body.matches(r#"class="code-line""#).count())
+            })
+            .collect();
+        assert_eq!(rows, [(128, 128), (2, 2)], "data-rows is the number of lines in the block");
+        assert!(html.contains(r#"<div class="code-lines cols-8">"#), "as wide as the widest line's text, tags aside");
+        for n in 1..=130 {
+            assert_eq!(html.matches(&format!(r#"id="L{n}""#)).count(), 1, "line {n} once, with its id");
+        }
+        assert!(html.contains(
+            r#"<div class="code-line" id="L130"><span class="line-number" data-line="130"></span><span class="line-code"><b>line 130</b></span></div>"#
+        ));
+    }
+
+    #[test]
+    fn only_code_has_blocks() {
+        assert_eq!(blob_page(BlobContent::Binary).code_blocks(), Vec::new());
+        let html = blob_page(BlobContent::Markdown("<p>Hi</p>".into())).render().unwrap();
+        assert!(!html.contains("vblock"));
     }
 }

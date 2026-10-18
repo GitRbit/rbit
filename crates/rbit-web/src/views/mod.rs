@@ -8,6 +8,7 @@ pub mod account;
 pub mod admin;
 pub mod auth;
 pub mod blame;
+pub mod blocks;
 pub mod branch_graph;
 pub mod collaborators;
 pub mod commit;

@@ -27,6 +27,7 @@ without re-reading the history.
 | ↳ O — external sign-in: OpenID Connect and GitHub (`0037`) | ✅ Merged |
 | ↳ W — wave B stretch items (`0023`, `0025`) | 🚧 In progress |
 | ↳ M — importing from GitHub/Gitea, push mirrors (`0038`, `0039`) | 🚧 In progress |
+| Frontend speed wave — virtual blocks, compact highlighting, deferred counts, partial pages, new preloader ([design/frontend-virtualization.md](design/frontend-virtualization.md); fixture and probe in `scripts/perf/`) | ✅ Done on branch `perf/virtualization` (not yet on `main`) |
 
 Quality gate on `main`, exactly as CI runs it:
 
@@ -135,6 +136,23 @@ on GitHub yet.
      targets); token hints are shown without a prefix (`…a1b2`); `RUSTSEC-2023-0071` (RSA
      Marvin attack) is ignored in `deny.toml` because rbit never uses an RSA private key —
      revisit if it ever signs or decrypts with RSA (H).
+8. **Follow-ups from the frontend speed wave** (none blocks a release):
+   - Measure scrolling in a real Chrome/Edge window with `scripts/perf/scroll-probe.js`:
+     the in-app browser pane does not run animation frames while hidden, so the wave was
+     verified with static numbers (sizes, element counts, forced layout per step, exact
+     block heights) only.
+   - After posting a pull request line comment the boosted redirect loses `#anchor`
+     (pre-existing): the XHR never sees `Location`; answer htmx posts with `HX-Location`
+     carrying the fragment.
+   - A line-comment link still renders the whole files page and `hx-select`s one file; a
+     fragment route would make it cheap.
+   - The first view of a large highlighted file is still CPU-bound (~2.4 s for 20,000
+     lines in a debug build); the cache makes later views fast. Blame keeps a few slow
+     layout steps on files with many tiny hunks.
+   - Horizontal scroll width follows only the blocks laid out so far (D sets a minimum
+     per diff file; file and blame views can still widen while scrolling).
+   - Not done, by design until measurements call for them: one streamed response for many
+     slots, evicting far-off blocks, `ETag`s from inputs, compression dictionaries.
 
 Known, accepted limitations (documented, not bugs): tags that point at trees/blobs are
 not listed; URL revisions accept names and ids but not expressions like `v1.0~1`;

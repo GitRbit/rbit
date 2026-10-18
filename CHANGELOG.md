@@ -208,8 +208,46 @@ lists below when they are merged. -->
 - Notification emails go only to verified addresses, re-check read access at send time,
   are deduplicated and rate limited per address, and carry no `Reply-To`.
 
+### Speed — large pages and navigation
+
+Long files, blame, large diffs and big pull requests scroll without blank lines or a
+jumping scrollbar, and appear much sooner; moving between pages sends less and preloads
+smarter. Measured on the fixture in `scripts/perf/` (a 20,000-line file, a 152-file
+change): the file and blame pages went from about 17.5 MB and 356,000 elements to about
+4 MB and 92,000, the compare and pull request diffs to less than half their size.
+
+- Code, blame and diff lines render in fixed-height blocks of 128 that the browser skips
+  as a unit while off screen, with exact placeholder heights; changed files are skipped
+  as a whole with their exact height, and only diffs of more than 512 rows also use
+  blocks. Find in page, `#L…` links, text selection and screen readers still see every
+  line. Diffs are no longer tables.
+- Syntax highlighting markup is about 4.5× smaller (one flat span per token, short
+  classes), and highlighted files are kept in a 32 MiB in-memory cache, so a large file
+  renders in milliseconds after its first view; blame reuses the file's entry.
+- Pull request tabs no longer compute the diff twice (Files changed) or at all
+  (Conversation, Commits): the counts come from a cache keyed by the base and head
+  commits, or fill in right after the page paints.
+- The commit page reads its statuses while the diff is computed, the compare page the
+  fork network while comparing, the Files changed tab the reviews while diffing.
+- Navigating within a repository fetches only the changed part of the page (the title,
+  the content and the tabs): about half the bytes.
+- Preloading is rewritten: a link is fetched at most once per 30 seconds however often it
+  is hovered, nothing is fetched while scrolling on a touch screen, and the repository
+  tabs and "next page" links are preloaded when the browser is idle (not with Save-Data
+  or on 2G). The htmx preload extension is no longer vendored.
+- Commit-pinned fragments of public repositories (last commits in the file list,
+  pull request counts) are cached by the browser for good; private ones still revalidate.
+
+#### Upgrade notes
+
+- The insights cache (`rbit.redb`) gains a `comparison_counts` table, created on start-up
+  and pruned with the other cached insights; nothing needs to be migrated or rebuilt.
+- The server keeps up to 32 MiB of highlighted files in memory.
+
 ### Fixed
 
+- Collapsing or expanding a file on a pull request's **Files changed** tab no longer
+  throws a script error.
 - A webhook created right after an event (for example a push) no longer receives that
   event's delivery: hooks only get events that happened while they existed, as on GitHub.
   A hook deleted or deactivated before an event is queued does not receive it either.

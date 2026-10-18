@@ -59,7 +59,7 @@ async fn show(
             let name = file_name.clone();
             let shared = std::sync::Arc::clone(blame);
             let lines = tokio::task::spawn_blocking(move || match shared.as_ref() {
-                Blame::Blamed(file) => highlighter.highlighter.highlight_lines(&name, &file.text),
+                Blame::Blamed(file) => highlighter.highlighter.highlight_lines_cached(&file.blob_id, &name, &file.text),
                 _ => Vec::new(),
             })
             .await

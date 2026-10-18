@@ -104,6 +104,7 @@ async fn hunk_metadata_counts_against_the_retained_byte_budget() {
     let blame = Blame::Blamed(Box::new(FileBlame {
         commit: commit.clone(),
         text: "text\n".into(),
+        blob_id: "b".repeat(40),
         hunks: vec![BlameHunk { commit, start_line: 1, line_count: 1, source_path: Some("old/file.txt".into()) }],
     }));
     assert!(retained_bytes(&key, &blame) > 16 * 1024);

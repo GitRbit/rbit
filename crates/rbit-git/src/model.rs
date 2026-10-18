@@ -55,6 +55,8 @@ pub struct TreeView {
 #[derive(Debug, Clone)]
 pub struct BlobView {
     pub commit: CommitSummary,
+    /// The blob's object id (hex): names the content, e.g. for caches.
+    pub id: String,
     pub size: u64,
     /// `None` when the blob is larger than the render limit.
     pub data: Option<Vec<u8>>,

@@ -17,7 +17,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{ page.document_title() }}</title>
+  <!--partial:title--><title>{{ page.document_title() }}</title><!--/partial:title-->
   <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
   {%- if let Some(color) = page.theme.theme_color() %}
   <meta name="theme-color" content="{{ color }}">
@@ -37,17 +37,19 @@
   {%- endif %}
   <script src="{{ page.asset("theme.js") }}"></script>
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
-  <script src="{{ page.asset("vendor/htmx-preload.min.js") }}" defer></script>
   <script src="{{ page.asset("app.js") }}" type="module"></script>
   {#- app.js's imports (rewritten to these same hashed URLs when served), fetched in parallel with it. -#}
   <link rel="modulepreload" href="{{ page.asset("nav.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("preload.js") }}">
   <link rel="modulepreload" href="{{ page.asset("theme-picker.js") }}">
   <link rel="modulepreload" href="{{ page.asset("filter.js") }}">
   <link rel="modulepreload" href="{{ page.asset("diff.js") }}">
   <link rel="modulepreload" href="{{ page.asset("repo.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("blocks.js") }}">
   <link rel="modulepreload" href="{{ page.asset("passkey.js") }}">
 </head>
-<body hx-boost="true" hx-ext="preload" class="flex min-h-dvh flex-col">
+{#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
+<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}" class="flex min-h-dvh flex-col">
   <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
@@ -139,9 +141,10 @@
       (app.css `.site-subnav`). Hidden when a page has none. -#}
   <div class="site-subnav">{% block subnav %}{% endblock %}</div>
 
-  <main id="main" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+  {#- Markers: where `partial.rs` cuts a page for partial responses (title, main). -#}
+  <!--partial:main--><main id="main" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
     {% block content %}{% endblock %}
-  </main>
+  </main><!--/partial:main-->
 
   <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
     <div class="mx-auto flex h-12 max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">

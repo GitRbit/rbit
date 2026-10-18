@@ -327,6 +327,7 @@ fn retained_bytes(key: &Key, value: &Blame) -> usize {
         bytes = bytes.saturating_add(
             size_of::<FileBlame>()
                 + file.text.capacity()
+                + file.blob_id.capacity()
                 + file.hunks.capacity().saturating_mul(size_of::<BlameHunk>())
                 + commit_bytes(&file.commit),
         );

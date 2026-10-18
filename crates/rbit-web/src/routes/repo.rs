@@ -329,7 +329,7 @@ pub async fn entry_commits(
     State(state): State<AppState>,
     viewer: Viewer,
     Path((owner, repo, rest)): Path<(String, String, String)>,
-) -> WebResult<EntryCommitsFragment> {
+) -> WebResult<Response> {
     let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.tree(revision.clone(), path.clone()).await.map_err(ServiceError::from)?;
@@ -345,7 +345,10 @@ pub async fn entry_commits(
             commit: commits.get(&entry.name).map(|c| EntryCommit::new(c, &urls)),
         })
         .collect();
-    Ok(EntryCommitsFragment { cells })
+    // The tree page links here by commit id, which pins the answer. Only when the revision
+    // resolved to the commit it spells: a branch may be named with 40 hex digits.
+    let pinned = view.commit.id == revision && ctx.repo.repo.visibility.is_public();
+    Ok(crate::middleware::cache_pinned(EntryCommitsFragment { cells }.into_response(), pinned))
 }
 
 /// `GET /{owner}/{repo}/blob/{revision}/{path…}`. A directory path redirects to its
@@ -390,10 +393,13 @@ pub async fn blob(
             // Highlighting is CPU-bound; keep it off the async workers.
             let highlighter_state = state.clone();
             let highlight_name = name.clone();
+            let content_id = view.id.clone();
             BlobContent::Code(
-                tokio::task::spawn_blocking(move || highlighter_state.highlighter.highlight_lines(&highlight_name, &text))
-                    .await
-                    .map_err(WebError::internal)?,
+                tokio::task::spawn_blocking(move || {
+                    highlighter_state.highlighter.highlight_lines_cached(&content_id, &highlight_name, &text)
+                })
+                .await
+                .map_err(WebError::internal)?,
             )
         }
     };

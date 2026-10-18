@@ -5,8 +5,6 @@ import { copyFileSync, mkdirSync } from "node:fs";
 const target = "crates/rbit-web/assets/vendor";
 const files = [
   ["node_modules/htmx.org/dist/htmx.min.js", "htmx.min.js"],
-  // Hover/touch preloading for boosted links (enabled on <body>, configured by nav.js).
-  ["node_modules/htmx-ext-preload/dist/preload.min.js", "htmx-preload.min.js"],
 ];
 
 mkdirSync(target, { recursive: true });

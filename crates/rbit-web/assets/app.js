@@ -7,12 +7,18 @@ import "./theme-picker.js";
 // Preloading, partial swaps, progress and focus for boosted navigation.
 import "./nav.js";
 
+// Preloading boosted links on hover, press, touch and (for a few) visibility.
+import "./preload.js";
+
 // Instant list filters (dashboard repository list).
 import "./filter.js";
 
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
 import "./repo.js";
+
+// Long code and diff views: exact placeholder heights for virtual blocks.
+import "./blocks.js";
 
 // Passkeys for two-factor authentication (settings and the second sign-in step).
 import "./passkey.js";

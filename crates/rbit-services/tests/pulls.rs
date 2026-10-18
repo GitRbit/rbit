@@ -13,10 +13,10 @@ use rbit_git::DiffLimits;
 use rbit_services::{
     CreateRepository, DomainEvent, RepoContext, ServiceError, Services,
     forks::ForkInput,
-    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewVerdict},
+    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, PullCounts, ReviewVerdict},
     timeline::{StateChange, TimelineEntry},
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, KvStore, NewUser, kv::CachedComparisonCounts};
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -40,6 +40,7 @@ fn commit(dir: &Path, file: &str, contents: &str, message: &str) -> String {
 struct Fixture {
     _dir: tempfile::TempDir,
     services: Services,
+    kv: KvStore,
     alice: User,
     bob: User,
     carol: User,
@@ -89,7 +90,7 @@ impl Fixture {
         git(&work, &["push", "-q", repo.disk_path.to_str().unwrap(), "feature"]);
         git(&work, &["checkout", "-q", "main"]);
 
-        let fixture = Self { _dir: dir, services, alice, bob, carol, work };
+        let fixture = Self { _dir: dir, services, kv, alice, bob, carol, work };
         let parent = fixture.repo(&fixture.bob, "alice").await;
         fixture.services.forks.fork(&fixture.bob, &parent, ForkInput::default()).await.unwrap();
         fixture
@@ -140,6 +141,28 @@ impl Fixture {
     fn merge_input(strategy: MergeStrategy) -> MergeInput {
         MergeInput { strategy, title: String::new(), message: String::new(), expected_head: None, delete_head_branch: false, bypass: false }
     }
+}
+
+#[tokio::test]
+async fn cached_counts_are_only_those_of_the_current_file_limit() {
+    let f = Fixture::new().await;
+    let number = f.create(&f.alice, "alice", "feature").await.unwrap();
+    let ctx = f.open_pull(&f.alice, number).await;
+    let pulls = &f.services.pulls;
+    let (base, head) = pulls.compared_ids(&ctx).await.unwrap();
+    assert_eq!(pulls.cached_counts(&base, &head).await, None);
+    pulls.changes(&ctx, DiffLimits::default()).await.unwrap();
+    let counted = PullCounts { ahead: 1, files: 1 };
+    assert_eq!(pulls.cached_counts(&base, &head).await, Some(counted), "the Files changed tab counts for the others");
+
+    // Counts made under another file limit (another server version) are not this answer.
+    let other = CachedComparisonCounts { ahead: 1, files: 0, max_files: 0 };
+    f.kv.insights().put_comparison_counts(&base, &head, other).await.unwrap();
+    assert_eq!(pulls.cached_counts(&base, &head).await, None);
+    assert_eq!(pulls.counts_between(&ctx, &base, &head).await.unwrap(), counted, "recounted");
+    assert_eq!(pulls.cached_counts(&base, &head).await, Some(counted), "and remembered again");
+    // Only for the pull request's own pair.
+    assert!(matches!(pulls.counts_between(&ctx, &head, &base).await, Err(ServiceError::NotFound)));
 }
 
 #[tokio::test]

@@ -8,16 +8,10 @@
     {% if comment.outdated %}<span class="badge">Outdated</span>{% endif %}
   </div>
   {% if !comment.hunk.is_empty() %}
-  <div class="overflow-x-auto border-b border-line">
-    <table class="diff-view w-full border-collapse">
-      <tbody>
-        <tr class="diff-hunk"><td class="code">{{ comment.hunk_header }}</td></tr>
-        {% for line in comment.hunk %}
-        <tr class="diff-{{ line.0 }}"><td class="code"><span class="sign">{{ line.1 }}</span>{{ line.2 }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <div class="diff-scroll border-b border-line"><div class="diff-view diff-excerpt">
+    <div class="diff-hunk">{{ comment.hunk_header }}</div>
+    {%- for line in comment.hunk %}<div class="diff-{{ line.0 }}">{{ line.1 }}</div>{% endfor %}
+  </div></div>
   {% endif %}
   {% endif %}
   <div class="px-3 py-2.5">

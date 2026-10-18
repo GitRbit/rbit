@@ -1,0 +1,6 @@
+{#- Out-of-band counts for pulls/header.html (views::pulls::PullCountsFragment). The
+    trigger element itself is replaced by nothing. -#}
+{% import "pulls/count_slots.html" as slots %}
+{% call slots::phrase(slot(crate::views::pulls::CountSlot::CommitsPhrase), counts.commits_phrase(), true) %}{% endcall %}
+{% call slots::badge(slot(crate::views::pulls::CountSlot::Commits), counts.commits_badge(), true) %}{% endcall %}
+{% call slots::badge(slot(crate::views::pulls::CountSlot::Files), counts.files_badge(), true) %}{% endcall %}

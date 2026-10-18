@@ -13,7 +13,7 @@ use std::{
 
 use axum::{extract::State, http::HeaderMap, routing::post};
 use hmac::{Hmac, KeyInit, Mac};
-use rbit_e2e::{Client, Git, StatusCode, TestServer};
+use rbit_e2e::{Client, Git, PASSWORD, Sample, StatusCode, TestServer};
 use sha2::Sha256;
 
 /// Polls `check` until it holds, for at most 20 seconds.
@@ -277,4 +277,39 @@ async fn milestones_and_labels_pages_for_writers_only() {
     bob.post("/alice/demo/issues/1/delete", &[]).await.expect_status(StatusCode::FORBIDDEN);
     alice.post("/alice/demo/issues/1/delete", &[]).await.expect_redirect("/alice/demo/issues");
     alice.get("/alice/demo/issues/1").await.expect_status(StatusCode::NOT_FOUND);
+}
+
+/// Viewing a discussion marks its notification read, so a signed-in viewer's preload (a
+/// hover, a link scrolled into view) is declined: it must not mark a discussion read that
+/// was never opened, and its answer must not be stored, so the click reaches the server
+/// and marks it read then.
+#[tokio::test]
+async fn preloading_a_discussion_never_marks_it_read() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "demo", "public").await;
+    git.push_sample(&git.sample(), &server.git_url_as("alice", "demo", "alice", PASSWORD));
+    alice.post("/alice/demo/issues", &[("title", "Crash on start"), ("body", "")]).await.expect_redirect("/alice/demo/issues/1");
+    alice
+        .post("/alice/demo/pulls", &[("base", "main"), ("head", Sample::BRANCH), ("title", "Feature"), ("body", "")])
+        .await
+        .expect_redirect("/alice/demo/pull/2");
+
+    let preload = [("HX-Request", "true"), ("HX-Preloaded", "true")];
+    for (number, path) in [(1, "/alice/demo/issues/1"), (2, "/alice/demo/pull/2")] {
+        bob.post(&format!("/alice/demo/issues/{number}/comments"), &[("body", "Ping")]).await.expect_status(StatusCode::SEE_OTHER);
+        eventually("alice's notification", || has_unread(&alice)).await;
+
+        let preloaded = alice.get_with(path, &preload).await;
+        preloaded.expect_status(StatusCode::NO_CONTENT);
+        assert_eq!(preloaded.header("cache-control"), Some("no-store"), "the click must not be answered from the cache");
+        assert!(has_unread(&alice).await, "a preload of {path} is not a visit");
+        // Without read state to keep, anonymous preloads are served as usual.
+        server.client().get_with(path, &preload).await.expect_status(StatusCode::OK);
+
+        alice.get(path).await.expect_status(StatusCode::OK);
+        assert!(!has_unread(&alice).await, "visiting {path} marks it read");
+    }
 }

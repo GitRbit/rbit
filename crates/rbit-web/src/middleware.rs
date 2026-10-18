@@ -234,7 +234,8 @@ fn moved_permanently(method: &Method, location: &str) -> Response {
 
 // ------------------------------------------------------------------ navigation caching
 
-/// Sent by the htmx preload extension on hover/touch preloads (see `assets/nav.js`).
+/// Sent by the preloader (`assets/preload.js`) on every preload, so the server can tell a
+/// preload from a navigation.
 pub const PRELOAD_HEADER: &str = "hx-preloaded";
 
 /// Sent by `assets/nav.js` on every htmx request: a per-page-load value that changes
@@ -242,12 +243,15 @@ pub const PRELOAD_HEADER: &str = "hx-preloaded";
 /// before a form post is never served from the browser cache after it.
 pub const NAV_EPOCH_HEADER: &str = "rbit-nav-epoch";
 
-/// How long a preloaded page stays fresh in the browser cache: long enough to cover the
-/// gap between hovering a link and clicking it, short enough that it can't go stale.
-pub const PRELOAD_MAX_AGE_SECONDS: u32 = 10;
+/// How long a preloaded page stays fresh in the browser cache, and (rendered into
+/// `base.html`) how long the preloader treats a URL as preloaded: long enough to cover the
+/// gap between seeing or hovering a link and clicking it, short enough that it can't go
+/// stale. The navigation epoch makes it safe across the viewer's own changes: any form
+/// post changes the cache key, so nothing preloaded before it is reused after it.
+pub const PRELOAD_MAX_AGE_SECONDS: u32 = 30;
 
 /// Paths a preload must never reach because a `GET` there has side effects, consumes a
-/// secret, or is a download or Git traffic. `nav.js` skips these links too; this is the
+/// secret, or is a download or Git traffic. `preload.js` (`NO_PRELOAD`) skips these links too; this is the
 /// authoritative check.
 fn is_unsafe_to_preload(path: &str) -> bool {
     // The security pages and the second sign-in step issue secrets and passkey challenges;
@@ -263,17 +267,26 @@ fn is_unsafe_to_preload(path: &str) -> bool {
         || EXACT.contains(&path)
         || REPO_AREAS.contains(&repo_area)
         || (repo_area == "releases" && segments.get(4) == Some(&"download"))
-        // Opening a thread marks its notifications read, so hovering it must not.
-        || (matches!(repo_area, "issues" | "pull") && segments.get(4).is_some_and(|number| number.parse::<u64>().is_ok()))
         || segments.get(2).is_some_and(|repo| repo.to_ascii_lowercase().ends_with(".git"))
 }
 
-/// Answers preloads of [unsafe](is_unsafe_to_preload) paths with an empty, uncacheable
-/// `204` before any handler runs, so hovering a link can never trigger a side effect.
-/// The real click then goes to the network as usual.
+/// Whether `headers` are those of a preload (see [`PRELOAD_HEADER`]).
+pub fn is_preload(headers: &HeaderMap) -> bool {
+    headers.contains_key(PRELOAD_HEADER)
+}
+
+/// The answer to a preload the server declines: empty and never stored, so the click
+/// that follows goes to the network as usual.
+pub fn decline_preload() -> Response {
+    (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "no-store")]).into_response()
+}
+
+/// Declines preloads of [unsafe](is_unsafe_to_preload) paths before any handler runs, so
+/// hovering a link can never trigger a side effect. Handlers decline others whose `GET`
+/// changes state for the viewer (viewing a discussion marks it read).
 pub async fn preload_guard(request: Request, next: Next) -> Response {
-    if request.headers().contains_key(PRELOAD_HEADER) && is_unsafe_to_preload(request.uri().path()) {
-        return (StatusCode::NO_CONTENT, [(header::CACHE_CONTROL, "no-store")]).into_response();
+    if is_preload(request.headers()) && is_unsafe_to_preload(request.uri().path()) {
+        return decline_preload();
     }
     next.run(request).await
 }
@@ -282,7 +295,7 @@ pub async fn preload_guard(request: Request, next: Next) -> Response {
 ///
 /// * Every page is `private` (it may show the viewer's own data) and must be
 ///   revalidated (`no-cache`), with a weak `ETag` so a revisit costs a `304`.
-/// * A page fetched by a hover preload is instead fresh for
+/// * A page fetched by a preload is instead fresh for
 ///   [`PRELOAD_MAX_AGE_SECONDS`], so the click that follows is answered from the
 ///   browser cache without a round trip.
 /// * `Vary` keeps htmx requests (and each navigation epoch) apart from full page loads.
@@ -299,7 +312,10 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return response;
     }
     let (mut parts, body) = response.into_parts();
-    append_vary(&mut parts.headers, "HX-Request, Rbit-Nav-Epoch");
+    // A response pinned by commit ids (`cache_pinned`) is the same in every epoch; varying
+    // on it would throw a year-long cache entry away after every form post.
+    let vary = if is_immutable(&parts.headers) { "HX-Request" } else { "HX-Request, Rbit-Nav-Epoch" };
+    append_vary(&mut parts.headers, vary);
     if parts.status != StatusCode::OK || parts.headers.contains_key(header::CACHE_CONTROL) || parts.headers.contains_key(header::SET_COOKIE)
     {
         return Response::from_parts(parts, body);
@@ -324,6 +340,29 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return Response::from_parts(parts, axum::body::Body::empty());
     }
     Response::from_parts(parts, axum::body::Body::from(bytes))
+}
+
+/// `Cache-Control` of a response fully determined by the commit ids in its URL.
+pub const PINNED_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
+
+/// Lets the browser keep `response` for a year without asking again, when it is fully
+/// determined by commit ids in its URL (deferred-slot fragments) and the repository is
+/// readable anonymously. Fragments of private repositories keep [`html_caching`]'s
+/// revalidation, so a shared browser never serves one account's private fragment to the
+/// next. Handlers call this; `html_caching` leaves a response with `Cache-Control` alone.
+pub fn cache_pinned(mut response: Response, readable_anonymously: bool) -> Response {
+    if readable_anonymously && response.status() == StatusCode::OK {
+        response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static(PINNED_CACHE_CONTROL));
+    }
+    response
+}
+
+/// Whether `headers` mark the response as [pinned](cache_pinned): never changing at its URL.
+pub(crate) fn is_immutable(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::CACHE_CONTROL)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|d| d.trim().eq_ignore_ascii_case("immutable")))
 }
 
 fn weak_etag(body: &[u8]) -> String {
@@ -362,14 +401,31 @@ mod tests {
 
     use super::*;
 
+    #[tokio::test]
+    async fn pinned_fragments_are_immutable_only_when_public() {
+        let fragment = |public: bool| async move { cache_pinned(axum::response::Html("<span>1</span>").into_response(), public) };
+        let app = Router::new()
+            .route("/public", get(move || fragment(true)))
+            .route("/private", get(move || fragment(false)))
+            .layer(from_fn(html_caching));
+        let get = |path: &str| Request::builder().uri(path).body(Body::empty()).unwrap();
+
+        let public = app.clone().oneshot(get("/public")).await.unwrap();
+        assert_eq!(public.headers()[header::CACHE_CONTROL], PINNED_CACHE_CONTROL);
+        // Pinned by commit ids: the same in every navigation epoch.
+        assert_eq!(public.headers()[header::VARY], "HX-Request");
+        let private = app.oneshot(get("/private")).await.unwrap();
+        assert_eq!(private.headers()[header::CACHE_CONTROL], "private, no-cache");
+        assert!(private.headers().contains_key(header::ETAG), "revalidated");
+        assert_eq!(private.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch");
+    }
+
     fn app() -> Router {
         Router::new()
             .route("/page", get(|| async { axum::response::Html("<p>hello</p>") }))
             .route("/secret", get(|| async { ([(header::CACHE_CONTROL, "no-store")], axum::response::Html("<p>token</p>")) }))
             .route("/settings/security/two-factor", get(|| async { axum::response::Html("<p>new secret</p>") }))
             .route("/o/r/raw/main/file", get(|| async { "bytes" }))
-            .route("/o/r/issues/1", get(|| async { "thread opened" }))
-            .route("/o/r/pull/2", get(|| async { "thread opened" }))
             .route("/missing", get(|| async { (StatusCode::NOT_FOUND, axum::response::Html("<p>not found</p>")) }))
             .layer(from_fn(html_caching))
             .layer(from_fn(security_headers))
@@ -397,6 +453,14 @@ mod tests {
     async fn preloaded_pages_are_briefly_fresh() {
         let response = send("/page", &[("HX-Request", "true"), ("HX-Preloaded", "true")]).await;
         assert_eq!(response.headers()[header::CACHE_CONTROL], format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}"));
+    }
+
+    #[test]
+    fn the_preloader_shares_the_freshness_window() {
+        // preload.js reads its window from <body data-preload-fresh>, rendered from the constant.
+        let base = include_str!("../templates/base.html");
+        assert!(base.contains("data-preload-fresh=\"{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}\""));
+        assert_eq!(PRELOAD_MAX_AGE_SECONDS, 30);
     }
 
     #[tokio::test]
@@ -440,7 +504,7 @@ mod tests {
 
     #[tokio::test]
     async fn side_effecting_paths_are_never_preloaded() {
-        for path in ["/settings/security/two-factor", "/o/r/raw/main/file", "/o/r/issues/1", "/o/r/pull/2"] {
+        for path in ["/settings/security/two-factor", "/o/r/raw/main/file"] {
             let response = send(path, &[("HX-Preloaded", "true")]).await;
             assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
             assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
@@ -467,9 +531,6 @@ mod tests {
             // Milestone 3 (O): start and finish external sign-in.
             "/login/github",
             "/login/corp/callback",
-            // Opening an issue or pull request marks its notifications read.
-            "/a/b/issues/1",
-            "/a/b/pull/2",
         ] {
             assert!(is_unsafe_to_preload(path), "{path}");
         }
@@ -484,6 +545,10 @@ mod tests {
             "/settings/profile",
             "/a/b/issues",
             "/a/b/pulls",
+            // Discussions decline only signed-in preloads, in their handlers (opening one
+            // marks it read); anonymous viewers have no read state.
+            "/a/b/issues/1",
+            "/a/b/pull/2",
         ] {
             assert!(!is_unsafe_to_preload(path), "{path}");
         }
