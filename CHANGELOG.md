@@ -7,6 +7,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Yearly contribution heatmaps on user and organization profiles and repository Commits
+  tabs, with daily counts, monthly activity, active days and longest streaks. Calendars
+  rearrange into quarters on small screens without horizontal scrolling. Counts respect
+  repository visibility and use default-branch commits by UTC author date.
+
 ## [0.1.0] - 2026-10-18
 
 First release of rbit, a self-hosted Git platform distributed as one Rust binary.
