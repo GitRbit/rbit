@@ -48,6 +48,11 @@ const NO_PRELOAD = [
   /^\/[^/]+\/[^/]+\.git(\/|$)/i,
 ];
 
+// Opening a discussion marks the viewer's notifications read, so the server declines a
+// signed-in viewer's preload of one (`routes::issues::show`, `routes::pulls::show`);
+// anonymous viewers have no read state and preload them as usual.
+const DISCUSSION = /^\/[^/]+\/[^/]+\/(issues|pull)\/\d+(\/|$)/;
+
 const HTMX_REQUEST = ["get", "post", "put", "patch", "delete"].flatMap((verb) => [`[hx-${verb}]`, `[data-hx-${verb}]`]).join(",");
 
 /**
@@ -66,6 +71,7 @@ function isPreloadable(link) {
   if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
   // In-page anchors and links to the page itself.
   if (url.pathname === location.pathname && url.search === location.search) return false;
+  if ("signedIn" in document.body.dataset && DISCUSSION.test(url.pathname)) return false;
   return !NO_PRELOAD.some((pattern) => pattern.test(url.pathname));
 }
 

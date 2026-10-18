@@ -19,14 +19,15 @@ function harness() {
     removeAttribute(name) { if (name === "open") this.open = false; }
   }
   const document = {
-    addEventListener(name, callback) { listeners.set(name, callback); },
+    addEventListener(name, callback) { listeners.set(name, [...(listeners.get(name) ?? []), callback]); },
     querySelectorAll() { return menus.filter(menu => menu.open); },
+    querySelector() { return null; },
   };
   const window = { htmx: { trigger(element, name) { requests.push({element, name}); } } };
-  vm.runInNewContext(source, { document, window, navigator: {}, HTMLDetailsElement: Details });
+  vm.runInNewContext(source, { document, window, navigator: {}, HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
   const picker = new Details();
   menus.push(picker);
-  return { picker, requests, window, emit: (name, detail = {}) => listeners.get(name)({target: picker, detail}) };
+  return { picker, requests, window, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };
 }
 
 test("refs load only on open; failed loads can retry and successful loads are reused", () => {

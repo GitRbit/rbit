@@ -9,7 +9,7 @@ const source = (await readFile(new URL("preload.js", assets), "utf8"))
 const navigation = (await readFile(new URL("nav.js", assets), "utf8")).replace(/^export /gm, "");
 const origin = "https://git.example.com";
 
-function page({ saveData = false, effectiveType = "4g", idleCallback = true } = {}) {
+function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false } = {}) {
   const listeners = new Map();
   const timers = new Map();
   const idle = new Map();
@@ -21,7 +21,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true } = 
   let currentNavigation;
   const location = new URL(`${origin}/alice/repo`);
   const document = {
-    body: { dataset: { preloadFresh: "30" } },
+    body: { dataset: { preloadFresh: "30", ...(signedIn ? { signedIn: "" } : {}) } },
     documentElement: { classList: { add() {}, remove() {} } },
     querySelector(selector) {
       return selector === "[data-repo-scope]" ? { getAttribute: () => "/alice/repo" } : null;
@@ -437,7 +437,7 @@ test("retained records stay bounded without evicting pending work", async () => 
 });
 
 test("unsafe links stay excluded and eligible fetches preserve navigation cache and auth headers", () => {
-  const app = page();
+  const app = page({ signedIn: true });
   for (const path of [
     "/logout", "/settings/security", "/login/github", "/email/verify/secret", "/password/reset/secret",
     "/api/repos", "/assets/app.js", "/sw.js", "/healthz", "/readyz", "/metrics",
@@ -464,4 +464,16 @@ test("unsafe links stay excluded and eligible fetches preserve navigation cache 
   assert.equal(request.options.cache, undefined, "HTTP caching remains server-authoritative");
   app.press(app.link("/other/repository/tree/main"));
   assert.equal(app.requests[1].options.headers["Rbit-Partial"], undefined);
+});
+
+test("discussions are preloaded only for anonymous viewers, who have no read state", () => {
+  const anonymous = page();
+  anonymous.press(anonymous.link("/alice/repo/issues/12"));
+  anonymous.press(anonymous.link("/alice/repo/pull/12/files"));
+  assert.equal(anonymous.requests.length, 2);
+  const signedIn = page({ signedIn: true });
+  signedIn.press(signedIn.link("/alice/repo/issues/12"));
+  signedIn.press(signedIn.link("/alice/repo/pull/12/files"));
+  signedIn.press(signedIn.link("/alice/repo/issues"));
+  assert.deepEqual(signedIn.requests.map((request) => new URL(request.url).pathname), ["/alice/repo/issues"]);
 });

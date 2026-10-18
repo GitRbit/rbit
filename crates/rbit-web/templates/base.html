@@ -49,7 +49,7 @@
   <link rel="modulepreload" href="{{ page.asset("passkey.js") }}">
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
-<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}" class="flex min-h-dvh flex-col">
+<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
   <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">

@@ -28,7 +28,10 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
     getAttribute(key) { return this.attributes.get(key) ?? null; }
     hasAttribute(key) { return key === "data-ready" ? "ready" in this.dataset : this.attributes.has(key); }
     matches(selector) { return selector === ".diff-file" && this.kind === "file"; }
-    closest(selector) { return selector === "[data-diff-layout]" ? this.layout ?? (this.kind === "layout" ? this : null) : null; }
+    closest(selector) {
+      if (selector === ".diff-sidebar") return this.sidebar ?? null;
+      return selector === "[data-diff-layout]" ? this.layout ?? (this.kind === "layout" ? this : null) : null;
+    }
     contains(other) { return this === other || other.layout === this; }
     getBoundingClientRect() { stats.geometry++; return { top: this.top, bottom: this.top + 20 }; }
     querySelectorAll(selector) {
@@ -54,6 +57,8 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
   if (restored) layout.dataset.ready = "";
   layout.tree = new Element("tree");
   layout.tree.scrollTop = 0;
+  // The tree sits in a <details> sidebar: open on wide screens, a closed panel on phones.
+  layout.tree.sidebar = { open: !mobile };
   layout.tree.links = [];
   layout.button = new Element("button");
   layout.button.parts = ["expanded", "collapsed"].map(when => {
@@ -155,26 +160,22 @@ test("hidden desktop and closed mobile trees do not measure file geometry", () =
     if (!mobile) page.layout.dataset.sidebar = "hidden";
     page.fire("scroll"); page.flush();
     assert.equal(page.stats.geometry, 0);
-    if (mobile) page.layout.dataset.sidebarMobile = "open";
+    if (mobile) page.layout.tree.sidebar.open = true;
     else delete page.layout.dataset.sidebar;
     page.fire("resize"); page.flush();
     assert.ok(page.stats.geometry > 0);
   }
 });
 
-test("navigation releases pending work and follows the replacement header", () => {
+test("navigation releases pending diff work", () => {
   const page = browser(2);
   page.fire("scroll");
   page.fire("htmx:beforeCleanupElement", { elt: page.layout });
   assert.equal(page.frames.size, 0);
+  // Cleaning up an element outside any diff layout (the old top bar) is harmless.
   page.fire("htmx:beforeCleanupElement", { elt: page.page.header });
-  assert.equal(page.observed.size, 0);
   page.page.layouts = [];
-  page.page.header = new page.Element("header");
-  page.page.header.offsetHeight = 96;
   page.fire("htmx:afterSettle");
-  assert.equal(page.page["--header-height"], "96px");
-  assert.ok(page.observed.has(page.page.header));
   assert.equal(page.frames.size, 0);
 });
 

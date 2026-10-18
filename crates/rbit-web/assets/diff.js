@@ -369,10 +369,6 @@ document.addEventListener("htmx:beforeCleanupElement", (event) => {
     indexes.delete(layout);
     return false;
   });
-  if (observedHeader && (root === observedHeader || root.contains(observedHeader))) {
-    headerObserver.disconnect();
-    observedHeader = null;
-  }
   if (!layouts.length && frame) {
     cancelAnimationFrame(frame);
     frame = 0;
