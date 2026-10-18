@@ -181,8 +181,10 @@ change): the file and blame pages went from about 17.5 MB and 356,000 elements t
 4 MB and 92,000, the compare and pull request diffs to less than half their size.
 
 - Code, blame and diff lines render in fixed-height blocks of 128 that the browser skips
-  as a unit while off screen, with exact placeholder heights. Find in page, `#L…` links,
-  text selection and screen readers still see every line. Diffs are no longer tables.
+  as a unit while off screen, with exact placeholder heights; changed files are skipped
+  as a whole with their exact height, and only diffs of more than 512 rows also use
+  blocks. Find in page, `#L…` links, text selection and screen readers still see every
+  line. Diffs are no longer tables.
 - Syntax highlighting markup is about 4.5× smaller (one flat span per token, short
   classes), and highlighted files are kept in a 32 MiB in-memory cache, so a large file
   renders in milliseconds after its first view; blame reuses the file's entry.

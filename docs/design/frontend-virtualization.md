@@ -53,6 +53,83 @@ The placeholder height is **exact**, so nothing moves when a block is laid out:
 `content-visibility: auto` keeps skipped content in the DOM: find in page, `#L…` links,
 text selection and screen readers keep working, and pages still work without JavaScript.
 
+#### Hybrid containment for diffs
+
+Measured in headless Edge (6× CPU throttling, `scripts/perf/trace.mjs`), blocks inside a
+diff's horizontal scroller (`.diff-scroll`) removed every height change but cost more per
+frame than the old file-level containment with its guessed height: a containment
+boundary inside a scroll container is mapped through the scroller's clip each frame to
+decide whether it is near the viewport (`computeIntersections`), and every laid-out
+scroller and row clip adds paint property nodes to walk (`PrePaint`) and layerize. So
+diffs contain whole files, outside their scrollers, with exact heights:
+
+- Each open changed file (`.diff-file`, commit, compare, new pull request and pull request
+  files) is one `content-visibility: auto` element carrying `data-rows`: its whole height
+  in rows. Everything in it is a whole number of rows: the header (`FILE_HEADER_ROWS`, 2,
+  hairline included), the pull request's "View file" bar (`FILE_BAR_ROWS`, 2), the
+  placeholder of a file without a diff ("Binary file not shown", `PLACEHOLDER_ROWS`, 3)
+  and every diff row. The box's border is outside the placeholder
+  (`contain-intrinsic-block-size` sizes the content box), so nothing is approximated.
+- The diff's own horizontal scrollbar is the one thing CSS cannot know: it takes space
+  only where the platform's scrollbars do (not on phones or macOS) and only when the diff
+  is wider than the file. `blocks.js` measures the scrollbar once and, for files whose
+  diff's minimum width (from the widest line, `cols-N`) exceeds the file's width, sets
+  the placeholder through the CSSOM with the scrollbar added. It recomputes when the
+  column of files changes width; a file rendered before the change keeps the size
+  `auto` remembered, which can be off by the scrollbar until it is rendered again.
+  Without JavaScript the placeholder of such a file is short by the scrollbar until its
+  first render.
+- Blocks only where they pay: diffs of more than `BLOCKED_ABOVE_ROWS` (512) rows also
+  keep their rows in `.vblock`s inside the file. Laying out a file costs about 0.4 ms
+  per row at 6× (a 4,000-row file is one 1.5 s frame there, ~250 ms unthrottled); at 512
+  the worst first render stays near two 60 Hz frames on a desktop CPU. Between 256 and
+  ∞ the threshold made no measurable difference to scrolling the fixture pages, whose
+  diffs are either under 500 or over 1,100 rows.
+- Pull request files with comment threads or the inline form have no exact height, so
+  they carry no `data-rows` and are not contained as a whole: their rows keep exact
+  blocks (`Blocker` ends one before each thread) and the threads render between them.
+- Diff rows no longer clip their overflow (`overflow-y: clip` per row): one clip node
+  per row made pre-paint and layerize about 13 % of the main thread's time scrolling
+  the 106-file commit. Rows stay exactly one row tall; only an unusually tall glyph can
+  draw past its row.
+
+The file viewer and blame keep blocks inside their single scroller: one scroller, not
+hundreds, and against the old per-line containment they cut main-thread time in a sweep
+by more than half (see **Measurements** below).
+
+
+#### Measurements
+
+Headless Edge, 6× CPU throttling, 5 viewports/s, 1280×1000, pages visited in turn
+(`scripts/perf/trace.mjs` and `sweep.mjs`); median of 7 rounds (5 for the file and
+blame of the 20,000-line `src/huge.rs`). "Old" is the code before this wave (per-line
+containment, diff tables, files with a guessed `auto 24rem`), "blocks" the wave's blocks
+inside each diff's scroller, "hybrid" this design. Main-thread ms per 6 s sweep:
+
+| Page | RunTask old / blocks / hybrid | PrePaint | computeIntersections | Frames > 33 ms | Height changes |
+|---|---|---|---|---|---|
+| 106-file commit | 4967 / 5314 / 4970 | 391 / 778 / 434 | 149 / 471 / 260 | 40 / 40 / 30 | 19 / 0 / 0 |
+| Compare, 152 files | 5060 / 5541 / 4789 | 374 / 979 / 392 | 216 / 629 / 347 | 40 / 47 / 45 (29 / – / 21 rerun) | 9 / 0 / 0 |
+| Pull request files | 2824 / 3507 / 3225 (2549 / – / 2429 rerun) | 179 / 252 / 215 | 330 / 1038 / 619 | 10 / 4 / 2 | 10 / 0 / 0 |
+| File, 20,000 lines | 6769 / 2674 / 2471 | 790 / 235 / 205 | 2592 / 474 / 438 | 7 / 6 / 11 (old: 8 frames in all) | 1 / 0 / 0 |
+| Blame, same file | 6739 / 5379 / 5495 | 787 / 212 / 226 | 3795 / 416 / 402 | 11 / 15 / 15 (old: 13 frames) | 4 / 0 / 0 |
+
+Scroll corrections are 0 and every placeholder is within 2 px of its rendered height on
+every page with blocks or the hybrid; without throttling every page holds 60 fps. The
+three-way runs of the pull request and compare pages were noisy (wide interquartile
+ranges); the two-way reruns are the steadier numbers. The hybrid draws more frames in
+the same sweep, so per frame it is cheaper than old on every diff page except for
+`computeIntersections`.
+
+`computeIntersections` stays about 1.5–1.8× old's on diff pages (≈ 0.4–0.8 ms per frame
+at 6×). It is the relevance check of the file-level containment itself: making the files
+`content-visibility: visible` removes it, while making the inner blocks visible, removing
+the page's own IntersectionObservers or ResizeObserver, the scroller, its container
+query, the sticky headers, or giving files old's `auto 24rem` placeholder changes it by
+10 % or less. With the same 152 targets and file bodies hidden it is still about 1.3× old's
+per call; the rest of the difference is inside Chromium and was not attributed further.
+It is outweighed by lower style, layout and layerize time.
+
 ### Deferred slots (server cost)
 
 Secondary data that is expensive and not needed for the first paint renders as an empty,

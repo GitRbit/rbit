@@ -1258,7 +1258,10 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   (`views::blocks`, `.vblock`), each one `content-visibility: auto` container whose
   placeholder height comes from `data-rows` (typed `attr()`, or `assets/blocks.js`
   through the CSSOM), so nothing moves as blocks are laid out; line numbers and diff
-  signs drawn by CSS. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
+  signs drawn by CSS. Each open changed file is contained as a whole the same way
+  (`.diff-file[data-rows]`: header, bars and placeholders are whole rows; blocks.js adds
+  the diff's scrollbar where it takes space), and only diffs of more than
+  `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
 - Syntax highlighting resolves syntect's scopes to one short class per token in Rust
   (flat spans, styled categories only) and caches highlighted files by blob id
   (`render::highlight_cache`, 32 MiB). Pull request counts are cached by base and head
