@@ -10,6 +10,7 @@ pub mod archives;
 pub mod audit;
 pub mod blame;
 pub mod collaborators;
+pub mod contributions;
 mod credentials;
 pub mod error;
 pub mod events;
@@ -120,6 +121,7 @@ pub struct ServiceContext {
 /// All services, constructed once at start-up and shared by reference.
 #[derive(Debug, Clone)]
 pub struct Services {
+    pub contributions: contributions::ContributionService,
     pub accounts: AccountService,
     pub admin: AdminService,
     pub audit: AuditService,
@@ -211,6 +213,7 @@ impl Services {
 
         Ok(Self {
             accounts: accounts.clone(),
+            contributions: contributions::ContributionService::new(ctx.clone()),
             audit: AuditService::new(ctx.clone()),
             blame: BlameService::new(),
             jobs: JobService::new(ctx.clone()),

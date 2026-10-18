@@ -29,6 +29,8 @@
   <a class="tab" href="/{{ name }}?tab=stars" {% if tab == "stars" %}aria-current="page"{% endif %}>Stars <span class="text-ink-faint">{{ star_count }}</span></a>
 </nav>
 
+{% include "contributions.html" %}
+
 <section class="mt-6">
   {% if tab == "repositories" && is_self %}
   <div class="mb-3 flex justify-end"><a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New repository</a></div>

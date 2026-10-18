@@ -16,6 +16,38 @@
 @source "../templates";
 @source "../src";
 
+/* Contribution calendars share semantic theme colors with the rest of the UI. */
+.contribution-calendar { display: block; width: 100%; }
+.contribution-quarters { display: none; }
+.contribution-calendar text, .contribution-quarters text { fill: var(--ink-muted); font-size: 10px; }
+.contribution-quarters text { font-size: 12px; }
+.contribution-quarters svg { display: block; width: 100%; min-width: 0; }
+@media (max-width: 640px) {
+  .contribution-year { display: none; }
+  .contribution-quarters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+}
+@media (max-width: 400px) {
+  .contribution-quarters { grid-template-columns: minmax(0, 1fr); }
+}
+.contribution-level-0 { fill: var(--hover); background: var(--hover); }
+.contribution-level-1 { fill: color-mix(in srgb, var(--success) 25%, var(--surface)); background: color-mix(in srgb, var(--success) 25%, var(--surface)); }
+.contribution-level-2 { fill: color-mix(in srgb, var(--success) 50%, var(--surface)); background: color-mix(in srgb, var(--success) 50%, var(--surface)); }
+.contribution-level-3 { fill: color-mix(in srgb, var(--success) 75%, var(--surface)); background: color-mix(in srgb, var(--success) 75%, var(--surface)); }
+.contribution-level-4 { fill: var(--success); background: var(--success); }
+.contribution-calendar rect:focus, .contribution-quarters rect:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+.contribution-legend { display: flex; align-items: center; gap: 4px; }
+.contribution-legend i { width: 12px; height: 12px; border-radius: 2px; }
+.contribution-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.contribution-stats dt { color: var(--ink-muted); font-size: 12px; }
+.contribution-stats dd { margin-top: 4px; font-size: 18px; font-weight: 600; }
+.contribution-months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; }
+.contribution-months > div { display: flex; flex-direction: column; align-items: center; }
+.contribution-months svg { width: 100%; max-width: 48px; }
+@media (max-width: 480px) {
+  .contribution-stats { grid-template-columns: repeat(2, 1fr); }
+  .contribution-months { grid-template-columns: repeat(6, 1fr); }
+}
+
 /* ---------------------------------------------------------------- Tokens */
 
 /*

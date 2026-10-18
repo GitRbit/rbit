@@ -319,6 +319,7 @@ impl CommitDay {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/commits.html")]
 pub struct CommitsPage {
+    pub contributions: super::contributions::ContributionCalendar,
     pub page: Page,
     pub header: RepoHeader,
     pub switcher: RefSwitcher,
@@ -371,8 +372,8 @@ mod tests {
         BlobPage {
             page: Page {
                 site_name: "rbit".to_owned(),
-                title: None,
                 branding: rbit_core::config::BrandingConfig::default(),
+                title: None,
                 viewer: None,
                 path: "/o/r/blob/main/a.rs".to_owned(),
                 theme: crate::themes::Theme::System,

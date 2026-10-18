@@ -101,6 +101,7 @@ fn display_url(url: &str) -> String {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "org/profile.html")]
 pub struct OrgProfilePage {
+    pub contributions: super::contributions::ContributionCalendar,
     pub page: Page,
     pub header: OrgHeader,
     pub repos: Vec<RepoCard>,
@@ -283,8 +284,8 @@ mod tests {
         let html = OrgSettingsPage {
             page: Page {
                 site_name: "rbit".into(),
-                title: None,
                 branding: rbit_core::config::BrandingConfig::default(),
+                title: None,
                 viewer: None,
                 path: "/acme/settings".into(),
                 theme: crate::themes::Theme::System,

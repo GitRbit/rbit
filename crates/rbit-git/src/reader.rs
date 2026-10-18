@@ -286,6 +286,28 @@ impl RepositoryReader {
         .await
     }
 
+    /// Lightweight contribution records, bounded independently of commit message size.
+    /// Walk the whole ancestry window: author dates need not follow traversal order.
+    pub async fn contributions(&self, revision: String, start: i64, end: i64) -> Result<(Vec<(String, i64, String)>, bool), GitError> {
+        self.with_repo(move |repo| {
+            let tip = resolve_commit(repo, &revision)?;
+            let mut records = Vec::new();
+            for (index, info) in repo.rev_walk([tip]).all().map_err(GitError::backend)?.enumerate() {
+                if index == 100_000 {
+                    return Ok((records, true));
+                }
+                let commit = info.map_err(GitError::backend)?.object().map_err(GitError::backend)?;
+                let author = commit.author().map_err(GitError::backend)?.trim();
+                let seconds = author.seconds();
+                if (start..end).contains(&seconds) {
+                    records.push((commit.id.to_hex().to_string(), seconds, author.email.to_str_lossy().into_owned()));
+                }
+            }
+            Ok((records, false))
+        })
+        .await
+    }
+
     /// Resolved branch tips for graphs, without allocating full commit messages.
     pub async fn branch_tips(&self) -> Result<Vec<RefSummary>, GitError> {
         self.with_repo(|repo| {

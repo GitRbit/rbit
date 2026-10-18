@@ -106,6 +106,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}/tree/{*rest}", get(repo::tree))
         .route("/{owner}/{repo}/tree-commits/{*rest}", get(repo::entry_commits))
         .route("/{owner}/{repo}/language-files", get(repo::language_files))
+        .route("/{owner}/{repo}/activity", get(repo::activity))
         .route("/{owner}/{repo}/blob/{*rest}", get(repo::blob))
         .route("/{owner}/{repo}/raw/{*rest}", get(repo::raw))
         .route("/{owner}/{repo}/commits", get(repo::commits_default))

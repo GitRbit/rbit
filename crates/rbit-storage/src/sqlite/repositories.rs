@@ -219,6 +219,16 @@ impl RepositoryStore {
         rows.into_iter().map(OwnedRepository::try_from).collect()
     }
 
+    /// Contribution scans use exactly the same visibility rules as repository pages.
+    pub async fn contribution_repositories(&self, viewer: Option<AccountId>, is_admin: bool) -> Result<Vec<OwnedRepository>, StorageError> {
+        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!("WHERE ", readable_by!("?1", "?2"), " ORDER BY r.id"))
+            .bind(viewer.map(|id| id.0))
+            .bind(is_admin)
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter().map(OwnedRepository::try_from).collect()
+    }
+
     /// The dashboard list: repositories owned by `user`, by an organisation they belong
     /// to, or shared with them as a collaborator — each only if they may read it — most
     /// recently updated first. (Team grants are on organisation repositories, so they are

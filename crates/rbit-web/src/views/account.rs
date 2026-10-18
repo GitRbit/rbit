@@ -9,6 +9,7 @@ use crate::views::{
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "account/profile.html")]
 pub struct ProfilePage {
+    pub contributions: super::contributions::ContributionCalendar,
     pub page: Page,
     pub name: String,
     pub label: String,

@@ -19,6 +19,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 pub struct ProfileQuery {
     tab: Option<String>,
+    year: Option<i32>,
 }
 
 pub async fn profile(
@@ -30,7 +31,7 @@ pub async fn profile(
 ) -> WebResult<Response> {
     let account = state.services.accounts.find_account(&owner).await?;
     if account.is_organization() {
-        return super::orgs::profile(&state, &viewer, page, account.name.as_str()).await;
+        return super::orgs::profile(&state, &viewer, page, account.name.as_str(), query.year).await;
     }
     let own_repos = state.services.repositories.list_for_owner(viewer.user(), &account).await?;
     let starred = state.services.stars.starred_by(viewer.user(), &account).await?;
@@ -38,8 +39,16 @@ pub async fn profile(
 
     let tab = if query.tab.as_deref() == Some("stars") { "stars" } else { "repositories" };
     let listed = if tab == "stars" { &starred } else { &own_repos };
+    let calendar = crate::views::contributions::ContributionCalendar::new(
+        query.year,
+        "Commits matching this user's account email on default branches.",
+        tab,
+    );
+    let (start, end) = calendar.bounds();
+    let contributions = calendar.populate(&state.services.contributions.account(viewer.user(), &account, start, end).await?);
 
     Ok(ProfilePage {
+        contributions,
         page: page.titled(account.label().to_owned()),
         name: account.name.to_string(),
         label: account.label().to_owned(),

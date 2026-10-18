@@ -127,11 +127,15 @@ pub async fn create(
 // ------------------------------------------------------------------ profile
 
 /// `/{org}`: called by the account profile route once it knows the name is an organisation.
-pub async fn profile(state: &AppState, viewer: &Viewer, page: Page, name: &str) -> WebResult<Response> {
+pub async fn profile(state: &AppState, viewer: &Viewer, page: Page, name: &str, year: Option<i32>) -> WebResult<Response> {
     let user = viewer.user();
     let ctx = state.services.orgs.open(user, name).await?;
     let (header, repos) = header(state, user, &ctx, OrgTab::Repositories).await?;
+    let calendar = crate::views::contributions::ContributionCalendar::new(year, "Commits across this organization's default branches.", "");
+    let (start, end) = calendar.bounds();
+    let contributions = calendar.populate(&state.services.contributions.account(user, &ctx.org.account, start, end).await?);
     Ok(OrgProfilePage {
+        contributions,
         page: page.titled(ctx.org.label().to_owned()),
         can_create_repo: ctx.is_member() || user.is_some_and(|u| u.is_admin),
         new_repo_url: format!("/new?owner={}", ctx.org.name()),

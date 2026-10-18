@@ -36,6 +36,31 @@ use crate::{
 };
 
 const COMMITS_PER_PAGE: usize = 30;
+
+#[derive(Debug, Deserialize)]
+pub struct ActivityQuery {
+    year: Option<i32>,
+}
+
+/// Default-branch contribution calendar, including a useful empty-repository state.
+pub async fn activity(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ActivityQuery>,
+) -> WebResult<crate::views::contributions::ActivityPage> {
+    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    let calendar =
+        crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
+    let (start, end) = calendar.bounds();
+    let contributions = calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?);
+    Ok(crate::views::contributions::ActivityPage {
+        page: page.titled(format!("Activity · {}", loaded.ctx.repo.full_name())),
+        header: loaded.header(&state, "activity"),
+        contributions,
+    })
+}
 /// Raw downloads are read fully into memory; refuse anything absurdly large.
 const MAX_RAW_BYTES: usize = 100 * 1024 * 1024;
 
@@ -109,7 +134,7 @@ impl RepoPage {
             clone_url: format!("{}/{}.git", state.config.server.base_url(), repo.full_name()),
             ssh_clone_url: state.config.ssh.enabled.then(|| state.config.ssh.clone_url(&state.config.server, &repo.full_name())),
             home_url: self.urls.home(),
-            commits_url: self.urls.commits(&landing),
+            commits_url: format!("{}/commits", self.urls.home()),
             branches_url: self.urls.branches(),
             tags_url: self.urls.tags(),
             releases_url: self.urls.releases(),
@@ -521,6 +546,7 @@ pub async fn raw(
 #[derive(Debug, Deserialize)]
 pub struct PageQuery {
     page: Option<usize>,
+    year: Option<i32>,
 }
 
 /// `GET /{owner}/{repo}/commits` — history of the default branch.
@@ -532,10 +558,8 @@ pub async fn commits_default(
     Query(query): Query<PageQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let Some(revision) = loaded.landing_revision() else {
-        return Ok(Redirect::to(&loaded.urls.home()).into_response());
-    };
-    Ok(render_commits(&state, loaded, page, revision, query.page.unwrap_or(1)).await?.into_response())
+    let revision = loaded.landing_revision().unwrap_or_else(|| loaded.default_branch().to_owned());
+    Ok(render_commits(&state, loaded, page, revision, query).await?.into_response())
 }
 
 /// `GET /{owner}/{repo}/commits/{revision}`
@@ -548,14 +572,22 @@ pub async fn commits(
 ) -> WebResult<CommitsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, _) = loaded.split(rest).await?;
-    render_commits(&state, loaded, page, revision, query.page.unwrap_or(1)).await
+    render_commits(&state, loaded, page, revision, query).await
 }
 
-async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, page_number: usize) -> WebResult<CommitsPage> {
-    let page_number = page_number.max(1);
+async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<CommitsPage> {
+    let calendar =
+        crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
+    let (start, end) = calendar.bounds();
+    let contributions = calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?);
+    let page_number = query.page.unwrap_or(1).max(1);
     let skip = commit_offset(page_number)?;
     // Fetch one extra to learn whether an older page exists.
-    let mut history = loaded.ctx.reader.history(revision.clone(), skip, COMMITS_PER_PAGE + 1).await.map_err(ServiceError::from)?;
+    let mut history = if loaded.landing_revision().is_none() {
+        Vec::new()
+    } else {
+        loaded.ctx.reader.history(revision.clone(), skip, COMMITS_PER_PAGE + 1).await.map_err(ServiceError::from)?
+    };
     let has_older = history.len() > COMMITS_PER_PAGE;
     history.truncate(COMMITS_PER_PAGE);
 
@@ -576,8 +608,9 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
         header: loaded.header(state, "commits"),
         switcher: loaded.switcher(&revision, RefTarget::Commits, ""),
         days: CommitDay::group(commits),
-        newer_url: (page_number > 1).then(|| format!("{base}?page={}", page_number - 1)),
-        older_url: has_older.then(|| format!("{base}?page={}", page_number + 1)),
+        newer_url: (page_number > 1).then(|| format!("{base}?year={}&page={}", contributions.year, page_number - 1)),
+        older_url: has_older.then(|| format!("{base}?year={}&page={}", contributions.year, page_number + 1)),
+        contributions,
     })
 }
 
