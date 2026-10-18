@@ -5,6 +5,8 @@
 //! Merged into the page router, so its routes get sessions, CSRF protection, security
 //! headers and error pages automatically.
 
+use std::sync::Arc;
+
 use axum::{
     Router,
     extract::{Path, State},
@@ -55,15 +57,7 @@ async fn show(
     };
     let content = match blame.as_ref() {
         Blame::Blamed(blamed) => {
-            let highlighter = state.clone();
-            let name = file_name.clone();
-            let shared = std::sync::Arc::clone(blame);
-            let lines = tokio::task::spawn_blocking(move || match shared.as_ref() {
-                Blame::Blamed(file) => highlighter.highlighter.highlight_lines_cached(&file.blob_id, &name, &file.text),
-                _ => Vec::new(),
-            })
-            .await
-            .map_err(WebError::internal)?;
+            let lines = state.highlighter.highlight_lines_cached(&blamed.blob_id, &file_name, BlameText(Arc::clone(blame))).await?;
             BlameContent::Hunks(BlameHunkView::build(&blamed.hunks, &lines, urls))
         }
         Blame::Binary => BlameContent::Binary,
@@ -81,4 +75,16 @@ async fn show(
         raw_url: urls.raw(&revision, &path),
         content,
     })
+}
+
+/// Lets a cold highlighter job retain the shared blame source without copying text.
+struct BlameText(Arc<Blame>);
+
+impl AsRef<str> for BlameText {
+    fn as_ref(&self) -> &str {
+        match self.0.as_ref() {
+            Blame::Blamed(file) => &file.text,
+            Blame::Binary | Blame::TooLarge => "",
+        }
+    }
 }

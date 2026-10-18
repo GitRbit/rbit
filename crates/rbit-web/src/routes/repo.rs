@@ -389,19 +389,7 @@ pub async fn blob(
             let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), parent_path(&path));
             BlobContent::Markdown(render_markdown(&text, Some(&base)))
         }
-        Some(text) => {
-            // Highlighting is CPU-bound; keep it off the async workers.
-            let highlighter_state = state.clone();
-            let highlight_name = name.clone();
-            let content_id = view.id.clone();
-            BlobContent::Code(
-                tokio::task::spawn_blocking(move || {
-                    highlighter_state.highlighter.highlight_lines_cached(&content_id, &highlight_name, &text)
-                })
-                .await
-                .map_err(WebError::internal)?,
-            )
-        }
+        Some(text) => BlobContent::Code(state.highlighter.highlight_lines_cached(&view.id, &name, text).await?),
     };
 
     let urls = &loaded.urls;

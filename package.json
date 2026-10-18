@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test:realworld": "node scripts/perf/realworld.mjs",
-    "test": "node --test scripts/tests/*.test.mjs",
+    "test": "node --test scripts/tests/*.test.mjs scripts/perf/*.test.mjs",
     "build": "npm run vendor && npm run build:css",
     "dev": "node scripts/dev.mjs",
     "build:css": "tailwindcss -i crates/rbit-web/styles/app.css -o crates/rbit-web/assets/app.css --minify",

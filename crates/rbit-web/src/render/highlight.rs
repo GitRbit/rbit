@@ -36,6 +36,7 @@ use syntect::{
 };
 
 use super::highlight_cache::HighlightCache;
+use crate::error::WebResult;
 
 /// Files above these limits are shown as plain text: highlighting cost grows with size
 /// and pathological inputs (minified bundles) gain nothing from it.
@@ -233,9 +234,9 @@ impl LineWriter {
 
 /// Loads syntax definitions lazily on first use (≈ tens of ms), then shares them, and
 /// keeps recently highlighted files ([`Self::highlight_lines_cached`]).
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Highlighter {
-    syntaxes: OnceLock<SyntaxSet>,
+    syntaxes: Arc<OnceLock<SyntaxSet>>,
     cache: HighlightCache,
 }
 
@@ -264,13 +265,15 @@ impl Highlighter {
 
     /// [`Self::highlight_lines`] through the cache. `content_id` must name `text` exactly:
     /// a Git blob id, or a Git LFS object id.
-    pub fn highlight_lines_cached(&self, content_id: &str, file_name: &str, text: &str) -> Vec<String> {
-        if let Some(lines) = self.cache.get(content_id, file_name) {
-            return lines.to_vec();
-        }
-        let lines = self.highlight_lines(file_name, text);
-        self.cache.insert(content_id, file_name, Arc::from(lines.as_slice()));
-        lines
+    /// The source is owned by a cold blocking job; cache hits and shared flights do
+    /// not copy its text or the highlighted strings.
+    pub async fn highlight_lines_cached<T>(&self, content_id: &str, file_name: &str, text: T) -> WebResult<Arc<[String]>>
+    where
+        T: AsRef<str> + Send + 'static,
+    {
+        let highlighter = self.clone();
+        let name = file_name.to_owned();
+        self.cache.get_or_compute(content_id, file_name, move || highlighter.highlight_lines(&name, text.as_ref())).await
     }
 
     /// How the cache of highlighted files is doing.
@@ -649,16 +652,16 @@ fn main() { println!("hi"); }
         assert!(nested >= compact * 3, "nested {nested} bytes, compact {compact} bytes");
     }
 
-    #[test]
-    fn cached_highlighting_is_reused_per_blob_and_name() {
+    #[tokio::test]
+    async fn cached_highlighting_is_reused_per_blob_and_name() {
         let highlighter = Highlighter::new();
         let text = "fn main() {}\n";
-        let first = highlighter.highlight_lines_cached("blob1", "a.rs", text);
-        let again = highlighter.highlight_lines_cached("blob1", "a.rs", "ignored: the id names the text");
-        assert_eq!(first, again);
-        assert_eq!(first, highlighter.highlight_lines("a.rs", text));
-        let as_text = highlighter.highlight_lines_cached("blob1", "a.txt", text);
-        assert_eq!(as_text, ["fn main() {}"], "another name may pick another syntax");
+        let first = highlighter.highlight_lines_cached("blob1", "a.rs", text).await.unwrap();
+        let again = highlighter.highlight_lines_cached("blob1", "a.rs", "ignored: the id names the text").await.unwrap();
+        assert!(Arc::ptr_eq(&first, &again));
+        assert_eq!(first.as_ref(), highlighter.highlight_lines("a.rs", text));
+        let as_text = highlighter.highlight_lines_cached("blob1", "a.txt", text).await.unwrap();
+        assert_eq!(as_text.as_ref(), ["fn main() {}"], "another name may pick another syntax");
         let stats = highlighter.cache_stats();
         assert_eq!((stats.hits, stats.misses, stats.entries), (1, 2, 2));
     }

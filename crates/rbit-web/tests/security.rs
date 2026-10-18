@@ -7,8 +7,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use rbit_core::Config;
-use rbit_services::{Services, SignUp};
+use rbit_core::{Config, Visibility};
+use rbit_services::{CreateRepository, Services, SignUp};
 use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
 use tower::ServiceExt;
@@ -85,4 +85,61 @@ async fn offline_page_is_identical_for_signed_in_and_anonymous_visitors() {
     assert_eq!(signed_in.headers()[header::ETAG], anonymous.headers()[header::ETAG]);
     let html = axum::body::to_bytes(signed_in.into_body(), usize::MAX).await.unwrap();
     assert!(!String::from_utf8_lossy(&html).contains("private-offline-user"));
+}
+
+#[tokio::test]
+async fn partial_pages_revalidate_private_access_before_honoring_cached_validators() {
+    let fixture = Fixture::new().await;
+    let user = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "partial-owner".into(), email: "partial@example.com".into(), password: "correct horse battery".into() },
+            Some(true),
+        )
+        .await
+        .unwrap();
+    fixture
+        .services
+        .repositories
+        .create(&user, CreateRepository { name: "private-plans".into(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let token = fixture.services.accounts.start_session(&user).await.unwrap();
+    let cookie = format!("rbit_session={}", token.encode());
+    let path = "/partial-owner/private-plans";
+    let request = |etag: Option<&str>| {
+        let mut request = Request::builder()
+            .uri(path)
+            .header(header::COOKIE, &cookie)
+            .header("HX-Request", "true")
+            .header("Rbit-Partial", path)
+            .header("Rbit-Nav-Epoch", "integration-test");
+        if let Some(etag) = etag {
+            request = request.header(header::IF_NONE_MATCH, etag);
+        }
+        request.body(Body::empty()).unwrap()
+    };
+    let partial = fixture.router.clone().oneshot(request(None)).await.unwrap();
+    assert_eq!(partial.status(), StatusCode::OK);
+    assert_eq!(partial.headers()["rbit-partial"], "true");
+    assert_eq!(partial.headers()[header::CACHE_CONTROL], "private, no-cache");
+    let vary = partial.headers()[header::VARY].to_str().unwrap();
+    for name in ["HX-Request", "Rbit-Partial", "Rbit-Nav-Epoch"] {
+        assert!(vary.contains(name), "{vary}");
+    }
+    let etag = partial.headers()[header::ETAG].to_str().unwrap().to_owned();
+    let html = axum::body::to_bytes(partial.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&html);
+    assert!(html.starts_with("<title>") && html.contains("private-plans"));
+    assert!(!html.contains("<footer") && !html.contains("<!doctype"));
+    let cached = fixture.router.clone().oneshot(request(Some(&etag))).await.unwrap();
+    assert_eq!(cached.status(), StatusCode::NOT_MODIFIED);
+
+    fixture.services.accounts.end_session(&token).await.unwrap();
+    let revoked = fixture.router.clone().oneshot(request(Some(&etag))).await.unwrap();
+    assert_eq!(revoked.status(), StatusCode::NOT_FOUND, "a validator cannot bypass revoked access");
+    assert_eq!(revoked.headers()[header::CACHE_CONTROL], "private, no-cache");
+    assert!(revoked.headers().get("rbit-partial").is_none());
+    assert!(!String::from_utf8_lossy(&axum::body::to_bytes(revoked.into_body(), usize::MAX).await.unwrap()).contains("id=\"repo-subnav\""));
 }

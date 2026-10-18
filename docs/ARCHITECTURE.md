@@ -1283,8 +1283,8 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 - Session expiry scans use a read snapshot. Write transactions recheck and remove at
   most 256 candidates at a time, so a scan does not monopolize the writer or remove a
   session renewed since the snapshot.
-- Navigation: `hx-boost` plus a purpose-built preloader (`assets/preload.js`, listeners on
-  `document` only): ~80 ms hover or mousedown, taps but not scrolls on touch screens,
+- Navigation: `hx-boost` plus a purpose-built preloader (`assets/preload.js`, delegated
+  document events and native XHR terminal cleanup): ~80 ms hover or mousedown, taps but not scrolls on touch screens,
   `data-preload="visible"` links (repository tabs, next pages) when idle within a small
   budget and never under Save-Data or 2G; each URL at most once per freshness window
   (`PRELOAD_MAX_AGE_SECONDS`, shared with the server), never links with their own
@@ -1309,7 +1309,13 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
 - Syntax highlighting resolves syntect's scopes to one short class per token in Rust
   (flat spans, styled categories only) and caches highlighted files by blob id
-  (`render::highlight_cache`, 32 MiB). Pull request counts are cached by base and head
+  (`render::highlight_cache`, 32 MiB). File and blame views share the cached allocation;
+  concurrent misses for one key share a calculation. At most four distinct jobs are
+  admitted, and cancellation does not release a slot before its CPU work finishes.
+  Preload bookkeeping retains at most 128 records, six queued requests and two active
+  requests; navigation and epoch changes discard obsolete work, and Save-Data disables
+  all speculative requests. See [performance-followups.md](performance-followups.md)
+  for measurements and their limits. Pull request counts are cached by base and head
   commit ids in redb (`comparison_counts`).
 - JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
   so every module can be `immutable` and still update on deploy.

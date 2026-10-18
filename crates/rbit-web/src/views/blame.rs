@@ -22,6 +22,8 @@
 //! Blocks are built from borrowed hunks at render time ([`BlamePage::blocks`]), so the
 //! handler keeps passing [`BlameHunkView`]s.
 
+use std::{ops::Range, sync::Arc};
+
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_git::blame::BlameHunk;
@@ -36,12 +38,12 @@ use crate::{
 };
 
 /// One line of the blamed file.
-#[derive(Debug, Clone)]
-pub struct BlameLine {
+#[derive(Debug, Clone, Copy)]
+pub struct BlameLine<'a> {
     /// 1-based line number (also the `#L…` anchor).
     pub number: usize,
     /// Highlighted (or escaped) HTML of the line.
-    pub html: String,
+    pub html: &'a str,
 }
 
 /// A run of lines introduced by one commit, headed by that commit.
@@ -50,23 +52,28 @@ pub struct BlameHunkView {
     pub commit: CommitView,
     /// The path in that commit, when the file was renamed since.
     pub source_path: Option<String>,
-    pub lines: Vec<BlameLine>,
+    lines: Range<usize>,
+    lines_html: Arc<[String]>,
 }
 
 impl BlameHunkView {
     /// Pairs each hunk with its lines; `lines_html[i]` is line `i + 1`. Lines the
     /// highlighter did not produce (a trailing line without content) render empty.
-    pub fn build(hunks: &[BlameHunk], lines_html: &[String], urls: &RepoUrls) -> Vec<Self> {
+    pub fn build(hunks: &[BlameHunk], lines_html: &Arc<[String]>, urls: &RepoUrls) -> Vec<Self> {
         hunks
             .iter()
             .map(|hunk| Self {
                 commit: CommitView::new(&hunk.commit, urls),
                 source_path: hunk.source_path.clone(),
-                lines: (hunk.start_line..hunk.start_line + hunk.line_count)
-                    .map(|number| BlameLine { number, html: lines_html.get(number - 1).cloned().unwrap_or_default() })
-                    .collect(),
+                lines: hunk.start_line..hunk.start_line + hunk.line_count,
+                lines_html: Arc::clone(lines_html),
             })
             .collect()
+    }
+
+    /// Borrows markup from the cached allocation only as the page renders.
+    pub fn lines(&self) -> impl ExactSizeIterator<Item = BlameLine<'_>> {
+        self.lines.clone().map(|number| BlameLine { number, html: self.lines_html.get(number - 1).map_or("", String::as_str) })
     }
 }
 
@@ -79,7 +86,7 @@ pub enum BlameRow<'a> {
     /// The commit that introduced the lines below; [`HEADER_ROWS`] rows tall.
     Header(&'a BlameHunkView),
     /// One line, one row tall.
-    Line(&'a BlameLine),
+    Line(BlameLine<'a>),
 }
 
 impl BlameRow<'_> {
@@ -129,7 +136,7 @@ pub fn blame_blocks(hunks: &[BlameHunkView]) -> Vec<BlameBlock<'_>> {
             blocks.push(std::mem::take(&mut current));
         }
         current.push(BlameRow::Header(hunk));
-        for line in &hunk.lines {
+        for line in hunk.lines() {
             if current.rows == BLOCK_ROWS {
                 blocks.push(std::mem::take(&mut current));
             }
@@ -177,7 +184,7 @@ impl BlamePage {
     pub fn code_columns(&self) -> String {
         let widest = match &self.content {
             BlameContent::Hunks(hunks) => {
-                hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| markup_columns(&line.html)).max().unwrap_or(0)
+                hunks.iter().flat_map(BlameHunkView::lines).map(|line| markup_columns(line.html)).max().unwrap_or(0)
             }
             BlameContent::Binary | BlameContent::TooLarge => 0,
         };
@@ -211,11 +218,16 @@ mod tests {
             BlameHunk { commit: commit("a"), start_line: 1, line_count: 2, source_path: None },
             BlameHunk { commit: commit("b"), start_line: 3, line_count: 2, source_path: Some("old.rs".into()) },
         ];
-        let lines: Vec<String> = ["l1", "l2", "l3"].map(str::to_owned).to_vec();
+        let lines: Arc<[String]> = ["l1", "l2", "l3"].map(str::to_owned).into();
         let views = BlameHunkView::build(&hunks, &lines, &RepoUrls::new("o", "r"));
-        assert_eq!(views[0].lines.iter().map(|l| l.number).collect::<Vec<_>>(), [1, 2]);
-        assert_eq!(views[1].lines[0].html, "l3");
-        assert_eq!(views[1].lines[1].html, "", "missing lines render empty");
+        assert!(Arc::ptr_eq(&views[0].lines_html, &lines));
+        assert!(Arc::ptr_eq(&views[1].lines_html, &lines));
+        assert_eq!(views[0].lines().map(|l| l.number).collect::<Vec<_>>(), [1, 2]);
+        let mut second = views[1].lines();
+        let third = second.next().unwrap();
+        assert_eq!(third.html, "l3");
+        assert_eq!(third.html.as_ptr(), lines[2].as_ptr(), "rows borrow the cached strings");
+        assert_eq!(second.next().unwrap().html, "", "missing lines render empty");
         assert_eq!(views[1].commit.url, format!("/o/r/commit/{}", "b".repeat(40)));
     }
 
@@ -232,7 +244,7 @@ mod tests {
                 hunk
             })
             .collect();
-        let lines: Vec<String> = (1..start).map(|n| format!("<i>line {n}</i>")).collect();
+        let lines: Arc<[String]> = (1..start).map(|n| format!("<i>line {n}</i>")).collect();
         BlameHunkView::build(&hunks, &lines, &RepoUrls::new("o", "r"))
     }
 
@@ -250,7 +262,7 @@ mod tests {
                 match entry {
                     BlameRow::Header(hunk) => {
                         assert!(std::ptr::eq(*hunk, std::ptr::from_ref(&views[headers])), "headers in hunk order");
-                        if let Some(first) = hunk.lines.first() {
+                        if let Some(first) = hunk.lines().next() {
                             assert!(
                                 matches!(block.entries().get(index + 1), Some(BlameRow::Line(line)) if line.number == first.number),
                                 "a header is followed by its first line in the same block"

@@ -42,7 +42,9 @@ credentials.
 | File | What it does |
 |---|---|
 | `fixture.mjs` | Builds the deterministic fixture repository (seeded PRNG, fixed commit dates, so commit ids never change). |
-| `serve.mjs` | Runs the debug build from `target/perf-build` on http://localhost:3005 with data in `target/perf/data`. |
+| `serve.mjs` | Runs an already-built release binary by default, with configurable port/data/build directories, binary hash and raw server log. |
+| `measure.mjs` | Alternating paired HTTP samples with warmups, raw JSON/JSONL evidence and distribution summaries. No browser automation. |
+| `harness.test.mjs` | Tests configuration, ordering, HTTP validation, output capture and browser validity guards. |
 | `seed.mjs` | Signs up the test account `perf`, creates `perf/perf-fixture`, pushes both branches over HTTP and opens pull request #1. Rerunnable. |
 | `scroll-probe.js` | Evaluated in the page: DOM size, navigation timing, a rAF-driven scroll sweep, scrollbar-drag jumps, blank-line sampling, long animation frames, layout shifts. |
 | `trace.mjs` | Headless Edge: a DevTools trace of a scroll sweep per page, main-thread time per phase (style, layout, pre-paint, paint, `content-visibility` intersection checks, …). |
@@ -53,13 +55,16 @@ credentials.
 ## Reproduce
 
 ```bash
-CARGO_TARGET_DIR=target/perf-build cargo build -p rbit-server   # its own exe, never locked by a dev server
+npm run build                               # release embeds the generated assets
+CARGO_TARGET_DIR=target/perf-build cargo build --release -p rbit-server
 node scripts/perf/fixture.mjs                 # target/perf/fixture
 node scripts/perf/serve.mjs                   # second terminal; Ctrl+C stops it
-node scripts/perf/seed.mjs                    # prints the four pages to probe
+node scripts/perf/seed.mjs http://127.0.0.1:3005 # prints the four pages to probe
 ```
 
-Sign in at http://localhost:3005/login as `perf` with the password in
+The launcher prints its base URL (default http://127.0.0.1:3005); pass that same origin
+to `seed.mjs`, for example `node scripts/perf/seed.mjs http://127.0.0.1:3005`.
+Sign in at that origin's `/login` as `perf` with the password in
 `target/perf/credentials.txt` (the repository is public, so signing in only matters for
 the logged-in chrome). Then, on each page, in the devtools console:
 
@@ -69,11 +74,14 @@ globalThis.PERF_PROBE_OPTIONS = { noBackdrop: false }   // true: blur suspect of
 copy(JSON.stringify(PERF_PROBE_RESULT, null, 2))
 ```
 
-Pasting the file evaluates to a promise (the console awaits and prints it); the report is
-also kept in `globalThis.PERF_PROBE_RESULT`. Browser automation can evaluate the file's
-contents the same way. Run each page twice, with `noBackdrop` false and true, at the same
-window size, and reload between runs so caches and `content-visibility` remembered sizes
-start equal.
+The report is also kept in `globalThis.PERF_PROBE_RESULT`. During agent work use only the
+provided CUA browser API to interact with a visible browser; do not start another CDP or
+Playwright driver. The probe requires loaded stylesheets, applied page styling, a complete
+document and a visible fixed viewport. Hidden tabs, resizing or a stalled animation frame
+invalidate the run and clean up the probe. Only compare reports with `valid: true`.
+Use at least six paired rounds, alternating A/B then B/A; reload between runs so remembered
+`content-visibility` sizes start equal. Record screenshot evidence of correct styling as
+well. A scripted scroll sweep is not a measurement of physical wheel input.
 
 To start over: stop the server, delete `target/perf/data` (and `credentials.txt`), rerun
 `seed.mjs`. Rerunning `fixture.mjs` replaces only a directory it created itself.
@@ -124,8 +132,8 @@ healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every r
 - The pages send `Content-Security-Policy: script-src 'self'; style-src 'self'`: the probe
   cannot be `eval`ed from page script or fetched from another port, and an inline
   `<style>` is blocked (the probe uses a constructed stylesheet instead).
-- Check the page is styled before measuring (`dom.headerBackdrop` should not be `none`
-  on a desktop-width window). In the Claude desktop Browser pane, `app.css` and the theme
+- Check the page is styled before measuring (`valid` must be true). In the Claude
+  desktop Browser pane, `app.css` and the theme
   stylesheet failed with `net::ERR_FAILED` while scripts loaded, so pages were unstyled.
 - The pane only animates while it is visible; hidden, requestAnimationFrame stops.
 - Programmatic scrolling (`scrollTop = …`) of a 356,000-element page cost 130-300 ms of
@@ -138,7 +146,8 @@ healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every r
 
 ## Reading the numbers
 
-- Debug build: server timings are only comparable with each other, not with production.
+- Debug and release results are different experiments. `--profile debug` is available
+  for development, but never compare it to release or label it production performance.
 - `sweep.over16_7ms` / `over33ms` count frames longer than one and two 60 Hz frames, from
   requestAnimationFrame timestamps; on a 120 Hz display the median is ~8.3 ms.
 - `blank` tallies sample points on code lines whose content is skipped or has an empty box
@@ -146,8 +155,83 @@ healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every r
   the first frame after a jump.
 - `sweep.positionCorrections` counts frames where the page moved the scroll position by
   itself (scroll anchoring as estimated sizes resolve) — the "scroll jumps" suspect.
-- `noBackdrop` removes `backdrop-filter` from `header.site-header` and `.site-subnav` (both
+- `noBackdrop` removes `backdrop-filter` from `body > header` and `.site-subnav` (both
   sticky and blurred); pass `backdropSelector` to test one alone.
+
+## Paired HTTP measurements
+
+Build each revision with identical toolchain, release flags and assets, **before** timing.
+Keep build command/logs: launch-time Git metadata is not proof of which source produced
+an executable. On PowerShell use `$env:CARGO_TARGET_DIR = 'target/perf-build'` followed
+by `cargo build --release -p rbit-server`. Use a distinct target directory for each
+revision, then launch each from its own worktree, with isolated copies of the same seeded
+data and separate ports. Never open the same live SQLite/redb directory in two servers.
+
+```text
+node scripts/perf/serve.mjs --port 3005 --metadata target/perf/before-server.json
+node scripts/perf/serve.mjs --port 3006 --metadata target/perf/after-server.json
+```
+
+The launcher accepts `--profile release|debug`, `--target-dir PATH` and `--data-dir PATH`.
+For archived source exports use `--source-revision 327354d` (or the actual source revision).
+Use `--source-dir PATH` to run a binary from its archived source directory without
+copying the harness there; this controls the child's working directory and fingerprint.
+Other relative CLI paths remain relative to the worktree containing the harness.
+It records this as a declaration and refuses to attribute an ancestor repository's HEAD
+to an export that is not itself a Git root.
+It saves an executable SHA-256, source revision/diff fingerprint, start time and raw log;
+existing metadata files are never overwritten. Record relevant server configuration in
+the run notes, excluding credentials. Background work, dataset sizes and account state
+must match. The HTTP sampler is deliberately anonymous and sends no cookies.
+
+Save a configuration such as `target/perf/comparison.json` (all filesystem paths below
+are relative to that configuration, URLs are origins of already-running servers):
+
+```json
+{
+  "output": "comparison-01.json",
+  "fixture": "fixture",
+  "notes": "Same fixture refs/data/settings; no builds; record OS load and build commands here",
+  "rounds": 6,
+  "warmups": 2,
+  "variants": [
+    { "name": "before", "baseUrl": "http://127.0.0.1:3005", "metadata": "before-server.json" },
+    { "name": "after", "baseUrl": "http://127.0.0.1:3006", "metadata": "after-server.json" }
+  ],
+  "pages": [
+    { "name": "blob", "path": "/perf/perf-fixture/blob/main/src/huge.rs" },
+    { "name": "blame", "path": "/perf/perf-fixture/blame/main/src/huge.rs" },
+    { "name": "compare", "path": "/perf/perf-fixture/compare/main...big-change" },
+    { "name": "pull-files", "path": "/perf/perf-fixture/pull/1/files" }
+  ]
+}
+```
+
+```text
+node --test scripts/perf/harness.test.mjs
+node scripts/perf/measure.mjs target/perf/comparison.json
+```
+
+Requests run serially, alternating variant order each round, with explicit warmups kept
+in raw output but excluded from summaries. JSONL is appended after every request; JSON
+includes all samples and median/interquartile range/p95. A failed request, redirect,
+unexpected status, compressed response or missing HTML marker makes the run invalid and
+sets a failing exit status. Output files are exclusive; use a new name for each run.
+
+`headersMs` measures time to response headers; `totalMs` includes reading and hashing the
+body; `renderMs` is the server's timing header and remains absent if unavailable.
+`bodyBytes` counts identity HTTP entity bytes, excluding headers/framing. These are **warm
+server HTTP** results with persistent connections; Node does not simulate browser caching,
+HTML parsing, DOM layout, painting or navigation responsiveness. Restart-only runs still
+have OS caches; do not call them cold disk measurements. Keep cold/startup experiments
+separate and restart both variants equally for every paired sample.
+
+Optional page `mode: "partial"` sends `HX-Request` and a required repository `scope`;
+`mode: "preload"` additionally sends `HX-Preloaded`. Set `status: 204` only when testing
+an intentional decline, and `contains` to override the default `id="main"` HTML marker.
+These modes provide server response evidence only: request counts from actual preload
+behavior come from the dedicated preloader tests or a visible browser network capture.
+Never present a fast `204` as faster rendering of the corresponding `200` page.
 
 ## Server-side caps the fixture meets
 

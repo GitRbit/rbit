@@ -326,7 +326,7 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return (StatusCode::INTERNAL_SERVER_ERROR, "failed to read the response body").into_response();
     };
     // The footer's render time changes on every request; leave it out of the ETag.
-    let etag = weak_etag(&crate::timing::without_render_time(&bytes));
+    let etag = weak_etag(crate::timing::without_render_time(&bytes));
     let cache_control = if preloaded { format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}") } else { "private, no-cache".to_owned() };
     parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_str(&cache_control).unwrap_or(HeaderValue::from_static("no-cache")));
     if let Ok(value) = HeaderValue::from_str(&etag) {
@@ -365,11 +365,15 @@ pub(crate) fn is_immutable(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.split(',').any(|d| d.trim().eq_ignore_ascii_case("immutable")))
 }
 
-fn weak_etag(body: &[u8]) -> String {
+fn weak_etag(body: [&[u8]; 2]) -> String {
     use std::fmt::Write;
 
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(body);
+    let mut hash = Sha256::new();
+    for part in body {
+        hash.update(part);
+    }
+    let digest = hash.finalize();
     let mut etag = String::from("W/\"");
     for byte in digest.iter().take(10) {
         let _ = write!(etag, "{byte:02x}");
@@ -400,6 +404,44 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
+
+    #[test]
+    fn hashing_borrowed_parts_preserves_existing_validators() {
+        use sha2::{Digest, Sha256};
+        use std::fmt::Write;
+
+        let bodies: &[&[u8]] = &[b"", b"abc", b"<main>hello</main>", b"\0\xff\xc3\xa9"];
+        for body in bodies {
+            let mut expected = String::from("W/\"");
+            for byte in Sha256::digest(body).iter().take(10) {
+                write!(expected, "{byte:02x}").unwrap();
+            }
+            expected.push('"');
+            for split in 0..=body.len() {
+                assert_eq!(weak_etag([&body[..split], &body[split..]]), expected);
+            }
+        }
+        assert_eq!(weak_etag([b"a", b"bc"]), "W/\"ba7816bf8f01cfea4141\"");
+    }
+
+    #[tokio::test]
+    async fn timing_changes_keep_validators_without_removing_the_response_span() {
+        use crate::timing::{MARK_END, MARK_START};
+
+        let body = |elapsed| format!("<main>same</main>{MARK_START}{elapsed}{MARK_END}<footer>end</footer>");
+        let app = Router::new()
+            .route("/first", get(move || async move { axum::response::Html(body("1 ms")) }))
+            .route("/later", get(move || async move { axum::response::Html(body("125 ms")) }))
+            .layer(from_fn(html_caching));
+        let first = app.clone().oneshot(Request::builder().uri("/first").body(Body::empty()).unwrap()).await.unwrap();
+        let etag = first.headers()[header::ETAG].clone();
+        assert_eq!(axum::body::to_bytes(first.into_body(), usize::MAX).await.unwrap().as_ref(), body("1 ms").as_bytes());
+        let later = app.clone().oneshot(Request::builder().uri("/later").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(later.headers()[header::ETAG], etag);
+        let validated =
+            app.oneshot(Request::builder().uri("/later").header(header::IF_NONE_MATCH, etag).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(validated.status(), StatusCode::NOT_MODIFIED);
+    }
 
     #[tokio::test]
     async fn pinned_fragments_are_immutable_only_when_public() {

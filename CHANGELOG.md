@@ -9,6 +9,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- Share cached highlighted lines through file and blame rendering without copying their
+  strings. Coalesce simultaneous requests for the same highlighted file and admit at
+  most four CPU jobs, including work whose requesting page has been cancelled.
+- Hash borrowed HTML slices for ETags instead of allocating another page-sized buffer;
+  existing validators and conditional responses remain compatible.
+- Cancel obsolete preloads and queued work when navigating, changing state or scrolling
+  after a touch. Bound retained preload records, respect Save-Data for all speculation,
+  and consume preload bodies without retaining another complete HTML buffer.
+- Add paired HTTP measurements with executable hashes, raw samples and alternating run
+  order. Reject invalid scroll probes and keep debug and release measurements separate.
 - Reuse bounded blame results and share concurrent calculations for the same file and
   revision. Limit active blame calculations even after a request times out, and keep
   authorization checks fresh.

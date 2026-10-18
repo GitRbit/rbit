@@ -2,7 +2,7 @@
 // evaluate it with a browser automation tool) on a loaded page; it evaluates to a promise
 // that resolves to a plain JSON-serialisable report. It touches nothing on the server.
 // The pages' CSP forbids eval and cross-origin fetches, so the source has to be pasted or
-// sent as is (devtools console, CDP Runtime.evaluate); it cannot be loaded from elsewhere.
+// sent through the supported browser tool; it cannot be loaded from elsewhere.
 //
 // Options come from `globalThis.PERF_PROBE_OPTIONS`, set before evaluating:
 //   noBackdrop        true: turn off backdrop-filter on the sticky bars for the run (the
@@ -32,15 +32,45 @@
 (async (options = {}) => {
   const {
     noBackdrop = false,
-    backdropSelector = "header.site-header, .site-subnav",
+    backdropSelector = "body > header, .site-subnav",
     speed = 3,
     maxSweepMs = 60_000,
   } = options;
 
-  const LINE = ".code-line, .diff-view tr, .diff-view .vblock > div";
+  const startedAt = new Date().toISOString();
+  const invalid = new Set();
+  const observers = [];
+  let sheet = null;
+  const viewport = [innerWidth, innerHeight, devicePixelRatio];
+  const checkVisibility = () => { if (document.visibilityState !== "visible") invalid.add("page became hidden"); };
+  const checkSize = () => { if (viewport.some((value, index) => value !== [innerWidth, innerHeight, devicePixelRatio][index])) invalid.add("viewport changed"); };
+  const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => ({ url: link.href, loaded: Boolean(link.sheet) && !link.disabled }));
+  const header = document.querySelector("body > header");
+  checkVisibility();
+  if (document.readyState !== "complete") invalid.add("page has not finished loading");
+  if (!stylesheets.some((sheet) => new URL(sheet.url).pathname.endsWith("/app.css")) || stylesheets.some((sheet) => !sheet.loaded)) invalid.add("required stylesheet missing or unloaded");
+  if (!header || getComputedStyle(header).position !== "sticky" || getComputedStyle(document.body).display !== "flex") invalid.add("expected page styling is not applied");
+  if (innerWidth <= 0 || innerHeight <= 0 || !document.querySelector("#main")) invalid.add("page has no visible content viewport");
+  document.addEventListener("visibilitychange", checkVisibility);
+  globalThis.addEventListener("resize", checkSize);
+  try {
+  if (invalid.size) throw new Error([...invalid].join("; "));
+
+  // DiffLineView kinds work with direct short-diff rows and virtual blocks alike.
+  // Keep legacy tables, but never treat review comments (including their tables) as rows.
+  const DIFF_ROW = ".diff-view :is(tr, .diff-add, .diff-del, .diff-ctx, .diff-hunk, .diff-eof):not(.diff-comment, .diff-comment *)";
+  const LINE = `.code-line, ${DIFF_ROW}`;
   const BLOCK = ".vblock, .code-lines, .diff-file[open]";
-  const CHROME = "header.site-header, .site-subnav, .diff-file-header, .diff-toolbar, .diff-sidebar";
-  const frame = () => new Promise((done) => requestAnimationFrame(done));
+  const CHROME = "body > header, .site-subnav, .diff-file-header, .diff-toolbar, .diff-sidebar";
+  const frame = () => new Promise((done, reject) => {
+    const timer = setTimeout(() => { cancelAnimationFrame(id); reject(new Error("animation frame stalled for 5 seconds")); }, 5000);
+    const id = requestAnimationFrame((time) => {
+      clearTimeout(timer);
+      checkVisibility(); checkSize();
+      if (invalid.size) reject(new Error([...invalid].join("; ")));
+      else done(time);
+    });
+  });
   const round = (n) => Math.round(n * 10) / 10;
   const shiftSum = (entries) => Math.round(entries.reduce((sum, e) => sum + e.value, 0) * 1000) / 1000;
   const scroller = document.scrollingElement;
@@ -62,18 +92,17 @@
   const dom = {
     elements: document.getElementsByTagName("*").length,
     codeLines: document.querySelectorAll(".code-line").length,
-    diffRows: document.querySelectorAll(".diff-view tr, .diff-view .vblock > div").length,
+    diffRows: document.querySelectorAll(DIFF_ROW).length,
     diffFiles: document.querySelectorAll(".diff-file").length,
     scrollHeight: scroller.scrollHeight,
     viewport: [innerWidth, innerHeight],
     devicePixelRatio: devicePixelRatio,
-    headerBackdrop: getComputedStyle(document.querySelector("header.site-header") ?? document.body).backdropFilter,
+    headerBackdrop: getComputedStyle(header).backdropFilter,
   };
 
   // --- Observers ----------------------------------------------------------------------------
   const loafs = [];
   const shifts = [];
-  const observers = [];
   const observe = (type, sink, buffered = false) => {
     if (!PerformanceObserver.supportedEntryTypes?.includes(type)) return false;
     const observer = new PerformanceObserver((list) => sink(list.getEntries()));
@@ -131,7 +160,6 @@
 
   // --- Backdrop suspect ---------------------------------------------------------------------
   // A constructed sheet: the page's CSP (`style-src 'self'`) blocks an inline <style>.
-  let sheet = null;
   if (noBackdrop) {
     sheet = new CSSStyleSheet();
     sheet.replaceSync(`${backdropSelector} { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }`);
@@ -223,9 +251,12 @@
 
   // --- Report -------------------------------------------------------------------------------
   await new Promise((done) => setTimeout(done, 100)); // let observers deliver
-  for (const observer of observers) observer.disconnect();
-  if (sheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+  checkVisibility(); checkSize();
   const report = {
+    valid: invalid.size === 0,
+    invalidReasons: [...invalid],
+    startedAt,
+    stylesheets,
     url: location.href,
     options: { noBackdrop, backdropSelector: noBackdrop ? backdropSelector : null, speed },
     userAgent: navigator.userAgent,
@@ -254,4 +285,15 @@
   };
   globalThis.PERF_PROBE_RESULT = report;
   return report;
+  } catch (error) {
+    invalid.add(error.message);
+    const report = { valid: false, invalidReasons: [...invalid], startedAt, url: location.href, viewport, stylesheets };
+    globalThis.PERF_PROBE_RESULT = report;
+    return report;
+  } finally {
+    for (const observer of observers) observer.disconnect();
+    if (sheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter((candidate) => candidate !== sheet);
+    document.removeEventListener("visibilitychange", checkVisibility);
+    globalThis.removeEventListener("resize", checkSize);
+  }
 })(globalThis.PERF_PROBE_OPTIONS);

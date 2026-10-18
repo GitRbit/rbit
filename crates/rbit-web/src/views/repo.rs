@@ -1,5 +1,7 @@
 //! Repository pages and their view models.
 
+use std::sync::Arc;
+
 use askama::Template;
 use askama_web::WebTemplate;
 use rbit_git::{CommitSummary, RefKind, RefSummary};
@@ -226,7 +228,7 @@ pub struct TreePage {
 #[derive(Debug, Clone)]
 pub enum BlobContent {
     /// One HTML fragment per line (highlighted or escaped).
-    Code(Vec<String>),
+    Code(Arc<[String]>),
     /// Rendered, sanitised Markdown.
     Markdown(String),
     Binary,
@@ -395,8 +397,11 @@ mod tests {
 
     #[test]
     fn blob_lines_render_in_blocks_with_their_ids() {
-        let lines: Vec<String> = (1..=130).map(|n| format!("<b>line {n}</b>")).collect();
-        let html = blob_page(BlobContent::Code(lines)).render().unwrap();
+        let lines: Arc<[String]> = (1..=130).map(|n| format!("<b>line {n}</b>")).collect();
+        let page = blob_page(BlobContent::Code(Arc::clone(&lines)));
+        let blocks = page.code_blocks();
+        assert_eq!(blocks[0].rows()[0].html.as_ptr(), lines[0].as_ptr(), "rendered rows borrow the cached strings");
+        let html = page.render().unwrap();
         assert!(!html.contains("style="), "no inline styles under the CSP");
 
         let blocks: Vec<&str> = html.split(r#"<div class="vblock" data-rows=""#).skip(1).collect();

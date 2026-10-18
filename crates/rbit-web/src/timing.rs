@@ -58,12 +58,14 @@ fn format(elapsed: Duration) -> String {
     }
 }
 
-/// `body` with the render-time span cut out, so identical pages hash identically.
-pub fn without_render_time(body: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+/// Borrowed parts of `body` around its first complete render-time span. Hashing them
+/// in order keeps validators stable without copying the rest of a large HTML page.
+/// With no complete span, the first part is the entire body and the second is empty.
+pub fn without_render_time(body: &[u8]) -> [&[u8]; 2] {
     let find = |haystack: &[u8], needle: &str| haystack.windows(needle.len()).position(|w| w == needle.as_bytes());
-    let Some(start) = find(body, MARK_START) else { return body.into() };
-    let Some(end) = find(&body[start..], MARK_END).map(|i| start + i + MARK_END.len()) else { return body.into() };
-    [&body[..start], &body[end..]].concat().into()
+    let Some(start) = find(body, MARK_START) else { return [body, &[]] };
+    let Some(end) = find(&body[start..], MARK_END).map(|i| start + i + MARK_END.len()) else { return [body, &[]] };
+    [&body[..start], &body[end..]]
 }
 
 #[cfg(test)]
@@ -82,8 +84,38 @@ mod tests {
         let a = format!("<p>a{MARK_START}1 ms{MARK_END}b</p>");
         let b = format!("<p>a{MARK_START}9 ms{MARK_END}b</p>");
         assert_eq!(without_render_time(a.as_bytes()), without_render_time(b.as_bytes()));
-        assert_eq!(&*without_render_time(a.as_bytes()), b"<p>ab</p>");
-        assert_eq!(&*without_render_time(b"<p>plain</p>"), b"<p>plain</p>");
+        assert_eq!(without_render_time(a.as_bytes()).concat(), b"<p>ab</p>");
+        assert_eq!(without_render_time(b"<p>plain</p>").concat(), b"<p>plain</p>");
+    }
+
+    #[test]
+    fn absent_malformed_and_multiple_markers_keep_the_existing_cut() {
+        let cases = [
+            (String::new(), String::new()),
+            (format!("a{MARK_START}missing end"), format!("a{MARK_START}missing end")),
+            (format!("a{MARK_END}b"), format!("a{MARK_END}b")),
+            (format!("{MARK_END}a{MARK_START}b"), format!("{MARK_END}a{MARK_START}b")),
+            (format!("a{MARK_START}one{MARK_END}b{MARK_START}two{MARK_END}c"), format!("ab{MARK_START}two{MARK_END}c")),
+            (format!("a{MARK_START}{MARK_START}nested{MARK_END}{MARK_END}b"), format!("a{MARK_END}b")),
+            (format!("{MARK_START}all{MARK_END}"), String::new()),
+        ];
+        for (body, expected) in cases {
+            assert_eq!(without_render_time(body.as_bytes()).concat(), expected.as_bytes(), "{body}");
+        }
+    }
+
+    #[test]
+    fn large_pages_borrow_the_original_body_on_both_sides() {
+        let mut body = vec![b'x'; 2 * 1024 * 1024];
+        let start = body.len();
+        body.extend_from_slice(format!("{MARK_START}1 ms{MARK_END}").as_bytes());
+        let end = body.len();
+        body.extend_from_slice(b"footer");
+        let [before, after] = without_render_time(&body);
+        assert_eq!(before.len(), start);
+        assert_eq!(before.as_ptr(), body.as_ptr());
+        assert_eq!(after, b"footer");
+        assert_eq!(after.as_ptr(), body[end..].as_ptr());
     }
 
     #[tokio::test]

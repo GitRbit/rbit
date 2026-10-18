@@ -9,8 +9,9 @@
 //   page, and never under Save-Data or on a 2g connection.
 // * Each URL at most once per freshness window: the server keeps a preload fresh in the
 //   browser cache for `PRELOAD_MAX_AGE_SECONDS` (rendered into <body data-preload-fresh>),
-//   and the record is dropped when the navigation epoch changes. At most MAX_IN_FLIGHT
-//   preloads run at a time.
+//   and records are bounded and dropped when the navigation epoch changes. At most
+//   MAX_IN_FLIGHT preloads run at a time; obsolete work is aborted. Save-Data disables
+//   all speculative requests, including hover and touch intent.
 // * Cache key: the preload sends exactly the headers the navigation will send and the
 //   server varies on (nav.js `navigationHeaders`: HX-Request, the epoch and, inside a
 //   repository, Rbit-Partial); htmx's other headers (HX-Current-URL, HX-Target, …) are not
@@ -28,6 +29,7 @@ const TOUCH_DELAY_MS = 60;
 const TOUCH_SLOP_PX = 8;
 const MAX_IN_FLIGHT = 2;
 const MAX_QUEUED = 6;
+const MAX_RECORDS = 128;
 const VISIBLE_BUDGET = 4;
 const FRESH_MS = (Number(document.body.dataset.preloadFresh) || 30) * 1000;
 
@@ -69,53 +71,127 @@ function isPreloadable(link) {
 
 // ---------------------------------------------------------------- queue
 
-/** When each URL (with its headers) was last preloaded, for the current epoch. */
+const connection = navigator.connection;
+const constrained = () => Boolean(connection?.saveData) || /(^|-)2g$/.test(connection?.effectiveType ?? "");
+
+/** Bounded pending and completed records for this epoch, keyed by navigation headers. */
 const preloaded = new Map();
 let preloadedEpoch = navigationEpoch();
 const queue = [];
-let inFlight = 0;
+const active = new Set();
+const navigations = new Set();
+let suspended = false;
+const navigating = () => suspended || navigations.size > 0;
 
-/** Queues a preload of `link`; false when it is not preloadable or already fresh. */
-function preload(link, { soon = true } = {}) {
-  if (!isPreloadable(link)) return false;
-  if (preloadedEpoch !== navigationEpoch()) {
-    preloaded.clear();
-    preloadedEpoch = navigationEpoch();
+function forget(job) {
+  // An old, aborted request may settle after a new request for the same URL exists.
+  if (preloaded.get(job.key) === job) preloaded.delete(job.key);
+}
+
+function cancel(job) {
+  if (job.done) return;
+  forget(job);
+  const index = queue.indexOf(job);
+  if (index !== -1) queue.splice(index, 1);
+  job.controller?.abort();
+}
+
+function cancelObsolete(destination = null) {
+  // A queued destination has not started yet: navigation will fetch it directly.
+  for (const job of queue.splice(0)) forget(job);
+  for (const job of active) {
+    if (job.url !== destination) cancel(job);
   }
+  cancelHover();
+  finishTouch();
+  stopVisibleLinks();
+}
+
+function synchronizeEpoch() {
+  const epoch = navigationEpoch();
+  if (preloadedEpoch === epoch) return;
+  preloadedEpoch = epoch;
+  cancelObsolete();
+  preloaded.clear();
+}
+
+function pruneRecords() {
+  const now = performance.now();
+  for (const job of preloaded.values()) {
+    if (job.done && now - job.at >= FRESH_MS) forget(job);
+  }
+  // Pending work is already bounded by the queue and active limits. Evict only
+  // completed records, so an eviction cannot start duplicate in-flight requests.
+  for (const job of preloaded.values()) {
+    if (preloaded.size < MAX_RECORDS) break;
+    if (job.done) forget(job);
+  }
+}
+
+/** Returns newly queued work, or null when it would not help the navigation. */
+function preload(link, { soon = true } = {}) {
+  synchronizeEpoch();
+  if (navigating() || connection?.saveData || !link.isConnected || !isPreloadable(link)) return null;
   const url = new URL(link.href, location.href);
   url.hash = "";
   const headers = navigationHeaders(url.href);
   const key = `${headers["Rbit-Partial"] ?? ""} ${url.href}`;
-  const at = preloaded.get(key);
-  if (at !== undefined && performance.now() - at < FRESH_MS) return false;
-  preloaded.set(key, performance.now());
+  const existing = preloaded.get(key);
+  if (existing && (!existing.done || performance.now() - existing.at < FRESH_MS)) return null;
+  pruneRecords();
 
-  const job = { key, url: url.href, headers, soon };
+  const job = { key, url: url.href, headers, soon, done: false, controller: null, at: 0 };
+  preloaded.set(key, job);
   // Intent goes first; viewport preloads wait their turn.
   if (soon) queue.unshift(job);
   else queue.push(job);
-  while (queue.length > MAX_QUEUED) preloaded.delete(queue.pop().key);
+  while (queue.length > MAX_QUEUED) forget(queue.pop());
   pump();
-  return true;
+  return preloaded.get(key) === job ? job : null;
 }
 
 function pump() {
-  while (inFlight < MAX_IN_FLIGHT && queue.length > 0) {
+  synchronizeEpoch();
+  if (navigating() || connection?.saveData) return;
+  while (active.size < MAX_IN_FLIGHT && queue.length > 0) {
     const job = queue.shift();
-    inFlight += 1;
+    job.controller = new AbortController();
+    job.at = performance.now();
+    active.add(job);
     fetch(job.url, {
       headers: { ...job.headers, "HX-Preloaded": "true" },
       credentials: "same-origin",
       priority: job.soon ? "high" : "low",
+      signal: job.controller.signal,
     })
-      // Reading the body lets the browser finish storing it in the cache.
-      .then((response) => response.arrayBuffer())
-      .catch(() => preloaded.delete(job.key))
+      .then(drain)
+      .then((successful) => {
+        if (successful && !job.controller.signal.aborted) job.done = true;
+        else forget(job);
+      })
+      .catch(() => forget(job))
       .finally(() => {
-        inFlight -= 1;
+        // Abort is asynchronous. Keep its slot until the fetch/body actually settles.
+        active.delete(job);
         pump();
       });
   }
+}
+
+async function drain(response) {
+  if (!response.ok) {
+    await response.body?.cancel();
+    return false;
+  }
+  // Finish the browser's HTTP cache write without retaining the whole HTML body.
+  const reader = response.body?.getReader();
+  if (!reader) return true;
+  try {
+    while (!(await reader.read()).done) { /* Discard each chunk after consumption. */ }
+  } finally {
+    reader.releaseLock();
+  }
+  return true;
 }
 
 const linkOf = (target) => (target instanceof Element ? target.closest("a[href]") : null);
@@ -144,7 +220,7 @@ document.addEventListener("pointerout", (event) => {
 });
 
 document.addEventListener("pointerdown", (event) => {
-  if (event.pointerType === "touch" || event.button !== 0) return;
+  if (event.pointerType === "touch" || event.button !== 0 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
   const link = linkOf(event.target);
   if (!link) return;
   cancelHover();
@@ -156,6 +232,13 @@ document.addEventListener("pointerdown", (event) => {
 let touch = null;
 
 function cancelTouch() {
+  if (!touch) return;
+  if (touch.job) cancel(touch.job);
+  finishTouch();
+  pump();
+}
+
+function finishTouch() {
   if (touch) clearTimeout(touch.timer);
   touch = null;
 }
@@ -167,7 +250,11 @@ document.addEventListener(
     const link = event.touches.length === 1 ? linkOf(event.target) : null;
     if (!link || !isPreloadable(link)) return;
     const { clientX: x, clientY: y } = event.touches[0];
-    touch = { link, x, y, timer: setTimeout(() => (cancelTouch(), preload(link)), TOUCH_DELAY_MS) };
+    const intent = { link, x, y, job: null, timer: null };
+    intent.timer = setTimeout(() => {
+      if (touch === intent) intent.job = preload(link);
+    }, TOUCH_DELAY_MS);
+    touch = intent;
   },
   { passive: true },
 );
@@ -183,44 +270,118 @@ document.addEventListener(
 );
 
 // A tap shorter than the delay goes straight to the click; htmx fetches the page then.
-for (const type of ["touchend", "touchcancel"]) document.addEventListener(type, cancelTouch, { passive: true });
+document.addEventListener("touchend", finishTouch, { passive: true });
+document.addEventListener("touchcancel", cancelTouch, { passive: true });
 // Any scroll, of the page or of a scrolling box, means the finger was not tapping.
 document.addEventListener("scroll", cancelTouch, { capture: true, passive: true });
 
 // ---------------------------------------------------------------- visible links
 
-const connection = navigator.connection;
-const constrained = () => Boolean(connection?.saveData) || /(^|-)2g$/.test(connection?.effectiveType ?? "");
 const whenIdle = (callback) =>
   "requestIdleCallback" in window ? requestIdleCallback(callback, { timeout: 2000 }) : setTimeout(callback, 200);
+const cancelIdle = (handle) => "requestIdleCallback" in window ? cancelIdleCallback(handle) : clearTimeout(handle);
 
 let budget = VISIBLE_BUDGET;
+let visibleGeneration = 0;
+const idle = new Set();
 const observer =
   "IntersectionObserver" in window
     ? new IntersectionObserver((entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
+          if (!entry.isIntersecting || idle.size >= budget || navigating() || constrained()) continue;
           const link = entry.target;
           observer.unobserve(link);
-          whenIdle(() => {
-            if (budget > 0 && link.isConnected && !constrained() && preload(link, { soon: false })) budget -= 1;
+          const generation = visibleGeneration;
+          const handle = whenIdle(() => {
+            idle.delete(handle);
+            if (generation === visibleGeneration && budget > 0 && !constrained() && preload(link, { soon: false })) budget -= 1;
           });
+          idle.add(handle);
         }
       })
     : null;
 
+function stopVisibleLinks() {
+  visibleGeneration += 1;
+  observer?.disconnect();
+  for (const handle of idle) cancelIdle(handle);
+  idle.clear();
+}
+
 /** Watches the page's `data-preload="visible"` links, with a fresh budget. */
-function watchVisibleLinks() {
+function watchVisibleLinks(resetBudget = true) {
+  stopVisibleLinks();
   if (!observer) return;
-  observer.disconnect();
-  budget = VISIBLE_BUDGET;
-  if (constrained()) return;
+  if (resetBudget) budget = VISIBLE_BUDGET;
+  if (navigating() || constrained()) return;
   for (const link of document.querySelectorAll('a[data-preload="visible"]')) observer.observe(link);
 }
 
 watchVisibleLinks();
+document.addEventListener("htmx:beforeSend", (event) => {
+  if (!event.detail.requestConfig?.boosted) return;
+  const xhr = event.detail.xhr;
+  navigations.add(xhr);
+  // An overlapping swap can detach the link that originated this request. htmx's
+  // failure events then never reach document, but the XHR still reports termination.
+  for (const type of ["error", "abort", "timeout"]) {
+    xhr.addEventListener(type, () => finishNavigation(xhr), { once: true });
+  }
+  const config = event.detail.requestConfig;
+  const path = config.verb === "get" ? config.path : null;
+  const destination = path ? new URL(path, location.href) : null;
+  if (destination) destination.hash = "";
+  cancelObsolete(destination?.href);
+});
+// nav.js is imported above, so its epoch rotation runs before this listener.
+document.addEventListener("htmx:afterRequest", (event) => {
+  synchronizeEpoch();
+  if (event.detail.requestConfig?.boosted && (!event.detail.successful || event.detail.xhr?.status === 204)) {
+    finishNavigation(event.detail.xhr);
+  }
+});
+
+function resume() {
+  if (navigating()) return;
+  synchronizeEpoch();
+  watchVisibleLinks();
+  pump();
+}
+
+function finishNavigation(xhr) {
+  // htmx can navigate through different links concurrently. An earlier response
+  // must not restart speculation while another navigation is still pending.
+  if (navigations.delete(xhr)) resume();
+}
+
 // After each navigation (partial swaps included) and back/forward.
 document.addEventListener("htmx:afterSettle", (event) => {
-  if (event.detail.requestConfig?.boosted) watchVisibleLinks();
+  if (event.detail.requestConfig?.boosted) finishNavigation(event.detail.xhr);
 });
-document.addEventListener("htmx:historyRestore", watchVisibleLinks);
+function resumeHistory() {
+  suspended = false;
+  resume();
+}
+document.addEventListener("htmx:historyRestore", resumeHistory);
+document.addEventListener("htmx:historyCacheMissLoadError", resumeHistory);
+addEventListener("popstate", (event) => {
+  if (!event.state?.htmx) return;
+  suspended = true;
+  cancelObsolete();
+});
+addEventListener("pagehide", () => {
+  suspended = true;
+  navigations.clear();
+  cancelObsolete();
+});
+addEventListener("pageshow", (event) => {
+  if (event.persisted) resumeHistory();
+});
+connection?.addEventListener?.("change", () => {
+  if (connection.saveData) cancelObsolete();
+  else if (constrained()) {
+    for (const job of [...queue, ...active]) if (!job.soon) cancel(job);
+  }
+  watchVisibleLinks(false);
+  pump();
+});

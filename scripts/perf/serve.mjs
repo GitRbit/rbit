@@ -1,35 +1,71 @@
-// Runs the debug build of rbit for the performance harness on http://localhost:3005, with
-// its own data directory (target/perf/data) so the fixture never mixes with ./data,
-// ./data-live or ./data-alt. It runs its own build from target/perf-build, so a dev server
-// holding target/debug/rbit.exe open (Windows locks running executables) never blocks it.
-// This script does not build, so a measurement never waits on (or races) a compile:
-//
-//   CARGO_TARGET_DIR=target/perf-build cargo build -p rbit-server
-//   node scripts/perf/serve.mjs            # Ctrl+C stops it
-//
-// Debug builds read assets/ from disk, so CSS and JS edits show after a refresh; template
-// and Rust changes need a rebuild and a restart.
+// Launch an already-built benchmark server; never compile during a measurement.
+// See README.md for paired release builds, isolated data and provenance limitations.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { fingerprint, hashFile } from "./support.mjs";
 
-const root = resolve(import.meta.dirname, "..", "..");
-const exe = join(root, "target", "perf-build", "debug", process.platform === "win32" ? "rbit.exe" : "rbit");
-if (!existsSync(exe)) {
-  console.error(`${exe} is missing: build it with CARGO_TARGET_DIR=target/perf-build cargo build -p rbit-server`);
-  process.exit(1);
+export function serveOptions(argv, root) {
+  const options = { profile: "release", port: "3005", "target-dir": "target/perf-build", "data-dir": "target/perf/data", metadata: "", "source-revision": "", "source-dir": "." };
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = argv[i].slice(2);
+    if (!argv[i].startsWith("--") || !Object.hasOwn(options, key) || !argv[i + 1] || argv[i + 1].startsWith("--")) {
+      throw new Error("usage: serve.mjs [--profile release|debug] [--port 3005] [--target-dir PATH] [--data-dir PATH] [--metadata FILE] [--source-dir PATH] [--source-revision LABEL]");
+    }
+    options[key] = argv[i + 1];
+  }
+  if (!["release", "debug"].includes(options.profile)) throw new Error("profile must be release or debug");
+  if (!/^\d+$/.test(options.port) || Number(options.port) < 1 || Number(options.port) > 65535) throw new Error("invalid port");
+  const port = Number(options.port);
+  return {
+    profile: options.profile, port,
+    executable: resolve(root, options["target-dir"], options.profile, process.platform === "win32" ? "rbit.exe" : "rbit"),
+    dataDir: resolve(root, options["data-dir"]),
+    metadata: resolve(root, options.metadata || `target/perf/runs/server-${port}-${Date.now()}.json`),
+    baseUrl: `http://127.0.0.1:${port}`,
+    declaredSourceRevision: options["source-revision"] || null,
+    sourceDir: resolve(root, options["source-dir"]),
+  };
 }
 
-const server = spawn(exe, ["serve"], {
-  cwd: root,
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    RBIT_SERVER__BIND: "127.0.0.1:3005",
-    RBIT_SERVER__PUBLIC_URL: "http://localhost:3005",
-    RBIT_STORAGE__DATA_DIR: join(root, "target", "perf", "data"),
-    RBIT_MAIL__TRANSPORT: "log",
-  },
-});
-server.on("exit", (code) => process.exit(code ?? 0));
-for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill());
+async function main() {
+  const root = resolve(import.meta.dirname, "..", "..");
+  const options = serveOptions(process.argv.slice(2), root);
+  if (!existsSync(options.executable)) throw new Error(`missing ${options.executable}; build the selected profile before launching`);
+  const metadata = {
+    schema: 1, startedAt: new Date().toISOString(), ...options,
+    executableSha256: await hashFile(options.executable), sourceAtLaunch: fingerprint(options.sourceDir),
+    profileEvidence: "declared by launcher; retain the build command and log separately",
+  };
+  mkdirSync(dirname(options.metadata), { recursive: true });
+  writeFileSync(options.metadata, `${JSON.stringify(metadata, null, 2)}\n`, { flag: "wx" });
+  const log = createWriteStream(`${options.metadata}.log`, { flags: "wx" });
+  await new Promise((done, reject) => { log.once("open", done); log.once("error", reject); });
+  const server = spawn(options.executable, ["serve"], {
+    cwd: options.sourceDir, stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      RBIT_SERVER__BIND: `127.0.0.1:${options.port}`,
+      RBIT_SERVER__PUBLIC_URL: options.baseUrl,
+      RBIT_STORAGE__DATA_DIR: options.dataDir,
+      RBIT_MAIL__TRANSPORT: "log",
+    },
+  });
+  for (const stream of [server.stdout, server.stderr]) {
+    stream.pipe(log, { end: false });
+    stream.pipe(process.stdout, { end: false });
+  }
+  console.log(`Benchmark server: ${options.baseUrl}\nMetadata: ${options.metadata}\nRaw server log: ${options.metadata}.log`);
+  server.once("error", (error) => { console.error(error.message); process.exitCode = 1; log.end(); });
+  server.once("close", (code, signal) => {
+    log.end();
+    writeFileSync(`${options.metadata}.exit.json`, JSON.stringify({ endedAt: new Date().toISOString(), code, signal }));
+    process.exitCode = code ?? (signal ? 1 : 0);
+  });
+  for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill());
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => { console.error(error.message); process.exitCode = 1; });
+}
