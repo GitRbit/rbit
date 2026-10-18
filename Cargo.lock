@@ -4146,7 +4146,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-auth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "argon2",
  "base64 0.23.1",
@@ -4167,7 +4167,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proptest",
  "pulldown-cmark",
@@ -4179,7 +4179,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-e2e"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -4201,7 +4201,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-git"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-compression",
  "gix",
@@ -4217,7 +4217,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-mail"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "askama",
  "lettre",
@@ -4229,7 +4229,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4255,7 +4255,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-services"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-ssh"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.4.3",
  "rbit-core",
@@ -4303,7 +4303,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "postcard",
  "rbit-core",
@@ -4320,7 +4320,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-transport"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proptest",
  "rbit-core",
@@ -4332,7 +4332,7 @@ dependencies = [
 
 [[package]]
 name = "rbit-web"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ammonia",
  "askama",

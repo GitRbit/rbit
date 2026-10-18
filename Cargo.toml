@@ -4,7 +4,7 @@ members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crate
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.94"
 license = "MIT OR Apache-2.0"

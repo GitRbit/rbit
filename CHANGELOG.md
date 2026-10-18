@@ -7,12 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-18
+
 ### Added
 
 - Yearly contribution heatmaps on user and organization profiles and repository Commits
   tabs, with daily counts, monthly activity, active days and longest streaks. Calendars
   rearrange into quarters on small screens without horizontal scrolling. Counts respect
   repository visibility and use default-branch commits by UTC author date.
+- White-label instance branding and administrator configuration forms, including
+  customizable names, logos and email presentation.
+
+### Fixed
+
+- Resolve strict lint warnings across the workspace.
 
 ## [0.1.0] - 2026-10-18
 
