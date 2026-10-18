@@ -115,9 +115,11 @@ watch(join(root, "crates"), { recursive: true }, (_event, file) => schedule(file
 watch(join(root, "Cargo.toml"), () => schedule("Cargo.toml"));
 
 const css = spawn("npm", ["run", "watch:css"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
+const js = spawn("npm", ["run", "watch:js"], { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
 
 function shutdown() {
   css.kill();
+  js.kill();
   stopServer().then(() => process.exit(0));
 }
 process.on("SIGINT", shutdown);

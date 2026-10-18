@@ -27,7 +27,7 @@ only at build time and are not distributed.
 
 | What | Where | License |
 |---|---|---|
-| The rbit logo and mascot (the orange frog in a gear) | `crates/rbit-web/assets/logo.png` | Original artwork made for rbit, distributed under the project's MIT OR Apache-2.0 terms |
+| The rbit logo and mascot (the orange frog in a gear) | `crates/rbit-web/assets/logo.png`, `crates/rbit-web/assets/logo-384.avif`, `docs/logo.avif` | Original artwork made for rbit, distributed under the project's MIT OR Apache-2.0 terms |
 | Browser, home-screen and app icons | `crates/rbit-web/assets/icon-*.png`, `apple-touch-icon.png` | Generated from the logo by `npm run icons`; same terms as the logo |
 
 ## Fonts

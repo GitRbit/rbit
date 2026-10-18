@@ -10,7 +10,7 @@ use rbit_web::AppState;
 use tokio::net::TcpListener;
 
 /// How often expired sessions are purged from the key/value store.
-const SESSION_PURGE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const SESSION_PURGE_INTERVAL: Duration = Duration::from_hours(1);
 
 /// Opened persistent stores.
 struct Storage {

@@ -61,7 +61,7 @@ requests (edits you need in files you don't own).
 `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
 `cargo test --workspace`. Limit parallelism with `CARGO_BUILD_JOBS=8` — two other agents are
 building at the same time. Commits are atomic, imperative subject ≤ 72 chars, body explains
-what and why, ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Never push,
+what and why, human attribution only (no AI coauthor trailers). Never push,
 never touch `main`, never merge.
 
 **UI:** monochrome minimal (see HANDOFF §4 Design). Reuse `.box`, `.row`, `.btn`, `.input`,

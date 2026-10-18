@@ -158,8 +158,7 @@ Need a change in a file you don't own? Describe the exact change in your final r
   that builds, is formatted and passes tests on its own (`cargo fmt --all`,
   `cargo clippy --workspace --all-targets`, `cargo test -p <crates you touched>`).
 - Message format: imperative subject ≤ 72 characters, blank line, a body explaining *what and
-  why* (wrapped at 72), ending with the trailer
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+  why* (wrapped at 72). Attribute human contributors only; do not add AI coauthor trailers.
 - Typical sequence: migration + store → service + tests → routes/views/templates → docs.
 - Never rewrite `main`, never merge other branches, never commit generated `app.css`,
   `target/` or `data/`.

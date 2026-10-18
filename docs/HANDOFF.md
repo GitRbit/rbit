@@ -1,5 +1,33 @@
 # rbit — Handoff
 
+## Current release preparation — 2026-10-18
+
+The upstream is **GitRbit/rbit**, a private repository under the GitRbit personal account.
+`main` has been pushed, GitHub Actions and Discussions are enabled, and the repository
+description, topics and community files are configured. Keep the repository private until
+the owner requests publication. No release tag has been pushed.
+
+The 0.1.0 notes in [CHANGELOG.md](../CHANGELOG.md) cover the initial release, compatibility,
+upgrades and known limitations. Imports and push mirrors (M) are on `main`; the W stretch
+items remain follow-up work and are explicitly excluded from the release's feature claims.
+The frontend speed work is also on `main`, including the bundled browser entrypoint and
+hash-authorized initial CSS. Source builds require Rust 1.94+ and Node.js 24.
+
+Follow [CONTRIBUTING.md](../CONTRIBUTING.md#preparing-a-release) for the release gate.
+Require a green CI run for the final commit, review the release notes, and verify platform
+archives and container packaging before public launch. GitHub repository and GHCR package
+visibility are separate. The release workflow has not yet been exercised by a tag.
+
+Commit attribution names human contributors only. AI tool coauthor trailers are removed
+from the GitHub `main` history; do not reintroduce them when integrating older branches.
+The original history is preserved in a local recovery bundle under ignored
+`target/release-prep/`, alongside local check logs and audit evidence.
+
+## Historical milestone snapshot
+
+The snapshot below records the earlier workstream handoff. Its progress counts, commit
+ids and unverified items describe 2026-10-17, not the current release gate above.
+
 **As of 2026-10-17, `main` @ `5607485` plus the milestone 3 documentation commits on top.
 Milestone 2 is complete; milestone 3 ("ready to open-source",
 [design/milestone-3.md](design/milestone-3.md)) is in progress with 7 of its 9 workstreams
@@ -205,8 +233,8 @@ built" and "T0 as built" sections — the model for refining a contract while ag
   `.box`, `.row`, `.btn` (`-primary`/`-ghost`/`-danger`), `.input`, `.badge`, `.tab`;
   colour only for status, diffs, syntax and the language bar. Mobile-first, check 375 px.
 - **Commits are atomic**: each builds, is formatted, lint-clean and tested on its own;
-  imperative subject ≤ 72 chars, body explains what and why, trailer
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. History on `main` is linear.
+  imperative subject ≤ 72 chars, body explains what and why. AI tool coauthor trailers
+  are not permitted. Use rebase or squash for new integrations on `main`.
 - Dependencies must pass `cargo deny check licenses advisories`; new licenses are added to
   `deny.toml` deliberately.
 

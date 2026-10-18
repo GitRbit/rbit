@@ -8,24 +8,97 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
 [![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
-A fast, self-hosted Git platform written in Rust — one binary, no external services.
+**Blazing fast, self-hosted Git — written in Rust, shipped as one binary, with no external services.**
 
-- **Axum + Askama + htmx**: compiled server-side templates, SPA-like navigation without a JS framework.
-- **SQLite + redb + bare Git repositories**: relational data, hot key/value data, and Git's own storage format.
+rbit gives you repositories, issues, pull requests, reviews and CI checks on your own server, and it is
+built around three things: **speed**, **security** and **performance**. No Postgres, no Redis, no
+JavaScript runtime — download it, run it, push.
+
+**[Quick start](#quick-start)** · [Why rbit](#why-rbit) · [Features](#features) · [Install](#install) ·
+[First steps](#first-steps) · [Configuration](#configuration) · [Command line](#command-line) ·
+[Development](#development) · [Community](#community)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-repo-dark.avif">
+    <img src="docs/screenshot-repo-light.avif" width="880" alt="The rbit repository hosted in rbit: the file list with each entry's latest commit, and a sidebar with the description, language breakdown and branch count">
+  </picture>
+</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-pr-dark.avif">
+    <img src="docs/screenshot-pr-light.avif" width="640" alt="A pull request's Files changed tab in rbit, with a reviewer's line comment and the author's reply under the changed code">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-mobile-dark.avif">
+    <img src="docs/screenshot-mobile-light.avif" width="200" alt="The same repository page on a phone">
+  </picture>
+</p>
+
+## Quick start
+
+```bash
+docker run -d --name rbit -p 3000:3000 -v rbit-data:/data ghcr.io/gitrbit/rbit:latest
+```
+
+Open <http://localhost:3000> and sign up — **the first account becomes the site administrator**.
+Create a repository (or import one from GitHub or Gitea), then push:
+
+```bash
+git remote add rbit http://localhost:3000/<you>/<repo>.git
+git push rbit main
+```
+
+No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`, or build
+[from source](#from-source). For a production server, follow [docs/deployment.md](docs/deployment.md).
+
+## Why rbit
+
+### Speed
+
+- **Rust from request to response**: Axum, compiled Askama templates (no runtime template parsing), and
+  gitoxide reading repositories in-process.
+- **Server-rendered, SPA-fast**: htmx swaps only the part of the page that changes — SPA-like navigation
+  without a JavaScript framework, and pages still work with JavaScript disabled.
+- **Fewer asset requests**: initial styles arrive with the HTML, and browser modules ship as one bundle.
+  External scripts and styles have content hashes and immutable caching, with Brotli compression in release builds.
+
+### Security
+
+- **Secure by default**: Argon2id passwords, two-factor authentication with passkeys or TOTP, rate limiting,
+  hashed session and token secrets, strict CSP, origin-checked forms, an audit log.
+- **Least privilege everywhere**: scoped, expiring, revocable tokens; branch protection enforced over HTTPS,
+  SSH and merges; an SSH server that speaks Git and nothing else — no shell, no port forwarding.
+- **Safe outbound requests**: webhooks, mirrors, imports and sign-in reach only public addresses unless you
+  allow otherwise, with DNS pinned to the address that was checked.
+
+### Performance
+
+- **One process, zero services**: SQLite + redb + bare Git repositories — relational data, hot key/value
+  data, and Git's own storage format, all in one data directory.
+- **Bounded work by design**: paged listings, capped workers and budgeted caches, so a huge repository or a
+  20,000-line diff doesn't take the rest of the server down with it.
+- **Built lean**: fat LTO, a single codegen unit and mimalloc — small enough for a small server, fast enough
+  for a team.
+
+## Features
+
+**Git and code**
+
 - **Git over HTTPS and SSH**: smart HTTP (protocol v2) and a built-in SSH server with user and deploy keys.
 - **Git LFS**: batch API, streamed transfers, file locking and `git-lfs-authenticate` over SSH; objects are stored
   once and shared by forks; the browser shows the stored file, not the pointer.
-- **Secure by default**: Argon2id passwords, two-factor authentication with passkeys or TOTP, rate limiting, hashed session
-  and token secrets, strict CSP, origin-checked forms, an audit log.
-- **External sign-in**: OpenID Connect providers and GitHub, with PKCE and verified ID tokens; link providers to
-  existing accounts or let them register new ones.
-- **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
-- **Collaboration**: collaborators and organisation teams with read/write/admin permissions, repository transfer
-  with redirects from old names.
 - **Repository essentials**: releases with attached files, `.zip`/`.tar.gz` archives, blame, compare, forks,
-  pull mirrors, README relative links and images.
+  pull and push mirrors, README relative links and images.
+- **Import from GitHub, GitHub Enterprise and Gitea/Forgejo**: history, LFS objects, issues and pull requests
+  with their original numbers, labels, milestones, comments and releases; the token is never stored and
+  imported history sends no notifications or webhooks.
 - **Edit in the browser**: create, edit, rename, delete and upload files as one commit, directly or on a new
   branch with a pull request; branch protection applies.
+- **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
+
+**Collaboration**
+
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
   GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
   one-click unsubscribe.
@@ -33,15 +106,25 @@ A fast, self-hosted Git platform written in Rust — one binary, no external ser
   mergeability checks, and merging by merge commit, squash or rebase.
 - **Branch protection**: no force pushes or deletion, required pull requests, approvals and status checks,
   restricted pushers — enforced over HTTPS and SSH and for merges.
-- **Commit statuses**: a GitHub-compatible status API for external CI, with checks shown on pull requests and
-  commits.
-- **Automation**: a versioned REST API (`/api/v1`, OpenAPI 3.1: repositories, issues, pull requests,
+- **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
+  with redirects from old names.
+
+**Automation and integrations**
+
+- **REST API and webhooks**: a versioned REST API (`/api/v1`, OpenAPI 3.1: repositories, issues, pull requests,
   collaborators, teams, releases with file uploads, forks, statuses, …) and HMAC-signed, GitHub-shaped webhooks
   (push, issues, pull requests, reviews, releases, collaborators, statuses, …) with a persistent, retrying
   delivery queue.
-- **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
+- **Commit statuses**: a GitHub-compatible status API for external CI, with checks shown on pull requests and
+  commits.
+- **External sign-in**: OpenID Connect providers and GitHub, with PKCE and verified ID tokens; link providers to
+  existing accounts or let them register new ones.
+
+**Running it**
+
 - **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
+- **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
 
 See [docs/deployment.md](docs/deployment.md) for running it in production,
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design, [ROADMAP.md](ROADMAP.md) for
@@ -56,9 +139,9 @@ database migrations.
 ### Release binaries
 
 Every [release](https://github.com/GitRbit/rbit/releases) has archives for Linux (x86_64 and
-aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64), plus a
+aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64, `.zip`), plus a
 `SHA256SUMS` file. Each archive holds the `rbit` binary, the licenses, this README, the
-changelog, the example configuration and the systemd unit.
+changelog, the third-party notices, the example configuration and the systemd unit.
 
 ```bash
 version=0.1.0                       # the release you want
@@ -89,7 +172,7 @@ check on `/healthz`. Add `-p 2222:2222 -e RBIT_SSH__ENABLED=true` for Git over S
 
 ### From source
 
-Requirements: Rust 1.90+, Git, and Node.js (build-time only, for Tailwind CSS).
+Requirements: Rust 1.94+, Git, and Node.js (build-time only, for Tailwind CSS).
 
 ```bash
 npm ci
@@ -143,13 +226,15 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files, LFS objects) |
 | `[security]` | Sessions and abuse protection | `session_lifetime_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit` |
 | `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes` |
-| `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password` |
+| `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `from_name`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password`, `timeout_seconds` |
 | `[ssh]` | Built-in SSH server | `enabled`, `bind`, `public_host`, `public_port`, `host_key_path`, connection limits and timeouts |
 | `[operations]` | Maintenance and metrics | `metrics`, `metrics_token`, `warm_caches_on_push`, `maintenance_interval_minutes`, `job_concurrency`, insights cache limits |
 | `[api]` | REST API | `enabled`, `default_page_size`, `max_page_size` |
 | `[webhooks]` | Outgoing deliveries | `enabled`, `allow_private_addresses`, `timeout_seconds`, `max_attempts`, `concurrency`, `delivery_retention_days` |
 | `[releases]` | Release files (web and API uploads) | `max_asset_bytes`, `max_assets_per_release`, `upload_timeout_seconds` |
 | `[mirrors]` | Pull mirrors | `enabled`, `default_interval_minutes`, `min_interval_minutes`, `fetch_timeout_seconds`, `allow_private_addresses` |
+| `[push_mirrors]` | Push mirrors | `enabled`, `interval_minutes`, `debounce_seconds`, `push_timeout_seconds`, `allow_private_addresses`, `allow_local_urls` |
+| `[imports]` | Importing from GitHub and Gitea/Forgejo | `enabled`, `max_concurrent`, `git_timeout_seconds`, `api_timeout_seconds`, `rate_limit_max_wait_seconds`, `author_mapping` (`none` \| `email` \| `email_or_username`), `allow_private_addresses` |
 | `[issues]` | Issues and notifications | `scan_commit_limit`, `notifications`, `notification_retention_days` |
 | `[pulls]` | Pull requests | `merge_timeout_seconds`, `max_concurrent_merges`, `mergeability_concurrency`, `max_commits`, `noreply_domain` |
 | `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`) |
@@ -169,6 +254,9 @@ Settings**.
 | `rbit migrate` | Apply database migrations and exit |
 | `rbit backup --output DIR` | Write a consistent backup (database snapshot, repository mirrors, release files, LFS objects, manifest) |
 | `rbit user create <name> <email> [--admin]` | Create an account (password read from stdin) |
+
+Every command accepts `-c, --config <FILE>` (or `RBIT_CONFIG`); `rbit --version` prints the version.
+Log verbosity follows `RUST_LOG` (e.g. `RUST_LOG=debug`), and `NO_COLOR` turns off coloured logs.
 
 ## Development
 
@@ -199,7 +287,7 @@ the browser, home-screen, and installable-app icons, and commit the generated PN
 | `rbit-auth` | Password hashing, session and token secrets, TOTP, passkeys (WebAuthn), OpenID Connect token checks, access policy |
 | `rbit-git` | Repository storage, read model, diffs, blame, compare, archives, forks, mirrors, languages, maintenance (gitoxide) |
 | `rbit-transport` | Git smart protocol: stateless (HTTP) and interactive (SSH) modes |
-| `rbit-services` | Application use-cases, domain events, background jobs, webhook delivery |
+| `rbit-services` | Application use-cases, domain events, background jobs, webhook delivery, imports |
 | `rbit-mail` | Email rendering and delivery (SMTP, log) |
 | `rbit-ssh` | Built-in SSH server for Git over SSH |
 | `rbit-web` | Routes, REST API, templates, themes, assets, metrics |

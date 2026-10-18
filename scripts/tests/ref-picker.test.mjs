@@ -10,6 +10,7 @@ function harness() {
   const listeners = new Map();
   const requests = [];
   const menus = [];
+  const metadata = [];
   class Details {
     open = false;
     unloaded = true;
@@ -19,16 +20,27 @@ function harness() {
     removeAttribute(name) { if (name === "open") this.open = false; }
   }
   const document = {
+    head: { append: (element) => metadata.push(element) },
+    createElement: () => ({}),
     addEventListener(name, callback) { listeners.set(name, [...(listeners.get(name) ?? []), callback]); },
     querySelectorAll() { return menus.filter(menu => menu.open); },
     querySelector() { return null; },
   };
   const window = { htmx: { trigger(element, name) { requests.push({element, name}); } } };
-  vm.runInNewContext(source, { document, window, navigator: {}, HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
+  vm.runInNewContext(source, { document, window, navigator: {}, addEventListener: (name, callback) => listeners.set(name, [callback]), HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
   const picker = new Details();
   menus.push(picker);
-  return { picker, requests, window, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };
+  return { picker, requests, window, metadata, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };
 }
+
+test("installation metadata is discovered only after the page loads", () => {
+  const h = harness();
+  assert.equal(h.metadata.length, 0);
+  h.emit("load");
+  assert.equal(h.metadata.length, 1);
+  assert.equal(h.metadata[0].rel, "manifest");
+  assert.equal(h.metadata[0].href, "/manifest.webmanifest");
+});
 
 test("refs load only on open; failed loads can retry and successful loads are reused", () => {
   const h = harness();

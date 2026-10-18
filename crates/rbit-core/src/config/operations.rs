@@ -93,7 +93,7 @@ mod tests {
     fn defaults_are_conservative() {
         let config = OperationsConfig::default();
         assert!(!config.metrics);
-        assert_eq!(config.maintenance_interval(), Some(Duration::from_secs(6 * 60 * 60)));
+        assert_eq!(config.maintenance_interval(), Some(Duration::from_hours(6)));
         assert_eq!(config.metrics_token(), None);
         assert_eq!(OperationsConfig { metrics_token: Some("  ".into()), ..config }.metrics_token(), None);
     }

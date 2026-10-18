@@ -46,6 +46,8 @@ From the "ready to open-source" milestone:
   to the branch or to a new branch with a pull request.
 - **Git LFS:** the batch API, uploads and downloads, and file locking.
 - **External sign-in:** OpenID Connect providers and GitHub OAuth.
+- **Migration:** importing repositories with their issues, pull requests and releases from
+  GitHub, GitHub Enterprise and Gitea/Forgejo, and push mirrors.
 
 ## Next — finishing the "ready to open-source" milestone
 
@@ -54,8 +56,6 @@ Being built now:
 - **Pull request polish:** resolving review threads, changing a pull request's base branch,
   cross-repository `/issues` and `/pulls` dashboards, a Markdown preview, redirects for
   renamed accounts.
-- **Migration:** importing repositories with their issues, pull requests and releases from
-  GitHub and Gitea/Forgejo, and push mirrors.
 
 Then the first public release, `v0.1.0`.
 

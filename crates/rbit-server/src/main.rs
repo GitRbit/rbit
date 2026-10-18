@@ -3,6 +3,7 @@
 //! ```text
 //! rbit [--config rbit.toml] serve          # run the web server (default)
 //! rbit migrate                               # apply database migrations and exit
+//! rbit backup --output DIR                  # write a consistent backup to a new directory
 //! rbit user create <name> <email> [--admin]  # create an account (password from stdin)
 //! ```
 

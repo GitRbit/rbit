@@ -63,7 +63,7 @@ pub const RELEASES_PER_PAGE: u32 = 10;
 /// How long [`ReleaseService::shutdown`] waits for background work.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Interrupted uploads older than this are swept at start-up.
-const STALE_UPLOAD_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+const STALE_UPLOAD_AGE: Duration = Duration::from_hours(24);
 /// Longest declared content type kept for an attached file.
 const MAX_CONTENT_TYPE_LEN: usize = 255;
 

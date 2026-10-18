@@ -129,7 +129,8 @@ healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every r
 
 ## Pitfalls seen while recording the baseline
 
-- The pages send `Content-Security-Policy: script-src 'self'; style-src 'self'`: the probe
+- The pages send `Content-Security-Policy` with `script-src 'self'` and `style-src 'self'`
+  plus hashes authorizing only the embedded initial styles: the probe
   cannot be `eval`ed from page script or fetched from another port, and an inline
   `<style>` is blocked (the probe uses a constructed stylesheet instead).
 - Check the page is styled before measuring (`valid` must be true). In the Claude

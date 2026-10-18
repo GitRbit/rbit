@@ -7,6 +7,48 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-18
+
+First release of rbit, a self-hosted Git platform distributed as one Rust binary.
+Release notes are prepared here while the upstream repository remains private.
+
+### Highlights
+
+- Git over HTTPS and SSH, repository browsing, syntax highlighting, blame, archives,
+  forks, Git LFS, and pull and push mirrors.
+- Organisations, teams, issues, pull requests, reviews, branch protection, commit status
+  checks, email notifications, a REST API and signed webhooks.
+- Passkeys and TOTP, scoped access tokens, password recovery, OpenID Connect and GitHub
+  sign-in, and imports from GitHub, GitHub Enterprise and Gitea/Forgejo.
+- SQLite and redb storage, health checks, metrics, backups, Docker and systemd support.
+- A responsive web interface with built-in and tinted themes, bounded rendering caches,
+  bundled browser scripts, and initial styles authorized by exact Content Security Policy
+  hashes. Installation metadata and offline support load after the initial page.
+- MIT OR Apache-2.0 licensing, community contribution files, and release automation for
+  Linux, macOS and Windows archives, checksums and a multi-architecture container image.
+
+### Installation and compatibility
+
+- The server requires the Git executable. Source builds require Rust 1.94 or newer and
+  Node.js 24 for frontend assets; production does not need Node.js or an external database.
+- The release workflow targets Linux x86_64 and aarch64 (glibc 2.35+), macOS Intel and
+  Apple silicon, and Windows x86_64. Linux is the supported server platform; Windows
+  also has automated development and integration coverage.
+- Before upgrading an existing development instance, take a full backup and read the
+  detailed upgrade notes below. Database migrations run automatically and only move
+  forward. Production setup is described in [docs/deployment.md](docs/deployment.md).
+
+### Known limitations
+
+- Resolving review threads, changing a pull request's base branch, cross-repository
+  issue/pull-request dashboards, Markdown preview and account-rename redirects are
+  planned follow-up work, not features of 0.1.0.
+- rbit accepts status checks from external CI; it does not execute CI jobs or provide a
+  package registry. Git LFS over SSH authenticates transfers that then use HTTP.
+
+The sections below record the features, fixes and upgrade details accumulated during
+development of this first release.
+
 ### Performance
 
 - Page branches, tags, directories and language-file results at 100 entries, with
@@ -68,16 +110,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Milestone 3 — ready to open-source
 
-rbit is now open source under **MIT OR Apache-2.0** (it was AGPL-3.0-or-later), at
-github.com/GitRbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
-Apple silicon) and Windows with SHA-256 sums, and a multi-architecture image at
+rbit is licensed under **MIT OR Apache-2.0** (development builds previously used
+AGPL-3.0-or-later), with its upstream at github.com/GitRbit/rbit. Release packaging targets
+Linux (x86_64, aarch64), macOS (Intel, Apple silicon) and Windows with SHA-256 sums, and a multi-architecture image at
 `ghcr.io/gitrbit/rbit`. The milestone also brings commit statuses for external CI, more of the
 REST API, email notifications, editing files in the browser, Git LFS and sign-in with
-OpenID Connect providers and GitHub.
-
-<!-- Milestone 3 workstreams still in progress: W (wave B stretch items: migrations 0023,
-0025) and M (import and push mirrors: migrations 0038, 0039). Add their entries to the
-lists below when they are merged. -->
+OpenID Connect providers and GitHub, importing repositories from GitHub and Gitea/Forgejo,
+and push mirrors.
 
 #### Upgrade notes
 
@@ -116,6 +155,10 @@ lists below when they are merged. -->
   provider's id in upper case with `-` as `_`).
 - Webhooks: the events `member` and `status` are new; existing hooks are not subscribed to
   them until you tick them.
+- Database migrations `0038_imports` and `0039_push_mirrors` add two tables (import jobs
+  and push mirrors); existing data is unchanged. New configuration sections `[imports]`
+  and `[push_mirrors]` (both on by default; private addresses refused) are documented in
+  [deploy/rbit.example.toml](deploy/rbit.example.toml).
 
 #### Added
 
@@ -172,6 +215,16 @@ lists below when they are merged. -->
   authentication still applies unless `trust_mfa` and the provider reports MFA. Linked
   accounts are listed with unlink; the last way to sign in can't be removed. Accounts
   registered through a provider have no password until a reset link sets one.
+- **Import repositories** from github.com, GitHub Enterprise Server, Gitea or Forgejo
+  (`/new/import`): the Git history with issues, pull requests, labels, milestones,
+  comments, releases with their files and Git LFS objects, keeping issue and pull request
+  numbers. The import runs in the background with its progress on
+  `/{owner}/{repo}/import`; the token is never stored, and imported history sends no
+  notifications or webhooks. Authors map to local accounts only with
+  `[imports] author_mapping`.
+- **Push mirrors** (Settings → Push mirrors): force-push a repository's branches and tags
+  to other `http(s)` remotes after each push (debounced) and on a schedule, or on demand,
+  with the last attempt's outcome shown. Secrets are write-only.
 - New audit actions "Linked a sign-in provider" and "Unlinked a sign-in provider"
   (category "Sign-in"); sign-ins through a provider record the provider's name.
 - **Open-source project files**: `LICENSE-MIT`, `LICENSE-APACHE`, `THIRD-PARTY.md`,
@@ -287,7 +340,7 @@ attached: they share the repository's number sequence, comments and timeline.
   automatically at start-up (or with `rbit migrate`). Take a backup first; migrations only
   move forward. They add tables only (and fill the new full-text index from existing rows,
   which are none), so existing data is untouched; the upgrade test migrates a milestone 1
-  database through them. `0023` is unused on purpose.
+  database through them. `0023` is not used in this wave.
 - **Clients can no longer push to `refs/pull/*`.** The namespace now holds pull request
   heads (`refs/pull/{n}/head`) and is managed by rbit; such pushes are refused with
   "refs/pull/ is managed by rbit", over HTTP and SSH.

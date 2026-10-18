@@ -88,13 +88,13 @@ function markCurrent(slug) {
  * asset build version, which busts the cache whenever any asset changes.
  */
 function ensureStylesheet(slug, versionSource) {
-  const current = document.head.querySelectorAll("link[data-theme-stylesheet]");
+  const current = document.head.querySelectorAll("[data-theme-stylesheet]");
   if (slug in BUILT_IN) {
     for (const link of current) link.remove();
     return;
   }
   const href = `/assets/themes/${slug}.css`;
-  if ([...current].some((link) => link.getAttribute("href").startsWith(`${href}?`) || link.getAttribute("href") === href)) return;
+  if ([...current].some((sheet) => sheet.dataset.theme === slug || sheet.getAttribute("href")?.startsWith(`${href}?`) || sheet.getAttribute("href") === href)) return;
   const version = versionSource?.closest("[data-asset-version]")?.dataset.assetVersion;
   const link = document.createElement("link");
   link.rel = "stylesheet";

@@ -56,11 +56,11 @@ bind = "0.0.0.0:2222"
 # public_host = "git.example.com"
 # public_port = 22
 # host_key_path = "/var/lib/rbit/ssh/host_ed25519"   # generated on first start
-# max_connections = 256
+# max_connections = 128
 # max_connections_per_ip = 16
 # auth_timeout_seconds = 30
 # idle_timeout_seconds = 300
-# max_session_seconds = 3600
+# max_session_seconds = 21600           # 6 hours
 
 [operations]
 # Prometheus metrics at /metrics. Keep the endpoint private: set a token, or block
@@ -122,6 +122,38 @@ min_interval_minutes = 10
 fetch_timeout_seconds = 900
 # Refuse upstreams on loopback, private, link-local and other internal addresses.
 allow_private_addresses = false
+
+[imports]
+# Importing repositories (with issues, pull requests, releases and LFS objects) from
+# GitHub, GitHub Enterprise, Gitea and Forgejo on the "New repository" page.
+# enabled = true
+# Refuse sources (API, Git, release files, LFS objects) on loopback, private, link-local
+# and unique-local addresses.
+# allow_private_addresses = false
+# Imports running at the same time across the instance; more wait in line.
+# max_concurrent = 2
+# Upper bound for copying the Git repository.
+# git_timeout_seconds = 3600
+# Upper bound for one API request (release files and LFS objects get 10 times this).
+# api_timeout_seconds = 60
+# Longest wait for the source's API rate limit to reset; a longer wait fails the import.
+# rate_limit_max_wait_seconds = 900
+# Match imported authors with local accounts: "none" (the importing user writes
+# everything, naming the original author), "email" (same verified email address) or
+# "email_or_username" (also the same user name).
+# author_mapping = "none"
+
+[push_mirrors]
+# Allow pushing repositories to other http(s) remotes, after pushes and on a schedule.
+# enabled = true
+# Push every mirror at least this often.
+# interval_minutes = 480
+# Wait this long after a push before pushing to mirrors, so a burst is sent once.
+# debounce_seconds = 10
+# Upper bound for one push.
+# push_timeout_seconds = 900
+# Refuse remotes on loopback, private, link-local and other internal addresses.
+# allow_private_addresses = false
 
 [issues]
 # Commits scanned for `#N` references and closing keywords per pushed ref update.

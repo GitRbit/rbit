@@ -20,7 +20,7 @@ use tokio::process::Command;
 
 /// Upper bound for one `git gc --auto`; a repack that takes longer is killed and retried
 /// at the next maintenance run.
-const GC_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const GC_TIMEOUT: Duration = Duration::from_mins(30);
 
 /// Environment variables passed through to Git; everything else is cleared.
 const INHERITED_ENV: [&str; 5] = ["PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"];

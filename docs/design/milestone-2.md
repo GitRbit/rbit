@@ -534,8 +534,8 @@ calls macros starts with `{% import "macros.html" as ui %}`; pass string literal
 atomic: it builds, is formatted and passes `cargo fmt --all --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` and the tests of the crates you
 touched (run `cargo test --workspace` before you finish). Imperative subject ≤ 72
-characters, blank line, body explaining what and why (wrapped at 72), trailer
-`Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Typical order: migration +
+characters, blank line, body explaining what and why (wrapped at 72), human attribution
+only (no AI coauthor trailers). Typical order: migration +
 store → service + tests → routes/views/templates → e2e. Never rewrite `main`, never merge
 other branches, never commit `assets/app.css`, `target/` or `data/`. A running dev server
 locks `target/debug/rbit.exe`: build with `CARGO_TARGET_DIR` set to a directory of your

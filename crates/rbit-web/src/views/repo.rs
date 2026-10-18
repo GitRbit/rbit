@@ -429,6 +429,6 @@ mod tests {
     fn only_code_has_blocks() {
         assert_eq!(blob_page(BlobContent::Binary).code_blocks(), Vec::new());
         let html = blob_page(BlobContent::Markdown("<p>Hi</p>".into())).render().unwrap();
-        assert!(!html.contains("vblock"));
+        assert!(!html.contains("class=\"vblock"));
     }
 }

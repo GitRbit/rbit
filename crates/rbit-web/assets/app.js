@@ -100,6 +100,11 @@ document.addEventListener("toggle", (event) => {
   }
 }, true);
 
-if ("serviceWorker" in navigator) {
-  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
-}
+// Installation metadata and offline support can wait until the page finishes loading.
+addEventListener("load", () => {
+  const manifest = document.createElement("link");
+  manifest.rel = "manifest";
+  manifest.href = "/manifest.webmanifest";
+  document.head.append(manifest);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+}, { once: true });

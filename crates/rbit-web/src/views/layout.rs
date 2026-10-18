@@ -82,3 +82,44 @@ impl Page {
         self.path == prefix || (prefix != "/" && self.path.starts_with(prefix))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use askama::Template;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest, Sha256};
+
+    #[derive(Template)]
+    #[template(source = "{% extends \"base.html\" %}", ext = "html")]
+    struct Fixture {
+        page: Page,
+    }
+
+    #[test]
+    fn initial_styles_render_verbatim_and_need_no_network_requests() {
+        for slug in ["system", "dark", "base24-berlin"] {
+            let page = Page {
+                site_name: "rbit".into(),
+                title: None,
+                viewer: None,
+                path: "/".into(),
+                has_unread_notifications: false,
+                theme: Theme::parse(slug).unwrap(),
+            };
+            let html = Fixture { page }.render().unwrap();
+            assert!(!html.contains("rel=\"stylesheet\""));
+            assert!(!html.contains("rel=\"manifest\""));
+            assert!(html.contains("/assets/app.bundle.js?v="));
+            let mut paths = vec!["app.css".to_owned()];
+            paths.extend(Theme::parse(slug).unwrap().stylesheet_path());
+            for (style, path) in html.split("<style ").skip(1).zip(&paths) {
+                let css = style.split_once('>').unwrap().1.split_once("</style>").unwrap().0;
+                assert_eq!(css, assets::inline_css(path));
+                assert!(!css.to_ascii_lowercase().contains("</style"));
+                assert_eq!(assets::style_source(path), format!("'sha256-{}'", STANDARD.encode(Sha256::digest(css.as_bytes()))));
+            }
+            assert_eq!(html.matches("<style ").count(), paths.len());
+        }
+    }
+}

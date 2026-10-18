@@ -28,21 +28,19 @@
   <meta name="color-scheme" content="light dark">
   {%- endif %}
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":10,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
-  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="{{ page.asset("icon-32.png") }}" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ page.asset("apple-touch-icon.png") }}">
-  <link rel="stylesheet" href="{{ page.asset("app.css") }}">
-  {%- if let Some(href) = page.theme.stylesheet() %}
-  <link rel="stylesheet" href="{{ href }}" data-theme-stylesheet>
+  {#- Exact embedded bytes are authorized by hashes in the response CSP. -#}
+  <style data-app-stylesheet>{{ crate::assets::inline_css("app.css")|safe }}</style>
+  {%- if let Some(path) = page.theme.stylesheet_path() %}
+  <style data-theme-stylesheet data-theme="{{ page.theme.slug() }}">{{ crate::assets::inline_css(path)|safe }}</style>
   {%- endif %}
   {#- The server renders the visitor's theme into <html>, so theme.js only migrates old
       choices here and need not hold up the first paint. Pages rendered without the
       visitor's cookie (error, offline) run it synchronously instead. -#}
   {% block theme_script %}<script src="{{ page.asset("theme.js") }}" async></script>{% endblock %}
   <script src="{{ page.asset("vendor/htmx.min.js") }}" defer></script>
-  {#- app.js's imports are not modulepreloaded: high-priority hints for nine scripts compete
-      with the stylesheet for the first paint, and none of them renders anything. -#}
-  <script src="{{ page.asset("app.js") }}" type="module"></script>
+  <script src="{{ page.asset("app.bundle.js") }}" type="module"></script>
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
 <body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">

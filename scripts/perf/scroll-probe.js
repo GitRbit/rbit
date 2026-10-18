@@ -44,7 +44,7 @@
   const viewport = [innerWidth, innerHeight, devicePixelRatio];
   const checkVisibility = () => { if (document.visibilityState !== "visible") invalid.add("page became hidden"); };
   const checkSize = () => { if (viewport.some((value, index) => value !== [innerWidth, innerHeight, devicePixelRatio][index])) invalid.add("viewport changed"); };
-  const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => ({ url: link.href, loaded: Boolean(link.sheet) && !link.disabled }));
+  const stylesheets = [...document.querySelectorAll('link[rel="stylesheet"], style[data-app-stylesheet], style[data-theme-stylesheet]')].map((element) => ({ url: element.href ?? `${location.origin}/assets/${element.hasAttribute("data-app-stylesheet") ? "app.css" : "themes/inline.css"}`, loaded: Boolean(element.sheet) && !element.disabled }));
   const header = document.querySelector("body > header");
   checkVisibility();
   if (document.readyState !== "complete") invalid.add("page has not finished loading");

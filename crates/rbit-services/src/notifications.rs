@@ -48,7 +48,7 @@ use crate::{DomainEvent, NotificationEmailService, ServiceContext, ServiceError,
 /// Rows per inbox page.
 pub const NOTIFICATIONS_PER_PAGE: u32 = 50;
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
-const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 pub(crate) fn can_read_with_grants(user: &User, repo: &OwnedRepository, stored: Option<&ViewerGrants>) -> bool {

@@ -1,7 +1,7 @@
 //! # rbit-services
 //!
 //! The application layer: one service per area, each enforcing business rules and
-//! permissions. Services are HTTP-agnostic so the web UI, a future REST API, CLI admin
+//! permissions. Services are HTTP-agnostic so the web UI, the REST API, CLI admin
 //! commands and background jobs all share exactly the same behaviour.
 
 pub mod accounts;

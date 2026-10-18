@@ -70,7 +70,7 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// How often the worker looks for due retries when nothing wakes it.
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// How often old deliveries are pruned.
-const PRUNE_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 /// A delivery body built outside this module (wave B's `issues::hooks::payload` and

@@ -138,7 +138,27 @@ fn is_cross_site(headers: &HeaderMap) -> bool {
 /// Cookie authentication alone does not prevent a shared HTTP cache from storing them.
 /// This layer wraps HTML caching so explicit page and handler cache policies win.
 pub async fn security_headers(request: Request, next: Next) -> Response {
+    let theme = Theme::from_headers(request.headers());
     let mut response = next.run(request).await;
+    // Keep style attributes and arbitrary inline styles blocked. Only our exact embedded
+    // initial styles are allowed; external sheets still support theme switching.
+    if response.status() == StatusCode::NOT_MODIFIED
+        || response.headers().get(header::CONTENT_TYPE).is_some_and(|value| value.as_bytes().starts_with(b"text/html"))
+    {
+        let mut styles = crate::assets::style_source("app.css");
+        if let Some(path) = theme.stylesheet_path() {
+            styles.push(' ');
+            styles.push_str(&crate::assets::style_source(&path));
+        }
+        let policy = format!(
+            "default-src 'self'; img-src 'self' data: https:; style-src 'self' {styles}; script-src 'self'; \
+             object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        );
+        response
+            .headers_mut()
+            .entry(header::CONTENT_SECURITY_POLICY)
+            .or_insert(HeaderValue::from_str(&policy).expect("valid embedded style hashes"));
+    }
     let headers = response.headers_mut();
     let defaults = [
         (
@@ -489,6 +509,28 @@ mod tests {
         assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache");
         assert_eq!(response.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch");
         assert!(response.headers()[header::ETAG].to_str().unwrap().starts_with("W/\""));
+    }
+
+    #[tokio::test]
+    async fn initial_styles_have_exact_csp_hashes_without_allowing_arbitrary_inline_css() {
+        for slug in ["system", "dark", "base24-berlin"] {
+            let cookie = format!("rbit-theme={slug}");
+            let response = send("/page", &[("cookie", &cookie)]).await;
+            let policy = response.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+            assert!(policy.contains(&crate::assets::style_source("app.css")));
+            if let Some(path) = Theme::parse(slug).unwrap().stylesheet_path() {
+                assert!(policy.contains(&crate::assets::style_source(&path)));
+            }
+            assert!(!policy.contains("unsafe-inline"));
+            assert!(policy.contains("script-src 'self';"));
+
+            // HTML caching removes Content-Type on 304. A revalidation must retain
+            // the same style authorization when its headers update the cached page.
+            let etag = response.headers()[header::ETAG].to_str().unwrap();
+            let revalidated = send("/page", &[("cookie", &cookie), ("if-none-match", etag)]).await;
+            assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+            assert_eq!(revalidated.headers()[header::CONTENT_SECURITY_POLICY], policy);
+        }
     }
 
     #[tokio::test]

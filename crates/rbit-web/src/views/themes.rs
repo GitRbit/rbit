@@ -111,6 +111,7 @@ pub struct FamilyGroup {
 
 /// Everything the gallery partial (`themes/gallery.html`) renders.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools, reason = "independent template visibility flags, not a state machine")]
 pub struct Gallery {
     pub current: Theme,
     pub variant: &'static str,
@@ -455,7 +456,7 @@ mod tests {
         assert!(html.contains(&format!("<html lang=\"en\" data-theme=\"{}\" data-scheme=\"{}\">", tinted.slug, tinted.variant.as_str())));
         assert!(html.contains(&format!("data-theme=\"{}\" value=\"{}\"", tinted.slug, tinted.slug)), "cards carry their own theme");
         assert!(html.contains("/assets/themes/all.css?v="), "the gallery links every theme");
-        assert!(html.contains(&format!("/assets/themes/{}.css?v=", tinted.slug)), "the active theme's own sheet");
+        assert!(html.contains(&format!("<style data-theme-stylesheet data-theme=\"{}\">", tinted.slug)), "the active theme's own sheet");
         assert!(html.contains("<form method=\"post\" action=\"/themes\""), "works without scripts");
         assert!(!html.contains("style="), "no inline styles under the CSP");
     }

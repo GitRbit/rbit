@@ -74,13 +74,13 @@ use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, releases::hu
 
 /// How long an object no repository links any more is kept before maintenance removes it
 /// (a client that was told an object exists has this long to fetch it).
-pub const ORPHAN_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+pub const ORPHAN_GRACE: Duration = Duration::from_hours(24);
 /// Most objects one batch request may name.
 pub const MAX_BATCH_OBJECTS: usize = 1000;
 /// How long [`LfsService::shutdown`] waits for background work.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Interrupted uploads older than this are swept at start-up.
-const STALE_UPLOAD_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+const STALE_UPLOAD_AGE: Duration = Duration::from_hours(24);
 /// Orphans removed per database round trip.
 const PRUNE_BATCH: u32 = 500;
 

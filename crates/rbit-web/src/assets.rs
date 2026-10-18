@@ -25,6 +25,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rust_embed::RustEmbed;
 use sha2::{Digest, Sha256};
 
@@ -55,15 +56,27 @@ struct Served {
     /// The bytes Brotli-compressed at quality 11, made on first use; `None` when the file
     /// is not text or does not get smaller.
     brotli: OnceLock<Option<Vec<u8>>>,
+    /// Normalized inline CSS and its CSP source, reused across rendered pages.
+    style: OnceLock<(String, String)>,
 }
 
 impl Served {
     fn new(bytes: Cow<'static, [u8]>, hash: String) -> Self {
-        Self { bytes, hash, brotli: OnceLock::new() }
+        Self { bytes, hash, brotli: OnceLock::new(), style: OnceLock::new() }
     }
 
     fn brotli(&self, path: &str) -> Option<&[u8]> {
         self.brotli.get_or_init(|| is_compressible(path).then(|| compress(&self.bytes)).flatten()).as_deref()
+    }
+
+    fn style(&self) -> &(String, String) {
+        self.style.get_or_init(|| {
+            // HTML parsers normalize CRLF/CR before checking style hashes.
+            let css = std::str::from_utf8(&self.bytes).expect("embedded CSS is UTF-8").replace("\r\n", "\n").replace('\r', "\n");
+            assert!(!css.to_ascii_lowercase().contains("</style"), "embedded CSS must be safe inside a style element");
+            let source = format!("'sha256-{}'", STANDARD.encode(Sha256::digest(css.as_bytes())));
+            (css, source)
+        })
     }
 }
 
@@ -212,6 +225,17 @@ pub fn read(path: &str) -> Option<Cow<'static, [u8]>> {
     EmbeddedAssets::get(path).map(|file| file.data)
 }
 
+/// Trusted embedded CSS, emitted verbatim inside a style element. Never accepts user CSS.
+pub fn inline_css(path: &str) -> String {
+    let file = served(path).expect("initial stylesheet must be embedded; run npm run build");
+    file.style().0.clone()
+}
+
+/// CSP source authorizing exactly the bytes emitted by `inline_css`.
+pub fn style_source(path: &str) -> String {
+    served(path).expect("initial stylesheet must be embedded; run npm run build").style().1.clone()
+}
+
 /// `GET /assets/{*path}`
 ///
 /// Only a URL carrying the current hash is cached forever; anything else (no `?v=`, or
@@ -263,6 +287,14 @@ pub async fn serve(Path(path): Path<String>, RawQuery(query): RawQuery, request_
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inline_style_hashes_follow_html_newline_normalization() {
+        let file = Served::new(Cow::Borrowed(b"body {\r\ncolor: red;\r}\n"), String::new());
+        let (css, source) = file.style();
+        assert_eq!(css, "body {\ncolor: red;\n}\n");
+        assert_eq!(source, &format!("'sha256-{}'", STANDARD.encode(Sha256::digest(css.as_bytes()))));
+    }
 
     #[test]
     fn relative_imports_get_hashed_urls() {

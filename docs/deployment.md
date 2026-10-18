@@ -357,16 +357,20 @@ rbit runs its own maintenance; no cron jobs are needed.
   once, retried with backoff up to `max_attempts`, and the delivery log is pruned daily to
   `delivery_retention_days`. Nothing is lost across restarts.
 - **Pull mirrors** are fetched when due (checked every 30 s, at most two fetches at once).
+- **Push mirrors** are pushed `debounce_seconds` after a push and every
+  `[push_mirrors] interval_minutes` (checked every 30 s, at most two pushes at once).
+- **Imports** run in the background, at most `[imports] max_concurrent` at once; an import
+  a restart interrupted is marked failed at start-up (its token was never stored).
 - **Release files** of a deleted repository are removed in the background; temporary
   files of uploads interrupted by a crash are swept at start-up.
 - **Git LFS objects** no repository has used for a day are removed on the maintenance
   schedule; interrupted LFS uploads are swept at start-up.
 - The notification email outbox is pruned with the inbox (`notification_retention_days`).
 
-Webhooks, mirrors and external sign-in make outbound HTTP(S) requests, so the host needs
-outbound access to wherever users point them and to the configured providers. Internal
-addresses are refused unless `allow_private_addresses` is set in `[webhooks]`, `[mirrors]`
-or `[auth]`; set it only on a trusted instance (for example to reach a CI server or an
+Webhooks, mirrors, imports and external sign-in make outbound HTTP(S) requests, so the
+host needs outbound access to wherever users point them and to the configured providers.
+Internal addresses are refused unless `allow_private_addresses` is set in `[webhooks]`,
+`[mirrors]`, `[imports]`, `[push_mirrors]` or `[auth]`; set it only on a trusted instance (for example to reach a CI server or an
 identity provider on the same network).
 
 ## Backups

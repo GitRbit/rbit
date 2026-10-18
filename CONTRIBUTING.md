@@ -19,7 +19,7 @@ an issue — see [SECURITY.md](SECURITY.md).
 
 ## Setting up
 
-You need Rust 1.90 or newer (`rustup` picks up the toolchain), Git, and Node.js 24 (only to
+You need Rust 1.94 or newer, Git, and Node.js 24 (only to
 build the stylesheet; nothing from Node ships in the binary). The SSH tests also use the
 OpenSSH client and skip when it is missing.
 
@@ -38,7 +38,8 @@ npm run dev            # http://localhost:3000, data in ./data-live
 ```
 
 It builds into `target/live`, so it never fights other `cargo` commands over a locked
-executable. Useful switches (environment variables override `rbit.toml`):
+executable. It reads no configuration file (one is loaded only through `--config` or
+`RBIT_CONFIG`), so settings come from environment variables. Useful switches:
 
 ```bash
 RBIT_MAIL__TRANSPORT=log                      # print emails (reset/verify links) to the log
@@ -105,6 +106,8 @@ are about to touch. The rules that keep it coherent:
   its own. Split unrelated changes; history on `main` is linear (rebase, no merge commits).
 - **Messages:** an imperative subject of at most 72 characters ("Add …", "Fix …", not
   "Added …"), a blank line, then a body that explains what changed and *why*.
+- **Attribution:** commit authors and coauthors must be people who contributed. Do not
+  add AI tools, models, agents or their vendors as authors or `Co-Authored-By` trailers.
 - **Tests:** a bug fix comes with a test that fails without it; a feature comes with tests
   at the level where its behaviour lives (store, service, route, end to end).
 - **Docs:** user-visible changes update the README, `docs/` or the example configuration,
@@ -133,7 +136,8 @@ Before publishing:
   released. CI's release-build artifact can be used for a Linux smoke test before tagging.
 - Set the workspace version in `Cargo.toml` and update `Cargo.lock`. Move the relevant
   changelog entries into a nonempty `## [X.Y.Z]` section, with upgrade instructions.
-  The current `0.1.0` version still needs its release notes before a final `v0.1.0` tag.
+  The `0.1.0` notes are prepared; review them against the exact release commit before
+  pushing the final `v0.1.0` tag.
 - Check the README, deployment instructions, examples, licenses and third-party notices
   against the binaries and container image that will ship.
 - When opening the repository to the public, enable private vulnerability reporting and

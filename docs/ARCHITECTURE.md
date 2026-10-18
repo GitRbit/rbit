@@ -488,7 +488,8 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 that every row survives, the new defaults and triggers apply to old rows, and the tables of
 wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
 continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
-reserved for milestone 3's W and `0038`, `0039` for M, both still in progress. `0032` was
+reserved for milestone 3's W, still in progress, and `0038`, `0039` hold M's imports and
+push mirrors. `0032` was
 taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
 the gaps are harmless).
 
@@ -1371,7 +1372,7 @@ reason. rbit is licensed MIT OR Apache-2.0.
 | **M1 — Safe to self-host** ✓ | Rate limiting, trusted proxies, session management, TOTP two-factor, audit log, email (SMTP) with password reset and verification, SSH server with user and deploy keys, background jobs and maintenance, metrics and health checks, backups, Docker/systemd/CI, end-to-end and property tests. |
 | **M2 wave A — A real forge** ✓ | Collaborators, teams and organisation base permission, repository transfer with old-name redirects, REST API `/api/v1` with token scopes and OpenAPI, signed webhooks with a persistent delivery queue, README relative links, archives, blame, compare, releases with attached files, forks, pull mirrors, the theme gallery. |
 | **M2 wave B — Workflow** ✓ | Issues with labels, milestones, assignees, references and search; in-app notifications; pull requests across forks with line comments, reviews, mergeability and merge/squash/rebase; branch protection enforced over HTTP and SSH; REST endpoints and `issues`/`issue_comment`/`pull_request`/`pull_request_review` webhooks ([design/milestone-2b.md](design/milestone-2b.md)). |
-| **M3 — Ready to open-source** (in progress) | Done: MIT OR Apache-2.0, community files and release packaging, `rbit_` tokens; commit statuses and required checks; REST API for collaborators, teams, releases and forks, `member` and `status` webhooks; email notifications; editing files in the browser; Git LFS; external sign-in with OpenID Connect and GitHub ([design/milestone-3.md](design/milestone-3.md)). In progress: wave B stretch items (W) and importing plus push mirrors (M). |
+| **M3 — Ready to open-source** (in progress) | Done: MIT OR Apache-2.0, community files and release packaging, `rbit_` tokens; commit statuses and required checks; REST API for collaborators, teams, releases and forks, `member` and `status` webhooks; email notifications; editing files in the browser; Git LFS; external sign-in with OpenID Connect and GitHub; importing from GitHub and Gitea/Forgejo, and push mirrors ([design/milestone-3.md](design/milestone-3.md)). In progress: wave B stretch items (W). |
 | Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses, email digests. |
 | Later — Platform | Actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |

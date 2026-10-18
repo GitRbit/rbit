@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(uptime(Duration::from_secs(61)), "1 minute 1 second");
         assert_eq!(uptime(Duration::from_secs(3 * 3600 + 5 * 60 + 7)), "3 hours 5 minutes");
         assert_eq!(uptime(Duration::from_secs(2 * 86_400 + 30)), "2 days");
-        assert_eq!(uptime(Duration::from_secs(86_400 + 4 * 3600)), "1 day 4 hours");
+        assert_eq!(uptime(Duration::from_hours(28)), "1 day 4 hours");
     }
 
     #[test]

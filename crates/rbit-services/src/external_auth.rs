@@ -68,13 +68,13 @@ use crate::{
 /// How long a started sign-in may take at the provider.
 pub const FLOW_TTL_SECONDS: i64 = 10 * 60;
 /// How long the "choose a username" step stays open.
-pub const REGISTRATION_TTL: Duration = Duration::from_secs(15 * 60);
+pub const REGISTRATION_TTL: Duration = Duration::from_mins(15);
 /// Pending registrations kept at most (oldest beyond this are dropped).
 const MAX_PENDING_REGISTRATIONS: usize = 10_000;
 /// The `server_secrets` row whose key seals flow cookies.
 const KEY_NAME: &str = "external-sign-in";
 /// How long discovery documents and key sets are reused.
-const CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+const CACHE_TTL: Duration = Duration::from_hours(1);
 /// Sent to GitHub's REST API.
 const GITHUB_ACCEPT: &str = "application/vnd.github+json";
 

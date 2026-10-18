@@ -237,8 +237,8 @@ mod tests {
         };
         let read = signed_in(false);
         assert!(read.contains(r#"href="/notifications""#) && read.contains(r#"aria-label="Notifications""#));
-        assert!(!read.contains("notification-dot"));
-        assert!(signed_in(true).contains("notification-dot"));
+        assert!(!read.contains("class=\"notification-dot\""));
+        assert!(signed_in(true).contains("class=\"notification-dot\""));
         assert!(!landing(0, 0, 0).render().unwrap().contains(r#"href="/notifications""#), "anonymous visitors get no bell");
     }
 

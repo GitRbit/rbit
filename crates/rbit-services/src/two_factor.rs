@@ -45,13 +45,13 @@ use crate::{
 /// Recovery codes issued per enrolment (and per regeneration).
 pub const RECOVERY_CODE_COUNT: usize = 10;
 /// How long the second sign-in step may take.
-pub const PENDING_SIGN_IN_TTL: Duration = Duration::from_secs(5 * 60);
+pub const PENDING_SIGN_IN_TTL: Duration = Duration::from_mins(5);
 /// Wrong codes allowed in one pending sign-in before the password must be entered again.
 const PENDING_SIGN_IN_ATTEMPTS: u8 = 5;
 /// Pending sign-ins kept at most (oldest beyond this are dropped).
 const MAX_PENDING_SIGN_INS: usize = 10_000;
 /// How long a passkey challenge issued on a settings page stays valid.
-const CHALLENGE_TTL: Duration = Duration::from_secs(10 * 60);
+const CHALLENGE_TTL: Duration = Duration::from_mins(10);
 /// Accounts with outstanding settings challenges kept at most (oldest beyond this are dropped).
 const MAX_CHALLENGES: usize = 10_000;
 /// Outstanding challenges per account and ceremony.

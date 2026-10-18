@@ -7,7 +7,8 @@
 //! * `light` / `dark` — the built-in tokens pinned to one scheme (all in `app.css`);
 //! * `dna-dark` / `dna-day` — the DNA app's palette, also built into `app.css`;
 //! * `base16-…` / `base24-…` — a [tinted-theming](https://github.com/tinted-theming) scheme,
-//!   whose single small stylesheet (`assets/themes/<slug>.css`) is linked only while active.
+//!   whose single small stylesheet (`assets/themes/<slug>.css`) is inlined on first render
+//!   and linked when the visitor switches themes.
 //!
 //! The choice lives in the [`COOKIE`] cookie so the server renders the right attribute and
 //! stylesheet into the first byte of HTML: no flash and no blocking script. Signed-in users'
@@ -195,8 +196,13 @@ impl Theme {
 
     /// The content-hashed stylesheet a tinted theme needs; built-in themes live in `app.css`.
     pub fn stylesheet(self) -> Option<String> {
+        self.stylesheet_path().map(|path| assets::url(&path))
+    }
+
+    /// Embedded CSS path for the initial theme; built-ins are part of app.css.
+    pub fn stylesheet_path(self) -> Option<String> {
         match self {
-            Self::Tinted(theme) => Some(assets::url(&format!("themes/{}.css", theme.slug))),
+            Self::Tinted(theme) => Some(format!("themes/{}.css", theme.slug)),
             _ => None,
         }
     }

@@ -13,7 +13,7 @@ use std::{path::Path, process::Stdio, time::Duration};
 use crate::{GitError, archive::git_command};
 
 /// Upper bound for one clone; a fork of a huge repository taking longer is abandoned.
-const FORK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const FORK_TIMEOUT: Duration = Duration::from_mins(10);
 
 /// Clones the bare repository at `source` into `target`, which must not exist yet. On
 /// failure, whatever was created at `target` is removed again.

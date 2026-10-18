@@ -361,6 +361,6 @@ mod tests {
     fn empty_files_say_so() {
         let html = page(BlameContent::Hunks(Vec::new())).render().unwrap();
         assert!(html.contains("This file is empty."));
-        assert!(!html.contains("vblock"));
+        assert!(!html.contains("class=\"vblock"));
     }
 }
