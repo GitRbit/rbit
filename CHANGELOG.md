@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Performance
 
+- Page branches, tags, directories and language-file results at 100 entries, with
+  search and stable snapshot links. Load commit cells and branch-protection badges
+  only for the requested page; do not permanently cache incomplete commit cells.
+- Reuse directory-history results for 30 seconds with bounded storage and four
+  admitted workers, including cancelled requests. Share repeated requests, avoid
+  quadratic cache filtering, and reuse decoded parent trees during history walks.
+- Combine branch graph lane segments into one SVG path per row, avoid full branch
+  commit summaries, and cap visible branch labels while linking to the full list.
 - Share cached highlighted lines through file and blame rendering without copying their
   strings. Coalesce simultaneous requests for the same highlighted file and admit at
   most four CPU jobs, including work whose requesting page has been cancelled.

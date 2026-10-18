@@ -29,6 +29,7 @@
       {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="Upload files" title="Upload files">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
 
+    {% include "repo/listing_controls.html" %}
     <section class="box overflow-hidden" aria-label="Files">
       {% include "repo/latest_commit.html" %}
       <ul>

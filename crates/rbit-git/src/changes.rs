@@ -31,6 +31,55 @@ impl Default for DiffLimits {
 type Side = Option<(EntryMode, ObjectId)>;
 
 impl RepositoryReader {
+    /// Page recent refs before allocating commit messages and display metadata. Ref
+    /// timestamps are still scanned to preserve the existing most-recent-first order.
+    pub async fn ref_details_page(
+        &self,
+        kind: RefKind,
+        query: String,
+        default_branch: String,
+        page: usize,
+        limit: usize,
+    ) -> Result<(Vec<RefDetail>, usize), GitError> {
+        self.with_repo(move |repo| {
+            let platform = repo.references().map_err(GitError::backend)?;
+            let iter = match kind {
+                RefKind::Branch => platform.local_branches(),
+                RefKind::Tag => platform.tags(),
+            }
+            .map_err(GitError::backend)?;
+            let needle = query.to_lowercase();
+            let mut refs = Vec::new();
+            for mut reference in iter.flatten() {
+                let name = reference.name().shorten().to_str_lossy().into_owned();
+                if !needle.is_empty() && !name.to_lowercase().contains(&needle) {
+                    continue;
+                }
+                let Ok(commit) = reference.peel_to_commit() else { continue };
+                let date = commit.author().map_err(GitError::backend)?.seconds();
+                refs.push((name, commit.id, date));
+            }
+            refs.sort_by(|a, b| {
+                let default = |name: &str| kind == RefKind::Branch && name == default_branch;
+                default(&b.0).cmp(&default(&a.0)).then_with(|| b.2.cmp(&a.2)).then_with(|| a.0.cmp(&b.0))
+            });
+            let total = refs.len();
+            let limit = limit.clamp(1, 100);
+            let page = page.clamp(1, total.div_ceil(limit).max(1));
+            let rows = refs
+                .into_iter()
+                .skip((page - 1) * limit)
+                .take(limit)
+                .map(|(name, id, _)| {
+                    let commit = repo.find_commit(id).map_err(GitError::backend)?;
+                    Ok(RefDetail { name, kind, commit: summarize(&commit)? })
+                })
+                .collect::<Result<Vec<_>, GitError>>()?;
+            Ok((rows, total))
+        })
+        .await
+    }
+
     /// Everything `revision` changed relative to its first parent (or the empty tree for
     /// a root commit), with renames detected.
     pub async fn commit_detail(&self, revision: String, limits: DiffLimits) -> Result<CommitDetail, GitError> {

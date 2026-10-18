@@ -17,6 +17,7 @@ pub mod events;
 pub mod external_auth;
 pub mod forks;
 pub mod insights;
+mod insights_recent;
 pub mod instance;
 pub mod issues;
 pub mod jobs;

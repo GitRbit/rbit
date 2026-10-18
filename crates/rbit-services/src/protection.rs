@@ -294,6 +294,15 @@ impl ProtectionService {
         let branches = self.branch_names(repo).await?;
         Ok(branches.into_iter().filter(|branch| protection::is_protected(&rules, branch)).collect())
     }
+
+    /// Evaluate only the names requested by a paged listing.
+    pub async fn protected_branch_names(&self, repo: &RepoContext, branches: &[String]) -> Result<Vec<String>, ServiceError> {
+        let rules = self.rules(repo).await?;
+        if rules.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(branches.iter().filter(|branch| protection::is_protected(&rules, branch)).cloned().collect())
+    }
 }
 
 fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {

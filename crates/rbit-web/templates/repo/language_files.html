@@ -5,22 +5,23 @@
 {% block content %}
 <section class="box" data-language-content>
   <div class="box-header justify-between">
-    <h1 id="language-files-title" class="font-medium">{{ language }} files <span class="ml-2 text-ink-faint">{{ count }}</span></h1>
+    <h1 id="language-files-title" class="font-medium">{{ language }} files <span class="ml-2 text-ink-faint">{{ pagination.total }}</span></h1>
     <button type="button" class="btn btn-ghost btn-icon" data-language-close aria-label="Close file browser" hidden>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
   </div>
+  <div class="px-4">{% include "repo/listing_controls.html" %}</div>
   <nav class="language-file-list" aria-label="Language files" data-file-outline>
     <ul class="diff-tree">
       {% for row in rows %}
       <li class="diff-tree-row" data-depth="{{ row.depth }}" data-path="{{ row.path }}">
         {% if let Some(url) = row.url %}
-        <a class="diff-tree-item" href="{{ url }}" title="{{ row.path }}"><span class="w-3 shrink-0"></span>{% call ui::icon("file", "size-3.5 shrink-0") %}{% endcall %}<span class="truncate">{{ row.name }}</span></a>
+        <a class="diff-tree-item" href="{{ url }}" data-outline-file title="{{ row.path }}"><span class="w-3 shrink-0"></span>{% call ui::icon("file", "size-3.5 shrink-0") %}{% endcall %}<span class="truncate">{{ row.name }}</span></a>
         {% else %}
         <button type="button" class="diff-tree-item" aria-expanded="true" title="{{ row.path }}" data-outline-folder>{% call ui::icon("chevron-right", "diff-tree-chevron size-3 shrink-0") %}{% endcall %}{% call ui::icon("folder", "size-3.5 shrink-0") %}{% endcall %}<span class="truncate">{{ row.name }}</span></button>
         {% endif %}
       </li>
       {% endfor %}
     </ul>
-    {% if rows.is_empty() %}<p class="p-6 text-ink-muted">No files found for this language.</p>{% endif %}
+    {% if rows.is_empty() %}<p class="p-6 text-ink-muted">{% if pagination.query.is_empty() %}No files found for this language.{% else %}No matching files.{% endif %}</p>{% endif %}
   </nav>
 </section>
 {% endblock %}

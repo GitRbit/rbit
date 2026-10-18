@@ -38,7 +38,7 @@ function browser(fetch) {
     },
   };
   vm.runInNewContext(source, { document, Element, AbortController, fetch, addEventListener() {} });
-  return { trigger, listeners, elements, document };
+  return { trigger, listeners, elements, document, Element };
 }
 
 test("language click opens a modal and cannot reach htmx navigation", () => {
@@ -89,5 +89,29 @@ test("language links restored from old page history also stay in a dialog", () =
   });
   assert.equal(stopped, true);
   assert.equal(requested, page.trigger.href);
+  assert.equal(page.document.querySelector().open, true);
+});
+
+test("listing pages inside the dialog load in the dialog, not the page", () => {
+  const requests = [];
+  const page = browser(url => { requests.push(url); return new Promise(() => {}); });
+  page.listeners.get("click").handler({ target: page.trigger, preventDefault() {}, stopPropagation() {} });
+  const dialog = page.document.querySelector();
+  const next = new page.Element("a");
+  next.href = "/owner/repo/language-files?q=&page=2&revision=abc&language=Rust";
+  next.closest = selector => {
+    if (selector === "[data-language-dialog] [data-listing-page]") return next;
+    if (selector === "[data-language-dialog]") return dialog;
+    return null;
+  };
+  let prevented = false;
+  let stopped = false;
+  page.listeners.get("click").handler({
+    target: next,
+    preventDefault() { prevented = true; },
+    stopPropagation() { stopped = true; },
+  });
+  assert.equal(prevented && stopped, true, "htmx must not navigate the page");
+  assert.deepEqual(requests, [page.trigger.dataset.languageFilesUrl, next.href]);
   assert.equal(page.document.querySelector().open, true);
 });

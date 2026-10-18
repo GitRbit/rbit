@@ -141,7 +141,7 @@ impl RepositoryReader {
             let commit = repo.find_commit(resolve_commit(repo, &revision)?).map_err(GitError::backend)?;
             let tree = commit.tree().map_err(GitError::backend)?;
             let attributes = root_attributes(repo, &tree)?;
-            let mut collector = FileCollector::new(&attributes);
+            let mut collector = FileCollector::new(&attributes, true);
             tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
             let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
             if name == "Other" {
@@ -175,7 +175,7 @@ impl RepositoryReader {
             let tree = commit.tree().map_err(GitError::backend)?;
             let attributes = root_attributes(repo, &tree)?;
 
-            let mut collector = FileCollector::new(&attributes);
+            let mut collector = FileCollector::new(&attributes, false);
             tree.traverse().breadthfirst(&mut collector).map_err(GitError::backend)?;
 
             let mut counts: HashMap<&'static str, (&'static Language, u64)> = HashMap::new();
@@ -210,11 +210,12 @@ struct FileCollector<'a> {
     /// Pruning is only safe when no attribute could re-include a default-excluded path.
     may_prune: bool,
     files: Vec<(&'static Language, ObjectId, String)>,
+    keep_paths: bool,
 }
 
 impl<'a> FileCollector<'a> {
-    fn new(attributes: &'a LinguistAttributes) -> Self {
-        Self { location: Recorder::default(), attributes, may_prune: attributes.is_empty(), files: Vec::new() }
+    fn new(attributes: &'a LinguistAttributes, keep_paths: bool) -> Self {
+        Self { location: Recorder::default(), attributes, may_prune: attributes.is_empty(), files: Vec::new(), keep_paths }
     }
 
     fn current_path(&self) -> String {
@@ -249,10 +250,11 @@ impl Visit for FileCollector<'_> {
     }
 
     fn visit_nontree(&mut self, entry: &EntryRef<'_>) -> Action {
+        let path = self.current_path();
         if matches!(entry.mode.kind(), GixEntryKind::Blob | GixEntryKind::BlobExecutable)
-            && let Some(language) = classify(&self.current_path(), self.attributes)
+            && let Some(language) = classify(&path, self.attributes)
         {
-            self.files.push((language, entry.oid.to_owned(), self.current_path()));
+            self.files.push((language, entry.oid.to_owned(), if self.keep_paths { path } else { String::new() }));
         }
         Action::Continue(true)
     }

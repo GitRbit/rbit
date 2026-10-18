@@ -1,12 +1,7 @@
 //! A single commit with its diff, and the branch and tag listings.
 
+use crate::views::pagination::{LIST_PAGE_SIZE, ListQuery, Pagination};
 use axum::extract::{Path, Query, State};
-use serde::Deserialize;
-
-#[derive(Deserialize, Default)]
-pub struct RefsQuery {
-    view: Option<String>,
-}
 use rbit_git::{DiffLimits, RefKind};
 use rbit_services::ServiceError;
 
@@ -54,6 +49,14 @@ pub(super) fn is_full_commit_id(revision: &str) -> bool {
     matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+pub struct RefsQuery {
+    q: String,
+    page: usize,
+    view: Option<String>,
+}
+
 /// `GET /{owner}/{repo}/branches`
 pub async fn branches(
     state: State<AppState>,
@@ -62,12 +65,27 @@ pub async fn branches(
     path: Path<(String, String)>,
     Query(query): Query<RefsQuery>,
 ) -> WebResult<RefsPage> {
-    refs(state, viewer, page, path, RefKind::Branch, query.view.as_deref() == Some("tree")).await
+    refs(
+        state,
+        viewer,
+        page,
+        path,
+        RefKind::Branch,
+        ListQuery { q: query.q, page: query.page }.normalized(),
+        query.view.as_deref() == Some("tree"),
+    )
+    .await
 }
 
 /// `GET /{owner}/{repo}/tags`
-pub async fn tags(state: State<AppState>, viewer: Viewer, page: Page, path: Path<(String, String)>) -> WebResult<RefsPage> {
-    refs(state, viewer, page, path, RefKind::Tag, false).await
+pub async fn tags(
+    state: State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    path: Path<(String, String)>,
+    Query(query): Query<ListQuery>,
+) -> WebResult<RefsPage> {
+    refs(state, viewer, page, path, RefKind::Tag, query.normalized(), false).await
 }
 
 async fn refs(
@@ -76,10 +94,39 @@ async fn refs(
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
     kind: RefKind,
+    query: ListQuery,
     show_graph: bool,
 ) -> WebResult<RefsPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let details = loaded.ctx.reader.ref_details(kind).await.map_err(ServiceError::from)?;
+    if show_graph {
+        let references = loaded.ctx.reader.branch_tips().await.map_err(ServiceError::from)?;
+        let mut commits = if references.is_empty() {
+            Vec::new()
+        } else {
+            loaded
+                .ctx
+                .reader
+                .branch_history(references.iter().map(|reference| reference.target.clone()).collect(), 201)
+                .await
+                .map_err(ServiceError::from)?
+        };
+        let truncated = commits.len() > 200;
+        commits.truncate(200);
+        return Ok(RefsPage {
+            pagination: Pagination::new(references.len(), &query, loaded.urls.branches(), vec![]),
+            page: page.titled(format!("Branches · {}", loaded.ctx.repo.full_name())),
+            header: loaded.header(&state, "branches"),
+            kind: "branch",
+            rows: Vec::new(),
+            graph: Some(crate::views::branch_graph::BranchGraph::new(&commits, &references, &loaded.urls, truncated)),
+        });
+    }
+    let (details, total) = loaded
+        .ctx
+        .reader
+        .ref_details_page(kind, query.q.clone(), loaded.default_branch().into(), query.page, LIST_PAGE_SIZE)
+        .await
+        .map_err(ServiceError::from)?;
 
     let mut rows: Vec<RefRow> = details.iter().map(|d| RefRow::new(d, loaded.default_branch(), &loaded.urls)).collect();
     // The default branch leads the list; the rest stay most-recent-first.
@@ -91,23 +138,21 @@ async fn refs(
     };
     // Only branches carry the "Protected" badge.
     let protected = match kind {
-        RefKind::Branch => state.services.protection.protected_branches(&loaded.ctx).await?,
+        RefKind::Branch => {
+            state
+                .services
+                .protection
+                .protected_branch_names(&loaded.ctx, &rows.iter().map(|row| row.name.clone()).collect::<Vec<_>>())
+                .await?
+        }
         RefKind::Tag => Vec::new(),
     };
-    let graph = if show_graph {
-        let revisions = details.iter().map(|detail| detail.commit.id.clone()).collect();
-        let mut commits = loaded.ctx.reader.branch_history(revisions, 201).await.map_err(ServiceError::from)?;
-        let truncated = commits.len() > 200;
-        commits.truncate(200);
-        Some(crate::views::branch_graph::BranchGraph::new(&commits, &rows, &loaded.urls, truncated))
-    } else {
-        None
-    };
     Ok(RefsPage {
+        graph: None,
+        pagination: Pagination::new(total, &query, format!("{}/{tab}", loaded.urls.home()), vec![]),
         page: page.titled(format!("{label} · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, tab),
         kind: kind_name,
-        graph,
         rows,
     }
     .with_protected(&protected))

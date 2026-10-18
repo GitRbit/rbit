@@ -194,3 +194,34 @@ async fn commit_id_resolves_names() {
     assert_eq!(id.len(), 40);
     assert_eq!(reader.commit_id(id[..7].to_owned()).await.unwrap(), id);
 }
+
+#[tokio::test]
+async fn ref_pages_preserve_recent_order_and_default_branch_priority() {
+    let (dir, reader) = fixture();
+    let git = Git::new(dir.path());
+    git.run(&["tag", "v-old", "main~2"]);
+    git.run(&["tag", "v-new", "main"]);
+    git.run(&["tag", "-a", "v-middle", "main~1", "-m", "annotated"]);
+    let all = reader.ref_details(rbit_git::RefKind::Tag).await.unwrap();
+    let (first, total) = reader.ref_details_page(rbit_git::RefKind::Tag, String::new(), "main".into(), 1, 2).await.unwrap();
+    let (last, _) = reader.ref_details_page(rbit_git::RefKind::Tag, String::new(), "main".into(), usize::MAX, 2).await.unwrap();
+    assert_eq!(total, 3);
+    assert_eq!(first.iter().chain(&last).map(|r| &r.name).collect::<Vec<_>>(), all.iter().map(|r| &r.name).collect::<Vec<_>>());
+    let (found, total) = reader.ref_details_page(rbit_git::RefKind::Tag, "V-OLD".into(), "main".into(), 1, 100).await.unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(found[0].name, "v-old");
+    let (branches, _) = reader.ref_details_page(rbit_git::RefKind::Branch, String::new(), "main".into(), 1, 1).await.unwrap();
+    assert_eq!(branches[0].name, "main", "default precedes newer attributes branch");
+}
+
+#[tokio::test]
+async fn language_paths_and_multi_branch_history_match_the_selected_snapshot() {
+    let (_dir, reader) = fixture();
+    assert_eq!(reader.language_files("main".into(), "Rust".into()).await.unwrap(), ["src/lib.rs", "src/main.rs"]);
+    assert_eq!(reader.language_files("attributes".into(), "PHP".into()).await.unwrap(), ["lib/helpers.inc"]);
+    assert_eq!(reader.language_files("attributes".into(), "HTML".into()).await.unwrap(), Vec::<String>::new());
+    let history = reader.branch_history(vec!["main".into(), "side".into()], 3).await.unwrap();
+    assert_eq!(history.len(), 3);
+    let ids: std::collections::HashSet<_> = history.iter().map(|c| &c.id).collect();
+    assert_eq!(ids.len(), history.len());
+}

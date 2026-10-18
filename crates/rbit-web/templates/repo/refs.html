@@ -4,7 +4,7 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ rows.len() }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ pagination.total }}</span></h1>
   {% if kind == "branch" %}
   <nav class="flex gap-1" aria-label="Branch view">
     <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>List</a>
@@ -13,12 +13,17 @@
   {% endif %}
 </div>
 
+{% if graph.is_none() %}
+{% include "repo/listing_controls.html" %}
+{% endif %}
 <div class="box">
   {% if let Some(graph) = graph %}
   {% include "repo/branch_graph.html" %}
   {% else %}
   {% if rows.is_empty() %}
-  {% if kind == "branch" %}
+  {% if !pagination.query.is_empty() %}
+  <p class="p-6 text-ink-muted">No matching refs.</p>
+  {% else if kind == "branch" %}
   {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
   {% else %}
   {% call ui::empty_state("tag", "No tags yet", "Tags mark releases and other important points in history.") %}{% endcall %}

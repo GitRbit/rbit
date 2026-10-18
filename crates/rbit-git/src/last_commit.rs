@@ -11,7 +11,8 @@
 //! either runs out are simply absent from the result.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -41,7 +42,8 @@ pub struct LastCommits {
     /// Entry name → the newest commit that changed it.
     pub commits: HashMap<String, CommitSummary>,
     /// The deadline cut the walk short. Such a result depends on machine load, so callers
-    /// should not cache it; a result bounded by the commit count is deterministic.
+    /// must not persist it as complete; short-lived reuse is safe. A result bounded
+    /// by the commit count is deterministic.
     pub timed_out: bool,
 }
 
@@ -57,7 +59,8 @@ impl RepositoryReader {
         self.with_repo(move |repo| {
             let started = Instant::now();
             let tip = resolve_commit(repo, &revision)?;
-            let mut walk = HistoryWalk { repo, directory: &directory, directory_trees: HashMap::new() };
+            let mut walk =
+                HistoryWalk { repo, directory: &directory, directory_trees: HashMap::new(), entry_trees: VecDeque::new(), entry_bytes: 0 };
             let mut unresolved: HashSet<String> = entry_names.into_iter().collect();
             let mut result = LastCommits::default();
 
@@ -89,12 +92,17 @@ impl RepositoryReader {
     }
 }
 
+type TreeEntries = Arc<HashMap<String, ObjectId>>;
+const TREE_CACHE_BYTES: usize = 4 * 1024 * 1024;
+
 struct HistoryWalk<'a> {
     repo: &'a gix::Repository,
     directory: &'a str,
     /// Commit → the directory's tree id in it (`None` when absent). Children are visited
     /// before parents, so each parent's lookup is reused when the walk reaches it.
     directory_trees: HashMap<ObjectId, Option<ObjectId>>,
+    entry_trees: VecDeque<(ObjectId, TreeEntries, usize)>,
+    entry_bytes: usize,
 }
 
 impl HistoryWalk<'_> {
@@ -143,12 +151,33 @@ impl HistoryWalk<'_> {
     }
 
     /// Entry name → object id of a directory tree; empty when the directory is absent.
-    fn entries(&self, tree: Option<ObjectId>) -> Result<HashMap<String, ObjectId>, GitError> {
+    fn entries(&mut self, tree: Option<ObjectId>) -> Result<TreeEntries, GitError> {
         let Some(tree) = tree else {
-            return Ok(HashMap::new());
+            return Ok(Arc::default());
         };
+        if let Some(index) = self.entry_trees.iter().position(|(id, _, _)| *id == tree) {
+            let entry = self.entry_trees.remove(index).expect("known tree");
+            let result = Arc::clone(&entry.1);
+            self.entry_trees.push_back(entry);
+            return Ok(result);
+        }
+        let id = tree;
         let tree = self.repo.find_tree(tree).map_err(GitError::backend)?;
         let decoded = tree.decode().map_err(GitError::backend)?;
-        Ok(decoded.entries.iter().map(|entry| (entry.filename.to_str_lossy().into_owned(), entry.oid.to_owned())).collect())
+        let entries: HashMap<_, _> =
+            decoded.entries.iter().map(|entry| (entry.filename.to_str_lossy().into_owned(), entry.oid.to_owned())).collect();
+        let bytes =
+            entries.capacity() * (std::mem::size_of::<(String, ObjectId)>() + 8) + entries.keys().map(String::capacity).sum::<usize>();
+        let entries = Arc::new(entries);
+        if bytes <= TREE_CACHE_BYTES {
+            while self.entry_trees.len() >= 16 || self.entry_bytes + bytes > TREE_CACHE_BYTES {
+                if let Some((_, _, removed)) = self.entry_trees.pop_front() {
+                    self.entry_bytes -= removed;
+                }
+            }
+            self.entry_bytes += bytes;
+            self.entry_trees.push_back((id, Arc::clone(&entries), bytes));
+        }
+        Ok(entries)
     }
 }

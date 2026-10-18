@@ -104,6 +104,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}", get(repo::home))
         .route("/{owner}/{repo}/tree/{*rest}", get(repo::tree))
         .route("/{owner}/{repo}/tree-commits/{*rest}", get(repo::entry_commits))
+        .route("/{owner}/{repo}/language-files", get(repo::language_files))
         .route("/{owner}/{repo}/blob/{*rest}", get(repo::blob))
         .route("/{owner}/{repo}/raw/{*rest}", get(repo::raw))
         .route("/{owner}/{repo}/commits", get(repo::commits_default))
@@ -111,7 +112,6 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}/commit/{revision}", get(history::commit))
         .route("/{owner}/{repo}/branches", get(history::branches))
         .route("/{owner}/{repo}/tags", get(history::tags))
-        .route("/{owner}/{repo}/language-files", get(repo::language_files))
         .route("/{owner}/{repo}/ref-picker", get(ref_picker::page))
         .route("/{owner}/{repo}/ref-picker/options", get(ref_picker::options))
         // Feature areas own their route tables.

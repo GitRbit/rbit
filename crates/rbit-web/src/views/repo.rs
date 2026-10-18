@@ -199,6 +199,7 @@ pub struct ReadmeView {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/tree.html")]
 pub struct TreePage {
+    pub pagination: super::pagination::Pagination,
     pub page: Page,
     pub header: RepoHeader,
     pub switcher: RefSwitcher,
@@ -377,7 +378,11 @@ mod tests {
                 has_unread_notifications: false,
             },
             header: RepoHeader::default(),
-            switcher: RefSwitcher::deferred(&[], "main", crate::views::ref_picker::RefPickerLinks::new(&urls, &Default::default())),
+            switcher: RefSwitcher::deferred(
+                &[],
+                "main",
+                crate::views::ref_picker::RefPickerLinks::new(&urls, &crate::views::ref_picker::RefPickerQuery::default()),
+            ),
             breadcrumbs: Vec::new(),
             latest: CommitView::new(&commit, &urls),
             file_name: "a.rs".to_owned(),

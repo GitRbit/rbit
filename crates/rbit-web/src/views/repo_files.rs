@@ -1,8 +1,9 @@
-//! File outlines for the language browser. Folder rows precede their descendants.
+//! File outlines for the language browser. Folder rows precede their descendants, and
+//! an outline is built from one bounded page of paths at a time.
 
 use crate::{
     urls::RepoUrls,
-    views::{layout::Page, repo::RepoHeader},
+    views::{layout::Page, pagination::Pagination, repo::RepoHeader},
 };
 use askama::Template;
 use askama_web::WebTemplate;
@@ -44,8 +45,8 @@ pub struct LanguageFilesPage {
     pub page: Page,
     pub header: RepoHeader,
     pub language: String,
-    pub count: usize,
     pub rows: Vec<FileRow>,
+    pub pagination: Pagination,
 }
 
 #[cfg(test)]

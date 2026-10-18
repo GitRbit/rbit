@@ -58,6 +58,7 @@ impl RefRow {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/refs.html")]
 pub struct RefsPage {
+    pub pagination: super::pagination::Pagination,
     pub page: Page,
     pub header: RepoHeader,
     pub kind: &'static str,
@@ -111,6 +112,12 @@ mod tests {
 
     fn page(kind: &'static str) -> RefsPage {
         RefsPage {
+            pagination: super::super::pagination::Pagination::new(
+                2,
+                &super::super::pagination::ListQuery::default(),
+                "/acme/rocket/branches".into(),
+                vec![],
+            ),
             page: Page {
                 site_name: "rbit".to_owned(),
                 title: None,

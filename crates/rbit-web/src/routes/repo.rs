@@ -24,6 +24,7 @@ use crate::{
         forks::ForkedFrom,
         insights::{EntryCommit, EntryCommitCell, EntryCommitsFragment, LanguageBar, entry_commit_slot},
         layout::Page,
+        pagination::{ListQuery, Pagination},
         ref_picker::{RefPickerLinks, RefPickerQuery, RefTarget},
         releases::LatestRelease,
         repo::{
@@ -176,6 +177,48 @@ fn file_name(path: &str) -> &str {
     path.rsplit_once('/').map_or(path, |(_, name)| name)
 }
 
+#[derive(Deserialize)]
+pub struct LanguageFilesQuery {
+    revision: String,
+    language: String,
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    page: usize,
+}
+
+/// A paged full page without JavaScript, pinned to the commit used for classification;
+/// the language dialog extracts its file outline.
+pub async fn language_files(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<LanguageFilesQuery>,
+) -> WebResult<crate::views::repo_files::LanguageFilesPage> {
+    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    let revision = loaded.ctx.reader.commit_id(query.revision).await.map_err(ServiceError::from)?;
+    let paths = loaded.ctx.reader.language_files(revision.clone(), query.language.clone()).await.map_err(ServiceError::from)?;
+    let search = ListQuery { q: query.q, page: query.page }.normalized();
+    let needle = search.q.to_lowercase();
+    let paths: Vec<_> = paths.into_iter().filter(|path| needle.is_empty() || path.to_lowercase().contains(&needle)).collect();
+    let pagination = Pagination::new(
+        paths.len(),
+        &search,
+        format!("{}/language-files", loaded.urls.home()),
+        vec![("revision".into(), revision.clone()), ("language".into(), query.language.clone())],
+    );
+    // The outline covers only this page's paths, so its size stays bounded.
+    let rows = crate::views::repo_files::file_rows(&paths[pagination.start..pagination.end], &loaded.urls, &revision);
+    Ok(crate::views::repo_files::LanguageFilesPage {
+        page: page.titled(format!("{} files · {}", query.language, loaded.ctx.repo.full_name())),
+        header: loaded.header(&state, "code"),
+        language: query.language,
+        rows,
+        pagination,
+    })
+}
+
 // ------------------------------------------------------------------ code tab
 
 /// `GET /{owner}/{repo}`: the default branch's root, or setup instructions when empty.
@@ -184,6 +227,7 @@ pub async fn home(
     viewer: Viewer,
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ListQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let Some(revision) = loaded.landing_revision() else {
@@ -191,7 +235,7 @@ pub async fn home(
         let page = page.titled(loaded.ctx.repo.full_name());
         return Ok(EmptyRepoPage { page, header, default_branch: loaded.default_branch().to_owned() }.into_response());
     };
-    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new()).await?.into_response())
+    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new(), query.normalized()).await?.into_response())
 }
 
 /// `GET /{owner}/{repo}/tree/{revision}/{path…}`
@@ -200,10 +244,11 @@ pub async fn tree(
     viewer: Viewer,
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
+    Query(query): Query<ListQuery>,
 ) -> WebResult<TreePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.split(rest).await?;
-    render_tree(&state, &viewer, loaded, page, revision, path).await
+    render_tree(&state, &viewer, loaded, page, revision, path, query.normalized()).await
 }
 
 async fn render_tree(
@@ -213,6 +258,7 @@ async fn render_tree(
     page: Page,
     revision: String,
     path: String,
+    query: ListQuery,
 ) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
     let commit_id = reader.commit_id(revision.clone()).await.map_err(ServiceError::from)?;
@@ -237,10 +283,12 @@ async fn render_tree(
     });
 
     let urls = &loaded.urls;
-    let entries = view
-        .entries
+    let filtered = matching_entries(&view.entries, &query.q);
+    let pagination = Pagination::new(filtered.len(), &query, urls.tree(&view.commit.id, &path), vec![]);
+    let cells = Pagination::new(filtered.len(), &query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
+    let entries = filtered[pagination.start..pagination.end]
         .iter()
-        .enumerate()
+        .copied()
         .map(|(index, entry)| {
             let entry_path = join_path(&path, &entry.name);
             EntryRow {
@@ -268,7 +316,8 @@ async fn render_tree(
         latest: CommitView::new(&view.commit, urls),
         entries,
         // Pinned to the resolved commit so the cells always describe the rows on screen.
-        entry_commits_url: entry_commits_url(urls, &view.commit.id, &path),
+        entry_commits_url: cells.url(cells.page),
+        pagination,
         readme,
         history_url: urls.commits(&revision),
         languages,
@@ -331,17 +380,23 @@ pub async fn entry_commits(
     State(state): State<AppState>,
     viewer: Viewer,
     Path((owner, repo, rest)): Path<(String, String, String)>,
+    Query(query): Query<ListQuery>,
 ) -> WebResult<Response> {
     let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
     let view = ctx.reader.tree(revision.clone(), path.clone()).await.map_err(ServiceError::from)?;
-    let commits = state.services.insights.last_commits(&ctx, &revision, &path, &view.entries).await?;
+    let query = query.normalized();
+    let filtered = matching_entries(&view.entries, &query.q);
+    let pagination = Pagination::new(filtered.len(), &query, String::new(), vec![]);
+    let selected = &filtered[pagination.start..pagination.end];
+    let entries: Vec<_> = selected.iter().map(|(_, entry)| (*entry).clone()).collect();
+    let result = state.services.insights.last_commits_page(&ctx, &view.commit.id, &path, &entries).await?;
+    let commits = &result.commits;
 
     let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
-    let cells = view
-        .entries
+    let cells = selected
         .iter()
-        .enumerate()
+        .copied()
         .map(|(index, entry)| EntryCommitCell {
             slot_id: entry_commit_slot(index),
             commit: commits.get(&entry.name).map(|c| EntryCommit::new(c, &urls)),
@@ -349,8 +404,13 @@ pub async fn entry_commits(
         .collect();
     // The tree page links here by commit id, which pins the answer. Only when the revision
     // resolved to the commit it spells: a branch may be named with 40 hex digits.
-    let pinned = view.commit.id == revision && ctx.repo.repo.visibility.is_public();
+    let pinned = view.commit.id == revision && ctx.repo.repo.visibility.is_public() && !result.timed_out && commits.len() == entries.len();
     Ok(crate::middleware::cache_pinned(EntryCommitsFragment { cells }.into_response(), pinned))
+}
+
+fn matching_entries<'a>(entries: &'a [rbit_git::TreeEntry], query: &str) -> Vec<(usize, &'a rbit_git::TreeEntry)> {
+    let needle = query.to_lowercase();
+    entries.iter().enumerate().filter(|(_, entry)| needle.is_empty() || entry.name.to_lowercase().contains(&needle)).collect()
 }
 
 /// `GET /{owner}/{repo}/blob/{revision}/{path…}`. A directory path redirects to its
@@ -578,31 +638,4 @@ mod tests {
         assert_eq!(split("mainline/src"), None);
         assert_eq!(split("3f9a2c1/src"), None);
     }
-}
-
-#[derive(Deserialize)]
-pub struct LanguageFilesQuery {
-    revision: String,
-    language: String,
-}
-
-/// A full page without JavaScript; the language dialog extracts its file outline.
-pub async fn language_files(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<LanguageFilesQuery>,
-) -> WebResult<crate::views::repo_files::LanguageFilesPage> {
-    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    // Pin links to the same snapshot used to classify the files.
-    let tree = loaded.ctx.reader.tree(query.revision, String::new()).await.map_err(ServiceError::from)?;
-    let paths = loaded.ctx.reader.language_files(tree.commit.id.clone(), query.language.clone()).await.map_err(ServiceError::from)?;
-    Ok(crate::views::repo_files::LanguageFilesPage {
-        page: page.titled(format!("{} files · {}", query.language, loaded.ctx.repo.full_name())),
-        header: loaded.header(&state, "code"),
-        language: query.language,
-        count: paths.len(),
-        rows: crate::views::repo_files::file_rows(&paths, &loaded.urls, &tree.commit.id),
-    })
 }

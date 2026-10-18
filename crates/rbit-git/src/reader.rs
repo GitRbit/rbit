@@ -285,6 +285,22 @@ impl RepositoryReader {
         })
         .await
     }
+
+    /// Resolved branch tips for graphs, without allocating full commit messages.
+    pub async fn branch_tips(&self) -> Result<Vec<RefSummary>, GitError> {
+        self.with_repo(|repo| {
+            let platform = repo.references().map_err(GitError::backend)?;
+            let mut tips = Vec::new();
+            for mut reference in platform.local_branches().map_err(GitError::backend)?.flatten() {
+                let name = reference.name().shorten().to_str_lossy().into_owned();
+                let Ok(commit) = reference.peel_to_commit() else { continue };
+                tips.push(RefSummary { name, kind: RefKind::Branch, target: commit.id.to_hex().to_string() });
+            }
+            tips.sort_by(|a, b| a.name.cmp(&b.name));
+            Ok(tips)
+        })
+        .await
+    }
 }
 
 /// The repository held by a pinned reader, opened on first use. Concurrent first calls

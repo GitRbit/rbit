@@ -4,7 +4,11 @@
 //! valid forever and nothing needs invalidating on push. The cache is an optimisation
 //! only: if it cannot be read or written, the value is computed and served anyway.
 
-use std::collections::HashMap;
+use crate::insights_recent::{RecentWalks, WalkKey};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use rbit_core::Timestamp;
 use rbit_git::{CommitSummary, LanguageShare, LanguageStats, LastCommitLimits, TreeEntry};
@@ -15,12 +19,13 @@ use crate::{RepoContext, ServiceContext, ServiceError};
 #[derive(Debug, Clone)]
 pub struct InsightsService {
     cache: InsightsCache,
+    recent: Arc<RecentWalks>,
 }
 
 impl InsightsService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let ServiceContext { kv, .. } = ctx;
-        Self { cache: kv.insights() }
+        Self { cache: kv.insights(), recent: Arc::default() }
     }
 
     /// The language breakdown of `revision` (a branch, tag or commit id).
@@ -48,21 +53,54 @@ impl InsightsService {
         path: &str,
         entries: &[TreeEntry],
     ) -> Result<HashMap<String, CommitSummary>, ServiceError> {
+        Ok(self.last_commits_inner(repo, revision, path, entries, true).await?.commits.clone())
+    }
+
+    /// A requested subset must never populate the persistent whole-directory cache.
+    pub async fn last_commits_page(
+        &self,
+        repo: &RepoContext,
+        revision: &str,
+        path: &str,
+        entries: &[TreeEntry],
+    ) -> Result<Arc<rbit_git::LastCommits>, ServiceError> {
+        self.last_commits_inner(repo, revision, path, entries, false).await
+    }
+
+    async fn last_commits_inner(
+        &self,
+        repo: &RepoContext,
+        revision: &str,
+        path: &str,
+        entries: &[TreeEntry],
+        whole_directory: bool,
+    ) -> Result<Arc<rbit_git::LastCommits>, ServiceError> {
+        if !repo.access.can_read() {
+            return Err(ServiceError::Forbidden);
+        }
         let commit_id = repo.reader.commit_id(revision.to_owned()).await?;
         match self.cache.last_commits(&commit_id, path).await {
             Ok(Some(cached)) => {
-                let mut commits = last_commits_from_cache(&cached);
-                commits.retain(|name, _| entries.iter().any(|entry| &entry.name == name));
-                return Ok(commits);
+                let names: HashSet<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
+                let commits = last_commits_from_cache(&cached, &names);
+                return Ok(Arc::new(rbit_git::LastCommits { commits, timed_out: false }));
             }
             Ok(None) => {}
             Err(error) => tracing::warn!(%error, "last-commit cache read failed"),
         }
 
-        let names = entries.iter().map(|entry| entry.name.clone()).collect();
-        let result = repo.reader.last_commits(commit_id.clone(), path.to_owned(), names, LastCommitLimits::default()).await?;
-        // A walk cut short by the deadline depends on server load; try again next time.
-        if !result.timed_out {
+        let mut names: Vec<_> = entries.iter().map(|entry| entry.name.clone()).collect();
+        names.sort();
+        let key = WalkKey { repository: repo.repo.repo.id, commit: commit_id.clone(), path: path.into(), names: names.clone() };
+        let reader = repo.reader.clone();
+        let revision = commit_id.clone();
+        let directory = path.to_owned();
+        let result = self
+            .recent
+            .run(key, move || async move { Ok(reader.last_commits(revision, directory, names, LastCommitLimits::default()).await?) })
+            .await?;
+        // Incomplete walks are reused briefly in memory, never persisted as complete.
+        if whole_directory && !result.timed_out {
             let cached: Vec<(String, CachedCommit)> =
                 result.commits.iter().map(|(name, commit)| (name.clone(), commit_to_cache(commit))).collect();
             let cached = CachedLastCommits::from_entries(cached.iter().map(|(name, commit)| (name.clone(), commit)));
@@ -70,7 +108,7 @@ impl InsightsService {
                 tracing::warn!(%error, "last-commit cache write failed");
             }
         }
-        Ok(result.commits)
+        Ok(result)
     }
 }
 
@@ -126,10 +164,15 @@ fn commit_from_cache(commit: &CachedCommit) -> CommitSummary {
     }
 }
 
-fn last_commits_from_cache(cached: &CachedLastCommits) -> HashMap<String, CommitSummary> {
+fn last_commits_from_cache(cached: &CachedLastCommits, names: &HashSet<&str>) -> HashMap<String, CommitSummary> {
     // Convert each distinct commit once, then clone per entry.
     let commits: Vec<CommitSummary> = cached.commits.iter().map(commit_from_cache).collect();
-    cached.entries.iter().filter_map(|(name, index)| Some((name.clone(), commits.get(usize::try_from(*index).ok()?)?.clone()))).collect()
+    cached
+        .entries
+        .iter()
+        .filter(|(name, _)| names.contains(name.as_str()))
+        .filter_map(|(name, index)| Some((name.clone(), commits.get(usize::try_from(*index).ok()?)?.clone())))
+        .collect()
 }
 
 #[cfg(test)]

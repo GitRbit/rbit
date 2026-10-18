@@ -7,7 +7,8 @@ function closeLanguageBrowser() {
   document.querySelector('[data-language-dialog]')?.close();
 }
 
-async function showLanguageFiles(trigger) {
+// `url` is a page or search of the listing already shown; it stays in the dialog.
+async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl ?? trigger.href) {
   closeLanguageBrowser();
   document.querySelector('[data-language-dialog]')?.remove();
   const controller = new AbortController();
@@ -15,6 +16,7 @@ async function showLanguageFiles(trigger) {
   const dialog = document.createElement('dialog');
   dialog.className = 'language-dialog';
   dialog.dataset.languageDialog = '';
+  dialog.languageTrigger = trigger;
   dialog.setAttribute('aria-label', 'Language files');
   const loading = document.createElement('p');
   loading.className = 'p-6 text-ink-muted';
@@ -39,8 +41,8 @@ async function showLanguageFiles(trigger) {
   document.body.append(dialog);
   dialog.showModal();
   try {
-    // Also handle language links retained in htmx's history from before this change.
-    const response = await fetch(trigger.dataset.languageFilesUrl ?? trigger.href, { signal: controller.signal });
+    // The default also handles language links retained in htmx's history from before this change.
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error('Request failed');
     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
     const content = page.querySelector('[data-language-content]');
@@ -58,7 +60,7 @@ async function showLanguageFiles(trigger) {
     retry.type = 'button';
     retry.className = 'link';
     retry.textContent = 'Try again';
-    retry.addEventListener('click', () => showLanguageFiles(trigger));
+    retry.addEventListener('click', () => showLanguageFiles(trigger, url));
     loading.append(retry);
   }
 }
@@ -73,6 +75,13 @@ document.addEventListener('click', event => {
     showLanguageFiles(trigger);
     return;
   }
+  const pageLink = target?.closest('[data-language-dialog] [data-listing-page]');
+  if (pageLink) {
+    event.preventDefault();
+    event.stopPropagation();
+    showLanguageFiles(pageLink.closest('[data-language-dialog]').languageTrigger, pageLink.href);
+    return;
+  }
   if (target?.closest('[data-language-close]')) closeLanguageBrowser();
   const folder = target?.closest('[data-outline-folder]');
   if (!folder) return;
@@ -82,6 +91,16 @@ document.addEventListener('click', event => {
   for (const row of outline.querySelectorAll('[data-path]')) {
     row.hidden = collapsed.some(prefix => row.dataset.path.startsWith(prefix));
   }
+}, true);
+
+document.addEventListener('submit', event => {
+  const form = event.target instanceof Element ? event.target.closest('[data-language-dialog] [data-listing-search]') : null;
+  if (!form) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const url = new URL(form.action, location.href);
+  url.search = new URLSearchParams(new FormData(form)).toString();
+  showLanguageFiles(form.closest('[data-language-dialog]').languageTrigger, url.href);
 }, true);
 
 document.addEventListener('htmx:beforeSwap', event => {

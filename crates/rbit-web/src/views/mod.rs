@@ -31,6 +31,7 @@ pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod org;
+pub mod pagination;
 pub mod protection;
 pub mod pulls;
 // Milestone 3: importing and push mirrors (M).

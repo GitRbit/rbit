@@ -9,13 +9,13 @@
     <tr>
       <td class="branch-graph-lanes">
         <svg width="{{ graph.width }}" height="48" viewBox="0 0 {{ graph.width }} 48" aria-hidden="true" class="block text-ink-muted">
-          {% for x in row.incoming %}<path d="M {{ x }} 0 V 24" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endfor %}
-          {% for edge in row.edges %}<path d="M {{ edge.x1 }} 24 C {{ edge.x1 }} 36 {{ edge.x2 }} 36 {{ edge.x2 }} 48" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endfor %}
+          {% if !row.paths.is_empty() %}<path d="{{ row.paths }}" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endif %}
           <circle cx="{{ row.x }}" cy="24" r="4" fill="currentColor"/>
         </svg>
       </td>
       <td class="min-w-64 px-3"><div class="flex items-center gap-2">
         {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge shrink-0 hover:underline">{% call ui::icon("branch", "size-3") %}{% endcall %}{{ branch.0 }}</a>{% endfor %}
+        {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge shrink-0 hover:underline">{{ row.more_branches }} more branches</a>{% endif %}
         <a href="{{ row.commit.url }}" class="max-w-xl truncate hover:underline">{{ row.commit.summary }}</a>
       </div></td>
       <td class="whitespace-nowrap px-3 text-ink-muted">{{ row.commit.author }}</td>

@@ -1,11 +1,10 @@
 //! A bounded commit graph, preserving merge parents and distinct branch lanes.
 
-use crate::{
-    urls::RepoUrls,
-    views::{refs::RefRow, repo::CommitView},
-};
-use rbit_git::CommitSummary;
-use std::collections::HashMap;
+use crate::{urls::RepoUrls, views::repo::CommitView};
+use rbit_git::{CommitSummary, RefSummary};
+use std::{collections::HashMap, fmt::Write};
+
+type BranchLinks = Vec<(String, String)>;
 
 #[derive(Debug)]
 pub struct GraphEdge {
@@ -17,9 +16,9 @@ pub struct GraphEdge {
 pub struct GraphRow {
     pub commit: CommitView,
     pub branches: Vec<(String, String)>,
-    pub edges: Vec<GraphEdge>,
+    pub more_branches: usize,
+    pub paths: String,
     pub x: usize,
-    pub incoming: Vec<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -30,7 +29,16 @@ pub struct BranchGraph {
 }
 
 impl BranchGraph {
-    pub fn new(commits: &[CommitSummary], refs: &[RefRow], urls: &RepoUrls, truncated: bool) -> Self {
+    pub fn new(commits: &[CommitSummary], refs: &[RefSummary], urls: &RepoUrls, truncated: bool) -> Self {
+        let mut labels: HashMap<&str, (BranchLinks, usize)> = HashMap::new();
+        for reference in refs {
+            let (visible, extra) = labels.entry(&reference.target).or_default();
+            if visible.len() < 8 {
+                visible.push((reference.name.clone(), urls.tree(&format!("refs/heads/{}", reference.name), "")));
+            } else {
+                *extra += 1;
+            }
+        }
         // Date ordering alone can put parents before their children when clocks
         // differ. Topologically order the selected window, retaining date priority.
         let indices: HashMap<_, _> = commits.iter().enumerate().map(|(i, c)| (c.id.as_str(), i)).collect();
@@ -58,7 +66,10 @@ impl BranchGraph {
         let mut max_lanes = 1;
         for i in order {
             let commit = &commits[i];
-            let incoming = (0..lanes.len()).map(x).collect();
+            let mut paths = String::new();
+            for column in 0..lanes.len() {
+                let _ = write!(paths, "M{} 0V24", x(column));
+            }
             let column = lanes.iter().position(|id| id == &commit.id).unwrap_or_else(|| {
                 lanes.push(commit.id.clone());
                 lanes.len() - 1
@@ -83,12 +94,18 @@ impl BranchGraph {
                     edges.push(GraphEdge { x1: x(source), x2: x(destination) });
                 }
             }
+            let (branches, more_branches) = labels.remove(commit.id.as_str()).unwrap_or_default();
             rows.push(GraphRow {
                 commit: CommitView::new(commit, urls),
-                branches: refs.iter().filter(|row| row.commit.id == commit.id).map(|row| (row.name.clone(), row.url.clone())).collect(),
-                edges,
+                branches,
+                more_branches,
+                paths: {
+                    for edge in edges {
+                        let _ = write!(paths, "M{} 24C{} 36 {} 36 {} 48", edge.x1, edge.x1, edge.x2, edge.x2);
+                    }
+                    paths
+                },
                 x: x(column),
-                incoming,
             });
         }
         Self { rows, width: max_lanes * 20 + 12, truncated }
@@ -121,10 +138,18 @@ mod tests {
         let commits = vec![commit("root", &[]), commit("merge", &["left", "right"]), commit("right", &["root"]), commit("left", &["root"])];
         let graph = BranchGraph::new(&commits, &[], &RepoUrls::new("acme", "rocket"), false);
         assert_eq!(graph.rows.iter().map(|row| row.commit.id.as_str()).collect::<Vec<_>>(), ["merge", "right", "left", "root"]);
-        assert_eq!(graph.rows[0].edges.len(), 2);
-        assert_eq!(graph.rows[0].incoming, Vec::<usize>::new());
-        assert_eq!(graph.rows[3].incoming.len(), 1);
-        assert!(graph.rows[3].edges.is_empty());
+        assert_eq!(graph.rows[0].paths, "M16 24C16 36 16 36 16 48M16 24C16 36 36 36 36 48");
+        assert_eq!(graph.rows[3].paths, "M16 0V24");
         assert!(graph.width >= 52);
+    }
+
+    #[test]
+    fn branch_labels_are_bounded_without_losing_the_count() {
+        let refs = (0..1020)
+            .map(|i| RefSummary { name: format!("branch-{i}"), kind: rbit_git::RefKind::Branch, target: "root".into() })
+            .collect::<Vec<_>>();
+        let graph = BranchGraph::new(&[commit("root", &[])], &refs, &RepoUrls::new("o", "r"), false);
+        assert_eq!(graph.rows[0].branches.len(), 8);
+        assert_eq!(graph.rows[0].more_branches, 1012);
     }
 }
