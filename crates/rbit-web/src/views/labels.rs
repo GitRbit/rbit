@@ -104,6 +104,7 @@ mod tests {
         let page = |can_write| LabelsPage {
             page: Page {
                 site_name: "rbit".into(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,
                 path: "/alice/demo/labels".into(),

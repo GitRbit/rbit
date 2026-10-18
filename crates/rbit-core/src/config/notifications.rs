@@ -54,7 +54,7 @@ impl fmt::Display for EmailPreference {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct NotificationConfig {
     /// Whether notifications are also sent by email.
     pub email: bool,

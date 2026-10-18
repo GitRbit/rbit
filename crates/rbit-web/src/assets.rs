@@ -39,7 +39,7 @@ const HASH_LEN: usize = 12;
 /// Nesting limit for module imports; deeper (or cyclic) graphs keep plain specifiers.
 const MAX_IMPORT_DEPTH: usize = 8;
 
-fn hex_prefix(bytes: &[u8]) -> String {
+pub(crate) fn hex_prefix(bytes: &[u8]) -> String {
     use std::fmt::Write;
     bytes.iter().take(HASH_LEN / 2).fold(String::with_capacity(HASH_LEN), |mut out, b| {
         let _ = write!(out, "{b:02x}");

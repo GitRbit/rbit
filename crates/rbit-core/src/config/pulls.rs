@@ -29,7 +29,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PullConfig {
     /// Upper bound, in seconds, for one merge or trial merge: all of its git work, from
     /// creating the scratch repository to the base repository's fetch and ref update.

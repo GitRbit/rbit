@@ -1,0 +1,23 @@
+{% macro field(field) %}
+<div>
+  {% if field.kind == "checkbox" %}
+  <label class="flex items-start gap-3" for="config-{{ field.name }}"><input class="mt-1 accent-(--ink)" type="checkbox" id="config-{{ field.name }}" name="{{ field.name }}" value="true" aria-describedby="hint-{{ field.name }}" {% if field.value == "true" %}checked{% endif %}><span class="text-[13px] font-medium">{{ field.label }}</span></label>
+  {% else %}
+  <label class="label" for="config-{{ field.name }}">{{ field.label }}{% if field.optional && field.kind != "password" %} <span class="font-normal text-ink-muted">(optional)</span>{% endif %}</label>
+  {% if field.kind == "select" %}
+  <select class="input" id="config-{{ field.name }}" name="{{ field.name }}" aria-describedby="hint-{{ field.name }}">{% for choice in field.choices %}<option value="{{ choice.value }}" {% if choice.selected %}selected{% endif %}>{{ choice.label }}</option>{% endfor %}</select>
+  {% else if field.kind == "lines" %}
+  <textarea class="input h-28 resize-y py-2 font-mono text-[13px] sm:h-28" id="config-{{ field.name }}" name="{{ field.name }}" rows="4" spellcheck="false" aria-describedby="hint-{{ field.name }}">{{ field.value }}</textarea><p class="hint">One entry per line.</p>
+  {% if field.optional %}<label class="mt-2 flex items-center gap-2 text-[13px]"><input type="checkbox" name="default.{{ field.name }}" value="true" {% if field.default_mode == "default" %}checked{% endif %}> Use provider defaults</label>{% endif %}
+  {% else if field.kind == "password" %}
+  <input class="input" type="password" id="config-{{ field.name }}" name="{{ field.name }}" value="" autocomplete="new-password" aria-describedby="hint-{{ field.name }}" placeholder="{% if field.configured %}Configured — leave blank to keep{% else %}Not configured{% endif %}">
+  <p class="hint">Leave blank to keep the current credential. New credentials are never redisplayed after an error; enter them again when correcting the form. Protect the instance database and its backups.</p>
+  <label class="mt-2 flex items-center gap-2 text-[13px]"><input type="checkbox" name="clear.{{ field.name }}" value="true" {% if field.secret_action == "clear" %}checked{% endif %}> Clear this credential</label>
+  {% else %}
+  <input class="input" type="{{ field.kind }}" id="config-{{ field.name }}" {% if !field.read_only %}name="{{ field.name }}"{% endif %} value="{{ field.value }}" aria-describedby="hint-{{ field.name }}" {% if field.read_only %}readonly{% endif %} {% if field.kind == "number" %}min="0" max="{{ field.max }}" step="1"{% if !field.optional %} required{% endif %}{% endif %}>
+  {% if field.optional %}<p class="hint">Leave blank to use the default.</p>{% endif %}
+  {% endif %}
+  {% endif %}
+  <p class="hint" id="hint-{{ field.name }}">{{ field.help }}</p>
+</div>
+{% endmacro %}

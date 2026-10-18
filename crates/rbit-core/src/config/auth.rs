@@ -45,7 +45,7 @@ const PROVIDER_ENV_PREFIX: &str = "AUTH__PROVIDERS__";
 const ENV_FIELDS: [&str; 2] = ["CLIENT_ID", "CLIENT_SECRET"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AuthConfig {
     /// Upper bound for one request to a provider.
     pub timeout_seconds: u64,
@@ -128,7 +128,7 @@ impl<'de> Deserialize<'de> for ProviderRegistration {
 
 /// One `[[auth.providers]]` entry.
 #[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProviderConfig {
     pub kind: ProviderKind,
     /// Lower-case slug used in URLs (`/login/{id}`); never change it once people have

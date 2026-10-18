@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     rbit_services::webhooks::delivery::install_crypto_provider();
     // `RUSTIT_CONFIG` is the variable's name from before the rename to rbit.
     let file = cli.config.or_else(|| std::env::var_os("RUSTIT_CONFIG").map(std::path::PathBuf::from));
-    let config = config::load(file.as_deref())?;
+    let config = config::load(file.as_deref()).await?;
 
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::run(config).await,

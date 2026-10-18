@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::{
     AppState, assets,
@@ -13,11 +14,21 @@ use crate::{
 };
 
 pub async fn manifest(State(state): State<AppState>) -> Response {
-    let site = state.services.instance.current().site_name;
+    let settings = state.services.instance.current();
+    let site = settings.site_name;
+    let icons = if settings.branding.app_icon_url.is_empty() {
+        json!([
+            {"src": assets::url("icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": assets::url("icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": assets::url("icon-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+        ])
+    } else {
+        json!([{"src": settings.branding.app_icon_url, "sizes": "any", "purpose": "any"}])
+    };
     let manifest = json!({
         "name": site,
         "short_name": site,
-        "description": format!("{site} — self-hosted Git"),
+        "description": settings.branding.description,
         "id": "/",
         "start_url": "/",
         "scope": "/",
@@ -27,11 +38,7 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         "background_color": crate::themes::LIGHT_CANVAS,
         // PNGs generated from logo.png by `npm run icons`; the maskable icon keeps
         // the entire mascot inside the safe zone.
-        "icons": [
-            { "src": assets::url("icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any" },
-            { "src": assets::url("icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any" },
-            { "src": assets::url("icon-maskable-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-        ],
+        "icons": icons,
         "shortcuts": [
             { "name": "New repository", "url": "/new" },
             { "name": "Explore", "url": "/explore" }
@@ -42,10 +49,16 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
 
 /// Served from the root so its scope covers the whole site. The asset build hash is
 /// injected so every deploy installs a fresh worker with a fresh cache.
-pub async fn service_worker() -> Response {
-    let source = assets::read("sw.js")
-        .map(|bytes| String::from_utf8_lossy(&bytes).replace("__VERSION__", assets::build_version()))
-        .unwrap_or_default();
+pub async fn service_worker(State(state): State<AppState>) -> Response {
+    let settings = state.services.instance.current();
+    let identity = format!("{}{:?}", settings.site_name, settings.branding);
+    let digest = assets::hex_prefix(&Sha256::digest(identity.as_bytes()));
+    // Refresh the anonymous offline fallback after identity changes, even without a deploy.
+    worker_response(&format!("{}-{digest}", assets::build_version()))
+}
+
+fn worker_response(version: &str) -> Response {
+    let source = assets::read("sw.js").map(|bytes| String::from_utf8_lossy(&bytes).replace("__VERSION__", version)).unwrap_or_default();
     (
         [
             (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
@@ -63,6 +76,20 @@ pub async fn offline(State(state): State<AppState>) -> OfflinePage {
     OfflinePage { page: Page::new(&state, None, "/offline").titled("Offline") }
 }
 
+/// A separate same-origin sheet keeps arbitrary inline styles blocked by the CSP.
+pub async fn branding_styles(State(state): State<AppState>) -> Response {
+    let branding = state.services.instance.current().branding;
+    let css = if branding.primary_color.is_empty() || branding.validate().is_err() {
+        String::new()
+    } else {
+        format!(
+            ".btn-primary{{background-color:{};border-color:{};color:{}}}.btn-primary:hover{{background-color:{};border-color:{};filter:brightness(.9)}}",
+            branding.primary_color, branding.primary_color, branding.primary_text_color, branding.primary_color, branding.primary_color
+        )
+    };
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")], css).into_response()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,7 +103,7 @@ mod tests {
 
     #[tokio::test]
     async fn service_worker_is_versioned_and_scoped_to_the_whole_site() {
-        let response = service_worker().await;
+        let response = worker_response(assets::build_version());
         let headers = response.headers();
         assert_eq!(headers[header::CONTENT_TYPE], "text/javascript; charset=utf-8");
         assert_eq!(headers[header::CACHE_CONTROL], "no-cache", "browsers must revalidate the worker on every update check");

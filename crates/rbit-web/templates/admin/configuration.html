@@ -1,0 +1,59 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% import "admin/configuration_field.html" as config %}
+{% block admin_content %}
+{% call admin::heading("Configuration", "Manage your self-hosted instance with settings organized by feature.") %}{% endcall %}
+{% if saved %}<div role="status" class="box mb-5 p-4 text-[13px]">Settings saved. Restart the server to apply deployment changes.</div>{% endif %}
+<div class="mb-6 flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
+  <span class="badge">Restart required</span><span>Environment variables take precedence.</span>
+  <a class="link" href="/admin/settings">Branding and policies — apply immediately</a>
+</div>
+<form method="get" action="/admin/configuration" class="mb-4 flex items-end gap-2 xl:hidden">
+  <div class="min-w-0 flex-1"><label class="label" for="configuration-section">Settings section</label>
+    <select class="input" id="configuration-section" name="section">{% for section in form.sections %}<option value="{{ section.key }}" {% if section.active %}selected{% endif %}>{{ section.title }}</option>{% endfor %}</select>
+  </div><button class="btn" type="submit">Open section</button>
+</form>
+<div class="grid gap-6 xl:grid-cols-[13rem_minmax(0,1fr)]">
+  <nav class="hidden content-start gap-1 xl:flex xl:flex-col" aria-label="Configuration sections">
+    {% for section in form.sections %}<a class="menu-item w-auto {% if section.active %}bg-hover font-medium{% else %}text-ink-muted{% endif %}" href="/admin/configuration?section={{ section.key }}" {% if section.active %}aria-current="page"{% endif %}>{{ section.title }}</a>{% endfor %}
+  </nav>
+  <div class="min-w-0 max-w-3xl">
+    <form method="post" action="/admin/configuration" class="box" hx-boost="false" autocomplete="off">
+      <input type="hidden" name="section" value="{{ form.section }}">
+      <div class="border-b border-line p-4 sm:p-5">
+        <h2 class="text-base font-semibold">{{ form.title }}</h2><p class="mt-1 text-[13px] text-ink-muted">{{ form.help }}</p>
+        {% if form.section == "branding" || form.section == "server" %}<p class="hint">Saved live branding and registration policies override these deployment defaults.</p>{% endif %}
+      </div>
+      <div class="space-y-6 p-4 sm:p-5">
+        {% call ui::form_error(error) %}{% endcall %}
+        {% for field in form.fields %}{% call config::field(field) %}{% endcall %}{% endfor %}
+      </div>
+      {% if form.section == "auth" %}
+      <input type="hidden" name="provider_count" value="{{ form.providers.len() }}">
+      <div class="space-y-5 border-t border-line p-4 sm:p-5">
+        <h3 class="font-semibold">Identity providers</h3>
+        <p class="hint">Add and remove provider cards first, then enter new credentials and save. Provider changes stay in this form until you save the section.</p>
+        <p class="hint">Register a callback URL with each provider: your Public URL followed by <code>/login/PROVIDER_ID/callback</code>, replacing PROVIDER_ID with the ID below. For OpenID Connect, set the issuer URL; for GitHub Enterprise, set the Enterprise URL.</p>
+        {% if form.providers.is_empty() %}<p class="text-[13px] text-ink-muted">No external sign-in providers configured. Local sign-in is available.</p>{% endif %}
+        {% for provider in form.providers %}
+        <fieldset class="box p-4">
+          <legend class="px-1 text-[13px] font-semibold">{{ provider.title }}</legend>
+          <div class="space-y-5">{% for field in provider.fields %}{% call config::field(field) %}{% endcall %}{% endfor %}</div>
+          <button class="btn btn-danger mt-5" type="submit" name="action" value="remove_provider:{{ provider.index }}" formnovalidate>Remove provider</button>
+        </fieldset>
+        {% endfor %}
+        {% if form.providers.len() < 32 %}<button class="btn" type="submit" name="action" value="add_provider" formnovalidate>Add identity provider</button>{% endif %}
+      </div>
+      {% endif %}
+      {% if form.section != "storage" %}<div class="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4"><p class="text-xs text-ink-muted">Only this section will be updated.</p><button class="btn btn-primary" type="submit" name="action" value="save">Save {{ form.title }} settings</button></div>{% endif %}
+    </form>
+    <details class="mt-6 text-[13px] text-ink-muted">
+      <summary class="cursor-pointer font-medium">Recovery and deployment defaults</summary>
+      <p class="mt-3">If saved settings prevent startup, set RBIT_IGNORE_ADMIN_CONFIG=1 in the server environment, restart, then correct or remove the overrides here.</p>
+      <p class="mt-3">Removing overrides restores file and environment configuration on the next restart. Live branding and policies are retained.</p>
+      <form method="post" action="/admin/configuration/reset" class="mt-4" hx-boost="false"><button class="btn" type="submit">Remove all deployment overrides</button></form>
+    </details>
+  </div>
+</div>
+{% endblock %}

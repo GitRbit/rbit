@@ -372,6 +372,7 @@ mod tests {
             page: Page {
                 site_name: "rbit".to_owned(),
                 title: None,
+                branding: rbit_core::config::BrandingConfig::default(),
                 viewer: None,
                 path: "/o/r/blob/main/a.rs".to_owned(),
                 theme: crate::themes::Theme::System,

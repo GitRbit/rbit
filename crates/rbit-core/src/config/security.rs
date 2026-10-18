@@ -7,7 +7,7 @@ use std::{fmt, net::IpAddr, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SecurityConfig {
     /// How long a session stays valid without activity, in days.
     pub session_lifetime_days: u32,

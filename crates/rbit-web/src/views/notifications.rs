@@ -139,6 +139,7 @@ mod tests {
         let html = InboxPage {
             page: Page {
                 site_name: "rbit".into(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,
                 path: "/notifications".into(),

@@ -5,6 +5,7 @@
 //! submodule so they can evolve independently.
 
 mod api;
+mod branding;
 // Milestone 3: editing files in the browser (E).
 mod auth;
 mod editor;
@@ -28,6 +29,7 @@ use serde::{Deserialize, Serialize};
 
 pub use api::ApiConfig;
 pub use auth::{AuthConfig, MAX_PROVIDER_ID_LEN, ProviderConfig, ProviderKind, ProviderRegistration};
+pub use branding::BrandingConfig;
 pub use editor::EditorConfig;
 // Milestone 3: importing and push mirrors (M).
 pub use imports::{AuthorMapping, ImportConfig, PushMirrorConfig};
@@ -44,9 +46,10 @@ pub use ssh::SshConfig;
 pub use webhooks::WebhookConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub server: ServerConfig,
+    pub branding: BrandingConfig,
     pub storage: StorageConfig,
     pub security: SecurityConfig,
     pub repository: RepositoryConfig,
@@ -73,7 +76,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ServerConfig {
     /// Address the HTTP server binds to.
     pub bind: SocketAddr,
@@ -109,7 +112,7 @@ impl ServerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
     /// Root directory for the SQLite database, the redb store and bare repositories.
     pub data_dir: PathBuf,
@@ -155,7 +158,7 @@ impl StorageConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct RepositoryConfig {
     /// Branch that `HEAD` points to in newly created repositories.
     pub default_branch: String,

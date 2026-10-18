@@ -24,7 +24,7 @@ use super::{ServerConfig, StorageConfig};
 const SSH_USER: &str = "git";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SshConfig {
     /// Run the built-in SSH server.
     pub enabled: bool,

@@ -14,6 +14,8 @@ use crate::MailError;
 /// A rendered message, ready for any transport.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Mail {
+    /// Optional live instance name for the sender; the configured address is retained.
+    pub from_name: Option<String>,
     pub to: Email,
     pub subject: String,
     /// The `text/plain` part.
@@ -60,6 +62,7 @@ impl Mail {
     /// Renders `message` for `to`.
     pub fn render(to: Email, message: &impl MailMessage) -> Result<Self, MailError> {
         Ok(Self {
+            from_name: None,
             to,
             subject: message.subject(),
             text: message.render_text()?,
@@ -458,6 +461,7 @@ mod tests {
     #[test]
     fn finds_links_in_text() {
         let mail = Mail {
+            from_name: None,
             to: to(),
             subject: String::new(),
             text: "Go to https://a.example/x. Or (http://b.example/y) now".to_owned(),

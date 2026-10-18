@@ -169,7 +169,7 @@ impl Gallery {
         };
 
         let defaults: Vec<ThemeCard> =
-            Theme::BUILT_IN.iter().map(|&theme| card(theme, "rbit", format!("{} · built in", theme.name()))).collect();
+            Theme::BUILT_IN.iter().map(|&theme| card(theme, "Built in", format!("{} · built in", theme.name()))).collect();
         let dna: Vec<ThemeCard> = Theme::DNA.iter().map(|&theme| card(theme, DNA_FAMILY, format!("{} · built in", theme.name()))).collect();
         let families = families()
             .iter()
@@ -296,6 +296,7 @@ pub struct PickerGroup {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "themes/picker.html")]
 pub struct ThemePicker {
+    pub page: Page,
     pub groups: Vec<PickerGroup>,
     pub total: usize,
     pub stylesheet: String,
@@ -316,7 +317,7 @@ impl ThemePicker {
             PickerRow { card, search, variant_label, letter }
         };
         let mut groups = vec![
-            PickerGroup { name: "rbit", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() },
+            PickerGroup { name: "Built in", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() },
             PickerGroup { name: DNA_FAMILY, rows: gallery.dna.into_iter().map(|card| row(card, DNA_FAMILY, None)).collect() },
         ];
         for family in gallery.families {
@@ -338,6 +339,7 @@ impl ThemePicker {
             groups.push(PickerGroup { name: family.name, rows });
         }
         Self {
+            page: page.clone(),
             groups,
             total: themes::tinted().len() + Theme::BUILT_IN.len() + Theme::DNA.len(),
             stylesheet: gallery.stylesheet,
@@ -370,6 +372,7 @@ mod tests {
     fn page(theme: Theme) -> Page {
         Page {
             site_name: "rbit".to_owned(),
+            branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
             path: GALLERY_URL.to_owned(),
@@ -427,7 +430,7 @@ mod tests {
     fn picker_lists_every_theme_grouped_with_the_current_one_marked() {
         let tinted = &themes::tinted()[0];
         let picker = ThemePicker::new(&page(Theme::Tinted(tinted)));
-        assert_eq!(picker.groups[0].name, "rbit");
+        assert_eq!(picker.groups[0].name, "Built in");
         assert_eq!(picker.groups[1].name, "DNA");
         assert_eq!(picker.groups[1].rows.iter().map(|row| row.card.name).collect::<Vec<_>>(), ["DNA Dark", "DNA Day"]);
         let rows: Vec<_> = picker.groups.iter().flat_map(|group| &group.rows).collect();

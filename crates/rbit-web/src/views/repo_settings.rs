@@ -263,6 +263,7 @@ mod tests {
     fn page() -> Page {
         Page {
             site_name: "rbit".to_owned(),
+            branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
             path: "/alice/proj/stargazers".to_owned(),

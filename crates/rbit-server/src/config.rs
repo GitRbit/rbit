@@ -1,5 +1,5 @@
-//! Layered configuration: built-in defaults → TOML file → `RUSTIT_*` environment variables
-//! (the names from before the rename to rbit, still honoured) → `RBIT_*` environment variables.
+//! Layered configuration: built-in defaults → TOML file → saved administrator settings →
+//! `RUSTIT_*` environment variables (legacy) → `RBIT_*` environment variables.
 
 use std::path::Path;
 
@@ -16,17 +16,40 @@ const ENV_PREFIX: &str = "RBIT_";
 const LEGACY_ENV_PREFIX: &str = "RUSTIT_";
 const ENV_SEPARATOR: &str = "__";
 
-pub fn load(file: Option<&Path>) -> anyhow::Result<Config> {
+pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
     let mut figment = Figment::from(Serialized::defaults(Config::default()));
     if let Some(file) = file {
         anyhow::ensure!(file.exists(), "configuration file {} does not exist", file.display());
         figment = figment.merge(Toml::file(file));
     }
+    // Locate the database using deployment sources only. Storage relocation is an offline operation.
+    let locator: Config = figment
+        .clone()
+        .merge(
+            Env::prefixed(LEGACY_ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")),
+        )
+        .merge(Env::prefixed(ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")))
+        .extract()
+        .context("invalid storage configuration")?;
+    if locator.storage.sqlite_path().exists() && std::env::var_os("RBIT_IGNORE_ADMIN_CONFIG").is_none() {
+        let database = rbit_storage::Database::open(&locator.storage.sqlite_path()).await.context("cannot read admin configuration")?;
+        let entries = database.instance_settings().load().await?;
+        database.close().await;
+        if let Some((_, document)) = entries.into_iter().find(|(key, _)| key == rbit_services::admin::configuration::CONFIGURATION_KEY) {
+            let config: Config = serde_json::from_str(&document)
+                .context("invalid administrator configuration; set RBIT_IGNORE_ADMIN_CONFIG=1 to recover")?;
+            let mut value = serde_json::to_value(config)?;
+            value.as_object_mut().expect("config is an object").remove("storage");
+            figment = figment.merge(Serialized::defaults(value));
+        }
+    }
     for prefix in [LEGACY_ENV_PREFIX, ENV_PREFIX] {
         // Milestone 3 (O): `AUTH__PROVIDERS__<N>__…` would replace the whole providers
         // array in figment; those are applied below instead.
-        let env =
-            Env::prefixed(prefix).split(ENV_SEPARATOR).ignore(&["config"]).filter(|key| !AuthConfig::is_provider_env_key(key.as_str()));
+        let env = Env::prefixed(prefix)
+            .split(ENV_SEPARATOR)
+            .ignore(&["config", "ignore_admin_config"])
+            .filter(|key| !AuthConfig::is_provider_env_key(key.as_str()));
         figment = figment.merge(env);
     }
     let mut config: Config = figment.extract().context("invalid configuration")?;
@@ -37,6 +60,7 @@ pub fn load(file: Option<&Path>) -> anyhow::Result<Config> {
         .apply_provider_env(provider_env(std::env::vars()))
         .map_err(|problem| anyhow::anyhow!("invalid configuration: {problem}"))?;
     config.auth.validate().map_err(|problems| anyhow::anyhow!("invalid [auth] configuration: {problems}"))?;
+    rbit_services::admin::configuration::validate_configuration(&config).map_err(anyhow::Error::msg)?;
     Ok(config)
 }
 
@@ -59,6 +83,31 @@ fn provider_env(vars: impl Iterator<Item = (String, String)>) -> Vec<(String, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn startup_applies_saved_configuration_and_reset_restores_file_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut base = Config::default();
+        base.storage.data_dir = directory.path().join("data");
+        std::fs::create_dir_all(&base.storage.data_dir).unwrap();
+        let file = directory.path().join("rbit.toml");
+        let path = base.storage.data_dir.to_string_lossy().replace('\\', "/");
+        std::fs::write(&file, format!("[storage]\ndata_dir = {path:?}\n[repository]\ndefault_branch = \"trunk\"\n")).unwrap();
+        let database = rbit_storage::Database::open(&base.storage.sqlite_path()).await.unwrap();
+        base.repository.default_branch = "develop".into();
+        base.server.site_name = "Acme Forge".into();
+        // A stale storage location in saved data must never redirect startup to a new instance.
+        base.storage.data_dir = directory.path().join("must-not-open");
+        database.instance_settings().save(&[("deployment_config", &serde_json::to_string(&base).unwrap())]).await.unwrap();
+        let effective = load(Some(&file)).await.unwrap();
+        assert_eq!(effective.repository.default_branch, "develop");
+        assert_eq!(effective.server.site_name, "Acme Forge");
+        assert_eq!(effective.storage.data_dir, directory.path().join("data"));
+        database.instance_settings().delete("deployment_config").await.unwrap();
+        let reset = load(Some(&file)).await.unwrap();
+        assert_eq!(reset.repository.default_branch, "trunk");
+        database.close().await;
+    }
 
     #[test]
     fn provider_variables_lose_their_prefix_and_rbit_wins() {

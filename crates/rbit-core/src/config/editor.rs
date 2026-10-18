@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct EditorConfig {
     /// Largest uploaded file, in bytes.
     pub max_upload_bytes: u64,

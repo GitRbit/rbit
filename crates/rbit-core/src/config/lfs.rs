@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use super::StorageConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LfsConfig {
     /// Serve the LFS API and the SSH `git-lfs-authenticate` command.
     pub enabled: bool,

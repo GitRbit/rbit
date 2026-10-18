@@ -18,7 +18,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!--partial:title--><title>{{ page.document_title() }}</title><!--/partial:title-->
-  <meta name="description" content="{{ page.site_name }} — self-hosted Git.">
+  <meta name="description" content="{{ page.branding.description }}">
   {%- if let Some(color) = page.theme.theme_color() %}
   <meta name="theme-color" content="{{ color }}">
   <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
@@ -28,13 +28,14 @@
   <meta name="color-scheme" content="light dark">
   {%- endif %}
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":10,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>
-  <link rel="icon" href="{{ page.asset("icon-32.png") }}" type="image/png" sizes="32x32">
-  <link rel="apple-touch-icon" sizes="180x180" href="{{ page.asset("apple-touch-icon.png") }}">
+  <link rel="icon" href="{{ page.favicon_url() }}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ page.app_icon_url() }}">
   {#- Exact embedded bytes are authorized by hashes in the response CSP. -#}
   <style data-app-stylesheet>{{ crate::assets::inline_css("app.css")|safe }}</style>
   {%- if let Some(path) = page.theme.stylesheet_path() %}
   <style data-theme-stylesheet data-theme="{{ page.theme.slug() }}">{{ crate::assets::inline_css(path)|safe }}</style>
   {%- endif %}
+  {% if !page.branding.primary_color.is_empty() %}<link rel="stylesheet" href="/assets/branding.css?color={{ page.branding.primary_color|urlencode }}&amp;text={{ page.branding.primary_text_color|urlencode }}">{% endif %}
   {#- The server renders the visitor's theme into <html>, so theme.js only migrates old
       choices here and need not hold up the first paint. Pages rendered without the
       visitor's cookie (error, offline) run it synchronously instead. -#}
@@ -52,7 +53,7 @@
 
   <header class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
     <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="Main">
-      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-9", 36) %}{% endcall %}</a>
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::brand_logo(page, "size-9", 36) %}{% endcall %}</a>
       <div class="flex min-w-0 items-center gap-2 text-[13px]">
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
       </div>
@@ -141,18 +142,22 @@
   </main><!--/partial:main-->
 
   <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
-    <div class="mx-auto flex h-12 max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
+    <div class="mx-auto flex min-h-12 flex-wrap max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
-        {% call ui::logo("size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
-        <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>
-        <span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>
+        {% if page.branding.show_powered_by %}{% call ui::brand_logo(page, "size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
+        <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>{% endif %}
+        <span class="truncate">{{ page.branding.footer_text }}</span>
+        {% if page.branding.show_version %}<span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
         {%- if let Some(elapsed) = crate::timing::elapsed() %}
         <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="Server time for the last page or update">· rendered in <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
         {%- endif %}
       </p>
-      <nav class="flex shrink-0 gap-4" aria-label="Footer">
+      <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="Footer">
         <a href="/explore" class="hover:text-ink">Explore</a>
         <a href="/themes" class="hover:text-ink">Themes</a>
+        {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">Support</a>{% endif %}
+        {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">Terms</a>{% endif %}
+        {% if !page.branding.privacy_url.is_empty() %}<a href="{{ page.branding.privacy_url }}" hx-boost="false">Privacy</a>{% endif %}
         <a href="/healthz" class="hover:text-ink" hx-boost="false">Status</a>
       </nav>
     </div>

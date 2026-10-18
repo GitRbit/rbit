@@ -81,7 +81,11 @@ fn parse_address(address: &str) -> Result<Address, MailError> {
 /// threading and list headers the message carries.
 fn build_message(from: &Sender, mail: Mail) -> Result<Message, MailError> {
     let to = Mailbox::new(None, parse_address(mail.to.as_str())?);
-    let mut builder = Message::builder().from(from.0.clone()).to(to).subject(mail.subject);
+    let mut sender = from.0.clone();
+    if let Some(name) = mail.from_name {
+        sender.name = Some(name);
+    }
+    let mut builder = Message::builder().from(sender).to(to).subject(mail.subject);
     let headers = mail.headers;
     if let Some(id) = headers.message_id.clone() {
         builder = builder.message_id(Some(id));
@@ -256,6 +260,7 @@ mod tests {
 
     fn mail() -> Mail {
         Mail {
+            from_name: None,
             to: "bob@example.com".parse().unwrap(),
             subject: "Hello".to_owned(),
             text: "Plain https://example.com/x".to_owned(),
@@ -275,6 +280,16 @@ mod tests {
         let named = MailConfig { from_name: "Ops".to_owned(), ..config(MailTransport::Log) };
         assert_eq!(Sender::from_config(&named, "Forge").unwrap().to_string(), "Ops <git@example.com>");
         assert!(matches!(Sender::new("not an address", ""), Err(MailError::Address { .. })));
+    }
+
+    #[test]
+    fn live_brand_name_changes_sender_without_changing_address() {
+        let sender = Sender::new("git@example.com", "Old name").unwrap();
+        let mut mail = mail();
+        mail.from_name = Some("Acme Forge".into());
+        let formatted = String::from_utf8(build_message(&sender, mail).unwrap().formatted()).unwrap();
+        assert!(formatted.contains("Acme Forge") && formatted.contains("<git@example.com>"), "{formatted}");
+        assert!(!formatted.contains("Old name"));
     }
 
     #[test]

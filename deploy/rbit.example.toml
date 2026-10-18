@@ -239,3 +239,22 @@ allow_private_addresses = false
 # client_id = "Iv1.0123456789abcdef"
 # client_secret = "change-me"      # prefer RBIT_AUTH__PROVIDERS__GITHUB__CLIENT_SECRET
 # # base_url = "https://github.example.com"   # GitHub Enterprise Server
+
+# Defaults for white-label identity. Administrators can override these live at /admin/settings.
+# Images may use HTTPS URLs or /paths served by your reverse proxy.
+[branding]
+description = "Self-hosted Git"
+welcome_title = ""                 # blank uses server.site_name
+welcome_message = "Welcome to our Git platform."
+logo_url = ""                      # blank uses bundled logo
+favicon_url = ""
+app_icon_url = ""                  # square icon, at least 512x512
+primary_color = ""                 # e.g. #2563eb; set both colors or neither
+primary_text_color = ""            # e.g. #ffffff
+footer_text = ""
+support_url = ""
+terms_url = ""
+privacy_url = ""
+show_powered_by = true
+show_version = true
+show_features = true

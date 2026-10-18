@@ -42,7 +42,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ImportConfig {
     /// Offer importing on the "New repository" page.
     pub enabled: bool,
@@ -88,7 +88,7 @@ pub enum AuthorMapping {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PushMirrorConfig {
     /// Allow configuring push mirrors and push to them.
     pub enabled: bool,

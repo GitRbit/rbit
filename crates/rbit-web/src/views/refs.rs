@@ -120,6 +120,7 @@ mod tests {
             ),
             page: Page {
                 site_name: "rbit".to_owned(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,
                 path: "/acme/rocket/branches".to_owned(),

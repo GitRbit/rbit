@@ -36,6 +36,98 @@ impl Fixture {
 }
 
 #[tokio::test]
+async fn branding_reaches_public_surfaces_and_configuration_is_admin_only() {
+    let fixture = Fixture::new().await;
+    let admin = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "brand-admin".into(), email: "brand@example.com".into(), password: "correct horse battery".into() },
+            Some(true),
+        )
+        .await
+        .unwrap();
+    let mut settings = fixture.services.instance.current();
+    settings.site_name = "Acme Forge".into();
+    settings.branding.logo_url = "https://cdn.example.com/acme.svg".into();
+    settings.branding.favicon_url = "/brand/favicon.ico".into();
+    settings.branding.app_icon_url = "/brand/app.png".into();
+    settings.branding.primary_color = "#123456".into();
+    settings.branding.primary_text_color = "#ffffff".into();
+    settings.branding.welcome_title = "Code <together>".into();
+    settings.branding.welcome_message = "Welcome, Acme team".into();
+    settings.branding.footer_text = "Acme Engineering".into();
+    settings.branding.privacy_url = "/legal/privacy".into();
+    settings.branding.show_powered_by = false;
+    settings.branding.show_version = false;
+    settings.branding.show_features = false;
+    fixture.services.admin.update_settings(&admin, settings).await.unwrap();
+    for path in ["/", "/login", "/signup", "/offline", "/themes/picker"] {
+        let response = fixture.router.clone().oneshot(Request::builder().uri(path).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("https://cdn.example.com/acme.svg"), "{path}");
+        assert!(!html.contains("Powered by"), "{path}");
+        if path == "/" {
+            assert!(html.contains("Code &#60;together&#62;") || html.contains("Code &lt;together&gt;"));
+            assert!(html.contains("Welcome, Acme team") && html.contains("Acme Engineering"));
+            assert!(html.contains("/brand/favicon.ico") && html.contains("/legal/privacy"));
+            assert!(!html.contains("Built for self-hosting"));
+        }
+    }
+    let response =
+        fixture.router.clone().oneshot(Request::builder().uri("/manifest.webmanifest").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let manifest: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(manifest["name"], "Acme Forge");
+    assert_eq!(manifest["icons"][0]["src"], "/brand/app.png");
+    let response =
+        fixture.router.clone().oneshot(Request::builder().uri("/assets/branding.css").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let css = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&css).contains("background-color:#123456"));
+
+    let member = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "brand-member".into(), email: "member@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    let token = fixture.services.accounts.start_session(&member).await.unwrap();
+    for (cookie, expected) in [(String::new(), StatusCode::SEE_OTHER), (format!("rbit_session={}", token.encode()), StatusCode::NOT_FOUND)]
+    {
+        let response = fixture
+            .router
+            .clone()
+            .oneshot(Request::builder().uri("/admin/configuration").header(header::COOKIE, cookie).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+    let token = fixture.services.accounts.start_session(&admin).await.unwrap();
+    for path in ["/admin/settings", "/admin/configuration"] {
+        let response = fixture
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header(header::COOKIE, format!("rbit_session={}", token.encode()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
+
+#[tokio::test]
 async fn ref_picker_page_and_fragment_enforce_repository_visibility() {
     let fixture = Fixture::new().await;
     let owner = fixture

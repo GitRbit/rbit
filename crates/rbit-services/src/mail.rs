@@ -20,6 +20,7 @@ const MAX_CONCURRENT_DELIVERIES: usize = 8;
 
 #[derive(Clone)]
 pub struct MailService {
+    instance: Option<crate::InstanceService>,
     mailer: Arc<dyn Mailer>,
     timeout: Duration,
     pending: Arc<Semaphore>,
@@ -43,9 +44,18 @@ impl MailService {
         Self::with_mailer(mailer, Duration::from_secs(config.timeout_seconds.max(1)))
     }
 
+    /// Use the live site name when no explicit sender name was configured.
+    pub(crate) fn with_instance(mut self, instance: crate::InstanceService, config: &rbit_core::config::MailConfig) -> Self {
+        if config.from_name.trim().is_empty() {
+            self.instance = Some(instance);
+        }
+        self
+    }
+
     /// A service delivering through `mailer` (tests use [`rbit_mail::MemoryMailer`]).
     pub fn with_mailer(mailer: Arc<dyn Mailer>, timeout: Duration) -> Self {
         Self {
+            instance: None,
             mailer,
             timeout,
             pending: Arc::new(Semaphore::new(MAX_PENDING_MAIL)),
@@ -89,7 +99,10 @@ impl MailService {
     }
 
     /// Delivers `mail`, waiting at most the configured timeout. Failures are also logged.
-    pub async fn deliver(&self, mail: Mail) -> Result<(), MailError> {
+    pub async fn deliver(&self, mut mail: Mail) -> Result<(), MailError> {
+        if let Some(instance) = &self.instance {
+            mail.from_name = Some(instance.current().site_name);
+        }
         let subject = mail.subject.clone();
         let deliver = async {
             // Queueing for the relay counts toward the timeout too, so overload cannot
@@ -118,6 +131,7 @@ mod tests {
 
     fn mail() -> Mail {
         Mail {
+            from_name: None,
             to: "bob@example.com".parse().unwrap(),
             subject: "Hi".to_owned(),
             text: String::new(),

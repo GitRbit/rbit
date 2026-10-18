@@ -60,6 +60,7 @@ impl OrgCreationPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceSettings {
     pub site_name: String,
+    pub branding: crate::config::BrandingConfig,
     pub registration: RegistrationMode,
     pub org_creation: OrgCreationPolicy,
     pub default_visibility: Visibility,
@@ -70,6 +71,7 @@ impl InstanceSettings {
     pub fn defaults(config: &Config) -> Self {
         Self {
             site_name: config.server.site_name.clone(),
+            branding: config.branding.clone(),
             registration: if config.server.open_registration { RegistrationMode::Open } else { RegistrationMode::Closed },
             org_creation: OrgCreationPolicy::AnyUser,
             default_visibility: Visibility::Public,

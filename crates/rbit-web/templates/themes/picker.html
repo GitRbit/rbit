@@ -60,14 +60,14 @@
       <div class="tpk-info">
         <div class="min-w-0">
           <p class="tpk-info-name" data-tpk-name>System</p>
-          <p class="tpk-info-meta" data-tpk-meta>rbit · Auto</p>
+          <p class="tpk-info-meta" data-tpk-meta>Built in · Auto</p>
         </div>
         <button class="btn btn-primary ml-auto shrink-0" type="submit" form="tpk-list" name="theme" value="system" data-tpk-apply>Apply</button>
       </div>
       <div class="tpk-preview" data-theme="system" data-tpk-preview aria-hidden="true">
         <div class="pv-top">
-          {% call ui::logo("size-3.5", 14) %}{% endcall %}
-          <span class="pv-crumb"><span>rbit</span> / <b>core</b></span>
+          {% call ui::brand_logo(page, "size-3.5", 14) %}{% endcall %}
+          <span class="pv-crumb"><span>{{ page.site_name }}</span> / <b>core</b></span>
           <span class="pv-btn">{% call ui::icon("star", "size-3") %}{% endcall %} Star</span>
           <span class="pv-btn pv-primary">Clone</span>
         </div>

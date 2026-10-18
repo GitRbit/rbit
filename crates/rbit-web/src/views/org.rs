@@ -284,6 +284,7 @@ mod tests {
             page: Page {
                 site_name: "rbit".into(),
                 title: None,
+                branding: rbit_core::config::BrandingConfig::default(),
                 viewer: None,
                 path: "/acme/settings".into(),
                 theme: crate::themes::Theme::System,

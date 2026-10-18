@@ -621,7 +621,7 @@ fn sentence(
                 Some(MergeStrategy::Merge) => parts.push(F::muted(" (merge commit)")),
                 Some(MergeStrategy::Squash) => parts.push(F::muted(" (squash)")),
                 Some(MergeStrategy::Rebase) => parts.push(F::muted(" (rebase)")),
-                None => parts.push(F::muted(" (outside rbit)")),
+                None => parts.push(F::muted(" (outside this instance)")),
             }
             ("git-merge", parts, None)
         }
@@ -948,7 +948,7 @@ mod tests {
                 none(),
                 plain,
                 "git-merge",
-                "merged commit abc1234 (outside rbit)",
+                "merged commit abc1234 (outside this instance)",
             ),
             (TimelineEvent::ReviewRequested { reviewer: bob.id }, bob_subject(), plain, "eye", "requested a review from bob"),
             (

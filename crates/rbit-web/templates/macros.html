@@ -240,3 +240,9 @@
 </nav>
 {% endif %}
 {% endmacro %}
+
+{% macro brand_logo(page, class, px) %}
+{% if page.branding.logo_url.is_empty() %}
+{% call logo(class, px) %}{% endcall %}
+{% else %}<img src="{{ page.branding.logo_url }}" width="{{ px }}" height="{{ px }}" class="{{ class }} object-contain" alt="" aria-hidden="true">{% endif %}
+{% endmacro %}

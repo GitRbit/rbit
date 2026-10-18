@@ -24,6 +24,12 @@ impl InstanceSettingsStore {
         Ok(sqlx::query_as("SELECT key, value FROM instance_settings ORDER BY key").fetch_all(&self.pool).await?)
     }
 
+    /// Removes an override so deployment defaults apply on the next restart.
+    pub async fn delete(&self, key: &str) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM instance_settings WHERE key = ?").bind(key).execute(&self.pool).await?;
+        Ok(())
+    }
+
     /// Inserts or replaces all `entries` atomically.
     pub async fn save(&self, entries: &[(&str, &str)]) -> Result<(), StorageError> {
         let now = Timestamp::now().seconds();

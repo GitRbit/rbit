@@ -59,7 +59,7 @@ impl SmtpSecurity {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MailConfig {
     pub transport: MailTransport,
     /// The `From:` address of every message.

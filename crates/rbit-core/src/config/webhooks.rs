@@ -17,7 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct WebhookConfig {
     /// Deliver webhooks at all. When off, hooks can still be configured but nothing is sent.
     pub enabled: bool,

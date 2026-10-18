@@ -562,6 +562,7 @@ mod tests {
     fn page() -> Page {
         Page {
             site_name: "rbit".to_owned(),
+            branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
             path: "/settings/account".to_owned(),

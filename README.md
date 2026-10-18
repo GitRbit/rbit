@@ -215,6 +215,32 @@ curl -H "Authorization: Bearer rbit_…" http://localhost:3000/api/v1/user
 
 ## Configuration
 
+Administrators can personalize a self-hosted instance in **Site administration → Settings**:
+name, logo, favicon, app icon, primary button colors, site description, welcome copy, footer,
+support/terms/privacy links, attribution, version visibility and welcome-page features.
+Registration, organization creation and default repository visibility are also editable there.
+These settings are validated, audited, stored in SQLite and apply immediately. Use HTTPS image
+URLs or local `/paths` served by your reverse proxy; no asset rebuild is required.
+
+**Site administration → Configuration** organizes deployment settings into labeled forms for
+SMTP, SSH, security, SSO, integrations and feature limits. Each section has help text, toggles,
+dropdowns and numeric limits. Save individual sections, then restart the server. Identity providers
+have add/remove cards; add the providers first, then enter credentials and save. No JSON editing
+or JavaScript is required.
+
+Credential inputs are always empty: leave them blank to preserve existing secrets, enter a
+replacement, or explicitly select Clear. Validation errors retain ordinary input, while new
+credentials must be entered again. Protect the instance database and its backups, which contain
+these credentials.
+Storage relocation requires an offline move and a file/environment change.
+
+Precedence is defaults → TOML → saved administrator deployment settings → legacy `RUSTIT_*` →
+`RBIT_*`. Live branding and policy overrides take precedence over their deployment defaults.
+Remove saved deployment overrides in the configuration screen to return to file/environment
+configuration on restart. For recovery, start with `RBIT_IGNORE_ADMIN_CONFIG=1`, correct or remove
+the saved overrides, then remove that environment variable and restart.
+
+
 Settings come from built-in defaults, then an optional TOML file (`--config rbit.toml`),
 then `RBIT_*` environment variables (nested keys use `__`, e.g.
 `RBIT_SERVER__PUBLIC_URL`). Every key is optional. A fully commented production example

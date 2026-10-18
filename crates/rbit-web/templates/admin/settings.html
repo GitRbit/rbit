@@ -12,13 +12,46 @@
 </div>
 {% endif %}
 
-<form method="post" action="/admin/settings" class="box" novalidate>
+<form method="post" action="/admin/settings" class="box" hx-boost="false" novalidate>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
     <label class="label" for="site-name">Site name</label>
     <input class="input sm:max-w-80" id="site-name" name="site_name" value="{{ form.site_name }}" maxlength="{{ site_name_max_len }}" autocomplete="off" required>
     <p class="hint">Shown in the header, page titles and when installed as an app.</p>
+
+
+    <fieldset class="mt-6"><legend class="label">Branding and identity</legend>
+    <p class="hint">Text is plain text. Images and links accept HTTPS URLs or local /paths served by your reverse proxy. Blank image fields use the bundled defaults.</p>
+    <label class="label mt-4" for="primary_color">Primary button color (blank uses theme)</label>
+    <input class="input" id="primary_color" name="primary_color" value="{{ form.branding.primary_color }}" placeholder="#2563eb" maxlength="7">
+    <label class="label mt-4" for="primary_text_color">Primary button text color</label>
+    <input class="input" id="primary_text_color" name="primary_text_color" value="{{ form.branding.primary_text_color }}" placeholder="#ffffff" maxlength="7">
+    <p class="hint">Choose colors with enough contrast for readable button labels. Set both colors or leave both blank.</p>
+    <label class="label mt-4" for="description">Site description</label>
+    <input class="input" id="description" name="description" value="{{ form.branding.description }}" maxlength="300">
+    <label class="label mt-4" for="welcome_title">Welcome title (blank uses site name)</label>
+    <input class="input" id="welcome_title" name="welcome_title" value="{{ form.branding.welcome_title }}" maxlength="100">
+    <label class="label mt-4" for="welcome_message">Welcome message</label>
+    <input class="input" id="welcome_message" name="welcome_message" value="{{ form.branding.welcome_message }}" maxlength="2000">
+    <label class="label mt-4" for="logo_url">Logo URL</label>
+    <input class="input" id="logo_url" name="logo_url" value="{{ form.branding.logo_url }}" maxlength="2048">
+    <label class="label mt-4" for="favicon_url">Favicon URL</label>
+    <input class="input" id="favicon_url" name="favicon_url" value="{{ form.branding.favicon_url }}" maxlength="2048">
+    <label class="label mt-4" for="app_icon_url">App icon URL (square, at least 512 pixels)</label>
+    <input class="input" id="app_icon_url" name="app_icon_url" value="{{ form.branding.app_icon_url }}" maxlength="2048">
+    <label class="label mt-4" for="footer_text">Footer text</label>
+    <input class="input" id="footer_text" name="footer_text" value="{{ form.branding.footer_text }}" maxlength="300">
+    <label class="label mt-4" for="support_url">Support URL</label>
+    <input class="input" id="support_url" name="support_url" value="{{ form.branding.support_url }}" maxlength="2048">
+    <label class="label mt-4" for="terms_url">Terms URL</label>
+    <input class="input" id="terms_url" name="terms_url" value="{{ form.branding.terms_url }}" maxlength="2048">
+    <label class="label mt-4" for="privacy_url">Privacy URL</label>
+    <input class="input" id="privacy_url" name="privacy_url" value="{{ form.branding.privacy_url }}" maxlength="2048">
+    <label class="mt-4 flex items-center gap-2"><input type="checkbox" name="show_powered_by" value="true" {% if form.branding.show_powered_by %}checked{% endif %}> Show Powered by rbit</label>
+    <label class="mt-4 flex items-center gap-2"><input type="checkbox" name="show_version" value="true" {% if form.branding.show_version %}checked{% endif %}> Show software version</label>
+    <label class="mt-4 flex items-center gap-2"><input type="checkbox" name="show_features" value="true" {% if form.branding.show_features %}checked{% endif %}> Show self-hosting features on the welcome page</label>
+    </fieldset>
 
     <fieldset class="mt-6">
       <legend class="label">Registration</legend>

@@ -5,6 +5,8 @@
 //! cannot demote, suspend or delete themselves, and the last active administrator can
 //! never be demoted, suspended or deleted (enforced atomically by the store).
 
+pub mod configuration;
+
 use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -301,13 +303,22 @@ impl AdminService {
 
 /// e.g. `registration: open → closed; site name: rbit → Forge`.
 fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> String {
+    let mut description = if before.branding == after.branding { String::new() } else { "branding changed; ".to_owned() };
     let fields = [
         ("site name", before.site_name.as_str(), after.site_name.as_str()),
         ("registration", before.registration.as_str(), after.registration.as_str()),
         ("organization creation", before.org_creation.as_str(), after.org_creation.as_str()),
         ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
     ];
-    fields.iter().filter(|(_, old, new)| old != new).map(|(name, old, new)| format!("{name}: {old} → {new}")).collect::<Vec<_>>().join("; ")
+    description.push_str(
+        &fields
+            .iter()
+            .filter(|(_, old, new)| old != new)
+            .map(|(name, old, new)| format!("{name}: {old} → {new}"))
+            .collect::<Vec<_>>()
+            .join("; "),
+    );
+    description
 }
 
 pub(crate) fn require_admin(actor: &User) -> Result<(), ServiceError> {

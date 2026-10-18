@@ -186,6 +186,7 @@ mod tests {
         let html = MilestonesPage {
             page: Page {
                 site_name: "rbit".into(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,
                 path: "/a/b/milestones".into(),

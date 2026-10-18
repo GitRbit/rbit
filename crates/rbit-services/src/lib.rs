@@ -191,7 +191,7 @@ impl Services {
         ctx.events.note_existing_webhooks(database.webhooks().max_id().await?);
         let instance = InstanceService::load(&ctx).await?;
         // Shared so recovery emails use the same delivery queue and the same rate limits.
-        let mail = MailService::new(ctx.clone());
+        let mail = MailService::new(ctx.clone()).with_instance(instance.clone(), &config.mail);
         let throttle = ThrottleService::new(ctx.clone());
         // Shared so the issue and pull request services spend the same content budget and
         // record through the same timeline.

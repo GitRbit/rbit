@@ -100,6 +100,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/logout", post(auth::logout))
         .route("/new", get(repo_create::new_form).post(repo_create::create))
         .route("/offline", get(pwa::offline))
+        .route("/assets/branding.css", get(pwa::branding_styles))
         .route("/{owner}", get(account::profile))
         .route("/{owner}/{repo}", get(repo::home))
         .route("/{owner}/{repo}/tree/{*rest}", get(repo::tree))

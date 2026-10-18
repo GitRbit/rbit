@@ -1,5 +1,7 @@
 //! Administration panel pages (`/admin/…`) and their view models.
 
+pub mod configuration;
+
 use std::{collections::HashSet, time::Duration};
 
 use askama::Template;
@@ -24,10 +26,12 @@ pub enum AdminSection {
     Repositories,
     Settings,
     AuditLog,
+    Configuration,
 }
 
 impl AdminSection {
-    const ALL: [Self; 6] = [Self::Dashboard, Self::Users, Self::Organizations, Self::Repositories, Self::Settings, Self::AuditLog];
+    const ALL: [Self; 7] =
+        [Self::Dashboard, Self::Users, Self::Organizations, Self::Repositories, Self::Settings, Self::Configuration, Self::AuditLog];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -37,6 +41,7 @@ impl AdminSection {
             Self::Repositories => "Repositories",
             Self::Settings => "Settings",
             Self::AuditLog => "Audit log",
+            Self::Configuration => "Configuration",
         }
     }
 
@@ -48,6 +53,7 @@ impl AdminSection {
             Self::Repositories => "/admin/repositories",
             Self::Settings => "/admin/settings",
             Self::AuditLog => "/admin/audit",
+            Self::Configuration => "/admin/configuration",
         }
     }
 
@@ -570,6 +576,7 @@ impl DeleteRepositoryPage {
 #[derive(Debug, Clone)]
 pub struct SettingsForm {
     pub site_name: String,
+    pub branding: rbit_core::config::BrandingConfig,
     pub registration_open: bool,
     pub admins_only_orgs: bool,
     pub private_by_default: bool,
@@ -579,6 +586,7 @@ impl From<&InstanceSettings> for SettingsForm {
     fn from(settings: &InstanceSettings) -> Self {
         Self {
             site_name: settings.site_name.clone(),
+            branding: settings.branding.clone(),
             registration_open: settings.registration == RegistrationMode::Open,
             admins_only_orgs: settings.org_creation == OrgCreationPolicy::AdminsOnly,
             private_by_default: settings.default_visibility == Visibility::Private,
@@ -667,6 +675,16 @@ pub fn uptime(duration: Duration) -> String {
     parts.join(" ")
 }
 
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "admin/configuration.html")]
+pub struct ConfigurationPage {
+    pub page: Page,
+    pub admin_nav: Vec<AdminLink>,
+    pub form: configuration::ConfigurationForm,
+    pub error: FormError,
+    pub saved: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,6 +746,7 @@ mod tests {
     fn page() -> Page {
         Page {
             site_name: "rbit".to_owned(),
+            branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
             path: "/admin/users".to_owned(),

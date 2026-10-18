@@ -17,6 +17,7 @@ pub const SITE_NAME_MAX_LEN: usize = 50;
 
 /// Storage keys. Renaming one orphans existing overrides, so treat them as a format.
 mod key {
+    pub const BRANDING: &str = "branding";
     pub const SITE_NAME: &str = "site_name";
     pub const REGISTRATION: &str = "registration";
     pub const ORG_CREATION: &str = "org_creation";
@@ -58,11 +59,14 @@ impl InstanceService {
         if !actor.is_admin {
             return Err(ServiceError::Forbidden);
         }
+        new.branding.validate().map_err(ServiceError::Invalid)?;
+        let branding = serde_json::to_string(&new.branding).map_err(ServiceError::internal)?;
         let new = InstanceSettings { site_name: validate_site_name(&new.site_name)?, ..new };
 
         self.store
             .save(&[
                 (key::SITE_NAME, new.site_name.as_str()),
+                (key::BRANDING, branding.as_str()),
                 (key::REGISTRATION, new.registration.as_str()),
                 (key::ORG_CREATION, new.org_creation.as_str()),
                 (key::DEFAULT_VISIBILITY, new.default_visibility.as_str()),
@@ -105,6 +109,11 @@ pub fn validate_site_name(name: &str) -> Result<String, ServiceError> {
 /// logged), so a bad row can never stop the instance from starting.
 fn apply_override(settings: &mut InstanceSettings, key: &str, value: &str) {
     let applied = match key {
+        key::BRANDING => serde_json::from_str::<rbit_core::config::BrandingConfig>(value)
+            .ok()
+            .filter(|branding| branding.validate().is_ok())
+            .map(|branding| settings.branding = branding),
+        "deployment_config" => Some(()),
         key::SITE_NAME => validate_site_name(value).ok().map(|name| settings.site_name = name),
         key::REGISTRATION => RegistrationMode::parse(value).map(|mode| settings.registration = mode),
         key::ORG_CREATION => OrgCreationPolicy::parse(value).map(|policy| settings.org_creation = policy),
@@ -147,6 +156,7 @@ mod tests {
             settings,
             InstanceSettings {
                 site_name: "Forge".to_owned(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 registration: RegistrationMode::Closed,
                 org_creation: OrgCreationPolicy::AdminsOnly,
                 default_visibility: Visibility::Private,

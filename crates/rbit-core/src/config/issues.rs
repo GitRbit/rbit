@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct IssueConfig {
     /// Commits scanned per pushed ref update for references and closing keywords.
     pub scan_commit_limit: usize,

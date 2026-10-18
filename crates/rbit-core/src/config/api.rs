@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ApiConfig {
     /// Serve `/api/v1`. When off, every API path answers 404.
     pub enabled: bool,

@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MirrorConfig {
     /// Allow creating mirrors and run scheduled fetches.
     pub enabled: bool,

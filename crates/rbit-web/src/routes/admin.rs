@@ -4,6 +4,8 @@
 //! never learn the panel exists. The routes are merged into the page router, so they get
 //! sessions, CSRF protection, security headers and error pages automatically.
 
+use std::collections::BTreeMap;
+
 use axum::{
     Form, Router,
     extract::{Path, Query, State},
@@ -24,8 +26,8 @@ use crate::{
     extract::SiteAdmin,
     views::{
         admin::{
-            AdminSection, DashboardPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage, RepositoriesPage,
-            SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
+            AdminSection, ConfigurationPage, DashboardPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage,
+            RepositoriesPage, SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
         },
         components::FormError,
         layout::Page,
@@ -46,6 +48,8 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/repositories", get(repositories))
         .route("/admin/repositories/{id}/delete", get(delete_repository_form).post(delete_repository))
         .route("/admin/settings", get(settings).post(update_settings))
+        .route("/admin/configuration", get(configuration).post(save_configuration))
+        .route("/admin/configuration/reset", post(reset_configuration))
 }
 
 /// `?q=…&page=…` on listings. Both are lenient: anything unparsable means "first page".
@@ -371,8 +375,35 @@ pub async fn settings(
 }
 
 /// Radio values are validated strictly: an unknown value is an error, never a silent default.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct SettingsSubmission {
+    #[serde(default)]
+    primary_color: String,
+    #[serde(default)]
+    primary_text_color: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    welcome_title: String,
+    #[serde(default)]
+    welcome_message: String,
+    #[serde(default)]
+    logo_url: String,
+    #[serde(default)]
+    favicon_url: String,
+    #[serde(default)]
+    app_icon_url: String,
+    #[serde(default)]
+    footer_text: String,
+    #[serde(default)]
+    support_url: String,
+    #[serde(default)]
+    terms_url: String,
+    #[serde(default)]
+    privacy_url: String,
+    show_powered_by: Option<String>,
+    show_version: Option<String>,
+    show_features: Option<String>,
     #[serde(default)]
     site_name: String,
     #[serde(default)]
@@ -384,10 +415,31 @@ pub struct SettingsSubmission {
 }
 
 impl SettingsSubmission {
+    fn branding(&self) -> rbit_core::config::BrandingConfig {
+        rbit_core::config::BrandingConfig {
+            primary_color: self.primary_color.trim().to_owned(),
+            primary_text_color: self.primary_text_color.trim().to_owned(),
+            description: self.description.trim().to_owned(),
+            welcome_title: self.welcome_title.trim().to_owned(),
+            welcome_message: self.welcome_message.trim().to_owned(),
+            logo_url: self.logo_url.trim().to_owned(),
+            favicon_url: self.favicon_url.trim().to_owned(),
+            app_icon_url: self.app_icon_url.trim().to_owned(),
+            footer_text: self.footer_text.trim().to_owned(),
+            support_url: self.support_url.trim().to_owned(),
+            terms_url: self.terms_url.trim().to_owned(),
+            privacy_url: self.privacy_url.trim().to_owned(),
+            show_powered_by: self.show_powered_by.is_some(),
+            show_version: self.show_version.is_some(),
+            show_features: self.show_features.is_some(),
+        }
+    }
+
     fn parse(&self) -> Result<InstanceSettings, ServiceError> {
         let invalid = |what: &str| ServiceError::Invalid(format!("choose one of the offered {what} options"));
         Ok(InstanceSettings {
             site_name: self.site_name.clone(),
+            branding: self.branding(),
             registration: RegistrationMode::parse(&self.registration).ok_or_else(|| invalid("registration"))?,
             org_creation: OrgCreationPolicy::parse(&self.org_creation).ok_or_else(|| invalid("organization"))?,
             default_visibility: Visibility::parse(&self.default_visibility).ok_or_else(|| invalid("visibility"))?,
@@ -398,6 +450,7 @@ impl SettingsSubmission {
     fn form(&self) -> SettingsForm {
         SettingsForm {
             site_name: self.site_name.clone(),
+            branding: self.branding(),
             registration_open: self.registration != RegistrationMode::Closed.as_str(),
             admins_only_orgs: self.org_creation == OrgCreationPolicy::AdminsOnly.as_str(),
             private_by_default: self.default_visibility == Visibility::Private.as_str(),
@@ -426,6 +479,71 @@ pub async fn update_settings(
     }
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct ConfigurationParams {
+    section: Option<String>,
+    saved: Option<String>,
+}
+
+pub async fn configuration(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Query(params): Query<ConfigurationParams>,
+) -> WebResult<ConfigurationPage> {
+    let document = serde_json::from_str(&state.services.admin.configuration(&admin).await?).map_err(WebError::internal)?;
+    configuration_page(page, &document, params.section.as_deref().unwrap_or("server"), FormError::default(), params.saved.is_some())
+}
+
+fn configuration_page(
+    page: Page,
+    document: &serde_json::Value,
+    section: &str,
+    error: FormError,
+    saved: bool,
+) -> WebResult<ConfigurationPage> {
+    Ok(ConfigurationPage {
+        page: page.titled("Configuration · Administration"),
+        admin_nav: AdminSection::Configuration.nav(),
+        form: crate::views::admin::configuration::ConfigurationForm::new(document, section)?,
+        error,
+        saved,
+    })
+}
+
+pub async fn save_configuration(
+    State(state): State<AppState>,
+    SiteAdmin(admin): SiteAdmin,
+    page: Page,
+    Form(inputs): Form<BTreeMap<String, String>>,
+) -> WebResult<Response> {
+    let section = inputs.get("section").map_or("server", String::as_str);
+    let mut document = serde_json::from_str(&state.services.admin.configuration(&admin).await?).map_err(WebError::internal)?;
+    let result = match crate::views::admin::configuration::apply_submission(&mut document, section, &inputs) {
+        Ok(true) => {
+            let document = serde_json::to_string(&document).map_err(WebError::internal)?;
+            state.services.admin.stage_configuration(&admin, &document).await
+        }
+        Ok(false) => return Ok(configuration_page(page, &document, section, FormError::default(), false)?.into_response()),
+        Err(error) => Err(error),
+    };
+    match result {
+        Ok(()) => Ok(Redirect::to(&format!("/admin/configuration?section={section}&saved=1")).into_response()),
+        Err(ServiceError::Invalid(message)) => Ok((StatusCode::UNPROCESSABLE_ENTITY, {
+            let mut rendered = configuration_page(page, &document, section, FormError::from_message(&message), false)?;
+            rendered.form = rendered.form.with_inputs(&inputs);
+            rendered
+        })
+            .into_response()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub async fn reset_configuration(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin) -> WebResult<Redirect> {
+    state.services.admin.reset_configuration(&admin).await?;
+    Ok(Redirect::to("/admin/configuration?saved=1"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,6 +563,7 @@ mod tests {
             registration: registration.to_owned(),
             org_creation: "admins_only".to_owned(),
             default_visibility: "private".to_owned(),
+            ..SettingsSubmission::default()
         };
         let parsed = submission("closed").parse().unwrap();
         assert_eq!(parsed.registration, RegistrationMode::Closed);

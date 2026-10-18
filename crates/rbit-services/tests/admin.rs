@@ -13,6 +13,65 @@ use rbit_storage::{Database, KvStore, NewUser};
 
 const PASSWORD: &str = "correct horse battery";
 
+#[tokio::test]
+async fn branding_is_authorized_validated_and_persists_across_service_reload() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let user = fixture.user("member", false).await;
+    let mut settings = fixture.services.instance.current();
+    settings.site_name = "Acme Code".into();
+    settings.branding.logo_url = "https://example.com/logo.png".into();
+    settings.branding.show_powered_by = false;
+    settings.branding.show_version = false;
+    assert!(forbidden(fixture.services.admin.update_settings(&user, settings.clone()).await));
+    fixture.services.admin.update_settings(&root, settings.clone()).await.unwrap();
+    let reloaded = Services::new(fixture.config.clone(), &fixture.database, &fixture.kv).await.unwrap();
+    assert_eq!(reloaded.instance.current(), settings);
+    settings.branding.logo_url = "javascript:alert(1)".into();
+    assert!(invalid(fixture.services.admin.update_settings(&root, settings).await));
+    assert_eq!(fixture.services.instance.current().branding.logo_url, "https://example.com/logo.png");
+}
+
+#[tokio::test]
+async fn configuration_stages_validated_settings_masks_secrets_and_can_reset() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let user = fixture.user("member", false).await;
+    let admin = &fixture.services.admin;
+    assert!(forbidden(admin.configuration(&user).await));
+    assert!(forbidden(admin.stage_configuration(&user, "{}").await));
+    assert!(forbidden(admin.reset_configuration(&user).await));
+    assert!(invalid(admin.stage_configuration(&root, "{invalid").await));
+    assert!(invalid(admin.stage_configuration(&root, "{}").await));
+
+    let mut value: serde_json::Value = serde_json::from_str(&admin.configuration(&root).await.unwrap()).unwrap();
+    value["mail"]["smtp_password"] = "smtp-private-value".into();
+    value["operations"]["metrics_token"] = "metrics-private-value".into();
+    value["repository"]["default_branch"] = "develop".into();
+    admin.stage_configuration(&root, &value.to_string()).await.unwrap();
+    assert_eq!(fixture.config.repository.default_branch, "main", "deployment changes require restart");
+    let masked = admin.configuration(&root).await.unwrap();
+    assert!(!masked.contains("smtp-private-value") && !masked.contains("metrics-private-value"));
+    assert!(masked.contains("<unchanged>"));
+    admin.stage_configuration(&root, &masked).await.unwrap();
+    let stored =
+        fixture.database.instance_settings().load().await.unwrap().into_iter().find(|(key, _)| key == "deployment_config").unwrap().1;
+    assert!(stored.contains("smtp-private-value") && stored.contains("metrics-private-value"));
+
+    let mut invalid_value: serde_json::Value = serde_json::from_str(&masked).unwrap();
+    invalid_value["storage"]["data_dir"] = "different-data".into();
+    assert!(invalid(admin.stage_configuration(&root, &invalid_value.to_string()).await));
+    invalid_value = serde_json::from_str(&masked).unwrap();
+    invalid_value["server"]["publc_url"] = "typo".into();
+    assert!(invalid(admin.stage_configuration(&root, &invalid_value.to_string()).await));
+    invalid_value = serde_json::from_str(&masked).unwrap();
+    invalid_value["server"]["public_url"] = "javascript:alert(1)".into();
+    assert!(invalid(admin.stage_configuration(&root, &invalid_value.to_string()).await));
+    assert_eq!(admin.configuration(&root).await.unwrap(), masked, "failed updates must be atomic");
+    admin.reset_configuration(&root).await.unwrap();
+    assert!(!admin.configuration(&root).await.unwrap().contains("develop"));
+}
+
 struct Fixture {
     dir: tempfile::TempDir,
     database: Database,
@@ -73,6 +132,7 @@ fn forbidden<T: std::fmt::Debug>(result: Result<T, ServiceError>) -> bool {
 fn settings(site_name: &str, registration: RegistrationMode) -> InstanceSettings {
     InstanceSettings {
         site_name: site_name.to_owned(),
+        branding: rbit_core::config::BrandingConfig::default(),
         registration,
         org_creation: OrgCreationPolicy::AdminsOnly,
         default_visibility: Visibility::Private,

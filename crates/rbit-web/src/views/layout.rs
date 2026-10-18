@@ -8,6 +8,7 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 #[derive(Debug, Clone)]
 pub struct Page {
     pub site_name: String,
+    pub branding: rbit_core::config::BrandingConfig,
     pub title: Option<String>,
     pub viewer: Option<NavUser>,
     /// Request path, used to highlight the active navigation item.
@@ -31,8 +32,10 @@ pub struct NavUser {
 
 impl Page {
     pub fn new(state: &AppState, viewer: Option<&User>, path: &str) -> Self {
+        let settings = state.services.instance.current();
         Self {
-            site_name: state.services.instance.current().site_name,
+            site_name: settings.site_name,
+            branding: settings.branding,
             title: None,
             viewer: viewer.map(|user| NavUser {
                 name: user.name().to_string(),
@@ -73,6 +76,22 @@ impl Page {
         assets::url(path)
     }
 
+    pub fn logo_url(&self) -> String {
+        if self.branding.logo_url.is_empty() { self.asset("logo-384.avif") } else { self.branding.logo_url.clone() }
+    }
+
+    pub fn favicon_url(&self) -> String {
+        if self.branding.favicon_url.is_empty() { self.asset("icon-32.png") } else { self.branding.favicon_url.clone() }
+    }
+
+    pub fn app_icon_url(&self) -> String {
+        if self.branding.app_icon_url.is_empty() { self.asset("apple-touch-icon.png") } else { self.branding.app_icon_url.clone() }
+    }
+
+    pub fn welcome_title(&self) -> &str {
+        if self.branding.welcome_title.is_empty() { &self.site_name } else { &self.branding.welcome_title }
+    }
+
     pub fn is_signed_in(&self) -> bool {
         self.viewer.is_some()
     }
@@ -101,6 +120,7 @@ mod tests {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
                 site_name: "rbit".into(),
+                branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,
                 path: "/".into(),
