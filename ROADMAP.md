@@ -4,7 +4,7 @@ rbit aims to be a fast, self-hosted Git platform that one person can run on a sm
 one binary, no external services, GitHub-compatible where that helps (API shapes, webhooks,
 `fixes #12`), and secure by default. This page says what exists, what is being built next,
 and what is deliberately left out. Dates are not promised; priorities change with feedback —
-open a [feature request](https://github.com/rbit/rbit/issues/new?template=feature_request.yml)
+open a [feature request](https://github.com/GitRbit/rbit/issues/new?template=feature_request.yml)
 to argue for something.
 
 ## Done
@@ -35,7 +35,7 @@ to argue for something.
 From the "ready to open-source" milestone:
 
 - **Open-source packaging:** MIT OR Apache-2.0, community files, release binaries for
-  Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/rbit/rbit`.
+  Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/gitrbit/rbit`.
 - **Commit statuses and required checks:** a GitHub-compatible status API that any external
   CI can post to, shown on pull requests and commits, and a "require status checks" rule for
   branch protection.

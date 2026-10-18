@@ -1354,7 +1354,7 @@ and `CHANGELOG.md` must have a `## [X.Y.Z]` section, whose body becomes the rele
 is built once and embedded into every binary. Binaries are built natively (Linux x86_64 and
 aarch64 on Ubuntu 22.04 runners for a glibc 2.35 baseline, macOS both architectures on
 Apple silicon, Windows x86_64), archived with the licenses, docs and deployment examples,
-and published with `SHA256SUMS`. The image `ghcr.io/rbit/rbit` (amd64, arm64) packages
+and published with `SHA256SUMS`. The image `ghcr.io/gitrbit/rbit` (amd64, arm64) packages
 those same Linux binaries through the Dockerfile's `BINARY=prebuilt` stage instead of
 compiling under emulation; a plain `docker build .` still compiles from source. CI checks
 licenses and advisories with `cargo deny` (`deny.toml`); each ignored advisory carries its

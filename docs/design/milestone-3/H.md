@@ -45,7 +45,7 @@ below is for the files the integrator owns (`CHANGELOG.md`, `docs/ARCHITECTURE.m
    --notes-file notes.md` (`--prerelease` for pre-release tags).
 5. **image** — unpacks the two Linux archives into `dist/linux-{amd64,arm64}/rbit` and runs
    `docker/build-push-action` for `linux/amd64,linux/arm64` with `BINARY=prebuilt`, pushing
-   `ghcr.io/rbit/rbit:{version}`, `:{major}.{minor}`, `:{major}` (not for 0.x) and `:latest`
+   `ghcr.io/gitrbit/rbit:{version}`, `:{major}.{minor}`, `:{major}` (not for 0.x) and `:latest`
    (final releases only), with OCI labels/annotations, provenance and an SBOM.
 
 Why prebuilt binaries in the image: building the arm64 image from source under QEMU with
@@ -121,9 +121,9 @@ requests):
 ### Open source
 
 rbit is now open source under **MIT OR Apache-2.0** (it was AGPL-3.0-or-later), at
-github.com/rbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
+github.com/GitRbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
 Apple silicon) and Windows, with SHA-256 sums, and a multi-architecture image at
-`ghcr.io/rbit/rbit`.
+`ghcr.io/gitrbit/rbit`.
 
 #### Upgrade notes
 
@@ -168,7 +168,7 @@ and `CHANGELOG.md` must have a `## [X.Y.Z]` section, whose body becomes the rele
 The stylesheet is built once and embedded into every binary. Binaries are built natively
 (Linux x86_64 and aarch64 on Ubuntu 22.04 runners for a glibc 2.35 baseline, macOS both
 architectures on Apple silicon, Windows x86_64), archived with the licenses, docs and
-deployment examples, and published with `SHA256SUMS`. The image `ghcr.io/rbit/rbit`
+deployment examples, and published with `SHA256SUMS`. The image `ghcr.io/gitrbit/rbit`
 (amd64, arm64) packages those same Linux binaries through the Dockerfile's
 `BINARY=prebuilt` stage instead of compiling under emulation; a plain `docker build .`
 still compiles from source. CI checks licenses and advisories with `cargo deny`
@@ -193,11 +193,11 @@ still compiles from source. CI checks licenses and advisories with `cargo deny`
 At the top of "Docker", before the `docker build` example:
 
 ```markdown
-Released images are published to `ghcr.io/rbit/rbit` for `linux/amd64` and `linux/arm64`,
+Released images are published to `ghcr.io/gitrbit/rbit` for `linux/amd64` and `linux/arm64`,
 tagged with the version (`0.1.0`), the minor series (`0.1`) and `latest`:
 
     docker run -d --name rbit --restart unless-stopped -p 3000:3000 -v rbit-data:/data \
-      -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/rbit/rbit:0.1
+      -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/gitrbit/rbit:0.1
 
 Pin a version (or the minor series) in production rather than `latest`. To build the image
 yourself, `docker build -t rbit .` compiles from source.

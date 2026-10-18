@@ -12,7 +12,7 @@
 
 [Unit]
 Description=rbit self-hosted Git platform
-Documentation=https://github.com/rbit/rbit/blob/main/docs/deployment.md
+Documentation=https://github.com/GitRbit/rbit/blob/main/docs/deployment.md
 After=network-online.target
 Wants=network-online.target
 

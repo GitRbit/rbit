@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug. Security problems go through a
-        [private advisory](https://github.com/rbit/rbit/security/advisories/new) instead.
+        [private advisory](https://github.com/GitRbit/rbit/security/advisories/new) instead.
   - type: textarea
     id: what-happened
     attributes:
@@ -38,7 +38,7 @@ body:
       label: How rbit runs
       options:
         - Release binary
-        - Container image (ghcr.io/rbit/rbit)
+        - Container image (ghcr.io/gitrbit/rbit)
         - Built from source
     validations:
       required: true

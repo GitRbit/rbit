@@ -25,7 +25,7 @@ Unix-second timestamps, foreign keys with explicit `ON DELETE`. `crates/rbit-sto
 must keep passing: extend it with a check that your tables exist and start empty.
 
 **Decisions already made by the project owner:** the license is **MIT OR Apache-2.0** (was
-AGPL); the public home is **github.com/rbit/rbit** (container image `ghcr.io/rbit/rbit`);
+AGPL); the public home is **github.com/GitRbit/rbit** (container image `ghcr.io/gitrbit/rbit`);
 vulnerability reports go through **GitHub private security advisories** (no email published);
 personal access tokens switch to the **`rbit_`** prefix while `rit_` tokens keep working.
 
@@ -86,7 +86,7 @@ never touch `main`, never merge.
   `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (or musl, whichever builds cleanly
   with SQLite), `x86_64-apple-darwin`/`aarch64-apple-darwin` and `x86_64-pc-windows-msvc`,
   including the CSS build, upload archives + SHA-256 sums to a GitHub release whose notes come
-  from the matching CHANGELOG section; build and push a multi-arch image to `ghcr.io/rbit/rbit`.
+  from the matching CHANGELOG section; build and push a multi-arch image to `ghcr.io/gitrbit/rbit`.
   Validate the workflow YAML (e.g. `actionlint` if available, otherwise careful review).
 - Dockerfile: OCI labels (`org.opencontainers.image.source`, licenses).
 - Token prefix: new personal access tokens are `rbit_…`; `rit_…` tokens still parse and

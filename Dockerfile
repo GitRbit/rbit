@@ -9,7 +9,7 @@
 # Configuration comes from RBIT_* environment variables or a TOML file mounted into the
 # container and passed with RBIT_CONFIG=/path/to/rbit.toml. See docs/deployment.md.
 #
-# Released images (ghcr.io/rbit/rbit) are built by .github/workflows/release.yml with
+# Released images (ghcr.io/gitrbit/rbit) are built by .github/workflows/release.yml with
 # BINARY=prebuilt: they package the exact release binaries, built natively for each
 # architecture, instead of compiling again under emulation. The default compiles from source.
 
@@ -60,9 +60,9 @@ FROM debian:${DEBIAN_RELEASE}-slim AS runtime
 # Release builds add org.opencontainers.image.version, .revision and .created.
 LABEL org.opencontainers.image.title="rbit" \
       org.opencontainers.image.description="A fast, self-hosted Git platform written in Rust" \
-      org.opencontainers.image.url="https://github.com/rbit/rbit" \
-      org.opencontainers.image.source="https://github.com/rbit/rbit" \
-      org.opencontainers.image.documentation="https://github.com/rbit/rbit/blob/main/docs/deployment.md" \
+      org.opencontainers.image.url="https://github.com/GitRbit/rbit" \
+      org.opencontainers.image.source="https://github.com/GitRbit/rbit" \
+      org.opencontainers.image.documentation="https://github.com/GitRbit/rbit/blob/main/docs/deployment.md" \
       org.opencontainers.image.licenses="MIT OR Apache-2.0" \
       org.opencontainers.image.vendor="The rbit contributors"
 

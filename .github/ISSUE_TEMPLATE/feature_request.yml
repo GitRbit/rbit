@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please check [ROADMAP.md](https://github.com/rbit/rbit/blob/main/ROADMAP.md) first:
+        Please check [ROADMAP.md](https://github.com/GitRbit/rbit/blob/main/ROADMAP.md) first:
         it lists what is planned and what is deliberately out of scope.
   - type: textarea
     id: problem

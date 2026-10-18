@@ -4,9 +4,9 @@
 
 # rbit
 
-[![CI](https://github.com/rbit/rbit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rbit/rbit/actions/workflows/ci.yml)
+[![CI](https://github.com/GitRbit/rbit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GitRbit/rbit/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
-[![Latest release](https://img.shields.io/github/v/release/rbit/rbit?include_prereleases&sort=semver)](https://github.com/rbit/rbit/releases)
+[![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
 A fast, self-hosted Git platform written in Rust — one binary, no external services.
 
@@ -55,7 +55,7 @@ database migrations.
 
 ### Release binaries
 
-Every [release](https://github.com/rbit/rbit/releases) has archives for Linux (x86_64 and
+Every [release](https://github.com/GitRbit/rbit/releases) has archives for Linux (x86_64 and
 aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64), plus a
 `SHA256SUMS` file. Each archive holds the `rbit` binary, the licenses, this README, the
 changelog, the example configuration and the systemd unit.
@@ -63,8 +63,8 @@ changelog, the example configuration and the systemd unit.
 ```bash
 version=0.1.0                       # the release you want
 target=x86_64-unknown-linux-gnu     # or aarch64-unknown-linux-gnu, aarch64-apple-darwin, ...
-curl -LO "https://github.com/rbit/rbit/releases/download/v$version/rbit-$version-$target.tar.gz"
-curl -LO "https://github.com/rbit/rbit/releases/download/v$version/SHA256SUMS"
+curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/rbit-$version-$target.tar.gz"
+curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/SHA256SUMS"
 sha256sum --check --ignore-missing SHA256SUMS   # macOS: shasum -a 256 --check --ignore-missing
 tar -xzf "rbit-$version-$target.tar.gz"
 ./rbit-$version-$target/rbit serve  # http://localhost:3000, data in ./data
@@ -81,7 +81,7 @@ Container Registry for every release, tagged with the version (`0.1.0`, `0.1`) a
 ```bash
 docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \
   -e RBIT_SERVER__PUBLIC_URL=https://git.example.com \
-  ghcr.io/rbit/rbit:latest
+  ghcr.io/gitrbit/rbit:latest
 ```
 
 The image runs as an unprivileged user, keeps everything under `/data`, and has a health
@@ -208,10 +208,10 @@ the browser, home-screen, and installable-app icons, and commit the generated PN
 
 ## Community
 
-- **Questions and ideas:** [discussions](https://github.com/rbit/rbit/discussions) and
-  [feature requests](https://github.com/rbit/rbit/issues/new?template=feature_request.yml);
+- **Questions and ideas:** [discussions](https://github.com/GitRbit/rbit/discussions) and
+  [feature requests](https://github.com/GitRbit/rbit/issues/new?template=feature_request.yml);
   [ROADMAP.md](ROADMAP.md) says what is planned and what is out of scope.
-- **Bugs:** [open an issue](https://github.com/rbit/rbit/issues/new?template=bug_report.yml).
+- **Bugs:** [open an issue](https://github.com/GitRbit/rbit/issues/new?template=bug_report.yml).
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md). Everyone taking part follows the
   [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Security:** please report vulnerabilities privately, as described in

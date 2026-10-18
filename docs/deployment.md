@@ -33,12 +33,12 @@ production-minded values. The ones that matter most:
 
 ## Docker
 
-Released images are published to `ghcr.io/rbit/rbit` for `linux/amd64` and `linux/arm64`,
+Released images are published to `ghcr.io/gitrbit/rbit` for `linux/amd64` and `linux/arm64`,
 tagged with the version (`0.1.0`), the minor series (`0.1`) and `latest`:
 
 ```bash
 docker run -d --name rbit --restart unless-stopped -p 127.0.0.1:3000:3000 -v rbit-data:/data \
-  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/rbit/rbit:0.1
+  -e RBIT_SERVER__PUBLIC_URL=https://git.example.com ghcr.io/gitrbit/rbit:0.1
 ```
 
 Pin a version (or the minor series) in production rather than `latest`. The released
@@ -115,7 +115,7 @@ is read-only except the data directory, no capabilities, restricted address fami
 system calls. Installation steps are at the top of the file.
 
 Download the archive for your platform from the
-[GitHub release](https://github.com/rbit/rbit/releases), check it against `SHA256SUMS`
+[GitHub release](https://github.com/GitRbit/rbit/releases), check it against `SHA256SUMS`
 (`sha256sum --check --ignore-missing SHA256SUMS`) and unpack it; the archive also contains
 `rbit.service` and `rbit.example.toml` (the paths below are the repository's, use the
 archive's `rbit` and files instead of `target/release/rbit` and `deploy/`). Linux binaries

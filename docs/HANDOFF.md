@@ -66,7 +66,7 @@ on GitHub yet.
 ## 2. Open items (do these first)
 
 1. **CI has never run on GitHub:** nothing is pushed anywhere and there is no remote
-   configured yet. Push a branch to `github.com/rbit/rbit` to run
+   configured yet. Push a branch to `github.com/GitRbit/rbit` to run
    `.github/workflows/ci.yml` (Linux + Windows, and the new `cargo deny` job).
 2. **The release workflow has never run either.** Push a `v0.1.0-rc.1` tag first (a
    pre-release: its notes come from `## [Unreleased]`, it does not move `latest`) to
@@ -271,7 +271,7 @@ Milestone 2 is done (wave A: [design/milestone-2.md](design/milestone-2.md), wav
 
 | Workstream | Delivered |
 |---|---|
-| **H — Open-source hygiene** | MIT OR Apache-2.0, `THIRD-PARTY.md`, `deny.toml` + CI job, community files and `ROADMAP.md`, the release workflow (five native targets, `SHA256SUMS`, notes from the changelog, a multi-arch `ghcr.io/rbit/rbit` image from the release binaries), OCI labels, `rbit_` tokens with `rit_` still accepted, the rename sweep. |
+| **H — Open-source hygiene** | MIT OR Apache-2.0, `THIRD-PARTY.md`, `deny.toml` + CI job, community files and `ROADMAP.md`, the release workflow (five native targets, `SHA256SUMS`, notes from the changelog, a multi-arch `ghcr.io/gitrbit/rbit` image from the release binaries), OCI labels, `rbit_` tokens with `rit_` still accepted, the rename sweep. |
 | **S — Commit statuses** | GitHub-compatible status API, required status checks in branch protection (a bypassable protection requirement), checks in the merge box and on commits, the `status` webhook (`0033`). |
 | **A — REST API continuation** | Collaborators, teams, releases with streamed file uploads and downloads (`.streaming()` routes), forks; the `member` webhook; team grants refuse other owners' repositories. |
 | **N — Email notifications** | Preferences (off / participating / all), threading headers, signed one-click unsubscribe (the one CSRF exemption), per-address throttle, `server_secrets` (`0034`). |
@@ -319,8 +319,8 @@ Then, in order:
 
 Milestone 3:
 
-- Licensed **MIT OR Apache-2.0** (was AGPL). The public home is github.com/rbit/rbit, the
-  image `ghcr.io/rbit/rbit`; vulnerability reports go through GitHub private security
+- Licensed **MIT OR Apache-2.0** (was AGPL). The public home is github.com/GitRbit/rbit, the
+  image `ghcr.io/gitrbit/rbit`; vulnerability reports go through GitHub private security
   advisories (no email published).
 - Tokens are `rbit_…`; `rit_…` is accepted forever (it costs nothing: the digest covers
   only the random part). The webhook user agent stays `rbit-Hookshot/…` and the header

@@ -8,7 +8,7 @@ name: Release
 #      own cross toolchain — no emulation, no Docker-based cross compilers;
 #   3. creates the GitHub release with the archives and their SHA-256 sums;
 #   4. pushes a multi-architecture image (linux/amd64, linux/arm64) of the same Linux
-#      binaries to ghcr.io/rbit/rbit.
+#      binaries to ghcr.io/gitrbit/rbit.
 #
 # A tag with a pre-release suffix (`v0.2.0-rc.1`) makes a pre-release; it may use the
 # `## [Unreleased]` section when the version has none yet, and never moves `latest`.
@@ -29,7 +29,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   NODE_VERSION: "24"
-  IMAGE: ghcr.io/rbit/rbit
+  IMAGE: ghcr.io/gitrbit/rbit
 
 jobs:
   prepare:

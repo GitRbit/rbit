@@ -69,9 +69,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Milestone 3 — ready to open-source
 
 rbit is now open source under **MIT OR Apache-2.0** (it was AGPL-3.0-or-later), at
-github.com/rbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
+github.com/GitRbit/rbit. Releases ship binaries for Linux (x86_64, aarch64), macOS (Intel,
 Apple silicon) and Windows with SHA-256 sums, and a multi-architecture image at
-`ghcr.io/rbit/rbit`. The milestone also brings commit statuses for external CI, more of the
+`ghcr.io/gitrbit/rbit`. The milestone also brings commit statuses for external CI, more of the
 REST API, email notifications, editing files in the browser, Git LFS and sign-in with
 OpenID Connect providers and GitHub.
 
