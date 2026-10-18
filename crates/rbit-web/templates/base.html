@@ -1,4 +1,17 @@
 {% import "macros.html" as ui %}
+{#- Light/dark switch and the theme picker as menu rows: the phone-sized stand-ins for the
+    top bar's sun/moon and palette buttons. -#}
+{% macro theme_menu_items(page) %}
+{%- let toggle = page.theme.toggled() %}
+<form method="post" action="/themes" class="sm:hidden" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+  <input type="hidden" name="next" value="{{ page.path }}">
+  <button class="menu-item" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}">
+    <span class="when-dark">{% call ui::icon("sun", "menu-icon") %}{% endcall %}</span><span class="when-light">{% call ui::icon("moon", "menu-icon") %}{% endcall %}</span>
+    <span class="when-dark">Light mode</span><span class="when-light">Dark mode</span>
+  </button>
+</form>
+<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
+{% endmacro %}
 <!doctype html>
 <html lang="en"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
 <head>
@@ -31,6 +44,7 @@
   <link rel="modulepreload" href="{{ page.asset("theme-picker.js") }}">
   <link rel="modulepreload" href="{{ page.asset("filter.js") }}">
   <link rel="modulepreload" href="{{ page.asset("diff.js") }}">
+  <link rel="modulepreload" href="{{ page.asset("repo.js") }}">
   <link rel="modulepreload" href="{{ page.asset("passkey.js") }}">
 </head>
 <body hx-boost="true" hx-ext="preload" class="flex min-h-dvh flex-col">
@@ -40,22 +54,20 @@
     <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
   </div>
 
-  <header class="sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-    <nav class="mx-auto flex h-12 max-w-6xl items-center gap-3 px-4 sm:px-6" aria-label="Main">
+  <header class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="Main">
       <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::logo("size-9") %}{% endcall %}</a>
       <div class="flex min-w-0 items-center gap-2 text-[13px]">
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
       </div>
 
-      <div class="ml-auto flex items-center gap-1">
+      <div class="ml-auto flex shrink-0 items-center gap-1">
         <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
-        {%- if !page.is_signed_in() %}
-        <a href="/explore" class="btn btn-ghost btn-icon sm:hidden" aria-label="Explore" title="Explore">{% call ui::icon("compass", "size-4") %}{% endcall %}</a>
-        {%- endif %}
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
-            the palette menu next to it picks any theme. Both are plain forms without JS. -#}
+            the palette menu next to it picks any theme. Both are plain forms without JS. On
+            phones both move into the account menu (or, signed out, the site menu). -#}
         {%- let toggle = page.theme.toggled() %}
-        <form method="post" action="/themes" class="contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
+        <form method="post" action="/themes" class="hidden sm:contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
           <input type="hidden" name="next" value="{{ page.path }}">
           <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="Switch between light and dark" title="Switch between light and dark">
             {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
@@ -63,7 +75,7 @@
           </button>
         </form>
         {#- Opens the theme picker dialog; without scripts, the gallery. -#}
-        <a href="/themes" class="btn btn-ghost btn-icon" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
           {% call ui::icon("palette", "size-4") %}{% endcall %}
         </a>
 
@@ -72,50 +84,67 @@
           {% call ui::icon("bell", "size-4") %}{% endcall %}
           {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
         </a>
-        <a href="/new" class="btn btn-ghost btn-icon" aria-label="New repository" title="New repository">
+        <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="New repository" title="New repository">
           {% call ui::icon("plus", "size-4") %}{% endcall %}
         </a>
         <details class="relative ml-1" data-menu>
-          <summary class="flex cursor-pointer rounded-full" aria-label="Account menu">
+          <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="Account menu">
             {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
           </summary>
-          <div class="menu right-0 w-56">
-            <div class="px-2.5 py-2">
-              <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
-              <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+          <div class="menu right-0 w-60">
+            <div class="flex items-center gap-2.5 px-2.5 py-2">
+              {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
+              <div class="min-w-0">
+                <p class="truncate text-[13px] font-medium">{{ user.label }}</p>
+                <p class="truncate text-xs text-ink-muted">{{ user.name }}</p>
+              </div>
             </div>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/">Dashboard</a>
-            <a class="menu-item" href="/{{ user.name }}">Profile</a>
-            <a class="menu-item" href="/new">New repository</a>
-            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">New organization</a>{% endif %}
-            <a class="menu-item" href="/settings">Settings</a>
-            <a class="menu-item sm:hidden" href="/explore">Explore</a>
-            {% if user.is_admin %}
+            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}Dashboard</a>
+            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}Profile</a>
+            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/admin">Site administration</a>
+            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}New repository</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}New organization</a>{% endif %}
+            <div class="menu-divider"></div>
+            {% call theme_menu_items(page) %}{% endcall %}
+            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}Settings</a>
+            {% if user.is_admin %}
+            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}Site administration</a>
             {% endif %}
             <div class="menu-divider"></div>
             <form method="post" action="/logout">
-              <button class="menu-item text-ink-muted" type="submit">Sign out</button>
+              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}Sign out</button>
             </form>
           </div>
         </details>
         {% else %}
-        <a href="/login" class="btn btn-ghost">Sign in</a>
-        <a href="/signup" class="btn btn-primary">Sign up</a>
+        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">Sign in</a>
+        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">Sign up</a>
+        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">Sign in</a>{% endif %}
+        <details class="relative sm:hidden" data-menu>
+          <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="Menu">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+          <div class="menu right-0 w-60">
+            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
+            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}Create an account</a>
+            <div class="menu-divider"></div>
+            {% call theme_menu_items(page) %}{% endcall %}
+          </div>
+        </details>
         {% endif %}
       </div>
     </nav>
-    {% block subnav %}{% endblock %}
   </header>
+  {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
+      (app.css `.site-subnav`). Hidden when a page has none. -#}
+  <div class="site-subnav">{% block subnav %}{% endblock %}</div>
 
-  <main id="main" class="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+  <main id="main" class="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
     {% block content %}{% endblock %}
   </main>
 
   <footer class="border-t border-line pb-[env(safe-area-inset-bottom)]">
-    <div class="mx-auto flex h-12 max-w-6xl items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
+    <div class="mx-auto flex h-12 max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
         {% call ui::logo("size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
         <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>

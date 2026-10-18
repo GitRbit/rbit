@@ -12,20 +12,39 @@
 //   theme picker dialog instead, fetched from `/themes/picker` the first time. It searches and
 //   filters as you type; the highlighted row (arrow keys or the pointer) shows in the dialog's
 //   preview pane, and Enter, a click or the pane's Apply button applies it to the page.
-// * In the gallery (`[data-theme-gallery]`), hovering or focusing a card previews that theme
-//   on the whole page; leaving the gallery or pressing Escape reverts the preview. The
-//   variant filter and search narrow the cards instantly.
+// * In the gallery (`[data-theme-gallery]`), resting the pointer on or focusing a card previews
+//   that theme on the whole page; leaving the gallery or pressing Escape reverts the preview.
+//   The variant filter and search narrow the cards instantly.
+// * Previews cross-fade (`data-theme-fade` on <html>, and always in the dialog's pane), so
+//   sweeping the pointer or scrolling across themes never flashes the page between them.
 //
 // Behaviour is attached with event delegation, so it keeps working after htmx swaps.
 
 const COOKIE = "rbit-theme";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-const HOVER_DELAY_MS = 120;
+const HOVER_DELAY_MS = 200;
+/** Matches the `data-theme-fade` transition in app.css, with a little slack. */
+const FADE_MS = 350;
 const BUILT_IN = { system: null, light: "light", dark: "dark" };
 
 const root = document.documentElement;
 let applied = { slug: root.dataset.theme ?? "system", scheme: root.dataset.scheme ?? null };
 let previewTimer = 0;
+/** The gallery card the pointer last headed for, so moving within it doesn't restart the delay. */
+let pending = null;
+let fadeTimer = 0;
+
+/**
+ * Shows `slug` as a cross-fade rather than a cut. The fade stays on until the last change
+ * settles: dropping it mid-transition would snap the colours to their end.
+ */
+function fadeTo(slug, scheme) {
+  if ((root.dataset.theme ?? "system") === slug) return;
+  root.dataset.themeFade = "";
+  show(slug, scheme);
+  clearTimeout(fadeTimer);
+  fadeTimer = setTimeout(() => delete root.dataset.themeFade, FADE_MS);
+}
 
 /** The light/dark scheme of `slug`: built-ins are known, tinted cards say so in `data-variant`. */
 function schemeOf(slug, element) {
@@ -101,7 +120,8 @@ function apply(slug, scheme, source) {
 
 function revert() {
   clearTimeout(previewTimer);
-  show(applied.slug, applied.scheme);
+  pending = null;
+  fadeTo(applied.slug, applied.scheme);
 }
 
 const opposite = (scheme) => (scheme === "dark" ? "light" : "dark");
@@ -163,13 +183,16 @@ function cardFrom(target) {
 }
 
 function preview(card) {
-  show(card.value, schemeOf(card.value, card));
+  fadeTo(card.value, schemeOf(card.value, card));
 }
 
-document.addEventListener("pointerover", (event) => {
+// `pointermove` rather than `pointerover`, so cards scrolling under a resting pointer don't
+// preview one after another; the delay skips cards the pointer only passes over.
+document.addEventListener("pointermove", (event) => {
   if (event.pointerType === "touch") return;
   const card = cardFrom(event.target);
-  if (!card) return;
+  if (!card || card === pending) return;
+  pending = card;
   clearTimeout(previewTimer);
   previewTimer = setTimeout(() => preview(card), HOVER_DELAY_MS);
 });

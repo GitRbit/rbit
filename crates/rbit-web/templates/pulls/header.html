@@ -11,7 +11,7 @@
     {% if let Some(url) = pull.head_url %}<a href="{{ url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ pull.head_label }}</a>{% else %}<span class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink-faint">{{ pull.head_label }}</span>{% endif %}
   </p>
 </div>
-<nav class="-mb-px mt-5 flex gap-5 border-b border-line scroll-tabs" aria-label="Pull request">
+<nav class="-mx-4 -mb-px mt-5 flex gap-5 border-b border-line px-4 scroll-tabs sm:mx-0 sm:px-0" aria-label="Pull request">
   <a class="tab" href="{{ pull.urls.page }}" {% if pull.active == "conversation" %}aria-current="page"{% endif %}>{% call ui::icon("message-square", "size-3.5") %}{% endcall %}Conversation</a>
   <a class="tab" href="{{ pull.urls.commits }}" {% if pull.active == "commits" %}aria-current="page"{% endif %}>{% call ui::icon("commit", "size-3.5") %}{% endcall %}Commits<span class="badge tabular-nums">{{ pull.commit_count }}</span></a>
   <a class="tab" href="{{ pull.urls.files }}" {% if pull.active == "files" %}aria-current="page"{% endif %}>{% call ui::icon("file-diff", "size-3.5") %}{% endcall %}Files changed<span class="badge tabular-nums">{{ pull.file_count }}</span></a>

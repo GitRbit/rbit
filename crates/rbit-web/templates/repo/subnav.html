@@ -1,14 +1,24 @@
 {% import "macros.html" as ui %}
 {#- Repository tabs, star and fork buttons and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
 {% if let Some(parent) = header.forked_from %}
-<p class="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
 {% endif %}
 {% if let Some(upstream) = header.mirror_url %}
-<p class="mx-auto flex max-w-6xl items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
 {% endif %}
 {#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository. -#}
-<div id="repo-subnav" data-repo-scope="{{ header.home_url }}" class="mx-auto flex max-w-6xl items-center gap-5 px-4 sm:px-6">
-  <nav class="-mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
+{#- On phones the top bar has no room for `owner / repo`, so it heads this block instead,
+    with the actions beside it and the tabs on a full-width row below (app.css `.repo-subnav`). -#}
+<div id="repo-subnav" data-repo-scope="{{ header.home_url }}" class="repo-subnav mx-auto max-w-[96rem] px-4 sm:px-6">
+  <div class="repo-title">
+    <a href="/{{ header.owner }}" class="block truncate text-xs text-ink-muted hover:text-ink">{{ header.owner }}</a>
+    <p class="flex min-w-0 items-center gap-2">
+      <a href="{{ header.home_url }}" class="truncate text-base font-semibold tracking-tight" title="{{ header.owner }}/{{ header.name }}">{{ header.name }}</a>
+      {% if header.is_private %}{% call ui::icon("lock", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}<span class="sr-only">Private</span>{% endif %}
+    </p>
+  </div>
+
+  <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
     <a class="tab" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
     <a class="tab" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
     <a class="tab" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
@@ -21,7 +31,7 @@
     {% endif %}
   </nav>
 
-  <div class="ml-auto flex shrink-0 items-center gap-2">
+  <div class="repo-actions flex shrink-0 items-center gap-2">
     {% let star = header.star_button(page.is_signed_in(), page.path.as_str()) %}
     {% include "repo/star_button.html" %}
 

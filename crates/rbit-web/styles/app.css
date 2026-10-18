@@ -291,10 +291,59 @@
     scrollbar-width: none;
   }
 
-  @media (width < 48rem) {
+  @media (width < 64rem) {
     .scroll-tabs {
       mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
     }
+  }
+
+  /* The repository header (repo/subnav.html). Phones: the name with the star, fork and
+     clone buttons beside it, then the tabs edge to edge. From `md` the name is in the top
+     bar and the tabs share one row with the buttons. */
+  .repo-subnav {
+    @apply grid items-center gap-x-3;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title actions" "tabs tabs";
+  }
+
+  .repo-title {
+    @apply min-w-0 py-3 leading-tight;
+    grid-area: title;
+  }
+
+  .repo-actions { grid-area: actions; }
+
+  .repo-tabs {
+    @apply -mx-4 px-4 sm:-mx-6 sm:px-6;
+    grid-area: tabs;
+  }
+
+  @media (width >= 48rem) {
+    .repo-subnav {
+      @apply gap-x-5;
+      grid-template-areas: "tabs actions";
+    }
+
+    .repo-title { @apply hidden; }
+
+    .repo-tabs { @apply mx-0 px-0; }
+  }
+
+  /* The repository home's sidebar (repo/tree.html): beside the files on large screens,
+     after the README on smaller ones, where the About section moves above the files. */
+  .repo-aside {
+    @apply space-y-5 border-t border-line pt-5 lg:border-t-0 lg:pt-0;
+  }
+
+  .aside-section {
+    @apply border-t border-line pt-5;
+  }
+
+  @media (width < 64rem) {
+    .repo-aside:not(:has(> .aside-section)) { @apply hidden; }
+
+    /* The first section showing follows the hidden About one. */
+    .repo-aside > section.hidden + .aside-section { @apply border-t-0 pt-0; }
   }
 
   .row {
@@ -321,13 +370,21 @@
   .avatar-6 { background: color-mix(in oklab, var(--ink) 88%, var(--surface)); color: var(--inverted-ink); }
   .avatar-7 { background: var(--ink-muted); color: var(--surface); }
 
+  /* Never wider than the screen, whatever width a menu asks for. */
   .menu {
-    @apply absolute z-40 mt-1.5 min-w-52 overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-1
-      shadow-[0_4px_16px_rgb(0_0_0/0.08)];
+    @apply absolute z-40 mt-1.5 min-w-52 max-w-[calc(100vw-2rem)] overflow-hidden rounded-(--radius-ui) border border-line
+      bg-surface p-1 shadow-[0_4px_16px_rgb(0_0_0/0.08)];
   }
 
+  /* 40px rows on touch screens, 32px from `sm` up. */
   .menu-item {
-    @apply flex h-9 w-full items-center gap-2 rounded px-2.5 text-[13px] text-ink hover:bg-hover sm:h-8;
+    @apply flex h-10 w-full items-center gap-2.5 rounded px-2.5 text-left text-sm text-ink hover:bg-hover sm:h-8 sm:gap-2
+      sm:text-[13px];
+  }
+
+  /* A menu row's leading icon. */
+  .menu-icon {
+    @apply size-4 shrink-0 text-ink-muted;
   }
 
   .menu-label {
@@ -417,6 +474,20 @@
     --tw-prose-counters: var(--ink-faint);
     --tw-prose-th-borders: var(--line-strong);
     --tw-prose-td-borders: var(--line);
+  }
+
+  /* Long words and URLs wrap instead of widening the page; wide tables scroll. */
+  .prose-rbit {
+    overflow-wrap: break-word;
+  }
+
+  .prose-rbit a,
+  .prose-rbit :not(pre) > code {
+    overflow-wrap: anywhere;
+  }
+
+  .prose-rbit table {
+    @apply block max-w-full overflow-x-auto;
   }
 
   .prose-rbit :not(pre) > code {
@@ -546,6 +617,43 @@
   to { transform: translateX(400%); }
 }
 
+/* ---------------------------------------------------------------- Sticky header */
+
+/* The top bar always sticks. A page's tabs (`.site-subnav`, after the header) stick right
+   under it from `md` up, reading as one block with it; on phones they scroll away so the
+   page keeps the room. `--sticky-top` is where other sticky things (diff file headers,
+   linked code lines) sit: below the bar, plus the tabs where those stick. app.js keeps
+   `--subnav-height` current. */
+:root {
+  /* The top bar with its bottom border. */
+  --bar-height: calc(3rem + 1px + env(safe-area-inset-top));
+  --sticky-top: var(--bar-height);
+}
+
+.site-subnav {
+  @apply relative z-20 border-b border-line bg-canvas;
+}
+
+.site-subnav:not(:has(*)) {
+  @apply hidden;
+}
+
+@media (width >= 48rem) {
+  :root {
+    --sticky-top: calc(var(--bar-height) + var(--subnav-height, 0px));
+  }
+
+  .site-subnav {
+    @apply sticky bg-canvas/90 backdrop-blur-md;
+    top: var(--bar-height);
+  }
+
+  /* Bar and tabs read as one header with a single line under it. */
+  .site-header:has(+ .site-subnav > *) {
+    @apply border-b-transparent;
+  }
+}
+
 /* Focus moves to <main> after a navigation (for screen readers); no ring for that. */
 #main:focus {
   outline: none;
@@ -553,11 +661,23 @@
 
 /* ---------------------------------------------------------------- Diffs */
 
+.language-dialog {
+  @apply m-auto w-[calc(100%-2rem)] max-w-3xl max-h-[85dvh] overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-0 text-ink;
+}
+.language-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.language-dialog > .box { border: 0; }
+.language-file-list { @apply max-h-[65dvh] overflow-auto overscroll-contain; }
+/* The outer list owns scrolling. The shared diff tree otherwise traps wheel events
+   in its own overscroll container, even when that inner list has no overflow. */
+.language-file-list > .diff-tree {
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+
 /* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and
-   the file tree stick: just below the sticky top bar and tabs, whose height diff.js keeps
-   in `--header-height` (the fallback fits the bar plus repository tabs). */
+   the file tree stick: just below the sticky top bar, and its tabs where those stick too. */
 .diff-layout {
-  --diff-top: var(--header-height, 6.25rem);
+  --diff-top: var(--sticky-top);
   --diff-tree-indent: 14px;
 }
 
@@ -572,12 +692,17 @@
 /* The file tree: above the diffs on small screens once opened, a sticky column beside
    them on large ones unless hidden (`data-sidebar` on the layout, set by diff.js). */
 .diff-sidebar {
-  @apply hidden max-h-80 min-h-0 flex-col overflow-hidden;
+  @apply max-h-80 min-h-0 overflow-hidden;
 }
 
-.diff-layout[data-sidebar-mobile="open"] .diff-sidebar {
-  @apply flex;
+.diff-sidebar-summary {
+  @apply flex cursor-pointer items-center gap-2 px-3 py-2 text-[13px] font-medium;
 }
+.diff-sidebar[open] {
+  @apply block;
+}
+.diff-sidebar .diff-tree { max-height: 14rem; }
+.diff-sidebar:not([open]) > :not(summary) { display: none; }
 
 @media (width >= 64rem) {
   .diff-columns.has-tree {
@@ -589,10 +714,13 @@
   }
 
   .diff-sidebar {
-    @apply sticky flex;
+    @apply sticky;
     top: calc(var(--diff-top) + 0.75rem);
     max-height: calc(100dvh - var(--diff-top) - 1.5rem);
   }
+
+  .diff-sidebar-summary { display: none; }
+  .diff-sidebar .diff-tree { max-height: calc(100dvh - var(--diff-top) - 5rem); }
 
   .diff-layout[data-sidebar="hidden"] .diff-sidebar {
     @apply hidden;
@@ -760,7 +888,7 @@
   content-visibility: auto;
   contain-intrinsic-block-size: auto 1.25rem;
   /* A linked line (#L12) lands below the sticky top bar and tabs, not under them. */
-  scroll-margin-top: 8rem;
+  scroll-margin-top: calc(var(--sticky-top, 6.25rem) + 1.5rem);
 }
 
 .code-line:target {
@@ -769,7 +897,7 @@
 
 /* Drawn from `data-line`, so it is never copied with the code; nav.js handles clicks. */
 .code-line .line-number {
-  @apply w-14 shrink-0 cursor-pointer select-none pr-3 text-right text-ink-faint;
+  @apply w-11 shrink-0 sm:w-14 cursor-pointer select-none pr-3 text-right text-ink-faint;
 }
 
 .code-line .line-number::before {
@@ -781,7 +909,7 @@
 }
 
 .code-line .line-code {
-  @apply whitespace-pre pl-3 pr-6;
+  @apply whitespace-pre pl-2 pr-6 sm:pl-3;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -802,6 +930,26 @@
 }
 
 /* ---------------------------------------------------------------- Themes */
+
+/* Theme previews cross-fade instead of cutting, so sweeping the pointer, scrolling or
+   arrowing through themes never flashes between them (theme-picker.js sets
+   `data-theme-fade` on <html> while a gallery preview changes; the picker's preview pane
+   always fades). A colour fade isn't motion, and it's what photosensitive visitors need
+   most, so it outranks the reduced-motion rule above. A preview changed mid-fade retargets
+   from the colours on screen. */
+:root[data-theme-fade],
+:root[data-theme-fade] *,
+:root[data-theme-fade] *::before,
+:root[data-theme-fade] *::after,
+.tpk-preview,
+.tpk-preview *,
+.tpk-preview *::before,
+.tpk-preview *::after {
+  transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, box-shadow !important;
+  transition-duration: 300ms !important;
+  transition-timing-function: ease-out !important;
+  transition-delay: 0s !important;
+}
 
 /* Header theme picker (templates/themes/picker.html): a large dialog with the family index,
    the list, and a preview pane showing the highlighted theme on a miniature repository page.
@@ -932,7 +1080,6 @@ html:has(.tpk[open]) { overflow: hidden; }
 .tpk-preview {
   @apply overflow-hidden rounded-md border border-line bg-canvas text-[11px] leading-4 text-ink;
   box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.3);
-  transition: background-color 120ms ease-out;
 }
 
 .pv-top { @apply flex h-9 items-center gap-2 border-b border-line bg-surface px-3; }
@@ -1078,3 +1225,8 @@ html:has(.tpk[open]) { overflow: hidden; }
 }
 
 .theme-card[aria-pressed="true"] .theme-name::before { content: "✓ "; }
+
+.branch-graph { border-collapse: collapse; }
+.branch-graph td { height: 48px; border-bottom: 1px solid var(--line); }
+.branch-graph tr:last-child td { border-bottom: 0; }
+.branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }

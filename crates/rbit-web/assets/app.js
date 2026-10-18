@@ -12,6 +12,7 @@ import "./filter.js";
 
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
+import "./repo.js";
 
 // Passkeys for two-factor authentication (settings and the second sign-in step).
 import "./passkey.js";
@@ -58,6 +59,30 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("htmx:afterSettle", () => {
   for (const menu of document.querySelectorAll("details[data-menu][open]")) menu.removeAttribute("open");
 });
+
+// `--subnav-height` follows the page's tabs under the top bar (base.html `.site-subnav`), so
+// app.css can place sticky elements below them. A boosted navigation may replace the tabs'
+// container, so the observer moves to the new one after every swap.
+const subnavObserver = new ResizeObserver(measureSubnav);
+let observedSubnav = null;
+
+function measureSubnav() {
+  const subnav = document.querySelector("body > .site-subnav");
+  if (subnav?.isConnected) document.documentElement.style.setProperty("--subnav-height", `${subnav.offsetHeight}px`);
+}
+
+function trackSubnav() {
+  const subnav = document.querySelector("body > .site-subnav");
+  if (subnav !== observedSubnav) {
+    if (observedSubnav) subnavObserver.unobserve(observedSubnav);
+    if (subnav) subnavObserver.observe(subnav);
+    observedSubnav = subnav;
+  }
+  measureSubnav();
+}
+
+trackSubnav();
+document.addEventListener("htmx:afterSettle", trackSubnav);
 
 if ("serviceWorker" in navigator) {
   addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));

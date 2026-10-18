@@ -15,7 +15,7 @@
     <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="e.g. Work laptop" autocomplete="off">
     <p class="hint">Defaults to the key's comment.</p>
 
-    <label class="label mt-5" for="key-value">Key</label>
+    <label class="label mt-5" for="key-value">Public Key</label>
     <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
     <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono">sk-…</span>). Create one with <span class="font-mono">ssh-keygen -t ed25519</span>.</p>
   </div>

@@ -31,7 +31,8 @@
 
   <div class="diff-columns{% if has_tree %} has-tree{% endif %}">
     {% if has_tree %}
-    <aside id="diff-sidebar" class="diff-sidebar box" aria-label="Changed files">
+    <details id="diff-sidebar" class="diff-sidebar box" aria-label="Changed files" open>
+      <summary class="diff-sidebar-summary">{% call ui::icon("panel-left", "size-4") %}{% endcall %}File tree <span class="text-ink-faint">{{ files.len() }}</span></summary>
       <div class="diff-filter">
         <label class="relative block">
           <span class="sr-only">Filter changed files</span>
@@ -65,7 +66,7 @@
         {% endfor %}
         <li class="px-3 py-6 text-center text-[13px] text-ink-faint" data-diff-filter-empty hidden>No files match.</li>
       </ul>
-    </aside>
+    </details>
     {% endif %}
 
     <div class="min-w-0 space-y-3">

@@ -5,10 +5,26 @@
 {% block content %}
 <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
   <div class="min-w-0">
-    <div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
+    {#- Phones: the description and counts above the files; the full sidebar follows the README. -#}
+    {% if breadcrumbs.len() <= 1 %}
+    <section class="mb-4 lg:hidden" aria-label="About">
+      {% if let Some(description) = header.description %}<p class="text-[13px] text-ink-muted">{{ description }}</p>{% endif %}
+      <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
+        <a href="{{ header.branches_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.branches.len() }}</span> {% if switcher.branches.len() == 1 %}branch{% else %}branches{% endif %}</span></a>
+        <a href="{{ header.tags_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.tags.len() }}</span> {% if switcher.tags.len() == 1 %}tag{% else %}tags{% endif %}</span></a>
+        {% if header.is_private %}
+        <span class="flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}Private</span>
+        {% else %}
+        <span class="flex items-center gap-1.5">{% call ui::icon("globe", "size-3.5") %}{% endcall %}Public</span>
+        {% endif %}
+      </p>
+    </section>
+    {% endif %}
+
+    <div class="mb-3 flex min-h-8 flex-wrap items-center gap-2 sm:gap-3">
       {% include "repo/ref_switcher.html" %}
       {% if breadcrumbs.len() > 1 %}{% include "repo/breadcrumbs.html" %}{% endif %}
-      <a href="{{ history_url }}" class="btn btn-ghost ml-auto">{% call ui::icon("history", "size-3.5") %}{% endcall %}History</a>
+      <a href="{{ history_url }}" class="btn btn-ghost ml-auto" aria-label="History" title="History">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">History</span></a>
       {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add file</a>{% endif %}
       {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="Upload files" title="Upload files">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
@@ -54,8 +70,8 @@
     {% endif %}
   </div>
 
-  <aside class="order-first space-y-5 lg:order-none">
-    <section>
+  <aside class="repo-aside {% if breadcrumbs.len() > 1 %}max-lg:hidden{% endif %}">
+    <section class="hidden lg:block">
       <h2 class="text-[13px] font-medium">About</h2>
       {% if let Some(description) = header.description %}
       <p class="mt-2 text-[13px] text-ink-muted">{{ description }}</p>
@@ -64,7 +80,7 @@
       {% endif %}
     </section>
     {% if let Some(release) = latest_release %}
-    <section class="border-t border-line pt-5" aria-labelledby="latest-release-title">
+    <section class="aside-section" aria-labelledby="latest-release-title">
       <h2 id="latest-release-title" class="text-[13px] font-medium"><a href="{{ release.releases_url }}" class="hover:underline hover:underline-offset-4">Releases</a></h2>
       <a href="{{ release.url }}" class="group mt-2 flex items-start gap-2 text-[13px]">
         {% call ui::icon("tag", "mt-0.5 size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
@@ -76,7 +92,7 @@
     </section>
     {% endif %}
     {% if let Some(collaborator) = collaborator %}
-    <section class="border-t border-line pt-5" aria-labelledby="your-access-title">
+    <section class="aside-section" aria-labelledby="your-access-title">
       <h2 id="your-access-title" class="text-[13px] font-medium">Your access</h2>
       <p class="mt-2 text-[13px] text-ink-muted">{{ collaborator.permission_label }} access as a collaborator.</p>
       <form method="post" action="{{ collaborator.leave_url }}" class="mt-3">
@@ -85,7 +101,7 @@
     </section>
     {% endif %}
     {% if let Some(languages) = languages %}
-    <section class="border-t border-line pt-5" aria-labelledby="languages-title">
+    <section class="aside-section" aria-labelledby="languages-title">
       <h2 id="languages-title" class="text-[13px] font-medium">Languages</h2>
       <div class="mt-3 overflow-hidden rounded-full">
         <svg class="block h-2 w-full" viewBox="0 0 100 1" preserveAspectRatio="none" role="img" aria-label="{{ languages.label }}">
@@ -96,16 +112,21 @@
         {% for segment in languages.segments %}
         <li class="flex items-center gap-1.5">
           <svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ segment.color }}"/></svg>
-          <span class="font-medium text-ink">{{ segment.name }}</span>
+          <button type="button" class="cursor-pointer font-medium text-ink hover:underline hover:underline-offset-4" data-language-files data-language-files-url="{{ language_files_url }}&amp;language={{ segment.name|urlencode }}" hx-boost="false" aria-haspopup="dialog">{{ segment.name }}</button>
           <span class="text-ink-muted">{{ segment.percent }}</span>
         </li>
         {% endfor %}
       </ul>
     </section>
     {% endif %}
+    <nav class="space-y-2 text-[13px] text-ink-muted" aria-label="Repository links">
+      <a href="{{ history_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("history", "size-3.5") %}{% endcall %}Commit history</a>
+      <a href="{{ header.releases_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Releases</a>
+      <a href="{{ header.forks_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}{{ header.fork_count }} forks</a>
+    </nav>
     <dl class="hidden space-y-2 border-t border-line pt-5 text-[13px] text-ink-muted lg:block">
-      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">Branches</dt><dd><span class="text-ink">{{ switcher.branches.len() }}</span> {% if switcher.branches.len() == 1 %}branch{% else %}branches{% endif %}</dd></div>
-      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">Tags</dt><dd><span class="text-ink">{{ switcher.tags.len() }}</span> {% if switcher.tags.len() == 1 %}tag{% else %}tags{% endif %}</dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">Branches</dt><dd><a href="{{ header.branches_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.branches.len() }}</span> {% if switcher.branches.len() == 1 %}branch{% else %}branches{% endif %}</a></dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">Tags</dt><dd><a href="{{ header.tags_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.tags.len() }}</span> {% if switcher.tags.len() == 1 %}tag{% else %}tags{% endif %}</a></dd></div>
       {% if header.is_private %}
       <div class="flex items-center gap-2">{% call ui::icon("lock", "size-3.5") %}{% endcall %}<dt class="sr-only">Visibility</dt><dd>Private</dd></div>
       {% else %}

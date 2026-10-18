@@ -1,8 +1,8 @@
 // Diff pages (repo/file_diffs.html: commits and compares). Progressive enhancement: without
 // it the file tree is a plain list of links and each file still collapses on its own.
 //
-// * Sticky offset: `--header-height` follows the sticky top bar, so file headers and the
-//   tree stick right below it whatever the bar holds (fork notice, wrapped tabs).
+// * Sticky offset: file headers and the tree stick right below the sticky header, at
+//   `--sticky-top` (app.css), which follows its height as app.js measures it.
 // * File headers: collapsing a stuck header keeps it where it was instead of leaving the
 //   reader somewhere in the next file; Alt-click and "Collapse all" toggle every file.
 // * File tree: folders collapse, the filter narrows it by path (every word must match),
@@ -13,18 +13,6 @@
 
 const SIDEBAR_KEY = "rbit.diff-sidebar";
 const wide = matchMedia("(width >= 64rem)");
-
-// ---------------------------------------------------------------- sticky offset
-
-function trackHeaderHeight() {
-  const header = document.querySelector("body > header");
-  if (!header) return;
-  const apply = () => document.documentElement.style.setProperty("--header-height", `${header.offsetHeight}px`);
-  apply();
-  new ResizeObserver(apply).observe(header);
-}
-
-trackHeaderHeight();
 
 /** Where file headers stick, in viewport pixels. */
 function diffTop(layout) {
@@ -212,7 +200,7 @@ function writeSidebarPreference(value) {
 function syncSidebarToggle(layout) {
   const button = layout.querySelector("[data-diff-sidebar-toggle]");
   if (!button) return;
-  const visible = wide.matches ? layout.dataset.sidebar !== "hidden" : layout.dataset.sidebarMobile === "open";
+  const visible = wide.matches ? layout.dataset.sidebar !== "hidden" : layout.querySelector(".diff-sidebar")?.open;
   button.setAttribute("aria-pressed", String(visible));
 }
 
@@ -222,17 +210,19 @@ function toggleSidebar(layout) {
     if (hide) layout.dataset.sidebar = "hidden";
     else delete layout.dataset.sidebar;
     writeSidebarPreference(hide ? "hidden" : null);
-  } else if (layout.dataset.sidebarMobile === "open") {
-    delete layout.dataset.sidebarMobile;
   } else {
-    layout.dataset.sidebarMobile = "open";
+    const sidebar = layout.querySelector(".diff-sidebar");
+    sidebar.open = !sidebar.open;
   }
   syncSidebarToggle(layout);
   scheduleMark();
 }
 
 wide.addEventListener("change", () => {
-  for (const layout of document.querySelectorAll("[data-diff-layout]")) syncSidebarToggle(layout);
+  for (const layout of document.querySelectorAll("[data-diff-layout]")) {
+    if (wide.matches) layout.querySelector(".diff-sidebar")?.setAttribute("open", "");
+    syncSidebarToggle(layout);
+  }
 });
 
 // ---------------------------------------------------------------- clicks
@@ -280,8 +270,8 @@ document.addEventListener("click", (event) => {
     if (file && !file.open) file.open = true;
     syncCollapseAll(layout);
     // The browser scrolls to the anchor; on a small screen the opened tree closes first.
-    if (!wide.matches && layout.dataset.sidebarMobile === "open") {
-      delete layout.dataset.sidebarMobile;
+    if (!wide.matches && layout.querySelector(".diff-sidebar")?.open) {
+      layout.querySelector(".diff-sidebar").open = false;
       syncSidebarToggle(layout);
     }
   }
@@ -292,6 +282,10 @@ document.addEventListener("click", (event) => {
 document.addEventListener(
   "toggle",
   (event) => {
+    if (event.target instanceof HTMLDetailsElement && event.target.matches(".diff-sidebar")) {
+      syncSidebarToggle(layoutOf(event.target));
+      return;
+    }
     const file = event.target instanceof HTMLDetailsElement && event.target.matches(".diff-file") ? event.target : null;
     if (file) syncCollapseAll(layoutOf(file));
   },
@@ -304,6 +298,8 @@ function init() {
   const hidden = readSidebarPreference() === "hidden";
   for (const layout of document.querySelectorAll("[data-diff-layout]:not([data-ready])")) {
     layout.dataset.ready = "";
+    const sidebar = layout.querySelector(".diff-sidebar");
+    if (sidebar) sidebar.open = wide.matches;
     if (hidden) layout.dataset.sidebar = "hidden";
     for (const control of layout.querySelectorAll("[data-diff-sidebar-toggle], [data-diff-collapse-all]")) control.hidden = false;
     syncSidebarToggle(layout);
