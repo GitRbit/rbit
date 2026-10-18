@@ -25,7 +25,8 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const HOVER_DELAY_MS = 200;
 /** Matches the `data-theme-fade` transition in app.css, with a little slack. */
 const FADE_MS = 350;
-const BUILT_IN = { system: null, light: "light", dark: "dark" };
+/** Themes whose tokens live in app.css, with their schemes; others link their own sheet. */
+const BUILT_IN = { system: null, light: "light", dark: "dark", "dna-dark": "dark", "dna-day": "light" };
 
 const root = document.documentElement;
 let applied = { slug: root.dataset.theme ?? "system", scheme: root.dataset.scheme ?? null };

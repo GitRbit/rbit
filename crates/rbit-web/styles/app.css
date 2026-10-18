@@ -70,6 +70,68 @@
 [data-theme="light"] { color-scheme: light; }
 [data-theme="dark"] { color-scheme: dark; }
 
+/*
+ * The DNA themes: the DNA desktop app's palette (deep neutral with a helix-teal accent, and
+ * its light counterpart), mapped onto the same tokens. The primary action is the teal accent
+ * instead of black/white; status and syntax colours are picked to sit with it. Same contrast
+ * rules as above. `src/themes/mod.rs` mirrors the canvas colours.
+ */
+[data-theme="dna-dark"] {
+  color-scheme: dark;
+  --canvas: #141516;
+  --surface: #1d1e20;
+  --subtle: #1f2024;
+  --hover: #222429;
+  --line: #313335;
+  --line-strong: #434549;
+  --ink: #eceff1;
+  --ink-muted: #95999d;
+  --ink-faint: #898c91;
+  --inverted: #77d2ba;
+  --inverted-hover: #98e3ce;
+  --inverted-ink: #06120f;
+  --success: #6cd092;
+  --danger: #f66d67;
+  --danger-subtle: #2f1c1a;
+  --warning: #f0ba59;
+  --syntax-comment: #898c91;
+  --syntax-keyword: #77d2ba;
+  --syntax-string: #8bd28d;
+  --syntax-number: #74c2ee;
+  --syntax-function: #bcabf1;
+  --syntax-type: #e9c67d;
+  --syntax-tag: #f28881;
+  --syntax-attribute: #7ccdd6;
+}
+
+[data-theme="dna-day"] {
+  color-scheme: light;
+  --canvas: #f5f7f9;
+  --surface: #ffffff;
+  --subtle: #f9fafc;
+  --hover: #eef0f3;
+  --line: #dfe1e4;
+  --line-strong: #c8cbce;
+  --ink: #13161b;
+  --ink-muted: #4c5057;
+  --ink-faint: #5f636a;
+  --inverted: #00785f;
+  --inverted-hover: #00654f;
+  --inverted-ink: #f7fbfa;
+  --success: #137738;
+  --danger: #c51e21;
+  --danger-subtle: #fff0ee;
+  --warning: #a05600;
+  --syntax-comment: #5f636a;
+  --syntax-keyword: #00785f;
+  --syntax-string: #27762f;
+  --syntax-number: #0065b4;
+  --syntax-function: #7347af;
+  --syntax-type: #8e5400;
+  --syntax-tag: #be2f2c;
+  --syntax-attribute: #007187;
+}
+
 @theme {
   --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;

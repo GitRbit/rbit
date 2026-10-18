@@ -5,6 +5,7 @@
 //!
 //! * no attribute — **System**: the built-in tokens follow the OS via `light-dark()`;
 //! * `light` / `dark` — the built-in tokens pinned to one scheme (all in `app.css`);
+//! * `dna-dark` / `dna-day` — the DNA app's palette, also built into `app.css`;
 //! * `base16-…` / `base24-…` — a [tinted-theming](https://github.com/tinted-theming) scheme,
 //!   whose single small stylesheet (`assets/themes/<slug>.css`) is linked only while active.
 //!
@@ -38,6 +39,9 @@ const COOKIE_MAX_AGE_DAYS: i64 = 365;
 /// `--canvas` in `styles/app.css` (a test checks this).
 pub const LIGHT_CANVAS: &str = "#f7f7f7";
 pub const DARK_CANVAS: &str = "#000000";
+/// Page backgrounds of the DNA themes; they must match `--canvas` in `styles/app.css`.
+pub const DNA_DARK_CANVAS: &str = "#141516";
+pub const DNA_DAY_CANVAS: &str = "#f5f7f9";
 
 /// Whether a theme is light or dark.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,12 +117,18 @@ pub enum Theme {
     System,
     Light,
     Dark,
+    /// DNA's deep neutral with a helix-teal accent.
+    DnaDark,
+    /// DNA's light counterpart.
+    DnaDay,
     Tinted(&'static TintedTheme),
 }
 
 impl Theme {
     /// The built-in themes, in the order pickers list them.
     pub const BUILT_IN: [Self; 3] = [Self::System, Self::Light, Self::Dark];
+    /// The DNA themes, listed in their own group after the built-in ones.
+    pub const DNA: [Self; 2] = [Self::DnaDark, Self::DnaDay];
 
     /// The theme called `slug`, if this release ships it.
     pub fn parse(slug: &str) -> Option<Self> {
@@ -126,6 +136,8 @@ impl Theme {
             "system" => Some(Self::System),
             "light" => Some(Self::Light),
             "dark" => Some(Self::Dark),
+            "dna-dark" => Some(Self::DnaDark),
+            "dna-day" => Some(Self::DnaDay),
             other => find(other).map(Self::Tinted),
         }
     }
@@ -141,6 +153,8 @@ impl Theme {
             Self::System => "system",
             Self::Light => "light",
             Self::Dark => "dark",
+            Self::DnaDark => "dna-dark",
+            Self::DnaDay => "dna-day",
             Self::Tinted(theme) => theme.slug,
         }
     }
@@ -150,6 +164,8 @@ impl Theme {
             Self::System => "System",
             Self::Light => "rbit Light",
             Self::Dark => "rbit Dark",
+            Self::DnaDark => "DNA Dark",
+            Self::DnaDay => "DNA Day",
             Self::Tinted(theme) => theme.name,
         }
     }
@@ -158,8 +174,8 @@ impl Theme {
     pub fn variant(self) -> Option<Variant> {
         match self {
             Self::System => None,
-            Self::Light => Some(Variant::Light),
-            Self::Dark => Some(Variant::Dark),
+            Self::Light | Self::DnaDay => Some(Variant::Light),
+            Self::Dark | Self::DnaDark => Some(Variant::Dark),
             Self::Tinted(theme) => Some(theme.variant),
         }
     }
@@ -191,6 +207,8 @@ impl Theme {
             Self::System => None,
             Self::Light => Some(LIGHT_CANVAS),
             Self::Dark => Some(DARK_CANVAS),
+            Self::DnaDark => Some(DNA_DARK_CANVAS),
+            Self::DnaDay => Some(DNA_DAY_CANVAS),
             Self::Tinted(theme) => Some(theme.canvas),
         }
     }
@@ -203,6 +221,8 @@ impl Theme {
         match self {
             Self::System | Self::Light => Self::Dark,
             Self::Dark => Self::Light,
+            Self::DnaDark => Self::DnaDay,
+            Self::DnaDay => Self::DnaDark,
             Self::Tinted(theme) => theme.counterpart.and_then(find).map_or(
                 match theme.variant {
                     Variant::Light => Self::Dark,
@@ -299,6 +319,8 @@ mod tests {
         assert_eq!(toggled("system"), "dark");
         assert_eq!(toggled("light"), "dark");
         assert_eq!(toggled("dark"), "light");
+        assert_eq!(toggled("dna-dark"), "dna-day");
+        assert_eq!(toggled("dna-day"), "dna-dark");
         for (from, to) in [
             ("base16-gruvbox-dark-hard", "base16-gruvbox-light-hard"),
             ("base16-gruvbox-light-soft", "base16-gruvbox-dark-soft"),
@@ -353,6 +375,10 @@ mod tests {
     fn built_in_canvas_colours_match_the_stylesheet() {
         let css = include_str!("../../styles/app.css");
         assert!(css.contains(&format!("--canvas: light-dark({LIGHT_CANVAS}, {DARK_CANVAS});")), "update LIGHT_CANVAS / DARK_CANVAS");
+        for (slug, canvas) in [("dna-dark", DNA_DARK_CANVAS), ("dna-day", DNA_DAY_CANVAS)] {
+            let rule = css.split(&format!("[data-theme=\"{slug}\"] {{")).nth(1).unwrap_or_else(|| panic!("{slug} has its rule"));
+            assert!(rule.contains(&format!("--canvas: {canvas};")), "update the {slug} canvas");
+        }
     }
 
     #[test]
@@ -360,6 +386,8 @@ mod tests {
         assert_eq!(Theme::parse("system"), Some(Theme::System));
         assert_eq!(Theme::parse("light"), Some(Theme::Light));
         assert_eq!(Theme::parse("dark"), Some(Theme::Dark));
+        assert_eq!(Theme::parse("dna-dark"), Some(Theme::DnaDark));
+        assert_eq!(Theme::parse("dna-day"), Some(Theme::DnaDay));
         let first = &tinted()[0];
         assert_eq!(Theme::parse(first.slug), Some(Theme::Tinted(first)));
         for unknown in ["", "Dark", "base16-does-not-exist", "../dark", "dark "] {

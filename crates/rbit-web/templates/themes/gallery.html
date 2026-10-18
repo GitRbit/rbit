@@ -27,6 +27,12 @@
         {%- for card in gallery.defaults %}{% include "themes/card.html" %}{% endfor -%}
       </ul>
     </section>
+    <section class="theme-family" data-theme-family="DNA"{% if gallery.dna_hidden %} hidden{% endif %}>
+      <h2 class="theme-family-title">DNA</h2>
+      <ul class="theme-grid">
+        {%- for card in gallery.dna %}{% include "themes/card.html" %}{% endfor -%}
+      </ul>
+    </section>
     {%- for family in gallery.families %}
     <section class="theme-family" data-theme-family="{{ family.name }}"{% if family.hidden %} hidden{% endif %}>
       <h2 class="theme-family-title">{{ family.name }}<span>{{ family.cards.len() }}</span></h2>
