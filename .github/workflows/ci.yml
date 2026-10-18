@@ -63,6 +63,12 @@ jobs:
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
       # ship git, so only print its version for the log.
       - run: git --version
+      # Asset tests need the generated (gitignored) stylesheet embedded.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci && npm run build
       - run: cargo test --workspace --locked
 
   assets:
