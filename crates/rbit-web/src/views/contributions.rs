@@ -72,6 +72,7 @@ impl ContributionCalendar {
 
     /// Keep history scans outside the main page response. Explicit calendar requests
     /// still render on the server, including the ordinary link used without JavaScript.
+    #[must_use]
     pub fn deferred(mut self) -> Self {
         self.deferred = true;
         self
