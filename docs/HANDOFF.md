@@ -1,32 +1,27 @@
 # rbit — Handoff
 
-## Current release preparation — 2026-10-18
+## Current project status — 2026-10-19
 
-The upstream is **GitRbit/rbit**, a private repository under the GitRbit personal account.
-`main` has been pushed, GitHub Actions and Discussions are enabled, and the repository
-description, topics and community files are configured. Keep the repository private until
-the owner requests publication. No release tag has been pushed.
+The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
+licensed under MIT OR Apache-2.0. The workspace version is `0.1.2`, and
+[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.2`.
 
-The 0.1.0 notes in [CHANGELOG.md](../CHANGELOG.md) cover the initial release, compatibility,
-upgrades and known limitations. Imports and push mirrors (M) are on `main`; the W stretch
-items remain follow-up work and are explicitly excluded from the release's feature claims.
-The frontend speed work is also on `main`, including the bundled browser entrypoint and
-hash-authorized initial CSS. Source builds require Rust 1.94+ and Node.js 24.
+Use [README.md](../README.md#features) for available features and
+[ROADMAP.md](../ROADMAP.md) for current priorities and scope. Source builds require
+Rust 1.94+ and Node.js 24.
 
 Follow [CONTRIBUTING.md](../CONTRIBUTING.md#preparing-a-release) for the release gate.
 Require a green CI run for the final commit, review the release notes, and verify platform
-archives and container packaging before public launch. GitHub repository and GHCR package
-visibility are separate. The release workflow has not yet been exercised by a tag.
+archives and container packaging for each release. GitHub repository and GHCR package
+visibility are separate; verify anonymous downloads and container pulls.
 
-Commit attribution names human contributors only. AI tool coauthor trailers are removed
-from the GitHub `main` history; do not reintroduce them when integrating older branches.
-The original history is preserved in a local recovery bundle under ignored
-`target/release-prep/`, alongside local check logs and audit evidence.
+Commit attribution names human contributors only; do not add AI tool coauthor trailers.
 
 ## Historical milestone snapshot
 
-The snapshot below records the earlier workstream handoff. Its progress counts, commit
-ids and unverified items describe 2026-10-17, not the current release gate above.
+Everything below records the earlier workstream handoff as of 2026-10-17. Its progress
+counts, commit ids, publication instructions and unverified items are historical, not
+current release guidance. Use the linked roadmap and contributor guide above for current work.
 
 **As of 2026-10-17, `main` @ `5607485` plus the milestone 3 documentation commits on top.
 Milestone 2 is complete; milestone 3 ("ready to open-source",

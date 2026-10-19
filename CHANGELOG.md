@@ -7,6 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Refresh the roadmap for the public open-source project, separate available features
+  from planned work, and remove stale first-release guidance from contributor and handoff docs.
+
 ## [0.1.2] - 2026-10-19
 
 ### Added
@@ -64,7 +69,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.1.0] - 2026-10-18
 
 First release of rbit, a self-hosted Git platform distributed as one Rust binary.
-Release notes are prepared here while the upstream repository remains private.
 
 ### Highlights
 
