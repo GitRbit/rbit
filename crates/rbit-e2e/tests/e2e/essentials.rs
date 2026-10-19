@@ -36,7 +36,7 @@ async fn pull_mirrors_fetch_their_upstream() {
     alice
         .post("/new/mirror", &[("owner", "alice"), ("url", &upstream), ("name", "copy"), ("visibility", "public"), ("interval", "60")])
         .await
-        .expect_redirect("/alice/copy");
+        .expect_redirect("/alice/copy/mirror/progress");
 
     // The first fetch runs in the background and brings every branch and tag. Its
     // outcome is recorded after the refs land, so wait for the outcome, not the refs.
