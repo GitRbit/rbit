@@ -19,7 +19,7 @@
 
     <label class="label mt-4" for="password">Initial password</label>
     <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
-    <p class="hint">At least {{ min_password_length }} characters. Share it with the user securely.</p>
+    <p class="hint">At least {{ min_password_length }} characters. Share it with the user securely. They must replace it when they first sign in.</p>
 
     <label class="mt-5 flex cursor-pointer items-start gap-3">
       <input type="checkbox" name="is_admin" value="1" class="mt-1 accent-(--ink)" {% if is_admin %}checked{% endif %}>

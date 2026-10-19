@@ -2,14 +2,15 @@
 
 use crate::{urls::RepoUrls, views::repo::CommitView};
 use rbit_git::{CommitSummary, RefSummary};
-use std::{collections::HashMap, fmt::Write};
+use std::collections::HashMap;
 
 type BranchLinks = Vec<(String, String)>;
 
 #[derive(Debug)]
 pub struct GraphEdge {
-    pub x1: usize,
-    pub x2: usize,
+    pub path: String,
+    pub lane: usize,
+    pub color: usize,
 }
 
 #[derive(Debug)]
@@ -17,8 +18,11 @@ pub struct GraphRow {
     pub commit: CommitView,
     pub branches: Vec<(String, String)>,
     pub more_branches: usize,
-    pub paths: String,
+    pub edges: Vec<GraphEdge>,
     pub x: usize,
+    pub lane: usize,
+    pub color: usize,
+    pub is_merge: bool,
 }
 
 #[derive(Debug, Default)]
@@ -61,37 +65,49 @@ impl BranchGraph {
                 }
             }
         }
-        let mut lanes: Vec<String> = Vec::new();
+        // A track keeps its identity as columns compact. The first parent keeps
+        // its child's color; additional merge parents get separate tracks.
+        let mut lanes: Vec<(String, usize)> = Vec::new();
+        let mut next_lane = 0;
         let mut rows = Vec::new();
         let mut max_lanes = 1;
         for i in order {
             let commit = &commits[i];
-            let mut paths = String::new();
-            for column in 0..lanes.len() {
-                let _ = write!(paths, "M{} 0V24", x(column));
+            let mut edges = Vec::new();
+            for (column, (_, lane)) in lanes.iter().enumerate() {
+                edges.push(GraphEdge { path: format!("M{} 0V36", x(column)), lane: *lane, color: lane % 8 });
             }
-            let column = lanes.iter().position(|id| id == &commit.id).unwrap_or_else(|| {
-                lanes.push(commit.id.clone());
+            let column = lanes.iter().position(|(id, _)| id == &commit.id).unwrap_or_else(|| {
+                lanes.push((commit.id.clone(), next_lane));
+                next_lane += 1;
                 lanes.len() - 1
             });
+            let lane = lanes[column].1;
             let before = lanes.clone();
             lanes.remove(column);
             for (offset, parent) in commit.parent_ids.iter().enumerate() {
-                if !lanes.contains(parent) {
-                    lanes.insert((column + offset).min(lanes.len()), parent.clone());
+                if !lanes.iter().any(|(id, _)| id == parent) {
+                    let parent_lane = if offset == 0 {
+                        lane
+                    } else {
+                        let id = next_lane;
+                        next_lane += 1;
+                        id
+                    };
+                    lanes.insert((column + offset).min(lanes.len()), (parent.clone(), parent_lane));
                 }
             }
             max_lanes = max_lanes.max(before.len()).max(lanes.len());
-            let mut edges = Vec::new();
-            for (source, id) in before.iter().enumerate() {
+            for (source, (id, source_lane)) in before.iter().enumerate() {
                 if source == column {
                     for parent in &commit.parent_ids {
-                        if let Some(destination) = lanes.iter().position(|id| id == parent) {
-                            edges.push(GraphEdge { x1: x(source), x2: x(destination) });
+                        if let Some(destination) = lanes.iter().position(|(id, _)| id == parent) {
+                            let parent_lane = lanes[destination].1;
+                            edges.push(edge(source, destination, parent_lane));
                         }
                     }
-                } else if let Some(destination) = lanes.iter().position(|next| next == id) {
-                    edges.push(GraphEdge { x1: x(source), x2: x(destination) });
+                } else if let Some(destination) = lanes.iter().position(|(next, _)| next == id) {
+                    edges.push(edge(source, destination, *source_lane));
                 }
             }
             let (branches, more_branches) = labels.remove(commit.id.as_str()).unwrap_or_default();
@@ -99,17 +115,19 @@ impl BranchGraph {
                 commit: CommitView::new(commit, urls),
                 branches,
                 more_branches,
-                paths: {
-                    for edge in edges {
-                        let _ = write!(paths, "M{} 24C{} 36 {} 36 {} 48", edge.x1, edge.x1, edge.x2, edge.x2);
-                    }
-                    paths
-                },
+                edges,
                 x: x(column),
+                lane,
+                color: lane % 8,
+                is_merge: commit.parent_ids.len() > 1,
             });
         }
         Self { rows, width: max_lanes * 20 + 12, truncated }
     }
+}
+
+fn edge(source: usize, destination: usize, lane: usize) -> GraphEdge {
+    GraphEdge { path: format!("M{} 36C{} 54 {} 54 {} 72", x(source), x(source), x(destination), x(destination)), lane, color: lane % 8 }
 }
 
 fn x(column: usize) -> usize {
@@ -138,9 +156,26 @@ mod tests {
         let commits = vec![commit("root", &[]), commit("merge", &["left", "right"]), commit("right", &["root"]), commit("left", &["root"])];
         let graph = BranchGraph::new(&commits, &[], &RepoUrls::new("acme", "rocket"), false);
         assert_eq!(graph.rows.iter().map(|row| row.commit.id.as_str()).collect::<Vec<_>>(), ["merge", "right", "left", "root"]);
-        assert_eq!(graph.rows[0].paths, "M16 24C16 36 16 36 16 48M16 24C16 36 36 36 36 48");
-        assert_eq!(graph.rows[3].paths, "M16 0V24");
+        assert_eq!(
+            graph.rows[0].edges.iter().map(|edge| edge.path.as_str()).collect::<Vec<_>>(),
+            ["M16 36C16 54 16 54 16 72", "M16 36C16 54 36 54 36 72"]
+        );
+        assert_eq!(graph.rows[3].edges[0].path, "M16 0V36");
+        assert!(graph.rows[0].is_merge);
         assert!(graph.width >= 52);
+    }
+
+    #[test]
+    fn track_colors_follow_first_parents_and_survive_column_compaction() {
+        let commits = vec![commit("merge", &["left", "right"]), commit("left", &["root"]), commit("right", &["root"]), commit("root", &[])];
+        let graph = BranchGraph::new(&commits, &[], &RepoUrls::new("o", "r"), false);
+        let [merge, left, right, root] = graph.rows.as_slice() else { panic!("expected four rows") };
+        assert_eq!(merge.lane, left.lane);
+        assert_eq!(left.lane, root.lane);
+        assert_ne!(left.color, right.color);
+        assert_eq!(right.edges[0].lane, root.lane);
+        assert!(right.edges.iter().any(|edge| edge.path == "M36 36C36 54 16 54 16 72" && edge.lane == root.lane));
+        assert_eq!(root.x, 16);
     }
 
     #[test]

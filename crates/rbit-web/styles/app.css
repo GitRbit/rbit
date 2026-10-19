@@ -11,6 +11,7 @@
  * need `dark:` variants. The scheme follows the OS unless `data-theme` on <html> pins it.
  */
 @import "tailwindcss";
+@import "./branch-graph.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";
@@ -35,6 +36,11 @@
 .contribution-level-3 { fill: color-mix(in srgb, var(--success) 75%, var(--surface)); background: color-mix(in srgb, var(--success) 75%, var(--surface)); }
 .contribution-level-4 { fill: var(--success); background: var(--success); }
 .contribution-calendar rect:focus, .contribution-quarters rect:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+.contribution-calendar rect, .contribution-quarters rect { cursor: pointer; }
+[data-contribution-day][aria-pressed="true"] { stroke: var(--ink); stroke-width: 2; paint-order: stroke fill; }
+.contribution-tooltip { position: fixed; z-index: 60; pointer-events: none; max-width: calc(100vw - 16px); padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 12px; box-shadow: 0 3px 12px rgb(0 0 0 / 15%); }
+.contribution-tooltip[hidden] { display: none; }
+.contribution-selection { font-size: 13px; }
 .contribution-legend { display: flex; align-items: center; gap: 4px; }
 .contribution-legend i { width: 12px; height: 12px; border-radius: 2px; }
 .contribution-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -108,6 +114,35 @@
  * instead of black/white; status and syntax colours are picked to sit with it. Same contrast
  * rules as above. `src/themes/mod.rs` mirrors the canvas colours.
  */
+/* System follows the default DNA light/dark pair. Explicit light/dark slugs keep Classic. */
+:root:not([data-theme]),
+[data-theme="system"] {
+  --canvas: light-dark(#f5f7f9, #141516);
+  --surface: light-dark(#ffffff, #1d1e20);
+  --subtle: light-dark(#f9fafc, #1f2024);
+  --hover: light-dark(#eef0f3, #222429);
+  --line: light-dark(#dfe1e4, #313335);
+  --line-strong: light-dark(#c8cbce, #434549);
+  --ink: light-dark(#13161b, #eceff1);
+  --ink-muted: light-dark(#4c5057, #95999d);
+  --ink-faint: light-dark(#5f636a, #898c91);
+  --inverted: light-dark(#00785f, #77d2ba);
+  --inverted-hover: light-dark(#00654f, #98e3ce);
+  --inverted-ink: light-dark(#f7fbfa, #06120f);
+  --success: light-dark(#137738, #6cd092);
+  --danger: light-dark(#c51e21, #f66d67);
+  --danger-subtle: light-dark(#fff0ee, #2f1c1a);
+  --warning: light-dark(#a05600, #f0ba59);
+  --syntax-comment: light-dark(#5f636a, #898c91);
+  --syntax-keyword: light-dark(#00785f, #77d2ba);
+  --syntax-string: light-dark(#27762f, #8bd28d);
+  --syntax-number: light-dark(#0065b4, #74c2ee);
+  --syntax-function: light-dark(#7347af, #bcabf1);
+  --syntax-type: light-dark(#8e5400, #e9c67d);
+  --syntax-tag: light-dark(#be2f2c, #f28881);
+  --syntax-attribute: light-dark(#007187, #7ccdd6);
+}
+
 [data-theme="dna-dark"] {
   color-scheme: dark;
   --canvas: #141516;
@@ -785,11 +820,23 @@
 /* ---------------------------------------------------------------- Diffs */
 
 .language-dialog {
-  @apply m-auto w-[calc(100%-2rem)] max-w-3xl max-h-[85dvh] overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-0 text-ink;
+  @apply m-auto w-[calc(100%-2rem)] max-w-[90rem] overflow-hidden rounded-(--radius-ui) border border-line bg-surface p-0 text-ink;
+  height: min(85dvh, 60rem);
 }
 .language-dialog::backdrop { background: rgb(0 0 0 / 45%); }
-.language-dialog > .box { border: 0; }
-.language-file-list { @apply max-h-[65dvh] overflow-auto overscroll-contain; }
+.language-dialog > .box { border: 0; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.language-dialog .box-header, .language-dialog [data-listing-search] { flex-shrink: 0; }
+.language-browser { display: grid; grid-template-columns: minmax(13rem, 28%) minmax(0, 1fr); min-height: 0; flex: 1; }
+.language-file-list { --diff-tree-indent: 18px; min-width: 0; overflow: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); }
+.language-preview { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.language-preview > .box { border: 0; border-radius: 0; }
+.language-preview-path { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
+.language-preview .code-lines { min-width: 100%; }
+@media (max-width: 640px) {
+  .language-dialog { width: calc(100% - 1rem); height: 92dvh; }
+  .language-browser { grid-template-columns: minmax(7rem, 35%) minmax(0, 1fr); }
+  .language-file-list { --diff-tree-indent: 12px; }
+}
 /* The outer list owns scrolling. The shared diff tree otherwise traps wheel events
    in its own overscroll container, even when that inner list has no overflow. */
 .language-file-list > .diff-tree {

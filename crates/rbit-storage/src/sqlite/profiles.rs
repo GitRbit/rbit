@@ -141,7 +141,7 @@ impl ProfileStore {
         expected: Option<&str>,
     ) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
-        let changed = sqlx::query("UPDATE user_logins SET password_hash = ?1 WHERE account_id = ?2 AND (?3 IS NULL OR password_hash = ?3)")
+        let changed = sqlx::query("UPDATE user_logins SET password_hash = ?1, password_change_required = 0 WHERE account_id = ?2 AND (?3 IS NULL OR password_hash = ?3)")
             .bind(password_hash)
             .bind(account_id.0)
             .bind(expected)

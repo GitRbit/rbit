@@ -200,6 +200,12 @@ impl RecoveryService {
     pub async fn reset_password(&self, token: &str, new_password: String) -> Result<(), ServiceError> {
         let account = self.reset_account(token).await?;
         validate_password(self.ctx.config.security.min_password_length, &new_password)?;
+        if self.ctx.database.accounts().password_change_required(account.id).await? {
+            let current = self.ctx.database.profiles().password_hash(account.id).await?.ok_or(ServiceError::NotFound)?;
+            if Passwords::verify(new_password.clone(), current).await? {
+                return Err(ServiceError::Invalid("choose a different password from your initial password".to_owned()));
+            }
+        }
         let hash = Passwords::hash(new_password).await?;
 
         let digest = parse_token(token)?;

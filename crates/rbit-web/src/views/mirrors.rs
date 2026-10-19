@@ -91,6 +91,18 @@ pub struct MirrorSettingsPage {
     pub action_url: String,
 }
 
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "repo/mirror_progress.html")]
+pub struct MirrorProgressPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub status_url: String,
+    pub refresh_url: String,
+    pub settings_url: String,
+    pub phase: &'static str,
+    pub message: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

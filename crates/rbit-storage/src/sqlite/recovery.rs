@@ -212,7 +212,7 @@ impl RecoveryStore {
         .await?;
         let Some(row) = row else { return Ok(None) };
         let record = EmailTokenRecord::try_from(row)?;
-        sqlx::query("UPDATE user_logins SET password_hash = ?, email_verified_at = ? WHERE account_id = ?")
+        sqlx::query("UPDATE user_logins SET password_hash = ?, password_change_required = 0, email_verified_at = ? WHERE account_id = ?")
             .bind(password_hash)
             .bind(now.seconds())
             .bind(record.account_id.0)

@@ -23,8 +23,8 @@
   <meta name="theme-color" content="{{ color }}">
   <meta name="color-scheme" content="{{ page.theme.scheme().unwrap_or_default() }}">
   {%- else %}
-  <meta name="theme-color" content="{{ crate::themes::LIGHT_CANVAS }}" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="{{ crate::themes::DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="{{ crate::themes::DNA_DAY_CANVAS }}" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="{{ crate::themes::DNA_DARK_CANVAS }}" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
   {%- endif %}
   <meta name="htmx-config" content='{"allowEval":false,"includeIndicatorStyles":false,"historyCacheSize":10,"defaultSettleDelay":0,"responseHandling":[{"code":"204","swap":false},{"code":"...","swap":true}]}'>

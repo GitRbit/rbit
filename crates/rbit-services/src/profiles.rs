@@ -93,6 +93,9 @@ impl ProfileService {
     /// Replaces the password after re-checking the current one.
     pub async fn change_password(&self, user: &User, current_password: String, new_password: String) -> Result<(), ServiceError> {
         self.validate_new_password(&new_password)?;
+        if current_password == new_password {
+            return Err(ServiceError::Invalid("choose a different password from your current password".to_owned()));
+        }
         let verified = self.verify_password(user, current_password).await?;
         let hash = Passwords::hash(new_password).await?;
         let service = self.clone();

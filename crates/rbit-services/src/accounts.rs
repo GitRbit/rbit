@@ -163,6 +163,11 @@ impl AccountService {
         Ok(self.accounts.is_suspended(id).await?)
     }
 
+    /// Restricts administrator-provisioned accounts until their initial password is replaced.
+    pub async fn password_change_required(&self, id: AccountId) -> Result<bool, ServiceError> {
+        Ok(self.accounts.password_change_required(id).await?)
+    }
+
     // ------------------------------------------------------------------ sessions
 
     /// Opens a new session and returns the secret token for the cookie.
@@ -464,7 +469,7 @@ pub(crate) async fn create_user(
     Ok(user)
 }
 
-async fn prepare_user(config: &Config, input: SignUp, is_admin: bool) -> Result<NewUser, ServiceError> {
+pub(crate) async fn prepare_user(config: &Config, input: SignUp, is_admin: bool) -> Result<NewUser, ServiceError> {
     let name: AccountName = input.username.trim().parse()?;
     let email: Email = input.email.trim().parse()?;
     validate_password(config, &input.password)?;

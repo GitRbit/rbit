@@ -146,7 +146,13 @@ async fn account_page(state: &AppState, user: &User, page: Page) -> WebResult<Ac
     let recovery = &state.services.recovery;
     let status = recovery.email_status(user).await?;
     let verification = EmailVerification::new(status.is_verified(), recovery.email_available());
-    Ok(AccountPage::new(page, user, state.config.security.min_password_length).verification(verification))
+    let mut page = AccountPage::new(page, user, state.config.security.min_password_length).verification(verification);
+    page.password_change_required = state.services.accounts.password_change_required(user.id()).await?;
+    if page.password_change_required {
+        page.page = page.page.titled("Update your password");
+        page.settings_nav.clear();
+    }
+    Ok(page)
 }
 
 /// `POST /settings/account/verify`: emails a new verification link.

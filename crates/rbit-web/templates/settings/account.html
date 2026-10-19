@@ -1,6 +1,10 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
+{% if password_change_required %}
+<h2 class="text-xl font-semibold tracking-tight">Update your password</h2>
+<p class="mt-1 text-[13px] text-ink-muted">An administrator created your account with an initial password. Choose a new password before continuing to {{ page.site_name }}.</p>
+{% else %}
 <h2 class="text-xl font-semibold tracking-tight">Account</h2>
 <p class="mt-1 text-[13px] text-ink-muted">How you sign in. Both changes ask for your current password.</p>
 
@@ -54,6 +58,8 @@
     <button class="btn btn-primary w-full sm:w-auto" type="submit">Update email</button>
   </div>
 </form>
+
+{% endif %}
 
 <form method="post" action="/settings/account/password" class="box mt-6" novalidate>
   <div class="box-header">

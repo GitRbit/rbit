@@ -25,7 +25,7 @@
 //! [`MirrorService::shutdown`] (a running `git fetch` is killed).
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -74,6 +74,15 @@ pub struct CreateMirror {
 /// What a Git client is told when it pushes to a mirror.
 pub const PUSH_REFUSED: &str = "This repository is a mirror; push to its upstream instead";
 
+/// The current stage of an active fetch. Transfer sizes are not available from Git,
+/// so callers should show an indeterminate indicator rather than a percentage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MirrorPhase {
+    Connecting,
+    Fetching,
+    Finalizing,
+}
+
 #[derive(Debug, Clone)]
 pub struct MirrorService {
     inner: Arc<Inner>,
@@ -87,6 +96,7 @@ struct Inner {
     wake: Notify,
     permits: Arc<Semaphore>,
     running: Mutex<HashSet<RepoId>>,
+    phases: Mutex<HashMap<RepoId, MirrorPhase>>,
     shutdown: CancellationToken,
     tasks: TaskTracker,
     started: AtomicBool,
@@ -103,6 +113,7 @@ impl MirrorService {
                 wake: Notify::new(),
                 permits: Arc::new(Semaphore::new(MAX_CONCURRENT_FETCHES)),
                 running: Mutex::new(HashSet::new()),
+                phases: Mutex::new(HashMap::new()),
                 shutdown: CancellationToken::new(),
                 tasks: TaskTracker::new(),
                 started: AtomicBool::new(false),
@@ -176,6 +187,10 @@ impl MirrorService {
         Ok(self.store().is_mirror(repo).await?)
     }
 
+    pub fn active_phase(&self, repo: RepoId) -> Option<MirrorPhase> {
+        lock(&self.inner.phases).get(&repo).copied()
+    }
+
     fn require_admin(repo: &RepoContext) -> Result<(), ServiceError> {
         if repo.access.can_admin() { Ok(()) } else { Err(ServiceError::NotFound) }
     }
@@ -213,6 +228,9 @@ impl MirrorService {
     pub async fn sync(&self, repo: RepoId) -> Result<(), ServiceError> {
         let Some(mirror) = self.store().find(repo).await? else { return Ok(()) };
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, repo).await? else { return Ok(()) };
+        // Clear transient progress on success, errors and cancellation alike.
+        let _progress = ActiveProgress { phases: &self.inner.phases, repo };
+        lock(&self.inner.phases).insert(repo, MirrorPhase::Connecting);
         let outcome = self.fetch(&context, &mirror).await;
         let error = outcome.as_ref().err().map(ToString::to_string);
         match &error {
@@ -233,8 +251,10 @@ impl MirrorService {
         let fetched = {
             // `git fetch` writes into the repository, so a transfer waits for it.
             let _lease = self.inner.ctx.repositories.lease(context.repo.repo.id).await;
+            lock(&self.inner.phases).insert(context.repo.repo.id, MirrorPhase::Fetching);
             fetch_mirror(git, &context.disk_path, mirror.url.as_str(), Some(&resolution), timeout).await
         };
+        lock(&self.inner.phases).insert(context.repo.repo.id, MirrorPhase::Finalizing);
         match fetched {
             Ok(()) => self.inner.pushes.complete(pending).await,
             Err(error) => return Err(describe(&error)),
@@ -335,6 +355,17 @@ impl MirrorService {
             });
         }
         Ok(())
+    }
+}
+
+struct ActiveProgress<'a> {
+    phases: &'a Mutex<HashMap<RepoId, MirrorPhase>>,
+    repo: RepoId,
+}
+
+impl Drop for ActiveProgress<'_> {
+    fn drop(&mut self) {
+        lock(self.phases).remove(&self.repo);
     }
 }
 

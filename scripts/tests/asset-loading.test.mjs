@@ -14,7 +14,9 @@ test("committed browser bundle includes all dependencies without further module 
     outfile: "crates/rbit-web/assets/app.bundle.js", write: false, metafile: true,
   });
   assert.equal(Object.values(result.metafile.outputs)[0].imports.length, 0);
-  assert.equal(Object.keys(result.metafile.inputs).length, 9);
+  for (const module of ['repo.js', 'contributions.js', 'branch-graph.js', 'mirror-progress.js']) {
+    assert.ok(Object.keys(result.metafile.inputs).some(path => path.endsWith(`/assets/${module}`)), `${module} is bundled`);
+  }
   const committed = await readFile(new URL("../../crates/rbit-web/assets/app.bundle.js", import.meta.url), "utf8");
   assert.equal(committed.replaceAll("\r\n", "\n"), result.outputFiles[0].text);
 });

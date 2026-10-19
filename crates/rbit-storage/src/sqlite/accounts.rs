@@ -73,6 +73,23 @@ impl AccountStore {
         Ok(user)
     }
 
+    /// Creates an administrator-provisioned account with a temporary password.
+    pub async fn create_user_with_initial_password(&self, new: NewUser) -> Result<User, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let user = insert_user(&mut tx, new, None, false).await?;
+        sqlx::query("UPDATE user_logins SET password_change_required = 1 WHERE account_id = ?").bind(user.id().0).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(user)
+    }
+
+    /// Whether the account must replace its administrator-provided password.
+    pub async fn password_change_required(&self, id: AccountId) -> Result<bool, StorageError> {
+        Ok(sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM user_logins WHERE account_id = ? AND password_change_required = 1)")
+            .bind(id.0)
+            .fetch_one(&self.pool)
+            .await?)
+    }
+
     /// Registers a user, deciding the first administrator inside the write transaction.
     /// Closed registration admits only the first user; `new.is_admin` is ignored.
     pub async fn register_user(&self, new: NewUser, registration_open: bool) -> Result<User, StorageError> {

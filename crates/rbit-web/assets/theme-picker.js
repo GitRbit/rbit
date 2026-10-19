@@ -126,6 +126,7 @@ function revert() {
 }
 
 const opposite = (scheme) => (scheme === "dark" ? "light" : "dark");
+const defaultSlug = (scheme) => scheme === "dark" ? "dna-dark" : "dna-day";
 const deviceScheme = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 
 /** The last toggle, so pages rendered after it (boosted navigations) still toggle back. */
@@ -145,9 +146,10 @@ function aimToggle(slug, scheme) {
 
 /** Where the toggle goes after choosing `button`'s theme in a menu or the gallery. */
 function aimAfterChoosing(button, slug, scheme) {
-  if (slug === "system") aimToggle(opposite(deviceScheme()), opposite(deviceScheme()));
+  if (slug === "system") aimToggle(defaultSlug(opposite(deviceScheme())), opposite(deviceScheme()));
   else if (button.dataset.counterpart) aimToggle(button.dataset.counterpart, opposite(scheme));
-  else if (slug in BUILT_IN) aimToggle(opposite(scheme), opposite(scheme));
+  else if (slug === "light" || slug === "dark") aimToggle(opposite(scheme), opposite(scheme));
+  else if (slug in BUILT_IN) aimToggle(defaultSlug(opposite(scheme)), opposite(scheme));
 }
 
 document.addEventListener("submit", (event) => {
@@ -159,11 +161,11 @@ document.addEventListener("submit", (event) => {
   const from = applied;
   if (button.matches("[data-theme-toggle]")) {
     // System has no scheme of its own: switch to the side the device isn't showing.
-    const slug = from.slug === "system" ? opposite(deviceScheme()) : button.value;
+    const slug = from.slug === "system" ? defaultSlug(opposite(deviceScheme())) : button.value;
     const scheme = slug in BUILT_IN ? BUILT_IN[slug] : button.dataset.variant || null;
     apply(slug, scheme, button);
     // Back to where we came from, except System, which pins the other built-in instead.
-    const back = from.slug === "system" ? { slug: opposite(scheme), scheme: opposite(scheme) } : from;
+    const back = from.slug === "system" ? { slug: defaultSlug(opposite(scheme)), scheme: opposite(scheme) } : from;
     aimToggle(back.slug, back.scheme);
     lastToggle = { at: slug, back };
   } else {

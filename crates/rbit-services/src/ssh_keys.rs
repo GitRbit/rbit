@@ -202,7 +202,13 @@ impl SshKeyService {
                 tracing::info!(user = %user.name(), "suspended user's SSH key refused");
                 None
             }
-            Some(KeyHolder::User { key, user, suspended: false }) => Some(SshIdentity::User { key: key.id, user }),
+            Some(KeyHolder::User { key, user, suspended: false }) => {
+                if self.ctx.database.accounts().password_change_required(user.id()).await? {
+                    None
+                } else {
+                    Some(SshIdentity::User { key: key.id, user })
+                }
+            }
             Some(KeyHolder::Deploy { key, repo }) => Some(SshIdentity::Deploy { key: key.id, repo, read_only: key.read_only }),
         })
     }

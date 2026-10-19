@@ -1,0 +1,36 @@
+/* Keep graph and commit metadata inside the viewport, even with long branch names. */
+.commit-graph { min-width: 0; max-width: 100%; }
+.commit-graph-help { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-muted); }
+.commit-graph-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.commit-graph-column { width: clamp(64px, 22vw, 240px); }
+.commit-graph-table td { border-bottom: 1px solid var(--line); }
+.commit-graph-table tr:last-child td { border-bottom: 0; }
+.commit-graph-lanes { position: relative; padding: 0; }
+.commit-graph-lanes svg { position: absolute; inset: 0; max-width: 100%; height: 100%; overflow: hidden; }
+.commit-graph-details { height: 88px; padding: .75rem .75rem .75rem .25rem; overflow-wrap: anywhere; }
+.commit-graph-labels { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; margin-bottom: .2rem; }
+.commit-graph-track { flex-shrink: 0; padding: .05rem .3rem; border: 1px solid currentColor; border-radius: 4px; font-size: 10px; cursor: pointer; }
+.commit-graph-track[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
+.commit-graph-branch { max-width: 100%; color: inherit; }
+.commit-graph-branch span { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.commit-graph-merge { color: var(--ink-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.commit-graph-summary { display: block; font-weight: 500; }
+.commit-graph-meta { display: flex; flex-wrap: wrap; gap: .15rem .75rem; margin-top: .25rem; color: var(--ink-muted); font-size: 11px; }
+.graph-color-0 { color: light-dark(#2563eb, #7aa2ff); }
+.graph-color-1 { color: light-dark(#15803d, #65d995); }
+.graph-color-2 { color: light-dark(#7c3aed, #bb9aff); }
+.graph-color-3 { color: light-dark(#c2410c, #ffae77); }
+.graph-color-4 { color: light-dark(#be185d, #ff8fbc); }
+.graph-color-5 { color: light-dark(#0e7490, #66d9ed); }
+.graph-color-6 { color: light-dark(#a16207, #edcf6d); }
+.graph-color-7 { color: light-dark(#0f766e, #6ae3c7); }
+.commit-graph[data-graph-selected] [data-graph-lane] { opacity: .15; }
+.commit-graph[data-graph-selected] [data-graph-lane].graph-highlight { opacity: 1; stroke-width: 3; }
+.commit-graph[data-graph-selected] tr.graph-highlight .commit-graph-details { background: var(--surface); }
+@media (max-width: 480px) {
+  .commit-graph-column { width: 72px; }
+  .commit-graph-details { padding-right: .5rem; }
+}
+
+.commit-graph[data-graph-selected] [data-graph-node].graph-highlight { stroke-width: 10; }
+@media (min-width: 481px) { .commit-graph-column-compact { width: 112px; } }

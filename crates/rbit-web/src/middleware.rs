@@ -6,7 +6,7 @@ use axum::{
     extract::{Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::Next,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
 use rbit_auth::SessionToken;
@@ -49,6 +49,15 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
             Err(error) => tracing::warn!(%error, "failed to resume session"),
         }
     }
+    if let Some(user) = viewer.user() {
+        match state.services.accounts.password_change_required(user.id()).await {
+            Ok(true) if !allowed_during_password_change(request.method(), request.uri().path()) => {
+                return ([(header::CACHE_CONTROL, "no-store")], Redirect::to("/settings/account")).into_response();
+            }
+            Ok(_) => {}
+            Err(error) => return WebError::from(error).into_response(),
+        }
+    }
     request.extensions_mut().insert(viewer);
 
     let changes_password = request.method() == Method::POST && request.uri().path() == PASSWORD_CHANGE_PATH;
@@ -66,6 +75,12 @@ pub async fn session(State(state): State<AppState>, jar: CookieJar, mut request:
         guard.finish(response.status().is_redirection()).await;
     }
     response
+}
+
+/// Only the password form, its submission, sign-out and presentation assets remain available.
+fn allowed_during_password_change(method: &Method, path: &str) -> bool {
+    (matches!(*method, Method::GET | Method::HEAD) && matches!(path, "/settings/account" | "/assets/branding.css"))
+        || (*method == Method::POST && matches!(path, PASSWORD_CHANGE_PATH | "/logout"))
 }
 
 /// Throttles state-changing requests (form posts) per client address. Reads are never

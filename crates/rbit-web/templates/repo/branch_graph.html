@@ -1,26 +1,37 @@
 {% if graph.rows.is_empty() %}
 {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
 {% else %}
-<div class="overflow-x-auto" aria-label="Branch commit graph">
-  <table class="branch-graph w-full text-[13px]">
-    <thead class="sr-only"><tr><th>Graph</th><th>Commit and branches</th><th>Author</th><th>Date</th><th>Commit ID</th></tr></thead>
+<div class="commit-graph" data-commit-graph aria-label="Branch commit graph">
+  <div class="commit-graph-help">
+    <span data-graph-status aria-live="polite">Follow colored lines to trace history. Select a track to highlight its commits.</span>
+    <button type="button" class="link" data-graph-clear hidden>Clear highlight</button>
+  </div>
+  <table class="commit-graph-table">
+    <colgroup><col class="commit-graph-column{% if graph.width <= 112 %} commit-graph-column-compact{% endif %}"><col></colgroup>
+    <thead class="sr-only"><tr><th>History connections</th><th>Commit details</th></tr></thead>
     <tbody>
     {% for row in graph.rows %}
-    <tr>
-      <td class="branch-graph-lanes">
-        <svg width="{{ graph.width }}" height="48" viewBox="0 0 {{ graph.width }} 48" aria-hidden="true" class="block text-ink-muted">
-          {% if !row.paths.is_empty() %}<path d="{{ row.paths }}" fill="none" stroke="currentColor" stroke-width="1.5"/>{% endif %}
-          <circle cx="{{ row.x }}" cy="24" r="4" fill="currentColor"/>
+    <tr data-graph-row="{{ row.lane }}">
+      <td class="commit-graph-lanes">
+        <svg width="{{ graph.width }}" height="72" viewBox="0 0 {{ graph.width }} 72" preserveAspectRatio="none" aria-hidden="true">
+          {% for edge in row.edges %}<path d="{{ edge.path }}" class="graph-color-{{ edge.color }}" data-graph-lane="{{ edge.lane }}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/>{% endfor %}
+          <path d="M{{ row.x }} 36h0.01" class="graph-color-{{ row.color }}" data-graph-lane="{{ row.lane }}" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" vector-effect="non-scaling-stroke" data-graph-node/>
         </svg>
       </td>
-      <td class="min-w-64 px-3"><div class="flex items-center gap-2">
-        {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge shrink-0 hover:underline">{% call ui::icon("branch", "size-3") %}{% endcall %}{{ branch.0 }}</a>{% endfor %}
-        {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge shrink-0 hover:underline">{{ row.more_branches }} more branches</a>{% endif %}
-        <a href="{{ row.commit.url }}" class="max-w-xl truncate hover:underline">{{ row.commit.summary }}</a>
-      </div></td>
-      <td class="whitespace-nowrap px-3 text-ink-muted">{{ row.commit.author }}</td>
-      <td class="whitespace-nowrap px-3 text-ink-faint"><time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time></td>
-      <td class="px-3"><a href="{{ row.commit.url }}" class="link font-mono text-xs">{{ row.commit.short_id }}</a></td>
+      <td class="commit-graph-details">
+        <div class="commit-graph-labels">
+          <button type="button" class="commit-graph-track graph-color-{{ row.color }}" data-graph-track="{{ row.lane }}" aria-pressed="false" aria-label="Highlight track {{ row.lane + 1 }}">Track {{ row.lane + 1 }}</button>
+          {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge commit-graph-branch graph-color-{{ row.color }}" title="Branch: {{ branch.0 }}">{% call ui::icon("branch", "size-3 shrink-0") %}{% endcall %}<span>{{ branch.0 }}</span></a>{% endfor %}
+          {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge">{{ row.more_branches }} more branches</a>{% endif %}
+          {% if row.is_merge %}<span class="commit-graph-merge">Merge</span>{% endif %}
+        </div>
+        <a href="{{ row.commit.url }}" class="commit-graph-summary hover:underline">{{ row.commit.summary }}</a>
+        <div class="commit-graph-meta">
+          <span>{{ row.commit.author }}</span>
+          <time datetime="{{ row.commit.when_iso }}">{{ row.commit.when }}</time>
+          <a href="{{ row.commit.url }}" class="link font-mono">{{ row.commit.short_id }}</a>
+        </div>
+      </td>
     </tr>
     {% endfor %}
     </tbody>

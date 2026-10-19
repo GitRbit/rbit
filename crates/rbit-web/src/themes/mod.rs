@@ -3,8 +3,8 @@
 //! A theme only recolours the semantic tokens (`--canvas`, `--surface`, `--ink`, …), never
 //! layout. The active one is `<html data-theme="SLUG">`:
 //!
-//! * no attribute — **System**: the built-in tokens follow the OS via `light-dark()`;
-//! * `light` / `dark` — the built-in tokens pinned to one scheme (all in `app.css`);
+//! * no attribute — **System**: the default DNA tokens follow the OS via `light-dark()`;
+//! * `light` / `dark` — the Classic tokens pinned to one scheme (all in `app.css`);
 //! * `dna-dark` / `dna-day` — the DNA app's palette, also built into `app.css`;
 //! * `base16-…` / `base24-…` — a [tinted-theming](https://github.com/tinted-theming) scheme,
 //!   whose single small stylesheet (`assets/themes/<slug>.css`) is inlined on first render
@@ -127,9 +127,9 @@ pub enum Theme {
 
 impl Theme {
     /// The built-in themes, in the order pickers list them.
-    pub const BUILT_IN: [Self; 3] = [Self::System, Self::Light, Self::Dark];
-    /// The DNA themes, listed in their own group after the built-in ones.
-    pub const DNA: [Self; 2] = [Self::DnaDark, Self::DnaDay];
+    pub const BUILT_IN: [Self; 3] = [Self::System, Self::DnaDay, Self::DnaDark];
+    /// Classic themes retain their original slugs so saved choices keep their palette.
+    pub const CLASSIC: [Self; 2] = [Self::Light, Self::Dark];
 
     /// The theme called `slug`, if this release ships it.
     pub fn parse(slug: &str) -> Option<Self> {
@@ -163,10 +163,10 @@ impl Theme {
     pub fn name(self) -> &'static str {
         match self {
             Self::System => "System",
-            Self::Light => "rbit Light",
-            Self::Dark => "rbit Dark",
-            Self::DnaDark => "DNA Dark",
-            Self::DnaDay => "DNA Day",
+            Self::Light => "rbit Classic Light",
+            Self::Dark => "rbit Classic Dark",
+            Self::DnaDark => "rbit Dark",
+            Self::DnaDay => "rbit Light",
             Self::Tinted(theme) => theme.name,
         }
     }
@@ -221,18 +221,18 @@ impl Theme {
 
     /// What the header's light/dark toggle switches to: the scheme's own sibling of the other
     /// variant when it has one, otherwise the built-in theme of the other variant. System
-    /// becomes Dark here; `theme-picker.js` picks the side opposite the device's scheme.
+    /// becomes the default rbit Dark here; `theme-picker.js` picks the side opposite the device's scheme.
     #[must_use]
     pub fn toggled(self) -> Self {
         match self {
-            Self::System | Self::Light => Self::Dark,
+            Self::System | Self::DnaDay => Self::DnaDark,
+            Self::Light => Self::Dark,
             Self::Dark => Self::Light,
             Self::DnaDark => Self::DnaDay,
-            Self::DnaDay => Self::DnaDark,
             Self::Tinted(theme) => theme.counterpart.and_then(find).map_or(
                 match theme.variant {
-                    Variant::Light => Self::Dark,
-                    Variant::Dark => Self::Light,
+                    Variant::Light => Self::DnaDark,
+                    Variant::Dark => Self::DnaDay,
                 },
                 Self::Tinted,
             ),
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn the_toggle_keeps_the_scheme_and_flips_the_variant() {
         let toggled = |slug: &str| Theme::parse(slug).unwrap().toggled().slug();
-        assert_eq!(toggled("system"), "dark");
+        assert_eq!(toggled("system"), "dna-dark");
         assert_eq!(toggled("light"), "dark");
         assert_eq!(toggled("dark"), "light");
         assert_eq!(toggled("dna-dark"), "dna-day");
@@ -340,9 +340,9 @@ mod tests {
         }
         // Schemes without a sibling fall back to the built-in theme of the other variant.
         let lonely_dark = tinted().iter().find(|t| t.counterpart.is_none() && t.variant == Variant::Dark).unwrap();
-        assert_eq!(Theme::Tinted(lonely_dark).toggled(), Theme::Light);
+        assert_eq!(Theme::Tinted(lonely_dark).toggled(), Theme::DnaDay);
         let lonely_light = tinted().iter().find(|t| t.counterpart.is_none() && t.variant == Variant::Light).unwrap();
-        assert_eq!(Theme::Tinted(lonely_light).toggled(), Theme::Dark);
+        assert_eq!(Theme::Tinted(lonely_light).toggled(), Theme::DnaDark);
     }
 
     #[test]
@@ -381,6 +381,10 @@ mod tests {
     fn built_in_canvas_colours_match_the_stylesheet() {
         let css = include_str!("../../styles/app.css");
         assert!(css.contains(&format!("--canvas: light-dark({LIGHT_CANVAS}, {DARK_CANVAS});")), "update LIGHT_CANVAS / DARK_CANVAS");
+        let system = css.split(":root:not([data-theme]),").nth(1).expect("system has its default palette");
+        let system = system.split('{').nth(1).unwrap().split('}').next().unwrap();
+        assert!(system.contains(&format!("--canvas: light-dark({DNA_DAY_CANVAS}, {DNA_DARK_CANVAS});")));
+        assert!(system.contains("--inverted: light-dark(#00785f, #77d2ba);"), "system uses the DNA accent in both schemes");
         for (slug, canvas) in [("dna-dark", DNA_DARK_CANVAS), ("dna-day", DNA_DAY_CANVAS)] {
             let rule = css.split(&format!("[data-theme=\"{slug}\"] {{")).nth(1).unwrap_or_else(|| panic!("{slug} has its rule"));
             assert!(rule.contains(&format!("--canvas: {canvas};")), "update the {slug} canvas");
@@ -409,6 +413,11 @@ mod tests {
             Theme::from_headers(&headers)
         };
         assert_eq!(Theme::from_headers(&HeaderMap::new()), Theme::System);
+        assert_eq!(Theme::System.toggled(), Theme::DnaDark);
+        assert_eq!(Theme::parse("light").unwrap().name(), "rbit Classic Light");
+        assert_eq!(Theme::parse("dark").unwrap().name(), "rbit Classic Dark");
+        assert_eq!(Theme::DnaDay.name(), "rbit Light");
+        assert_eq!(Theme::DnaDark.name(), "rbit Dark");
         assert_eq!(with("rbit-theme=dark"), Theme::Dark);
         assert_eq!(with("other=1; rbit-theme=light; more=2"), Theme::Light);
         assert_eq!(with("rbit-theme=base24-nope"), Theme::System);

@@ -27,10 +27,10 @@
         {%- for card in gallery.defaults %}{% include "themes/card.html" %}{% endfor -%}
       </ul>
     </section>
-    <section class="theme-family" data-theme-family="DNA"{% if gallery.dna_hidden %} hidden{% endif %}>
-      <h2 class="theme-family-title">DNA</h2>
+    <section class="theme-family" data-theme-family="rbit Classic"{% if gallery.classic_hidden %} hidden{% endif %}>
+      <h2 class="theme-family-title">rbit Classic</h2>
       <ul class="theme-grid">
-        {%- for card in gallery.dna %}{% include "themes/card.html" %}{% endfor -%}
+        {%- for card in gallery.classic %}{% include "themes/card.html" %}{% endfor -%}
       </ul>
     </section>
     {%- for family in gallery.families %}

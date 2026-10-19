@@ -16,6 +16,9 @@ import "./filter.js";
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
 import "./repo.js";
+import "./contributions.js";
+import "./branch-graph.js";
+import "./mirror-progress.js";
 
 // Long code and diff views: exact placeholder heights for virtual blocks.
 import "./blocks.js";

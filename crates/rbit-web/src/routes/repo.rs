@@ -255,6 +255,16 @@ pub async fn home(
     Query(query): Query<ListQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    if loaded.mirror_url.is_some()
+        && state
+            .services
+            .mirrors
+            .find(&loaded.ctx)
+            .await?
+            .is_some_and(|mirror| mirror.last_sync_at.is_none() || (mirror.last_error.is_some() && loaded.landing_revision().is_none()))
+    {
+        return Ok(Redirect::to(&format!("{}/mirror/progress", loaded.urls.home())).into_response());
+    }
     let Some(revision) = loaded.landing_revision() else {
         let header = loaded.header(&state, "code");
         let page = page.titled(loaded.ctx.repo.full_name());

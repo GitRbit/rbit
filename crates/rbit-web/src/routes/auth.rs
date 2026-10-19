@@ -195,6 +195,7 @@ pub(crate) async fn start_session(
             jar
         }
     };
+    let next = if state.services.accounts.password_change_required(user.id()).await? { "/settings/account" } else { next };
     Ok((jar, Redirect::to(next)).into_response())
 }
 

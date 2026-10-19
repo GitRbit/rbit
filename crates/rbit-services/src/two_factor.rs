@@ -764,6 +764,9 @@ impl Services {
             }
         };
         self.throttle.reset(ThrottleScope::GitAuth, login);
+        if self.accounts.password_change_required(user.id()).await? {
+            return Err(ServiceError::Forbidden);
+        }
         if self.two_factor.is_enabled(user.id()).await? {
             return Ok(GitPasswordOutcome::TokenRequired);
         }

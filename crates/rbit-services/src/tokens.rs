@@ -112,6 +112,9 @@ impl AccessTokenService {
         if token.is_expired() {
             return Ok(None);
         }
+        if self.accounts.password_change_required(user.id()).await? {
+            return Ok(None);
+        }
         if self.accounts.is_suspended(user.id()).await? {
             tracing::info!(user = %user.name(), "suspended user's access token refused");
             return Ok(None);

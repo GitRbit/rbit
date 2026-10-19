@@ -25,8 +25,8 @@ use crate::{
 pub const GALLERY_URL: &str = "/themes";
 /// Heading of the group collecting schemes that have no family of their own.
 const STANDALONE_FAMILY: &str = "More themes";
-/// Heading of the DNA themes' group.
-const DNA_FAMILY: &str = "DNA";
+/// Heading of the preserved monochrome themes' group.
+const CLASSIC_FAMILY: &str = "rbit Classic";
 /// Longest accepted search text.
 const MAX_QUERY_LEN: usize = 100;
 
@@ -121,10 +121,10 @@ pub struct Gallery {
     pub defaults: Vec<ThemeCard>,
     /// Whether the search hides all of rbit's own themes.
     pub defaults_hidden: bool,
-    /// The DNA themes, listed right after rbit's own.
-    pub dna: Vec<ThemeCard>,
-    /// Whether the search hides both DNA themes.
-    pub dna_hidden: bool,
+    /// The original monochrome themes, listed after the defaults.
+    pub classic: Vec<ThemeCard>,
+    /// Whether the search hides both Classic themes.
+    pub classic_hidden: bool,
     pub families: Vec<FamilyGroup>,
     pub shown: usize,
     pub total: usize,
@@ -170,7 +170,8 @@ impl Gallery {
 
         let defaults: Vec<ThemeCard> =
             Theme::BUILT_IN.iter().map(|&theme| card(theme, "Built in", format!("{} · built in", theme.name()))).collect();
-        let dna: Vec<ThemeCard> = Theme::DNA.iter().map(|&theme| card(theme, DNA_FAMILY, format!("{} · built in", theme.name()))).collect();
+        let classic: Vec<ThemeCard> =
+            Theme::CLASSIC.iter().map(|&theme| card(theme, CLASSIC_FAMILY, format!("{} · built in", theme.name()))).collect();
         let families = families()
             .iter()
             .map(|(name, members)| {
@@ -208,11 +209,11 @@ impl Gallery {
             filters,
             defaults_hidden: defaults.iter().all(|card| card.hidden),
             defaults,
-            dna_hidden: dna.iter().all(|card| card.hidden),
-            dna,
+            classic_hidden: classic.iter().all(|card| card.hidden),
+            classic,
             families,
             shown,
-            total: themes::tinted().len() + Theme::BUILT_IN.len() - 1 + Theme::DNA.len(),
+            total: themes::tinted().len() + Theme::BUILT_IN.len() - 1 + Theme::CLASSIC.len(),
             nothing_found: !any_visible,
             licence_url: assets::url("themes/LICENSE.txt"),
             base_url,
@@ -318,7 +319,7 @@ impl ThemePicker {
         };
         let mut groups = vec![
             PickerGroup { name: "Built in", rows: gallery.defaults.into_iter().map(|card| row(card, "", None)).collect() },
-            PickerGroup { name: DNA_FAMILY, rows: gallery.dna.into_iter().map(|card| row(card, DNA_FAMILY, None)).collect() },
+            PickerGroup { name: CLASSIC_FAMILY, rows: gallery.classic.into_iter().map(|card| row(card, CLASSIC_FAMILY, None)).collect() },
         ];
         for family in gallery.families {
             let standalone = family.name == STANDALONE_FAMILY;
@@ -341,7 +342,7 @@ impl ThemePicker {
         Self {
             page: page.clone(),
             groups,
-            total: themes::tinted().len() + Theme::BUILT_IN.len() + Theme::DNA.len(),
+            total: themes::tinted().len() + Theme::BUILT_IN.len() + Theme::CLASSIC.len(),
             stylesheet: gallery.stylesheet,
             asset_version: gallery.asset_version,
             gallery_url: GALLERY_URL,
@@ -382,7 +383,7 @@ mod tests {
     }
 
     fn all_cards(gallery: &Gallery) -> impl Iterator<Item = &ThemeCard> {
-        gallery.defaults.iter().chain(&gallery.dna).chain(gallery.families.iter().flat_map(|family| &family.cards))
+        gallery.defaults.iter().chain(&gallery.classic).chain(gallery.families.iter().flat_map(|family| &family.cards))
     }
 
     #[test]
@@ -401,13 +402,23 @@ mod tests {
     fn defaults_come_first_and_the_current_theme_is_marked() {
         let gallery = Gallery::new(&page(Theme::Dark), GALLERY_URL, VariantFilter::All, None);
         let slugs: Vec<_> = gallery.defaults.iter().map(|card| card.slug).collect();
-        assert_eq!(slugs, ["system", "light", "dark"]);
-        let dna: Vec<_> = gallery.dna.iter().map(|card| (card.slug, card.counterpart)).collect();
-        assert_eq!(dna, [("dna-dark", "dna-day"), ("dna-day", "dna-dark")]);
+        assert_eq!(slugs, ["system", "dna-day", "dna-dark"]);
+        assert_eq!(gallery.defaults.iter().map(|card| card.name).collect::<Vec<_>>(), ["System", "rbit Light", "rbit Dark"]);
+        let classic: Vec<_> = gallery.classic.iter().map(|card| (card.slug, card.counterpart)).collect();
+        assert_eq!(classic, [("light", "dark"), ("dark", "light")]);
         let current: Vec<_> = all_cards(&gallery).filter(|card| card.is_current).map(|card| card.slug).collect();
         assert_eq!(current, ["dark"]);
         assert_eq!(gallery.shown, themes::tinted().len() + 4);
         assert!(all_cards(&gallery).all(|card| !card.hidden));
+    }
+
+    #[test]
+    fn system_page_uses_dna_browser_colors_and_default_toggle() {
+        let html = ThemesPage::new(page(Theme::System), VariantFilter::All, None).render().unwrap();
+        assert!(html.contains("<html lang=\"en\">"), "unselected preferences follow the device");
+        assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: light)\"", themes::DNA_DAY_CANVAS)));
+        assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: dark)\"", themes::DNA_DARK_CANVAS)));
+        assert!(html.contains("value=\"dna-dark\" data-theme-toggle"));
     }
 
     #[test]
@@ -431,8 +442,8 @@ mod tests {
         let tinted = &themes::tinted()[0];
         let picker = ThemePicker::new(&page(Theme::Tinted(tinted)));
         assert_eq!(picker.groups[0].name, "Built in");
-        assert_eq!(picker.groups[1].name, "DNA");
-        assert_eq!(picker.groups[1].rows.iter().map(|row| row.card.name).collect::<Vec<_>>(), ["DNA Dark", "DNA Day"]);
+        assert_eq!(picker.groups[1].name, "rbit Classic");
+        assert_eq!(picker.groups[1].rows.iter().map(|row| row.card.name).collect::<Vec<_>>(), ["rbit Classic Light", "rbit Classic Dark"]);
         let rows: Vec<_> = picker.groups.iter().flat_map(|group| &group.rows).collect();
         assert_eq!(rows.len(), picker.total);
         let current: Vec<_> = rows.iter().filter(|row| row.card.is_current).map(|row| row.card.slug).collect();

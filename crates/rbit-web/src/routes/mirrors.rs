@@ -7,15 +7,18 @@
 //! administrators of mirrors only; everyone else gets 404.
 
 use axum::{
-    Form, Router,
+    Form, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use rbit_core::{User, Visibility};
-use rbit_services::{ServiceError, mirrors::CreateMirror};
-use serde::Deserialize;
+use rbit_services::{
+    ServiceError,
+    mirrors::{CreateMirror, MirrorPhase},
+};
+use serde::{Deserialize, Serialize};
 
 use super::{repo::RepoPage, repo_create::owner_options};
 use crate::{
@@ -25,13 +28,15 @@ use crate::{
     views::{
         components::FormError,
         layout::Page,
-        mirrors::{MirrorSettingsPage, MirrorView, NewMirrorPage},
+        mirrors::{MirrorProgressPage, MirrorSettingsPage, MirrorView, NewMirrorPage},
     },
 };
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/new/mirror", get(new_form).post(create))
+        .route("/{owner}/{repo}/mirror/progress", get(progress))
+        .route("/{owner}/{repo}/mirror/status", get(status))
         .route("/{owner}/{repo}/settings/mirror", get(settings).post(update))
         .route("/{owner}/{repo}/settings/mirror/sync", post(sync))
         .route("/{owner}/{repo}/settings/mirror/remove", post(remove))
@@ -90,7 +95,7 @@ async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, page:
     mirror_page(&state, &user, page, &form, FormError::default()).await
 }
 
-/// `POST /new/mirror`: redirects to the new (still empty) mirror.
+/// `POST /new/mirror`: redirects to the first-fetch progress page.
 async fn create(
     State(state): State<AppState>,
     SignedIn(user): SignedIn,
@@ -115,13 +120,87 @@ async fn create(
         Err(error) => Err(error),
     };
     match result {
-        Ok(created) => Ok(Redirect::to(&format!("/{}/{}", created.owner.name, created.repo.name)).into_response()),
+        Ok(created) => Ok(Redirect::to(&format!("/{}/{}/mirror/progress", created.owner.name, created.repo.name)).into_response()),
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_))) => {
             let view = mirror_page(&state, &user, page, &form, FormError::from_message(&error.to_string())).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, view).into_response())
         }
         Err(other) => Err(other.into()),
     }
+}
+
+/// Progress is readable by anyone who can read the repository; upstream errors
+/// are only disclosed to repository administrators.
+#[derive(Debug, Serialize)]
+struct ProgressStatus {
+    phase: &'static str,
+    message: String,
+    complete: bool,
+}
+
+fn progress_status(mirror: &rbit_core::mirror::Mirror, phase: Option<MirrorPhase>, can_admin: bool) -> ProgressStatus {
+    let (phase, message, complete) = if let Some(phase) = phase {
+        match phase {
+            MirrorPhase::Connecting => ("connecting", "Connecting to the upstream repository.".to_owned(), false),
+            MirrorPhase::Fetching => {
+                ("fetching", "Downloading branches, tags and Git objects. Large repositories may take several minutes.".to_owned(), false)
+            }
+            MirrorPhase::Finalizing => ("finalizing", "Preparing repository content and the default branch.".to_owned(), false),
+        }
+    } else if mirror.last_sync_at.is_some() {
+        match &mirror.last_error {
+            Some(error) => (
+                "failed",
+                if can_admin {
+                    format!("The mirror could not be fetched: {error}")
+                } else {
+                    "The mirror could not be fetched. A repository administrator can retry from mirror settings.".to_owned()
+                },
+                false,
+            ),
+            None => ("complete", "Mirroring complete. Opening the repository…".to_owned(), true),
+        }
+    } else {
+        ("queued", "Waiting for an available mirror worker.".to_owned(), false)
+    };
+    ProgressStatus { phase, message, complete }
+}
+
+async fn progress(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    let Some(mirror) = state.services.mirrors.find(&loaded.ctx).await? else {
+        return Ok(Redirect::to(&loaded.urls.home()).into_response());
+    };
+    let status = progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), loaded.ctx.access.can_admin());
+    if status.complete {
+        return Ok(Redirect::to(&loaded.urls.home()).into_response());
+    }
+    Ok(MirrorProgressPage {
+        page: page.titled(format!("Mirroring · {}", loaded.ctx.repo.full_name())),
+        header: loaded.header(&state, "code"),
+        status_url: format!("{}/mirror/status", loaded.urls.home()),
+        refresh_url: format!("{}/mirror/progress", loaded.urls.home()),
+        settings_url: format!("{}/settings/mirror", loaded.urls.home()),
+        phase: status.phase,
+        message: status.message,
+    }
+    .into_response())
+}
+
+async fn status(State(state): State<AppState>, viewer: Viewer, Path((owner, repo)): Path<(String, String)>) -> WebResult<Response> {
+    let context = super::repo::open_pinned(&state, &viewer, &owner, &repo).await?;
+    let status = match state.services.mirrors.find(&context).await? {
+        Some(mirror) => progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), context.access.can_admin()),
+        None => {
+            ProgressStatus { phase: "complete", message: "Mirroring has stopped. Opening the repository…".to_owned(), complete: true }
+        }
+    };
+    Ok(([(axum::http::header::CACHE_CONTROL, "no-store")], Json(status)).into_response())
 }
 
 // ------------------------------------------------------------------ settings
@@ -218,7 +297,51 @@ async fn remove(State(state): State<AppState>, viewer: Viewer, Path((owner, repo
 
 #[cfg(test)]
 mod tests {
-    use super::suggested_name;
+    use super::{progress_status, suggested_name};
+    use rbit_core::{RepoId, Timestamp, mirror::Mirror};
+    use rbit_services::mirrors::MirrorPhase;
+
+    fn pending_mirror() -> Mirror {
+        Mirror {
+            repo_id: RepoId(1),
+            url: "https://example.com/upstream.git".parse().unwrap(),
+            interval_minutes: 60,
+            next_sync_at: Timestamp::now(),
+            last_sync_at: None,
+            last_error: None,
+            created_at: Timestamp::now(),
+        }
+    }
+
+    #[test]
+    fn progress_waits_for_a_successfully_recorded_fetch() {
+        let mut mirror = pending_mirror();
+        assert_eq!(progress_status(&mirror, None, true).phase, "queued");
+        for (phase, expected) in
+            [(MirrorPhase::Connecting, "connecting"), (MirrorPhase::Fetching, "fetching"), (MirrorPhase::Finalizing, "finalizing")]
+        {
+            let status = progress_status(&mirror, Some(phase), true);
+            assert_eq!(status.phase, expected);
+            assert!(!status.complete);
+        }
+        mirror.last_sync_at = Some(Timestamp::now());
+        assert!(progress_status(&mirror, None, true).complete);
+        // An active retry is never reported as finished using the previous result.
+        assert!(!progress_status(&mirror, Some(MirrorPhase::Fetching), true).complete);
+    }
+
+    #[test]
+    fn failures_stay_visible_and_upstream_diagnostics_are_admin_only() {
+        let mut mirror = pending_mirror();
+        mirror.last_sync_at = Some(Timestamp::now());
+        mirror.last_error = Some("private upstream diagnostics".into());
+        let admin = progress_status(&mirror, None, true);
+        let reader = progress_status(&mirror, None, false);
+        assert_eq!(admin.phase, "failed");
+        assert!(!admin.complete);
+        assert!(admin.message.contains("private upstream diagnostics"));
+        assert!(!reader.message.contains("private upstream diagnostics"));
+    }
 
     #[test]
     fn names_are_suggested_from_the_url() {

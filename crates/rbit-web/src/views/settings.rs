@@ -191,6 +191,7 @@ impl EmailVerification {
 pub struct AccountPage {
     pub page: Page,
     pub settings_nav: Vec<SettingsLink>,
+    pub password_change_required: bool,
     pub current_email: String,
     /// The email field's value (the current address, or what was submitted).
     pub email: String,
@@ -208,6 +209,7 @@ impl AccountPage {
         Self {
             page: page.titled("Account"),
             settings_nav: SettingsSection::Account.nav(),
+            password_change_required: false,
             current_email: user.email.as_str().to_owned(),
             email: user.email.as_str().to_owned(),
             email_error: FormError::default(),

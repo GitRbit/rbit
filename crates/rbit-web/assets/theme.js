@@ -34,8 +34,9 @@
     return;
   }
   root.dataset.theme = theme;
-  if (theme === "light" || theme === "dark") {
-    root.dataset.scheme = theme;
+  const builtIn = { light: "light", dark: "dark", "dna-day": "light", "dna-dark": "dark" };
+  if (theme in builtIn) {
+    root.dataset.scheme = builtIn[theme];
     return;
   }
   delete root.dataset.scheme;

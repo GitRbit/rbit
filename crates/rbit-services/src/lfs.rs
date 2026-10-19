@@ -235,7 +235,7 @@ impl LfsService {
             TokenSubject::Anonymous => (repo_access(None, &repo, &Grants::default()), None),
             TokenSubject::User(id) => {
                 let user = ctx.database.accounts().find_user(id).await?.ok_or(ServiceError::NotFound)?;
-                if ctx.database.accounts().is_suspended(id).await? {
+                if ctx.database.accounts().is_suspended(id).await? || ctx.database.accounts().password_change_required(id).await? {
                     return Err(ServiceError::Forbidden);
                 }
                 let grants = viewer_grants(&store, Some(&user), &repo).await?;
