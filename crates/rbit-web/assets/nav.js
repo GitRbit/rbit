@@ -6,19 +6,29 @@
 // * Navigation epoch: every htmx request carries a per-page-load value that changes
 //   after any state-changing request. HTML varies on it, so a page preloaded before a
 //   form post is never served after it.
-// * Partial swaps: between pages of the same repository only <main> and the repository
-//   tabs are replaced; the top bar stays mounted. Such requests carry `Rbit-Partial` (the
+// * Partial swaps: between pages of the same repository only <main> is replaced;
+//   the repository tab bar is reconciled in place. Requests carry `Rbit-Partial` (the
 //   repository scope), and the server then sends only the title, <main> and the tabs
 //   (`partial.rs`); a full page is swapped the same way.
 // * Progress bar after a short delay (CSS), and focus moved to <main> after navigating.
 // * Render time: the footer's "rendered in" figure follows every htmx request, partial
 //   swaps included, from the response's `Server-Timing` header (see `timing.rs`).
 
+import { clearNavigationResponses, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse } from "./repo-navigation-cache.js";
+import { reconcileRepositoryBar } from "./repo-navigation-bar.js";
+
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
 const PARTIAL_HEADER = "Rbit-Partial";
 const newEpoch = () => `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`;
 let epoch = newEpoch();
+let activeNavigation = null;
+
+function abortNavigation() {
+  const xhr = activeNavigation;
+  activeNavigation = null;
+  xhr?.abort();
+}
 
 /** The current navigation epoch; preload.js forgets its preloads when it changes. */
 export const navigationEpoch = () => epoch;
@@ -47,6 +57,55 @@ export function navigationHeaders(url) {
   return headers;
 }
 
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const config = event.detail.requestConfig;
+  if (config?.verb && config.verb.toLowerCase() !== "get") {
+    // Invalidate before the mutation starts, including requests which later fail.
+    epoch = newEpoch();
+    clearNavigationResponses();
+    abortNavigation();
+  } else if (config?.boosted && config.verb === "get") {
+    // Different links have separate htmx request locks. The latest navigation
+    // must win even when an earlier tab's server response arrives later.
+    if (activeNavigation !== event.detail.xhr) abortNavigation();
+    activeNavigation = event.detail.xhr;
+    reuseNavigationResponse(event.detail, navigationHeaders(config.path));
+  }
+});
+
+function rememberTabResponse(detail) {
+  const config = detail.requestConfig;
+  const tab = (config?.elt ?? detail.elt)?.closest?.('.repo-tabs a[data-repo-tab]');
+  if (!tab || tab.dataset.repoTab === "settings" || !detail.successful || !config?.boosted || config.verb !== "get") return;
+  const xhr = detail.xhr;
+  if (isCachedNavigationResponse(xhr)) return;
+  rememberNavigationResponse(config.path, { ...navigationHeaders(config.path), "Rbit-Nav-Epoch": config.headers?.[EPOCH_HEADER] ?? epoch }, {
+    status: xhr.status, url: xhr.responseURL, text: xhr.responseText,
+    // XHR deliberately does not expose Set-Cookie to scripts.
+    getHeader: name => name.toLowerCase() === "set-cookie" ? null : xhr.getResponseHeader(name),
+  });
+}
+
+// Seed the exact initial tab before Markdown, diagrams, and deferred content mutate
+// its DOM. A deep file or filtered listing must never masquerade as the Code tab.
+function seedCurrentTab() {
+  const current = new URL(location.href);
+  current.hash = "";
+  const tab = [...document.querySelectorAll('.repo-tabs a[data-repo-tab]')].find(link => link.href === current.href && link.dataset.repoTab !== "settings");
+  const main = document.getElementById("main");
+  const bar = document.getElementById("repo-subnav");
+  const title = document.querySelector("title");
+  if (!tab || !main || !bar || !title) return;
+  const copy = bar.cloneNode(true);
+  copy.setAttribute("hx-swap-oob", "true");
+  const headers = { "content-type": "text/html", "rbit-partial": "true", "cache-control": "private, max-age=30" };
+  rememberNavigationResponse(current.href, navigationHeaders(current.href), {
+    status: 200, url: current.href, text: `${title.outerHTML}\n${main.outerHTML}\n${copy.outerHTML}`,
+    getHeader: name => headers[name.toLowerCase()] ?? null,
+  });
+}
+seedCurrentTab();
+
 document.addEventListener("htmx:configRequest", (event) => {
   const detail = event.detail;
   detail.headers[EPOCH_HEADER] = epoch;
@@ -72,9 +131,22 @@ document.addEventListener("htmx:beforeSend", (event) => {
 });
 
 document.addEventListener("htmx:afterRequest", (event) => {
+  if (activeNavigation === event.detail.xhr) activeNavigation = null;
+  rememberTabResponse(event.detail);
   const config = event.detail.requestConfig;
   if (config && config.verb !== "get") epoch = newEpoch();
   if (config?.boosted) settle();
+});
+
+for (const name of ["pagehide", "popstate"]) addEventListener(name, () => {
+  abortNavigation();
+  clearNavigationResponses();
+});
+addEventListener("pageshow", event => {
+  if (event.persisted) {
+    epoch = newEpoch();
+    clearNavigationResponses();
+  }
 });
 
 // Back/forward to a page htmx has no snapshot of fetches it from the server.
@@ -114,6 +186,13 @@ document.addEventListener("htmx:afterRequest", (event) => {
 document.addEventListener("htmx:afterSettle", showRenderTime);
 
 // ---------------------------------------------------------------- partial swaps
+
+document.addEventListener("htmx:oobBeforeSwap", (event) => {
+  const { target, fragment } = event.detail;
+  if (target?.id !== "repo-subnav") return;
+  const incoming = fragment?.querySelector('#repo-subnav');
+  if (incoming && reconcileRepositoryBar(target, incoming)) event.detail.shouldSwap = false;
+});
 
 document.addEventListener("htmx:beforeSwap", (event) => {
   const detail = event.detail;
@@ -241,6 +320,9 @@ document.addEventListener("click", (event) => {
 document.addEventListener("htmx:afterSettle", (event) => {
   const config = event.detail.requestConfig;
   if (!config?.boosted || location.hash) return;
+  const tab = (config.elt ?? event.detail.elt)?.closest?.('.repo-tabs a[data-repo-tab]');
+  // Stable tab links keep keyboard focus through a navigation.
+  if (tab?.isConnected && tab.contains(document.activeElement)) return;
   const main = document.getElementById("main");
   if (!main || main.contains(document.activeElement)) return;
   main.setAttribute("tabindex", "-1");

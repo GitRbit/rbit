@@ -202,7 +202,7 @@ async fn mirrors_are_refused_before_protection_is_considered() {
     alice
         .post("/new/mirror", &[("owner", "alice"), ("url", &upstream), ("name", "copy"), ("visibility", "public"), ("interval", "60")])
         .await
-        .expect_redirect("/alice/copy");
+        .expect_redirect("/alice/copy/mirror/progress");
     let deadline = Instant::now() + Duration::from_secs(30);
     while !alice.get("/alice/copy/branches").await.contains("feature") {
         assert!(Instant::now() < deadline, "the mirror never fetched");

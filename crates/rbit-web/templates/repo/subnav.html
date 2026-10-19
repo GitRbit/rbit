@@ -22,15 +22,15 @@
   </div>
 
   <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
-    <a class="tab" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
-    <a class="tab" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
-    <a class="tab" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
-    <a class="tab" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
-    <a class="tab" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
-    <a class="tab" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
-    <a class="tab" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
+    <a class="tab" data-repo-tab="code" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
+    <a class="tab" data-repo-tab="issues" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="pulls" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="commits" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
+    <a class="tab" data-repo-tab="branches" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
+    <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
+    <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
     {% if header.can_admin %}
-    <a class="tab" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
+    <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
     {% endif %}
   </nav>
 
