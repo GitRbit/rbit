@@ -11,6 +11,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Refresh the roadmap for the public open-source project, separate available features
   from planned work, and remove stale first-release guidance from contributor and handoff docs.
+- Document how to distinguish large HTTPS push failures at proxies from Git's shallow
+  update rejections, with regression coverage for normal and shallow pushes over 100 MiB.
 
 ## [0.1.2] - 2026-10-19
 

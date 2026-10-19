@@ -108,6 +108,78 @@ async fn large_pushes_and_fetches_stream_through() {
     assert_eq!(std::fs::read_to_string(clone.join("big.txt")).expect("cloned"), noise);
 }
 
+#[tokio::test]
+async fn shallow_pushes_report_a_git_rejection() {
+    let (server, git, sample) = seeded().await;
+    let shallow = git.clone_with(&server.git_url("alice", "demo"), &[], &["--depth", "1", "--bare"]);
+    server.sign_in("alice", PASSWORD).await.create_repo("alice", "snapshot", "public").await;
+    let url = server.git_url_as("alice", "snapshot", "alice", PASSWORD);
+    let refused = git.fails(&shallow, &["push", "--progress", &url, "main:main"]);
+    assert!(refused.contains("shallow update not allowed"), "{refused}");
+    assert_eq!(git.ok(&sample.dir, &["ls-remote", "--refs", &url]), "");
+}
+
+#[tokio::test]
+async fn pushes_over_100_mib_stream_through() {
+    let server = TestServer::start();
+    let git = Git::new();
+    server.sign_up("alice").await.create_repo("alice", "large", "public").await;
+    let sample = git.sample();
+    // Disable pack compression to exercise the reported wire size with bounded memory
+    // and without spending CI time compressing 100 MiB of random data.
+    // Distinct blobs also cross Git's default receive.unpackLimit (100 objects),
+    // exercising index-pack as a real snapshot does, rather than only unpack-objects.
+    let mut state = 0x2545_f491_u32;
+    let mut block = vec![0_u8; 64 * 1024];
+    for index in 0..101 {
+        for byte in &mut block {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            *byte = state.to_le_bytes()[0];
+        }
+        let mut file = std::fs::File::create(sample.dir.join(format!("large-{index}.bin"))).expect("create large blob");
+        for _ in 0..16 {
+            file.write_all(&block).expect("write large blob");
+        }
+    }
+    git.ok(&sample.dir, &["-c", "core.compression=0", "add", "--all"]);
+    git.ok(&sample.dir, &["commit", "--quiet", "-m", "Add large snapshot"]);
+    repack_over_100_mib(&git, &sample.dir, false);
+    let head = git.ok(&sample.dir, &["rev-parse", "HEAD"]);
+    let url = server.git_url_as("alice", "large", "alice", PASSWORD);
+    git.ok(&sample.dir, &["-c", "pack.compression=0", "-c", "pack.window=0", "push", "--quiet", &url, "main:main"]);
+    let clone = git.clone_with(&server.git_url("alice", "large"), &[], &["--bare"]);
+    assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]), head);
+    assert_eq!(git.ok(&clone, &["cat-file", "-s", "HEAD:large-100.bin"]).trim(), (1024 * 1024).to_string());
+    git.ok(&clone, &["fsck", "--strict"]);
+
+    // The issue used a shallow snapshot. It must receive Git's rejection even when
+    // the pack crosses the same size boundary, and leave the empty target unchanged.
+    let shallow = git.clone_with(&sample.dir.to_string_lossy(), &[], &["--bare", "--no-local", "--depth", "1"]);
+    repack_over_100_mib(&git, &shallow, true);
+    server.sign_in("alice", PASSWORD).await.create_repo("alice", "snapshot", "public").await;
+    let snapshot_url = server.git_url_as("alice", "snapshot", "alice", PASSWORD);
+    let refused =
+        git.fails(&shallow, &["-c", "pack.compression=0", "-c", "pack.window=0", "push", "--progress", &snapshot_url, "main:main"]);
+    assert!(refused.contains("shallow update not allowed"), "{refused}");
+    assert_eq!(git.ok(&sample.dir, &["ls-remote", "--refs", &snapshot_url]), "");
+}
+
+/// Force recompression: a shallow clone otherwise reuses the origin's compressed
+/// objects even with `pack.compression=0`, making its push much smaller than 100 MiB.
+fn repack_over_100_mib(git: &Git, dir: &Path, bare: bool) {
+    git.ok(dir, &["-c", "pack.compression=0", "repack", "-a", "-d", "-f", "-F", "--window=0"]);
+    let objects = if bare { dir.to_path_buf() } else { dir.join(".git") };
+    let pack_bytes: u64 = std::fs::read_dir(objects.join("objects/pack"))
+        .expect("read packs")
+        .map(|entry| entry.expect("pack entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "pack"))
+        .map(|path| path.metadata().expect("pack size").len())
+        .sum();
+    assert!(pack_bytes > 100 * 1024 * 1024, "the fixture must cross 100 MiB on the wire: {pack_bytes} bytes");
+}
+
 /// Creates `count` branches `wide-{n}`, each with its own commit on top of `main`, in a
 /// single `git fast-import` run.
 fn create_wide_branches(git: &Git, dir: &Path, count: usize) {

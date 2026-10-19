@@ -170,6 +170,44 @@ With nginx, `client_max_body_size 0` and `proxy_request_buffering off` (as below
 all of them; a proxy that buffers request bodies to disk first doubles the I/O and may
 time out on large LFS objects. Caddy streams request bodies by default.
 
+### Troubleshooting large HTTPS pushes
+
+rbit streams Git packfiles to `git receive-pack` without a request-body size limit or
+the HTML/API request timeout. A push that fails around a repeatable byte count needs
+checking at every proxy or CDN between the client and rbit, including any tunnel.
+An HTTP `502` alone does not identify which hop failed: compare the proxy error log
+with rbit's log at the same time, including whether the receive-pack POST reached rbit.
+Temporarily set `RUST_LOG=info,rbit_transport=debug` on the server to include Git's
+stderr and request-stream errors.
+
+Compare a push through the public URL with one directly to the origin using a local
+test repository and a temporary empty destination. On the server, use the loopback
+HTTP listener; from another machine, use an origin HTTPS endpoint or SSH. Keep the
+same source and refspec for both attempts. If only the proxied push fails, fix that
+path's body limit, request buffering or timeout before retrying. If the direct origin
+push fails too, check free disk space and the operating system's logs for process
+termination or memory exhaustion.
+
+[Cloudflare documents plan-dependent upload limits](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/)
+and a DNS-only endpoint as an alternative for larger requests. Changing nginx's
+limit cannot raise a CDN's limit. Git sends a pack in one HTTP request; HTTP chunked
+transfer encoding does not split it into independent uploads.
+
+Shallow sources are a separate case. Git normally rejects updates that would require
+the destination to add shallow roots, reporting `shallow update not allowed` and
+leaving those refs unchanged. Fetch the missing history from the original upstream
+with `git fetch --unshallow <original-upstream-url>` before retrying, or use a full
+clone. A shallow clone can still push when the destination already has the required
+history; rbit delegates that decision to Git's
+[receive.shallowUpdate policy](https://git-scm.com/docs/git-config#Documentation/git-config.txt-receiveshallowUpdate).
+
+Do not increase [`http.postBuffer`](https://git-scm.com/docs/git-config#Documentation/git-config.txt-httppostBuffer)
+to bypass an upload limit: it changes client buffering and chunked encoding, and can
+use substantial memory, but does not reduce the pack's size. When reporting a failure,
+include the Git version, refspec, whether the source is shallow, elapsed time and
+bytes written, and matching proxy/server errors. Check the remote's refs with
+`git ls-remote --refs <url>` after the attempt to establish whether it updated them.
+
 ### Trusted proxies
 
 rbit uses the client address for rate limiting and the audit log. It only believes
