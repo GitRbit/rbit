@@ -600,6 +600,7 @@ pub async fn raw(
 pub struct PageQuery {
     page: Option<usize>,
     year: Option<i32>,
+    calendar: Option<String>,
 }
 
 /// `GET /{owner}/{repo}/commits` — history of the default branch.
@@ -622,17 +623,24 @@ pub async fn commits(
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
     Query(query): Query<PageQuery>,
-) -> WebResult<CommitsPage> {
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, _) = loaded.split(rest).await?;
     render_commits(&state, loaded, page, revision, query).await
 }
 
-async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<CommitsPage> {
+async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<Response> {
     let calendar =
         crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
     let (start, end) = calendar.bounds();
-    let contributions = calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?);
+    let contributions = if query.calendar.is_some() {
+        calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?)
+    } else {
+        calendar.deferred()
+    };
+    if query.calendar.as_deref() == Some("fragment") {
+        return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
+    }
     let page_number = query.page.unwrap_or(1).max(1);
     let skip = commit_offset(page_number)?;
     // Fetch one extra to learn whether an older page exists.
@@ -664,7 +672,8 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
         newer_url: (page_number > 1).then(|| format!("{base}?year={}&page={}", contributions.year, page_number - 1)),
         older_url: has_older.then(|| format!("{base}?year={}&page={}", contributions.year, page_number + 1)),
         contributions,
-    })
+    }
+    .into_response())
 }
 
 /// Reject overflowing offsets instead of panicking or wrapping back to earlier commits.
