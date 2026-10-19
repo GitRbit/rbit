@@ -1,5 +1,7 @@
 //! `?page=` (1-based) and `?per_page=` (default and maximum from `[api]`), answered with
 //! RFC 8288 `Link` headers (`first`, `prev`, `next`, `last`) and `X-Total-Count`.
+#![allow(unknown_lints, clippy::unused_async_trait_impl)]
+
 use axum::{
     Json,
     extract::{FromRequestParts, Query},
