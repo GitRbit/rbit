@@ -952,7 +952,9 @@ pub async fn delete_milestone(State(state): State<AppState>, caller: Caller, Pat
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rbit_core::{Visibility, membership::Permission};
+
+    use super::{super::test_support::Fixture, *};
 
     #[test]
     fn rfc3339_timestamps() {
@@ -979,87 +981,6 @@ mod tests {
             "2025-10-09T08:53:20++1:00",
         ] {
             assert_eq!(parse_rfc3339(bad), None, "{bad}");
-        }
-    }
-
-    // ------------------------------------------------------------------ handlers
-
-    use std::sync::Arc;
-
-    use axum::{
-        Router,
-        body::Body,
-        http::{Request, Response},
-    };
-    use rbit_core::{Config, User, Visibility, membership::Permission};
-    use rbit_services::{CreateAccessToken, CreateRepository, DomainEvent, Services, SignUp};
-    use rbit_storage::{Database, KvStore};
-    use tokio::sync::broadcast::{Receiver, error::TryRecvError};
-    use tower::ServiceExt;
-
-    pub(crate) struct Fixture {
-        _dir: tempfile::TempDir,
-        pub services: Services,
-        router: Router,
-    }
-
-    impl Fixture {
-        pub async fn new(configure: impl FnOnce(&mut Config)) -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let mut config = Config::default();
-            config.storage.data_dir = dir.path().join("data");
-            "https://git.example.com".clone_into(&mut config.server.public_url);
-            config.security.rate_limit = false;
-            configure(&mut config);
-            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-            let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-            let config = Arc::new(config);
-            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-            let router = crate::router(AppState::new(config, services.clone()));
-            Self { _dir: dir, services, router }
-        }
-
-        pub async fn user(&self, name: &str) -> User {
-            let signup = SignUp { username: name.into(), email: format!("{name}@example.com"), password: "correct horse battery".into() };
-            self.services.accounts.create_user(signup, Some(false)).await.unwrap()
-        }
-
-        pub async fn token(&self, user: &User, scope: TokenScope) -> String {
-            let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
-            self.services.tokens.create(user, input).await.unwrap().1
-        }
-
-        pub async fn repo(&self, owner: &User, name: &str, visibility: Visibility) {
-            let input = CreateRepository { name: name.into(), description: String::new(), visibility };
-            self.services.repositories.create(owner, input).await.unwrap();
-        }
-
-        pub async fn send(&self, method: &str, path: &str, token: Option<&str>, body: Option<Value>) -> (Response<Body>, Value) {
-            let mut request = Request::builder().method(method).uri(path);
-            if let Some(token) = token {
-                request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
-            }
-            if body.is_some() {
-                request = request.header(header::CONTENT_TYPE, "application/json");
-            }
-            let request = request.body(body.map_or_else(Body::empty, |body| Body::from(body.to_string()))).unwrap();
-            let response = self.router.clone().oneshot(request).await.unwrap();
-            let (parts, body) = response.into_parts();
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
-            let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
-            (Response::from_parts(parts, Body::empty()), json)
-        }
-
-        /// Delivers the events published so far to the notification fan-out.
-        pub async fn deliver(&self, events: &mut Receiver<DomainEvent>) {
-            loop {
-                match events.try_recv() {
-                    Ok(event) => self.services.notifications.handle_event(&event).await.unwrap(),
-                    Err(TryRecvError::Empty | TryRecvError::Closed) => return,
-                    Err(TryRecvError::Lagged(_)) => panic!("lagged"),
-                }
-            }
         }
     }
 

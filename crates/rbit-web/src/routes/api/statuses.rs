@@ -165,68 +165,12 @@ async fn combined(state: &AppState, caller: &Caller, pager: &Pager, owner: &str,
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path as FsPath, process::Command, sync::Arc};
+    use std::{path::Path as FsPath, process::Command};
 
-    use axum::{
-        Router,
-        body::Body,
-        http::{Request, Response as HttpResponse},
-    };
-    use rbit_core::{Config, User, Visibility, membership::Permission};
-    use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp};
-    use rbit_storage::{Database, KvStore};
-    use tower::ServiceExt;
+    use rbit_core::{Visibility, membership::Permission};
+    use rbit_services::CreateRepository;
 
-    use super::*;
-
-    struct Fixture {
-        _dir: tempfile::TempDir,
-        services: Services,
-        router: Router,
-    }
-
-    impl Fixture {
-        async fn new() -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let mut config = Config::default();
-            config.storage.data_dir = dir.path().join("data");
-            "https://git.example.com".clone_into(&mut config.server.public_url);
-            config.security.rate_limit = false;
-            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-            let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-            let config = Arc::new(config);
-            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-            let router = crate::router(AppState::new(config, services.clone()));
-            Self { _dir: dir, services, router }
-        }
-
-        async fn user(&self, name: &str) -> User {
-            let signup = SignUp { username: name.into(), email: format!("{name}@example.com"), password: "correct horse battery".into() };
-            self.services.accounts.create_user(signup, Some(false)).await.unwrap()
-        }
-
-        async fn token(&self, user: &User, scope: TokenScope) -> String {
-            let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
-            self.services.tokens.create(user, input).await.unwrap().1
-        }
-
-        async fn send(&self, method: &str, path: &str, token: Option<&str>, body: Option<Value>) -> (HttpResponse<Body>, Value) {
-            let mut request = Request::builder().method(method).uri(path);
-            if let Some(token) = token {
-                request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
-            }
-            if body.is_some() {
-                request = request.header(header::CONTENT_TYPE, "application/json");
-            }
-            let request = request.body(body.map_or_else(Body::empty, |body| Body::from(body.to_string()))).unwrap();
-            let response = self.router.clone().oneshot(request).await.unwrap();
-            let (parts, body) = response.into_parts();
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
-            let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
-            (HttpResponse::from_parts(parts, Body::empty()), json)
-        }
-    }
+    use super::{super::test_support::Fixture, *};
 
     fn git(dir: &FsPath, args: &[&str]) -> String {
         let output = Command::new("git")
@@ -254,7 +198,7 @@ mod tests {
 
     #[tokio::test]
     async fn statuses_are_created_listed_and_combined() {
-        let fixture = Fixture::new().await;
+        let fixture = Fixture::new(|_| {}).await;
         let alice = fixture.user("alice").await;
         let rita = fixture.user("rita").await;
         let olga = fixture.user("olga").await;
