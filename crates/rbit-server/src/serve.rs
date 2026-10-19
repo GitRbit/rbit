@@ -24,8 +24,8 @@ async fn open_storage(config: &Config) -> anyhow::Result<Storage> {
     Ok(Storage { database, kv })
 }
 
-/// Opens (and migrates) only the SQLite database. The CLI commands use this alone:
-/// the key/value store is held exclusively by a running server, SQLite is not.
+/// Opens (and migrates) only the `SQLite` database. The CLI commands use this alone:
+/// the key/value store is held exclusively by a running server, `SQLite` is not.
 async fn open_database(config: &Config) -> anyhow::Result<Database> {
     let storage = &config.storage;
     tokio::fs::create_dir_all(storage.repositories_dir())

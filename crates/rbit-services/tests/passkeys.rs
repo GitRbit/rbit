@@ -1,6 +1,6 @@
 //! Passkeys as a second factor: registration, the two-step sign-in, confirming sensitive
 //! changes, and how passkeys and the authenticator app share recovery codes. A software
-//! authenticator plays the browser's part against real, temporary SQLite and redb stores.
+//! authenticator plays the browser's part against real, temporary `SQLite` and redb stores.
 
 use std::sync::Arc;
 

@@ -14,6 +14,11 @@
 //! repository), `sort=comments` is always descending, and label names containing `/`
 //! cannot be addressed in a path.
 
+mod assignees;
+mod comments;
+mod labels;
+mod milestones;
+
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -50,35 +55,35 @@ pub(super) fn routes() -> Vec<ApiRoute> {
     vec![
         route(Get, repo("/issues"), list_issues),
         route(Post, repo("/issues"), create_issue),
-        route(Get, repo("/issues/comments/{id}"), get_comment),
-        route(Patch, repo("/issues/comments/{id}"), edit_comment),
-        route(Delete, repo("/issues/comments/{id}"), delete_comment),
+        route(Get, repo("/issues/comments/{id}"), comments::get_comment),
+        route(Patch, repo("/issues/comments/{id}"), comments::edit_comment),
+        route(Delete, repo("/issues/comments/{id}"), comments::delete_comment),
         route(Get, repo("/issues/{number}"), get_issue),
         route(Patch, repo("/issues/{number}"), update_issue),
         route(Delete, repo("/issues/{number}"), delete_issue),
         route(Put, repo("/issues/{number}/lock"), lock),
         route(Delete, repo("/issues/{number}/lock"), unlock),
-        route(Get, repo("/issues/{number}/comments"), list_comments),
-        route(Post, repo("/issues/{number}/comments"), create_comment),
-        route(Get, repo("/issues/{number}/timeline"), timeline),
-        route(Get, repo("/issues/{number}/labels"), issue_labels),
-        route(Post, repo("/issues/{number}/labels"), add_labels),
-        route(Put, repo("/issues/{number}/labels"), set_labels),
-        route(Delete, repo("/issues/{number}/labels"), clear_labels),
-        route(Delete, repo("/issues/{number}/labels/{*name}"), remove_label),
-        route(Post, repo("/issues/{number}/assignees"), add_assignees),
-        route(Delete, repo("/issues/{number}/assignees"), remove_assignees),
-        route(Get, repo("/assignees"), assignees),
-        route(Get, repo("/labels"), list_labels),
-        route(Post, repo("/labels"), create_label),
-        route(Get, repo("/labels/{*name}"), get_label),
-        route(Patch, repo("/labels/{*name}"), update_label),
-        route(Delete, repo("/labels/{*name}"), delete_label),
-        route(Get, repo("/milestones"), list_milestones),
-        route(Post, repo("/milestones"), create_milestone),
-        route(Get, repo("/milestones/{id}"), get_milestone),
-        route(Patch, repo("/milestones/{id}"), update_milestone),
-        route(Delete, repo("/milestones/{id}"), delete_milestone),
+        route(Get, repo("/issues/{number}/comments"), comments::list_comments),
+        route(Post, repo("/issues/{number}/comments"), comments::create_comment),
+        route(Get, repo("/issues/{number}/timeline"), comments::timeline),
+        route(Get, repo("/issues/{number}/labels"), labels::issue_labels),
+        route(Post, repo("/issues/{number}/labels"), labels::add_labels),
+        route(Put, repo("/issues/{number}/labels"), labels::set_labels),
+        route(Delete, repo("/issues/{number}/labels"), labels::clear_labels),
+        route(Delete, repo("/issues/{number}/labels/{*name}"), labels::remove_label),
+        route(Post, repo("/issues/{number}/assignees"), assignees::add_assignees),
+        route(Delete, repo("/issues/{number}/assignees"), assignees::remove_assignees),
+        route(Get, repo("/assignees"), assignees::assignees),
+        route(Get, repo("/labels"), labels::list_labels),
+        route(Post, repo("/labels"), labels::create_label),
+        route(Get, repo("/labels/{*name}"), labels::get_label),
+        route(Patch, repo("/labels/{*name}"), labels::update_label),
+        route(Delete, repo("/labels/{*name}"), labels::delete_label),
+        route(Get, repo("/milestones"), milestones::list_milestones),
+        route(Post, repo("/milestones"), milestones::create_milestone),
+        route(Get, repo("/milestones/{id}"), milestones::get_milestone),
+        route(Patch, repo("/milestones/{id}"), milestones::update_milestone),
+        route(Delete, repo("/milestones/{id}"), milestones::delete_milestone),
     ]
 }
 
@@ -150,6 +155,10 @@ fn created(location: &str, body: Value) -> Response {
         response.headers_mut().insert(header::LOCATION, value);
     }
     response
+}
+
+fn require_writer(ctx: &RepoContext) -> ApiResult<()> {
+    if ctx.access.can_write() { Ok(()) } else { Err(ApiError::forbidden("You must be able to push to this repository")) }
 }
 
 /// `2026-10-15T12:00:00Z` (or with an offset, or fractional seconds) as Unix seconds.
@@ -454,505 +463,11 @@ pub async fn unlock(State(state): State<AppState>, caller: Caller, Path(path): P
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ------------------------------------------------------------------ comments and the timeline
-
-/// Every entry of `ctx`'s timeline, page by page (bounded by the thread's size).
-async fn all_entries(state: &AppState, caller: &Caller, ctx: &IssueContext) -> ApiResult<Vec<TimelineEntry>> {
-    let mut entries = Vec::new();
-    let mut cursor = None;
-    loop {
-        let page = state.services.timeline.timeline(caller.user(), ctx, cursor, MAX_TIMELINE_PAGE).await?;
-        entries.extend(page.entries);
-        match page.next {
-            Some(next) => cursor = Some(next),
-            None => return Ok(entries),
-        }
-    }
-}
-
-fn comment_value(entry: &TimelineEntry, ctx: &IssueContext, base_url: &str) -> Option<Value> {
-    match entry {
-        TimelineEntry::Comment { comment, author, .. } => {
-            Some(issue_json::comment(comment, author.as_ref(), &ctx.issue, &ctx.repo.repo, base_url))
-        }
-        TimelineEntry::Event { .. } => None,
-    }
-}
-
-/// `GET /repos/{owner}/{repo}/issues/{number}/comments`
-pub async fn list_comments(
-    State(state): State<AppState>,
-    caller: Caller,
-    pager: Pager,
-    Path(path): Path<IssuePath>,
-) -> ApiResult<Paged<Value>> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let entries = all_entries(&state, &caller, &ctx).await?;
-    Ok(pager.page_of(entries.iter().filter_map(|entry| comment_value(entry, &ctx, base(&state))).collect()))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CommentBody {
-    body: String,
-}
-
-/// `POST /repos/{owner}/{repo}/issues/{number}/comments`
-pub async fn create_comment(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IssuePath>,
-    ApiJson(body): ApiJson<CommentBody>,
-) -> ApiResult<Response> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let comment = state.services.timeline.comment(user, &ctx, &body.body).await.map_err(|e| ApiError::service(e, "body"))?;
-    let value = issue_json::comment(&comment, Some(&user.account), &ctx.issue, &ctx.repo.repo, base(&state));
-    let location = value["url"].as_str().unwrap_or_default().to_owned();
-    Ok(created(&location, value))
-}
-
-/// The thread holding comment `id` of the repository, for the caller.
-async fn comment_thread(state: &AppState, caller: &Caller, path: &IdPath) -> ApiResult<(IssueContext, CommentId)> {
-    let id = CommentId(parse_id(&path.id)?);
-    let repo = caller.open_repo(state, &path.owner, &path.repo).await?;
-    let number = state.services.issues.comment_thread(&repo, id).await?;
-    Ok((state.services.timeline.open(caller.user(), repo, number).await?, id))
-}
-
-/// The comment `id` on `ctx` as the API shows it.
-async fn find_comment(state: &AppState, caller: &Caller, ctx: &IssueContext, id: CommentId) -> ApiResult<Value> {
-    let entries = all_entries(state, caller, ctx).await?;
-    entries
-        .iter()
-        .find(|entry| matches!(entry, TimelineEntry::Comment { comment, .. } if comment.id == id))
-        .and_then(|entry| comment_value(entry, ctx, base(state)))
-        .ok_or_else(ApiError::not_found)
-}
-
-/// `GET /repos/{owner}/{repo}/issues/comments/{id}`
-pub async fn get_comment(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<Json<Value>> {
-    let (ctx, id) = comment_thread(&state, &caller, &path).await?;
-    Ok(Json(find_comment(&state, &caller, &ctx, id).await?))
-}
-
-/// `PATCH /repos/{owner}/{repo}/issues/comments/{id}`: its author only.
-pub async fn edit_comment(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IdPath>,
-    ApiJson(body): ApiJson<CommentBody>,
-) -> ApiResult<Json<Value>> {
-    let (ctx, id) = comment_thread(&state, &caller, &path).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let comment = state.services.timeline.edit_comment(user, &ctx, id, &body.body).await.map_err(|e| ApiError::service(e, "body"))?;
-    Ok(Json(issue_json::comment(&comment, Some(&user.account), &ctx.issue, &ctx.repo.repo, base(&state))))
-}
-
-/// `DELETE /repos/{owner}/{repo}/issues/comments/{id}`: its author or a moderator.
-pub async fn delete_comment(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<StatusCode> {
-    let (ctx, id) = comment_thread(&state, &caller, &path).await?;
-    let user = caller.require(TokenScope::Write)?;
-    state.services.timeline.delete_comment(user, &ctx, id).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// `GET /repos/{owner}/{repo}/issues/{number}/timeline`: comments (`event: "commented"`)
-/// and events in order; cross-references the caller cannot read are left out.
-pub async fn timeline(State(state): State<AppState>, caller: Caller, pager: Pager, Path(path): Path<IssuePath>) -> ApiResult<Paged<Value>> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let base_url = base(&state);
-    let entries = all_entries(&state, &caller, &ctx).await?;
-    let items = entries
-        .iter()
-        .map(|entry| match entry {
-            TimelineEntry::Comment { comment, author, .. } => {
-                let mut value = issue_json::comment(comment, author.as_ref(), &ctx.issue, &ctx.repo.repo, base_url);
-                value["event"] = json!("commented");
-                value["actor"] = value["user"].clone();
-                value
-            }
-            TimelineEntry::Event { id, actor, event, at, subjects } => {
-                let mut value = json!({
-                    "id": id.0,
-                    "event": event.kind(),
-                    "actor": actor.as_ref().map(|actor| account(actor, base_url)),
-                    "created_at": timestamp(*at),
-                });
-                if let Ok(Value::Object(tagged)) = serde_json::to_value(event)
-                    && let Some(Value::Object(data)) = tagged.get("data")
-                {
-                    value["data"] = Value::Object(data.clone());
-                }
-                if let Some(subject) = &subjects.account {
-                    value["subject"] = account(subject, base_url);
-                }
-                if let Some(source) = &subjects.source {
-                    value["source"] = json!({
-                        "repository": source.full_name,
-                        "number": source.number.get(),
-                        "type": if source.kind == IssueKind::Pull { "pull_request" } else { "issue" },
-                        "state": source.state.as_str(),
-                        "title": source.title,
-                    });
-                }
-                value
-            }
-        })
-        .collect();
-    Ok(pager.page_of(items))
-}
-
-// ------------------------------------------------------------------ labels on an issue
-
-#[derive(Debug, Deserialize)]
-pub struct LabelNames {
-    #[serde(default)]
-    labels: Vec<String>,
-}
-
-async fn labels_response(state: &AppState, caller: &Caller, ctx: &IssueContext) -> ApiResult<Json<Value>> {
-    let ctx = reopen(state, caller, ctx).await?;
-    let metadata = state.services.issues.metadata(&[ctx.issue.id]).await?.remove(&ctx.issue.id).unwrap_or_default();
-    Ok(Json(Value::Array(labels_value(&metadata, &ctx.repo.repo, base(state)))))
-}
-
-/// `GET /repos/{owner}/{repo}/issues/{number}/labels`
-pub async fn issue_labels(State(state): State<AppState>, caller: Caller, Path(path): Path<IssuePath>) -> ApiResult<Json<Value>> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    labels_response(&state, &caller, &ctx).await
-}
-
-/// `POST /repos/{owner}/{repo}/issues/{number}/labels`: adds labels by name.
-pub async fn add_labels(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IssuePath>,
-    ApiJson(body): ApiJson<LabelNames>,
-) -> ApiResult<Json<Value>> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let issues = &state.services.issues;
-    let labels = issues.labels_named(&ctx.repo, &body.labels).await.map_err(|e| ApiError::service(e, "labels"))?;
-    let ids: Vec<_> = labels.iter().map(|l| l.id).collect();
-    issues.change_labels(user, &ctx, &ids, &[]).await.map_err(|e| ApiError::service(e, "labels"))?;
-    labels_response(&state, &caller, &ctx).await
-}
-
-/// `PUT /repos/{owner}/{repo}/issues/{number}/labels`: replaces the labels.
-pub async fn set_labels(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IssuePath>,
-    ApiJson(body): ApiJson<LabelNames>,
-) -> ApiResult<Json<Value>> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let issues = &state.services.issues;
-    let labels = issues.labels_named(&ctx.repo, &body.labels).await.map_err(|e| ApiError::service(e, "labels"))?;
-    let ids: Vec<_> = labels.iter().map(|l| l.id).collect();
-    issues.set_labels(user, &ctx, &ids).await.map_err(|e| ApiError::service(e, "labels"))?;
-    labels_response(&state, &caller, &ctx).await
-}
-
-/// `DELETE /repos/{owner}/{repo}/issues/{number}/labels`: removes every label.
-pub async fn clear_labels(State(state): State<AppState>, caller: Caller, Path(path): Path<IssuePath>) -> ApiResult<StatusCode> {
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    state.services.issues.set_labels(user, &ctx, &[]).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// `DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}`: 404 when not on it.
-pub async fn remove_label(State(state): State<AppState>, caller: Caller, Path(path): Path<NamedPath>) -> ApiResult<Json<Value>> {
-    let number = path.number.as_deref().unwrap_or_default();
-    let ctx = open_thread(&state, &caller, &path.owner, &path.repo, number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let issues = &state.services.issues;
-    let label =
-        issues.label_named(&ctx.repo, &path.name).await.map_err(|_| ApiError::new(StatusCode::NOT_FOUND, "Label does not exist"))?;
-    let metadata = issues.metadata(&[ctx.issue.id]).await?.remove(&ctx.issue.id).unwrap_or_default();
-    if !metadata.labels.iter().any(|l| l.id == label.id) {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "Label does not exist"));
-    }
-    issues.change_labels(user, &ctx, &[], &[label.id]).await?;
-    labels_response(&state, &caller, &ctx).await
-}
-
-// ------------------------------------------------------------------ assignees
-
-#[derive(Debug, Deserialize)]
-pub struct AssigneeNames {
-    #[serde(default)]
-    assignees: Vec<String>,
-}
-
-/// `GET /repos/{owner}/{repo}/assignees`: people who may be assigned (can push).
-pub async fn assignees(State(state): State<AppState>, caller: Caller, pager: Pager, Path(path): Path<RepoPath>) -> ApiResult<Paged<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let people: Vec<Account> = state.services.issues.assignable(&ctx, "").await?;
-    Ok(pager.page_of(people.iter().map(|person| account(person, base(&state))).collect()))
-}
-
-async fn change_assignees(state: &AppState, caller: &Caller, path: &IssuePath, names: &[String], adding: bool) -> ApiResult<Response> {
-    let ctx = open_thread(state, caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let issues = &state.services.issues;
-    let ids: Vec<AccountId> =
-        issues.users_named(names).await.map_err(|e| ApiError::service(e, "assignees"))?.iter().map(|a| a.id).collect();
-    let result =
-        if adding { issues.change_assignees(user, &ctx, &ids, &[]).await } else { issues.change_assignees(user, &ctx, &[], &ids).await };
-    result.map_err(|e| ApiError::service(e, "assignees"))?;
-    let ctx = reopen(state, caller, &ctx).await?;
-    let value = issue_value(state, &ctx).await?;
-    Ok(if adding { (StatusCode::CREATED, Json(value)).into_response() } else { Json(value).into_response() })
-}
-
-/// `POST /repos/{owner}/{repo}/issues/{number}/assignees`
-pub async fn add_assignees(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IssuePath>,
-    ApiJson(body): ApiJson<AssigneeNames>,
-) -> ApiResult<Response> {
-    change_assignees(&state, &caller, &path, &body.assignees, true).await
-}
-
-/// `DELETE /repos/{owner}/{repo}/issues/{number}/assignees`
-pub async fn remove_assignees(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IssuePath>,
-    ApiJson(body): ApiJson<AssigneeNames>,
-) -> ApiResult<Response> {
-    change_assignees(&state, &caller, &path, &body.assignees, false).await
-}
-
-// ------------------------------------------------------------------ repository labels
-
-/// `GET /repos/{owner}/{repo}/labels`
-pub async fn list_labels(
-    State(state): State<AppState>,
-    caller: Caller,
-    pager: Pager,
-    Path(path): Path<RepoPath>,
-) -> ApiResult<Paged<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let labels = state.services.issues.labels(&ctx).await?;
-    Ok(pager.page_of(labels.iter().map(|label| issue_json::label_detail(label, &ctx.repo, base(&state))).collect()))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct NewLabelBody {
-    name: String,
-    color: String,
-    #[serde(default)]
-    description: Option<String>,
-}
-
-fn require_writer(ctx: &RepoContext) -> ApiResult<()> {
-    if ctx.access.can_write() { Ok(()) } else { Err(ApiError::forbidden("You must be able to push to this repository")) }
-}
-
-/// `POST /repos/{owner}/{repo}/labels`
-pub async fn create_label(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<RepoPath>,
-    ApiJson(body): ApiJson<NewLabelBody>,
-) -> ApiResult<Response> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    let input = LabelInput { name: body.name, color: body.color, description: body.description.unwrap_or_default() };
-    let label = state.services.issues.create_label(user, &ctx, &input).await.map_err(|e| ApiError::service(e, "name"))?;
-    let value = issue_json::label_detail(&label, &ctx.repo, base(&state));
-    let location = value["url"].as_str().unwrap_or_default().to_owned();
-    Ok(created(&location, value))
-}
-
-/// `GET /repos/{owner}/{repo}/labels/{name}`
-pub async fn get_label(State(state): State<AppState>, caller: Caller, Path(path): Path<NamedPath>) -> ApiResult<Json<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let label = state.services.issues.label_named(&ctx, &path.name).await?;
-    Ok(Json(issue_json::label_detail(&label, &ctx.repo, base(&state))))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LabelChanges {
-    new_name: Option<String>,
-    color: Option<String>,
-    description: Option<String>,
-}
-
-/// `PATCH /repos/{owner}/{repo}/labels/{name}`
-pub async fn update_label(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<NamedPath>,
-    ApiJson(changes): ApiJson<LabelChanges>,
-) -> ApiResult<Json<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    let issues = &state.services.issues;
-    let label = issues.label_named(&ctx, &path.name).await?;
-    let input = LabelInput {
-        name: changes.new_name.unwrap_or(label.name),
-        color: changes.color.unwrap_or(label.color),
-        description: changes.description.unwrap_or(label.description),
-    };
-    let updated = issues.update_label(user, &ctx, label.id, &input).await.map_err(|e| ApiError::service(e, "new_name"))?;
-    Ok(Json(issue_json::label_detail(&updated, &ctx.repo, base(&state))))
-}
-
-/// `DELETE /repos/{owner}/{repo}/labels/{name}`
-pub async fn delete_label(State(state): State<AppState>, caller: Caller, Path(path): Path<NamedPath>) -> ApiResult<StatusCode> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    let issues = &state.services.issues;
-    let label = issues.label_named(&ctx, &path.name).await?;
-    issues.delete_label(&ctx, label.id).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-// ------------------------------------------------------------------ milestones
-
-#[derive(Debug, Deserialize)]
-pub struct MilestoneListQuery {
-    state: Option<String>,
-}
-
-/// `GET /repos/{owner}/{repo}/milestones[?state=open|closed|all]`
-pub async fn list_milestones(
-    State(state): State<AppState>,
-    caller: Caller,
-    pager: Pager,
-    Path(path): Path<RepoPath>,
-    Query(query): Query<MilestoneListQuery>,
-) -> ApiResult<Paged<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let wanted = match query.state.as_deref().unwrap_or("open") {
-        "open" => Some(IssueState::Open),
-        "closed" => Some(IssueState::Closed),
-        "all" => None,
-        _ => return Err(ApiError::invalid("state", "state must be open, closed or all")),
-    };
-    let milestones = state.services.issues.milestones(&ctx, wanted).await?;
-    Ok(pager.page_of(milestones.iter().map(|progress| issue_json::milestone_detail(progress, &ctx.repo, base(&state))).collect()))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct MilestoneBody {
-    title: Option<String>,
-    #[serde(default, deserialize_with = "present")]
-    description: Option<Value>,
-    /// `YYYY-MM-DD`, an RFC 3339 timestamp (its day is used) or `null`.
-    #[serde(default, deserialize_with = "present")]
-    due_on: Option<Value>,
-    state: Option<String>,
-}
-
-/// The day of `due_on`: `YYYY-MM-DD` as is, a timestamp's first ten characters.
-fn due_day(value: Option<&Value>, current: Option<&str>) -> ApiResult<String> {
-    match value {
-        None => Ok(current.unwrap_or_default().to_owned()),
-        Some(Value::Null) => Ok(String::new()),
-        Some(Value::String(text)) => Ok(text.chars().take(10).collect()),
-        Some(_) => Err(ApiError::invalid("due_on", "due_on must be a date or null")),
-    }
-}
-
-fn text_field(value: Option<&Value>, current: &str, field: &str) -> ApiResult<String> {
-    match value {
-        None => Ok(current.to_owned()),
-        Some(Value::Null) => Ok(String::new()),
-        Some(Value::String(text)) => Ok(text.clone()),
-        Some(_) => Err(ApiError::invalid(field, format!("{field} must be a string or null"))),
-    }
-}
-
-fn milestone_state(value: Option<&str>) -> ApiResult<Option<IssueState>> {
-    match value {
-        None => Ok(None),
-        Some("open") => Ok(Some(IssueState::Open)),
-        Some("closed") => Ok(Some(IssueState::Closed)),
-        Some(_) => Err(ApiError::invalid("state", "state must be open or closed")),
-    }
-}
-
-/// `POST /repos/{owner}/{repo}/milestones`
-pub async fn create_milestone(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<RepoPath>,
-    ApiJson(body): ApiJson<MilestoneBody>,
-) -> ApiResult<Response> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    let input = MilestoneInput {
-        title: body.title.unwrap_or_default(),
-        description: text_field(body.description.as_ref(), "", "description")?,
-        due_on: due_day(body.due_on.as_ref(), None)?,
-    };
-    let wanted = milestone_state(body.state.as_deref())?;
-    let issues = &state.services.issues;
-    let milestone = issues.create_milestone(user, &ctx, &input).await.map_err(|e| ApiError::service(e, "title"))?;
-    if wanted == Some(IssueState::Closed) {
-        issues.set_milestone_state(&ctx, milestone.id, IssueState::Closed).await?;
-    }
-    let progress = issues.milestone(&ctx, milestone.id).await?;
-    let value = issue_json::milestone_detail(&progress, &ctx.repo, base(&state));
-    let location = value["url"].as_str().unwrap_or_default().to_owned();
-    Ok(created(&location, value))
-}
-
-/// `GET /repos/{owner}/{repo}/milestones/{id}`
-pub async fn get_milestone(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<Json<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let progress = state.services.issues.milestone(&ctx, MilestoneId(parse_id(&path.id)?)).await?;
-    Ok(Json(issue_json::milestone_detail(&progress, &ctx.repo, base(&state))))
-}
-
-/// `PATCH /repos/{owner}/{repo}/milestones/{id}`: absent fields keep their value.
-pub async fn update_milestone(
-    State(state): State<AppState>,
-    caller: Caller,
-    Path(path): Path<IdPath>,
-    ApiJson(body): ApiJson<MilestoneBody>,
-) -> ApiResult<Json<Value>> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    let id = MilestoneId(parse_id(&path.id)?);
-    let issues = &state.services.issues;
-    let current = issues.milestone(&ctx, id).await?.milestone;
-    let input = MilestoneInput {
-        title: body.title.unwrap_or(current.title.clone()),
-        description: text_field(body.description.as_ref(), &current.description, "description")?,
-        due_on: due_day(body.due_on.as_ref(), current.due_on.as_deref())?,
-    };
-    issues.update_milestone(user, &ctx, id, &input).await.map_err(|e| ApiError::service(e, "title"))?;
-    if let Some(wanted) = milestone_state(body.state.as_deref())? {
-        issues.set_milestone_state(&ctx, id, wanted).await?;
-    }
-    let progress = issues.milestone(&ctx, id).await?;
-    Ok(Json(issue_json::milestone_detail(&progress, &ctx.repo, base(&state))))
-}
-
-/// `DELETE /repos/{owner}/{repo}/milestones/{id}`
-pub async fn delete_milestone(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<StatusCode> {
-    let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    caller.require(TokenScope::Write)?;
-    require_writer(&ctx)?;
-    state.services.issues.delete_milestone(&ctx, MilestoneId(parse_id(&path.id)?)).await?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rbit_core::{Visibility, membership::Permission};
+
+    use super::{super::test_support::Fixture, *};
 
     #[test]
     fn rfc3339_timestamps() {
@@ -979,87 +494,6 @@ mod tests {
             "2025-10-09T08:53:20++1:00",
         ] {
             assert_eq!(parse_rfc3339(bad), None, "{bad}");
-        }
-    }
-
-    // ------------------------------------------------------------------ handlers
-
-    use std::sync::Arc;
-
-    use axum::{
-        Router,
-        body::Body,
-        http::{Request, Response},
-    };
-    use rbit_core::{Config, User, Visibility, membership::Permission};
-    use rbit_services::{CreateAccessToken, CreateRepository, DomainEvent, Services, SignUp};
-    use rbit_storage::{Database, KvStore};
-    use tokio::sync::broadcast::{Receiver, error::TryRecvError};
-    use tower::ServiceExt;
-
-    pub(crate) struct Fixture {
-        _dir: tempfile::TempDir,
-        pub services: Services,
-        router: Router,
-    }
-
-    impl Fixture {
-        pub async fn new(configure: impl FnOnce(&mut Config)) -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let mut config = Config::default();
-            config.storage.data_dir = dir.path().join("data");
-            "https://git.example.com".clone_into(&mut config.server.public_url);
-            config.security.rate_limit = false;
-            configure(&mut config);
-            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-            let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-            let config = Arc::new(config);
-            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-            let router = crate::router(AppState::new(config, services.clone()));
-            Self { _dir: dir, services, router }
-        }
-
-        pub async fn user(&self, name: &str) -> User {
-            let signup = SignUp { username: name.into(), email: format!("{name}@example.com"), password: "correct horse battery".into() };
-            self.services.accounts.create_user(signup, Some(false)).await.unwrap()
-        }
-
-        pub async fn token(&self, user: &User, scope: TokenScope) -> String {
-            let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
-            self.services.tokens.create(user, input).await.unwrap().1
-        }
-
-        pub async fn repo(&self, owner: &User, name: &str, visibility: Visibility) {
-            let input = CreateRepository { name: name.into(), description: String::new(), visibility };
-            self.services.repositories.create(owner, input).await.unwrap();
-        }
-
-        pub async fn send(&self, method: &str, path: &str, token: Option<&str>, body: Option<Value>) -> (Response<Body>, Value) {
-            let mut request = Request::builder().method(method).uri(path);
-            if let Some(token) = token {
-                request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
-            }
-            if body.is_some() {
-                request = request.header(header::CONTENT_TYPE, "application/json");
-            }
-            let request = request.body(body.map_or_else(Body::empty, |body| Body::from(body.to_string()))).unwrap();
-            let response = self.router.clone().oneshot(request).await.unwrap();
-            let (parts, body) = response.into_parts();
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
-            let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
-            (Response::from_parts(parts, Body::empty()), json)
-        }
-
-        /// Delivers the events published so far to the notification fan-out.
-        pub async fn deliver(&self, events: &mut Receiver<DomainEvent>) {
-            loop {
-                match events.try_recv() {
-                    Ok(event) => self.services.notifications.handle_event(&event).await.unwrap(),
-                    Err(TryRecvError::Empty | TryRecvError::Closed) => return,
-                    Err(TryRecvError::Lagged(_)) => panic!("lagged"),
-                }
-            }
         }
     }
 

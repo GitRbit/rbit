@@ -3,7 +3,7 @@
 //! The session middleware resolves the cookie once per request and stores a [`Viewer`]
 //! in the request extensions; these extractors only read it. (They are `async` only
 //! because the `FromRequestParts` trait requires it.)
-#![allow(clippy::unused_async_trait_impl)]
+#![allow(unknown_lints, clippy::unused_async_trait_impl)]
 
 use std::{convert::Infallible, sync::Arc};
 

@@ -1,5 +1,5 @@
 //! Push mirror settings, write-only secrets and scheduling against a real, migrated
-//! SQLite database.
+//! `SQLite` database.
 
 use rbit_core::{AccountId, RepoId, Timestamp, Visibility};
 use rbit_storage::{

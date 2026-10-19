@@ -1,5 +1,5 @@
 //! Labels, milestones, assignees and reference de-duplication (workstream I) against a
-//! real, migrated SQLite database.
+//! real, migrated `SQLite` database.
 
 use rbit_core::{
     IssueId, IssueKind, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, RepoId, Timestamp, User, Visibility,

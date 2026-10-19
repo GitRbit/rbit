@@ -1,4 +1,4 @@
-//! SQLite persistence via `sqlx`.
+//! `SQLite` persistence via `sqlx`.
 
 mod access_tokens;
 mod accounts;
@@ -50,7 +50,7 @@ pub use repositories::{NewRepository, RepositoryStore};
 
 use crate::StorageError;
 
-/// A pooled SQLite database tuned for a write-light, read-heavy web workload.
+/// A pooled `SQLite` database tuned for a write-light, read-heavy web workload.
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: SqlitePool,

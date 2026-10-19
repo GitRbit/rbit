@@ -1,3 +1,5 @@
+//! Errors returned by application services.
+
 use rbit_core::{NameError, issue::IssueTextError};
 use rbit_storage::StorageError;
 

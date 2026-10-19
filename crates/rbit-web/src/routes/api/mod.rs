@@ -284,19 +284,13 @@ async fn not_found() -> ApiError {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, sync::Arc};
+    use std::collections::BTreeSet;
 
-    use axum::{
-        body::Body,
-        http::{Request, Response},
-    };
-    use rbit_core::{Config, TokenScope, User};
-    use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp};
-    use rbit_storage::{Database, KvStore};
+    use rbit_core::TokenScope;
+    use rbit_services::CreateRepository;
     use serde_json::Value;
-    use tower::ServiceExt;
 
-    use super::*;
+    use super::{test_support::Fixture, *};
 
     /// `{*branch}` in axum is `{branch}` in `OpenAPI`.
     fn openapi_path(path: &str) -> String {
@@ -333,55 +327,6 @@ mod tests {
         assert_eq!(routed.len(), table().len(), "no route is listed twice");
     }
 
-    struct Fixture {
-        _dir: tempfile::TempDir,
-        services: Services,
-        router: Router,
-    }
-
-    impl Fixture {
-        async fn new(configure: impl FnOnce(&mut Config)) -> Self {
-            let dir = tempfile::tempdir().unwrap();
-            let mut config = Config::default();
-            config.storage.data_dir = dir.path().join("data");
-            "https://git.example.com".clone_into(&mut config.server.public_url);
-            configure(&mut config);
-            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-            let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
-            let config = Arc::new(config);
-            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-            let router = crate::router(AppState::new(config, services.clone()));
-            Self { _dir: dir, services, router }
-        }
-
-        async fn user(&self, name: &str) -> User {
-            let signup = SignUp { username: name.into(), email: format!("{name}@example.com"), password: "correct horse battery".into() };
-            self.services.accounts.create_user(signup, Some(false)).await.unwrap()
-        }
-
-        async fn token(&self, user: &User, scope: TokenScope) -> String {
-            let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
-            self.services.tokens.create(user, input).await.unwrap().1
-        }
-
-        async fn send(&self, method: &str, path: &str, token: Option<&str>, body: Option<&str>) -> (Response<Body>, Value) {
-            let mut request = Request::builder().method(method).uri(path);
-            if let Some(token) = token {
-                request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
-            }
-            if body.is_some() {
-                request = request.header(header::CONTENT_TYPE, "application/json");
-            }
-            let request = request.body(body.map_or_else(Body::empty, |body| Body::from(body.to_owned()))).unwrap();
-            let response = self.router.clone().oneshot(request).await.unwrap();
-            let (parts, body) = response.into_parts();
-            let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
-            let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
-            (Response::from_parts(parts, Body::empty()), json)
-        }
-    }
-
     #[tokio::test]
     async fn authentication_scopes_and_errors() {
         let fixture = Fixture::new(|_| {}).await;
@@ -389,51 +334,51 @@ mod tests {
         let read = fixture.token(&alice, TokenScope::Read).await;
         let write = fixture.token(&alice, TokenScope::Write).await;
 
-        let (response, json) = fixture.send("GET", "/api/v1/version", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/version", None, None).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(json["api"], "v1");
         assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
         assert_eq!(response.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
         assert!(response.headers().get(header::SET_COOKIE).is_none(), "the API never sets cookies");
 
-        let (response, json) = fixture.send("GET", "/api/v1/user", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/user", None, None).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(response.headers()[header::WWW_AUTHENTICATE].to_str().unwrap().starts_with("Bearer"));
         assert_eq!(json["message"], "Requires authentication");
-        let (response, _) = fixture.send("GET", "/api/v1/user", Some("rbit_not-a-real-token"), None).await;
+        let (response, _) = fixture.send_text("GET", "/api/v1/user", Some("rbit_not-a-real-token"), None).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
-        let (response, json) = fixture.send("GET", "/api/v1/user", Some(&read), None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/user", Some(&read), None).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!((json["login"].as_str(), json["email"].as_str()), (Some("alice"), Some("alice@example.com")));
         assert_eq!(json["url"], "https://git.example.com/api/v1/users/alice");
 
         // read → GET only; write may create.
         let body = r#"{"name":"demo","private":true}"#;
-        let (response, json) = fixture.send("POST", "/api/v1/user/repos", Some(&read), Some(body)).await;
+        let (response, json) = fixture.send_text("POST", "/api/v1/user/repos", Some(&read), Some(body)).await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "{json}");
-        let (response, json) = fixture.send("POST", "/api/v1/user/repos", Some(&write), Some(body)).await;
+        let (response, json) = fixture.send_text("POST", "/api/v1/user/repos", Some(&write), Some(body)).await;
         assert_eq!(response.status(), StatusCode::CREATED, "{json}");
         assert_eq!(response.headers()[header::LOCATION], "https://git.example.com/api/v1/repos/alice/demo");
         assert_eq!((json["full_name"].as_str(), json["private"].as_bool()), (Some("alice/demo"), Some(true)));
-        let (response, json) = fixture.send("POST", "/api/v1/user/repos", Some(&write), Some(body)).await;
+        let (response, json) = fixture.send_text("POST", "/api/v1/user/repos", Some(&write), Some(body)).await;
         assert_eq!(response.status(), StatusCode::CONFLICT, "{json}");
-        let (response, json) = fixture.send("POST", "/api/v1/user/repos", Some(&write), Some(r#"{"name":"bad name"}"#)).await;
+        let (response, json) = fixture.send_text("POST", "/api/v1/user/repos", Some(&write), Some(r#"{"name":"bad name"}"#)).await;
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(json["errors"][0]["field"], "name");
 
         // Bodies: malformed, the wrong type, too large.
-        let (response, _) = fixture.send("POST", "/api/v1/user/repos", Some(&write), Some("{not json")).await;
+        let (response, _) = fixture.send_text("POST", "/api/v1/user/repos", Some(&write), Some("{not json")).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let huge = format!(r#"{{"name":"x","description":"{}"}}"#, "a".repeat(MAX_BODY_BYTES));
-        let (response, _) = fixture.send("POST", "/api/v1/user/repos", Some(&write), Some(&huge)).await;
+        let (response, _) = fixture.send_text("POST", "/api/v1/user/repos", Some(&write), Some(&huge)).await;
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 
         // Admin actions need the admin scope even for the owner.
-        let (response, json) = fixture.send("PATCH", "/api/v1/repos/alice/demo", Some(&write), Some(r#"{"description":"x"}"#)).await;
+        let (response, json) = fixture.send_text("PATCH", "/api/v1/repos/alice/demo", Some(&write), Some(r#"{"description":"x"}"#)).await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert!(json["message"].as_str().unwrap().contains("admin scope"));
-        let (response, json) = fixture.send("GET", "/api/v1/repos/alice/demo", Some(&read), None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/repos/alice/demo", Some(&read), None).await;
         assert_eq!(json["permissions"], serde_json::json!({ "admin": false, "push": false, "pull": true }), "capped by the read scope");
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -453,21 +398,21 @@ mod tests {
             "/api/v1/repos/alice/vault/hooks",
             "/api/v1/repos/alice/nope",
         ] {
-            let (response, json) = fixture.send("GET", path, Some(&bobs), None).await;
+            let (response, json) = fixture.send_text("GET", path, Some(&bobs), None).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
             assert_eq!(json["message"], "Not Found");
         }
-        let (response, _) = fixture.send("DELETE", "/api/v1/repos/alice/vault", Some(&bobs), None).await;
+        let (response, _) = fixture.send_text("DELETE", "/api/v1/repos/alice/vault", Some(&bobs), None).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        let (response, _) = fixture.send("GET", "/api/v1/repos/alice/vault", None, None).await;
+        let (response, _) = fixture.send_text("GET", "/api/v1/repos/alice/vault", None, None).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "anonymous callers too");
 
         for path in ["/api/v1/nope", "/api/v2/user", "/api", "/api/"] {
-            let (response, json) = fixture.send("GET", path, None, None).await;
+            let (response, json) = fixture.send_text("GET", path, None, None).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
             assert_eq!(json["message"], "Not Found", "{path}");
         }
-        let (response, json) = fixture.send("GET", "/api/v1/openapi.json", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/openapi.json", None, None).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert!(json["paths"].is_object());
     }
@@ -480,7 +425,7 @@ mod tests {
             let input = CreateRepository { name: name.to_owned(), description: String::new(), visibility: rbit_core::Visibility::Public };
             fixture.services.repositories.create(&alice, input).await.unwrap();
         }
-        let (response, json) = fixture.send("GET", "/api/v1/users/alice/repos?per_page=50", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/users/alice/repos?per_page=50", None, None).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(json.as_array().unwrap().len(), 2, "per_page is capped by max_page_size");
         assert_eq!(response.headers()["x-total-count"], "3");
@@ -488,10 +433,10 @@ mod tests {
         assert!(link.contains("<https://git.example.com/api/v1/users/alice/repos?per_page=2&page=2>; rel=\"next\""), "{link}");
         assert!(link.contains("rel=\"last\""));
 
-        let (response, json) = fixture.send("GET", "/api/v1/users/alice/repos?per_page=2&page=2", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/users/alice/repos?per_page=2&page=2", None, None).await;
         assert_eq!(json.as_array().unwrap().len(), 1);
         assert!(response.headers()[header::LINK].to_str().unwrap().contains("rel=\"prev\""));
-        let (response, json) = fixture.send("GET", "/api/v1/users/alice/repos?page=x", None, None).await;
+        let (response, json) = fixture.send_text("GET", "/api/v1/users/alice/repos?page=x", None, None).await;
         assert_eq!((response.status(), json["errors"][0]["field"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some("page")));
     }
 
@@ -499,7 +444,7 @@ mod tests {
     async fn a_disabled_api_is_not_there() {
         let fixture = Fixture::new(|config| config.api.enabled = false).await;
         for path in ["/api/v1/version", "/api/v1/openapi.json", "/api/v1/user"] {
-            let (response, _) = fixture.send("GET", path, None, None).await;
+            let (response, _) = fixture.send_text("GET", path, None, None).await;
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
         }
     }

@@ -1,3 +1,5 @@
+//! The offline page used by the progressive web app.
+
 use askama::Template;
 use askama_web::WebTemplate;
 

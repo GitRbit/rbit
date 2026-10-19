@@ -1,4 +1,4 @@
-//! Profile and account-settings use-cases against real, temporary SQLite and redb stores.
+//! Profile and account-settings use-cases against real, temporary `SQLite` and redb stores.
 
 use std::sync::Arc;
 

@@ -1,4 +1,4 @@
-//! Pull mirror scheduling state against a real, migrated SQLite database.
+//! Pull mirror scheduling state against a real, migrated `SQLite` database.
 
 use rbit_core::{RepoId, Timestamp, Visibility};
 use rbit_storage::{Database, NewRepository, NewUser};

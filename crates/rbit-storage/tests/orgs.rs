@@ -1,4 +1,4 @@
-//! Organisation and membership persistence against a real, migrated SQLite database.
+//! Organisation and membership persistence against a real, migrated `SQLite` database.
 
 use rbit_core::{AccountId, OrgRole, RepoSort, User, Visibility};
 use rbit_storage::{

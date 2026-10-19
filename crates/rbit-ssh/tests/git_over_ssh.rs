@@ -179,7 +179,7 @@ fn openssh_available() -> bool {
 
 struct PersistentClient;
 
-#[allow(clippy::unused_async_trait_impl)]
+#[allow(unknown_lints, clippy::unused_async_trait_impl)]
 impl client::Handler for PersistentClient {
     type Error = russh::Error;
 

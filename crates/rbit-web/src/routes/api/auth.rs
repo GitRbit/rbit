@@ -12,7 +12,7 @@
 //! endpoint under the new name, as GitHub does ([`ApiError::moved`]). A repository that
 //! now has the old name wins, and repositories the caller may not read stay 404, so a
 //! new name never leaks.
-#![allow(clippy::unused_async_trait_impl)]
+#![allow(unknown_lints, clippy::unused_async_trait_impl)]
 
 use std::sync::Arc;
 

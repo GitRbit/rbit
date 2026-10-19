@@ -10,7 +10,7 @@ use rbit_core::{IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, State
 use rbit_e2e::{Client, StatusCode, TestServer};
 use rbit_storage::{Database, sqlite::issues::NewIssue};
 
-/// The server's database, opened a second time (SQLite in WAL mode allows that).
+/// The server's database, opened a second time (`SQLite` in WAL mode allows that).
 struct Store {
     database: Database,
 }

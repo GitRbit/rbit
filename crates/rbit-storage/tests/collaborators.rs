@@ -1,5 +1,5 @@
 //! Collaborators, per-viewer grants and repository transfer against a real, migrated
-//! SQLite database.
+//! `SQLite` database.
 
 use rbit_core::{
     AccountId, OrgRole, RepoId, User, Visibility,

@@ -1,4 +1,4 @@
-//! Password reset and email verification against real, temporary SQLite and redb stores,
+//! Password reset and email verification against real, temporary `SQLite` and redb stores,
 //! with an in-memory mailer capturing every message.
 
 use std::{

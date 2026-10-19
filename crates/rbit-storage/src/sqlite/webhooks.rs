@@ -51,7 +51,7 @@ macro_rules! select_delivery {
 /// service's decision.
 #[derive(Debug, Clone)]
 pub struct NewWebhook {
-    /// The id to store the hook under; `None` lets SQLite choose. The service passes one
+    /// The id to store the hook under; `None` lets `SQLite` choose. The service passes one
     /// reserved from the event bus, so events can tell which hooks existed when they
     /// happened.
     pub id: Option<WebhookId>,

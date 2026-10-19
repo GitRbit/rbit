@@ -17,7 +17,7 @@
 //! (download) or push (upload); it is refused when `[lfs] enabled` is off.
 
 // Every handler method is written as `async fn` for uniformity, whether or not it awaits.
-#![allow(clippy::unused_async_trait_impl)]
+#![allow(unknown_lints, clippy::unused_async_trait_impl)]
 
 use std::{
     collections::HashMap,
@@ -127,7 +127,7 @@ impl Connection {
 
     /// Opens the repository named by `command` with exactly the access HTTP would grant.
     /// The error is the message shown to the client.
-    async fn authorize(&self, identity: &SshIdentity, command: &GitCommand) -> Result<RepoContext, String> {
+    async fn authorize(&self, identity: &SshIdentity, command: &GitCommand, check_write_access: bool) -> Result<RepoContext, String> {
         let services = &self.shared.services;
         let full_name = command.full_name();
         let opened = match identity {
@@ -147,7 +147,7 @@ impl Connection {
             Err(ServiceError::NotFound) => return Err(format!("repository {full_name} not found, or you do not have access to it")),
             Err(error) => return Err(internal(&error)),
         };
-        if command.service.is_write() && !ctx.access.can_write() {
+        if check_write_access && command.service.is_write() && !ctx.access.can_write() {
             return Err(match identity {
                 SshIdentity::Deploy { .. } => format!("this deploy key is read-only; it cannot push to {full_name}"),
                 SshIdentity::User { .. } => format!("you do not have permission to push to {full_name}"),
@@ -170,7 +170,7 @@ impl Connection {
         if !lfs.enabled() {
             return Err("Git LFS is not enabled on this server".to_owned());
         }
-        let ctx = self.authorize(identity, &request.as_git_command()).await?;
+        let ctx = self.authorize(identity, &request.as_git_command(), true).await?;
         let subject = match identity {
             SshIdentity::User { user, .. } => TokenSubject::User(user.id()),
             SshIdentity::Deploy { key, .. } => TokenSubject::DeployKey(*key),
@@ -220,14 +220,65 @@ fn finish_with_message(session: &mut Session, channel: ChannelId, message: &str,
     session.close(channel)
 }
 
-/// Accepts a request, writes `output` to the client's stdout and ends the channel
-/// successfully.
-fn finish_with_output(session: &mut Session, channel: ChannelId, output: &[u8]) -> Result<(), russh::Error> {
+/// Accepts a request, writes `output` to stdout, and flushes before ending the channel.
+fn finish_pending_with_output(
+    session: &mut Session,
+    channel: ChannelId,
+    pending: PendingChannel,
+    output: Vec<u8>,
+) -> Result<(), russh::Error> {
     session.channel_success(channel)?;
-    session.data(channel, output.to_vec())?;
-    session.exit_status_request(channel, 0)?;
-    session.eof(channel)?;
-    session.close(channel)
+    tokio::spawn(async move {
+        let PendingChannel { channel, _slot, .. } = pending;
+        let (_input, writer) = channel.split();
+        let mut stdout = writer.make_writer();
+        let _ = stdout.write_all(&output).await;
+        let _ = stdout.flush().await;
+        let _ = writer.exit_status(0).await;
+        let _ = writer.eof().await;
+        let _ = writer.close().await;
+    });
+    Ok(())
+}
+
+/// Accepts a request, writes `message` to stderr, and flushes before ending the channel.
+fn finish_pending_with_message(
+    session: &mut Session,
+    channel: ChannelId,
+    pending: PendingChannel,
+    message: String,
+    status: u32,
+) -> Result<(), russh::Error> {
+    session.channel_success(channel)?;
+    tokio::spawn(async move {
+        let PendingChannel { channel, _slot, .. } = pending;
+        let (_input, writer) = channel.split();
+        let mut stderr = writer.make_writer_ext(Some(STDERR));
+        let _ = stderr.write_all(message.as_bytes()).await;
+        let _ = stderr.flush().await;
+        let _ = writer.exit_status(status).await;
+        let _ = writer.eof().await;
+        let _ = writer.close().await;
+    });
+    Ok(())
+}
+
+/// Ends a Git service with a flushed protocol error packet, so the client does not wait
+/// for a ref advertisement that will never arrive.
+fn finish_with_git_error(session: &mut Session, channel: ChannelId, pending: PendingChannel, message: String) -> Result<(), russh::Error> {
+    session.channel_success(channel)?;
+    tokio::spawn(async move {
+        let PendingChannel { channel, _slot, .. } = pending;
+        let (_input, writer) = channel.split();
+        let mut stdout = writer.make_writer();
+        let packet = rbit_transport::pkt_line::encode(&format!("ERR {message}\n"));
+        let _ = stdout.write_all(&packet).await;
+        let _ = stdout.flush().await;
+        let _ = writer.exit_status(FAILURE).await;
+        let _ = writer.eof().await;
+        let _ = writer.close().await;
+    });
+    Ok(())
 }
 
 impl Handler for Connection {
@@ -349,7 +400,7 @@ impl Handler for Connection {
         };
         let identity = match self.current_identity(&identity).await {
             Ok(identity) => identity,
-            Err(message) => return finish_with_message(session, channel, &format!("ERROR: {message}\r\n"), FAILURE),
+            Err(message) => return finish_pending_with_message(session, channel, pending, format!("ERROR: {message}\r\n"), FAILURE),
         };
         self.identity = Some(identity.clone());
         // Milestone 3: Git LFS (L).
@@ -359,13 +410,14 @@ impl Handler for Connection {
                 Err(error) => Err(error.to_string()),
             };
             return match answer {
-                Ok(json) => finish_with_output(session, channel, json.as_bytes()),
+                Ok(json) => finish_pending_with_output(session, channel, pending, json.into_bytes()),
                 Err(message) => {
                     tracing::info!(peer = %self.peer, reason = %message, "SSH git-lfs-authenticate refused");
-                    finish_with_message(
+                    finish_pending_with_message(
                         session,
                         channel,
-                        &format!(
+                        pending,
+                        format!(
                             "ERROR: {message}
 "
                         ),
@@ -378,14 +430,16 @@ impl Handler for Connection {
             Ok(command) => command,
             Err(error) => {
                 tracing::info!(peer = %self.peer, command = %String::from_utf8_lossy(data).chars().take(80).collect::<String>(), "SSH command refused");
-                return finish_with_message(session, channel, &format!("ERROR: {error}\r\n"), FAILURE);
+                return finish_pending_with_message(session, channel, pending, format!("ERROR: {error}\r\n"), FAILURE);
             }
         };
-        let ctx = match self.authorize(&identity, &command).await {
+        // Let receive-pack read the command list before it refuses missing write access.
+        // Some Git clients wait forever when an SSH server closes before advertising refs.
+        let ctx = match self.authorize(&identity, &command, false).await {
             Ok(ctx) => ctx,
             Err(message) => {
                 tracing::info!(peer = %self.peer, repo = %command.full_name(), service = %command.service, reason = %message, "SSH Git request refused");
-                return finish_with_message(session, channel, &format!("ERROR: {message}\r\n"), FAILURE);
+                return finish_with_git_error(session, channel, pending, message);
             }
         };
         session.channel_success(channel)?;
@@ -528,13 +582,19 @@ where
                     return refused(0);
                 }
                 let actor = PushActor { user, deploy_key, access: ctx.access };
-                let verdict = match shared.services.protection.check_push(ctx, &actor, &commands.updates()).await {
+                let mut verdict = match shared.services.protection.check_push(ctx, &actor, &commands.updates()).await {
                     Ok(verdict) => verdict,
                     Err(error) => {
                         stderr.write_all(format!("ERROR: {}\r\n", internal(&error)).as_bytes()).await?;
                         return refused(FAILURE);
                     }
                 };
+                if deploy_key && !ctx.access.can_write() {
+                    let reason = format!("this deploy key is read-only; it cannot push to {}", ctx.repo.full_name());
+                    for refusal in &mut verdict.refusals {
+                        refusal.reason.clone_from(&reason);
+                    }
+                }
                 if verdict.is_refused() {
                     receive::drain(input).await;
                     let report = receive::refusal(&commands, &verdict.refusals);

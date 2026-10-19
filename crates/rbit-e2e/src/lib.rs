@@ -4,7 +4,7 @@
 //! application with:
 //!
 //! * [`TestServer`] boots the complete application exactly as `rbit serve` does
-//!   (SQLite, redb, services with their background tasks, the full router) on an
+//!   (`SQLite`, redb, services with their background tasks, the full router) on an
 //!   ephemeral `127.0.0.1` port with a temporary data directory. Each server runs on its
 //!   own thread and Tokio runtime, so tests stay independent and parallel, and dropping
 //!   the server shuts it down and removes its data directory.

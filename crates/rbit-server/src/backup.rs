@@ -5,7 +5,7 @@
 //!
 //! ```text
 //! DIR/
-//! ├── rbit.db                      # SQLite, written with `VACUUM INTO`
+//! ├── rbit.db                      # `SQLite`, written with `VACUUM INTO`
 //! ├── repositories/<owner>/<id>.git  # bare mirrors made with `git clone --mirror`
 //! ├── attachments/<repo>/<asset>     # files attached to releases
 //! ├── lfs/<aa>/<bb>/<oid>            # Git LFS objects
@@ -59,7 +59,7 @@ pub struct Manifest {
     pub rbit_version: &'static str,
     /// RFC 3339, UTC.
     pub created_at: String,
-    /// File name of the SQLite snapshot inside the backup directory.
+    /// File name of the `SQLite` snapshot inside the backup directory.
     pub database: &'static str,
     pub accounts: u64,
     pub repositories: u64,

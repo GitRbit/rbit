@@ -1,6 +1,6 @@
 //! Operational endpoints for load balancers, orchestrators and monitoring.
 //!
-//! * `GET /healthz` — JSON `{status, database, kv}`; 503 when SQLite or redb fails a
+//! * `GET /healthz` — JSON `{status, database, kv}`; 503 when `SQLite` or redb fails a
 //!   trivial read. Suitable for container health checks.
 //! * `GET /readyz` — the same checks plus the repository directory; use it to decide
 //!   whether to route traffic to this instance.

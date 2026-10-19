@@ -1,4 +1,4 @@
-//! The shared issue core (T0) against a real, migrated SQLite database: numbering,
+//! The shared issue core (T0) against a real, migrated `SQLite` database: numbering,
 //! comments, state, locking and the merged timeline.
 
 use rbit_core::{

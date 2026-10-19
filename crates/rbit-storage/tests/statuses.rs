@@ -1,4 +1,4 @@
-//! Commit statuses against a real, migrated SQLite database.
+//! Commit statuses against a real, migrated `SQLite` database.
 
 use rbit_core::{
     AccountId, RepoId, User, Visibility,

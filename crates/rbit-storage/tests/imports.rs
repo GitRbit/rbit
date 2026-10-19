@@ -1,4 +1,4 @@
-//! Import records and imported history against a real, migrated SQLite database.
+//! Import records and imported history against a real, migrated `SQLite` database.
 
 use rbit_core::{
     AccountId, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp, Visibility,

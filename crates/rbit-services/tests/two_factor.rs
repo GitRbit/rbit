@@ -1,5 +1,5 @@
 //! Two-factor enrolment, the two-step sign-in, recovery codes, Git password refusal and
-//! sign-in throttling against real, temporary SQLite and redb stores.
+//! sign-in throttling against real, temporary `SQLite` and redb stores.
 
 use std::sync::Arc;
 

@@ -1,5 +1,5 @@
 //! Session listing, revocation and the password-change rule against real, temporary
-//! SQLite and redb stores.
+//! `SQLite` and redb stores.
 
 use std::{sync::Arc, time::Duration};
 

@@ -16,7 +16,7 @@ use sqlx::SqlitePool;
 
 use crate::StorageError;
 
-/// Maximum recipients in one fan-out transaction, keeping SQLite's writer available
+/// Maximum recipients in one fan-out transaction, keeping `SQLite`'s writer available
 /// between batches even for threads with many subscribers.
 pub const NOTIFICATION_BATCH_SIZE: usize = 100;
 

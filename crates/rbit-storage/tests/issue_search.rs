@@ -1,5 +1,5 @@
 //! Issue lists (workstream I): every filter, sorting, counts per tab and FTS5 search,
-//! against a real, migrated SQLite database.
+//! against a real, migrated `SQLite` database.
 
 use rbit_core::{
     AccountId, IssueId, IssueKind, IssueState, IssueText, IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp, User, Visibility,

@@ -1,4 +1,4 @@
-//! The security audit log against a real, temporary SQLite database.
+//! The security audit log against a real, temporary `SQLite` database.
 
 use std::sync::Arc;
 

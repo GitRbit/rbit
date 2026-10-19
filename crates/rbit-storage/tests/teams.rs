@@ -1,4 +1,4 @@
-//! Teams, their members and repository grants against a real, migrated SQLite database.
+//! Teams, their members and repository grants against a real, migrated `SQLite` database.
 
 use rbit_core::{
     AccountId, OrgRole, RepoId, User, Visibility,

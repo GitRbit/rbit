@@ -1,4 +1,4 @@
-//! External sign-in (workstream O) against real, temporary SQLite and redb stores: the
+//! External sign-in (workstream O) against real, temporary `SQLite` and redb stores: the
 //! linking rules, registration through a provider, the second factor, suspension, the
 //! last-method guard and the checks a callback passes before any provider is contacted.
 //! The HTTP side (discovery, keys, token exchange) is covered end to end against fake

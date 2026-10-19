@@ -9,9 +9,10 @@ use axum::{
     http::{Request, Response, header},
 };
 use rbit_core::{Config, TokenScope, User, Visibility};
-use rbit_services::{CreateAccessToken, CreateRepository, Services, SignUp};
+use rbit_services::{CreateAccessToken, CreateRepository, DomainEvent, Services, SignUp};
 use rbit_storage::{Database, KvStore};
 use serde_json::Value;
+use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 use tower::ServiceExt;
 
 use crate::AppState;
@@ -60,6 +61,25 @@ impl Fixture {
         let (response, bytes) = self.raw(method, path, token, content_type, body.map(|body| body.to_string().into_bytes())).await;
         let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
         (response, json)
+    }
+
+    /// A request whose body may contain malformed JSON.
+    pub async fn send_text(&self, method: &str, path: &str, token: Option<&str>, body: Option<&str>) -> (Response<Body>, Value) {
+        let content_type = body.map(|_| "application/json");
+        let (response, bytes) = self.raw(method, path, token, content_type, body.map(str::as_bytes).map(<[u8]>::to_vec)).await;
+        let json = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::Null) };
+        (response, json)
+    }
+
+    /// Delivers the events published so far to the notification fan-out.
+    pub async fn deliver(&self, events: &mut Receiver<DomainEvent>) {
+        loop {
+            match events.try_recv() {
+                Ok(event) => self.services.notifications.handle_event(&event).await.unwrap(),
+                Err(TryRecvError::Empty | TryRecvError::Closed) => return,
+                Err(TryRecvError::Lagged(_)) => panic!("lagged"),
+            }
+        }
     }
 
     /// Any request; the response body as bytes.

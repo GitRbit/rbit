@@ -26,7 +26,7 @@
 //! * **Retention.** A daily task drops finished deliveries older than
 //!   `delivery_retention_days`.
 //!
-//! The queue lives in SQLite, so a restart loses nothing: deliveries claimed when the
+//! The queue lives in `SQLite`, so a restart loses nothing: deliveries claimed when the
 //! process stopped are returned to the queue at start-up. With `[webhooks] enabled =
 //! false` hooks can still be configured, but no events are queued and nothing is sent.
 
