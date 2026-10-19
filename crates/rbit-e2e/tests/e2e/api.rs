@@ -489,7 +489,12 @@ async fn a_hook_created_through_the_api_receives_a_signed_push() {
     assert!(detail["response"]["headers"].is_object());
     assert_eq!(detail["request"]["headers"]["X-Rbit-Event"], "push");
     let again = admin.post(&format!("{}/attempts", deliveries[0]["url"].as_str().unwrap()), serde_json::json!({})).await;
-    assert_eq!(again.expect(StatusCode::ACCEPTED)["status"], "pending");
+    let again = again.expect(StatusCode::ACCEPTED);
+    assert_ne!(again["id"], deliveries[0]["id"], "redelivery gets its own log entry");
+    assert_ne!(again["guid"], deliveries[0]["guid"], "redelivery gets its own delivery identifier");
+    // The worker is notified before the API reads the new delivery, so it may have
+    // claimed or completed the attempt by the time the response is serialized.
+    assert!(matches!(again["status"].as_str(), Some("pending" | "delivering" | "succeeded")), "{again}");
     assert_eq!(receiver.wait_for(3).await[2].body, push.body);
 
     // Changing and deleting.
