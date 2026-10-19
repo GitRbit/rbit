@@ -19,6 +19,7 @@ import "./repo.js";
 import "./contributions.js";
 import "./branch-graph.js";
 import "./mirror-progress.js";
+import "./markdown.js";
 
 // Long code and diff views: exact placeholder heights for virtual blocks.
 import "./blocks.js";

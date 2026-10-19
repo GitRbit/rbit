@@ -1571,3 +1571,6 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph td { height: 48px; border-bottom: 1px solid var(--line); }
 .branch-graph tr:last-child td { border-bottom: 0; }
 .branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }
+
+/* Diagram styles are contained in a sandbox; only the frame belongs to the page. */
+.mermaid-frame { width: 100%; border: 1px solid var(--line); border-radius: .375rem; margin-block: 1rem; }
