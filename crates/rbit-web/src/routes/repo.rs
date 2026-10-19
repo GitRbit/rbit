@@ -28,14 +28,34 @@ use crate::{
         ref_picker::{RefPickerLinks, RefPickerQuery, RefTarget},
         releases::LatestRelease,
         repo::{
-            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
-            TreePage, breadcrumbs,
+            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, RefSwitcher, RepoHeader,
+            RepositoryDocumentsFragment, TreePage, breadcrumbs,
         },
         statuses::{CHECKS_ANCHOR, StatusMark},
     },
 };
 
 const COMMITS_PER_PAGE: usize = 30;
+
+#[path = "repository_documents.rs"]
+mod repository_documents;
+
+/// Kept flat because `serde_urlencoded`'s flattened maps lose the string-to-number
+/// conversion used for numeric pagination fields.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct TreeQuery {
+    q: String,
+    page: usize,
+    document: Option<String>,
+    document_fragment: bool,
+}
+
+impl TreeQuery {
+    fn listing(&self) -> ListQuery {
+        ListQuery { q: self.q.clone(), page: self.page }.normalized()
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ActivityQuery {
@@ -252,7 +272,7 @@ pub async fn home(
     viewer: Viewer,
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<TreeQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     if loaded.mirror_url.is_some()
@@ -270,7 +290,7 @@ pub async fn home(
         let page = page.titled(loaded.ctx.repo.full_name());
         return Ok(EmptyRepoPage { page, header, default_branch: loaded.default_branch().to_owned() }.into_response());
     };
-    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new(), query.normalized()).await?.into_response())
+    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new(), query).await?.into_response())
 }
 
 /// `GET /{owner}/{repo}/tree/{revision}/{path…}`
@@ -279,11 +299,30 @@ pub async fn tree(
     viewer: Viewer,
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
-    Query(query): Query<ListQuery>,
-) -> WebResult<TreePage> {
+    Query(query): Query<TreeQuery>,
+) -> WebResult<Response> {
+    if query.document_fragment {
+        // Tab switches need only the selected bounded document. In particular they
+        // must not calculate repository language statistics or page decorations.
+        let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
+        let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+        let view = ctx.reader.tree(revision, path.clone()).await.map_err(ServiceError::from)?;
+        let urls = RepoUrls::new(&owner, &repo);
+        let (documents, readme) = repository_documents::load(
+            &ctx.reader,
+            &urls,
+            &view.commit.id,
+            &path,
+            &view.entries,
+            &query,
+            state.services.repositories.max_render_bytes(),
+        )
+        .await?;
+        return Ok(RepositoryDocumentsFragment { document_scope: urls.home(), documents, readme }.into_response());
+    }
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.split(rest).await?;
-    render_tree(&state, &viewer, loaded, page, revision, path, query.normalized()).await
+    Ok(render_tree(&state, &viewer, loaded, page, revision, path, query).await?.into_response())
 }
 
 async fn render_tree(
@@ -293,34 +332,36 @@ async fn render_tree(
     page: Page,
     revision: String,
     path: String,
-    query: ListQuery,
+    query: TreeQuery,
 ) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
     let commit_id = reader.commit_id(revision.clone()).await.map_err(ServiceError::from)?;
+    let listing_query = query.listing();
     // Pin the listing and language statistics to the same revision snapshot.
-    let listing = async {
-        let view = reader.tree(commit_id.clone(), path.clone()).await?;
-        let readme = reader.readme(view.commit.id.clone(), &view.entries, &path, state.services.repositories.max_render_bytes()).await?;
-        Ok::<_, rbit_git::GitError>((view, readme))
-    };
+    let listing = reader.tree(commit_id.clone(), path.clone());
     let (listing, languages, latest_release, collaborator) = tokio::join!(
         listing,
         language_bar(state, &loaded, &commit_id),
         latest_release(state, &loaded),
         collaborator_access(state, viewer, &loaded)
     );
-    let (view, readme) = listing.map_err(ServiceError::from)?;
-    let readme = readme.map(|(name, text)| {
-        let is_markdown = is_markdown(&name);
-        let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), path.clone());
-        let html = if is_markdown { render_markdown(&text, Some(&base)) } else { escape(&text) };
-        ReadmeView { name, html, is_markdown }
-    });
+    let view = listing.map_err(ServiceError::from)?;
+    let (documents, readme) = repository_documents::load(
+        reader,
+        &loaded.urls,
+        &view.commit.id,
+        &path,
+        &view.entries,
+        &query,
+        state.services.repositories.max_render_bytes(),
+    )
+    .await?;
 
     let urls = &loaded.urls;
-    let filtered = matching_entries(&view.entries, &query.q);
-    let pagination = Pagination::new(filtered.len(), &query, urls.tree(&view.commit.id, &path), vec![]);
-    let cells = Pagination::new(filtered.len(), &query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
+    let filtered = matching_entries(&view.entries, &listing_query.q);
+    let document_query = readme.as_ref().map(|document| vec![("document".to_owned(), document.path.clone())]).unwrap_or_default();
+    let pagination = Pagination::new(filtered.len(), &listing_query, urls.tree(&view.commit.id, &path), document_query);
+    let cells = Pagination::new(filtered.len(), &listing_query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
     let entries = filtered[pagination.start..pagination.end]
         .iter()
         .copied()
@@ -354,6 +395,8 @@ async fn render_tree(
         entry_commits_url: cells.url(cells.page),
         pagination,
         readme,
+        documents,
+        document_scope: urls.home(),
         history_url: urls.commits(&revision),
         languages,
         language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),
@@ -557,6 +600,7 @@ pub async fn raw(
 pub struct PageQuery {
     page: Option<usize>,
     year: Option<i32>,
+    calendar: Option<String>,
 }
 
 /// `GET /{owner}/{repo}/commits` — history of the default branch.
@@ -579,17 +623,24 @@ pub async fn commits(
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
     Query(query): Query<PageQuery>,
-) -> WebResult<CommitsPage> {
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, _) = loaded.split(rest).await?;
     render_commits(&state, loaded, page, revision, query).await
 }
 
-async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<CommitsPage> {
+async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<Response> {
     let calendar =
         crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
     let (start, end) = calendar.bounds();
-    let contributions = calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?);
+    let contributions = if query.calendar.is_some() {
+        calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?)
+    } else {
+        calendar.deferred()
+    };
+    if query.calendar.as_deref() == Some("fragment") {
+        return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
+    }
     let page_number = query.page.unwrap_or(1).max(1);
     let skip = commit_offset(page_number)?;
     // Fetch one extra to learn whether an older page exists.
@@ -621,7 +672,8 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
         newer_url: (page_number > 1).then(|| format!("{base}?year={}&page={}", contributions.year, page_number - 1)),
         older_url: has_older.then(|| format!("{base}?year={}&page={}", contributions.year, page_number + 1)),
         contributions,
-    })
+    }
+    .into_response())
 }
 
 /// Reject overflowing offsets instead of panicking or wrapping back to earlier commits.

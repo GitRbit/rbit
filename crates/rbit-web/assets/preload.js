@@ -22,6 +22,7 @@
 //   (the server's answer is authoritative). Preloads send `HX-Preloaded`.
 
 import { navigationEpoch, navigationHeaders } from "./nav.js";
+import { hasNavigationResponse, trackNavigationPreload } from "./repo-navigation-cache.js";
 
 const HOVER_DELAY_MS = 80;
 const TOUCH_DELAY_MS = 60;
@@ -30,7 +31,7 @@ const TOUCH_SLOP_PX = 8;
 const MAX_IN_FLIGHT = 2;
 const MAX_QUEUED = 6;
 const MAX_RECORDS = 128;
-const VISIBLE_BUDGET = 4;
+const VISIBLE_BUDGET = 7;
 const FRESH_MS = (Number(document.body.dataset.preloadFresh) || 30) * 1000;
 
 const NO_PRELOAD = [
@@ -54,6 +55,8 @@ const NO_PRELOAD = [
 const DISCUSSION = /^\/[^/]+\/[^/]+\/(issues|pull)\/\d+(\/|$)/;
 
 const HTMX_REQUEST = ["get", "post", "put", "patch", "delete"].flatMap((verb) => [`[hx-${verb}]`, `[data-hx-${verb}]`]).join(",");
+const REPOSITORY_TABS = new Set(["code", "issues", "pulls", "commits", "branches", "tags", "releases"]);
+const isRepositoryTab = link => REPOSITORY_TABS.has(link.getAttribute("data-repo-tab")) && Boolean(link.closest(".repo-tabs"));
 
 /**
  * Whether `link`'s target may be fetched ahead of the click. Checked only when the viewer
@@ -141,12 +144,13 @@ function preload(link, { soon = true } = {}) {
   const url = new URL(link.href, location.href);
   url.hash = "";
   const headers = navigationHeaders(url.href);
+  if (isRepositoryTab(link) && hasNavigationResponse(url.href, headers)) return null;
   const key = `${headers["Rbit-Partial"] ?? ""} ${url.href}`;
   const existing = preloaded.get(key);
   if (existing && (!existing.done || performance.now() - existing.at < FRESH_MS)) return null;
   pruneRecords();
 
-  const job = { key, url: url.href, headers, soon, done: false, controller: null, at: 0 };
+  const job = { key, url: url.href, headers, tab: isRepositoryTab(link), soon, done: false, controller: null, at: 0 };
   preloaded.set(key, job);
   // Intent goes first; viewport preloads wait their turn.
   if (soon) queue.unshift(job);
@@ -164,13 +168,13 @@ function pump() {
     job.controller = new AbortController();
     job.at = performance.now();
     active.add(job);
-    fetch(job.url, {
+    const response = fetch(job.url, {
       headers: { ...job.headers, "HX-Preloaded": "true" },
       credentials: "same-origin",
       priority: job.soon ? "high" : "low",
       signal: job.controller.signal,
-    })
-      .then(drain)
+    });
+    (job.tab ? trackNavigationPreload(job.url, job.headers, response, job.controller.signal) : response.then(drain))
       .then((successful) => {
         if (successful && !job.controller.signal.aborted) job.done = true;
         else forget(job);
@@ -217,7 +221,12 @@ document.addEventListener("pointerover", (event) => {
   if (link === hover?.link) return;
   cancelHover();
   if (!link || !isPreloadable(link)) return;
-  hover = { link, timer: setTimeout(() => (cancelHover(), preload(link)), HOVER_DELAY_MS) };
+  hover = { link, timer: setTimeout(() => (cancelHover(), preload(link)), isRepositoryTab(link) ? 0 : HOVER_DELAY_MS) };
+});
+
+document.addEventListener("focusin", event => {
+  const link = linkOf(event.target);
+  if (link && isRepositoryTab(link)) preload(link);
 });
 
 document.addEventListener("pointerout", (event) => {

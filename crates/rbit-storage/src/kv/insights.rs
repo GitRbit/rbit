@@ -31,6 +31,10 @@ const TREE_LAST_COMMIT: TableDefinition<'_, (&str, &str), &[u8]> = TableDefiniti
 /// `(base commit id, head commit id)` → encoded [`CachedComparisonCounts`].
 const COMPARISON_COUNTS: TableDefinition<'_, (&str, &str), &[u8]> = TableDefinition::new("comparison_counts");
 
+/// `(tip, scan policy)` to bounded contribution records.
+const CONTRIBUTIONS: TableDefinition<'_, (&str, &str), &[u8]> = TableDefinition::new("contributions");
+pub type CachedContributions = (Vec<(String, i64, String)>, bool);
+
 /// `(entry kind, commit id, directory)` → Unix seconds when the entry was written.
 const ENTRY_WRITTEN: TableDefinition<'_, (u8, &str, &str), u64> = TableDefinition::new("insights_entry_written");
 
@@ -46,6 +50,7 @@ enum EntryKind {
     LastCommits = 1,
     /// [`COMPARISON_COUNTS`]; the "directory" is the head commit id.
     ComparisonCounts = 2,
+    Contributions = 3,
 }
 
 impl EntryKind {
@@ -58,6 +63,7 @@ impl EntryKind {
             0 => Some(Self::Languages),
             1 => Some(Self::LastCommits),
             2 => Some(Self::ComparisonCounts),
+            3 => Some(Self::Contributions),
             _ => None,
         }
     }
@@ -167,6 +173,7 @@ impl InsightsCache {
         tx.open_table(LANGUAGE_STATS).map_err(kv_error)?;
         tx.open_table(TREE_LAST_COMMIT).map_err(kv_error)?;
         tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?;
+        tx.open_table(CONTRIBUTIONS).map_err(kv_error)?;
         tx.open_table(ENTRY_WRITTEN).map_err(kv_error)?;
         tx.open_table(ENTRIES_BY_AGE).map_err(kv_error)?;
         tx.commit().map_err(kv_error)
@@ -239,6 +246,31 @@ impl InsightsCache {
         .await?
     }
 
+    /// Contribution records for an immutable tip and versioned scan policy.
+    pub async fn contributions(&self, tip: &str, policy: &str) -> Result<Option<CachedContributions>, StorageError> {
+        let db = Arc::clone(&self.db);
+        let (tip, policy) = (tip.to_owned(), policy.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let tx = db.begin_read().map_err(kv_error)?;
+            let table = tx.open_table(CONTRIBUTIONS).map_err(kv_error)?;
+            Ok(table.get((tip.as_str(), policy.as_str())).map_err(kv_error)?.and_then(|value| decode(value.value())))
+        })
+        .await?
+    }
+
+    pub async fn put_contributions(&self, tip: &str, policy: &str, records: Arc<CachedContributions>) -> Result<(), StorageError> {
+        let db = Arc::clone(&self.db);
+        let (tip, policy) = (tip.to_owned(), policy.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let value = encode(records.as_ref())?;
+            let tx = db.begin_write().map_err(kv_error)?;
+            tx.open_table(CONTRIBUTIONS).map_err(kv_error)?.insert((tip.as_str(), policy.as_str()), value.as_slice()).map_err(kv_error)?;
+            record_written(&tx, EntryKind::Contributions, &tip, &policy, unix_now())?;
+            tx.commit().map_err(kv_error)
+        })
+        .await?
+    }
+
     /// The counts of comparing `head` against `base` (both full commit ids), if cached.
     pub async fn comparison_counts(&self, base: &str, head: &str) -> Result<Option<CachedComparisonCounts>, StorageError> {
         let db = Arc::clone(&self.db);
@@ -302,6 +334,7 @@ fn prune_at(db: &redb::Database, limits: PruneLimits, now: u64) -> Result<PruneR
         let mut languages = tx.open_table(LANGUAGE_STATS).map_err(kv_error)?;
         let mut last_commits = tx.open_table(TREE_LAST_COMMIT).map_err(kv_error)?;
         let mut comparisons = tx.open_table(COMPARISON_COUNTS).map_err(kv_error)?;
+        let mut contributions = tx.open_table(CONTRIBUTIONS).map_err(kv_error)?;
 
         let mut remaining = by_age.len().map_err(kv_error)?;
         loop {
@@ -328,6 +361,9 @@ fn prune_at(db: &redb::Database, limits: PruneLimits, now: u64) -> Result<PruneR
                 }
                 Some(EntryKind::ComparisonCounts) => {
                     comparisons.remove((commit_id.as_str(), directory.as_str())).map_err(kv_error)?;
+                }
+                Some(EntryKind::Contributions) => {
+                    contributions.remove((commit_id.as_str(), directory.as_str())).map_err(kv_error)?;
                 }
                 None => {}
             }
@@ -429,6 +465,24 @@ mod tests {
         assert_eq!(cached.commits.len(), 2);
         let pairs: Vec<_> = cached.iter().map(|(name, commit)| (name, commit.id.as_str())).collect();
         assert_eq!(pairs, [("x", "a"), ("y", "b"), ("z", "a")]);
+    }
+
+    #[tokio::test]
+    async fn contribution_records_survive_reopen_and_are_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kv.redb");
+        let records = (vec![("commit".into(), 42, "author@example.com".into())], true);
+        {
+            let store = KvStore::open(&path).unwrap();
+            store.insights().put_contributions("tip", "v2:all", Arc::new(records.clone())).await.unwrap();
+        }
+        let store = KvStore::open(&path).unwrap();
+        let cache = store.insights();
+        assert_eq!(cache.contributions("tip", "v2:all").await.unwrap(), Some(records));
+        assert_eq!(cache.contributions("new-tip", "v2:all").await.unwrap(), None);
+        assert_eq!(cache.contributions("tip", "new-policy").await.unwrap(), None);
+        assert_eq!(cache.prune(None, Some(0)).await.unwrap().evicted, 1);
+        assert_eq!(cache.contributions("tip", "v2:all").await.unwrap(), None);
     }
 
     #[tokio::test]

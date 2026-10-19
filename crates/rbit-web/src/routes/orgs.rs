@@ -127,13 +127,27 @@ pub async fn create(
 // ------------------------------------------------------------------ profile
 
 /// `/{org}`: called by the account profile route once it knows the name is an organisation.
-pub async fn profile(state: &AppState, viewer: &Viewer, page: Page, name: &str, year: Option<i32>) -> WebResult<Response> {
+pub async fn profile(
+    state: &AppState,
+    viewer: &Viewer,
+    page: Page,
+    name: &str,
+    year: Option<i32>,
+    calendar_request: Option<&str>,
+) -> WebResult<Response> {
     let user = viewer.user();
     let ctx = state.services.orgs.open(user, name).await?;
-    let (header, repos) = header(state, user, &ctx, OrgTab::Repositories).await?;
     let calendar = crate::views::contributions::ContributionCalendar::new(year, "Commits across this organization's default branches.", "");
     let (start, end) = calendar.bounds();
-    let contributions = calendar.populate(&state.services.contributions.account(user, &ctx.org.account, start, end).await?);
+    let contributions = if calendar_request.is_some() {
+        calendar.populate(&state.services.contributions.account(user, &ctx.org.account, start, end).await?)
+    } else {
+        calendar.deferred()
+    };
+    if calendar_request == Some("fragment") {
+        return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
+    }
+    let (header, repos) = header(state, user, &ctx, OrgTab::Repositories).await?;
     Ok(OrgProfilePage {
         contributions,
         page: page.titled(ctx.org.label().to_owned()),

@@ -90,6 +90,10 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
   once and shared by forks; the browser shows the stored file, not the pointer.
 - **Repository essentials**: releases with attached files, `.zip`/`.tar.gz` archives, blame, compare, forks,
   pull and push mirrors, README relative links and images.
+- **Repository documents**: sticky document tabs, a searchable heading outline, and sidebar shortcuts
+  for READMEs, licenses, contributing guides, codes of conduct and security policies.
+- **Mermaid diagrams**: fenced `mermaid` blocks render in READMEs and other Markdown views,
+  with an expandable source and a readable fallback for invalid diagrams.
 - **Import from GitHub, GitHub Enterprise and Gitea/Forgejo**: history, LFS objects, issues and pull requests
   with their original numbers, labels, milestones, comments and releases; the token is never stored and
   imported history sends no notifications or webhooks.

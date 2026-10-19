@@ -113,6 +113,7 @@ async function previewLanguageFile(link) {
     for (const element of content.querySelectorAll('[id]')) element.removeAttribute('id');
     preview.replaceChildren(heading, content);
     window.htmx?.process(preview);
+    preview.dispatchEvent(new Event('rbit:content-loaded', { bubbles: true }));
   } catch (error) {
     if (error.name === 'AbortError') return;
     status.textContent = 'Unable to load this file. ';

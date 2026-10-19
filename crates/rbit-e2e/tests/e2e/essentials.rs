@@ -38,9 +38,30 @@ async fn pull_mirrors_fetch_their_upstream() {
         .await
         .expect_redirect("/alice/copy/mirror/progress");
 
+    // A small local upstream may finish before this request. Both states must
+    // keep the user on the progress flow until the completed repository is ready.
+    let progress = alice.get("/alice/copy/mirror/progress").await;
+    if progress.status == StatusCode::SEE_OTHER {
+        progress.expect_redirect("/alice/copy");
+    } else {
+        progress.expect_status(StatusCode::OK).expect_contains(&[
+            "data-mirror-progress",
+            "data-status-url=\"/alice/copy/mirror/status\"",
+            "data-home-url=\"/alice/copy\"",
+        ]);
+    }
+
     // The first fetch runs in the background and brings every branch and tag. Its
     // outcome is recorded after the refs land, so wait for the outcome, not the refs.
     wait_for(&alice, "/alice/copy/settings/mirror", ">OK<").await;
+    wait_for(&alice, "/alice/copy/mirror/status", "\"complete\":true").await;
+    let status = alice.get("/alice/copy/mirror/status").await;
+    status.expect_status(StatusCode::OK);
+    assert_eq!(status.header("cache-control"), Some("no-store"));
+    let status: serde_json::Value = serde_json::from_str(&status.body).expect("mirror progress JSON");
+    assert_eq!(status["phase"], "complete");
+    assert_eq!(status["complete"], true);
+    alice.get("/alice/copy/mirror/progress").await.expect_redirect("/alice/copy");
     alice.get("/alice/copy/branches").await.expect_contains(&["feature"]);
     alice.get("/alice/copy/tags").await.expect_contains(&[Sample::TAG]);
     alice.get("/alice/copy").await.expect_contains(&["mirror of", &upstream]);
@@ -104,24 +125,25 @@ async fn readme_links_resolve_into_the_repository() {
     alice.create_repo("alice", "docs", "public").await;
     let sample = git.sample();
     std::fs::write(sample.dir.join("logo.png"), b"\x89PNG\r\n\x1a\n").unwrap();
-    git.commit_file(&sample.dir, "README.md", "# Docs\n\n[Guide](docs/guide.txt) [Up](../../x) ![Logo](logo.png)\n");
+    let head = git.commit_file(&sample.dir, "README.md", "# Docs\n\n[Guide](docs/guide.txt) [Up](../../x) ![Logo](logo.png)\n");
     git.push_sample(&sample, &server.git_url_as("alice", "docs", "alice", PASSWORD));
 
     let home = server.client().get("/alice/docs").await;
     home.expect_status(StatusCode::OK).expect_contains(&[
-        r#"href="/alice/docs/blob/main/docs/guide.txt""#,
-        r#"src="/alice/docs/raw/main/logo.png""#,
+        &format!(r#"href="/alice/docs/blob/{head}/docs/guide.txt""#),
+        &format!(r#"src="/alice/docs/raw/{head}/logo.png""#),
         r#"<a id="docs""#,
         "<h1>Docs</h1>",
     ]);
     assert!(!home.contains("../../x"), "links escaping the repository are dropped");
 
-    let image = server.client().get("/alice/docs/raw/main/logo.png").await;
+    // Follow the actual immutable image URL emitted by the document renderer.
+    let image = server.client().get(&format!("/alice/docs/raw/{head}/logo.png")).await;
     image.expect_status(StatusCode::OK);
     assert_eq!(image.header("content-type"), Some("image/png"));
     // A directory named as a file redirects to its tree.
-    let directory = server.client().get("/alice/docs/blob/main/docs").await;
-    assert_eq!((directory.status, directory.location()), (StatusCode::SEE_OTHER, Some("/alice/docs/tree/main/docs")));
+    let directory = server.client().get(&format!("/alice/docs/blob/{head}/docs")).await;
+    directory.expect_redirect(&format!("/alice/docs/tree/{head}/docs"));
 }
 
 #[tokio::test]

@@ -140,6 +140,9 @@ pub fn escape_html(text: &str) -> String {
 
 /// Rewrites relative link and image targets; every other attribute passes unchanged.
 fn resolve_attribute<'u>(base: &DocumentBase, element: &str, attribute: &str, value: &'u str) -> Option<Cow<'u, str>> {
+    if matches!(element, "img" | "source") && attribute == "srcset" {
+        return Some(Cow::Owned(resolve_srcset(Some(base), value)));
+    }
     let kind = match (element, attribute) {
         ("a", "href") => LinkKind::Page,
         ("img", "src") => LinkKind::Image,
@@ -151,6 +154,43 @@ fn resolve_attribute<'u>(base: &DocumentBase, element: &str, attribute: &str, va
         // Without its target the link renders as plain text (and the image as nothing).
         ResolvedLink::Dropped => None,
     }
+}
+
+/// URLs in srcset may contain commas (notably data URLs), so a comma alone is not
+/// a separator until after the URL token. Preserve density/width descriptors.
+fn resolve_srcset(base: Option<&DocumentBase>, value: &str) -> String {
+    let mut rest = value;
+    let mut candidates = Vec::new();
+    while !rest.is_empty() {
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == ',');
+        if rest.is_empty() {
+            break;
+        }
+        let end = rest.find(|c: char| c.is_ascii_whitespace()).unwrap_or(rest.len());
+        let token = &rest[..end];
+        rest = &rest[end..];
+        let url = token.trim_end_matches(',');
+        let descriptor = if token.ends_with(',') {
+            ""
+        } else {
+            let end = rest.find(',').unwrap_or(rest.len());
+            let descriptor = rest[..end].trim();
+            rest = &rest[end..];
+            descriptor
+        };
+        // Unlike src, ammonia does not validate each URL inside srcset.
+        let scheme = url.split_once(':').map(|(scheme, _)| scheme.to_ascii_lowercase());
+        if scheme.as_deref().is_some_and(|scheme| !matches!(scheme, "http" | "https") && !scheme.contains('/')) {
+            continue;
+        }
+        let resolved = match base.map_or(ResolvedLink::Unchanged, |base| base.resolve(url, LinkKind::Image)) {
+            ResolvedLink::Unchanged => url.to_owned(),
+            ResolvedLink::Rewritten(url) => url,
+            ResolvedLink::Dropped => continue,
+        };
+        candidates.push(if descriptor.is_empty() { resolved } else { format!("{resolved} {descriptor}") });
+    }
+    candidates.join(", ")
 }
 
 /// Collects the events, adding an anchor named after its text before every heading that
@@ -210,6 +250,8 @@ fn configured_builder() -> ammonia::Builder<'static> {
         .add_tag_attributes("input", ["type", "checked", "disabled"])
         .add_tag_attributes("source", ["srcset", "media", "type"])
         .add_tag_attributes("img", ["align", "width", "height"])
+        .add_tag_attributes("img", ["srcset", "sizes"])
+        .add_allowed_classes("code", ["language-mermaid"])
         .add_tag_attributes("p", ["align"])
         .add_tag_attributes("div", ["align"])
         .add_generic_attributes(["id"])
@@ -220,7 +262,17 @@ fn configured_builder() -> ammonia::Builder<'static> {
 /// The shared sanitiser for documents without a base (no per-document filter).
 fn sanitizer() -> &'static ammonia::Builder<'static> {
     static SANITIZER: OnceLock<ammonia::Builder<'static>> = OnceLock::new();
-    SANITIZER.get_or_init(configured_builder)
+    SANITIZER.get_or_init(|| {
+        let mut builder = configured_builder();
+        builder.attribute_filter(|element, attribute, value| {
+            if matches!(element, "source" | "img") && attribute == "srcset" {
+                Some(Cow::Owned(resolve_srcset(None, value)))
+            } else {
+                Some(Cow::Borrowed(value))
+            }
+        });
+        builder
+    })
 }
 
 #[cfg(test)]
@@ -261,6 +313,40 @@ mod tests {
         let html = render_markdown("<p align=\"center\"><img src=\"../logo.svg\"> <a href=\"setup.md\">Setup</a></p>", Some(&in_docs()));
         assert!(html.contains(r#"src="/alice/proj/raw/main/logo.svg""#), "{html}");
         assert!(html.contains(r#"href="/alice/proj/blob/main/docs/setup.md""#), "{html}");
+    }
+
+    #[test]
+    fn picture_and_responsive_images_resolve_all_candidates() {
+        let html = render_markdown(
+            r#"<picture><source media="(prefers-color-scheme: dark)" srcset="../docs/dark.avif"><img src="light.avif" srcset="small.avif 1x, ../large%20image.avif 2x" sizes="100vw"></picture>"#,
+            Some(&in_docs()),
+        );
+        assert!(html.contains(r#"srcset="/alice/proj/raw/main/docs/dark.avif""#), "{html}");
+        assert!(html.contains(r#"srcset="/alice/proj/raw/main/docs/small.avif 1x, /alice/proj/raw/main/large%20image.avif 2x""#), "{html}");
+        assert!(html.contains(r#"src="/alice/proj/raw/main/docs/light.avif""#), "{html}");
+    }
+
+    #[test]
+    fn srcset_removes_unsafe_candidates_and_preserves_external_urls() {
+        let source = r#"<source srcset="javascript:alert(1) 1x, https://cdn.example/a,b.avif 2x, ../../escape.avif 3x"><img srcset="data:text/html,bad 1x, safe.avif 2x">"#;
+        for base in [None, Some(in_docs())] {
+            let html = render_markdown(source, base.as_ref());
+            assert!(!html.contains("javascript:"), "{html}");
+            assert!(!html.contains("data:"), "{html}");
+            assert!(html.contains("https://cdn.example/a,b.avif 2x"), "{html}");
+            if base.is_some() {
+                assert!(!html.contains("escape.avif"), "{html}");
+            }
+        }
+    }
+
+    #[test]
+    fn mermaid_fences_keep_only_the_supported_class_and_escaped_source() {
+        let html = render_markdown("```mermaid\ngraph TD\n A[<script>alert(1)</script>] --> B\n```\n\n```rust\nfn main() {}\n```", None);
+        assert!(html.contains(r#"<code class="language-mermaid">"#), "{html}");
+        assert!(html.contains("&lt;script&gt;"), "{html}");
+        assert!(!html.contains("<script>"), "{html}");
+        assert!(!html.contains("language-rust"), "{html}");
     }
 
     #[test]

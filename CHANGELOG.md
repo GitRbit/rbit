@@ -7,6 +7,50 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Refresh the roadmap for the public open-source project, separate available features
+  from planned work, and remove stale first-release guidance from contributor and handoff docs.
+
+## [0.1.2] - 2026-10-19
+
+### Added
+
+- Repository document tabs for README files, licenses, code of conduct, contributing
+  guidelines and security policies, with matching About sidebar links, a sticky tab
+  bar and a searchable heading outline. Document links resolve against the displayed
+  commit and preserve the selected document when reloading or using browser history.
+- Mermaid diagrams in Markdown and responsive images with safe relative `srcset`
+  URLs. Diagrams render in isolated sandboxed frames with a readable source fallback.
+- Mirror creation progress with current fetch stages and automatic navigation to the
+  repository when the first fetch completes.
+- Immediate contribution calendar tooltips and selectable days with commit details.
+
+### Changed
+
+- Make the DNA light and dark palettes the default rbit themes. The original palettes
+  remain available as rbit Classic, and existing saved preferences are preserved.
+- Make repository Code, Issues, Pull requests, Commits, Branches, Tags and Releases
+  navigation reuse bounded, short-lived preloaded responses. Keep the tab bar mounted
+  across navigation, preserving focus, horizontal position and open clone menus.
+- Preload repository documents and switch cached tabs immediately through a smaller
+  document-only response, preserving the tab header and browser navigation behavior.
+- Expand language file dialogs into a consistent split view with an indented file tree
+  and a content preview. Improve branch graph spacing, colors and labels on narrow screens.
+
+### Fixed
+
+- Require accounts created by administrators with an initial password to change it
+  before accessing repositories or using authenticated services.
+- Align sticky repository and document headers to remove gaps, including at fractional
+  zoom levels and on mobile screens.
+- Update end-to-end coverage for mirror progress redirects and commit-pinned README links.
+
+### Upgrade notes
+
+- Take a full backup before upgrading. Database migration 0040 adds the initial-password
+  requirement flag and runs automatically; database migrations only move forward.
+
 ## [0.1.1] - 2026-10-18
 
 ### Added
@@ -25,7 +69,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.1.0] - 2026-10-18
 
 First release of rbit, a self-hosted Git platform distributed as one Rust binary.
-Release notes are prepared here while the upstream repository remains private.
 
 ### Highlights
 

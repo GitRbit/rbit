@@ -5,8 +5,10 @@ import vm from "node:vm";
 
 const assets = new URL("../../crates/rbit-web/assets/", import.meta.url);
 const source = (await readFile(new URL("preload.js", assets), "utf8"))
-  .replace(/^import .* from "\.\/nav\.js";\r?\n/m, "");
-const navigation = (await readFile(new URL("nav.js", assets), "utf8")).replace(/^export /gm, "");
+  .replace(/^import .*;\r?\n/gm, "");
+const navigation = (await readFile(new URL("nav.js", assets), "utf8")).replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
+const navigationCache = (await readFile(new URL("repo-navigation-cache.js", assets), "utf8")).replace(/^export /gm, "");
+const navigationBar = (await readFile(new URL("repo-navigation-bar.js", assets), "utf8")).replace(/^export /gm, "");
 const origin = "https://git.example.com";
 
 function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false } = {}) {
@@ -50,6 +52,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     getAttribute(name) { return this.attributes[name] ?? null; }
     closest(selector) {
       if (selector === "a[href]") return this;
+      if (selector === ".repo-tabs") return this.hasAttribute("data-repo-tab") ? {} : null;
       if (selector === "[hx-boost]") return { getAttribute: () => this.attributes["hx-boost"] ?? "true" };
       if (selector === "[data-no-preload]") return this.hasAttribute("data-no-preload") ? this : null;
       return null;
@@ -61,7 +64,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     addEventListener(name, callback) { document.addEventListener(`connection:${name}`, callback); },
   };
   const context = vm.createContext({
-    URL, AbortController, Element, Node: Element, HTMLAnchorElement: Anchor,
+    URL, AbortController, Element, Node: Element, HTMLAnchorElement: Anchor, TextEncoder, TextDecoder, Event,
     document, location, navigator: { connection }, performance: { now: () => clock },
     addEventListener: document.addEventListener,
     setTimeout(callback, delay) {
@@ -124,6 +127,8 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     };
     context.cancelIdleCallback = (handle) => idle.delete(handle);
   }
+  Object.assign(context, vm.runInContext(`(() => { ${navigationCache}\nreturn { clearNavigationResponses, hasNavigationResponse, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse, trackNavigationPreload }; })()`, context));
+  Object.assign(context, vm.runInContext(`(() => { ${navigationBar}\nreturn { reconcileRepositoryBar }; })()`, context));
   // Run the actual nav module first, just as preload.js's import does in the browser.
   // Module locals stay private while the two public functions are shared.
   Object.assign(context, vm.runInContext(`(() => { ${navigation}\nreturn { navigationEpoch, navigationHeaders }; })()`, context));
@@ -132,7 +137,8 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     for (const callback of listeners.get(name) ?? []) callback({ detail: {}, ...event });
   };
   return {
-    requests, connection, idle,
+    requests, connection, idle, document,
+    navigationHeaders: path => context.navigationHeaders(path),
     link: (path, attributes) => new Anchor(path, attributes),
     dispatch,
     press(link) { dispatch("pointerdown", { target: link, pointerType: "mouse", button: 0 }); },
@@ -193,6 +199,51 @@ test("intent stays quiet until hover/touch delay and shares pending and fresh wo
   app.advance(30_001);
   app.press(link);
   assert.equal(app.requests.length, 2, "expired work may be refreshed");
+});
+
+test("latest repository navigation aborts the previous request and history cancels pending swaps", () => {
+  const app = page();
+  const first = { aborted: 0, abort() { this.aborted++; } };
+  const second = { aborted: 0, abort() { this.aborted++; } };
+  const start = xhr => app.dispatch("htmx:beforeRequest", { detail: { xhr, requestConfig: { boosted: true, verb: "get", path: "/alice/repo/issues" } } });
+  start(first); start(second);
+  assert.equal(first.aborted, 1);
+  app.dispatch("htmx:afterRequest", { detail: { xhr: first, requestConfig: { boosted: true, verb: "get" } } });
+  app.dispatch("popstate", { state: { htmx: true } });
+  assert.equal(second.aborted, 1, "a late completion cannot release the newer navigation");
+});
+
+test("mutations invalidate tab snapshots and abort navigation before the form is sent", () => {
+  const app = page();
+  const before = app.navigationHeaders("/alice/repo/issues")["Rbit-Nav-Epoch"];
+  const xhr = { aborted: false, abort() { this.aborted = true; } };
+  app.dispatch("htmx:beforeRequest", { detail: { xhr, requestConfig: { boosted: true, verb: "get", path: "/alice/repo/issues" } } });
+  app.dispatch("htmx:beforeRequest", { detail: { requestConfig: { verb: "post" } } });
+  assert.equal(xhr.aborted, true);
+  assert.notEqual(app.navigationHeaders("/alice/repo/issues")["Rbit-Nav-Epoch"], before);
+});
+
+test("repository tabs preload immediately on pointer intent and keyboard focus, respecting Save-Data", () => {
+  for (const intent of ["pointerover", "focusin"]) {
+    for (const saveData of [false, true]) {
+      const app = page({ saveData });
+      const link = app.link("/alice/repo/issues", { "data-repo-tab": "issues" });
+      app.dispatch(intent, { target: link, pointerType: "mouse" });
+      app.advance(0);
+      assert.equal(app.requests.length, saveData ? 0 : 1);
+    }
+  }
+});
+
+test("a stable repository tab retains keyboard focus when htmx settles the new main", () => {
+  const app = page();
+  const tab = { isConnected: true, closest() { return this; }, contains(node) { return node === this; } };
+  let focusStolen = false;
+  const main = { closest() { return null; }, contains() { return false; }, setAttribute() {}, focus() { focusStolen = true; } };
+  app.document.activeElement = tab;
+  app.document.getElementById = id => id === "main" ? main : null;
+  app.dispatch("htmx:afterSettle", { detail: { elt: main, requestConfig: { boosted: true, verb: "get", elt: tab } } });
+  assert.equal(focusStolen, false);
 });
 
 test("navigation cancels stale work and prevents six queued requests from reaching the network", async () => {
@@ -402,7 +453,7 @@ test("visible scheduling is bounded and obsolete idle callbacks cannot fetch aft
     const app = page({ idleCallback });
     const links = Array.from({ length: 100 }, (_, i) => app.link(`/alice/repo/tree/${i}`));
     app.intersect(...links);
-    if (idleCallback) assert.equal(app.idle.size, 4, "visible idle callbacks are bounded too");
+    if (idleCallback) assert.equal(app.idle.size, 7, "visible idle callbacks are bounded too");
     const staleCallbacks = [...app.idle.values()];
     app.navigate("/alice/repo/tree/destination");
     app.settle();
@@ -417,6 +468,11 @@ test("visible scheduling is bounded and obsolete idle callbacks cannot fetch aft
     for (const request of app.requests) request.complete();
     await flush();
     assert.equal(app.requests.length, 4);
+    for (let index = 2; index < 7; index++) {
+      app.requests[index].complete();
+      await flush();
+    }
+    assert.equal(app.requests.length, 7, "visible speculation stops after the per-page budget");
   }
 });
 

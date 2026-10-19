@@ -118,8 +118,8 @@ Fill in the pull request template; a reviewer will look at it once CI is green.
 
 ## Preparing a release
 
-The upstream repository is [GitRbit/rbit](https://github.com/GitRbit/rbit). Keep it private
-while preparing the first public release. If your checkout already has another `origin`,
+The public upstream repository is [GitRbit/rbit](https://github.com/GitRbit/rbit).
+If your checkout already has another `origin`,
 add GitHub separately rather than replacing it:
 
 ```bash
@@ -129,19 +129,18 @@ git push github main
 
 Before publishing:
 
-- Review the files and commit history that will become public for credentials, private
+- Review the files and commit history being published for credentials, private
   addresses and local runtime data. Review and commit intended working-tree changes;
   a push includes committed history only. Do not upload local audit logs or data directories.
 - Run the quality gate above and require a green GitHub CI run on the exact commit being
   released. CI's release-build artifact can be used for a Linux smoke test before tagging.
 - Set the workspace version in `Cargo.toml` and update `Cargo.lock`. Move the relevant
   changelog entries into a nonempty `## [X.Y.Z]` section, with upgrade instructions.
-  The `0.1.0` notes are prepared; review them against the exact release commit before
-  pushing the final `v0.1.0` tag.
+  Review the notes against the exact release commit before pushing its tag.
 - Check the README, deployment instructions, examples, licenses and third-party notices
   against the binaries and container image that will ship.
-- When opening the repository to the public, enable private vulnerability reporting and
-  verify the reporting link in `SECURITY.md`. Check branch rules and required CI checks
+- Verify private vulnerability reporting and the reporting link in `SECURITY.md`.
+  Check branch rules and required CI checks
   for `main` on the account's available plan.
 - Review container package visibility separately: making the repository public does not
   by itself establish anonymous access to `ghcr.io/gitrbit/rbit`.
@@ -159,4 +158,4 @@ A prerelease tag must match the workspace version too (for example `0.1.0-rc.1` 
 `v0.1.0-rc.1`). Prereleases can use the `Unreleased` notes and do not move the container's
 `latest` tag. After the workflow completes, verify archive checksums, each supported
 binary's `--version`, and a fresh container start. Confirm anonymous downloads and pulls
-after making the intended release and package public.
+for the published release and package.

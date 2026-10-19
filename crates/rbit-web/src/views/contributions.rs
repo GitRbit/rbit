@@ -8,6 +8,7 @@ use super::{layout::Page, repo::RepoHeader};
 
 #[derive(Debug, Clone)]
 pub struct ContributionCalendar {
+    pub deferred: bool,
     pub year: i32,
     pub years: Vec<i32>,
     pub total: usize,
@@ -53,6 +54,7 @@ impl ContributionCalendar {
         // Imported history can predate the account or repository's creation here.
         let first = 1970;
         Self {
+            deferred: false,
             year: year.unwrap_or(current).clamp(first, current),
             years: (first..=current).rev().collect(),
             total: 0,
@@ -66,6 +68,14 @@ impl ContributionCalendar {
             scope,
             tab,
         }
+    }
+
+    /// Keep history scans outside the main page response. Explicit calendar requests
+    /// still render on the server, including the ordinary link used without JavaScript.
+    #[must_use]
+    pub fn deferred(mut self) -> Self {
+        self.deferred = true;
+        self
     }
 
     pub fn bounds(&self) -> (i64, i64) {
@@ -153,6 +163,12 @@ impl ContributionCalendar {
 pub struct ActivityPage {
     pub page: Page,
     pub header: RepoHeader,
+    pub contributions: ContributionCalendar,
+}
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "contributions.html")]
+pub struct ContributionFragment {
     pub contributions: ContributionCalendar,
 }
 

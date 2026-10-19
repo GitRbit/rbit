@@ -21,6 +21,17 @@ test("committed browser bundle includes all dependencies without further module 
   assert.equal(committed.replaceAll("\r\n", "\n"), result.outputFiles[0].text);
 });
 
+test("committed Mermaid renderer matches its source and needs no remote modules", async () => {
+  const result = await build({
+    absWorkingDir: root, entryPoints: ["scripts/mermaid-frame.js"],
+    bundle: true, minify: true, format: "iife", target: "es2022", legalComments: "eof",
+    outfile: "crates/rbit-web/assets/vendor/mermaid-frame.js", write: false, metafile: true,
+  });
+  assert.equal(Object.values(result.metafile.outputs)[0].imports.length, 0);
+  const committed = await readFile(new URL("../../crates/rbit-web/assets/vendor/mermaid-frame.js", import.meta.url), "utf8");
+  assert.equal(committed.replaceAll("\r\n", "\n"), result.outputFiles[0].text);
+});
+
 test("theme switching reuses inline theme CSS and retains it until a replacement loads", async () => {
   const source = await readFile(new URL("../../crates/rbit-web/assets/theme-picker.js", import.meta.url), "utf8");
   const ensure = source.slice(source.indexOf("function ensureStylesheet("), source.indexOf("\nfunction apply("));

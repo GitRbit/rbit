@@ -12,6 +12,7 @@
  */
 @import "tailwindcss";
 @import "./branch-graph.css";
+@import "./repo-documents.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";
@@ -706,7 +707,7 @@
    under it from `md` up, reading as one block with it; on phones they scroll away so the
    page keeps the room. `--sticky-top` is where other sticky things (diff file headers,
    linked code lines) sit: below the bar, plus the tabs where those stick. app.js keeps
-   `--subnav-height` current. */
+   both bar heights current, including fractional pixels at browser zoom. */
 :root {
   /* The top bar with its bottom border. */
   --bar-height: calc(3rem + 1px + env(safe-area-inset-top));
@@ -723,12 +724,13 @@
 
 @media (width >= 48rem) {
   :root {
-    --sticky-top: calc(var(--bar-height) + var(--subnav-height, 0px));
+    --sticky-top: calc(var(--bar-height) + var(--subnav-height, 0px) - 1px);
   }
 
   .site-subnav {
     @apply sticky bg-canvas/90 backdrop-blur-md;
-    top: var(--bar-height);
+    /* Overlap the shared border so rounding cannot reveal scrolled content. */
+    top: calc(var(--bar-height) - 1px);
   }
 
   /* Bar and tabs read as one header with a single line under it. */
@@ -1571,3 +1573,6 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph td { height: 48px; border-bottom: 1px solid var(--line); }
 .branch-graph tr:last-child td { border-bottom: 0; }
 .branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }
+
+/* Diagram styles are contained in a sandbox; only the frame belongs to the page. */
+.mermaid-frame { width: 100%; border: 1px solid var(--line); border-radius: .375rem; margin-block: 1rem; }

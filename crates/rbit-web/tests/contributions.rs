@@ -90,6 +90,15 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
     git(&private.disk_path, &["fetch", "-q", source.to_str().unwrap(), "side:side"], "alice@example.com", "2024-01-01T12:00:00Z");
     let start = 1_704_067_200; // 2024-01-01 UTC
     let end = 1_735_689_600; // 2025-01-01 UTC
+    // A genuinely cold initial page must leave the expensive contribution cache empty.
+    let cold_router = rbit_web::router(rbit_web::AppState::new(config.clone(), services.clone()));
+    for url in ["/acme/public/commits", "/alice", "/acme"] {
+        let response = cold_router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap();
+        assert!(String::from_utf8(body.to_vec()).unwrap().contains("calendar=fragment"));
+    }
+    assert_eq!(kv.insights().entry_count().await.unwrap(), 0, "initial pages must not scan history for their calendars");
     // Populate the shared history cache as a privileged viewer first.
     let own = services.contributions.account(Some(&alice), &alice.account, start, end).await.unwrap();
     assert_eq!(own.days.values().sum::<usize>(), 3);
@@ -122,7 +131,8 @@ async fn assert_contribution_pages(router: axum::Router) {
         ("/alice/empty/commits?year=2024", "No matching commits in this year."),
         ("/alice/empty/activity?year=2024", "No matching commits in this year."),
     ] {
-        let response = router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
+        let response =
+            router.clone().oneshot(Request::builder().uri(format!("{url}&calendar=1")).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{url}");
         let body = axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
@@ -135,12 +145,36 @@ async fn assert_contribution_pages(router: axum::Router) {
             assert!(html.contains("/commits/main?year=2024&#38;page=1"), "pagination preserves the selected calendar year");
         }
     }
+    // Initial navigation must not wait for any calendar history scan or send its SVG.
+    for url in ["/alice?year=2024", "/acme?year=2024", "/acme/public/commits/main?year=2024&page=2"] {
+        let response = router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let html = String::from_utf8(axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap().to_vec()).unwrap();
+        assert!(html.contains("calendar=fragment"));
+        assert!(html.contains("calendar=1"), "ordinary link supports JavaScript-free browsing");
+        assert!(!html.contains("data-contribution-day=\""), "{url}: initial response must omit calendar cells");
+        let response = router
+            .clone()
+            .oneshot(Request::builder().uri(format!("{url}&calendar=fragment")).header("HX-Request", "true").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let html = String::from_utf8(axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap().to_vec()).unwrap();
+        assert!(html.contains("Commit activity in 2024"));
+        assert!(!html.contains("<main") && !html.contains("<html"));
+    }
     for url in ["/acme/public", "/alice/empty"] {
         let response = router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap();
         assert!(!String::from_utf8(body.to_vec()).unwrap().contains("id=\"contributions-title\""), "{url}: heatmap belongs on Commits");
     }
-    let response = router.oneshot(Request::builder().uri("/alice/private/activity?year=2024").body(Body::empty()).unwrap()).await.unwrap();
+    let response =
+        router.clone().oneshot(Request::builder().uri("/alice/private/activity?year=2024").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let response = router
+        .oneshot(Request::builder().uri("/alice/private/commits?year=2024&calendar=fragment").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

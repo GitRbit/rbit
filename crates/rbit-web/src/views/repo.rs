@@ -191,9 +191,23 @@ pub struct EntryRow {
 #[derive(Debug, Clone)]
 pub struct ReadmeView {
     pub name: String,
+    /// Stable identity and repository-relative location of the selected document.
+    pub key: String,
+    pub path: String,
     /// Sanitised HTML (rendered Markdown, or escaped plain text).
     pub html: String,
     pub is_markdown: bool,
+}
+
+/// A conventional repository document available in the tree's tab strip/sidebar.
+#[derive(Debug, Clone)]
+pub struct RepositoryDocument {
+    pub key: String,
+    pub name: String,
+    pub icon: &'static str,
+    pub url: String,
+    pub path: String,
+    pub is_active: bool,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -210,6 +224,8 @@ pub struct TreePage {
     /// Fragment with each entry's last commit, fetched by htmx after first paint.
     pub entry_commits_url: String,
     pub readme: Option<ReadmeView>,
+    pub documents: Vec<RepositoryDocument>,
+    pub document_scope: String,
     pub history_url: String,
     /// Language breakdown of the selected revision; `None` when empty or unavailable.
     pub languages: Option<LanguageBar>,
@@ -221,6 +237,15 @@ pub struct TreePage {
     // Milestone 3: editing files in the browser (E); set for writers on a branch.
     pub new_file_url: Option<String>,
     pub upload_url: Option<String>,
+}
+
+/// The same document markup as the tree page without page decorations or listings.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "repo/documents_fragment.html")]
+pub struct RepositoryDocumentsFragment {
+    pub document_scope: String,
+    pub documents: Vec<RepositoryDocument>,
+    pub readme: Option<ReadmeView>,
 }
 
 /// How a file's contents are presented.

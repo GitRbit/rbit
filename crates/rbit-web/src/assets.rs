@@ -245,6 +245,18 @@ pub async fn serve(Path(path): Path<String>, RawQuery(query): RawQuery, request_
         return StatusCode::NOT_FOUND.into_response();
     };
 
+    // Mermaid needs generated SVG styles. Confine that exception to an opaque
+    // sandboxed frame; repository HTML never receives these permissions.
+    if path == "mermaid-frame.html" {
+        return ([
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-cache"),
+            (header::X_FRAME_OPTIONS, "SAMEORIGIN"),
+            (header::CONTENT_SECURITY_POLICY,
+             "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; sandbox allow-scripts; frame-ancestors 'self'"),
+        ], file.bytes.clone().into_owned()).into_response();
+    }
+
     let mime = mime_guess::from_path(&path).first_or_octet_stream();
     let etag = format!("\"{}\"", file.hash);
     let version = format!("v={}", file.hash);
@@ -287,6 +299,26 @@ pub async fn serve(Path(path): Path<String>, RawQuery(query): RawQuery, request_
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn mermaid_style_permissions_are_confined_to_a_sandboxed_frame() {
+        use tower::ServiceExt as _;
+
+        let app = axum::Router::new()
+            .route("/assets/{*path}", axum::routing::get(serve))
+            .layer(axum::middleware::from_fn(crate::middleware::security_headers));
+        let response = app
+            .oneshot(axum::http::Request::builder().uri("/assets/mermaid-frame.html").body(axum::body::Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let policy = response.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(policy.contains("sandbox allow-scripts;"));
+        assert!(!policy.contains("allow-same-origin"));
+        assert!(policy.contains("script-src 'self';"));
+        assert!(policy.contains("style-src 'unsafe-inline';"));
+        assert_eq!(response.headers()[header::X_FRAME_OPTIONS], "SAMEORIGIN");
+    }
 
     #[test]
     fn inline_style_hashes_follow_html_newline_normalization() {

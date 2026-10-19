@@ -22,6 +22,7 @@ function browser(fetch, DOMParser) {
     replaceChildren(...children) { this.children = children; }
     append(...children) { this.children.push(...children); }
     addEventListener(name, listener) { this.listeners.set(name, listener); }
+    dispatchEvent(event) { (this.events ??= []).push(event); return true; }
     showModal() { this.open = true; }
     close() { this.open = false; this.listeners.get("close")?.(); }
     remove() { this.isConnected = false; }
@@ -41,7 +42,7 @@ function browser(fetch, DOMParser) {
       return element;
     },
   };
-  vm.runInNewContext(source, { document, Element, AbortController, fetch, DOMParser, window: {}, addEventListener() {} });
+  vm.runInNewContext(source, { document, Element, Event, AbortController, fetch, DOMParser, window: {}, addEventListener() {} });
   return { trigger, listeners, elements, document, Element };
 }
 
@@ -102,6 +103,8 @@ test("file preview stays beside the tree and superseded requests cannot overwrit
   await new Promise(resolve => setImmediate(resolve));
   const secondContent = content;
   assert.equal(preview.children[1], secondContent);
+  assert.equal(preview.events[0].type, 'rbit:content-loaded');
+  assert.equal(preview.events[0].bubbles, true, 'Markdown enhancement can observe the inserted preview');
   content = new page.Element('section');
   requests[0].resolve({ ok: true, text: async () => '<section>stale first file</section>' });
   await new Promise(resolve => setImmediate(resolve));
