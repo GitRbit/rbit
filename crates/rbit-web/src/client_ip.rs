@@ -39,7 +39,6 @@ impl ClientIp {
 impl FromRequestParts<AppState> for ClientIp {
     type Rejection = Infallible;
 
-    #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         Ok(Self::resolve(&parts.extensions, &parts.headers, &state.config.security))
     }
@@ -58,7 +57,6 @@ impl Client {
 impl FromRequestParts<AppState> for Client {
     type Rejection = Infallible;
 
-    #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let ClientIp(ip) = ClientIp::resolve(&parts.extensions, &parts.headers, &state.config.security);
         let user_agent = parts.headers.get(header::USER_AGENT).and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
@@ -75,7 +73,6 @@ pub struct Https(pub bool);
 impl FromRequestParts<AppState> for Https {
     type Rejection = Infallible;
 
-    #[allow(clippy::unused_async_trait_impl)]
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let forwarded = forwarded_https(peer(&parts.extensions), &parts.headers, &state.config.security);
         Ok(Self(state.config.server.is_https() || forwarded))

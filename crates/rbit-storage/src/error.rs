@@ -1,3 +1,5 @@
+//! Errors returned by the `SQLite` and key/value stores.
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     #[error("registration is closed on this instance")]

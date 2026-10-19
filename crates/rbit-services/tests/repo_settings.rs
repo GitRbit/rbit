@@ -1,4 +1,4 @@
-//! Repository settings and stars against real, temporary SQLite/redb stores and bare repositories.
+//! Repository settings and stars against real, temporary `SQLite`/redb stores and bare repositories.
 
 use std::{path::Path, process::Command, sync::Arc};
 

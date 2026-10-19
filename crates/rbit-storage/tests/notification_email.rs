@@ -1,5 +1,5 @@
 //! Email preferences and the notification email outbox (workstream N) against a real,
-//! migrated SQLite database.
+//! migrated `SQLite` database.
 
 #[path = "common/query_count.rs"]
 mod query_count;

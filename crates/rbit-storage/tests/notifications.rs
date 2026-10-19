@@ -1,5 +1,5 @@
 //! Thread subscriptions and the notification inbox (workstream I) against a real,
-//! migrated SQLite database.
+//! migrated `SQLite` database.
 
 #[path = "common/query_count.rs"]
 mod query_count;

@@ -202,7 +202,7 @@ impl AccountStore {
 }
 
 /// Shared by password and external registration so the bootstrap decision is serialized
-/// across both paths. The first INSERT acquires SQLite's write lock before we inspect
+/// across both paths. The first INSERT acquires `SQLite`'s write lock before we inspect
 /// the logins. No password hashing or other slow work runs while holding the lock.
 pub(super) async fn insert_user(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,

@@ -6,7 +6,7 @@
 //! [`super::issues::IssueStore`]) plus a `pull_requests` row keyed by it. [`PullStore::create`]
 //! inserts both in one transaction, and refuses a second **open** pull request for the
 //! same base repository, base branch, head repository and head branch inside that same
-//! transaction (its first write takes SQLite's write lock, so concurrent creations are
+//! transaction (its first write takes `SQLite`'s write lock, so concurrent creations are
 //! serialised and cannot both pass the check).
 //!
 //! Lists join the issue rows read-only; the issue row conversion is repeated here because

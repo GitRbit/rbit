@@ -1,4 +1,4 @@
-//! Administration, instance settings and suspension against real, temporary SQLite,
+//! Administration, instance settings and suspension against real, temporary `SQLite`,
 //! redb and on-disk repository stores.
 
 use std::sync::Arc;

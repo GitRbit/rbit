@@ -276,7 +276,7 @@ impl IssueSearchStore {
         })
     }
 
-    /// Whether this SQLite build has FTS5 (the bundled one does; migrations need it).
+    /// Whether this `SQLite` build has FTS5 (the bundled one does; migrations need it).
     pub async fn has_fts5(&self) -> Result<bool, StorageError> {
         let enabled: i64 = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_FTS5')").fetch_one(&self.pool).await?;
         Ok(enabled == 1)

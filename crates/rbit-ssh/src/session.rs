@@ -17,8 +17,6 @@
 //! (download) or push (upload); it is refused when `[lfs] enabled` is off.
 
 // Every handler method is written as `async fn` for uniformity, whether or not it awaits.
-#![allow(clippy::unused_async_trait_impl)]
-
 use std::{
     collections::HashMap,
     net::SocketAddr,

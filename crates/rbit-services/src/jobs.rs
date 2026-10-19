@@ -77,7 +77,7 @@ pub struct MaintenanceSummary {
 /// Result of the health probes behind `/healthz`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HealthReport {
-    /// SQLite answered a trivial query.
+    /// `SQLite` answered a trivial query.
     pub database: bool,
     /// redb answered a trivial read.
     pub kv: bool,
@@ -159,7 +159,7 @@ impl JobService {
         }
     }
 
-    /// Probes SQLite and redb with trivial reads.
+    /// Probes `SQLite` and redb with trivial reads.
     pub async fn health(&self) -> HealthReport {
         let ctx = &self.inner.ctx;
         let database = async { matches!(tokio::time::timeout(HEALTH_TIMEOUT, ctx.database.admin().sqlite_version()).await, Ok(Ok(_))) };

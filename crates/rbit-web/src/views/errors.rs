@@ -1,3 +1,5 @@
+//! The shared error page view model.
+
 use askama::Template;
 use askama_web::WebTemplate;
 

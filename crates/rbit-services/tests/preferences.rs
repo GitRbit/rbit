@@ -1,4 +1,4 @@
-//! Preference use-cases against real, temporary SQLite and redb stores.
+//! Preference use-cases against real, temporary `SQLite` and redb stores.
 
 use std::sync::Arc;
 

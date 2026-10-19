@@ -1,4 +1,4 @@
-//! Release and attached-file persistence against a real, migrated SQLite database.
+//! Release and attached-file persistence against a real, migrated `SQLite` database.
 
 use rbit_core::{RepoId, Timestamp, User, Visibility, release::ReleaseId};
 use rbit_storage::{

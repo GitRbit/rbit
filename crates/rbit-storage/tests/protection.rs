@@ -1,4 +1,4 @@
-//! Branch protection rules against a real, migrated SQLite database.
+//! Branch protection rules against a real, migrated `SQLite` database.
 
 use rbit_core::{
     AccountId, RepoId, User, Visibility,

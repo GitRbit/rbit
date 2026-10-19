@@ -1,5 +1,5 @@
 //! Organisation use-cases and membership-aware repository access against real, temporary
-//! SQLite/redb stores and bare repositories.
+//! `SQLite`/redb stores and bare repositories.
 
 use std::sync::Arc;
 

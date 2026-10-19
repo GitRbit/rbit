@@ -1,3 +1,5 @@
+//! View models for public account profiles.
+
 use askama::Template;
 use askama_web::WebTemplate;
 

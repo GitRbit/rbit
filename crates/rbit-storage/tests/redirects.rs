@@ -1,4 +1,4 @@
-//! Old repository names (migration `0016`) against a real, migrated SQLite database: the
+//! Old repository names (migration `0016`) against a real, migrated `SQLite` database: the
 //! triggers record a redirect whenever a repository leaves a location and drop it
 //! whenever a repository arrives at one.
 

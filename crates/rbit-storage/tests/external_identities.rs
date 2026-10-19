@@ -1,4 +1,4 @@
-//! Linked external identities (workstream O) against a real, migrated SQLite database:
+//! Linked external identities (workstream O) against a real, migrated `SQLite` database:
 //! uniqueness, registration with an identity, the last-method guard on unlinking and the
 //! verified-email lookup.
 

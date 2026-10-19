@@ -1,4 +1,4 @@
-//! Git LFS object, link and lock persistence against a real, migrated SQLite database.
+//! Git LFS object, link and lock persistence against a real, migrated `SQLite` database.
 
 use rbit_core::{
     RepoId, Timestamp, User, Visibility,

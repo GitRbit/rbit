@@ -1,4 +1,4 @@
-//! Pull requests, reviews and fork networks against a real, migrated SQLite database.
+//! Pull requests, reviews and fork networks against a real, migrated `SQLite` database.
 
 use rbit_core::{
     IssueKind, IssueState, IssueText, IssueTitle, RepoId, ReviewId, StateReason, TimelineEvent, Timestamp, User, Visibility,

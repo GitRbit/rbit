@@ -1,4 +1,4 @@
-//! Webhook and delivery queue persistence against a real, migrated SQLite database.
+//! Webhook and delivery queue persistence against a real, migrated `SQLite` database.
 
 use std::collections::HashSet;
 

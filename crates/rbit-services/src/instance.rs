@@ -1,6 +1,6 @@
 //! Runtime instance settings (site name, registration, …) editable by administrators.
 //!
-//! The configuration supplies defaults; overrides persisted in SQLite are merged over them
+//! The configuration supplies defaults; overrides persisted in `SQLite` are merged over them
 //! at start-up and after every update. The effective settings are cached in memory, so
 //! [`InstanceService::current`] is synchronous and cheap enough for every request.
 

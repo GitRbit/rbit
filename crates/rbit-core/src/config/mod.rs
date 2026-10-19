@@ -114,7 +114,7 @@ impl ServerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
-    /// Root directory for the SQLite database, the redb store and bare repositories.
+    /// Root directory for the `SQLite` database, the redb store and bare repositories.
     pub data_dir: PathBuf,
 }
 

@@ -1,4 +1,4 @@
-//! Preference persistence against a real, migrated SQLite database.
+//! Preference persistence against a real, migrated `SQLite` database.
 
 use rbit_storage::{Database, NewUser};
 

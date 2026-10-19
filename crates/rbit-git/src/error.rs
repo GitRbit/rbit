@@ -1,3 +1,5 @@
+//! Errors returned by repository storage and Git operations.
+
 #[derive(Debug, thiserror::Error)]
 pub enum GitError {
     /// A revision, path or object the caller asked for does not exist.

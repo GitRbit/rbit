@@ -1,4 +1,4 @@
-//! Access token persistence against a real, migrated SQLite database.
+//! Access token persistence against a real, migrated `SQLite` database.
 
 use rbit_core::{AccessTokenId, Timestamp, TokenScope, User};
 use rbit_storage::{Database, NewAccessToken, NewUser};

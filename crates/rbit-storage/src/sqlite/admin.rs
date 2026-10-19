@@ -196,7 +196,7 @@ impl AdminStore {
         .await?)
     }
 
-    /// The version of the linked SQLite library, e.g. `3.50.4`.
+    /// The version of the linked `SQLite` library, e.g. `3.50.4`.
     pub async fn sqlite_version(&self) -> Result<String, StorageError> {
         Ok(sqlx::query_scalar("SELECT sqlite_version()").fetch_one(&self.pool).await?)
     }
@@ -264,7 +264,7 @@ impl AdminStore {
         self.moderation_outcome(id, result.rows_affected()).await
     }
 
-    /// Deletes a user account; everything it owns in SQLite cascades. Bare repositories on
+    /// Deletes a user account; everything it owns in `SQLite` cascades. Bare repositories on
     /// disk are the caller's responsibility (see [`Self::repositories_owned_by`]).
     pub async fn delete_user(&self, id: AccountId) -> Result<Moderation, StorageError> {
         let result = sqlx::query(concat!("DELETE FROM accounts WHERE id = ?1 AND kind = 'user' AND ", not_last_admin!()))

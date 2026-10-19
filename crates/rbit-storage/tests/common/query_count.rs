@@ -1,4 +1,4 @@
-//! SQL query work assertions scoped to one future, including SQLite's worker threads.
+//! SQL query work assertions scoped to one future, including `SQLite`'s worker threads.
 //! Connection setup pragmas are excluded: pool growth is not application query work.
 
 use std::{

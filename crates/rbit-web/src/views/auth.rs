@@ -1,3 +1,5 @@
+//! View models for sign-in, sign-up and two-factor authentication.
+
 use askama::Template;
 use askama_web::WebTemplate;
 

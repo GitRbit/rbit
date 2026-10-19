@@ -1,4 +1,4 @@
-//! Email token and verification persistence against a real, migrated SQLite database.
+//! Email token and verification persistence against a real, migrated `SQLite` database.
 
 use rbit_core::{AccountId, Email, Timestamp, User};
 use rbit_storage::{
