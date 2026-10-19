@@ -59,16 +59,7 @@
       {% endif %}
     </section>
 
-    {% if let Some(readme) = readme %}
-    <section class="box mt-6 overflow-hidden" aria-labelledby="readme-title">
-      <h2 id="readme-title" class="box-header text-[13px] font-medium">{% call ui::icon("book", "size-3.5 text-ink-muted") %}{% endcall %}{{ readme.name }}</h2>
-      {% if readme.is_markdown %}
-      <article class="prose-rbit px-5 py-6 sm:px-8">{{ readme.html|safe }}</article>
-      {% else %}
-      <pre class="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-5">{{ readme.html|safe }}</pre>
-      {% endif %}
-    </section>
-    {% endif %}
+    {% include "repo/documents.html" %}
   </div>
 
   <aside class="repo-aside {% if breadcrumbs.len() > 1 %}max-lg:hidden{% endif %}">
@@ -80,6 +71,7 @@
       <p class="mt-2 text-[13px] text-ink-faint">No description.</p>
       {% endif %}
     </section>
+    {% include "repo/document_links.html" %}
     {% if let Some(release) = latest_release %}
     <section class="aside-section" aria-labelledby="latest-release-title">
       <h2 id="latest-release-title" class="text-[13px] font-medium"><a href="{{ release.releases_url }}" class="hover:underline hover:underline-offset-4">Releases</a></h2>

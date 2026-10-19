@@ -1,0 +1,7 @@
+{% if !documents.is_empty() %}
+<nav class="repo-document-links" aria-label="Repository documents">
+  {% for document in documents %}
+  <a href="{{ document.url }}" data-repo-document="{{ document.key }}"{% if document.is_active %} aria-current="true"{% endif %} hx-boost="false">{% call ui::icon(document.icon, "size-3.5 shrink-0") %}{% endcall %}<span>{{ document.name }}</span></a>
+  {% endfor %}
+</nav>
+{% endif %}

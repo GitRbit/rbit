@@ -1,0 +1,28 @@
+{% if let Some(readme) = readme %}
+<section id="readme" class="repo-documents box mt-6" data-repo-documents data-document-key="{{ readme.key }}" data-document-scope="{{ header.home_url }}" aria-label="Repository documents">
+  <header class="repo-documents-header">
+    <div class="repo-document-tabs" role="tablist" aria-label="Repository documents">
+      {% for document in documents %}
+      <a href="{{ document.url }}" class="repo-document-tab" role="tab" aria-controls="repo-document-panel" aria-selected="{{ document.is_active }}" data-repo-document="{{ document.key }}" hx-boost="false">{% call ui::icon(document.icon, "size-4 shrink-0") %}{% endcall %}<span>{{ document.name }}</span></a>
+      {% endfor %}
+    </div>
+    <details class="repo-document-outline" data-document-outline hidden>
+      <summary class="btn btn-ghost btn-icon" aria-label="Document outline" title="Document outline">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+      <div class="repo-document-outline-menu">
+        <label class="sr-only" for="repo-document-filter">Filter headings</label>
+        <input id="repo-document-filter" class="input" type="search" placeholder="Filter headings" autocomplete="off" data-document-heading-filter>
+        <nav aria-label="Document headings"><ul data-document-headings></ul></nav>
+        <p class="repo-document-outline-empty" data-document-no-headings hidden>No matching headings.</p>
+      </div>
+    </details>
+  </header>
+  <div class="repo-document-status" data-document-status role="status" aria-live="polite" hidden></div>
+  <div id="repo-document-panel" role="tabpanel" aria-label="{{ readme.name }}" tabindex="0" data-document-panel>
+    {% if readme.is_markdown %}
+    <article class="prose-rbit repo-document-content px-5 py-6 sm:px-8">{{ readme.html|safe }}</article>
+    {% else %}
+    <pre class="repo-document-content overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-5">{{ readme.html|safe }}</pre>
+    {% endif %}
+  </div>
+</section>
+{% endif %}

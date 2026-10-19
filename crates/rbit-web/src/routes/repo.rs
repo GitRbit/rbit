@@ -28,14 +28,33 @@ use crate::{
         ref_picker::{RefPickerLinks, RefPickerQuery, RefTarget},
         releases::LatestRelease,
         repo::{
-            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, ReadmeView, RefSwitcher, RepoHeader,
-            TreePage, breadcrumbs,
+            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, RefSwitcher, RepoHeader, TreePage,
+            breadcrumbs,
         },
         statuses::{CHECKS_ANCHOR, StatusMark},
     },
 };
 
 const COMMITS_PER_PAGE: usize = 30;
+
+#[path = "repository_documents.rs"]
+mod repository_documents;
+
+/// Kept flat because `serde_urlencoded`'s flattened maps lose the string-to-number
+/// conversion used for numeric pagination fields.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct TreeQuery {
+    q: String,
+    page: usize,
+    document: Option<String>,
+}
+
+impl TreeQuery {
+    fn listing(&self) -> ListQuery {
+        ListQuery { q: self.q.clone(), page: self.page }.normalized()
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ActivityQuery {
@@ -252,7 +271,7 @@ pub async fn home(
     viewer: Viewer,
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<TreeQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     if loaded.mirror_url.is_some()
@@ -270,7 +289,7 @@ pub async fn home(
         let page = page.titled(loaded.ctx.repo.full_name());
         return Ok(EmptyRepoPage { page, header, default_branch: loaded.default_branch().to_owned() }.into_response());
     };
-    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new(), query.normalized()).await?.into_response())
+    Ok(render_tree(&state, &viewer, loaded, page, revision, String::new(), query).await?.into_response())
 }
 
 /// `GET /{owner}/{repo}/tree/{revision}/{path…}`
@@ -279,11 +298,11 @@ pub async fn tree(
     viewer: Viewer,
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
-    Query(query): Query<ListQuery>,
+    Query(query): Query<TreeQuery>,
 ) -> WebResult<TreePage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.split(rest).await?;
-    render_tree(&state, &viewer, loaded, page, revision, path, query.normalized()).await
+    render_tree(&state, &viewer, loaded, page, revision, path, query).await
 }
 
 async fn render_tree(
@@ -293,34 +312,36 @@ async fn render_tree(
     page: Page,
     revision: String,
     path: String,
-    query: ListQuery,
+    query: TreeQuery,
 ) -> WebResult<TreePage> {
     let reader = &loaded.ctx.reader;
     let commit_id = reader.commit_id(revision.clone()).await.map_err(ServiceError::from)?;
+    let listing_query = query.listing();
     // Pin the listing and language statistics to the same revision snapshot.
-    let listing = async {
-        let view = reader.tree(commit_id.clone(), path.clone()).await?;
-        let readme = reader.readme(view.commit.id.clone(), &view.entries, &path, state.services.repositories.max_render_bytes()).await?;
-        Ok::<_, rbit_git::GitError>((view, readme))
-    };
+    let listing = reader.tree(commit_id.clone(), path.clone());
     let (listing, languages, latest_release, collaborator) = tokio::join!(
         listing,
         language_bar(state, &loaded, &commit_id),
         latest_release(state, &loaded),
         collaborator_access(state, viewer, &loaded)
     );
-    let (view, readme) = listing.map_err(ServiceError::from)?;
-    let readme = readme.map(|(name, text)| {
-        let is_markdown = is_markdown(&name);
-        let base = DocumentBase::new(loaded.urls.clone(), revision.clone(), path.clone());
-        let html = if is_markdown { render_markdown(&text, Some(&base)) } else { escape(&text) };
-        ReadmeView { name, html, is_markdown }
-    });
+    let view = listing.map_err(ServiceError::from)?;
+    let (documents, readme) = repository_documents::load(
+        reader,
+        &loaded.urls,
+        &view.commit.id,
+        &path,
+        &view.entries,
+        &query,
+        state.services.repositories.max_render_bytes(),
+    )
+    .await?;
 
     let urls = &loaded.urls;
-    let filtered = matching_entries(&view.entries, &query.q);
-    let pagination = Pagination::new(filtered.len(), &query, urls.tree(&view.commit.id, &path), vec![]);
-    let cells = Pagination::new(filtered.len(), &query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
+    let filtered = matching_entries(&view.entries, &listing_query.q);
+    let document_query = readme.as_ref().map(|document| vec![("document".to_owned(), document.path.clone())]).unwrap_or_default();
+    let pagination = Pagination::new(filtered.len(), &listing_query, urls.tree(&view.commit.id, &path), document_query);
+    let cells = Pagination::new(filtered.len(), &listing_query, entry_commits_url(urls, &view.commit.id, &path), vec![]);
     let entries = filtered[pagination.start..pagination.end]
         .iter()
         .copied()
@@ -354,6 +375,7 @@ async fn render_tree(
         entry_commits_url: cells.url(cells.page),
         pagination,
         readme,
+        documents,
         history_url: urls.commits(&revision),
         languages,
         language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),
