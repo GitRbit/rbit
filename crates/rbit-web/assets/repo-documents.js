@@ -4,11 +4,50 @@ let pendingDocument = null;
 const outlines = new WeakMap();
 const MAX_PAGE_CHARACTERS = 4 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 20000;
+const documents = new Map();
+const loads = new Map();
+const MAX_CACHED_DOCUMENTS = 8;
+const MAX_CACHE_CHARACTERS = 4 * 1024 * 1024;
+let activeSection = null;
+let warmingSection = null;
+let generation = 0;
+
+function documentURL(link) {
+  const url = new URL(link.href, location.href);
+  url.hash = '';
+  url.searchParams.set('document_fragment', 'true');
+  return url;
+}
+
+function rememberDocument(key, panel) {
+  const size = panel.outerHTML.length;
+  if (size > MAX_CACHE_CHARACTERS) return;
+  documents.delete(key);
+  // Keep a pristine template: live diagrams and other enhancements can mutate a
+  // mounted panel, and detached iframes lose their browsing context.
+  documents.set(key, { panel: panel.cloneNode(true), size });
+  let total = [...documents.values()].reduce((sum, entry) => sum + entry.size, 0);
+  while (documents.size > MAX_CACHED_DOCUMENTS || total > MAX_CACHE_CHARACTERS) {
+    const oldest = documents.keys().next().value;
+    total -= documents.get(oldest).size;
+    documents.delete(oldest);
+  }
+}
+
+function clearDocuments() {
+  generation++;
+  visibilityObserver?.disconnect();
+  cancelDocumentRequest();
+  for (const load of loads.values()) load.controller.abort();
+  loads.clear();
+  documents.clear();
+  warmingSection = null;
+}
 
 function cancelDocumentRequest() {
   if (!pendingDocument) return;
-  pendingDocument.controller.abort();
-  clearTimeout(pendingDocument.timer);
+  pendingDocument.load.controller?.abort();
+  if (loads.get(pendingDocument.key) === pendingDocument.load) loads.delete(pendingDocument.key);
   pendingDocument.section.removeAttribute('aria-busy');
   const status = pendingDocument.section.querySelector('[data-document-status]');
   if (status) status.hidden = true;
@@ -77,7 +116,20 @@ function refreshHeadingLinks(section) {
 }
 
 function initializeDocuments() {
+  if (!document.querySelector('[data-repo-documents]')) {
+    clearDocuments();
+    activeSection = null;
+  }
   for (const section of document.querySelectorAll('[data-repo-documents]')) {
+    if (activeSection !== section) {
+      clearDocuments();
+      activeSection = section;
+      const selected = section.querySelector('[role="tab"][aria-selected="true"]');
+      const panel = section.querySelector('[data-document-panel]');
+      if (selected && panel) rememberDocument(documentURL(selected).href, panel);
+      // Warm a small, bounded set only once the reader approaches the documents.
+      visibilityObserver?.observe(section);
+    }
     createOutline(section);
     updateDocumentLinks(section);
     // A history snapshot may have been taken while a request was loading.
@@ -88,6 +140,83 @@ function initializeDocuments() {
     }
   }
 }
+
+function loadDocument(link, section, speculative = false) {
+  const url = documentURL(link);
+  const key = url.href;
+  const cached = documents.get(key);
+  if (cached) {
+    documents.delete(key);
+    documents.set(key, cached);
+    return { key, promise: Promise.resolve(cached.panel.cloneNode(true)) };
+  }
+  if (loads.has(key)) return loads.get(key);
+  const controller = new AbortController();
+  const started = generation;
+  const load = { key, controller, timer: null, promise: null };
+  load.timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const scope = section.dataset.documentScope;
+  load.promise = (async () => {
+    const response = await fetch(url.href, { signal: controller.signal, credentials: 'same-origin', priority: speculative ? 'low' : 'high', headers: { Accept: 'text/html' } });
+    if (!response.ok || Number(response.headers?.get('content-length')) > MAX_PAGE_CHARACTERS) throw new Error('Document unavailable');
+    if (response.url) {
+      const final = new URL(response.url, location.href);
+      if (final.origin !== url.origin || final.pathname !== url.pathname || final.search !== url.search) throw new Error('Document redirected');
+    }
+    const html = await response.text();
+    if (html.length > MAX_PAGE_CHARACTERS) throw new Error('Document page too large');
+    if (controller.signal.aborted) throw new Error('Document request timed out');
+    const replacement = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-repo-documents]');
+    const panel = replacement?.querySelector('[data-document-panel]');
+    if (!panel || replacement.dataset.documentKey !== link.dataset.repoDocument || replacement.dataset.documentScope !== scope) throw new Error('Missing document');
+    if (started === generation && activeSection === section && section.isConnected) rememberDocument(key, panel);
+    return panel;
+  })().finally(() => {
+    clearTimeout(load.timer);
+    if (loads.get(key) === load) loads.delete(key);
+  });
+  loads.set(key, load);
+  return load;
+}
+
+function canWarmDocuments() {
+  const connection = globalThis.navigator?.connection;
+  return !connection?.saveData && !['slow-2g', '2g'].includes(connection?.effectiveType);
+}
+
+function warmDocument(link) {
+  const section = document.querySelector('[data-repo-documents]');
+  if (!section || !canWarmDocuments() || loads.size >= 2 || link.dataset.repoDocument === section.dataset.documentKey) return;
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin || !url.pathname.startsWith(`${section.dataset.documentScope}/`)) return;
+  if (documents.has(documentURL(link).href)) return;
+  loadDocument(link, section, true).promise.catch(() => {});
+}
+
+async function warmDocuments(section) {
+  if (warmingSection === section || !canWarmDocuments()) return;
+  warmingSection = section;
+  const started = generation;
+  // Sequential, low-priority reads avoid competing with the page and Git requests.
+  const tabs = [...section.querySelectorAll('[role="tab"][data-repo-document]')].filter(link => link.dataset.repoDocument !== section.dataset.documentKey).slice(0, 6);
+  for (const tab of tabs) {
+    if (started !== generation || activeSection !== section || !section.isConnected || pendingDocument || loads.size >= 2) break;
+    await loadDocument(tab, section, true).promise.catch(() => {});
+  }
+}
+
+const visibilityObserver = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+  for (const entry of entries) if (entry.isIntersecting) {
+    visibilityObserver.unobserve(entry.target);
+    warmDocuments(entry.target);
+  }
+}, { rootMargin: '300px' });
+
+for (const eventName of ['pointerover', 'focusin', 'touchstart']) document.addEventListener(eventName, event => {
+  if (!(event.target instanceof Element)) return;
+  const link = event.target.closest('[data-repo-document]');
+  if (link) warmDocument(link);
+}, { passive: true });
 
 function documentError(section, url) {
   const status = section.querySelector('[data-document-status]');
@@ -118,46 +247,37 @@ async function switchDocument(link, { restore = false, focus = false } = {}) {
     if (!restore) history.replaceState(history.state, '', url.href);
     refreshHeadingLinks(section);
     section.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    scrollToDocument(section, restore ? location.hash : url.hash);
+    if (restore || link.getAttribute('role') !== 'tab') scrollToDocument(section, restore ? location.hash : url.hash);
     return;
   }
-  const controller = new AbortController();
-  const request = { controller, section, timer: null };
-  request.timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const stickyTop = Number.parseFloat(getComputedStyle(section.querySelector('.repo-documents-header')).top) || 0;
+  const shouldScroll = restore || link.getAttribute('role') !== 'tab' || section.getBoundingClientRect().top <= stickyTop + 1;
+  const load = loadDocument(link, section);
+  const request = { load, key: load.key, section };
   pendingDocument = request;
   section.setAttribute('aria-busy', 'true');
   const status = section.querySelector('[data-document-status]');
-  status.textContent = 'Loading document…';
-  status.hidden = false;
+  status.hidden = true;
   try {
-    const response = await fetch(url.href, { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'text/html' } });
-    if (!response.ok || Number(response.headers?.get('content-length')) > MAX_PAGE_CHARACTERS) throw new Error('Document unavailable');
-    if (response.url) {
-      const final = new URL(response.url, location.href);
-      if (final.origin !== url.origin || final.pathname !== url.pathname) throw new Error('Document redirected');
-    }
-    const html = await response.text();
-    if (html.length > MAX_PAGE_CHARACTERS) throw new Error('Document page too large');
+    const panel = await load.promise;
     if (pendingDocument !== request || !section.isConnected) return;
-    if (controller.signal.aborted) throw new Error('Document request timed out');
-    const page = new DOMParser().parseFromString(html, 'text/html');
-    const replacement = page.querySelector('[data-repo-documents]');
-    if (!replacement || replacement.dataset.documentKey !== link.dataset.repoDocument || replacement.dataset.documentScope !== scope) throw new Error('Missing document');
-    section.replaceWith(replacement);
+    section.querySelector('[data-document-panel]').replaceWith(panel);
+    section.dataset.documentKey = link.dataset.repoDocument;
+    section.querySelector('[data-document-outline]').open = false;
+    outlines.delete(section);
     pendingDocument = null;
-    clearTimeout(request.timer);
+    section.removeAttribute('aria-busy');
     if (!restore) history.replaceState(history.state, '', url.href);
     initializeDocuments();
-    document.dispatchEvent(new CustomEvent('rbit:content-loaded', { detail: { root: replacement } }));
-    const selected = replacement.querySelector('[role="tab"][aria-selected="true"]');
+    document.dispatchEvent(new CustomEvent('rbit:content-loaded', { detail: { root: panel } }));
+    const selected = section.querySelector('[role="tab"][aria-selected="true"]');
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (focus) selected?.focus({ preventScroll: true });
-    scrollToDocument(replacement, restore ? location.hash : url.hash);
+    if (shouldScroll) scrollToDocument(section, restore ? location.hash : url.hash);
   } catch (error) {
     // An older response or navigation must never affect the current page.
     if (pendingDocument === request && section.isConnected) documentError(section, url);
   } finally {
-    clearTimeout(request.timer);
     if (pendingDocument === request) {
       pendingDocument = null;
       section.removeAttribute('aria-busy');
@@ -225,14 +345,16 @@ document.addEventListener('input', (event) => {
 });
 
 document.addEventListener('htmx:beforeRequest', (event) => {
-  if (event.detail?.boosted || event.detail?.requestConfig?.boosted) cancelDocumentRequest();
+  const verb = event.detail?.requestConfig?.verb;
+  if (event.detail?.boosted || event.detail?.requestConfig?.boosted || (verb && verb.toLowerCase() !== 'get')) clearDocuments();
 });
-addEventListener('popstate', cancelDocumentRequest);
-document.addEventListener('htmx:historyCacheMiss', cancelDocumentRequest);
+addEventListener('popstate', clearDocuments);
+addEventListener('pagehide', clearDocuments);
+document.addEventListener('htmx:historyCacheMiss', clearDocuments);
 document.addEventListener('htmx:afterSettle', initializeDocuments);
 document.addEventListener('rbit:content-loaded', initializeDocuments);
 document.addEventListener('htmx:historyRestore', () => {
-  cancelDocumentRequest();
+  clearDocuments();
   initializeDocuments();
   // htmx may restore a snapshot captured before a replaceState tab switch.
   const section = document.querySelector('[data-repo-documents]');

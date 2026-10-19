@@ -254,3 +254,50 @@ async fn document_query_preserves_numeric_pagination_and_search_parsing() {
         assert!(!content.contains("UNSELECTABLE_FILE_BODY_MARKER"));
     }
 }
+
+#[tokio::test]
+async fn document_fragments_match_page_documents_without_page_decorations() {
+    let fixture = Fixture::new().await;
+    let tree = format!("{HOME}/tree/{}", fixture.main_commit);
+    for document in ["README.md", "LICENSE-MIT", ".github/CODE_OF_CONDUCT.md", ".github/SECURITY.md", "NOTICE"] {
+        let encoded = utf8_percent_encode(document, NON_ALPHANUMERIC);
+        let query = format!("{tree}?document={encoded}&page=2&q=LICENSE");
+        let (status, full) = fixture.get(&query, false, false).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, fragment) = fixture.get(&format!("{query}&document_fragment=true"), false, false).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(fragment.contains("data-repo-documents"));
+        assert!(fragment.contains(&format!("data-document-key=\"{document}\"")));
+        assert!(fragment.contains("data-document-scope=\"/docs-owner/public\""));
+        assert!(!fragment.contains("<!doctype"));
+        assert!(!fragment.contains("id=\"repo-subnav\""));
+        assert!(!fragment.contains("entry-commits"));
+        let panel = "<div id=\"repo-document-panel\"";
+        let fragment_panel = fragment.split_once(panel).unwrap().1.split_once("</section>").unwrap().0;
+        assert!(full.contains(fragment_panel), "document body differs for {document}");
+        assert!(!fragment.contains("unsafe-markdown-marker()"));
+        assert!(!fragment.contains("<script>unsafe-license-marker()"));
+        assert!(fragment.contains(&format!("/tree/{}?document=", fixture.main_commit)));
+    }
+}
+
+#[tokio::test]
+async fn document_fragments_keep_whitelist_and_private_access_checks() {
+    let fixture = Fixture::new().await;
+    let tree = format!("{HOME}/tree/{}", fixture.main_commit);
+    for document in ["secret.txt", "../README.md", "docs/../secret.txt"] {
+        let encoded = utf8_percent_encode(document, NON_ALPHANUMERIC);
+        let (status, content) = fixture.get(&format!("{tree}?document={encoded}&document_fragment=true"), false, false).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(!content.contains("UNSELECTABLE_FILE_BODY_MARKER"));
+    }
+    let private = format!("/docs-owner/private/tree/{}?document=LICENSE-MIT&document_fragment=true", fixture.main_commit);
+    for partial in [false, true] {
+        let (status, content) = fixture.get(&private, false, partial).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(!content.contains("MIT license body marker"));
+        let (status, content) = fixture.get(&private, true, partial).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(content.contains("MIT license body marker"));
+    }
+}

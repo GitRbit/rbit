@@ -28,8 +28,8 @@ use crate::{
         ref_picker::{RefPickerLinks, RefPickerQuery, RefTarget},
         releases::LatestRelease,
         repo::{
-            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, RefSwitcher, RepoHeader, TreePage,
-            breadcrumbs,
+            BlobContent, BlobPage, CommitDay, CommitView, CommitsPage, EmptyRepoPage, EntryRow, RefSwitcher, RepoHeader,
+            RepositoryDocumentsFragment, TreePage, breadcrumbs,
         },
         statuses::{CHECKS_ANCHOR, StatusMark},
     },
@@ -48,6 +48,7 @@ pub struct TreeQuery {
     q: String,
     page: usize,
     document: Option<String>,
+    document_fragment: bool,
 }
 
 impl TreeQuery {
@@ -299,10 +300,29 @@ pub async fn tree(
     page: Page,
     Path((owner, repo, rest)): Path<(String, String, String)>,
     Query(query): Query<TreeQuery>,
-) -> WebResult<TreePage> {
+) -> WebResult<Response> {
+    if query.document_fragment {
+        // Tab switches need only the selected bounded document. In particular they
+        // must not calculate repository language statistics or page decorations.
+        let ctx = open_pinned(&state, &viewer, &owner, &repo).await?;
+        let (revision, path) = ctx.reader.split_revision_path(rest).await.map_err(ServiceError::from)?;
+        let view = ctx.reader.tree(revision, path.clone()).await.map_err(ServiceError::from)?;
+        let urls = RepoUrls::new(&owner, &repo);
+        let (documents, readme) = repository_documents::load(
+            &ctx.reader,
+            &urls,
+            &view.commit.id,
+            &path,
+            &view.entries,
+            &query,
+            state.services.repositories.max_render_bytes(),
+        )
+        .await?;
+        return Ok(RepositoryDocumentsFragment { document_scope: urls.home(), documents, readme }.into_response());
+    }
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let (revision, path) = loaded.split(rest).await?;
-    render_tree(&state, &viewer, loaded, page, revision, path, query).await
+    Ok(render_tree(&state, &viewer, loaded, page, revision, path, query).await?.into_response())
 }
 
 async fn render_tree(
@@ -376,6 +396,7 @@ async fn render_tree(
         pagination,
         readme,
         documents,
+        document_scope: urls.home(),
         history_url: urls.commits(&revision),
         languages,
         language_files_url: format!("{}/language-files?revision={}", urls.home(), crate::urls::encode_path(&view.commit.id)),

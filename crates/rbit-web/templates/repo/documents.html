@@ -1,5 +1,5 @@
 {% if let Some(readme) = readme %}
-<section id="readme" class="repo-documents box mt-6" data-repo-documents data-document-key="{{ readme.key }}" data-document-scope="{{ header.home_url }}" aria-label="Repository documents">
+<section id="readme" class="repo-documents box mt-6" data-repo-documents data-document-key="{{ readme.key }}" data-document-scope="{{ document_scope }}" aria-label="Repository documents">
   <header class="repo-documents-header">
     <div class="repo-document-tabs" role="tablist" aria-label="Repository documents">
       {% for document in documents %}

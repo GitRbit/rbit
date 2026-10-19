@@ -1,11 +1,14 @@
 /* The outer box deliberately permits overflow so its header sticks to the page. */
-.repo-documents { overflow: visible; min-width: 0; scroll-margin-top: calc(var(--sticky-top, 3rem) + 1rem); }
+.repo-documents { overflow: visible; overflow-anchor: none; min-width: 0; scroll-margin-top: var(--sticky-top, 3rem); }
 .repo-documents-header { position: sticky; top: var(--sticky-top, 3rem); z-index: 15; display: flex; align-items: center; min-width: 0; min-height: 3rem; border-bottom: 1px solid var(--line); border-radius: var(--radius-ui) var(--radius-ui) 0 0; background: var(--surface); }
 .repo-document-tabs { display: flex; flex: 1; min-width: 0; align-items: stretch; gap: .25rem; padding: 0 .5rem; overflow-x: auto; scrollbar-width: thin; }
 .repo-document-tab { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .5rem; min-height: 3rem; padding: .65rem .6rem; border-bottom: 2px solid transparent; font-size: 13px; color: var(--ink-muted); text-decoration: none; white-space: nowrap; }
 .repo-document-tab:hover { color: var(--ink); background: var(--hover); }
 .repo-document-tab[aria-selected="true"] { border-bottom-color: var(--inverted); color: var(--ink); font-weight: 600; }
 .repo-document-tab:focus-visible { outline-offset: -4px; }
+.repo-documents[aria-busy="true"] .repo-documents-header::after { content: ""; position: absolute; inset: auto 0 -1px; height: 2px; background: var(--inverted); animation: repo-document-loading 1s ease-in-out .15s infinite both; pointer-events: none; }
+@keyframes repo-document-loading { 0%, 100% { opacity: 0; } 50% { opacity: .65; } }
+@media (prefers-reduced-motion: reduce) { .repo-documents[aria-busy="true"] .repo-documents-header::after { animation: none; opacity: .5; } }
 .repo-document-outline { position: relative; flex-shrink: 0; margin: 0 .5rem; }
 .repo-document-outline summary { list-style: none; cursor: pointer; }
 .repo-document-outline summary::-webkit-details-marker { display: none; }
@@ -24,6 +27,7 @@
 .repo-document-status { border-bottom: 1px solid var(--line); }
 .repo-document-status a { text-decoration: underline; }
 .repo-document-content { min-width: 0; }
+[data-document-panel] { min-height: calc(100svh - var(--sticky-top, 3rem) - 3rem); }
 pre.repo-document-content { white-space: pre-wrap; overflow-wrap: anywhere; }
 .repo-document-content :is(h1,h2,h3,h4,h5,h6), .repo-document-content a[id] { scroll-margin-top: calc(var(--sticky-top, 3rem) + 4.5rem); }
 .repo-document-links { display: grid; gap: .5rem; font-size: 13px; color: var(--ink-muted); }
