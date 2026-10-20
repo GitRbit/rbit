@@ -1,9 +1,12 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="mx-auto max-w-xl">
+<section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="new">
   <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A repository holds a project's files and their complete history. Copying one from elsewhere? <a class="link" href="/new/import">Import it from GitHub or Gitea</a> or <a class="link" href="/new/mirror">mirror it</a>.</p>
+  {% let creation_kind = "new" %}
+  {% include "repo/create_tabs.html" %}
+  <div id="create-new-panel" role="tabpanel" aria-labelledby="create-new-tab" data-repo-create-panel>
+  <p class="mt-3 text-[13px] text-ink-muted">Create an empty repository, import a project, or keep a mirror in sync with its source.</p>
 
   <form method="post" action="/new" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
@@ -67,5 +70,6 @@
       <button class="btn btn-primary" type="submit">Create repository</button>
     </div>
   </form>
+  </div>
 </section>
 {% endblock %}
