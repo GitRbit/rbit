@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Cache daily repository activity by default-branch tip and reduce commit graph ordering work.
+
 - Add quoted replies and user, issue and pull request mention choices to discussions.
 
 - Search branch and tag choices on demand when comparing changes. Keep diff highlighting off the request worker.
