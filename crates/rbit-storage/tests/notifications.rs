@@ -1,8 +1,7 @@
 //! Thread subscriptions and the notification inbox (workstream I) against a real,
 //! migrated `SQLite` database.
 
-#[path = "common/query_count.rs"]
-mod query_count;
+use crate::query_count;
 
 use rbit_core::{IssueId, IssueKind, IssueText, IssueTitle, RepoId, Timestamp, User, Visibility};
 use rbit_storage::{
