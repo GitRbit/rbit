@@ -1,8 +1,8 @@
 //! Progressive-web-app plumbing: manifest, service worker, offline page.
 
 use axum::{
-    extract::State,
-    http::header,
+    extract::{Query, State},
+    http::{HeaderMap, header},
     response::{IntoResponse, Response},
 };
 use serde_json::json;
@@ -13,7 +13,21 @@ use crate::{
     views::{layout::Page, pwa::OfflinePage},
 };
 
-pub async fn manifest(State(state): State<AppState>) -> Response {
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(default)]
+pub struct ManifestQuery {
+    theme: String,
+}
+
+fn launch_color(slug: &str, headers: &HeaderMap) -> &'static str {
+    crate::themes::Theme::parse(slug)
+        .unwrap_or_else(|| crate::themes::Theme::from_headers(headers))
+        .theme_color()
+        .unwrap_or(crate::themes::DNA_DAY_CANVAS)
+}
+
+pub async fn manifest(State(state): State<AppState>, Query(query): Query<ManifestQuery>, headers: HeaderMap) -> Response {
+    let color = launch_color(&query.theme, &headers);
     let settings = state.services.instance.current();
     let site = settings.site_name;
     let icons = if settings.branding.app_icon_url.is_empty() {
@@ -33,9 +47,9 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
         "start_url": "/",
         "scope": "/",
         "display": "standalone",
-        // The splash screen before first paint. No theme_color: the page's own theme-color
-        // meta tags (light, dark or the chosen theme) apply from there on.
-        "background_color": crate::themes::LIGHT_CANVAS,
+        // Match the selected theme before the first page paints. The id stays stable.
+        "background_color": color,
+        "theme_color": color,
         // PNGs generated from logo.png by `npm run icons`; the maskable icon keeps
         // the entire mascot inside the safe zone.
         "icons": icons,
@@ -44,7 +58,11 @@ pub async fn manifest(State(state): State<AppState>) -> Response {
             { "name": "Explore", "url": "/explore" }
         ]
     });
-    ([(header::CONTENT_TYPE, "application/manifest+json"), (header::CACHE_CONTROL, "no-cache")], manifest.to_string()).into_response()
+    (
+        [(header::CONTENT_TYPE, "application/manifest+json"), (header::CACHE_CONTROL, "private, no-cache"), (header::VARY, "Cookie")],
+        manifest.to_string(),
+    )
+        .into_response()
 }
 
 /// Served from the root so its scope covers the whole site. The asset build hash is
@@ -93,6 +111,17 @@ pub async fn branding_styles(State(state): State<AppState>) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_colors_follow_rbit_defaults_and_saved_choices() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(launch_color("", &headers), crate::themes::DNA_DAY_CANVAS);
+        assert_eq!(launch_color("dna-dark", &headers), crate::themes::DNA_DARK_CANVAS);
+        headers.insert(header::COOKIE, "rbit-theme=dna-dark".parse().unwrap());
+        assert_eq!(launch_color("unknown", &headers), crate::themes::DNA_DARK_CANVAS);
+        assert_eq!(launch_color("light", &headers), crate::themes::LIGHT_CANVAS);
+        assert_eq!(launch_color("base24-berlin", &headers), crate::themes::Theme::parse("base24-berlin").unwrap().theme_color().unwrap());
+    }
 
     /// PNG width and height from the IHDR chunk.
     fn png_size(bytes: &[u8]) -> (u32, u32) {

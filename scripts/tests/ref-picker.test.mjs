@@ -6,7 +6,8 @@ import vm from "node:vm";
 const source = (await readFile(new URL("../../crates/rbit-web/assets/app.js", import.meta.url), "utf8"))
   .replace(/^import .*;$/gm, "");
 
-function harness() {
+function harness({ dark = false, theme } = {}) {
+  const media = { matches: dark, addEventListener(_name, callback) { this.change = callback; } };
   const listeners = new Map();
   const requests = [];
   const menus = [];
@@ -20,6 +21,7 @@ function harness() {
     removeAttribute(name) { if (name === "open") this.open = false; }
   }
   const document = {
+    documentElement: { dataset: theme ? { theme } : {} },
     head: { append: (element) => metadata.push(element) },
     createElement: () => ({}),
     addEventListener(name, callback) { listeners.set(name, [...(listeners.get(name) ?? []), callback]); },
@@ -27,10 +29,10 @@ function harness() {
     querySelector() { return null; },
   };
   const window = { htmx: { trigger(element, name) { requests.push({element, name}); } } };
-  vm.runInNewContext(source, { document, window, navigator: {}, addEventListener: (name, callback) => listeners.set(name, [callback]), HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
+  vm.runInNewContext(source, { matchMedia: () => media, document, window, navigator: {}, addEventListener: (name, callback) => listeners.set(name, [callback]), HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
   const picker = new Details();
   menus.push(picker);
-  return { picker, requests, window, metadata, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };
+  return { picker, requests, window, metadata, media, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };
 }
 
 test("installation metadata is discovered only after the page loads", () => {
@@ -39,7 +41,17 @@ test("installation metadata is discovered only after the page loads", () => {
   h.emit("load");
   assert.equal(h.metadata.length, 1);
   assert.equal(h.metadata[0].rel, "manifest");
-  assert.equal(h.metadata[0].href, "/manifest.webmanifest");
+  assert.equal(h.metadata[0].href, "/manifest.webmanifest?theme=dna-day");
+});
+
+test("manifest launch colors follow System and keep explicit choices", () => {
+  const h = harness({ dark: true }); h.emit("load");
+  assert.equal(h.metadata[0].href, "/manifest.webmanifest?theme=dna-dark");
+  h.media.matches = false; h.media.change();
+  assert.equal(h.metadata[0].href, "/manifest.webmanifest?theme=dna-day");
+  const pinned = harness({ dark: true, theme: 'base24-berlin' }); pinned.emit('load');
+  pinned.media.matches = false; pinned.media.change();
+  assert.equal(pinned.metadata[0].href, "/manifest.webmanifest?theme=base24-berlin");
 });
 
 test("refs load only on open; failed loads can retry and successful loads are reused", () => {

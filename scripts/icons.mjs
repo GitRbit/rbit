@@ -10,7 +10,7 @@ function render(size, file, scale = 1, background = false) {
   const edge = 512 * scale;
   const inset = (512 - edge) / 2;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512">
-    ${background ? '<rect width="512" height="512" fill="#f5f2eb"/>' : ""}
+    ${background ? '<rect width="512" height="512" fill="#f5f7f9"/>' : ""}
     <image x="${inset}" y="${inset}" width="${edge}" height="${edge}" preserveAspectRatio="xMidYMid meet" xlink:href="data:image/png;base64,${mascot}"/>
   </svg>`;
   const png = new Resvg(svg, { fitTo: { mode: "width", value: size } }).render().asPng();

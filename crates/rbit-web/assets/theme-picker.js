@@ -111,6 +111,11 @@ function apply(slug, scheme, source) {
   applied = { slug, scheme };
   show(slug, scheme);
   markCurrent(slug);
+  const manifest = document.head.querySelector('link[rel="manifest"]');
+  if (manifest) {
+    const theme = slug === 'system' ? defaultSlug(deviceScheme()) : slug;
+    manifest.href = `/manifest.webmanifest?theme=${encodeURIComponent(theme)}`;
+  }
   syncMeta(scheme);
   const secure = location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${COOKIE}=${slug}; Path=/; Max-Age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
