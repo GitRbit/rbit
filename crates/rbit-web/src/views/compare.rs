@@ -28,6 +28,7 @@ pub struct RefOption {
 /// The base and head pickers (a plain GET form, so it works without JavaScript).
 #[derive(Debug, Clone)]
 pub struct ComparePicker {
+    pub branches_only: bool,
     pub action_url: String,
     pub options: Vec<RefOption>,
     pub base: String,
@@ -43,8 +44,9 @@ impl ComparePicker {
     pub fn new(urls: &RepoUrls, refs: &[RefSummary], base: &str, head: &str) -> Self {
         let full_name = urls.home().trim_start_matches('/').to_owned();
         Self {
+            branches_only: false,
             action_url: format!("{}/compare", urls.home()),
-            options: refs.iter().map(|r| RefOption { name: r.name.clone(), is_tag: r.kind == RefKind::Tag }).collect(),
+            options: refs.iter().take(50).map(|r| RefOption { name: r.name.clone(), is_tag: r.kind == RefKind::Tag }).collect(),
             base: base.to_owned(),
             head: head.to_owned(),
             repositories: vec![full_name.clone()],

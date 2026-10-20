@@ -15,6 +15,7 @@ import "./filter.js";
 
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
+import "./compare.js";
 import "./repo.js";
 import "./repo-documents.js";
 import "./sticky-header.js";
