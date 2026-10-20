@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Add searchable issue filter menus, label reset choices and search help.
+
 - Refresh the roadmap for the public open-source project, separate available features
   from planned work, and remove stale first-release guidance from contributor and handoff docs.
 - Document how to distinguish large HTTPS push failures at proxies from Git's shallow

@@ -17,7 +17,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{
     Account, AccountId, Issue, IssueKind, IssueState, StateReason, User,
     issue::LabelSnapshot,
-    issue_query::{DEFAULT_QUERY, IssueQuery, IssueSort, Who},
+    issue_query::{DEFAULT_QUERY, IssueQuery, IssueSort, KindFilter, StateFilter, Who},
 };
 use rbit_services::{
     ServiceError,
@@ -253,17 +253,6 @@ pub fn filter_menus(query: &IssueQuery, list: &str, choices: &MenuChoices, viewe
         });
     }
 
-    let labels = choices
-        .labels
-        .iter()
-        .map(|label| MenuItem {
-            label: label.name.clone(),
-            url: link(query.toggling_label(&label.name)),
-            selected: query.has_label(&label.name),
-            color: Some(safe_color(&label.color)),
-        })
-        .collect();
-
     let mut milestones = vec![
         MenuItem {
             label: "Any".into(),
@@ -284,13 +273,96 @@ pub fn filter_menus(query: &IssueQuery, list: &str, choices: &MenuChoices, viewe
         .map(|sort| MenuItem { label: sort.label().into(), url: link(query.with_sort(sort)), selected: query.sort == sort, color: None })
         .collect();
 
-    vec![
+    let mut menus = state_menus(query, list);
+    menus.extend(vec![
         FilterMenu { title: "Author", active: query.author.is_some(), items: author },
-        FilterMenu { title: "Label", active: !query.labels.is_empty() || query.no_label, items: labels },
+        label_menu(query, list, choices),
         FilterMenu { title: "Milestone", active: query.milestone.is_some() || query.no_milestone, items: milestones },
         FilterMenu { title: "Assignee", active: query.assignee.is_some() || query.no_assignee, items: assignee },
         FilterMenu { title: "Sort", active: query.sort != IssueSort::default(), items: sort },
-    ]
+    ]);
+    menus
+}
+
+fn label_menu(query: &IssueQuery, list: &str, choices: &MenuChoices) -> FilterMenu {
+    let link = |query: IssueQuery| list_url(list, &IssueQuery { ignored: Vec::new(), ..query });
+    let mut clear_labels = query.clone();
+    clear_labels.labels.clear();
+    clear_labels.not_labels.clear();
+    clear_labels.no_label = false;
+    let mut no_labels = clear_labels.clone();
+    no_labels.no_label = true;
+    let mut labels = vec![
+        MenuItem {
+            label: "Any label".into(),
+            url: link(clear_labels),
+            selected: query.labels.is_empty() && query.not_labels.is_empty() && !query.no_label,
+            color: None,
+        },
+        MenuItem { label: "No labels".into(), url: link(no_labels), selected: query.no_label, color: None },
+    ];
+    labels.extend(
+        choices
+            .labels
+            .iter()
+            .map(|label| MenuItem {
+                label: label.name.clone(),
+                url: link(query.toggling_label(&label.name)),
+                selected: query.has_label(&label.name),
+                color: Some(safe_color(&label.color)),
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    FilterMenu { title: "Label", active: !query.labels.is_empty() || !query.not_labels.is_empty() || query.no_label, items: labels }
+}
+
+fn state_menus(query: &IssueQuery, list: &str) -> Vec<FilterMenu> {
+    let link = |query: IssueQuery| list_url(list, &IssueQuery { ignored: Vec::new(), ..query });
+    let state = vec![
+        MenuItem {
+            label: "Open".into(),
+            url: link(query.with_state(StateFilter::Open)),
+            selected: query.state == Some(StateFilter::Open),
+            color: None,
+        },
+        MenuItem {
+            label: "Closed".into(),
+            url: link(query.with_state(StateFilter::Closed)),
+            selected: query.state == Some(StateFilter::Closed),
+            color: None,
+        },
+        MenuItem {
+            label: "All states".into(),
+            url: link(IssueQuery { state: None, ..query.clone() }),
+            selected: query.state.is_none(),
+            color: None,
+        },
+    ];
+    let mut menus = vec![FilterMenu { title: "State", active: query.state != Some(StateFilter::Open), items: state }];
+    if query.kind == Some(KindFilter::Pull) {
+        let any = IssueQuery { draft: false, merged: false, ..query.clone() };
+        menus.push(FilterMenu {
+            title: "Status",
+            active: query.draft || query.merged,
+            items: vec![
+                MenuItem { label: "Any status".into(), url: link(any.clone()), selected: !query.draft && !query.merged, color: None },
+                MenuItem {
+                    label: "Draft".into(),
+                    url: link(IssueQuery { draft: true, state: Some(StateFilter::Open), ..any.clone() }),
+                    selected: query.draft,
+                    color: None,
+                },
+                MenuItem {
+                    label: "Merged".into(),
+                    url: link(IssueQuery { merged: true, state: Some(StateFilter::Closed), ..any }),
+                    selected: query.merged,
+                    color: None,
+                },
+            ],
+        });
+    }
+    menus
 }
 
 // ------------------------------------------------------------------ pages
@@ -594,12 +666,14 @@ mod tests {
         let choices = MenuChoices { people: vec![account(2, "bob")], ..MenuChoices::default() };
         let menus = filter_menus(&query, "/a/b/issues", &choices, None);
         let titles: Vec<&str> = menus.iter().map(|m| m.title).collect();
-        assert_eq!(titles, ["Author", "Label", "Milestone", "Assignee", "Sort"]);
-        let author = &menus[0];
+        assert_eq!(titles, ["State", "Author", "Label", "Milestone", "Assignee", "Sort"]);
+        let author = &menus[1];
         assert_eq!(author.items.len(), 2, "no \"You\" when signed out");
         assert_eq!(author.items[1].url, "/a/b/issues?q=is%3Aopen%20author%3Abob%20label%3Abug");
-        assert!(menus[1].active && !menus[0].active);
-        assert!(menus[4].items[0].selected);
+        assert!(menus[2].active && !menus[1].active);
+        assert_eq!(menus[2].items[0].url, "/a/b/issues?q=is%3Aopen");
+        assert_eq!(menus[2].items[1].url, "/a/b/issues?q=is%3Aopen%20no%3Alabel");
+        assert!(menus[5].items[0].selected);
         assert_eq!(list_url("/a/b/issues", &IssueQuery::parse("")), "/a/b/issues");
     }
 
