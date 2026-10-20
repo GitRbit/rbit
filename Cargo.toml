@@ -128,7 +128,23 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[profile.dev]
+# File and line numbers for backtraces and panics, without the variable-level debug info
+# that makes rbit-web and every test binary slower to generate and link.
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 # Dependencies (gix, syntect, argon2) are dramatically faster when optimised,
 # while our own crates stay quick to rebuild.
 opt-level = 2
+debug = false
+
+# The "*" override above also applies to proc-macro dependencies, ahead of build-override.
+# syn and its helpers only run inside the compiler, where optimising them costs far more
+# build time (syn is on the critical path to rbit-web) than it saves in macro expansion.
+[profile.dev.package.syn]
+opt-level = 0
+[profile.dev.package.quote]
+opt-level = 0
+[profile.dev.package.proc-macro2]
+opt-level = 0
