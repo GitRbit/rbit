@@ -11,11 +11,11 @@
 //! are 403; invalid text is 400 with the reason.
 
 use axum::{
-    Form, Router,
-    extract::{Path, State},
+    Form, Json, Router,
+    extract::{Path, Query, State},
     http::{StatusCode, header::LOCATION},
     response::{IntoResponse, Redirect, Response},
-    routing::post,
+    routing::{get, post},
 };
 use rbit_core::{CommentId, IssueNumber, StateReason, User};
 use rbit_services::timeline::{IssueContext, StateChange};
@@ -24,12 +24,13 @@ use serde::Deserialize;
 use crate::{
     AppState,
     error::{WebError, WebResult},
-    extract::SignedIn,
+    extract::{SignedIn, Viewer},
     views::timeline::{BODY_ANCHOR, NEW_COMMENT_ANCHOR, TITLE_ANCHOR, ThreadUrls, comment_anchor},
 };
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/{owner}/{repo}/issues/suggestions", get(suggestions))
         .route("/{owner}/{repo}/issues/{number}/comments", post(add_comment))
         .route("/{owner}/{repo}/issues/{number}/comments/{id}", post(edit_comment))
         .route("/{owner}/{repo}/issues/{number}/comments/{id}/delete", post(delete_comment))
@@ -37,6 +38,24 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/issues/{number}/body", post(edit_body))
         .route("/{owner}/{repo}/issues/{number}/state", post(set_state))
         .route("/{owner}/{repo}/issues/{number}/lock", post(set_lock))
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SuggestQuery {
+    q: String,
+    accounts: bool,
+}
+
+async fn suggestions(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<SuggestQuery>,
+) -> WebResult<Response> {
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let choices = state.services.references.suggestions(&ctx, &query.q, query.accounts).await?;
+    Ok(([(axum::http::header::CACHE_CONTROL, "private, no-store")], Json(choices)).into_response())
 }
 
 /// Opens thread `number` of `owner/repo` for `user`; 404 for hidden repositories and

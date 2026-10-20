@@ -109,7 +109,14 @@ async fn outsiders_get_404_for_a_private_repositorys_issues() {
     alice.get("/alice/vault/issues").await.expect_status(StatusCode::OK).expect_contains(&["Secret plans"]);
     let token = bob.create_token("api", "admin").await;
     for client in [&bob, &server.client()] {
-        for path in ["/alice/vault/issues", "/alice/vault/issues/1", "/alice/vault/labels", "/alice/vault/milestones"] {
+        for path in [
+            "/alice/vault/issues",
+            "/alice/vault/issues/1",
+            "/alice/vault/labels",
+            "/alice/vault/milestones",
+            "/alice/vault/issues/suggestions",
+            "/alice/vault/compare/refs",
+        ] {
             client.get(path).await.expect_status(StatusCode::NOT_FOUND);
         }
     }
@@ -315,4 +322,20 @@ async fn preloading_a_discussion_never_marks_it_read() {
         alice.get(path).await.expect_status(StatusCode::OK);
         assert!(!has_unread(&alice).await, "visiting {path} marks it read");
     }
+}
+
+#[tokio::test]
+async fn mention_choices_find_accounts_and_exact_thread_numbers() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "mentions", "public").await;
+    alice.post("/alice/mentions/issues", &[("title", "Mention target")]).await.expect_redirect("/alice/mentions/issues/1");
+    let users = alice.get("/alice/mentions/issues/suggestions?accounts=true&q=ali").await;
+    users.expect_status(StatusCode::OK).expect_contains(&["@alice"]);
+    let exact = alice.get("/alice/mentions/issues/suggestions?q=1").await;
+    exact.expect_status(StatusCode::OK).expect_contains(&["#1", "Mention target"]);
+    alice.get("/alice/mentions/issues/suggestions?q=target").await.expect_contains(&["#1", "Mention target"]);
+    alice.get("/alice/mentions/issues/suggestions?accounts=true&q=ali%25").await.expect_contains(&["[]"]);
+    let page = alice.get("/alice/mentions/issues/1").await;
+    page.expect_contains(&["data-reply=", "data-discussion-editor", "data-suggestions="]);
 }

@@ -270,6 +270,7 @@ pub struct CommentView {
     /// `POST` target that deletes the comment; `None` for the opening post.
     pub delete_url: Option<String>,
     pub is_opening_post: bool,
+    pub can_reply: bool,
 }
 
 /// An event row (`timeline/event.html`): "alice added the bug label 2 days ago".
@@ -316,6 +317,7 @@ pub struct TitleView {
 pub struct CommentFormView {
     pub anchor: &'static str,
     pub action_url: String,
+    pub suggestions_url: String,
     pub signed_in: bool,
     pub sign_in_url: String,
     pub can_comment: bool,
@@ -416,6 +418,7 @@ pub fn build_thread(
         update_url: urls.body.clone(),
         delete_url: None,
         is_opening_post: true,
+        can_reply: permissions.can_comment,
     };
     let title = TitleView {
         anchor: TITLE_ANCHOR,
@@ -430,6 +433,7 @@ pub fn build_thread(
     let form = CommentFormView {
         anchor: NEW_COMMENT_ANCHOR,
         action_url: urls.comments.clone(),
+        suggestions_url: format!("/{}/{}/issues/suggestions", ctx.repo.repo.owner.name, ctx.repo.repo.repo.name),
         signed_in: viewer.is_some(),
         sign_in_url: format!("/login?next={}", urls.page),
         can_comment: permissions.can_comment,
@@ -477,6 +481,7 @@ pub fn items(ctx: &IssueContext, timeline: &Timeline, refs: &RefContext, options
                         update_url: urls.comment(comment.id),
                         delete_url: Some(urls.delete_comment(comment.id)),
                         is_opening_post: false,
+                        can_reply: ctx.permissions.can_comment,
                         anchor,
                     }),
                     event: None,

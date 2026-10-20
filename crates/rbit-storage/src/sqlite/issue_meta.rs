@@ -698,6 +698,17 @@ impl IssueMetaStore {
         rows.into_iter().map(Account::try_from).collect()
     }
 
+    /// Public account names for mention completion, with a fixed result bound.
+    pub async fn mention_candidates(&self, prefix: &str) -> Result<Vec<Account>, StorageError> {
+        let rows: Vec<AccountRow> = sqlx::query_as(
+            "SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 10",
+        )
+        .bind(prefix_pattern(prefix))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter().map(Account::try_from).collect()
+    }
+
     // ------------------------------------------------------------------ references
 
     /// Remembers that `commit` mentions `issue`; `false` when it was already recorded.
