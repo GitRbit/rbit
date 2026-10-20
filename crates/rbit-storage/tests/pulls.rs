@@ -69,6 +69,22 @@ async fn created(database: &Database, new: &NewPull) -> (rbit_core::Issue, rbit_
 }
 
 #[tokio::test]
+async fn batch_pull_lookup_keeps_repository_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+    let alice = user(&database, "alice").await;
+    let demo = repo(&database, &alice, "demo", Visibility::Public).await;
+    let vault = repo(&database, &alice, "vault", Visibility::Private).await;
+    let (first, _) = created(&database, &new_pull(demo, demo, &alice, "one", 1)).await;
+    let (hidden, _) = created(&database, &new_pull(vault, vault, &alice, "secret", 2)).await;
+    let found = database.pulls().find_among(demo, &[hidden.id, first.id]).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].issue_id, first.id);
+    assert_eq!(database.pulls().find_among(demo, &[]).await.unwrap(), []);
+    database.close().await;
+}
+
+#[tokio::test]
 async fn pull_requests_share_numbers_and_refuse_duplicates_while_open() {
     let dir = tempfile::tempdir().unwrap();
     let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();

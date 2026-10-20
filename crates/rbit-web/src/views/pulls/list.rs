@@ -83,4 +83,8 @@ pub struct PullListPage {
     pub pagination: Pagination,
     pub new_url: String,
     pub author_filter: Option<String>,
+    pub query: String,
+    pub hints: Vec<String>,
+    pub list_url: String,
+    pub menus: Vec<crate::views::issues::FilterMenu>,
 }

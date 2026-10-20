@@ -247,8 +247,23 @@ impl PullStore {
         Self { pool }
     }
 
-    /// Inserts the thread and the pull request in one transaction, unless another open
-    /// pull request has the same base and head.
+    /// Pull data for a bounded page of issues in one repository.
+    pub async fn find_among(&self, repo: RepoId, ids: &[IssueId]) -> Result<Vec<PullRequest>, StorageError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut query =
+            sqlx::QueryBuilder::<sqlx::Sqlite>::new(concat!("SELECT ", pull_columns!(), " FROM pull_requests p WHERE p.repo_id = "));
+        query.push_bind(repo.0).push(" AND p.issue_id IN (");
+        let mut separated = query.separated(", ");
+        for id in ids {
+            separated.push_bind(id.0);
+        }
+        separated.push_unseparated(")");
+        query.build_query_as::<PullRow>().fetch_all(&self.pool).await?.into_iter().map(PullRequest::try_from).collect()
+    }
+
+    /// Inserts the thread and pull request unless an open pull has the same base and head.
     pub async fn create(&self, new: &NewPull) -> Result<CreatedPull, StorageError> {
         let mut tx = self.pool.begin().await?;
         // The first write: takes the write lock before the duplicate check below.
