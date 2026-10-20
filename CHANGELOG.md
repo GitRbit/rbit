@@ -7,6 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Update TLS certificate validation dependencies to reject distrusted emSign intermediates
+  (RUSTSEC-2026-0381 and RUSTSEC-2026-0382).
+
 ### Changed
 
 - Refresh the roadmap for the public open-source project, separate available features
