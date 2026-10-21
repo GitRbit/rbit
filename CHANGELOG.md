@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-21
+
 ### Security
 
 - Update TLS certificate validation dependencies to reject distrusted emSign intermediates
@@ -34,6 +36,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from planned work, and remove stale first-release guidance from contributor and handoff docs.
 - Document how to distinguish large HTTPS push failures at proxies from Git's shallow
   update rejections, with regression coverage for normal and shallow pushes over 100 MiB.
+
+### Upgrade notes
+
+- Back up the instance before upgrading. No new database migrations or configuration
+  changes are required when upgrading from 0.1.2.
+- Restart the service with the new binary or container image to apply the TLS
+  certificate validation updates and refreshed web assets.
 
 ## [0.1.2] - 2026-10-19
 
