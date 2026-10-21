@@ -429,6 +429,15 @@
     }
   }
 
+  /* Wrap filter menus on phones so their dropdowns can leave the bar. */
+  @media (width < 40rem) {
+    .scroll-tabs:has(> details[data-menu]) {
+      flex-wrap: wrap;
+      overflow: visible;
+      mask-image: none;
+    }
+  }
+
   /* The repository header (repo/subnav.html). Phones: the name with the star, fork and
      clone buttons beside it, then the tabs edge to edge. From `md` the name is in the top
      bar and the tabs share one row with the buttons. */
