@@ -329,7 +329,8 @@ async fn new_page(
     let pulls = &state.services.pulls;
     let head_ctx = pulls.resolve_head(viewer.user(), &loaded.ctx, &spec).await?;
     let head_full_name = head_ctx.repo.full_name();
-    let picker = super::compare::pickers(&state, &viewer, &loaded, &base, &spec.branch, &head_full_name).await;
+    let mut picker = super::compare::pickers(&state, &viewer, &loaded, &base, &spec.branch, &head_full_name).await;
+    picker.branches_only = true;
     let mut view = NewPullPage {
         page: page.titled(format!("Open a pull request · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "pulls"),
@@ -363,10 +364,12 @@ async fn new_page(
                 view.title = comparison.commits.first().map_or_else(|| spec.branch.clone(), |commit| commit.summary.clone());
             }
             view.commits = comparison.commits.iter().map(|commit| CommitView::new(commit, &head_urls)).collect();
-            view.files = FileDiffView::list(&comparison.files, &comparison.head.id, &head_urls);
             view.additions = comparison.additions();
             view.deletions = comparison.deletions();
             view.truncated = comparison.truncated;
+            view.files = tokio::task::spawn_blocking(move || FileDiffView::list(&comparison.files, &comparison.head.id, &head_urls))
+                .await
+                .map_err(WebError::internal)?;
             view.can_create = viewer.user().is_some();
         }
         Err(ServiceError::Internal(source)) => return Err(WebError::Internal(source)),
