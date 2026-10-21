@@ -94,6 +94,14 @@ fn line_anchor(body: &str, line: u32) -> String {
     body[start..end + suffix.len() - 1].to_owned()
 }
 
+async fn assert_pull_search(alice: &Client) {
+    alice.get("/alice/demo/pulls").await.expect_contains(&["Greet the world", "1</span> Open", "Search pull requests", "Find label"]);
+    alice.get("/alice/demo/pulls?q=world%20author%3Abob").await.expect_contains(&["Greet the world"]);
+    let empty = alice.get("/alice/demo/pulls?q=world%20author%3Aunknown").await;
+    assert!(!empty.contains("href=\"/alice/demo/pull/1\""));
+    alice.get("/alice/demo/pulls?state=all&author=bob").await.expect_contains(&["Greet the world"]);
+}
+
 #[tokio::test]
 async fn a_fork_pull_request_is_reviewed_fixed_approved_and_squash_merged() {
     let server = server();
@@ -145,7 +153,7 @@ async fn a_fork_pull_request_is_reviewed_fixed_approved_and_squash_merged() {
         "bob:greeting",
         "id=\"merge-box\"",
     ]);
-    alice.get("/alice/demo/pulls").await.expect_contains(&["Greet the world", "1</span> Open"]);
+    assert_pull_search(&alice).await;
     wait_for_delivery(&inbox, |event, body| event == "pull_request" && body["action"] == "opened").await;
 
     // Alice comments on a line and requests changes.

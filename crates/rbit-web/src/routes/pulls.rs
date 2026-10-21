@@ -22,12 +22,13 @@ use axum::{
 use rbit_core::{
     IssueNumber, IssueState, ReviewId, User,
     issue::MergeStrategy,
+    issue_query::{IssueQuery, KindFilter, StateFilter},
     pull::{HeadSpec, ReviewCommentId, ReviewSide},
 };
 use rbit_git::DiffLimits;
 use rbit_services::{
     RepoContext, ServiceError,
-    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, PullFilter, PullStateFilter, ReviewData, ReviewVerdict},
+    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict},
     timeline::{IssueContext, TimelineCursor},
 };
 use serde::Deserialize;
@@ -42,6 +43,7 @@ use crate::{
     views::{
         commit::FileDiffView,
         components::Pagination,
+        issues::{MenuChoices, filter_menus, list_url},
         layout::Page,
         pulls::{
             ClosedBoxView, LabelView, ListTabs, MergeBoxView, NewPullPage, PullCommitsPage, PullCountsFragment, PullCountsView,
@@ -190,6 +192,7 @@ fn title(ctx: &PullContext, suffix: &str) -> String {
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
+    q: Option<String>,
     #[serde(default)]
     state: String,
     #[serde(default)]
@@ -198,44 +201,30 @@ pub struct ListQuery {
     page: Option<u32>,
 }
 
-/// `GET /{owner}/{repo}/pulls?state=open|closed|merged&author=&page=`
+/// `GET /{owner}/{repo}/pulls?q=…`; legacy state and author links still work.
 async fn list(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
+    Query(params): Query<ListQuery>,
 ) -> WebResult<PullListPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (filter_state, state_name) = match query.state.as_str() {
-        "closed" => (PullStateFilter::Closed, "closed"),
-        "merged" => (PullStateFilter::Merged, "merged"),
-        _ => (PullStateFilter::Open, "open"),
-    };
-    let author_name = query.author.trim();
-    let author = if author_name.is_empty() { None } else { state.services.accounts.find_account(author_name).await.ok() };
-    if !author_name.is_empty() && author.is_none() {
-        // An unknown author matches nothing.
-        return Ok(list_page(
-            &state,
-            &loaded,
-            page,
-            Vec::new(),
-            ListTabs { open_url: String::new(), closed_url: String::new(), open: 0, closed: 0, state: state_name },
-            Pagination { page: 1, page_count: 1, previous_url: None, next_url: None },
-            Some(author_name.to_owned()),
-        ));
-    }
-    let filter = PullFilter { state: filter_state, author: author.as_ref().map(|account| account.id), ..PullFilter::default() };
-    let number = query.page.unwrap_or(1).max(1);
-    let listed = state.services.pulls.list(&loaded.ctx, &filter, number).await?;
-    let ids: Vec<_> = listed.items.iter().map(|item| item.issue.id).collect();
-    let metadata = state.services.issues.metadata(&ids).await?;
-    let rows = listed
-        .items
+    let query = pull_query(&params);
+    let issues = &state.services.issues;
+    let ctx = &loaded.ctx;
+    let (results, labels, milestones, people) = tokio::try_join!(
+        issues.search(viewer.user(), ctx, &query, params.page.unwrap_or(1)),
+        issues.labels(ctx),
+        issues.milestones(ctx, None),
+        issues.assignable(ctx, ""),
+    )?;
+    let items = state.services.pulls.search(ctx, &results).await?;
+    let rows = items
         .iter()
         .map(|item| {
-            let labels = metadata
+            let labels = results
+                .metadata
                 .get(&item.issue.id)
                 .map(|meta| {
                     meta.labels.iter().map(|label| LabelView { name: label.name.clone(), color: valid_color(&label.color) }).collect()
@@ -245,43 +234,57 @@ async fn list(
         })
         .collect();
     let base = format!("{}/pulls", loaded.urls.home());
-    let author_query = author.as_ref().map(|account| format!("&author={}", account.name)).unwrap_or_default();
-    let page_url = |n: u32| format!("{base}?state={state_name}{author_query}&page={n}");
-    let page_count = u32::try_from(listed.total.div_ceil(u64::from(rbit_services::pulls::PAGE_SIZE))).unwrap_or(u32::MAX).max(1);
+    let clean = IssueQuery { ignored: Vec::new(), ..query.clone() };
+    let page_url = |n: u32| format!("{}&page={n}", list_url(&base, &clean));
     let pagination = Pagination {
-        page: number,
-        page_count,
-        previous_url: (number > 1).then(|| page_url(number - 1)),
-        next_url: (number < page_count).then(|| page_url(number + 1)),
+        page: results.page,
+        page_count: results.page_count(),
+        previous_url: (results.page > 1).then(|| page_url(results.page - 1)),
+        next_url: (results.page < results.page_count()).then(|| page_url(results.page + 1)),
     };
-    let tabs = ListTabs {
-        open_url: format!("{base}?state=open{author_query}"),
-        closed_url: format!("{base}?state=closed{author_query}"),
-        open: listed.open,
-        closed: listed.closed,
-        state: if state_name == "merged" { "closed" } else { state_name },
-    };
-    Ok(list_page(&state, &loaded, page, rows, tabs, pagination, author.map(|account| account.name.to_string())))
-}
-
-fn list_page(
-    state: &AppState,
-    loaded: &RepoPage,
-    page: Page,
-    rows: Vec<PullRowView>,
-    tabs: ListTabs,
-    pagination: Pagination,
-    author_filter: Option<String>,
-) -> PullListPage {
-    PullListPage {
-        page: page.titled(format!("Pull requests · {}", loaded.ctx.repo.full_name())),
-        header: loaded.header(state, "pulls"),
-        tabs,
+    Ok(PullListPage {
+        page: page.titled(format!("Pull requests · {}", ctx.repo.full_name())),
+        header: loaded.header(&state, "pulls"),
         rows,
         pagination,
+        tabs: ListTabs {
+            open_url: list_url(&base, &clean.with_state(StateFilter::Open)),
+            closed_url: list_url(&base, &clean.with_state(StateFilter::Closed)),
+            open: results.open,
+            closed: results.closed,
+            state: match clean.state {
+                Some(StateFilter::Open) => "open",
+                Some(StateFilter::Closed) => "closed",
+                None => "all",
+            },
+        },
         new_url: format!("{}/compare", loaded.urls.home()),
-        author_filter,
+        author_filter: None,
+        query: query.to_string(),
+        hints: results.hints,
+        menus: filter_menus(&clean, &base, &MenuChoices { labels, milestones, people }, viewer.user()),
+        list_url: base,
+    })
+}
+
+fn pull_query(params: &ListQuery) -> IssueQuery {
+    let mut query = IssueQuery::parse(params.q.as_deref().filter(|q| !q.trim().is_empty()).unwrap_or("is:open is:pr"));
+    query.kind = Some(KindFilter::Pull);
+    if params.q.is_none() {
+        match params.state.as_str() {
+            "closed" => query.state = Some(StateFilter::Closed),
+            "merged" => {
+                query.state = Some(StateFilter::Closed);
+                query.merged = true;
+            }
+            "all" => query.state = None,
+            _ => {}
+        }
+        if !params.author.trim().is_empty() {
+            query.author = Some(rbit_core::issue_query::Who::Name(params.author.trim().to_owned()));
+        }
     }
+    query
 }
 
 fn owner_name(loaded: &RepoPage) -> String {
@@ -849,6 +852,24 @@ async fn delete_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pull_search_keeps_legacy_links_and_fixes_kind() {
+        let query = pull_query(&ListQuery { q: None, state: "merged".into(), author: "alice".into(), page: None });
+        assert!(query.merged);
+        assert_eq!(query.kind, Some(KindFilter::Pull));
+        assert_eq!(query.state, Some(StateFilter::Closed));
+        let query = pull_query(&ListQuery {
+            q: Some("is:issue label:bug sort:updated-desc".into()),
+            state: "closed".into(),
+            author: "bob".into(),
+            page: None,
+        });
+        assert_eq!(query.kind, Some(KindFilter::Pull));
+        assert_eq!(query.labels, ["bug"]);
+        assert!(query.author.is_none());
+        assert_eq!(query.sort, rbit_core::issue_query::IssueSort::UpdatedDesc);
+    }
 
     #[test]
     fn reviewer_names_and_colours_are_cleaned() {

@@ -1583,5 +1583,13 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph tr:last-child td { border-bottom: 0; }
 .branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }
 
+/* Leading pull request filters open to the right to stay inside the viewport. */
+@media (width >= 40rem) {
+  [aria-label="Pull request filters"] > details:nth-child(-n+2) > .menu {
+    left: 0;
+    right: auto;
+  }
+}
+
 /* Diagram styles are contained in a sandbox; only the frame belongs to the page. */
 .mermaid-frame { width: 100%; border: 1px solid var(--line); border-radius: .375rem; margin-block: 1rem; }

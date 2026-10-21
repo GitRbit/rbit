@@ -488,6 +488,10 @@ mod tests {
             pagination: Pagination { page: 1, page_count: 1, previous_url: None, next_url: None },
             new_url: "/alice/demo/compare".to_owned(),
             author_filter: None,
+            query: "is:open is:pr".into(),
+            hints: Vec::new(),
+            list_url: "/alice/demo/pulls".into(),
+            menus: Vec::new(),
         }
         .render()
         .unwrap();

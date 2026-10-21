@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Use the issue search syntax and filter menus for pull requests, with draft and merged filters.
+
 - Add searchable issue filter menus, label reset choices and search help.
 
 - Refresh the roadmap for the public open-source project, separate available features
