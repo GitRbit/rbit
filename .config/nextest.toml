@@ -1,0 +1,6 @@
+# cargo-nextest: `cargo nextest run --workspace` runs every test binary in parallel, each
+# test in its own process. CI uses the `ci` profile.
+
+[profile.ci]
+# Report every failing test in one run instead of stopping at the first.
+fail-fast = false

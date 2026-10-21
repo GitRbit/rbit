@@ -34,6 +34,10 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Only main saves caches; pull requests restore them. Saving per pull request fills
+          # the repository cache limit and evicts the main caches every run depends on.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all --check
       # Pedantic lints are enabled workspace-wide in Cargo.toml; warnings fail the build.
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -65,6 +69,8 @@ jobs:
       - uses: ./.github/actions/prepare-build
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
       # ship git, so only print its version for the log.
       - run: git --version
@@ -74,7 +80,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      - run: cargo test --workspace --locked
+      # nextest runs every test binary in parallel, each test in its own process. The
+      # workspace has no doctests, which nextest does not run.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run --workspace --locked --profile ci
 
   assets:
     name: Front-end build
@@ -111,6 +122,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo build --release --locked --package rbit-server
       - run: ./target/release/rbit --version
       - uses: actions/upload-artifact@v7
