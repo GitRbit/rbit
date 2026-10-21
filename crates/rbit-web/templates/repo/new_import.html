@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="mx-auto max-w-xl">
-  <h1 class="text-xl font-semibold tracking-tight">Import a repository</h1>
+<section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="import">
+  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  {% let creation_kind = "import" %}
+  {% include "repo/create_tabs.html" %}
+  <div id="create-import-panel" role="tabpanel" aria-labelledby="create-import-tab" data-repo-create-panel>
   <p class="mt-1 text-[13px] text-ink-muted">Copies a repository from GitHub or Gitea with its history and, if you like, its issues, pull requests, labels, milestones, releases and Git LFS files. Issue and pull request numbers stay the same.</p>
 
   {% if disabled %}
@@ -103,5 +106,6 @@
     </div>
   </form>
   {% endif %}
+  </div>
 </section>
 {% endblock %}

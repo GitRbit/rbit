@@ -22,6 +22,7 @@ import "./sticky-header.js";
 import "./contributions.js";
 import "./branch-graph.js";
 import "./mirror-progress.js";
+import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";
 

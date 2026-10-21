@@ -411,7 +411,8 @@
       duration-100 hover:text-ink;
   }
 
-  .tab[aria-current="page"] {
+  .tab[aria-current="page"],
+  .tab[aria-selected="true"] {
     @apply text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-ink;
   }
 

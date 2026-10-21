@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Switch repository creation, mirrors and imports in place while keeping form drafts.
+
 - Cache daily repository activity by default-branch tip and reduce commit graph ordering work.
 
 - Add quoted replies and user, issue and pull request mention choices to discussions.

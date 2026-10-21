@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {% block content %}
-<section class="mx-auto max-w-xl">
-  <h1 class="text-xl font-semibold tracking-tight">Mirror a repository</h1>
+<section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="mirror">
+  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  {% let creation_kind = "mirror" %}
+  {% include "repo/create_tabs.html" %}
+  <div id="create-mirror-panel" role="tabpanel" aria-labelledby="create-mirror-tab" data-repo-create-panel>
   <p class="mt-1 text-[13px] text-ink-muted">A mirror fetches the branches and tags of a public repository elsewhere on a schedule. It is read-only here: changes come from upstream.</p>
 
   {% if disabled %}
@@ -70,5 +73,6 @@
     </div>
   </form>
   {% endif %}
+  </div>
 </section>
 {% endblock %}
