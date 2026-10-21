@@ -9,10 +9,24 @@
 <h1 class="break-words text-xl font-semibold tracking-tight">{{ pull.title }} <span class="font-normal text-ink-faint">{{ pull.number }}</span></h1>
 {% include "pulls/header.html" %}
 
-<div class="mb-3 mt-6 flex flex-wrap items-center gap-3 text-[13px]">
+{% let tree = crate::views::pulls::PullFileView::tree(files) %}
+{% let has_tree = files.len() > 1 %}
+<section class="diff-layout mt-6" data-diff-layout aria-label="Changes">
+<div class="diff-toolbar flex-wrap text-[13px]">
+  {% if has_tree %}
+  <button type="button" class="btn btn-ghost btn-icon h-8 sm:h-8" data-diff-sidebar-toggle aria-pressed="true" aria-controls="diff-sidebar" title="Toggle file tree" aria-label="Toggle file tree" hidden>
+    {% call ui::icon("panel-left", "size-4") %}{% endcall %}
+  </button>
+  {% endif %}
   <span class="text-ink-muted"><span class="font-medium text-ink">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</span>
   <span class="font-mono text-xs text-success">+{{ additions }}</span>
   <span class="font-mono text-xs text-danger">−{{ deletions }}</span>
+  {% if has_tree %}
+  <button type="button" class="btn btn-ghost ml-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
+    <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}Collapse all</span>
+    <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}Expand all</span>
+  </button>
+  {% endif %}
   {% if outdated_count > 0 %}<span class="text-xs text-ink-faint">{{ outdated_count }} outdated {% if outdated_count == 1 %}comment is{% else %}comments are{% endif %} in the conversation</span>{% endif %}
   {% if let Some(form) = review_form %}{% if form.pending_comments > 0 %}<a href="#submit-review" hx-boost="false" class="btn ml-auto h-8">Finish your review <span class="badge text-warning">{{ form.pending_comments }}</span></a>{% endif %}{% endif %}
 </div>
@@ -23,12 +37,16 @@
 <p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-4 py-2.5 text-[13px] text-ink-muted">This change is very large, so some diffs are not shown. Clone the repository to see the full change.</p>
 {% endif %}
 
-<div class="space-y-4">
-  {% for file in files %}
+<div class="diff-columns{% if has_tree %} has-tree{% endif %}">
+  {% if has_tree %}{% include "repo/diff_tree.html" %}{% endif %}
+  <div class="min-w-0 space-y-4">
+  {% for row in tree.iter() %}
+  {% if let Some(leaf) = row.file %}
+  {% let file = files[leaf.index] %}
   {#- `data-rows`: the open file's exact height in rows, its placeholder while off screen
       (app.css "Virtual blocks"); absent when threads make the height unknown. -#}
-  <details id="{{ file.anchor }}" class="diff-file box group"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %} open>
-    <summary class="box-header cursor-pointer select-none gap-2 border-b-0 group-open:border-b">
+  <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %} open>
+    <summary class="diff-file-header" title="Click to collapse or expand | Alt-click for every file">
       {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
       <span class="min-w-0 flex-1 truncate font-mono text-xs">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</span>
       <span class="badge hidden sm:inline-flex">{{ file.status }}</span>
@@ -108,10 +126,13 @@
     <p class="diff-placeholder">No content changes.</p>
     {% endmatch %}
   </details>
+  {% endif %}
   {% else %}
   <div class="box">{% call ui::empty_state("file-diff", "No changes", "The head adds nothing to the base.") %}{% endcall %}</div>
   {% endfor %}
+  </div>
 </div>
+</section>
 
 {% if let Some(form) = review_form %}<div class="mt-6">{% include "pulls/review_form.html" %}</div>{% endif %}
 {% endblock %}
