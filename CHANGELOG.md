@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Match installed app launch colors to the chosen theme and replace beige app icon backgrounds with rbit Light.
+
 - Switch repository creation, mirrors and imports in place while keeping form drafts.
 
 - Cache daily repository activity by default-branch tip and reduce commit graph ordering work.

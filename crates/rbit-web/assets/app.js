@@ -89,7 +89,13 @@ document.addEventListener("toggle", (event) => {
 addEventListener("load", () => {
   const manifest = document.createElement("link");
   manifest.rel = "manifest";
-  manifest.href = "/manifest.webmanifest";
+  const updateManifest = () => {
+    const selected = document.documentElement?.dataset.theme ?? "system";
+    const theme = selected === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dna-dark" : "dna-day") : selected;
+    manifest.href = `/manifest.webmanifest?theme=${encodeURIComponent(theme)}`;
+  };
+  updateManifest();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateManifest);
   document.head.append(manifest);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }, { once: true });
