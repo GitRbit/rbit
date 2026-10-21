@@ -7,6 +7,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Patch the TLS certificate checks and root store for the emSign trust advisories.
+
 ### Changed
 
 - Refresh the roadmap for the public open-source project, separate available features
