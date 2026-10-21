@@ -7,7 +7,7 @@ const source = await readFile(process.env.RBIT_DIFF_ASSET ?? new URL("../../crat
 
 // A deterministic DOM harness counts work, not elapsed time. Geometry is supplied so
 // the tests can exercise scrolled files, htmx replacements and restored snapshots.
-function browser(count = 150, { restored = false, mobile = false } = {}) {
+function browser(count = 150, { restored = false, mobile = false, stickyTop = 0 } = {}) {
   const events = new Map();
   const frames = new Map();
   const observed = new Set();
@@ -30,6 +30,7 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
     matches(selector) { return selector === ".diff-file" && this.kind === "file"; }
     closest(selector) {
       if (selector === ".diff-sidebar") return this.sidebar ?? null;
+      if (selector === "[data-diff-target]" && this.kind === "link") return this;
       return selector === "[data-diff-layout]" ? this.layout ?? (this.kind === "layout" ? this : null) : null;
     }
     contains(other) { return this === other || other.layout === this; }
@@ -43,6 +44,7 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
     }
     querySelector(selector) {
       stats.queries++;
+      if (selector === ".diff-sidebar") return this.sidebar ?? null;
       if (selector === "[data-diff-tree]") return this.tree;
       if (selector === "[data-diff-collapse-all]") return this.button;
       if (selector === '[aria-current="true"]') return this.links?.find(link => link.hasAttribute("aria-current")) ?? null;
@@ -58,7 +60,7 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
   layout.tree = new Element("tree");
   layout.tree.scrollTop = 0;
   // The tree sits in a <details> sidebar: open on wide screens, a closed panel on phones.
-  layout.tree.sidebar = { open: !mobile };
+  layout.sidebar = layout.tree.sidebar = { open: !mobile };
   layout.tree.links = [];
   layout.button = new Element("button");
   layout.button.parts = ["expanded", "collapsed"].map(when => {
@@ -68,7 +70,7 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
     const file = new Details(`diff-${i}`);
     file.layout = layout;
     file.top = i * 100;
-    const link = new Element("link"); link.dataset.diffTarget = file.id;
+    const link = new Element("link"); link.dataset.diffTarget = file.id; link.layout = layout;
     layout.tree.links.push(link);
     return file;
   });
@@ -81,14 +83,14 @@ function browser(count = 150, { restored = false, mobile = false } = {}) {
       stats.queries++;
       return selector.includes("[data-diff-layout]") ? page.layouts.filter(l => !selector.includes(":not") || !("ready" in l.dataset)) : [];
     },
-    getElementById() { return null; },
+    getElementById(id) { return page.layouts.flatMap(layout => layout.files).find(file => file.id === id) ?? null; },
     addEventListener: listen,
   };
   vm.runInNewContext(source, {
     document, Element, HTMLDetailsElement: Details, HTMLInputElement: class {},
     ResizeObserver: class { observe(element) { observed.add(element); } disconnect() { observed.clear(); } },
     matchMedia: () => ({ matches: !mobile, addEventListener() {} }),
-    getComputedStyle: () => ({ getPropertyValue: () => "0" }),
+    getComputedStyle: () => ({ scrollMarginTop: `${stickyTop}px`, getPropertyValue: () => "calc(49px + 44px - 1px)" }),
     requestAnimationFrame: fn => { frames.set(++nextFrame, fn); return nextFrame; },
     cancelAnimationFrame: id => frames.delete(id),
     addEventListener: listen, localStorage: { getItem() { return null; } },
@@ -114,6 +116,15 @@ test("diff scrolling uses its index and still tracks the current file", () => {
   for (let i = 0; i < 60; i++) { page.fire("scroll"); page.flush(); }
   assert.equal(page.stats.queries, 0, "no selector traversal during scrolling");
   assert.equal(page.layout.tree.links[5].getAttribute("aria-current"), "true");
+  assert.equal(page.layout.tree.links[0].hasAttribute("aria-current"), false);
+});
+
+test("current file uses the resolved sticky offset when CSS supplies a calculation", () => {
+  const page = browser(2, { stickyTop: 92.5 });
+  page.layout.files[0].top = -100;
+  page.layout.files[1].top = 92.5;
+  page.fire("scroll"); page.flush();
+  assert.equal(page.layout.tree.links[1].getAttribute("aria-current"), "true");
   assert.equal(page.layout.tree.links[0].hasAttribute("aria-current"), false);
 });
 
@@ -179,9 +190,31 @@ test("navigation releases pending diff work", () => {
   assert.equal(page.frames.size, 0);
 });
 
-test("pull-request file toggles outside a diff layout are ignored", () => {
+test("detached file toggles outside a diff layout are ignored", () => {
   const page = browser(0);
   page.fire("toggle", {}, new page.Details("pull-file"));
   assert.equal(page.frames.size, 0);
   assert.equal(page.stats.queries, 0);
+});
+
+
+test("tree links reopen review files after a fragment swap and close the phone tree", () => {
+  for (const mobile of [false, true]) {
+    const page = browser(2, { mobile });
+    const replacement = new page.Details("review-file");
+    replacement.layout = page.layout;
+    replacement.open = false;
+    const link = new page.Element("link");
+    link.layout = page.layout;
+    link.dataset.diffTarget = replacement.id;
+    page.layout.files = [replacement];
+    page.layout.tree.links = [link];
+    page.layout.sidebar.open = true;
+    page.fire("htmx:afterSwap");
+    page.fire("htmx:afterSettle");
+    page.fire("click", {}, link);
+    assert.equal(replacement.open, true);
+    assert.equal(page.layout.sidebar.open, !mobile);
+    assert.equal(page.layout.button.dataset.state, "expanded");
+  }
 });

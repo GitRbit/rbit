@@ -94,6 +94,15 @@ fn line_anchor(body: &str, line: u32) -> String {
     body[start..end + suffix.len() - 1].to_owned()
 }
 
+fn assert_review_file(files: &Response) {
+    files.expect_status(StatusCode::OK).expect_contains(&[
+        "greeting.txt",
+        "?comment=diff-",
+        "data-diff-layout",
+        "class=\"diff-file box group\" data-path=\"greeting.txt\" data-rows=\"",
+    ]);
+}
+
 async fn assert_pull_search(alice: &Client) {
     alice.get("/alice/demo/pulls").await.expect_contains(&["Greet the world", "1</span> Open", "Search pull requests", "Find label"]);
     alice.get("/alice/demo/pulls?q=world%20author%3Abob").await.expect_contains(&["Greet the world"]);
@@ -158,7 +167,7 @@ async fn a_fork_pull_request_is_reviewed_fixed_approved_and_squash_merged() {
 
     // Alice comments on a line and requests changes.
     let files = alice.get("/alice/demo/pull/1/files").await;
-    files.expect_status(StatusCode::OK).expect_contains(&["greeting.txt", "?comment=diff-", "class=\"diff-file box group\" data-rows=\""]);
+    assert_review_file(&files);
     let anchor = line_anchor(&files.body, 2);
     alice.get(&format!("/alice/demo/pull/1/files?comment={anchor}")).await.expect_contains(&[
         "Add single comment",

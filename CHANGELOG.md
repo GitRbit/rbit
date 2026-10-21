@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Add a searchable file tree to pull request Files changed tabs, with folder controls and links to each diff.
+
 - Match installed app launch colors to the chosen theme and replace beige app icon backgrounds with rbit Light.
 
 - Switch repository creation, mirrors and imports in place while keeping form drafts.

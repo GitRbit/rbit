@@ -1,4 +1,4 @@
-// Diff pages (repo/file_diffs.html: commits and compares). Progressive enhancement: without
+// Diff pages (commits, compares and pull request files). Progressive enhancement: without
 // it the file tree is a plain list of links and each file still collapses on its own.
 //
 // * Sticky offset: file headers and the tree stick right below the sticky header, at
@@ -16,7 +16,10 @@ const wide = matchMedia("(width >= 64rem)");
 
 /** Where file headers stick, in viewport pixels. */
 function diffTop(layout) {
-  return parseFloat(getComputedStyle(layout).getPropertyValue("--diff-top")) || 0;
+  // Custom properties can remain calc(...) strings. The file's scroll margin uses
+  // the same offset, resolved by the browser to pixels, including fractional ones.
+  const file = indexOf(layout).files[0];
+  return file ? parseFloat(getComputedStyle(file).scrollMarginTop) || 0 : 0;
 }
 
 const layoutOf = (element) => element.closest("[data-diff-layout]");
@@ -311,8 +314,7 @@ document.addEventListener("click", (event) => {
 });
 
 // Keyboard toggling of a header (Enter/Space on <summary>) goes through `click` too, but
-// the browser's own `toggle` also fires for find-in-page and anchor reveals. Pull request
-// files (pulls/files.html) are `.diff-file`s outside any layout: nothing to sync there.
+// the browser's own `toggle` also fires for find-in-page and anchor reveals.
 document.addEventListener(
   "toggle",
   (event) => {

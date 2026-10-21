@@ -1,0 +1,37 @@
+{% import "macros.html" as ui %}
+    <details id="diff-sidebar" class="diff-sidebar box" aria-label="Changed files" open>
+      <summary class="diff-sidebar-summary">{% call ui::icon("panel-left", "size-4") %}{% endcall %}File tree <span class="text-ink-faint">{{ files.len() }}</span></summary>
+      <div class="diff-filter">
+        <label class="relative block">
+          <span class="sr-only">Filter changed files</span>
+          {% call ui::icon("search", "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
+          <input type="search" class="diff-filter-input" placeholder="Filter files…" autocomplete="off" spellcheck="false" data-diff-filter>
+          <span class="diff-filter-count" data-diff-filter-count aria-live="polite">{{ files.len() }}</span>
+        </label>
+      </div>
+      <ul class="diff-tree" data-diff-tree>
+        {% for row in tree.iter() %}
+        {% match row.file %}
+        {% when Some(leaf) %}
+        <li class="diff-tree-row" data-depth="{{ row.depth }}" data-path="{{ row.path }}" data-file>
+          <a href="#{{ leaf.anchor }}" hx-boost="false" class="diff-tree-item" title="{{ row.path }}" data-diff-target="{{ leaf.anchor }}">
+            <span class="w-3 shrink-0" aria-hidden="true"></span>
+            {% call ui::icon("file", "size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+            <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+            <span class="status-mark status-{{ leaf.status_key }}" title="{{ leaf.status }}"><span class="sr-only">{{ leaf.status }}</span></span>
+          </a>
+        </li>
+        {% when None %}
+        <li class="diff-tree-row" data-depth="{{ row.depth }}" data-path="{{ row.path }}" data-folder>
+          <button type="button" class="diff-tree-item" aria-expanded="true" title="{{ row.path }}">
+            {% call ui::icon("chevron-right", "diff-tree-chevron size-3 shrink-0 text-ink-faint") %}{% endcall %}
+            {% call ui::icon("folder-open", "diff-tree-open size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+            {% call ui::icon("folder", "diff-tree-closed size-3.5 shrink-0 text-ink-faint") %}{% endcall %}
+            <span class="min-w-0 flex-1 truncate">{{ row.name }}</span>
+          </button>
+        </li>
+        {% endmatch %}
+        {% endfor %}
+        <li class="px-3 py-6 text-center text-[13px] text-ink-faint" data-diff-filter-empty hidden>No files match.</li>
+      </ul>
+    </details>

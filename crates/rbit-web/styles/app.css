@@ -856,7 +856,7 @@
   overscroll-behavior: auto;
 }
 
-/* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and
+/* Commit, compare and pull request file diffs. `--diff-top` is where file headers and
    the file tree stick: just below the sticky top bar, and its tabs where those stick too. */
 .diff-layout {
   --diff-top: var(--sticky-top);
@@ -998,7 +998,7 @@
 .status-renamed::before { content: "→"; }
 .status-copied::before { content: "⧉"; font-weight: 400; }
 
-/* Each changed file (also pulls/files.html, which has no `--diff-top`). `clip` rather than
+/* Each changed file. `clip` rather than
    `hidden` keeps the rounded corners without making the box a scroll container, which
    would stop the header from sticking. An open file off screen is skipped as a whole
    (see Virtual blocks), so everything in it is a whole number of rows tall: the header
