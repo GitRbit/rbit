@@ -7,6 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
+  commit history focused on the selected branch and its paginated commits.
+
 ## [0.1.3] - 2026-10-21
 
 ### Security

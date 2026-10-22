@@ -100,7 +100,7 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 - **Edit in the browser**: create, edit, rename, delete and upload files as one commit, directly or on a new
   branch with a pull request; branch protection applies.
 - **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
-- **Contribution heatmaps** on user and organisation profiles and repository Commits tabs, with year
+- **Contribution heatmaps** on user and organisation profiles and repository Activity tabs, with year
   selection, daily counts, monthly activity and streaks. Phone layouts show quarters without sideways
   scrolling. Counts use default-branch commits and UTC author dates, and include only repositories the
   viewer can access. User graphs match the account email; identical commits across repositories count
