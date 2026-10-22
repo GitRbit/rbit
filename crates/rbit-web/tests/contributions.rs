@@ -92,7 +92,7 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
     let end = 1_735_689_600; // 2025-01-01 UTC
     // A genuinely cold initial page must leave the expensive contribution cache empty.
     let cold_router = rbit_web::router(rbit_web::AppState::new(config.clone(), services.clone()));
-    for url in ["/acme/public/commits", "/alice", "/acme"] {
+    for url in ["/acme/public/activity", "/alice", "/acme"] {
         let response = cold_router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap();
@@ -125,10 +125,6 @@ async fn assert_contribution_pages(router: axum::Router) {
         ("/alice?year=2025&tab=stars", "1 commit in 2025"),
         ("/acme?year=2024", "3 commits in 2024"),
         ("/acme/public/activity?year=2024", "3 commits in 2024"),
-        ("/acme/public/commits?year=2024", "3 commits in 2024"),
-        ("/acme/public/commits/main?year=2024", "3 commits in 2024"),
-        ("/acme/public/commits/main?year=2024&page=2", "3 commits in 2024"),
-        ("/alice/empty/commits?year=2024", "No matching commits in this year."),
         ("/alice/empty/activity?year=2024", "No matching commits in this year."),
     ] {
         let response =
@@ -141,12 +137,16 @@ async fn assert_contribution_pages(router: axum::Router) {
         assert!(html.contains("Commit calendar by quarter"));
         assert!(!html.contains("Scrollable commit calendar"));
         assert!(!html.contains("ALICE@example.com"), "author email is never rendered");
-        if url.ends_with("page=2") {
-            assert!(html.contains("/commits/main?year=2024&#38;page=1"), "pagination preserves the selected calendar year");
+        if url.contains("/activity?") {
+            assert!(html.contains("data-repo-tab=\"activity\""));
+            assert!(
+                html.contains("href=\"/acme/public/activity\" aria-current=\"page\"")
+                    || html.contains("href=\"/alice/empty/activity\" aria-current=\"page\"")
+            );
         }
     }
     // Initial navigation must not wait for any calendar history scan or send its SVG.
-    for url in ["/alice?year=2024", "/acme?year=2024", "/acme/public/commits/main?year=2024&page=2"] {
+    for url in ["/alice?year=2024", "/acme?year=2024", "/acme/public/activity?year=2024", "/alice/empty/activity?year=2024"] {
         let response = router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let html = String::from_utf8(axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap().to_vec()).unwrap();
@@ -163,17 +163,31 @@ async fn assert_contribution_pages(router: axum::Router) {
         assert!(html.contains("Commit activity in 2024"));
         assert!(!html.contains("<main") && !html.contains("<html"));
     }
-    for url in ["/acme/public", "/alice/empty"] {
+    for url in [
+        "/acme/public",
+        "/alice/empty",
+        "/acme/public/commits",
+        "/acme/public/commits/main?year=2024&page=2&calendar=fragment",
+        "/alice/empty/commits?year=2024&calendar=1",
+    ] {
         let response = router.clone().oneshot(Request::builder().uri(url).body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = axum::body::to_bytes(response.into_body(), 2_000_000).await.unwrap();
-        assert!(!String::from_utf8(body.to_vec()).unwrap().contains("id=\"contributions-title\""), "{url}: heatmap belongs on Commits");
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!html.contains("id=\"contributions-title\"") && !html.contains("calendar=fragment"), "{url}: heatmap belongs on Activity");
+        assert!(html.contains("data-repo-tab=\"activity\""));
+        if url.contains("page=2") {
+            assert!(html.contains("/commits/main?page=1"), "commit pagination is independent of calendar years");
+            assert!(html.contains("href=\"/acme/public/commits\" aria-current=\"page\""));
+        } else if url == "/acme/public/commits" {
+            assert!(html.contains("backdated") && html.contains("leap day"), "commit history still renders");
+        }
     }
     let response =
         router.clone().oneshot(Request::builder().uri("/alice/private/activity?year=2024").body(Body::empty()).unwrap()).await.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let response = router
-        .oneshot(Request::builder().uri("/alice/private/commits?year=2024&calendar=fragment").body(Body::empty()).unwrap())
+        .oneshot(Request::builder().uri("/alice/private/activity?year=2024&calendar=fragment").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);

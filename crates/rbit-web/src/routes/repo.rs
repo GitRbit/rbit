@@ -60,6 +60,7 @@ impl TreeQuery {
 #[derive(Debug, Deserialize)]
 pub struct ActivityQuery {
     year: Option<i32>,
+    calendar: Option<String>,
 }
 
 /// Default-branch contribution calendar, including a useful empty-repository state.
@@ -69,17 +70,25 @@ pub async fn activity(
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ActivityQuery>,
-) -> WebResult<crate::views::contributions::ActivityPage> {
+) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
     let calendar =
         crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
     let (start, end) = calendar.bounds();
-    let contributions = calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?);
+    let contributions = if query.calendar.is_some() {
+        calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?)
+    } else {
+        calendar.deferred()
+    };
+    if query.calendar.as_deref() == Some("fragment") {
+        return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
+    }
     Ok(crate::views::contributions::ActivityPage {
         page: page.titled(format!("Activity · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "activity"),
         contributions,
-    })
+    }
+    .into_response())
 }
 /// Raw downloads are read fully into memory; refuse anything absurdly large.
 const MAX_RAW_BYTES: usize = 100 * 1024 * 1024;
@@ -155,6 +164,7 @@ impl RepoPage {
             ssh_clone_url: state.config.ssh.enabled.then(|| state.config.ssh.clone_url(&state.config.server, &repo.full_name())),
             home_url: self.urls.home(),
             commits_url: format!("{}/commits", self.urls.home()),
+            activity_url: format!("{}/activity", self.urls.home()),
             branches_url: self.urls.branches(),
             tags_url: self.urls.tags(),
             releases_url: self.urls.releases(),
@@ -599,8 +609,6 @@ pub async fn raw(
 #[derive(Debug, Deserialize)]
 pub struct PageQuery {
     page: Option<usize>,
-    year: Option<i32>,
-    calendar: Option<String>,
 }
 
 /// `GET /{owner}/{repo}/commits` — history of the default branch.
@@ -630,17 +638,6 @@ pub async fn commits(
 }
 
 async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision: String, query: PageQuery) -> WebResult<Response> {
-    let calendar =
-        crate::views::contributions::ContributionCalendar::new(query.year, "Commits on this repository's configured default branch.", "");
-    let (start, end) = calendar.bounds();
-    let contributions = if query.calendar.is_some() {
-        calendar.populate(&state.services.contributions.repository(&loaded.ctx, start, end).await?)
-    } else {
-        calendar.deferred()
-    };
-    if query.calendar.as_deref() == Some("fragment") {
-        return Ok(crate::views::contributions::ContributionFragment { contributions }.into_response());
-    }
     let page_number = query.page.unwrap_or(1).max(1);
     let skip = commit_offset(page_number)?;
     // Fetch one extra to learn whether an older page exists.
@@ -669,9 +666,8 @@ async fn render_commits(state: &AppState, loaded: RepoPage, page: Page, revision
         header: loaded.header(state, "commits"),
         switcher: loaded.switcher(&revision, RefTarget::Commits, ""),
         days: CommitDay::group(commits),
-        newer_url: (page_number > 1).then(|| format!("{base}?year={}&page={}", contributions.year, page_number - 1)),
-        older_url: has_older.then(|| format!("{base}?year={}&page={}", contributions.year, page_number + 1)),
-        contributions,
+        newer_url: (page_number > 1).then(|| format!("{base}?page={}", page_number - 1)),
+        older_url: has_older.then(|| format!("{base}?page={}", page_number + 1)),
     }
     .into_response())
 }
