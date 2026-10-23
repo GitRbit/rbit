@@ -49,6 +49,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
   Configuration changes take effect after restart; release checks add no database migration.
 
+### Fixed
+
+- Clarify private security reporting, remove the broken conduct-reporting contact,
+  and add automated checks for GitHub repository configuration and submission paths.
+
 ### Changed
 
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
