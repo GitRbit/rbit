@@ -146,8 +146,12 @@ Before publishing:
 - Check the README, deployment instructions, examples, licenses and third-party notices
   against the binaries and container image that will ship.
 - Verify private vulnerability reporting and the reporting link in `SECURITY.md`.
-  Check branch rules and required CI checks
-  for `main` on the account's available plan.
+  Run `npm run audit:repository` to check public repository settings, submission paths,
+  branch rules and release assets. For administrator-only security settings, run
+  `npm run audit:repository -- --admin` with a suitably authorized `GH_TOKEN` in your
+  environment. Never put a token in command arguments or committed files.
+  [docs/repository-configuration.md](docs/repository-configuration.md) records the expected
+  configuration, notification setup and remaining community contact work.
 - Review container package visibility separately: making the repository public does not
   by itself establish anonymous access to `ghcr.io/gitrbit/rbit`.
 

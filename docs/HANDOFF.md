@@ -1,10 +1,10 @@
 # rbit — Handoff
 
-## Current project status — 2026-10-19
+## Current project status — 2026-10-22
 
 The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
-licensed under MIT OR Apache-2.0. The workspace version is `0.1.2`, and
-[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.2`.
+licensed under MIT OR Apache-2.0. The workspace version is `0.1.3`, and
+[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.3`.
 
 Use [README.md](../README.md#features) for available features and
 [ROADMAP.md](../ROADMAP.md) for current priorities and scope. Source builds require
@@ -14,6 +14,9 @@ Follow [CONTRIBUTING.md](../CONTRIBUTING.md#preparing-a-release) for the release
 Require a green CI run for the final commit, review the release notes, and verify platform
 archives and container packaging for each release. GitHub repository and GHCR package
 visibility are separate; verify anonymous downloads and container pulls.
+
+[Repository configuration](repository-configuration.md) records the live GitHub audit,
+required settings, repeatable checks and the pending private conduct-reporting address.
 
 Commit attribution names human contributors only; do not add AI tool coauthor trailers.
 
