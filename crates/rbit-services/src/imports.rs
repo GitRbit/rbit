@@ -172,6 +172,7 @@ impl ImportService {
             Duration::from_secs(config.imports.api_timeout_seconds.max(1)),
             Duration::from_secs(config.imports.rate_limit_max_wait_seconds),
             self.inner.shutdown.child_token(),
+            config.updates.report_version,
         )
         .map_err(|e| ServiceError::Invalid(e.to_string()))?;
         let metadata = client.repository().await.map_err(|e| ServiceError::Invalid(format!("{}: {e}", source.full_name())))?;

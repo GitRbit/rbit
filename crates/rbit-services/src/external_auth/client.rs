@@ -48,10 +48,10 @@ pub struct ProviderClient {
 }
 
 impl ProviderClient {
-    pub fn new(allow_private: bool, timeout: Duration) -> Result<Self, reqwest::Error> {
+    pub fn new(allow_private: bool, timeout: Duration, report_version: bool) -> Result<Self, reqwest::Error> {
         install_crypto_provider();
         let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
+            .user_agent(if report_version { USER_AGENT } else { "rbit" })
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
             .timeout(timeout)
@@ -269,7 +269,30 @@ mod tests {
     use super::*;
 
     fn client(allow_private: bool) -> ProviderClient {
-        ProviderClient::new(allow_private, Duration::from_secs(5)).unwrap()
+        ProviderClient::new(allow_private, Duration::from_secs(5), true).unwrap()
+    }
+
+    #[tokio::test]
+    async fn provider_requests_omit_running_version_when_reporting_is_disabled() {
+        use axum::{Router, extract::Request, routing::get};
+        let app = Router::new().route(
+            "/probe",
+            get(|request: Request| async move {
+                assert_eq!(request.headers()[header::USER_AGENT], "rbit");
+                axum::Json(json!({}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        ProviderClient::new(true, Duration::from_secs(5), false)
+            .unwrap()
+            .get_json(&format!("http://{address}/probe"), None, &[])
+            .await
+            .unwrap();
+        server.abort();
     }
 
     #[test]

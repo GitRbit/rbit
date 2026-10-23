@@ -176,7 +176,7 @@ impl WebhookService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let config = &ctx.config.webhooks;
         let timeout = Duration::from_secs(config.timeout_seconds.max(1));
-        let client = match delivery::build_client(config.allow_private_addresses, timeout) {
+        let client = match delivery::build_client(config.allow_private_addresses, timeout, ctx.config.updates.report_version) {
             Ok(client) => Some(client),
             Err(error) => {
                 tracing::error!(%error, "cannot build the webhook HTTP client; deliveries will fail");
@@ -707,7 +707,7 @@ impl WebhookService {
                 }
                 return;
             }
-            attempt = delivery::attempt(self.inner.client.as_ref(), &delivery, allow_private) => attempt,
+            attempt = delivery::attempt(self.inner.client.as_ref(), &delivery, allow_private, self.inner.ctx.config.updates.report_version) => attempt,
         };
 
         let failures = delivery.attempts + 1;

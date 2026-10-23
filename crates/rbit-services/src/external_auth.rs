@@ -220,7 +220,11 @@ impl ExternalAuthService {
         let client = if auth.providers.is_empty() {
             None
         } else {
-            match ProviderClient::new(auth.allow_private_addresses, Duration::from_secs(auth.timeout_seconds.max(1))) {
+            match ProviderClient::new(
+                auth.allow_private_addresses,
+                Duration::from_secs(auth.timeout_seconds.max(1)),
+                ctx.config.updates.report_version,
+            ) {
                 Ok(client) => Some(client),
                 Err(error) => {
                     tracing::error!(%error, "cannot build the HTTP client for sign-in providers; external sign-in is unavailable");

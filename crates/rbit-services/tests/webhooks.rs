@@ -153,6 +153,7 @@ impl Fixture {
     async fn new(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.updates.check_for_updates = false;
         config.storage.data_dir = dir.path().join("data");
         "https://git.example.com".clone_into(&mut config.server.public_url);
         config.webhooks.allow_private_addresses = true;
@@ -194,6 +195,21 @@ fn input(url: &str, events: &[&str], secret: Option<&str>) -> WebhookInput {
         active: true,
         secret: secret.map_or(SecretUpdate::Keep, |secret| SecretUpdate::Set(secret.to_owned())),
     }
+}
+
+#[tokio::test]
+async fn webhook_delivery_omits_running_version_when_reporting_is_disabled() {
+    let fixture = Fixture::new(|config| config.updates.report_version = false).await;
+    let receiver = Receiver::start(&[]).await;
+    let actor = fixture.user("privacy-owner").await;
+    let repo = fixture.repo(&actor, "privacy-owner", "private").await;
+    let hook =
+        fixture.services.webhooks.create(&actor, HookTarget::Repository(&repo), input(&receiver.url, &["push"], None)).await.unwrap();
+    assert_eq!(fixture.services.webhooks.deliver_due(Timestamp::now()).await.unwrap(), 1);
+    let requests = receiver.received();
+    assert_eq!(requests[0].header("User-Agent"), Some("rbit-Hookshot"));
+    let log = fixture.services.webhooks.deliveries(HookTarget::Repository(&repo), hook.id, 1, 10).await.unwrap();
+    assert!(log.deliveries[0].request_headers.iter().any(|(name, value)| name == "User-Agent" && value == "rbit-Hookshot"));
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {

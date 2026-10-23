@@ -21,8 +21,11 @@ use super::{
 use crate::AppState;
 
 /// `GET /version`
-pub async fn version(_caller: Caller) -> Json<Value> {
-    Json(serde_json::json!({ "version": env!("CARGO_PKG_VERSION"), "api": "v1" }))
+pub async fn version(State(state): State<AppState>, _caller: Caller) -> ApiResult<Json<Value>> {
+    if !state.config.updates.report_version {
+        return Err(ApiError::not_found());
+    }
+    Ok(Json(serde_json::json!({ "version": env!("CARGO_PKG_VERSION"), "api": "v1" })))
 }
 
 /// `GET /user`

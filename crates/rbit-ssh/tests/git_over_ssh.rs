@@ -30,6 +30,24 @@ struct Harness {
     server: Option<rbit_ssh::RunningSshServer>,
 }
 
+#[tokio::test]
+async fn version_privacy_hides_the_pre_authentication_ssh_version() {
+    use tokio::io::AsyncBufReadExt;
+    let harness = Harness::start_with(|config| {
+        config.updates.report_version = false;
+        config.updates.check_for_updates = false;
+    })
+    .await;
+    let connection = tokio::net::TcpStream::connect(("127.0.0.1", harness.port)).await.unwrap();
+    let mut reader = tokio::io::BufReader::new(connection);
+    let mut banner = String::new();
+    tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut banner)).await.unwrap().unwrap();
+    assert_eq!(banner.trim(), "SSH-2.0-rbit");
+    drop(reader);
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}
+
 impl Harness {
     async fn start() -> Self {
         Self::start_with(|_| {}).await

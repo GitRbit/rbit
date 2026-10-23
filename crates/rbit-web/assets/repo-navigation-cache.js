@@ -13,7 +13,7 @@ const cachedTransports = new WeakSet();
 let generation = 0;
 let totalBytes = 0;
 
-const RESPONSE_HEADERS = ['Content-Type', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'ETag', 'Last-Modified', 'Vary'];
+const RESPONSE_HEADERS = ['Content-Type', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'Rbit-Update-Available', 'ETag', 'Last-Modified', 'Vary'];
 const EFFECT_HEADERS = ['Set-Cookie', 'HX-Location', 'HX-Redirect', 'HX-Refresh', 'HX-Retarget', 'HX-Reswap', 'HX-Reselect', 'HX-Push-Url', 'HX-Replace-Url', 'HX-Trigger', 'HX-Trigger-After-Swap', 'HX-Trigger-After-Settle'];
 
 /** Synthetic deliveries must not refresh the original response's freshness time. */

@@ -24,8 +24,10 @@
         "operationId": "getVersion",
         "tags": ["meta"],
         "summary": "The server version",
+        "description": "Returns 404 when updates.report_version is disabled. API protocol metadata remains available in OpenAPI.",
         "responses": {
-          "200": { "description": "The version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } }
+          "200": { "description": "The version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } },
+          "404": { "description": "Version reporting is disabled" }
         }
       }
     },

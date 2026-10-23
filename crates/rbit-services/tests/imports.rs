@@ -30,6 +30,7 @@ impl Fixture {
     async fn new(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.updates.check_for_updates = false;
         config.storage.data_dir = dir.path().join("data");
         config.imports.allow_private_addresses = true;
         configure(&mut config);

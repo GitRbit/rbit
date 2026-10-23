@@ -82,6 +82,8 @@ impl TestServer {
         let addr = listener.local_addr().expect("read the bound address");
 
         let mut config = Config::default();
+        // Tests never contact the live upstream release API. Specific worker tests use a local fake.
+        config.updates.check_for_updates = false;
         configure(&mut config);
         config.server.bind = addr;
         config.server.public_url = format!("http://{addr}");
