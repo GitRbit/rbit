@@ -21,7 +21,7 @@ use axum::{
 };
 use rbit_core::{
     IssueNumber, IssueState, ReviewId, User,
-    issue::MergeStrategy,
+    issue::{MergeStrategy, ReviewState},
     issue_query::{IssueQuery, KindFilter, StateFilter},
     pull::{HeadSpec, ReviewCommentId, ReviewSide},
 };
@@ -67,6 +67,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/pull/{number}/draft", post(draft))
         .route("/{owner}/{repo}/pull/{number}/base", post(change_base))
         .route("/{owner}/{repo}/pull/{number}/comments", post(line_comment))
+        .route("/{owner}/{repo}/pull/{number}/comments/{id}/resolution", post(resolve_thread))
         .route("/{owner}/{repo}/pull/{number}/reviews", post(submit_review))
         .route("/{owner}/{repo}/pull/{number}/reviews/discard", post(discard_review))
         .route("/{owner}/{repo}/pull/{number}/reviews/{id}/dismiss", post(dismiss_review))
@@ -127,14 +128,7 @@ async fn review_views(
     let refs = ref_context(ctx, refs);
     let urls = PullUrls::for_context(ctx);
     let can_dismiss = viewer.is_some() && ctx.repo().access.can_write();
-    let reviews = data
-        .reviews
-        .iter()
-        .map(|entry| {
-            let at = entry.review.submitted_at.unwrap_or(entry.review.created_at).seconds();
-            (at, ReviewView::new(entry, can_dismiss, &urls, &refs))
-        })
-        .collect();
+    let sources: std::collections::HashMap<_, _> = data.visible_comments().map(|(comment, _)| (comment.id.0, comment)).collect();
     let mut comments: Vec<ReviewCommentView> = Vec::new();
     for entry in &data.reviews {
         comments
@@ -144,7 +138,49 @@ async fn review_views(
         comments
             .extend(pending.comments.iter().map(|(comment, author)| ReviewCommentView::new(comment, author.as_ref(), true, &urls, &refs)));
     }
-    Ok((reviews, comments))
+    // A reply may be submitted in a different review. Keep it with its root, and
+    // inherit resolution from that root, rather than collapsing individual replies.
+    let group = |comments: Vec<ReviewCommentView>| {
+        let mut replies: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
+        let mut roots = Vec::new();
+        for mut comment in comments {
+            if comment.is_reply {
+                replies.entry(comment.reply_to).or_default().push(comment);
+            } else {
+                let author = sources.get(&comment.reply_to).and_then(|source| source.author);
+                let can_resolve = !comment.pending
+                    && ctx.thread.permissions.can_comment
+                    && viewer.is_some_and(|user| ctx.repo().access.can_write() || author == Some(user.id()));
+                comment.resolution.action_url = can_resolve.then(|| format!("{}/comments/{}/resolution", urls.page, comment.reply_to));
+                roots.push(comment);
+            }
+        }
+        for root in &mut roots {
+            root.replies = replies.remove(&root.reply_to).unwrap_or_default();
+        }
+        roots
+    };
+    let submitted = group(comments.iter().filter(|comment| !comment.pending).cloned().collect());
+    let mut by_review: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
+    for root in submitted {
+        if let Some(source) = sources.get(&root.reply_to) {
+            by_review.entry(source.review_id.0).or_default().push(root);
+        }
+    }
+    let reviews = data
+        .reviews
+        .iter()
+        .filter_map(|entry| {
+            let at = entry.review.submitted_at.unwrap_or(entry.review.created_at).seconds();
+            let threads = by_review.remove(&entry.review.id.0).unwrap_or_default();
+            // Comment-only replies now live with their root; avoid an empty review card.
+            if threads.is_empty() && entry.review.state == ReviewState::Commented && entry.review.body.trim().is_empty() {
+                return None;
+            }
+            Some((at, ReviewView::new(entry, threads, can_dismiss, &urls, &refs)))
+        })
+        .collect();
+    Ok((reviews, group(comments)))
 }
 
 fn review_form(ctx: &PullContext, data: &ReviewData, viewer: Option<&User>) -> Option<ReviewFormView> {
@@ -587,7 +623,11 @@ async fn files(
         signed_in: user.is_some(),
         sign_in_url: format!("/login?next={}", urls.files),
         review_form: review_form(&ctx, &data, user),
-        outdated_count: comments.iter().filter(|comment| comment.outdated).count(),
+        outdated_count: comments
+            .iter()
+            .flat_map(|comment| std::iter::once(comment).chain(&comment.replies))
+            .filter(|comment| comment.outdated)
+            .count(),
     };
     Ok(view.into_response())
 }
@@ -743,6 +783,27 @@ async fn line_comment(
     let input = LineComment { path: form.path, side, line, body: form.body, in_reply_to, start_review: form.action == "review" };
     let comment = state.services.pulls.comment_on_line(&user, &ctx, input).await?;
     Ok(Redirect::to(&files_at(&PullUrls::for_context(&ctx), &line_anchor(&comment.path, comment.side, comment.line))))
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolutionForm {
+    resolved: bool,
+    #[serde(default)]
+    view: String,
+}
+
+async fn resolve_thread(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    Path((owner, repo, number, id)): Path<(String, String, String, String)>,
+    Form(form): Form<ResolutionForm>,
+) -> WebResult<Redirect> {
+    let id = id.parse::<i64>().ok().filter(|id| *id > 0).map(ReviewCommentId).ok_or(WebError::NotFound)?;
+    let ctx = open_for_post(&state, &user, &owner, &repo, &number).await?;
+    let root = state.services.pulls.set_thread_resolved(&user, &ctx, id, form.resolved).await?;
+    let urls = PullUrls::for_context(&ctx);
+    let page = if form.view == "files" && !root.outdated { urls.files } else { urls.page };
+    Ok(Redirect::to(&format!("{page}#r{}", root.id.0)))
 }
 
 #[derive(Debug, Deserialize)]

@@ -748,7 +748,7 @@ async fn find_in(conn: &mut SqliteConnection, id: IssueId) -> Result<Option<Issu
 }
 
 /// Inserts an event and moves the thread's `updated_at` forward.
-async fn insert_event(
+pub(super) async fn insert_event(
     conn: &mut SqliteConnection,
     issue: IssueId,
     actor: Option<AccountId>,

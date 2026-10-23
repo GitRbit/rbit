@@ -101,8 +101,8 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
   GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
   one-click unsubscribe.
-- **Pull requests**: within a repository or across forks, line comments, reviews and review requests,
-  mergeability checks, and merging by merge commit, squash or rebase.
+- **Pull requests**: within a repository or across forks, line comments with resolvable conversations,
+  reviews and review requests, mergeability checks, and merging by merge commit, squash or rebase.
 - **Branch protection**: no force pushes or deletion, required pull requests, approvals and status checks,
   restricted pushers — enforced over HTTPS and SSH and for merges.
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer

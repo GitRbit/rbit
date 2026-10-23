@@ -643,6 +643,10 @@ fn sentence(
             };
             ("x", parts, None)
         }
+        TimelineEvent::ReviewThreadResolved { comment } | TimelineEvent::ReviewThreadReopened { comment } => {
+            let verb = if matches!(event, TimelineEvent::ReviewThreadResolved { .. }) { "resolved " } else { "reopened " };
+            ("message-square", vec![F::text(verb), F::link("a review conversation", format!("#r{}", comment.0))], None)
+        }
         TimelineEvent::HeadRefDeleted { branch } => {
             ("trash", vec![F::text("deleted the "), F::code(branch.clone()), F::text(" branch")], None)
         }
@@ -971,6 +975,20 @@ mod tests {
                 "dismissed bob’s review",
             ),
             (TimelineEvent::ReviewDismissed { review: ReviewId(4), reviewer: None }, none(), plain, "x", "dismissed a review"),
+            (
+                TimelineEvent::ReviewThreadResolved { comment: rbit_core::pull::ReviewCommentId(9) },
+                none(),
+                plain,
+                "message-square",
+                "resolved a review conversation",
+            ),
+            (
+                TimelineEvent::ReviewThreadReopened { comment: rbit_core::pull::ReviewCommentId(9) },
+                none(),
+                plain,
+                "message-square",
+                "reopened a review conversation",
+            ),
             (TimelineEvent::HeadRefDeleted { branch: "feature".to_owned() }, none(), plain, "trash", "deleted the feature branch"),
             (TimelineEvent::ConvertedToDraft, none(), plain, "git-pull-request-draft", "marked this pull request as draft"),
             (TimelineEvent::ReadyForReview, none(), plain, "eye", "marked this pull request as ready for review"),
@@ -981,7 +999,7 @@ mod tests {
             let (actual_icon, sentence) = sentence_of(&ctx, a, timeline_event, subjects, options);
             assert_eq!((actual_icon.as_str(), sentence.as_str()), (icon, expected));
         }
-        assert_eq!(kinds.len(), 22, "every TimelineEvent kind is covered");
+        assert_eq!(kinds.len(), 24, "every TimelineEvent kind is covered");
     }
 
     #[test]

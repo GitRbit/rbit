@@ -28,8 +28,8 @@ for release history.
   mirrors, README links and images.
 - **Issues and pull requests:** one shared timeline; labels, milestones, assignees,
   references and closing keywords, search, in-app notifications; pull requests within a
-  repository or across forks, line comments, reviews, mergeability checks, merge / squash /
-  rebase.
+  repository or across forks, line comments with resolvable conversations, reviews, mergeability
+  checks, merge / squash / rebase.
 - **Branch protection:** no force pushes or deletion, required pull requests and approvals,
   restricted pushers — enforced over HTTP, SSH and for merges.
 - **Automation:** a versioned REST API (`/api/v1`, OpenAPI 3.1), including collaborators,
@@ -54,7 +54,6 @@ for release history.
 
 Planned follow-up work:
 
-- **Pull request reviews:** resolve review threads.
 - **Pull request editing:** a base-branch picker for existing pull requests.
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` views.
 - **Markdown editing:** preview Markdown before submitting it.

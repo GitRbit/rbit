@@ -76,6 +76,40 @@ impl Upgraded {
 }
 
 #[tokio::test]
+async fn existing_review_threads_upgrade_as_unresolved() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit.db");
+    let raw = pool(&path).await;
+    sqlx::migrate!("./migrations").run_to(40, &raw).await.unwrap();
+    sqlx::raw_sql(MILESTONE_1_ROWS).execute(&raw).await.unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) \
+         VALUES (1, 6, 1, 'pull', 'Review me', 1, 10, 10); \
+         INSERT INTO pull_requests (issue_id, repo_id, head_repo_id, head_branch, base_branch, head_sha, created_at, updated_at) \
+         VALUES (1, 6, 6, 'feature', 'main', 'abc', 10, 10); \
+         INSERT INTO pull_reviews (id, pull_id, reviewer_id, state, commit_sha, created_at, submitted_at) \
+         VALUES (1, 1, 2, 'commented', 'abc', 11, 11); \
+         INSERT INTO pull_review_comments (id, review_id, pull_id, author_id, path, side, line, commit_sha, body, created_at, updated_at) \
+         VALUES (1, 1, 1, 2, 'f', 'right', 1, 'abc', 'Existing question', 11, 11);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let database = Database::open(&path).await.unwrap();
+    let comment = database.reviews().find_comment(rbit_core::IssueId(1), rbit_core::pull::ReviewCommentId(1)).await.unwrap().unwrap();
+    assert_eq!(comment.body, "Existing question");
+    assert_eq!((comment.resolved_at, comment.resolved_by), (None, None));
+    database.reviews().set_thread_resolved(comment.pull_id, comment.id, BOB, true, Timestamp(12)).await.unwrap();
+    // Removing the resolver preserves the resolution timestamp and conversation.
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&raw).await.unwrap();
+    let comment = database.reviews().find_comment(comment.pull_id, comment.id).await.unwrap().unwrap();
+    assert_eq!((comment.resolved_at, comment.resolved_by), (Some(Timestamp(12)), None));
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&raw).await.unwrap().is_empty());
+    database.close().await;
+    raw.close().await;
+}
+
+#[tokio::test]
 async fn every_migration_applies_and_the_database_stays_consistent() {
     let db = upgraded().await;
     let embedded: Vec<i64> = sqlx::migrate!("./migrations").iter().map(|m| m.version).collect();

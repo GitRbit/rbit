@@ -101,6 +101,40 @@ impl ReviewData {
 }
 
 impl PullService {
+    /// Writers and the root comment's author may resolve or reopen submitted threads.
+    /// Reply ids are normalized to their root; pending reviews remain private.
+    pub async fn set_thread_resolved(
+        &self,
+        actor: &User,
+        ctx: &PullContext,
+        id: ReviewCommentId,
+        resolved: bool,
+    ) -> Result<ReviewComment, ServiceError> {
+        let store = self.ctx().database.reviews();
+        let comment = store.find_comment(ctx.issue().id, id).await?.ok_or(ServiceError::NotFound)?;
+        let review = store.find(ctx.issue().id, comment.review_id).await?.ok_or(ServiceError::NotFound)?;
+        if review.state == ReviewState::Pending {
+            return Err(ServiceError::NotFound);
+        }
+        let root = match comment.in_reply_to {
+            Some(root) => store.find_comment(ctx.issue().id, root).await?.ok_or(ServiceError::NotFound)?,
+            None => comment,
+        };
+        let review = store.find(ctx.issue().id, root.review_id).await?.ok_or(ServiceError::NotFound)?;
+        if review.state == ReviewState::Pending || root.in_reply_to.is_some() {
+            return Err(ServiceError::NotFound);
+        }
+        Self::require_comment(actor, ctx)?;
+        if !ctx.repo().access.can_write() && root.author != Some(actor.id()) {
+            return Err(ServiceError::Forbidden);
+        }
+        if root.resolved_at.is_some() != resolved {
+            self.spend(actor)?;
+        }
+        store.set_thread_resolved(ctx.issue().id, root.id, actor.id(), resolved, Timestamp::now()).await?;
+        store.find_comment(ctx.issue().id, root.id).await?.ok_or(ServiceError::NotFound)
+    }
+
     /// The reviews of `ctx` as `viewer` sees them.
     pub async fn reviews(&self, viewer: Option<&User>, ctx: &PullContext) -> Result<ReviewData, ServiceError> {
         let store = self.ctx().database.reviews();
