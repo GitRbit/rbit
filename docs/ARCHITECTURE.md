@@ -174,7 +174,7 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `IssueService` (`issues`) | Creating issues with labels, assignees and a milestone; labels (≤ 200 per repository, 25 per issue, default set), milestones, assignees (writers only, ≤ 10), deletion (admins), search; the metadata hook P uses; the background subscriber that turns references into timeline entries and closes issues from commits on the default branch and from pull requests merged into it. |
 | `ReferenceService` (`references`) | Resolves `#N` and `@name` in a batch of texts for rendering; records `CrossReferenced` on targets the mention's author can read. |
 | `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` for the header bell, retention pruning. |
-| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review requests, drafts, the merge box and merging (§3.7). |
+| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review-thread resolution, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
 Milestone 3 added:
@@ -613,6 +613,14 @@ every minute, so nothing is lost across restarts.
    compare-and-swap (the lease). If the branch moved meanwhile the merge is retried once,
    then reported ("the base branch changed; try again"). Nothing else in the base
    repository changes.
+
+Review conversations keep resolution metadata on their root line comment (migration
+`0041`). Writers and the root author may resolve or reopen submitted conversations via
+`POST /{owner}/{repo}/pull/{n}/comments/{id}/resolution`; pending reviews answer 404.
+The store changes the state and records `review_thread_resolved` or
+`review_thread_reopened` in one transaction, with repeated state requests doing nothing.
+Both PR views group replies with their root and collapse resolved conversations.
+Resolution does not affect merge requirements.
 
 The ref update does not go through `receive-pack`, so no hooks run and the push gate is not
 involved: protection is applied before merging by `ProtectionService::check_merge`

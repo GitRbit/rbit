@@ -19,6 +19,7 @@ mod protection;
 mod pulls;
 mod redirects;
 mod repositories;
+mod review_threads;
 mod security;
 mod stars;
 mod themes;

@@ -5,6 +5,14 @@ use super::{
     render_issue_markdown, review_anchor, review_comment_anchor,
 };
 
+/// Resolution state and the action available to the current viewer.
+#[derive(Debug, Clone, Default)]
+pub struct ThreadResolutionView {
+    pub resolved: bool,
+    /// Only offered to a writer or the submitted root's author.
+    pub action_url: Option<String>,
+}
+
 /// A review comment as shown in the conversation or under a diff line.
 #[derive(Debug, Clone)]
 pub struct ReviewCommentView {
@@ -27,6 +35,8 @@ pub struct ReviewCommentView {
     pub line_url: String,
     /// `POST` target of the reply form.
     pub reply_to: i64,
+    pub resolution: ThreadResolutionView,
+    pub replies: Vec<Self>,
 }
 
 impl ReviewCommentView {
@@ -62,6 +72,8 @@ impl ReviewCommentView {
             is_reply: comment.in_reply_to.is_some(),
             line_url: format!("{}#{}", urls.files, line_anchor(&comment.path, comment.side, comment.line)),
             reply_to: comment.in_reply_to.unwrap_or(comment.id).0,
+            resolution: ThreadResolutionView { resolved: comment.resolved_at.is_some(), action_url: None },
+            replies: Vec::new(),
         }
     }
 }
@@ -87,7 +99,7 @@ pub struct ReviewView {
 }
 
 impl ReviewView {
-    pub fn new(entry: &ReviewEntry, can_dismiss: bool, urls: &PullUrls, refs: &RefContext) -> Self {
+    pub fn new(entry: &ReviewEntry, comments: Vec<ReviewCommentView>, can_dismiss: bool, urls: &PullUrls, refs: &RefContext) -> Self {
         let review = &entry.review;
         let (sentence, icon, tone) = match review.state {
             ReviewState::Approved => ("approved these changes", "circle-check", "text-success"),
@@ -110,11 +122,7 @@ impl ReviewView {
             body_html: if review.body.trim().is_empty() { String::new() } else { render_issue_markdown(&review.body, refs) },
             when: at.relative(),
             when_iso: at.iso8601(),
-            comments: entry
-                .comments
-                .iter()
-                .map(|(comment, author)| ReviewCommentView::new(comment, author.as_ref(), false, urls, refs))
-                .collect(),
+            comments,
             dismissal,
             can_dismiss: can_dismiss && matches!(review.state, ReviewState::Approved | ReviewState::ChangesRequested),
             dismiss_url: urls.dismiss(review.id.0),

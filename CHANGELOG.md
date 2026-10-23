@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Resolve and reopen pull request review conversations as a repository writer or the
+  conversation's author. Resolved conversations collapse with their replies in the
+  conversation and Files changed tabs; state changes appear in the timeline.
+- Migration `0041` adds review conversation resolution metadata. Existing conversations
+  remain unresolved; back up the database before upgrading as usual.
+
 ### Changed
 
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping

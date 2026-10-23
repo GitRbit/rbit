@@ -517,6 +517,8 @@ mod tests {
             is_reply: false,
             line_url: format!("{}#{anchor}", urls.files),
             reply_to: id,
+            resolution: reviews::ThreadResolutionView::default(),
+            replies: Vec::new(),
         }
     }
 
@@ -646,6 +648,8 @@ mod tests {
             is_reply: false,
             line_url: format!("{}#{anchor}", urls.files),
             reply_to: 9,
+            resolution: reviews::ThreadResolutionView::default(),
+            replies: Vec::new(),
         };
         // Without threads a file's height is known: header, "View file" bar and rows.
         let plain =

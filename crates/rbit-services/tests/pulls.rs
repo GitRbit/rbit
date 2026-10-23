@@ -39,6 +39,7 @@ fn commit(dir: &Path, file: &str, contents: &str, message: &str) -> String {
 
 struct Fixture {
     _dir: tempfile::TempDir,
+    database: Database,
     services: Services,
     kv: KvStore,
     alice: User,
@@ -90,7 +91,7 @@ impl Fixture {
         git(&work, &["push", "-q", repo.disk_path.to_str().unwrap(), "feature"]);
         git(&work, &["checkout", "-q", "main"]);
 
-        let fixture = Self { _dir: dir, services, kv, alice, bob, carol, work };
+        let fixture = Self { _dir: dir, database, services, kv, alice, bob, carol, work };
         let parent = fixture.repo(&fixture.bob, "alice").await;
         fixture.services.forks.fork(&fixture.bob, &parent, ForkInput::default()).await.unwrap();
         fixture
@@ -141,6 +142,51 @@ impl Fixture {
     fn merge_input(strategy: MergeStrategy) -> MergeInput {
         MergeInput { strategy, title: String::new(), message: String::new(), expected_head: None, delete_head_branch: false, bypass: false }
     }
+}
+
+#[tokio::test]
+async fn review_threads_require_submitted_roots_and_writer_or_root_author() {
+    let f = Fixture::new().await;
+    let number = f.create(&f.alice, "alice", "feature").await.unwrap();
+    let bob_ctx = f.open_pull(&f.bob, number).await;
+    let alice_ctx = f.open_pull(&f.alice, number).await;
+    let carol_ctx = f.open_pull(&f.carol, number).await;
+    let pulls = &f.services.pulls;
+    let input = LineComment {
+        path: "feature.txt".into(),
+        side: ReviewSide::Right,
+        line: 1,
+        body: "Please explain this".into(),
+        in_reply_to: None,
+        start_review: false,
+    };
+    let root = pulls.comment_on_line(&f.bob, &bob_ctx, input.clone()).await.unwrap();
+    assert!(root.resolved_at.is_none());
+    let reply = pulls.comment_on_line(&f.alice, &alice_ctx, LineComment { in_reply_to: Some(root.id), ..input.clone() }).await.unwrap();
+    // A public reader who authored only a reply has no resolution permission.
+    let dave = user(&f.database, "dave").await;
+    let dave_ctx = f.open_pull(&dave, number).await;
+    let reader_reply = pulls.comment_on_line(&dave, &dave_ctx, LineComment { in_reply_to: Some(reply.id), ..input.clone() }).await.unwrap();
+    assert!(matches!(pulls.set_thread_resolved(&dave, &dave_ctx, reader_reply.id, true).await, Err(ServiceError::Forbidden)));
+    let resolved = pulls.set_thread_resolved(&f.bob, &bob_ctx, reply.id, true).await.unwrap();
+    assert_eq!(resolved.id, root.id);
+    assert_eq!(resolved.resolved_by, Some(f.bob.id()));
+    assert!(resolved.resolved_at.is_some());
+    // Repeated posts preserve who resolved the thread and produce no extra event.
+    assert_eq!(pulls.set_thread_resolved(&f.carol, &carol_ctx, root.id, true).await.unwrap(), resolved);
+    let reopened = pulls.set_thread_resolved(&f.carol, &carol_ctx, root.id, false).await.unwrap();
+    assert_eq!((reopened.resolved_at, reopened.resolved_by), (None, None));
+    let events = f.events(&f.alice, number).await;
+    assert_eq!(events.iter().filter(|e| matches!(e, TimelineEvent::ReviewThreadResolved { comment } if *comment == root.id)).count(), 1);
+    assert_eq!(events.iter().filter(|e| matches!(e, TimelineEvent::ReviewThreadReopened { comment } if *comment == root.id)).count(), 1);
+    // Even the pending review's author and repository writers cannot resolve it.
+    let pending = pulls.comment_on_line(&f.bob, &bob_ctx, LineComment { start_review: true, ..input }).await.unwrap();
+    for (actor, ctx) in [(&f.bob, &bob_ctx), (&f.alice, &alice_ctx)] {
+        assert!(matches!(pulls.set_thread_resolved(actor, ctx, pending.id, true).await, Err(ServiceError::NotFound)));
+    }
+    // Resolution remains independent of whether the anchor is outdated.
+    f.database.reviews().mark_outdated(&[root.id]).await.unwrap();
+    assert!(pulls.set_thread_resolved(&f.bob, &bob_ctx, root.id, true).await.unwrap().outdated);
 }
 
 #[tokio::test]

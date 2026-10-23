@@ -186,6 +186,9 @@ pub struct ReviewComment {
     pub body: String,
     /// The file changed since the comment's commit; shown only in the conversation.
     pub outdated: bool,
+    /// Resolution is stored on the root comment; replies inherit its state.
+    pub resolved_at: Option<Timestamp>,
+    pub resolved_by: Option<AccountId>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
