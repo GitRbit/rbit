@@ -211,7 +211,9 @@ impl Services {
         // same services (LFS placement shares a lock with the orphan sweep).
         let releases = ReleaseService::new(ctx.clone());
         let lfs = LfsService::new(ctx.clone());
-        let accounts = AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone());
+        let setup_token = accounts::bootstrap_setup_token(&config, &database.accounts()).await?;
+        let accounts =
+            AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone(), setup_token);
 
         let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
         issues.index_existing_mentions().await?;

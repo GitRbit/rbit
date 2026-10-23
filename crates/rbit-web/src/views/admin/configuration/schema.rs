@@ -67,6 +67,14 @@ const SECURITY: &[Spec] = &[
         max: "4294967295",
     },
     Spec {
+        key: "session_max_age_days",
+        label: "Maximum session age (days)",
+        help: "How long a session stays valid at most, however active, in days. 0 means no limit.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
         key: "min_password_length",
         label: "Min password length",
         help: "Minimum password length accepted at sign-up.",

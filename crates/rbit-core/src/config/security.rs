@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct SecurityConfig {
     /// How long a session stays valid without activity, in days.
     pub session_lifetime_days: u32,
+    /// How long a session stays valid at most, however active, in days. `0` means no limit.
+    pub session_max_age_days: u32,
     /// Minimum password length accepted at sign-up.
     pub min_password_length: usize,
     /// Reverse proxies (CIDR networks, e.g. `127.0.0.1/32`, `10.0.0.0/8`, `::1/128`) whose
@@ -20,11 +22,22 @@ pub struct SecurityConfig {
     /// Throttle sign-in, sign-up, two-factor codes, Git credentials and form posts per
     /// client. Only worth turning off for load tests.
     pub rate_limit: bool,
+    /// The token that the first account's sign-up form asks for. Unset (the default), a
+    /// random one is generated and logged when the server starts without any user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_token: Option<String>,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
-        Self { session_lifetime_days: 30, min_password_length: 10, trusted_proxies: Vec::new(), rate_limit: true }
+        Self {
+            session_lifetime_days: 30,
+            session_max_age_days: 90,
+            min_password_length: 10,
+            trusted_proxies: Vec::new(),
+            rate_limit: true,
+            setup_token: None,
+        }
     }
 }
 

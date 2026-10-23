@@ -215,6 +215,77 @@ async fn wrong_codes_are_throttled_per_account() {
     assert!(outcomes.len() <= 5);
 }
 
+/// Guesses `login`'s password from `client` until throttled; panics if never.
+async fn guess_until_limited(fixture: &Fixture, login: &str, client: &ClientInfo) {
+    for _ in 0..20 {
+        match fixture.services.sign_in(login, "guess".to_owned(), client).await {
+            Err(ServiceError::InvalidCredentials) => {}
+            Err(ServiceError::RateLimited { .. }) => return,
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    panic!("{login} was never throttled");
+}
+
+fn address(ip: &str) -> ClientInfo {
+    ClientInfo { ip: Some(ip.parse().unwrap()), user_agent: String::new() }
+}
+
+#[tokio::test]
+async fn a_username_and_its_email_share_one_budget() {
+    let fixture = Fixture::new().await;
+    fixture.user("alice").await;
+
+    guess_until_limited(&fixture, "alice", &address("192.0.2.1")).await;
+    let other_alias = fixture.services.sign_in("alice@example.com", PASSWORD.to_owned(), &address("192.0.2.2")).await;
+    assert!(matches!(other_alias, Err(ServiceError::RateLimited { .. })), "{other_alias:?}");
+
+    // Unknown logins keep separate budgets per spelling, as before.
+    guess_until_limited(&fixture, "ghost", &address("192.0.2.3")).await;
+    let unknown = fixture.services.sign_in("ghost@example.com", "guess".to_owned(), &address("192.0.2.4")).await;
+    assert!(matches!(unknown, Err(ServiceError::InvalidCredentials)), "{unknown:?}");
+}
+
+#[tokio::test]
+async fn a_successful_sign_in_restores_the_login_budget_but_not_the_address_budget() {
+    let fixture = Fixture::new().await;
+    fixture.user("mallory").await;
+    let attacker = address("192.0.2.66");
+
+    // Spread guesses over many logins (each well under its own budget), signing in to
+    // one's own account in between: the address still runs out.
+    let mut limited = false;
+    for round in 0..40 {
+        for victim in 0..3 {
+            match fixture.services.sign_in(&format!("victim{round}-{victim}"), "guess".to_owned(), &attacker).await {
+                Err(ServiceError::InvalidCredentials) => {}
+                Err(ServiceError::RateLimited { .. }) => limited = true,
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        if limited {
+            break;
+        }
+        match fixture.services.sign_in("mallory", PASSWORD.to_owned(), &attacker).await {
+            Ok(SignInOutcome::SignedIn(_)) => {}
+            Err(ServiceError::RateLimited { .. }) => limited = true,
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert!(limited, "the address budget must not be refilled by signing in");
+
+    // The login's own budget does refill on success.
+    let fresh = Fixture::new().await;
+    fresh.user("alice").await;
+    for _ in 0..5 {
+        assert!(matches!(fresh.services.sign_in("alice", "guess".to_owned(), &client()).await, Err(ServiceError::InvalidCredentials)));
+    }
+    assert!(fresh.services.sign_in("alice", PASSWORD.to_owned(), &client()).await.is_ok());
+    for _ in 0..5 {
+        assert!(matches!(fresh.services.sign_in("alice", "guess".to_owned(), &client()).await, Err(ServiceError::InvalidCredentials)));
+    }
+}
+
 #[tokio::test]
 async fn wrong_passwords_are_throttled_and_audited() {
     let fixture = Fixture::new().await;

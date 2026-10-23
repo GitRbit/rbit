@@ -26,8 +26,12 @@ use crate::{ServiceContext, ServiceError};
 pub enum ThrottleScope {
     /// Account name changes, keyed by the stable account ID.
     AccountRename,
-    /// Password sign-in attempts (keyed by client address and by login name).
+    /// Password sign-in attempts (keyed by client address, by login name and by the
+    /// account the login resolves to).
     SignIn,
+    /// Password re-checks for a signed-in account, e.g. before changing its email or
+    /// password (keyed by account).
+    PasswordCheck,
     /// Account creation (keyed by client address).
     SignUp,
     /// Second-factor code attempts (keyed by account).
@@ -93,7 +97,7 @@ impl Bucket {
                 Limit { burst: limit.burst * CLIENT_FACTOR, refill: limit.refill / CLIENT_FACTOR, failure_cost: limit.failure_cost }
             }
             // ~7 wrong passwords in quick succession, then one a minute.
-            Self::Scope(ThrottleScope::SignIn) => Limit::new(20, 20, 2),
+            Self::Scope(ThrottleScope::SignIn | ThrottleScope::PasswordCheck) => Limit::new(20, 20, 2),
             // Five signups per address or name changes per account, then one every ten minutes.
             Self::Scope(ThrottleScope::SignUp | ThrottleScope::AccountRename) => Limit::new(5, 600, 0),
             // ~3 wrong codes quickly, then one every 90 seconds: the 10⁶ code space stays out of reach.

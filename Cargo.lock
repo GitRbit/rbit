@@ -4278,6 +4278,7 @@ dependencies = [
  "sha2 0.11.1",
  "sqlx",
  "ssh-key",
+ "subtle",
  "tempfile",
  "thiserror",
  "tokio",

@@ -47,6 +47,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
     let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
+    log_setup_token(&config, &background);
 
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
@@ -58,6 +59,24 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     background.shutdown().await;
     storage.database.close().await;
     Ok(())
+}
+
+/// On an instance without users, prints what the first (administrator) sign-up needs.
+fn log_setup_token(config: &Config, services: &Services) {
+    let Some(token) = services.accounts.setup_token() else { return };
+    let url = format!("{}/signup", config.server.public_url.trim_end_matches('/'));
+    // A configured token is already known to whoever deploys the server.
+    let token = if config.security.setup_token.as_deref().is_some_and(|configured| configured.trim() == token) {
+        "(security.setup_token)"
+    } else {
+        token
+    };
+    tracing::warn!(
+        setup_url = %url,
+        setup_token = %token,
+        "no account exists yet: sign up at the setup URL with this setup token to create the administrator \
+         (or run `rbit user create <name> <email> --admin`)"
+    );
 }
 
 pub async fn migrate(config: Config) -> anyhow::Result<()> {

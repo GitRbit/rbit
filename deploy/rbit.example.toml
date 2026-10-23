@@ -22,12 +22,17 @@ data_dir = "/var/lib/rbit"
 
 [security]
 session_lifetime_days = 30
+# Sessions end this long after sign-in even when in constant use (0 = no limit).
+session_max_age_days = 90
 min_password_length = 12
 # Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
 # the reverse proxy's address; anything broader lets clients spoof their IP address.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
 # Throttle sign-in, sign-up, 2FA, Git credentials, email requests and form posts.
 rate_limit = true
+# Signing up the first account needs a setup token, generated and logged at start-up
+# while there is no user. Set one here for automated deployments.
+# setup_token = "a long random string"
 
 [repository]
 default_branch = "main"

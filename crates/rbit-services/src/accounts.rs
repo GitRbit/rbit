@@ -8,7 +8,12 @@
 //! everywhere else. Credential finalization awaits session revocation before returning,
 //! so enforcement cannot be lost on the event bus. Recovery and administrator resets end
 //! every session. Self-service changes preserve only the initiating session, which the web
-//! layer brackets with a [`PasswordChangeGuard`].
+//! layer brackets with a [`PasswordChangeGuard`]. However active, a session ends
+//! `session_max_age_days` after sign-in.
+//!
+//! The first account of an instance becomes its administrator, so signing it up needs a
+//! setup token: the configured `setup_token`, or a random one generated (and logged by the
+//! server) when the instance starts without any user.
 
 use std::{
     collections::HashMap,
@@ -20,6 +25,7 @@ use std::{
 use rbit_auth::{Passwords, SessionToken, TokenDigest};
 use rbit_core::{Account, AccountId, AccountName, Config, Email, RegistrationMode, Timestamp, User};
 use rbit_storage::{AccountStore, NewUser, SessionRecord, SessionStore, kv::StoredSession};
+use subtle::ConstantTimeEq;
 use tokio::sync::broadcast::{self, error::TryRecvError};
 
 use crate::{
@@ -33,6 +39,8 @@ const MAX_PASSWORD_LEN: usize = 256;
 const LAST_SEEN_RESOLUTION_SECONDS: i64 = 5 * 60;
 /// Bytes of the token digest used as a session's public identifier.
 const SESSION_ID_BYTES: usize = 12;
+/// Random bytes in a generated setup token (hex-encoded, so twice as many characters).
+const SETUP_TOKEN_BYTES: usize = 16;
 
 /// Raw sign-up input, exactly as submitted.
 #[derive(Debug, Clone, Default)]
@@ -95,6 +103,8 @@ pub struct AccountService {
     events: EventBus,
     audit: AuditService,
     password_changes: Arc<PasswordChangeLedger>,
+    /// Required to sign up the first account; `None` when the instance started with users.
+    setup_token: Option<Arc<str>>,
 }
 
 impl AccountService {
@@ -105,28 +115,55 @@ impl AccountService {
         sessions: SessionStore,
         instance: InstanceService,
         events: EventBus,
+        setup_token: Option<String>,
     ) -> Self {
         let audit = AuditService::from_store(accounts.audit_log());
-        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default() }
+        let setup_token = setup_token.map(Arc::from);
+        Self { config, accounts, sessions, instance, events, audit, password_changes: Arc::default(), setup_token }
     }
 
     /// Whether the public sign-up form is available (an instance setting administrators
     /// change at runtime). The very first account can always be created so that a fresh
     /// instance can be bootstrapped.
     pub async fn registration_open(&self) -> Result<bool, ServiceError> {
-        Ok(self.instance.current().registration == RegistrationMode::Open || self.accounts.count_users().await? == 0)
+        Ok(self.instance.current().registration == RegistrationMode::Open || self.setup_required().await?)
     }
 
-    /// Registers a user. The first user of an instance becomes its administrator.
-    pub async fn sign_up(&self, input: SignUp) -> Result<User, ServiceError> {
-        if !self.registration_open().await? {
+    /// Whether the instance has no user yet, so the next sign-up creates its administrator
+    /// and needs the [setup token](Self::setup_token).
+    pub async fn setup_required(&self) -> Result<bool, ServiceError> {
+        Ok(self.accounts.count_users().await? == 0)
+    }
+
+    /// The token the first account's sign-up needs, while the instance started without
+    /// users (the server logs it). Also lets tests bootstrap an instance.
+    pub fn setup_token(&self) -> Option<&str> {
+        self.setup_token.as_deref()
+    }
+
+    /// Registers a user. The first user of an instance becomes its administrator, and
+    /// needs `setup_token` (ignored for every later sign-up).
+    pub async fn sign_up(&self, input: SignUp, setup_token: &str) -> Result<User, ServiceError> {
+        let first = self.setup_required().await?;
+        let open = self.instance.current().registration == RegistrationMode::Open;
+        if !open && !first {
             return Err(ServiceError::RegistrationClosed);
         }
+        if first && !self.setup_token_matches(setup_token) {
+            return Err(ServiceError::Invalid(SETUP_TOKEN_REQUIRED.to_owned()));
+        }
         let new = prepare_user(&self.config, input, false).await?;
-        let open = self.instance.current().registration == RegistrationMode::Open;
         let user = self.accounts.register_user(new, open).await?;
         self.events.publish(DomainEvent::UserSignedUp { user: user.id() });
         Ok(user)
+    }
+
+    /// Compares in constant time. Never matches without a token (the instance started with
+    /// users that were deleted since: a restart generates one).
+    fn setup_token_matches(&self, given: &str) -> bool {
+        let Some(expected) = &self.setup_token else { return false };
+        let given = given.trim();
+        expected.len() == given.len() && bool::from(expected.as_bytes().ct_eq(given.as_bytes()))
     }
 
     /// Creates a user regardless of the registration setting (admin CLI, admin panel).
@@ -140,21 +177,43 @@ impl AccountService {
     /// Verifies credentials. Takes the same time whether or not the login exists.
     /// A suspended user with the right password gets [`ServiceError::Forbidden`].
     pub async fn authenticate(&self, login: &str, password: String) -> Result<User, ServiceError> {
+        self.authenticate_resolved(login, password, |_| Ok(())).await.1
+    }
+
+    /// Like [`Self::authenticate`], also returning the account `login` resolved to (if
+    /// any), so callers can throttle per account. `before_verify` sees that account before
+    /// the password is checked; an error from it is returned instead of checking.
+    pub(crate) async fn authenticate_resolved(
+        &self,
+        login: &str,
+        password: String,
+        before_verify: impl FnOnce(Option<AccountId>) -> Result<(), ServiceError>,
+    ) -> (Option<AccountId>, Result<User, ServiceError>) {
         if password.len() > MAX_PASSWORD_LEN * 4 {
-            return Err(ServiceError::InvalidCredentials);
+            return (None, Err(ServiceError::InvalidCredentials));
         }
-        let Some(record) = self.accounts.find_login(login.trim()).await? else {
-            Passwords::verify_dummy(password).await;
-            return Err(ServiceError::InvalidCredentials);
+        let record = match self.accounts.find_login(login.trim()).await {
+            Ok(record) => record,
+            Err(error) => return (None, Err(error.into())),
         };
-        if !Passwords::verify(password, record.password_hash).await? {
-            return Err(ServiceError::InvalidCredentials);
+        let account = record.as_ref().map(|record| record.user.id());
+        if let Err(error) = before_verify(account) {
+            return (account, Err(error));
         }
-        if record.suspended {
-            tracing::info!(user = %record.user.name(), "suspended user refused sign-in");
-            return Err(ServiceError::Forbidden);
-        }
-        Ok(record.user)
+        let Some(record) = record else {
+            Passwords::verify_dummy(password).await;
+            return (None, Err(ServiceError::InvalidCredentials));
+        };
+        let result = match Passwords::verify(password, record.password_hash).await {
+            Ok(true) if record.suspended => {
+                tracing::info!(user = %record.user.name(), "suspended user refused sign-in");
+                Err(ServiceError::Forbidden)
+            }
+            Ok(true) => Ok(record.user),
+            Ok(false) => Err(ServiceError::InvalidCredentials),
+            Err(error) => Err(error.into()),
+        };
+        (account, result)
     }
 
     /// Whether an administrator has suspended the user. Credentials resolved elsewhere
@@ -179,26 +238,31 @@ impl AccountService {
     pub async fn start_session_for(&self, user: &User, client: &ClientInfo) -> Result<SessionToken, ServiceError> {
         let token = SessionToken::generate();
         let ip = client.ip.map(|ip| ip.to_canonical().to_string());
-        let record = SessionRecord::new(user.id(), self.session_expiry(), ip, &client.user_agent);
+        let record = SessionRecord::new(user.id(), self.session_expiry(Timestamp::now()), ip, &client.user_agent);
         self.sessions.put(token.digest(), record).await?;
         Ok(token)
     }
 
-    /// Resolves a cookie token to its user, sliding the expiry forward on use. Sessions of
-    /// deleted or suspended users are discarded.
+    /// Resolves a cookie token to its user, sliding the expiry forward on use (never past
+    /// the maximum session age). Sessions of deleted or suspended users, and sessions past
+    /// the maximum age, are discarded.
     pub async fn resume_session(&self, token: &SessionToken) -> Result<Option<User>, ServiceError> {
         let digest = token.digest();
         let Some(record) = self.sessions.get(digest).await? else {
             return Ok(None);
         };
+        let now = Timestamp::now();
+        if self.max_session_end(record.created_at).is_some_and(|end| end <= now) {
+            self.sessions.delete(digest).await?;
+            return Ok(None);
+        }
         let Some(user) = self.accounts.find_active_user(record.account_id).await? else {
             self.sessions.delete(digest).await?;
             return Ok(None);
         };
 
         // Rewrite only when the expiry moves by a day or "last seen" is stale.
-        let now = Timestamp::now();
-        let renewed = self.session_expiry();
+        let renewed = self.session_expiry(record.created_at);
         let renew = renewed.seconds() - record.expires_at.seconds() > 24 * 60 * 60;
         let seen = now.seconds() - record.last_seen_at.seconds() >= LAST_SEEN_RESOLUTION_SECONDS;
         if (renew || seen) && !self.sessions.renew(digest, renewed, now).await? {
@@ -241,8 +305,16 @@ impl AccountService {
         i64::from(self.config.security.session_lifetime_days) * 24 * 60 * 60
     }
 
-    fn session_expiry(&self) -> Timestamp {
-        Timestamp(Timestamp::now().seconds() + self.session_lifetime_seconds())
+    /// A full idle lifetime from now, capped at the maximum age of a session created at `created_at`.
+    fn session_expiry(&self, created_at: Timestamp) -> Timestamp {
+        let idle = Timestamp(Timestamp::now().seconds() + self.session_lifetime_seconds());
+        self.max_session_end(created_at).map_or(idle, |end| idle.min(end))
+    }
+
+    /// When a session created at `created_at` ends however active; `None` without a limit.
+    fn max_session_end(&self, created_at: Timestamp) -> Option<Timestamp> {
+        let days = self.config.security.session_max_age_days;
+        (days > 0).then(|| Timestamp(created_at.seconds() + i64::from(days) * 24 * 60 * 60))
     }
 
     pub async fn find_account(&self, name: &str) -> Result<Account, ServiceError> {
@@ -436,6 +508,26 @@ impl PasswordChangeLedger {
         }
         end_all
     }
+}
+
+/// Why the first account's sign-up was refused.
+const SETUP_TOKEN_REQUIRED: &str = "enter the setup token printed in the server log";
+
+/// The setup token of an instance without users (configured, or else random); `None`
+/// once it has users.
+pub(crate) async fn bootstrap_setup_token(config: &Config, accounts: &AccountStore) -> Result<Option<String>, ServiceError> {
+    if accounts.count_users().await? > 0 {
+        return Ok(None);
+    }
+    if let Some(token) = config.security.setup_token.as_deref().map(str::trim).filter(|token| !token.is_empty()) {
+        return Ok(Some(token.to_owned()));
+    }
+    let mut bytes = [0_u8; SETUP_TOKEN_BYTES];
+    getrandom::fill(&mut bytes).map_err(|error| ServiceError::internal(std::io::Error::other(error.to_string())))?;
+    Ok(Some(bytes.iter().fold(String::with_capacity(SETUP_TOKEN_BYTES * 2), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })))
 }
 
 /// e.g. `Mozilla/5.0 … from 192.0.2.1`, for audit details.
