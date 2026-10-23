@@ -24,6 +24,8 @@ use crate::{ServiceContext, ServiceError};
 /// What is being throttled. Each scope has its own limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ThrottleScope {
+    /// Account name changes, keyed by the stable account ID.
+    AccountRename,
     /// Password sign-in attempts (keyed by client address and by login name).
     SignIn,
     /// Account creation (keyed by client address).
@@ -92,8 +94,8 @@ impl Bucket {
             }
             // ~7 wrong passwords in quick succession, then one a minute.
             Self::Scope(ThrottleScope::SignIn) => Limit::new(20, 20, 2),
-            // Five accounts per address, then one every ten minutes.
-            Self::Scope(ThrottleScope::SignUp) => Limit::new(5, 600, 0),
+            // Five signups per address or name changes per account, then one every ten minutes.
+            Self::Scope(ThrottleScope::SignUp | ThrottleScope::AccountRename) => Limit::new(5, 600, 0),
             // ~3 wrong codes quickly, then one every 90 seconds: the 10⁶ code space stays out of reach.
             Self::Scope(ThrottleScope::TwoFactor) => Limit::new(10, 30, 2),
             // Three emails, then one every ten minutes.

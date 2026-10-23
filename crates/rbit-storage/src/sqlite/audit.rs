@@ -68,6 +68,7 @@ impl AuditCategory {
 /// What happened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuditAction {
+    UsernameChanged,
     SignIn,
     SignInFailed,
     TwoFactorFailed,
@@ -116,7 +117,8 @@ pub enum AuditAction {
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 45] = [
+        Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
         Self::TwoFactorFailed,
@@ -166,6 +168,7 @@ impl AuditAction {
     /// Stable identifier stored in the database.
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::UsernameChanged => "username_changed",
             Self::SignIn => "sign_in",
             Self::SignInFailed => "sign_in_failed",
             Self::TwoFactorFailed => "two_factor_failed",
@@ -220,6 +223,7 @@ impl AuditAction {
     pub const fn category(self) -> AuditCategory {
         match self {
             Self::SignIn
+            | Self::UsernameChanged
             | Self::SignInFailed
             | Self::TwoFactorFailed
             | Self::RecoveryCodeUsed
@@ -266,6 +270,7 @@ impl AuditAction {
     /// Human-readable description, e.g. "Signed in".
     pub const fn label(self) -> &'static str {
         match self {
+            Self::UsernameChanged => "Changed username",
             Self::SignIn => "Signed in",
             Self::SignInFailed => "Failed sign-in",
             Self::TwoFactorFailed => "Wrong two-factor code",

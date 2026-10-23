@@ -55,6 +55,17 @@ pub(super) fn render_error_response(response: Response, page: impl IntoResponse)
 /// `path` (and `query`) rewritten to the current name of the repository its first two
 /// segments used to name, if the viewer may read that repository.
 async fn moved_repository_location(state: &AppState, viewer: &Viewer, path: &str, query: Option<&str>) -> Option<String> {
+    let profile = path.strip_prefix('/')?.trim_end_matches('/');
+    if !profile.is_empty() && !profile.contains('/') {
+        let moved = state.services.accounts.moved_to(profile).await.ok()??;
+        let slash = if path.ends_with('/') { "/" } else { "" };
+        let mut location = format!("/{}{slash}", moved.name);
+        if let Some(query) = query {
+            location.push('?');
+            location.push_str(query);
+        }
+        return Some(location);
+    }
     let (owner, repo, rest) = split_repo_path(path)?;
     let moved = match state.services.repositories.moved_to(viewer.user(), owner, repo).await {
         Ok(moved) => moved?,

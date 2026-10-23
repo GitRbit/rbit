@@ -16,6 +16,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   remain unresolved; back up the database before upgrading as usual.
 - Change an open pull request's base branch from its Conversation tab, with searchable
   branch choices for the author and repository writers.
+- Change your username from account settings with current-password confirmation. Old
+  profile links, repository URLs, and Git HTTP/SSH remotes follow the account's current
+  name until another account claims the old name. Private repository redirects are only
+  visible to authorized readers.
+
+### Upgrade notes
+
+- Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
+  and their maintenance triggers. Existing account names and IDs are unchanged; names
+  abandoned before this upgrade cannot be reconstructed.
 
 ### Changed
 

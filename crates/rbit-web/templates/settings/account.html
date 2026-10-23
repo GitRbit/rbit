@@ -6,7 +6,21 @@
 <p class="mt-1 text-[13px] text-ink-muted">An administrator created your account with an initial password. Choose a new password before continuing to {{ page.site_name }}.</p>
 {% else %}
 <h2 class="text-xl font-semibold tracking-tight">Account</h2>
-<p class="mt-1 text-[13px] text-ink-muted">How you sign in. Both changes ask for your current password.</p>
+<p class="mt-1 text-[13px] text-ink-muted">How you sign in. Changes ask for your current password.</p>
+
+<form method="post" action="/settings/account/username" class="box mt-6" novalidate>
+  <div class="box-header"><h3 class="text-[13px] font-medium">Username</h3></div>
+  <div class="p-4">
+    {% call ui::form_error(username_error) %}{% endcall %}
+    {% if self.saved_username() %}<p role="status" class="mb-5 text-[13px]">Username updated.</p>{% endif %}
+    <label class="label" for="username">Username</label>
+    <input class="input" id="username" name="username" value="{{ username }}" maxlength="39" autocomplete="username" spellcheck="false" required>
+    <p class="hint">Profile links and Git remotes using your old name keep working until someone takes that name. Update your links and remotes. Sign in with your new username or email.</p>
+    <label class="label mt-5" for="username-password">Current password</label>
+    <input class="input" id="username-password" name="current_password" type="password" autocomplete="current-password" required>
+  </div>
+  <div class="flex justify-end border-t border-line px-4 py-3"><button class="btn btn-primary w-full sm:w-auto" type="submit">Change username</button></div>
+</form>
 
 <section class="box mt-6" aria-labelledby="verification-heading">
   <div class="p-4">

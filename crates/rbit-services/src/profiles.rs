@@ -3,11 +3,11 @@
 //! Workstream D owns this file.
 
 use rbit_auth::Passwords;
-use rbit_core::{AccountId, Email, User};
+use rbit_core::{AccountId, AccountName, Email, User};
 use rbit_storage::sqlite::profiles::{AccountProfile, ProfileStore};
 
 use crate::audit::{AuditAction, AuditEntry, AuditService};
-use crate::{AccountService, DomainEvent, ServiceContext, ServiceError};
+use crate::{AccountService, DomainEvent, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
 const MAX_DISPLAY_NAME_LEN: usize = 80;
 const MAX_BIO_LEN: usize = 300;
@@ -40,11 +40,12 @@ pub struct UpdateProfile {
 pub struct ProfileService {
     ctx: ServiceContext,
     accounts: AccountService,
+    throttle: ThrottleService,
 }
 
 impl ProfileService {
-    pub(crate) fn new(ctx: ServiceContext, accounts: AccountService) -> Self {
-        Self { ctx, accounts }
+    pub(crate) fn new(ctx: ServiceContext, accounts: AccountService, throttle: ThrottleService) -> Self {
+        Self { ctx, accounts, throttle }
     }
 
     fn store(&self) -> ProfileStore {
@@ -60,6 +61,20 @@ impl ProfileService {
     pub async fn public_profile(&self, account_id: AccountId) -> Result<PublicProfile, ServiceError> {
         let profile = self.store().find(account_id).await?.unwrap_or_default();
         Ok(PublicProfile { website: profile.website, location: profile.location })
+    }
+
+    /// Renames the authenticated user's own account without changing its identity or
+    /// credentials. Old names redirect until reclaimed; they never become login aliases.
+    pub async fn change_username(&self, user: &User, current_password: String, new_name: &str) -> Result<(), ServiceError> {
+        self.throttle.check(ThrottleScope::AccountRename, &user.id().0.to_string())?;
+        let name: AccountName = new_name.trim().parse()?;
+        let verified = self.verify_password(user, current_password).await?;
+        if !self.ctx.database.accounts().rename_if_password(user.id(), &name, &verified).await? {
+            return Err(ServiceError::InvalidCredentials);
+        }
+        tracing::info!(account = user.id().0, new_name = %name, "account renamed");
+        AuditService::new(self.ctx.clone()).record(AuditEntry::new(AuditAction::UsernameChanged).by(user).on(name.to_string())).await;
+        Ok(())
     }
 
     /// Validates and replaces every profile field.

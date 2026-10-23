@@ -23,7 +23,7 @@ for release history.
   SSH server, background maintenance, Prometheus metrics, health checks, consistent backups,
   Docker and systemd deployment.
 - **Access and collaboration:** collaborators, organisation teams, base permissions,
-  repository transfer with redirects from old names.
+  repository transfer and account username changes with redirects from old names.
 - **Repository essentials:** releases with files, archives, blame, compare, forks, pull
   mirrors, README links and images.
 - **Issues and pull requests:** one shared timeline; labels, milestones, assignees,
@@ -56,7 +56,6 @@ Planned follow-up work:
 
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` views.
 - **Markdown editing:** preview Markdown before submitting it.
-- **Account renames:** redirect links from previous account names.
 
 ## Longer-term ideas
 

@@ -81,6 +81,24 @@ fn general(description: &str, visibility: Visibility, default_branch: Option<&st
 }
 
 #[tokio::test]
+async fn old_account_names_authorize_the_current_repository_identity() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let bob = fixture.user("bob", false).await;
+    let repo = fixture.repo(&alice, "secret", Visibility::Private).await;
+    fixture.database.accounts().rename(alice.id(), &"renamed".parse().unwrap()).await.unwrap();
+    let repositories = &fixture.services.repositories;
+    assert!(repositories.moved_to(None, "alice", "secret").await.unwrap().is_none());
+    assert!(repositories.moved_to(Some(&bob), "alice", "secret").await.unwrap().is_none());
+    assert!(matches!(repositories.open_following_renames(Some(&bob), "alice", "secret").await, Err(ServiceError::NotFound)));
+    let opened = repositories.open_following_renames(Some(&alice), "alice", "secret.git").await.unwrap();
+    assert_eq!(opened.repo.repo.id, repo.repo.repo.id);
+    assert_eq!(opened.repo.full_name(), "renamed/secret");
+    assert_eq!(opened.disk_path, repo.disk_path);
+    assert!(repositories.moved_to(Some(&alice), "renamed", "secret").await.unwrap().is_none());
+}
+
+#[tokio::test]
 async fn update_description_visibility_and_default_branch() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice", false).await;

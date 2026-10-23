@@ -109,6 +109,12 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
 
+Change your username in **Settings → Account** using your current password. Your profile
+links, repository URLs and Git HTTP/SSH remotes continue to work under old account names
+until someone claims a name again. Update shared links and Git remotes after renaming;
+use your new username or unchanged email to sign in. Sessions, tokens, keys and repository
+permissions keep their account identity.
+
 **Automation and integrations**
 
 - **REST API and webhooks**: a versioned REST API (`/api/v1`, OpenAPI 3.1: repositories, issues, pull requests,

@@ -230,7 +230,7 @@ impl Services {
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
-            profiles: ProfileService::new(ctx.clone(), accounts),
+            profiles: ProfileService::new(ctx.clone(), accounts, throttle.clone()),
             pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
             collaborators: CollaboratorService::new(ctx.clone()),

@@ -5,6 +5,86 @@
 use rbit_e2e::{Git, PASSWORD, StatusCode, TestServer};
 
 #[tokio::test]
+async fn username_form_keeps_profile_links_git_remotes_and_tokens_working() {
+    let server = TestServer::start();
+    let git = Git::new();
+    let alice = server.sign_up("alice").await;
+    let token = alice.create_token("keep", "admin").await;
+    alice.create_repo("alice", "project", "public").await;
+    let sample = git.sample();
+    git.push_sample(&sample, &server.git_url_as("alice", "project", "alice", PASSWORD));
+    alice.get("/settings/account").await.expect_contains(&["Change username", "until someone takes that name"]);
+    alice
+        .post("/settings/account/username", &[("username", "renamed"), ("current_password", "wrong")])
+        .await
+        .expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    alice
+        .post("/settings/account/username", &[("username", "renamed"), ("current_password", PASSWORD)])
+        .await
+        .expect_redirect("/settings/account?saved=username");
+    alice.get("/settings/account?saved=username").await.expect_contains(&["Username updated.", "value=\"renamed\""]);
+    let anonymous = server.client();
+    for (old, new) in [
+        ("/alice?tab=stars", "/renamed?tab=stars"),
+        ("/ALICE/project", "/renamed/project"),
+        ("/alice/project/blob/main/README.md", "/renamed/project/blob/main/README.md"),
+    ] {
+        let response = anonymous.get(old).await;
+        response.expect_status(StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(response.location(), Some(new));
+        assert_eq!(response.header("cache-control"), Some("no-store"));
+    }
+    let clone = git.clone(&server.git_url("alice", "project"));
+    assert_eq!(git.ok(&clone, &["rev-parse", "HEAD"]).trim(), sample.head);
+    git.commit_file(&clone, "rename.txt", "same identity\n");
+    git.ok(&clone, &["push", "--quiet", &server.git_url_as("alice", "project", "renamed", PASSWORD), "HEAD:refs/heads/main"]);
+    // The token is still bound to the same account and old API URLs redirect.
+    let (status, location, _) = api(&server, reqwest::Method::GET, "/repos/alice/project", Some(&token)).await;
+    assert_eq!(status, StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(location, Some(server.url("/api/v1/repos/renamed/project")));
+    alice.post("/renamed/project/settings/rename", &[("name", "latest")]).await.expect_redirect("/renamed/latest/settings");
+    alice
+        .post("/settings/account/username", &[("username", "finalname"), ("current_password", PASSWORD)])
+        .await
+        .expect_redirect("/settings/account?saved=username");
+    assert_eq!(anonymous.get("/alice/project").await.location(), Some("/finalname/latest"));
+    assert_eq!(anonymous.get("/renamed/latest").await.location(), Some("/finalname/latest"));
+    let login = server.client();
+    login.sign_in("alice", PASSWORD).await.expect_status(StatusCode::UNPROCESSABLE_ENTITY);
+    login.sign_in("finalname", PASSWORD).await.expect_redirect("/");
+    // Reclaiming the name shadows the entire namespace, not just existing repositories.
+    let newcomer = server.client();
+    newcomer
+        .post("/signup", &[("username", "alice"), ("email", "newalice@example.test"), ("password", PASSWORD)])
+        .await
+        .expect_redirect("/");
+    anonymous.get("/alice").await.expect_status(StatusCode::OK);
+    anonymous.get("/alice/project").await.expect_status(StatusCode::NOT_FOUND);
+    newcomer.create_repo("alice", "project", "public").await;
+    anonymous.get("/alice/project").await.expect_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn renamed_account_private_repository_redirects_are_reader_only() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "secret", "private").await;
+    alice
+        .post("/settings/account/username", &[("username", "renamed"), ("current_password", PASSWORD)])
+        .await
+        .expect_redirect("/settings/account?saved=username");
+    assert_eq!(alice.get("/alice/secret").await.location(), Some("/renamed/secret"));
+    for client in [server.client(), bob] {
+        let response = client.get("/alice/secret").await;
+        response.expect_status(StatusCode::NOT_FOUND);
+        assert_eq!(response.location(), None);
+        let refs = client.get("/alice/secret.git/info/refs?service=git-upload-pack").await;
+        assert_ne!(refs.status, StatusCode::OK);
+    }
+}
+
+#[tokio::test]
 async fn renamed_repositories_redirect_from_their_old_name() {
     let server = TestServer::start();
     let git = Git::new();

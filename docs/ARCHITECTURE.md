@@ -729,6 +729,20 @@ SSH (separate listener, rbit-ssh): public-key auth → exec git-upload-pack (int
   or git-lfs-authenticate (prints a signed LFS header, §4.7)
 ```
 
+**Account names redirect.** Migration `0042` adds `account_redirects` keyed by the old
+case-insensitive name and referencing the stable account ID. Rename triggers record old
+names; account creation or renaming into a name removes its former redirect permanently.
+Every alias resolves directly to the current account, so repeated renames and renaming
+back cannot loop. The same invariants apply to organisation accounts. Account settings
+allow a signed-in user to change their own username with a current-password check that
+is atomic against password replacement; attempts share a five-request budget per account,
+refilling once every ten minutes. Names still use the reserved-path validation. Account
+IDs, repository disk paths, permissions, sessions, keys and tokens remain unchanged.
+Sign-in and mentions use current names only. An old profile URL redirects with its query;
+repository lookups compose account aliases with repository aliases and enforce visibility
+before exposing a destination. Git HTTP and SSH serve the permitted repository directly.
+No names from before the migration are inferred or backfilled.
+
 **Old names redirect.** When a page answers 404 and its first two path segments name a
 repository's *old* location (`repo_redirects`) that the viewer may read, the error-page
 layer answers `301` (`308` for anything but `GET`/`HEAD`, so forms keep their method) to the
