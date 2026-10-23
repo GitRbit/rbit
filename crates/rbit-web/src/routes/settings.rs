@@ -37,6 +37,7 @@ pub fn routes() -> Router<AppState> {
         .route("/settings/account", get(account))
         .route("/settings/appearance", get(appearance))
         .route("/settings/account/email", post(change_email))
+        .route("/settings/account/username", post(change_username))
         .route("/settings/account/password", post(change_password))
         .route("/settings/account/verify", post(resend_verification))
         .route("/settings/tokens", get(tokens).post(create_token))
@@ -118,6 +119,25 @@ pub struct EmailFormInput {
     email: String,
     #[serde(default)]
     current_password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UsernameFormInput {
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    current_password: String,
+}
+
+/// `POST /settings/account/username`: changes only the signed-in account's name.
+pub async fn change_username(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    page: Page,
+    Form(form): Form<UsernameFormInput>,
+) -> WebResult<Response> {
+    let result = state.services.profiles.change_username(&user, form.current_password, &form.username).await;
+    account_result(&state, &user, page, AccountForm::Username, result, Some(form.username)).await
 }
 
 #[derive(Debug, Deserialize)]

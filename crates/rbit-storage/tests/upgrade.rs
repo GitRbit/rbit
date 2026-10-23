@@ -117,6 +117,7 @@ async fn every_migration_applies_and_the_database_stays_consistent() {
         sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = 1 ORDER BY version").fetch_all(&db.raw).await.unwrap();
     assert_eq!(applied, embedded);
     assert!(applied.contains(&16), "the redirects migration is among them");
+    assert!(applied.contains(&42), "the account redirects migration is among them");
 
     let integrity: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&db.raw).await.unwrap();
     assert_eq!(integrity, "ok");
@@ -317,6 +318,29 @@ async fn repositories_from_milestone_1_get_redirects_when_they_move() {
 }
 
 #[tokio::test]
+async fn accounts_from_milestone_1_get_identity_based_redirects() {
+    let db = upgraded().await;
+    for trigger in ["account_redirects_on_create", "account_redirects_on_rename"] {
+        assert!(db.exists("trigger", trigger).await);
+    }
+    assert_eq!(db.count("SELECT COUNT(*) FROM account_redirects").await, 0);
+    let accounts = db.database.accounts();
+    for (id, old, new, repo) in [(ALICE, "alice", "renamed", "dotfiles"), (ACME, "acme", "neworg", "Rocket")] {
+        accounts.rename(id, &new.parse().unwrap()).await.unwrap();
+        assert_eq!(accounts.find_by_old_name(old).await.unwrap().unwrap().id, id);
+        let moved = db.database.repositories().find_by_old_path(old, repo).await.unwrap().unwrap();
+        assert_eq!(moved.owner.id, id);
+        assert_eq!(moved.owner.name.as_str(), new);
+    }
+    // A transferred repository remains reachable after the former owner also renames.
+    db.database.repositories().transfer(RepoId(5), ACME).await.unwrap();
+    assert_eq!(db.database.repositories().find_by_old_path("alice", "dotfiles").await.unwrap().unwrap().full_name(), "neworg/dotfiles");
+    sqlx::query("DELETE FROM accounts WHERE id = ?").bind(ALICE.0).execute(&db.raw).await.unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none());
+    assert_eq!(db.count("SELECT COUNT(*) FROM account_redirects WHERE account_id = 1").await, 0);
+}
+
+#[tokio::test]
 async fn new_tables_start_empty_with_their_defaults() {
     let db = upgraded().await;
     for table in [
@@ -332,6 +356,7 @@ async fn new_tables_start_empty_with_their_defaults() {
         "repo_forks",
         "repo_mirrors",
         "repo_redirects",
+        "account_redirects",
         "issue_counters",
         "issues",
         "issue_comments",

@@ -188,12 +188,18 @@ impl RepositoryStore {
         row.map(OwnedRepository::try_from).transpose()
     }
 
-    /// The repository that used to be called `owner/name` before a rename or transfer, at
-    /// its current location. `None` when the old name was never used, or a repository
-    /// exists there now (the `0016` triggers drop a redirect when its name is taken).
+    /// The repository formerly at `owner/name`, following account and repository renames
+    /// or transfers directly to their stable IDs. A current account shadows its entire
+    /// old namespace, and a current repository shadows a repository alias. Both trigger
+    /// sets remove reclaimed aliases permanently, including after later renames.
     pub async fn find_by_old_path(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, StorageError> {
         let row: Option<OwnedRepositoryRow> = sqlx::query_as(select_owned_repo!(
-            "JOIN repo_redirects rr ON rr.repo_id = r.id JOIN accounts ro ON ro.id = rr.owner_id WHERE ro.name = ? AND rr.name = ?"
+            "WHERE r.id = (SELECT COALESCE( \
+             (SELECT current.id FROM repositories current WHERE current.owner_id = ro.id \
+              AND current.name = ?2 AND ro.name <> ?1 COLLATE NOCASE), \
+             (SELECT rr.repo_id FROM repo_redirects rr WHERE rr.owner_id = ro.id AND rr.name = ?2)) \
+             FROM accounts ro WHERE ro.id = COALESCE((SELECT id FROM accounts WHERE name = ?1), \
+             (SELECT account_id FROM account_redirects WHERE name = ?1)))"
         ))
         .bind(owner)
         .bind(name)

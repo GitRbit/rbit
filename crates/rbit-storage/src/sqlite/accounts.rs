@@ -180,6 +180,49 @@ impl AccountStore {
         row.map(Account::try_from).transpose()
     }
 
+    /// Changes an account's name, retaining its identity and recording the old name.
+    /// Authorization belongs to the calling service; applies equally to organisations.
+    pub async fn rename(&self, id: AccountId, name: &AccountName) -> Result<(), StorageError> {
+        sqlx::query("UPDATE accounts SET name = ?, updated_at = ? WHERE id = ?")
+            .bind(name.as_str())
+            .bind(Timestamp::now().seconds())
+            .bind(id.0)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| StorageError::from_insert(error, "username"))?;
+        Ok(())
+    }
+
+    /// Self-service rename only while the verified password remains current.
+    pub async fn rename_if_password(&self, id: AccountId, name: &AccountName, expected: &str) -> Result<bool, StorageError> {
+        Ok(sqlx::query(
+            "UPDATE accounts SET name = ?1, updated_at = ?2 WHERE id = ?3 AND EXISTS \
+            (SELECT 1 FROM user_logins WHERE account_id = ?3 AND password_hash = ?4 AND suspended_at IS NULL)",
+        )
+        .bind(name.as_str())
+        .bind(Timestamp::now().seconds())
+        .bind(id.0)
+        .bind(expected)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| StorageError::from_insert(error, "username"))?
+        .rows_affected()
+            != 0)
+    }
+
+    /// The current account behind a former name. Never used for sign-in or mentions.
+    pub async fn find_by_old_name(&self, name: &str) -> Result<Option<Account>, StorageError> {
+        let row: Option<AccountRow> = sqlx::query_as(
+            "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at FROM accounts a \
+             JOIN account_redirects ar ON ar.account_id = a.id WHERE ar.name = ? \
+             AND NOT EXISTS (SELECT 1 FROM accounts current WHERE current.name = ar.name)",
+        )
+        .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.map(Account::try_from).transpose()
+    }
+
     /// The accounts among `ids` (users and organisations; unknown ids are left out), in
     /// one query.
     pub async fn find_accounts(&self, ids: &[AccountId]) -> Result<Vec<Account>, StorageError> {
