@@ -16,6 +16,9 @@
 
 import { clearNavigationResponses, isCachedNavigationResponse, rememberNavigationResponse, reuseNavigationResponse } from "./repo-navigation-cache.js";
 import { reconcileRepositoryBar } from "./repo-navigation-bar.js";
+import { installUpdateNotice } from "./update-notice.js";
+
+installUpdateNotice(document);
 
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";

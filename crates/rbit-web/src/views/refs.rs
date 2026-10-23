@@ -119,6 +119,7 @@ mod tests {
                 vec![],
             ),
             page: Page {
+                updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".to_owned(),
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,

@@ -7,6 +7,7 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
+    pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
     pub branding: rbit_core::config::BrandingConfig,
     pub title: Option<String>,
@@ -32,8 +33,10 @@ pub struct NavUser {
 
 impl Page {
     pub fn new(state: &AppState, viewer: Option<&User>, path: &str) -> Self {
-        let settings = state.services.instance.current();
+        let mut settings = state.services.instance.current();
+        settings.branding.show_version &= state.config.updates.report_version;
         Self {
+            updates: state.services.updates.status(),
             site_name: settings.site_name,
             branding: settings.branding,
             title: None,
@@ -119,6 +122,7 @@ mod tests {
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
+                updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
@@ -141,5 +145,31 @@ mod tests {
             }
             assert_eq!(html.matches("<style ").count(), paths.len());
         }
+    }
+
+    #[test]
+    fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
+        let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
+        let page = Page {
+            updates: rbit_services::updates::UpdateStatus {
+                revision: 1,
+                state: rbit_services::updates::UpdateState::Available,
+                release: Some(rbit_services::updates::AvailableRelease {
+                    version: "99.0.0".into(),
+                    url: "https://github.com/GitRbit/rbit/releases/tag/v99.0.0".into(),
+                }),
+            },
+            site_name: "rbit".into(),
+            branding,
+            title: None,
+            viewer: None,
+            path: "/".into(),
+            has_unread_notifications: false,
+            theme: Theme::default(),
+        };
+        let html = Fixture { page }.render().unwrap();
+        assert!(html.contains("Update available"));
+        assert!(html.contains("https://github.com/GitRbit/rbit/releases/tag/v99.0.0"));
+        assert!(!html.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))));
     }
 }

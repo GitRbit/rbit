@@ -745,6 +745,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
@@ -753,6 +754,27 @@ mod tests {
             theme: crate::themes::Theme::System,
             has_unread_notifications: false,
         }
+    }
+
+    #[test]
+    fn dashboard_renders_available_release_and_configuration_link() {
+        let mut page = page();
+        page.updates = rbit_services::updates::UpdateStatus {
+            revision: 1,
+            state: rbit_services::updates::UpdateState::Available,
+            release: Some(rbit_services::updates::AvailableRelease {
+                version: "99.0.0".into(),
+                url: "https://github.com/GitRbit/rbit/releases/tag/v99.0.0".into(),
+            }),
+        };
+        let html =
+            DashboardPage { page, admin_nav: AdminSection::Dashboard.nav(), tiles: Vec::new(), system: Vec::new(), settings: Vec::new() }
+                .render()
+                .unwrap();
+        assert!(html.contains("A newer stable release is available."));
+        assert!(html.contains("View rbit 99.0.0 release notes"));
+        assert!(html.contains("https://github.com/GitRbit/rbit/releases/tag/v99.0.0"));
+        assert!(html.contains("/admin/configuration"));
     }
 
     #[test]

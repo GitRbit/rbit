@@ -21,10 +21,15 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::configured(|_| {}).await
+    }
+
+    async fn configured(configure: impl FnOnce(&mut Config)) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.storage.data_dir = directory.path().join("data");
         config.security.rate_limit = false;
+        configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
@@ -33,6 +38,63 @@ impl Fixture {
         let router = rbit_web::router(AppState::new(config, services.clone()));
         Self { _directory: directory, services, router }
     }
+}
+
+#[tokio::test]
+async fn version_disclosure_is_independent_of_checks_and_admin_diagnostics_remain_private() {
+    for report in [true, false] {
+        for checks in [true, false] {
+            let fixture = Fixture::configured(|config| {
+                config.updates.report_version = report;
+                config.updates.check_for_updates = checks;
+            })
+            .await;
+            let version =
+                fixture.router.clone().oneshot(Request::builder().uri("/api/v1/version").body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(version.status(), if report { StatusCode::OK } else { StatusCode::NOT_FOUND });
+            assert!(version.headers().get(header::SERVER).is_none());
+            let response = fixture.router.clone().oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+            let html = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+            assert_eq!(html.contains(&format!("v{}", env!("CARGO_PKG_VERSION"))), report);
+            let expected =
+                if checks { rbit_services::updates::UpdateState::Pending } else { rbit_services::updates::UpdateState::Disabled };
+            assert_eq!(fixture.services.updates.status().state, expected);
+            // The fixture deliberately never starts the worker, so no live release API is contacted.
+        }
+    }
+    let fixture = Fixture::configured(|config| {
+        config.updates.report_version = false;
+        config.updates.check_for_updates = false;
+    })
+    .await;
+    let admin = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "update-admin".into(), email: "updates@example.com".into(), password: "correct horse battery".into() },
+            Some(true),
+        )
+        .await
+        .unwrap();
+    let session = fixture.services.accounts.start_session(&admin).await.unwrap();
+    let response = fixture
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/admin")
+                .header(header::COOKIE, format!("rbit_session={}", session.encode()))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(html.contains("Automatic update checks are disabled."));
+    assert!(html.contains(env!("CARGO_PKG_VERSION")), "authenticated local diagnostics retain the installed version");
+    let response = fixture.router.clone().oneshot(Request::builder().uri("/admin").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
 }
 
 #[tokio::test]

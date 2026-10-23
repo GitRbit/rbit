@@ -1385,6 +1385,49 @@ reason. rbit is licensed MIT OR Apache-2.0.
 
 ---
 
+### 9.1 Release checks and version privacy
+
+The footer also follows ordinary htmx navigation without polling. HTML responses carry
+versionless `Rbit-Update-Available` metadata from the same cached service snapshot.
+UTC-nanosecond revisions advance only when the background worker observes a result
+(or the service starts), and the initial footer carries its revision too. The browser
+orders snapshots with `BigInt`, including prefetched navigation responses and restored
+history, so an old cached page cannot erase or resurrect a newer notice. A newer clear
+removes it; a newer available snapshot from a preload can reveal it. This adds no upstream
+request to page rendering.
+
+`UpdateService` owns a single cancellable background task. It reads only the fixed
+`https://api.github.com/repos/GitRbit/rbit/releases/latest` endpoint, with a constant
+versionless User-Agent, no credentials, cookies, instance identity or running-version
+parameter. The client honors deployment proxy settings, requires HTTPS, refuses redirects,
+and limits requests to a five-second connect timeout, ten seconds total and a 64 KiB body.
+Tags are validated as SemVer and release links are constructed under the fixed upstream
+repository. Drafts and prereleases are excluded. A stable release supersedes the same
+version's prerelease; an older stable release does not supersede a newer local prerelease.
+Build metadata does not affect precedence.
+
+Successful checks are cached in memory for 24 hours. Failures back off from 15 minutes
+to at most 24 hours, honoring bounded `Retry-After` and GitHub reset hints. The last
+successful notice survives transient failures; restarting forgets the cache and performs
+one new check. Page rendering only reads a mutex-protected snapshot and never contacts
+upstream. The footer shows a generic release-notes link; administrators also see check
+status. No release is installed or downloaded automatically. Tests inject local HTTP
+fixtures into the private worker constructor and disable live checks in application
+test harnesses.
+
+`[updates] check_for_updates = false` disables the task and its HTTP client independently
+of `report_version`. Both options default to true and are deployment configuration:
+TOML, `RBIT_UPDATES__CHECK_FOR_UPDATES`, `RBIT_UPDATES__REPORT_VERSION`, or the administrator
+configuration editor. Saved changes require restart. With reporting disabled, the
+global policy overrides the live footer branding flag, `/api/v1/version` answers 404,
+the pre-authentication SSH banner omits its version suffix, and provider, import/API/
+download and webhook User-Agents omit the running version (including webhook delivery
+records). Update checks never send it even when reporting is enabled. Administrator-only
+installed-version diagnostics, local CLI output and backup manifests remain accurate.
+Opaque asset content hashes and API/Prometheus protocol versions are not release versions
+and remain unchanged. Historical delivery records retain their original headers until
+normal retention removes them.
+
 ## 10. Roadmap
 
 | Phase | Scope |

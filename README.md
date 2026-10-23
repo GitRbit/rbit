@@ -73,6 +73,17 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 
 ## Features
 
+The footer and administrator dashboard show a notice when a newer stable rbit release
+is available. A background check contacts the public GitHub release feed without sending
+your running version, instance address, users or repository data. Successful results are
+cached in memory for 24 hours; failures retry with backoff and never delay page requests.
+Disable checks with `RBIT_UPDATES__CHECK_FOR_UPDATES=false`. Independently, set
+`RBIT_UPDATES__REPORT_VERSION=false` to hide the public version API/footer/SSH version and
+omit running-version numbers from outgoing integration User-Agents. Administrators retain
+local version diagnostics. Both options are also in `[updates]` and the administrator
+configuration editor; changes require a restart. Update notices link to release notes;
+they do not install or download an update automatically.
+
 **Git and code**
 
 - **Git over HTTPS and SSH**: smart HTTP (protocol v2) and a built-in SSH server with user and deploy keys.

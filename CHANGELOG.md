@@ -31,12 +31,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
   visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
   Markdown mentions once at startup in bounded batches.
+- Notify in the footer and administrator dashboard when a newer stable rbit release
+  is available, using a bounded daily background check of the upstream GitHub release
+  feed. Release checks never send the running version or instance identity.
+- Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
+  reporting hides public version output and omits version numbers from outgoing
+  integration User-Agents; administrator-only diagnostics remain available.
 
 ### Upgrade notes
 
 - Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
   and their maintenance triggers. Existing account names and IDs are unchanged; names
   abandoned before this upgrade cannot be reconstructed.
+
+- Automatic release checks are enabled by default. Set
+  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
+  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
+  Configuration changes take effect after restart; release checks add no database migration.
 
 ### Changed
 
