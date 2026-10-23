@@ -30,6 +30,7 @@
     {% if merge.can_merge && (merge.ready || merge.needs_bypass) %}
     <form method="post" action="{{ merge.action_url }}" class="border-t border-line px-3 py-3 sm:px-4">
       <input type="hidden" name="expected_head" value="{{ merge.expected_head }}">
+      <input type="hidden" name="expected_base" value="{{ merge.expected_base }}">
       <fieldset class="flex flex-col gap-1.5">
         <legend class="label">Merge method</legend>
         {% for strategy in merge.strategies %}

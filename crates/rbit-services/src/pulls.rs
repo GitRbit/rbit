@@ -581,7 +581,7 @@ impl PullService {
     }
 
     /// Points the pull request at another existing branch of the base repository (author
-    /// or writers).
+    /// or writers). Approvals given so far are dismissed: they were for the old base.
     pub async fn set_base(&self, actor: &User, ctx: &PullContext, branch: &str) -> Result<(), ServiceError> {
         if !(ctx.issue().is_author(actor) || ctx.repo().access.can_write()) {
             return Err(ServiceError::Forbidden);
@@ -598,9 +598,21 @@ impl PullService {
             return Err(ServiceError::Invalid("the base and the head branch must differ".to_owned()));
         }
         let previous = ctx.pull.base_branch.clone();
-        if self.ctx().database.pulls().set_base(ctx.issue().id, branch, Timestamp::now()).await? {
+        if branch == previous {
+            return Ok(());
+        }
+        self.spend(actor)?;
+        // Approvals were given for the old base: dismiss them with the change.
+        let message = format!("The base branch changed from {previous} to {branch}.");
+        let changed = self.ctx().database.pulls().set_base(ctx.issue().id, branch, actor.id(), &message, Timestamp::now()).await?;
+        if let Some(dismissed) = changed {
             let event = rbit_core::TimelineEvent::BaseChanged { from: previous.clone(), to: branch.to_owned() };
             self.inner.timeline.record(ctx.issue().id, Some(actor.id()), event).await?;
+            for (review, reviewer) in dismissed {
+                let event = rbit_core::TimelineEvent::ReviewDismissed { review, reviewer };
+                self.inner.timeline.record(ctx.issue().id, Some(actor.id()), event).await?;
+                self.publish_review(ctx, review, actor.id(), rbit_core::issue::ReviewAction::Dismissed);
+            }
             self.publish(
                 ctx.issue(),
                 Some(actor.id()),

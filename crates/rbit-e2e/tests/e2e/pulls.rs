@@ -200,6 +200,11 @@ async fn a_fork_pull_request_is_reviewed_fixed_approved_and_squash_merged() {
     alice.post("/alice/demo/pull/1/reviews", &[("verdict", "approve"), ("body", "Thanks!")]).await.expect_status(StatusCode::SEE_OTHER);
     let page = wait_for_page(&alice, "/alice/demo/pull/1", |body| body.contains("No conflicts with the base branch")).await;
     let head = rbit_e2e::attribute_after(&page.body, "name=\"expected_head\"", "value").expect("the merge form");
+    let base = rbit_e2e::attribute_after(&page.body, "name=\"expected_base\"", "value").expect("the merge form");
+    assert_eq!(base, "main");
+    // A merger who saw another base is refused.
+    let stale = [("strategy", "squash"), ("expected_head", head.as_str()), ("expected_base", "release"), ("title", ""), ("message", "")];
+    alice.post("/alice/demo/pull/1/merge", &stale).await.expect_status(StatusCode::BAD_REQUEST);
     alice
         .post("/alice/demo/pull/1/merge", &[("strategy", "squash"), ("expected_head", &head), ("title", ""), ("message", "")])
         .await
