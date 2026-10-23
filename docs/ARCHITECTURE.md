@@ -509,7 +509,7 @@ A copy of `rbit.db` alone reveals none of them. Values without the prefix are le
 plaintext and read as is; `Database::open` seals them in one transaction at start-up
 (idempotent), and refuses to start when sealed values exist but the key file is missing
 or does not open them, instead of generating a key that would orphan them. Migration
-`0042` only widens the push mirror secret column for the longer sealed form.
+`0044` only widens the push mirror secret column for the longer sealed form.
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
 (`/rbit` can be either). Timestamps are Unix seconds (`INTEGER`).
