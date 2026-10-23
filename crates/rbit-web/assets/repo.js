@@ -184,8 +184,19 @@ document.addEventListener('htmx:beforeSwap', event => {
 });
 addEventListener('popstate', closeLanguageBrowser);
 
-function indentLanguageBrowsers() {
-  for (const content of document.querySelectorAll('[data-language-content]')) indentLanguageFiles(content);
+// The element htmx swapped in (or the content an event names); the document otherwise.
+const rootOf = (event) => {
+  const root = event?.detail?.root ?? event?.detail?.elt ?? event?.target;
+  return typeof root?.querySelectorAll === 'function' ? root : document;
+};
+/** Elements in `root` matching `selector`, `root` included. */
+const within = (root, selector) => {
+  const found = [...root.querySelectorAll(selector)];
+  if (root.matches?.(selector)) found.unshift(root);
+  return found;
+};
+function indentLanguageBrowsers(event) {
+  for (const content of within(rootOf(event), '[data-language-content]')) indentLanguageFiles(content);
 }
 indentLanguageBrowsers();
 document.addEventListener('htmx:afterSettle', indentLanguageBrowsers);

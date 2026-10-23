@@ -35,6 +35,37 @@ fn count(value: i64) -> u64 {
     u64::try_from(value).unwrap_or_default()
 }
 
+/// `?1` repository, `?2` name pattern, `?3` limit. Starts from the accounts that can hold
+/// push access at all (the owner, the repository's write collaborators and the owning
+/// organisation's members who own it or get `write` from its base permission or a team),
+/// each found through an index on the repository or organisation, and only then looks
+/// those few up. Checking every account of the instance against the same rules would
+/// read the whole `accounts` table on every assignee search.
+const ASSIGNABLE: &str = r"WITH candidates (id) AS (
+        SELECT r.owner_id FROM repositories r WHERE r.id = ?1
+        UNION
+        SELECT c.user_id FROM collaborators c WHERE c.repo_id = ?1 AND c.permission IN ('write', 'admin')
+        UNION
+        SELECT m.user_id FROM repositories r JOIN org_members m ON m.org_id = r.owner_id
+          LEFT JOIN org_profiles p ON p.account_id = m.org_id
+          WHERE r.id = ?1
+            AND (m.role = 'owner' OR IFNULL(p.member_permission, 'write') = 'write'
+              OR EXISTS (SELECT 1 FROM team_repositories tr JOIN team_members tm ON tm.team_id = tr.team_id
+                 JOIN teams t ON t.id = tr.team_id
+                 WHERE tr.repo_id = r.id AND t.org_id = r.owner_id AND tm.user_id = m.user_id
+                   AND tr.permission IN ('write', 'admin')))
+    )
+    SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at FROM candidates JOIN accounts a ON a.id = candidates.id
+    WHERE a.kind = 'user' AND a.name LIKE ?2 ESCAPE '\'
+      AND NOT EXISTS (SELECT 1 FROM user_logins l WHERE l.account_id = a.id AND l.suspended_at IS NOT NULL)
+    ORDER BY a.name LIMIT ?3";
+
+/// Accounts among a JSON array of names. `accounts.name` is `COLLATE NOCASE`, so a plain
+/// `IN` matches case-insensitively and seeks its unique index once per name; wrapping the
+/// column in `lower()` would read every account instead.
+const ACCOUNTS_NAMED: &str =
+    "SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name IN (SELECT value FROM json_each(?)) ORDER BY name";
+
 // ------------------------------------------------------------------ types
 
 /// A repository's label.
@@ -674,27 +705,8 @@ impl IssueMetaStore {
     /// members whose base permission or team grant is `write` or `admin`. Names starting
     /// with `prefix` (case-insensitively; empty for all), by name, at most `limit`.
     pub async fn assignable(&self, repo: RepoId, prefix: &str, limit: u32) -> Result<Vec<Account>, StorageError> {
-        let rows: Vec<AccountRow> = sqlx::query_as(
-            r"SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at FROM accounts a
-              JOIN repositories r ON r.id = ?1
-              WHERE a.kind = 'user' AND a.name LIKE ?2 ESCAPE '\'
-                AND NOT EXISTS (SELECT 1 FROM user_logins l WHERE l.account_id = a.id AND l.suspended_at IS NOT NULL)
-                AND (a.id = r.owner_id
-                  OR EXISTS (SELECT 1 FROM collaborators c WHERE c.repo_id = r.id AND c.user_id = a.id AND c.permission IN ('write', 'admin'))
-                  OR EXISTS (SELECT 1 FROM org_members m LEFT JOIN org_profiles p ON p.account_id = m.org_id
-                     WHERE m.org_id = r.owner_id AND m.user_id = a.id
-                       AND (m.role = 'owner' OR IFNULL(p.member_permission, 'write') = 'write'
-                         OR EXISTS (SELECT 1 FROM team_repositories tr JOIN team_members tm ON tm.team_id = tr.team_id
-                            JOIN teams t ON t.id = tr.team_id
-                            WHERE tr.repo_id = r.id AND t.org_id = r.owner_id AND tm.user_id = a.id
-                              AND tr.permission IN ('write', 'admin')))))
-              ORDER BY a.name LIMIT ?3",
-        )
-        .bind(repo.0)
-        .bind(prefix_pattern(prefix))
-        .bind(i64::from(limit))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<AccountRow> =
+            sqlx::query_as(ASSIGNABLE).bind(repo.0).bind(prefix_pattern(prefix)).bind(i64::from(limit)).fetch_all(&self.pool).await?;
         rows.into_iter().map(Account::try_from).collect()
     }
 
@@ -801,13 +813,7 @@ impl IssueMetaStore {
         if names.is_empty() {
             return Ok(Vec::new());
         }
-        let rows: Vec<AccountRow> = sqlx::query_as(
-            "SELECT id, kind, name, display_name, bio, created_at FROM accounts \
-             WHERE lower(name) IN (SELECT lower(value) FROM json_each(?)) ORDER BY name",
-        )
-        .bind(json_strings(names))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<AccountRow> = sqlx::query_as(ACCOUNTS_NAMED).bind(json_strings(names)).fetch_all(&self.pool).await?;
         rows.into_iter().map(Account::try_from).collect()
     }
 }
@@ -815,6 +821,27 @@ impl IssueMetaStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::plans;
+
+    #[tokio::test]
+    async fn assignee_search_never_scans_accounts() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, ASSIGNABLE).await;
+        // Before: `SCAN a USING INDEX sqlite_autoindex_accounts_1` with correlated
+        // permission checks per account.
+        assert!(plan.iter().all(|line| !line.starts_with("SCAN") || line == "SCAN candidates"), "{plan:?}");
+        assert!(plan.iter().any(|line| line == "SEARCH a USING INTEGER PRIMARY KEY (rowid=?)"), "{plan:?}");
+        assert!(plan.iter().any(|line| line.starts_with("SEARCH c USING PRIMARY KEY (repo_id=?")), "{plan:?}");
+    }
+
+    #[tokio::test]
+    async fn mentions_seek_the_name_index() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, ACCOUNTS_NAMED).await;
+        // Before: `SCAN accounts USING INDEX sqlite_autoindex_accounts_1`.
+        assert_eq!(plan[0], "SEARCH accounts USING INDEX sqlite_autoindex_accounts_1 (name=?)", "{plan:?}");
+        assert!(plan.iter().all(|line| !line.starts_with("SCAN accounts")), "{plan:?}");
+    }
 
     #[test]
     fn prefix_patterns_escape_wildcards() {

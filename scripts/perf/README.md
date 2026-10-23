@@ -105,7 +105,9 @@ node scripts/perf/sweep.mjs --rounds 5 --throttle 6 old=… new=…
 Options (both): `--rounds 5`, `--ms 6000` (sweep length cap; it also stops at the bottom),
 `--vps 5` (viewports per second), `--throttle 6` (CPU slowdown; 1 for none, where a
 healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every run). Set
-`PERF_BROWSER` to use another Chromium.
+`PERF_BROWSER` to use another Chromium. `sweep.mjs` also takes `--no-backdrop a,b`: the
+named pages are swept with `backdrop-filter` off on the sticky bars, so one URL under two
+names (`blur=URL plain=URL --no-backdrop plain`) measures what the blur costs.
 
 - `trace.mjs` sums complete trace events on the renderer's main thread. `RunTask` is the
   total; the phases nest inside it and partly in each other, so compare a phase with the

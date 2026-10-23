@@ -26,7 +26,8 @@ pub struct Comparison {
     pub merge_base: Option<String>,
     /// Commits in `head` but not in `base` (at most [`MAX_COUNTED_COMMITS`]).
     pub ahead: usize,
-    /// Commits in `base` but not in `head` (at most [`MAX_COUNTED_COMMITS`]).
+    /// Commits in `base` but not in `head` (at most [`MAX_COUNTED_COMMITS`]). Always 0 from
+    /// [`RepositoryReader::compare_ahead`], which does not count them.
     pub behind: usize,
     /// The newest of the commits ahead, newest first.
     pub commits: Vec<CommitSummary>,
@@ -50,6 +51,24 @@ impl RepositoryReader {
     /// Compares `head` against `base` (branches, tags or commit ids), listing at most
     /// `max_commits` of the commits ahead.
     pub async fn compare(&self, base: String, head: String, limits: DiffLimits, max_commits: usize) -> Result<Comparison, GitError> {
+        self.compare_counting(base, head, limits, max_commits, true).await
+    }
+
+    /// [`Self::compare`] without counting the commits `head` is behind `base` (left 0):
+    /// pull requests show only what the head brings in, and on a long-lived base the
+    /// behind walk can visit far more history than the ahead walk.
+    pub async fn compare_ahead(&self, base: String, head: String, limits: DiffLimits, max_commits: usize) -> Result<Comparison, GitError> {
+        self.compare_counting(base, head, limits, max_commits, false).await
+    }
+
+    async fn compare_counting(
+        &self,
+        base: String,
+        head: String,
+        limits: DiffLimits,
+        max_commits: usize,
+        count_behind: bool,
+    ) -> Result<Comparison, GitError> {
         self.with_repo(move |repo| {
             let base_id = resolve_commit(repo, &base)?;
             let head_id = resolve_commit(repo, &head)?;
@@ -66,7 +85,7 @@ impl RepositoryReader {
                     .collect()
             };
             let ahead = only_in(head_id, base_id)?;
-            let behind = only_in(base_id, head_id)?;
+            let behind = if count_behind { only_in(base_id, head_id)?.len() } else { 0 };
             let commits = ahead
                 .iter()
                 .take(max_commits)
@@ -88,7 +107,7 @@ impl RepositoryReader {
                 head: summarize(&head_commit)?,
                 merge_base: merge_base.map(|id| id.to_hex().to_string()),
                 ahead: ahead.len(),
-                behind: behind.len(),
+                behind,
                 commits,
                 files,
                 truncated,
@@ -113,15 +132,21 @@ impl RepositoryReader {
     /// The object id of each of `paths` as of `revision` (`None` where the path does not
     /// exist), e.g. to tell whether a file changed between two commits.
     pub async fn path_ids(&self, revision: String, paths: Vec<String>) -> Result<Vec<Option<String>>, GitError> {
-        self.with_repo(move |repo| {
-            let tree = repo.find_commit(resolve_commit(repo, &revision)?).map_err(GitError::backend)?.tree().map_err(GitError::backend)?;
-            paths
-                .iter()
-                .map(|path| {
-                    Ok(tree.lookup_entry_by_path(path).map_err(GitError::backend)?.map(|entry| entry.object_id().to_hex().to_string()))
-                })
-                .collect()
-        })
-        .await
+        self.with_repo(move |repo| path_ids_in(repo, &revision, &paths)).await
     }
+
+    /// [`Self::path_ids`] for several revisions in one opening of the repository: one
+    /// answer per `(revision, paths)` request, in order, `None` where that revision cannot
+    /// be read (e.g. a commit that no longer exists).
+    pub async fn path_ids_at(&self, requests: Vec<(String, Vec<String>)>) -> Result<Vec<Option<Vec<Option<String>>>>, GitError> {
+        self.with_repo(move |repo| Ok(requests.iter().map(|(revision, paths)| path_ids_in(repo, revision, paths).ok()).collect())).await
+    }
+}
+
+fn path_ids_in(repo: &gix::Repository, revision: &str, paths: &[String]) -> Result<Vec<Option<String>>, GitError> {
+    let tree = repo.find_commit(resolve_commit(repo, revision)?).map_err(GitError::backend)?.tree().map_err(GitError::backend)?;
+    paths
+        .iter()
+        .map(|path| Ok(tree.lookup_entry_by_path(path).map_err(GitError::backend)?.map(|entry| entry.object_id().to_hex().to_string())))
+        .collect()
 }

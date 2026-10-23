@@ -11,7 +11,7 @@ function browser(count = 150, { restored = false, mobile = false, stickyTop = 0 
   const events = new Map();
   const frames = new Map();
   const observed = new Set();
-  const stats = { queries: 0, geometry: 0, classes: 0 };
+  const stats = { queries: 0, documentQueries: 0, geometry: 0, classes: 0 };
   let nextFrame = 0;
   class Element {
     constructor(kind) {
@@ -21,7 +21,7 @@ function browser(count = 150, { restored = false, mobile = false, stickyTop = 0 
       this.isConnected = true;
       this.top = 0;
       this.offsetHeight = 64;
-      this.classList = { toggle() { stats.classes++; } };
+      this.classList = { toggle() { stats.classes++; }, contains() { return false; } };
     }
     setAttribute(key, value) { this.attributes.set(key, value); }
     removeAttribute(key) { this.attributes.delete(key); }
@@ -81,6 +81,7 @@ function browser(count = 150, { restored = false, mobile = false, stickyTop = 0 
     querySelector(selector) { stats.queries++; return selector === "body > header" ? page.header : null; },
     querySelectorAll(selector) {
       stats.queries++;
+      stats.documentQueries++;
       return selector.includes("[data-diff-layout]") ? page.layouts.filter(l => !selector.includes(":not") || !("ready" in l.dataset)) : [];
     },
     getElementById(id) { return page.layouts.flatMap(layout => layout.files).find(file => file.id === id) ?? null; },
@@ -217,4 +218,23 @@ test("tree links reopen review files after a fragment swap and close the phone t
     assert.equal(page.layout.sidebar.open, !mobile);
     assert.equal(page.layout.button.dataset.state, "expanded");
   }
+});
+
+test("a swap mounts the diffs it brings without searching the whole document", () => {
+  const page = browser(2);
+  // A fragment elsewhere on the page (a menu, a slot): only it is searched.
+  const fragment = new page.Element("fragment");
+  page.fire("htmx:afterSettle", { elt: fragment });
+  assert.equal(page.stats.documentQueries, 0);
+  // A swapped-in diff layout is mounted next to the one already there.
+  const added = new page.Element("layout");
+  added.files = [];
+  added.matches = (selector) => selector === "[data-diff-layout]";
+  page.fire("htmx:afterSettle", { elt: added });
+  assert.equal(page.stats.documentQueries, 0);
+  assert.equal(added.dataset.ready, "", "the new layout is set up");
+  // The page's own layout stays mounted: scrolling still marks its current file.
+  page.layout.files.forEach(file => file.top -= 500);
+  page.fire("scroll"); page.flush();
+  assert.equal(page.layout.tree.links[1].getAttribute("aria-current"), "true");
 });

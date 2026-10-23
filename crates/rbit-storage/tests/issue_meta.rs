@@ -2,14 +2,15 @@
 //! real, migrated `SQLite` database.
 
 use rbit_core::{
-    IssueId, IssueKind, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, RepoId, Timestamp, User, Visibility,
-    membership::Permission,
+    IssueId, IssueKind, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, OrgRole, RepoId, Timestamp, User, Visibility,
+    membership::{BasePermission, Permission},
 };
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::{
         issue_meta::{LabelFields, MilestoneFields},
         issues::NewIssue,
+        orgs::NewOrganization,
     },
 };
 
@@ -208,6 +209,63 @@ async fn assignees_and_who_may_be_assigned() {
     assert!(!store.remove_assignee(issue, bob.id()).await.unwrap());
 }
 
+/// Assignee search starts from the repository's possible writers; every way of getting
+/// push access to an organisation's repository must still be found, and nothing else.
+#[tokio::test]
+async fn organisation_repositories_list_owners_writers_and_team_grants() {
+    let fixture = Fixture::new().await;
+    let database = &fixture.database;
+    let store = database.issue_meta();
+    let [bob, carol, dave, erin, frank, _stranger] = {
+        let mut users = Vec::new();
+        for name in ["bob", "carol", "dave", "erin", "frank", "stranger"] {
+            users.push(user(database, name).await);
+        }
+        <[User; 6]>::try_from(users).unwrap()
+    };
+    let org =
+        |name: &str| NewOrganization { name: name.parse().unwrap(), display_name: None, description: None, creator: fixture.alice.id() };
+    let acme = database.orgs().create(org("acme")).await.unwrap().account.id;
+    let other = database.orgs().create(org("other")).await.unwrap().account.id;
+    let rocket = repo_owned_by(database, acme, "rocket").await;
+    database.orgs().set_base_permission(acme, BasePermission::Read).await.unwrap();
+    for member in [&bob, &carol, &dave, &erin] {
+        database.orgs().add_member(acme, member.id(), OrgRole::Member).await.unwrap();
+    }
+    database.orgs().add_member(other, erin.id(), OrgRole::Member).await.unwrap();
+    let core = database.teams().create(acme, &"core".parse().unwrap(), None).await.unwrap();
+    for member in [&carol, &dave] {
+        database.teams().add_member(core.id, member.id()).await.unwrap();
+    }
+    database.teams().set_repository(core.id, rocket, Permission::Write).await.unwrap();
+    // A team of another organisation never grants anything here.
+    let foreign = database.teams().create(other, &"core".parse().unwrap(), None).await.unwrap();
+    database.teams().add_member(foreign.id, erin.id()).await.unwrap();
+    database.teams().set_repository(foreign.id, rocket, Permission::Write).await.unwrap();
+    database.collaborators().add(rocket, frank.id(), Permission::Write, fixture.alice.id()).await.unwrap();
+    database.admin().set_suspended(dave.id(), true).await.unwrap();
+
+    let names = |accounts: Vec<rbit_core::Account>| accounts.into_iter().map(|a| a.name.to_string()).collect::<Vec<_>>();
+    assert_eq!(names(store.assignable(rocket, "", 100).await.unwrap()), ["alice", "carol", "frank"], "owner, team writer, collaborator");
+    assert_eq!(names(store.assignable(rocket, "C", 100).await.unwrap()), ["carol"]);
+    assert_eq!(names(store.assignable(rocket, "", 2).await.unwrap()), ["alice", "carol"], "limit after ordering by name");
+    database.orgs().set_base_permission(acme, BasePermission::Write).await.unwrap();
+    assert_eq!(names(store.assignable(rocket, "", 100).await.unwrap()), ["alice", "bob", "carol", "erin", "frank"], "every member writes");
+    assert_eq!(names(store.assignable(RepoId(999), "", 100).await.unwrap()), Vec::<String>::new());
+    let _ = (bob, erin);
+}
+
+async fn repo_owned_by(database: &Database, owner: rbit_core::AccountId, name: &str) -> RepoId {
+    let new = NewRepository {
+        owner_id: owner,
+        name: name.parse().unwrap(),
+        description: None,
+        visibility: Visibility::Private,
+        default_branch: "main".to_owned(),
+    };
+    database.repositories().create(new).await.unwrap().id
+}
+
 #[tokio::test]
 async fn references_are_recorded_once() {
     let fixture = Fixture::new().await;
@@ -249,4 +307,7 @@ async fn new_threads_get_their_metadata_at_once_and_mentions_resolve() {
 
     let found = store.accounts_named(&["BOB".to_owned(), "nobody".to_owned(), "alice".to_owned()]).await.unwrap();
     assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"]);
+    let names = ["bob", "Bob", "ALICE"].map(str::to_owned);
+    let found = store.accounts_named(&names).await.unwrap();
+    assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"], "each account once, whatever the case");
 }

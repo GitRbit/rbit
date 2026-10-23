@@ -4,8 +4,10 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-{#- Files changed: unified diffs with line comments. A line number is the tap target that opens the
-    inline comment form (`?comment=<anchor>`); htmx swaps just the file in place. -#}
+{#- Files changed: unified diffs with line comments. Rows are the plain rows of any diff; a file the
+    viewer may comment on says where comments go (`data-comment`), and diff.js makes a line's
+    numbers open the inline form (`?comment=<anchor>`), swapping just the file in place. Without
+    scripts, each hunk header links to the form at its first line. -#}
 <h1 class="break-words text-xl font-semibold tracking-tight">{{ pull.title }} <span class="font-normal text-ink-faint">{{ pull.number }}</span></h1>
 {% include "pulls/header.html" %}
 
@@ -45,7 +47,7 @@
   {% let file = files[leaf.index] %}
   {#- `data-rows`: the open file's exact height in rows, its placeholder while off screen
       (app.css "Virtual blocks"); absent when threads make the height unknown. -#}
-  <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %} open>
+  <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %}{% if can_comment %} data-comment="{{ pull.urls.files }}"{% endif %} open>
     <summary class="diff-file-header" title="Click to collapse or expand | Alt-click for every file">
       {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
       <span class="min-w-0 flex-1 truncate font-mono text-xs">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</span>
@@ -65,8 +67,8 @@
       <div class="vblock" data-rows="{{ block.len() }}">
       {%- endif %}
         {%- for row in block.rows() %}
-        {%- if can_comment && row.line.is_line() -%}
-        <div id="{{ row.anchor }}" class="diff-{{ row.line.kind }}"><a href="{{ row.comment_url }}" class="num" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" aria-label="Comment on line {{ row.number }}">{{ row.line.old_number }}</a><a href="{{ row.comment_url }}" class="num" hx-get="{{ row.comment_url }}" hx-select="#{{ file.anchor }}" hx-target="#{{ file.anchor }}" hx-swap="outerHTML" tabindex="-1">{{ row.line.new_number }}</a>{{ row.line.text }}</div>
+        {%- if !row.line.is_line() && !row.anchor.is_empty() -%}
+        <div class="diff-{{ row.line.kind }}">{{ row.line.text }}<a href="{{ pull.urls.files }}?comment={{ row.anchor }}#{{ row.anchor }}" class="diff-hunk-comment">Comment on line {{ row.number }}</a></div>
         {%- else -%}
         {% call diff::row(row.line, row.anchor) %}{% endcall %}
         {%- endif %}

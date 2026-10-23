@@ -60,6 +60,38 @@ fn counted_max_files() -> u64 {
     u64::try_from(DiffLimits::default().max_files).unwrap_or(u64::MAX)
 }
 
+/// The cached counts of comparing `head` against `base` (full commit ids) under the
+/// default diff limits. Cache failures are logged and read as a miss.
+///
+/// The cache is shared by every repository: pass only ids the caller already knows the
+/// reader may see (a pull request's own base and head), never ids from a request.
+async fn cached_comparison(ctx: &ServiceContext, base: &str, head: &str) -> Option<CachedComparisonCounts> {
+    match ctx.kv.insights().comparison_counts(base, head).await {
+        // Counted under another file limit (an older or newer server): not this answer.
+        Ok(counts) => counts.filter(|counts| counts.max_files == counted_max_files()),
+        Err(error) => {
+            tracing::warn!(%error, "comparison cache read failed");
+            None
+        }
+    }
+}
+
+/// Remembers the counts of `comparison`, made with the default diff limits, under the
+/// commit ids it resolved (so a short id never fills the cache).
+async fn remember_comparison(ctx: &ServiceContext, comparison: &Comparison) {
+    let count = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
+    let cached = CachedComparisonCounts {
+        ahead: count(comparison.ahead),
+        files: count(comparison.files.len()),
+        max_files: counted_max_files(),
+        additions: count(comparison.additions()),
+        deletions: count(comparison.deletions()),
+    };
+    if let Err(error) = ctx.kv.insights().put_comparison_counts(&comparison.base.id, &comparison.head.id, cached).await {
+        tracing::warn!(%error, "comparison cache write failed");
+    }
+}
+
 /// What a pull request's header counts: commits ahead and changed files.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PullCounts {
@@ -253,13 +285,39 @@ impl PullService {
         limits: DiffLimits,
         max_commits: usize,
     ) -> Result<Comparison, ServiceError> {
+        self.compare_counting(base, base_rev, head, head_rev, limits, max_commits, true).await
+    }
+
+    /// [`Self::compare`], counting the commits behind only when `count_behind` is set
+    /// (see [`rbit_git::RepositoryReader::compare_ahead`]).
+    #[allow(clippy::too_many_arguments)] // `compare`'s arguments plus the one switch.
+    async fn compare_counting(
+        &self,
+        base: &RepoContext,
+        base_rev: &str,
+        head: &RepoContext,
+        head_rev: &str,
+        limits: DiffLimits,
+        max_commits: usize,
+        count_behind: bool,
+    ) -> Result<Comparison, ServiceError> {
+        let compare = |reader: &rbit_git::RepositoryReader, base: String, head: String| {
+            let reader = reader.clone();
+            async move {
+                if count_behind {
+                    reader.compare(base, head, limits, max_commits).await
+                } else {
+                    reader.compare_ahead(base, head, limits, max_commits).await
+                }
+            }
+        };
         if base.repo.repo.id == head.repo.repo.id {
-            return Ok(base.reader.compare(base_rev.to_owned(), head_rev.to_owned(), limits, max_commits).await?);
+            return Ok(compare(&base.reader, base_rev.to_owned(), head_rev.to_owned()).await?);
         }
         let base_id = base.reader.commit_id(base_rev.to_owned()).await?;
         let head_id = head.reader.commit_id(head_rev.to_owned()).await?;
         let overlay = self.overlay(base, head).await?;
-        let comparison = overlay.reader().compare(base_id, head_id, limits, max_commits).await;
+        let comparison = compare(&overlay.reader(), base_id, head_id).await;
         drop(overlay);
         Ok(comparison?)
     }
@@ -303,7 +361,8 @@ impl PullService {
         let missing = |side: &str| ServiceError::Invalid(format!("the {side} branch does not exist"));
         let base_tip = base.reader.commit_id(base_ref.clone()).await.map_err(|_| missing("base"))?;
         let head_tip = head.reader.commit_id(head_ref.clone()).await.map_err(|_| missing("head"))?;
-        let comparison = self.compare(base, &base_tip, head, &head_tip, DiffLimits { max_files: 0, ..DiffLimits::default() }, 2).await?;
+        let no_files = DiffLimits { max_files: 0, ..DiffLimits::default() };
+        let comparison = self.compare_counting(base, &base_tip, head, &head_tip, no_files, 2, false).await?;
         if comparison.merge_base.is_none() {
             return Err(ServiceError::Invalid("the branches have entirely different histories".to_owned()));
         }
@@ -476,16 +535,17 @@ impl PullService {
     }
 
     /// The comparison behind the Commits and Files changed tabs: from the merge base to
-    /// the head, inside the base repository (`refs/pull/{n}/head` holds the head).
+    /// the head, inside the base repository (`refs/pull/{n}/head` holds the head). Commits
+    /// behind the base are not counted (`behind` is 0).
     ///
-    /// With the default file limit the counts are remembered (see [`Self::cached_counts`]),
-    /// so the other tabs can show them without diffing.
+    /// With the default limits the counts are remembered (see [`Self::cached_counts`]), so
+    /// the other tabs and the pull request JSON can show them without diffing.
     pub async fn changes(&self, ctx: &PullContext, limits: DiffLimits) -> Result<Comparison, ServiceError> {
         let (base, head) = self.compared_ids(ctx).await?;
         let max_commits = self.ctx().config.pulls.max_commits;
-        let comparison = ctx.repo().reader.compare(base.clone(), head.clone(), limits, max_commits).await?;
-        if limits.max_files == DiffLimits::default().max_files {
-            self.remember_counts(&base, &head, PullCounts::of(&comparison)).await;
+        let comparison = ctx.repo().reader.compare_ahead(base.clone(), head.clone(), limits, max_commits).await?;
+        if limits == DiffLimits::default() {
+            remember_comparison(self.ctx(), &comparison).await;
         }
         Ok(comparison)
     }
@@ -497,17 +557,10 @@ impl PullService {
     /// The cache is shared by every repository: pass only ids the caller already knows
     /// the viewer may see (those of [`Self::compared_ids`]), never ids from a request.
     pub async fn cached_counts(&self, base: &str, head: &str) -> Option<PullCounts> {
-        match self.ctx().kv.insights().comparison_counts(base, head).await {
-            // Counted under another file limit (an older or newer server): not this answer.
-            Ok(counts) => counts.filter(|counts| counts.max_files == counted_max_files()).map(|counts| PullCounts {
-                ahead: usize::try_from(counts.ahead).unwrap_or(usize::MAX),
-                files: usize::try_from(counts.files).unwrap_or(usize::MAX),
-            }),
-            Err(error) => {
-                tracing::warn!(%error, "comparison cache read failed");
-                None
-            }
-        }
+        cached_comparison(self.ctx(), base, head).await.map(|counts| PullCounts {
+            ahead: usize::try_from(counts.ahead).unwrap_or(usize::MAX),
+            files: usize::try_from(counts.files).unwrap_or(usize::MAX),
+        })
     }
 
     /// The header counts of comparing `head` against `base` (commit ids) in `ctx`'s
@@ -527,22 +580,10 @@ impl PullService {
         if let Some(counts) = self.cached_counts(base, head).await {
             return Ok(counts);
         }
-        let comparison = ctx.repo().reader.compare(base.to_owned(), head.to_owned(), DiffLimits::default(), 0).await?;
-        let counts = PullCounts::of(&comparison);
+        let comparison = ctx.repo().reader.compare_ahead(base.to_owned(), head.to_owned(), DiffLimits::default(), 0).await?;
         // Keyed by the ids the comparison resolved, so a short id never fills the cache.
-        self.remember_counts(&comparison.base.id, &comparison.head.id, counts).await;
-        Ok(counts)
-    }
-
-    async fn remember_counts(&self, base: &str, head: &str, counts: PullCounts) {
-        let cached = CachedComparisonCounts {
-            ahead: u64::try_from(counts.ahead).unwrap_or(u64::MAX),
-            files: u64::try_from(counts.files).unwrap_or(u64::MAX),
-            max_files: counted_max_files(),
-        };
-        if let Err(error) = self.ctx().kv.insights().put_comparison_counts(base, head, cached).await {
-            tracing::warn!(%error, "comparison cache write failed");
-        }
+        remember_comparison(self.ctx(), &comparison).await;
+        Ok(PullCounts::of(&comparison))
     }
 
     /// The commits of the pull request, newest first (at most `[pulls] max_commits`).
@@ -628,9 +669,10 @@ impl PullService {
         json::load(self.ctx(), issue, pull, base_url).await
     }
 
-    /// The webhook payload [`hooks::payload`] builds for `event` (for tools and tests).
+    /// The webhook payload [`hooks::payload`] builds for `event`, even when no hook
+    /// subscribes to it (for tools and tests).
     pub async fn payload(&self, event: &DomainEvent, base_url: &str) -> Result<Option<crate::webhooks::HookPayload>, ServiceError> {
-        hooks::payload(self.ctx(), event, base_url).await
+        hooks::build(self.ctx(), event, base_url).await
     }
 
     // ------------------------------------------------------------- helpers

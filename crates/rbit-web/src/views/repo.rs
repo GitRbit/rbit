@@ -7,9 +7,10 @@ use askama_web::WebTemplate;
 use rbit_git::{CommitSummary, RefKind, RefSummary};
 
 use crate::{
+    render::HighlightedFile,
     urls::RepoUrls,
     views::{
-        blocks::{Block, blocks, column_class, markup_columns},
+        blocks::{Block, blocks, column_class},
         collaborators::CollaboratorAccess,
         components::Avatar,
         forks::ForkedFrom,
@@ -252,8 +253,9 @@ pub struct RepositoryDocumentsFragment {
 /// How a file's contents are presented.
 #[derive(Debug, Clone)]
 pub enum BlobContent {
-    /// One HTML fragment per line (highlighted or escaped).
-    Code(Arc<[String]>),
+    /// One HTML fragment per line (highlighted or escaped), shared with the highlighter's
+    /// cache.
+    Code(Arc<HighlightedFile>),
     /// Rendered, sanitised Markdown.
     Markdown(String),
     Binary,
@@ -311,10 +313,11 @@ impl BlobPage {
         }
     }
 
-    /// The code's minimum width, from its widest line ([`column_class`]).
+    /// The code's minimum width, from its widest line ([`column_class`]), measured once
+    /// when the file was highlighted.
     pub fn code_columns(&self) -> String {
         let widest = match &self.content {
-            BlobContent::Code(lines) => lines.iter().map(|line| markup_columns(line)).max().unwrap_or(0),
+            BlobContent::Code(file) => file.widest(),
             _ => 0,
         };
         column_class(widest)
@@ -428,7 +431,7 @@ mod tests {
 
     #[test]
     fn blob_lines_render_in_blocks_with_their_ids() {
-        let lines: Arc<[String]> = (1..=130).map(|n| format!("<b>line {n}</b>")).collect();
+        let lines = Arc::new(HighlightedFile::new((1..=130).map(|n| format!("<b>line {n}</b>")).collect()));
         let page = blob_page(BlobContent::Code(Arc::clone(&lines)));
         let blocks = page.code_blocks();
         assert_eq!(blocks[0].rows()[0].html.as_ptr(), lines[0].as_ptr(), "rendered rows borrow the cached strings");
@@ -451,6 +454,17 @@ mod tests {
         assert!(html.contains(
             r#"<div class="code-line" id="L130"><span class="line-number" data-line="130"></span><span class="line-code"><b>line 130</b></span></div>"#
         ));
+    }
+
+    #[test]
+    fn the_code_column_comes_from_the_cached_width_without_measuring_again() {
+        // A stored width that the lines do not have: only a page that reads the cache
+        // entry instead of scanning every line reports it.
+        let file = HighlightedFile::with_widest(vec!["<b>short</b>".to_owned()], 100);
+        assert_eq!(blob_page(BlobContent::Code(Arc::new(file))).code_columns(), "cols-104");
+        let measured = HighlightedFile::new(vec!["<b>short</b>".to_owned(), "a&lt;b".to_owned()]);
+        assert_eq!(measured.widest(), 5, "tags take no columns, an entity one");
+        assert_eq!(blob_page(BlobContent::Binary).code_columns(), "cols-8");
     }
 
     #[test]

@@ -13,4 +13,4 @@ pub mod sqlite;
 
 pub use error::StorageError;
 pub use kv::{KvStore, SessionRecord, SessionStore};
-pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore};
+pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};

@@ -10,6 +10,9 @@
 //     --throttle 6    CPU slowdown (1 = none); 6 approximates a mid-range phone
 //     --width 1280 --height 1000
 //     --json out.json also write every run
+//     --no-backdrop a,b  pages (by name) swept with `backdrop-filter` off on the sticky bars,
+//                     as `scroll-probe.js`'s `noBackdrop` does; give one URL two names to
+//                     compare, e.g. `blur=URL plain=URL --no-backdrop plain`
 //
 // Columns:
 //   fps, p95, worst   animation frames per second and frame durations (ms)
@@ -34,7 +37,12 @@ const { options, pages } = parseArgs(process.argv.slice(2), {
   width: 1280,
   height: 1000,
   json: "",
+  "no-backdrop": "",
 });
+const noBackdrop = new Set(options["no-backdrop"].split(",").filter(Boolean));
+for (const name of noBackdrop) {
+  if (!pages.some((page) => page.name === name)) throw new Error(`--no-backdrop names no page called ${name}`);
+}
 if (!pages.length) {
   console.error("usage: node scripts/perf/sweep.mjs [--rounds 5] [--ms 6000] [--throttle 6] name=url …");
   process.exit(2);
@@ -80,8 +88,20 @@ const PLACEHOLDERS = `(() => {
 })()`;
 
 const browser = await launch(options);
-const measure = async (url) => {
+// A constructed sheet: the page's CSP (`style-src 'self'`) blocks an inline <style>.
+const BACKDROP_OFF = `(() => {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync("body > header, .site-subnav { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }");
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  return getComputedStyle(document.querySelector("body > header")).backdropFilter;
+})()`;
+
+const measure = async ({ name, url }) => {
   await browser.goto(url);
+  if (noBackdrop.has(name)) {
+    const filter = await browser.evaluate(BACKDROP_OFF);
+    if (filter !== "none") throw new Error(`${name}: backdrop-filter is still ${filter}`);
+  }
   await browser.evaluate(`window.__loafs = []; new PerformanceObserver((list) => window.__loafs.push(...list.getEntries())).observe({ type: "long-animation-frame" }); 1`);
   const sweep = await browser.evaluate(sweepExpression(options));
   const blocking = await browser.evaluate(`window.__loafs.reduce((sum, e) => sum + e.blockingDuration, 0)`);
@@ -107,7 +127,7 @@ const measure = async (url) => {
 const runs = Object.fromEntries(pages.map((page) => [page.name, []]));
 for (let round = 1; round <= options.rounds; round++) {
   for (const page of pages) {
-    runs[page.name].push(await measure(page.url));
+    runs[page.name].push(await measure(page));
     process.stderr.write(`round ${round}/${options.rounds}: ${page.name}\n`);
   }
 }

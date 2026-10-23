@@ -173,7 +173,7 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `TimelineService` (`timeline`) | The core shared by issues and pull requests: opening a thread for a viewer (404 when it does not exist or the repository is unreadable), comments, title/body edits, close/reopen, lock, and the merged timeline of comments and events. Permissions are recomputed for the actor on every change. `close_as_system` closes by commit or merge. |
 | `IssueService` (`issues`) | Creating issues with labels, assignees and a milestone; labels (≤ 200 per repository, 25 per issue, default set), milestones, assignees (writers only, ≤ 10), deletion (admins), search; the metadata hook P uses; the background subscriber that turns references into timeline entries and closes issues from commits on the default branch and from pull requests merged into it. |
 | `ReferenceService` (`references`) | Resolves `#N` and `@name` in a batch of texts for rendering; records `CrossReferenced` on targets the mention's author can read. |
-| `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` for the header bell, retention pruning. |
+| `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` (the header bell itself comes with the session user, §7), retention pruning. |
 | `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review-thread resolution, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
@@ -489,7 +489,9 @@ that every row survives, the new defaults and triggers apply to old rows, and th
 wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
 continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
 reserved for milestone 3's W, still in progress, and `0038`, `0039` hold M's imports and
-push mirrors. `0032` was
+push mirrors. `0040` adds the initial-password flag, `0041`–`0043` review-thread
+resolution, account redirects and dashboard mentions, and `0045` (`issue_list_order`) the
+`issues_by_repo_created` index for list pages in creation order. `0032` was
 taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
 the gaps are harmless).
 
@@ -1284,6 +1286,11 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   `Cache-Control: immutable` + content hashes.
 - `mimalloc` global allocator; `lto = "fat"`, `codegen-units = 1`, `panic = "abort"` in release.
 - gitoxide with `max-performance-safe` (parallel pack decoding, fast SHA-1, zlib-rs).
+- Every repository keeps a split commit-graph (`git commit-graph write --reachable
+  --split`, under the repository lease): written after each push by the cache warm-up and
+  by periodic maintenance, since `git gc --auto` writes none below its thresholds. History
+  walks read parents from it, and last-commit walks read root tree ids from it instead of
+  decoding commit objects; commits newer than the graph fall back to the object database.
 - SQLite tuned: WAL, `synchronous = NORMAL`, memory-mapped I/O, prepared statement cache.
 - Streaming Git transport: pack data is never buffered in memory.
 - One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
@@ -1303,6 +1310,17 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   at most 256 IDs. Notification fan-out uses 100-recipient batches for permission reads,
   inbox transactions and email deduplication claims; email refreshes active, verified
   accounts, preferences and permissions after the inbox is written.
+- SQL on the request path is written for its index, and the stores' unit tests assert its
+  `EXPLAIN QUERY PLAN` (`sqlite::plans`): every indexed column a query constrains is an
+  equality (open counts name both thread kinds). Issue and pull request lists build their
+  `WHERE` clause per request with only the filters in use; the default page (one kind and
+  state, newest first) walks `issues_by_repo_created` and stops at its `LIMIT`.
+  Permission-shaped lists start from the few candidates an index finds (assignees: the
+  owner, writers and organisation members) instead of checking every account. `COLLATE
+  NOCASE` columns are compared directly, never through `lower()`, so their indexes apply. A
+  signed-in request costs one query for the user, the password-change restriction and the
+  header's unread indicator together. `PRAGMA optimize` refreshes planner statistics after
+  migrations and on the maintenance schedule.
 - Session expiry scans use a read snapshot. Write transactions recheck and remove at
   most 256 candidates at a time, so a scan does not monopolize the writer or remove a
   session renewed since the snapshot.
@@ -1315,7 +1333,9 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   so the click is answered from the browser cache. Within a repository only `<main>`
   swaps and the tabs update out of band, and the request says so (`Rbit-Partial`):
   `partial::partial_responses` then sends only the title, `<main>` and the tabs, cut at
-  markers the layout emits. `middleware::preload_guard` answers preloads of
+  markers the layout emits. Any htmx request (boosted navigation, preload, history
+  restore) gets pages without the inlined stylesheets and their CSP hashes: htmx drops
+  the response's `<head>` and the page keeps its own. `middleware::preload_guard` answers preloads of
   side-effecting or heavy paths with `204`; `middleware::html_caching` makes HTML
   `private, no-cache` with a weak `ETag` (revisits cost a `304`), preloads fresh for the
   window, varying on `HX-Request`, `Rbit-Partial` and a per-page-load navigation epoch so
@@ -1329,21 +1349,38 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   signs drawn by CSS. Each open changed file is contained as a whole the same way
   (`.diff-file[data-rows]`: header, bars and placeholders are whole rows; blocks.js adds
   the diff's scrollbar where it takes space), and only diffs of more than
-  `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
+  `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. Pull request rows are the
+  same plain rows: a commentable file carries its comment URL (`data-comment`) and
+  `assets/diff.js` opens the form from a line number with one delegated handler, so
+  comments add markup per file and hunk, never per line. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
 - Syntax highlighting resolves syntect's scopes to one short class per token in Rust
   (flat spans, styled categories only) and caches highlighted files by blob id
-  (`render::highlight_cache`, 32 MiB). File and blame views share the cached allocation;
+  (`render::highlight_cache`, 32 MiB), with their widest line's width so a warm view never
+  rescans the file to size the code column. File and blame views share the cached allocation;
   concurrent misses for one key share a calculation. At most four distinct jobs are
   admitted, and cancellation does not release a slot before its CPU work finishes.
   Preload bookkeeping retains at most 128 records, six queued requests and two active
   requests; navigation and epoch changes discard obsolete work, and Save-Data disables
   all speculative requests. See [performance-followups.md](performance-followups.md)
-  for measurements and their limits. Pull request counts are cached by base and head
-  commit ids in redb (`comparison_counts`).
+  for measurements and their limits. Pull request counts (commits ahead, changed files,
+  added and removed lines) are cached by base and head commit ids in redb
+  (`comparison_counts`) and shared by the tabs, the REST API's pull request objects and
+  webhook payloads; pull requests never count the commits behind their base.
+- Markdown: one sanitiser per process; documents with a base (READMEs, Markdown files,
+  release notes, milestone descriptions) are cached by a SHA-256 of their source and the
+  base their links resolve against (`render::document_cache`, 8 MiB, sources of 512 bytes
+  or more). Comments, which link references per viewer, are rendered every time.
 - JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
-  so every module can be `immutable` and still update on deploy.
+  so every module can be `immutable` and still update on deploy. Embedded HTML documents
+  (the sandboxed Mermaid frame) get the same treatment for their `src="/assets/…"`
+  attributes. Scripts that cannot know a file's hash (the theme picker) version it with
+  the asset build hash, which `assets::serve` also treats as current. Revalidations whose
+  `If-None-Match` names the current content get a `304`.
 - redb caches for last-commit-per-path and language statistics, keyed by commit id (never
-  stale) and warmed after pushes.
+  stale) and warmed after pushes. Any directory's last-commit map is persisted once a
+  complete walk covers all of its entries (a listing shown on one page); walks of a
+  filtered or paged subset, and walks cut short by the deadline, are only reused briefly
+  in memory.
 - Archives and release downloads stream; uploads are hashed while they stream to disk.
 
 ---

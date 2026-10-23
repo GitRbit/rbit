@@ -323,15 +323,44 @@ function stopVisibleLinks() {
   idle.clear();
 }
 
+// The page's `data-preload="visible"` links, collected as content arrives instead of
+// searched for after each navigation: htmx announces every element it swaps in (out of
+// band tabs and restored history pages included) with `htmx:load`. Links that left the
+// page are dropped whenever the set is used, so it never holds on to an old page.
+const VISIBLE_LINKS = 'a[data-preload="visible"]';
+const visibleLinks = new Set();
+
+function pruneVisibleLinks() {
+  for (const link of visibleLinks) if (!link.isConnected) visibleLinks.delete(link);
+}
+
+function collectVisibleLinks(root) {
+  if (!observer) return;
+  pruneVisibleLinks();
+  for (const link of root.querySelectorAll(VISIBLE_LINKS)) visibleLinks.add(link);
+  if (root.matches?.(VISIBLE_LINKS)) visibleLinks.add(root);
+}
+
 /** Watches the page's `data-preload="visible"` links, with a fresh budget. */
 function watchVisibleLinks(resetBudget = true) {
   stopVisibleLinks();
   if (!observer) return;
+  pruneVisibleLinks();
   if (resetBudget) budget = VISIBLE_BUDGET;
   if (navigating() || constrained()) return;
-  for (const link of document.querySelectorAll('a[data-preload="visible"]')) observer.observe(link);
+  for (const link of visibleLinks) observer.observe(link);
 }
 
+collectVisibleLinks(document);
+// htmx's first `htmx:load` announces the page as loaded, collected just above.
+let started = false;
+document.addEventListener("htmx:load", (event) => {
+  const root = event.detail?.elt;
+  const initial = !started;
+  started = true;
+  if ((initial && root === document.body) || typeof root?.querySelectorAll !== "function") return;
+  collectVisibleLinks(root);
+});
 watchVisibleLinks();
 document.addEventListener("htmx:beforeSend", (event) => {
   if (!event.detail.requestConfig?.boosted) return;

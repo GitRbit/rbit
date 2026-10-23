@@ -66,6 +66,12 @@ fn count(value: i64) -> u64 {
     u64::try_from(value).unwrap_or_default()
 }
 
+/// Open threads of a repository per kind. Naming both kinds makes `kind` an equality on
+/// `issues_by_repo (repo_id, kind, state, …)`, so only open entries are read; filtering on
+/// `repo_id` and `state` alone would read every thread the repository ever had.
+const OPEN_COUNTS: &str =
+    "SELECT kind, COUNT(*) FROM issues WHERE repo_id = ? AND kind IN ('issue', 'pull') AND state = 'open' GROUP BY kind";
+
 // ------------------------------------------------------------------ rows
 
 #[derive(Debug, sqlx::FromRow)]
@@ -599,15 +605,19 @@ impl IssueStore {
         row.map(Issue::try_from).transpose()
     }
 
-    /// Open `(issues, pull requests)` of `repo`, in one indexed query.
+    /// Open `(issues, pull requests)` of `repo`, in one indexed query that reads only the
+    /// open entries of `issues_by_repo`.
     pub async fn open_counts(&self, repo: RepoId) -> Result<(u64, u64), StorageError> {
-        let (issues, pulls): (i64, i64) = sqlx::query_as(
-            "SELECT COALESCE(SUM(kind = 'issue'), 0), COALESCE(SUM(kind = 'pull'), 0) FROM issues WHERE repo_id = ? AND state = 'open'",
-        )
-        .bind(repo.0)
-        .fetch_one(&self.pool)
-        .await?;
-        Ok((count(issues), count(pulls)))
+        let rows: Vec<(String, i64)> = sqlx::query_as(OPEN_COUNTS).bind(repo.0).fetch_all(&self.pool).await?;
+        let mut counts = (0, 0);
+        for (kind, n) in rows {
+            match kind.as_str() {
+                "issue" => counts.0 = count(n),
+                "pull" => counts.1 = count(n),
+                _ => {}
+            }
+        }
+        Ok(counts)
     }
 
     // ------------------------------------------------------------------ comments
@@ -902,6 +912,17 @@ async fn reserve_in(conn: &mut SqliteConnection, repo: RepoId, highest: IssueNum
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::plans;
+
+    #[tokio::test]
+    async fn open_counts_read_only_open_index_entries() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, OPEN_COUNTS).await;
+        // Before: `SEARCH issues USING COVERING INDEX issues_by_repo (repo_id=?)`.
+        assert_eq!(plan.len(), 1, "{plan:?}");
+        assert!(plan[0].starts_with("SEARCH issues USING COVERING INDEX "), "{plan:?}");
+        assert!(plan[0].ends_with(" (repo_id=? AND kind=? AND state=?)"), "{plan:?}");
+    }
 
     #[test]
     fn cursors_round_trip_through_urls() {

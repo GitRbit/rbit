@@ -237,7 +237,17 @@ git.example.com {
 
 ### nginx
 
+nginx opens a new connection to its upstream for every request unless the upstream keeps
+idle connections and requests use HTTP/1.1 without `Connection: close`; the `upstream`
+block and the two `proxy_*` lines below do that, so page loads do not pay for a TCP
+handshake to rbit on each asset.
+
 ```nginx
+upstream rbit {
+    server 127.0.0.1:3000;
+    keepalive 16;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -261,8 +271,9 @@ server {
     client_max_body_size 0;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
         proxy_http_version 1.1;
+        proxy_set_header Connection        "";
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -278,7 +289,9 @@ server {
     location = /metrics {
         allow 10.0.0.5;
         deny all;
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
     }
 }
 ```
@@ -383,11 +396,13 @@ scrape_configs:
 
 rbit runs its own maintenance; no cron jobs are needed.
 
-- **After every push**, the language breakdown and the root directory's last-commit list
-  of the default branch are computed and cached (`warm_caches_on_push`).
+- **After every push**, the new commits are added to the repository's commit-graph, then
+  the language breakdown and the root directory's last-commit list of the default branch
+  are computed and cached (`warm_caches_on_push`).
 - **Every `maintenance_interval_minutes`** (default 6 h, ± 10 % jitter): `git gc --auto`
-  for every repository on the first run after start-up, afterwards only for repositories
-  pushed to since the previous run; then the insights cache is pruned to
+  and `git commit-graph write --reachable --split` for every repository on the first run
+  after start-up, afterwards only for repositories pushed to since the previous run; then
+  the insights cache is pruned to
   `insights_cache_max_age_days` and `insights_cache_max_entries`. An idle instance does
   nothing else.
 - At most `job_concurrency` jobs run at once. Expired sessions are purged hourly.

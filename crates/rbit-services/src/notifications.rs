@@ -119,15 +119,18 @@ impl NotificationService {
         Ok(self.ctx.database.notifications().has_unread(user).await?)
     }
 
-    /// Marks `user`'s notification about `issue` read, if any. Failures are logged, never
-    /// returned: it runs as a side effect of viewing a page.
-    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) {
+    /// Marks `user`'s notification about `issue` read, if any, and returns whether one was
+    /// unread until now. Only then can the unread indicator have changed, so a page needs
+    /// to ask [`Self::has_unread`] again only on `true`. Failures are logged, never
+    /// returned (as `false`): it runs as a side effect of viewing a page.
+    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) -> bool {
         if !self.enabled() {
-            return;
+            return false;
         }
-        if let Err(error) = self.ctx.database.notifications().mark_issue_read(user, issue).await {
+        self.ctx.database.notifications().mark_issue_read(user, issue).await.unwrap_or_else(|error| {
             tracing::warn!(%error, user = user.0, issue = issue.0, "cannot mark a notification read");
-        }
+            false
+        })
     }
 
     // ------------------------------------------------------------------ subscriptions

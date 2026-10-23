@@ -16,21 +16,23 @@
 //! `success` (a protection requirement, so an allowed bypass skips it). Other statuses
 //! are shown but never block.
 
+use std::collections::HashSet;
+
 use rbit_auth::policy::{Grants, repo_access};
 use rbit_core::{
-    StateReason, TimelineEvent, Timestamp, User,
+    AccountId, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
-        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, ReviewTally, commit_message, default_merge_title, default_squash_body,
-        default_squash_title, evaluate, noreply_domain, tally,
+        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, Review, ReviewTally, commit_message, default_merge_title,
+        default_squash_body, default_squash_title, evaluate, noreply_domain, tally,
     },
     status::{CommitStatus, checks_status, required_checks},
 };
 use rbit_git::merge::{MergeError, MergeSpec, merge};
 use rbit_storage::sqlite::{audit::AuditAction, pulls::MergeRecord};
 
-use super::{PullContext, PullService, merge_lock};
+use super::{PullContext, PullService, ReviewData, merge_lock};
 use crate::{RepoContext, ServiceError, audit::AuditEntry, audit::AuditService};
 
 /// The merge box as one viewer sees it.
@@ -91,16 +93,56 @@ impl From<rbit_storage::StorageError> for MergeFailure {
 impl PullService {
     /// The merge box of `ctx` for `viewer`.
     pub async fn merge_box(&self, viewer: Option<&User>, ctx: &PullContext) -> Result<MergeBox, ServiceError> {
-        let base_tip = self.base_tip(ctx).await?;
-        let rules = match viewer {
-            Some(user) if ctx.repo().access.can_write() => {
-                self.inner.protection.check_merge(ctx.repo(), user, &ctx.pull.base_branch).await?
+        self.merge_box_with(viewer, ctx, None).await
+    }
+
+    /// [`Self::merge_box`] for a page that already loaded the pull request's reviews
+    /// ([`Self::reviews`]): the tally counts those instead of reading them again.
+    pub async fn merge_box_from(&self, viewer: Option<&User>, ctx: &PullContext, reviews: &ReviewData) -> Result<MergeBox, ServiceError> {
+        // Submitted reviews: the tally never counts pending ones.
+        let reviews: Vec<Review> = reviews.reviews.iter().map(|entry| entry.review.clone()).collect();
+        self.merge_box_with(viewer, ctx, Some(reviews)).await
+    }
+
+    /// The independent reads (the base tip, protection rules, the reviewers' access,
+    /// statuses, the head branch, the viewer's rights, the commits for the squash
+    /// message) run concurrently; their errors are reported in the order they used to be
+    /// read in.
+    async fn merge_box_with(
+        &self,
+        viewer: Option<&User>,
+        ctx: &PullContext,
+        reviews: Option<Vec<Review>>,
+    ) -> Result<MergeBox, ServiceError> {
+        let rules = async {
+            match viewer {
+                Some(user) if ctx.repo().access.can_write() => {
+                    self.inner.protection.check_merge(ctx.repo(), user, &ctx.pull.base_branch).await
+                }
+                Some(_) | None => Ok(MergeRules::unprotected()),
             }
-            Some(_) | None => MergeRules::unprotected(),
         };
-        let tally = self.tally(ctx, &rules).await?;
-        let head_branch_exists = self.head_branch_exists(ctx).await;
-        let statuses = self.ctx().database.commit_statuses().latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
+        let can_delete_head = async {
+            match viewer {
+                Some(user) => self.may_delete_head(user, ctx).await,
+                None => Ok(false),
+            }
+        };
+        let statuses = self.ctx().database.commit_statuses();
+        let (base_tip, rules, voters, head_branch_exists, statuses, can_delete_head, (default_squash_title, default_squash_message)) = tokio::join!(
+            self.base_tip(ctx),
+            rules,
+            self.voters(ctx, reviews),
+            self.head_branch_exists(ctx),
+            statuses.latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha),
+            can_delete_head,
+            self.default_squash_message(ctx),
+        );
+        let base_tip = base_tip?;
+        let rules = rules?;
+        let (reviews, writers) = voters?;
+        let tally = tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id));
+        let statuses = statuses?;
         let stale = base_tip.is_none()
             || ctx.pull.mergeable_base_sha != base_tip
             || ctx.pull.mergeable_head_sha.as_deref() != Some(&ctx.pull.head_sha);
@@ -121,12 +163,8 @@ impl PullService {
             required_checks: required_checks(&rules.required_contexts, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
-        let can_delete_head = match viewer {
-            Some(user) => self.may_delete_head(user, ctx).await?,
-            None => false,
-        };
+        let can_delete_head = can_delete_head?;
         let (default_title, default_message) = Self::default_merge_message(ctx);
-        let (default_squash_title, default_squash_message) = self.default_squash_message(ctx).await;
         Ok(MergeBox {
             evaluation,
             rules,
@@ -144,15 +182,19 @@ impl PullService {
         })
     }
 
-    /// Reviews counted for `rules`: latest decisive review per current writer.
-    pub(super) async fn tally(&self, ctx: &PullContext, rules: &MergeRules) -> Result<ReviewTally, ServiceError> {
-        let reviews = self.ctx().database.reviews().reviews(ctx.issue().id).await?;
+    /// The pull request's reviews (`reviews`, or read here) and which of their reviewers
+    /// currently have write access: what [`tally`] counts.
+    async fn voters(&self, ctx: &PullContext, reviews: Option<Vec<Review>>) -> Result<(Vec<Review>, HashSet<AccountId>), ServiceError> {
+        let reviews = match reviews {
+            Some(reviews) => reviews,
+            None => self.ctx().database.reviews().reviews(ctx.issue().id).await?,
+        };
         let reviewers: Vec<_> = reviews.iter().filter_map(|review| review.reviewer).collect();
         let users = self.ctx().database.accounts().find_users(&reviewers).await?;
         let repo = &ctx.repo().repo;
         let need_grants: Vec<_> = users.iter().filter(|user| !user.is_admin && user.id() != repo.repo.owner_id).map(User::id).collect();
         let grants = self.ctx().database.repositories().grants_for(repo.repo.id, repo.repo.owner_id, &need_grants).await?;
-        let mut writers = std::collections::HashSet::new();
+        let mut writers = HashSet::new();
         for user in users {
             let stored = grants.get(&user.id()).copied().unwrap_or_default();
             let grants = Grants {
@@ -165,7 +207,7 @@ impl PullService {
                 writers.insert(user.id());
             }
         }
-        Ok(tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id)))
+        Ok((reviews, writers))
     }
 
     fn default_merge_message(ctx: &PullContext) -> (String, String) {

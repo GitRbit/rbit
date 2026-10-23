@@ -478,7 +478,7 @@ pub async fn entry_commits(
     let pagination = Pagination::new(filtered.len(), &query, String::new(), vec![]);
     let selected = &filtered[pagination.start..pagination.end];
     let entries: Vec<_> = selected.iter().map(|(_, entry)| (*entry).clone()).collect();
-    let result = state.services.insights.last_commits_page(&ctx, &view.commit.id, &path, &entries).await?;
+    let result = state.services.insights.last_commits_page(&ctx, &view, &path, &entries).await?;
     let commits = &result.commits;
 
     let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());

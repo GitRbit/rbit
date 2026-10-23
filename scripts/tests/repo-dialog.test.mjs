@@ -166,3 +166,14 @@ test("listing pages inside the dialog load in the dialog, not the page", () => {
   assert.deepEqual(requests, [page.trigger.dataset.languageFilesUrl, next.href]);
   assert.equal(page.document.querySelector().open, true);
 });
+
+test("settling indents language listings within the swapped element only", () => {
+  const page = browser(() => new Promise(() => {}));
+  page.document.querySelectorAll = () => { throw new Error("settling must not scan the whole page"); };
+  const depth = [];
+  const row = { dataset: { depth: "2" }, style: { setProperty: (name, value) => depth.push([name, value]) } };
+  const listing = { querySelectorAll: selector => selector === "[data-depth]" ? [row] : [] };
+  const main = { matches: () => false, querySelectorAll: selector => selector === "[data-language-content]" ? [listing] : [] };
+  page.listeners.get("htmx:afterSettle").handler({ target: main, detail: { elt: main } });
+  assert.deepEqual(depth, [["--depth", "2"]]);
+});

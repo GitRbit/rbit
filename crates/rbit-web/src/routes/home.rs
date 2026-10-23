@@ -21,17 +21,21 @@ use crate::{
 
 const RECENT_ON_HOME: u32 = 8;
 
-/// Landing page for visitors, dashboard for signed-in users.
+/// Landing page for visitors, dashboard for signed-in users. The independent reads of
+/// each page run concurrently on the database pool, so the page waits for the slowest
+/// one instead of their sum.
 pub async fn index(State(state): State<AppState>, viewer: Viewer, page: Page) -> WebResult<Response> {
     let repositories = &state.services.repositories;
-    let recent = super::listing::repo_cards(&state, &repositories.recent_public(RECENT_ON_HOME).await?).await?;
+    let recent = async { super::listing::repo_cards(&state, &repositories.recent_public(RECENT_ON_HOME).await?).await };
 
     let Some(user) = viewer.user() else {
-        let counts = state.services.instance.public_counts().await?;
+        let counts = async { WebResult::Ok(state.services.instance.public_counts().await?) };
+        let (recent, counts) = tokio::try_join!(recent, counts)?;
         return Ok(LandingPage { page, recent, counts }.into_response());
     };
-    let repos = super::listing::repo_cards(&state, &repositories.list_for_dashboard(user).await?).await?;
-    let orgs = state.services.orgs.memberships(user).await?.iter().map(OrgLink::from).collect();
+    let repos = async { super::listing::repo_cards(&state, &repositories.list_for_dashboard(user).await?).await };
+    let orgs = async { WebResult::Ok(state.services.orgs.memberships(user).await?.iter().map(OrgLink::from).collect::<Vec<_>>()) };
+    let (repos, recent, orgs) = tokio::try_join!(repos, recent, orgs)?;
     let can_create_org = state.services.orgs.can_create(user);
     Ok(DashboardPage { page: page.titled("Dashboard"), repos, recent, orgs, can_create_org }.into_response())
 }
@@ -74,4 +78,76 @@ pub async fn explore(State(state): State<AppState>, page: Page, Query(params): Q
         total: results.total,
         pagination,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{Request, header},
+    };
+    use rbit_core::{Config, Visibility};
+    use rbit_services::{Services, SignUp};
+    use rbit_storage::{Database, KvStore, NewRepository, sqlite::orgs::NewOrganization};
+    use tower::ServiceExt;
+
+    use crate::middleware::SESSION_COOKIE;
+
+    /// Each section comes from its own concurrent read; every one must reach the page.
+    #[tokio::test]
+    async fn the_dashboard_and_landing_page_show_every_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = dir.path().join("data");
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let config = Arc::new(config);
+        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+        let router = crate::router(crate::AppState::new(config, services.clone()));
+
+        let mut users = Vec::new();
+        for name in ["ada", "bob"] {
+            let signup = SignUp { username: name.into(), email: format!("{name}@example.com"), password: "correct horse battery".into() };
+            users.push(services.accounts.create_user(signup, Some(name == "ada")).await.unwrap());
+        }
+        let new_org = NewOrganization { name: "acme".parse().unwrap(), display_name: None, description: None, creator: users[0].id() };
+        database.orgs().create(new_org).await.unwrap();
+        let new_repo = NewRepository {
+            owner_id: users[0].id(),
+            name: "rocket".parse().unwrap(),
+            description: None,
+            visibility: Visibility::Public,
+            default_branch: "main".to_owned(),
+        };
+        database.repositories().create(new_repo).await.unwrap();
+
+        let page = |cookie: Option<String>| {
+            let router = router.clone();
+            async move {
+                let mut request = Request::builder().uri("/");
+                if let Some(cookie) = cookie {
+                    request = request.header(header::COOKIE, cookie);
+                }
+                let response = router.oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+                String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap()
+            }
+        };
+        let mut cookies = Vec::new();
+        for user in &users {
+            cookies.push(format!("{SESSION_COOKIE}={}", services.accounts.start_session(user).await.unwrap().encode()));
+        }
+
+        let ada = page(Some(cookies[0].clone())).await;
+        assert!(ada.contains("id=\"dashboard-repos\"") && ada.contains("href=\"/ada/rocket\""), "own repositories");
+        assert!(ada.contains("href=\"/acme\""), "organisations");
+        assert!(ada.contains("id=\"recent-title\""), "recently updated");
+        let bob = page(Some(cookies[1].clone())).await;
+        assert!(bob.contains("No repositories yet") && bob.contains("You are not a member of any organization"));
+        assert!(bob.contains("href=\"/ada/rocket\""), "public repositories are recent for everyone");
+        let visitor = page(None).await;
+        assert!(visitor.contains("href=\"/ada/rocket\"") && !visitor.contains("id=\"dashboard-repos\""), "the landing page");
+    }
 }

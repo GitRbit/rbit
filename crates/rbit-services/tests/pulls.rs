@@ -202,13 +202,57 @@ async fn cached_counts_are_only_those_of_the_current_file_limit() {
     assert_eq!(pulls.cached_counts(&base, &head).await, Some(counted), "the Files changed tab counts for the others");
 
     // Counts made under another file limit (another server version) are not this answer.
-    let other = CachedComparisonCounts { ahead: 1, files: 0, max_files: 0 };
+    let other = CachedComparisonCounts { ahead: 1, files: 0, max_files: 0, additions: 0, deletions: 0 };
     f.kv.insights().put_comparison_counts(&base, &head, other).await.unwrap();
     assert_eq!(pulls.cached_counts(&base, &head).await, None);
     assert_eq!(pulls.counts_between(&ctx, &base, &head).await.unwrap(), counted, "recounted");
     assert_eq!(pulls.cached_counts(&base, &head).await, Some(counted), "and remembered again");
     // Only for the pull request's own pair.
     assert!(matches!(pulls.counts_between(&ctx, &head, &base).await, Err(ServiceError::NotFound)));
+}
+
+#[tokio::test]
+async fn pull_json_statistics_come_from_the_comparison_cache() {
+    let f = Fixture::new().await;
+    let number = f.create(&f.alice, "alice", "feature").await.unwrap();
+    let ctx = f.open_pull(&f.alice, number).await;
+    let pulls = &f.services.pulls;
+    let (base, head) = pulls.compared_ids(&ctx).await.unwrap();
+    let figures = |json: &serde_json::Value| (json["commits"].clone(), json["additions"].clone(), json["changed_files"].clone());
+
+    // A miss diffs once and remembers every figure, line counts included.
+    assert_eq!(f.kv.insights().comparison_counts(&base, &head).await.unwrap(), None);
+    let json = pulls.json(&ctx, "https://rbit.test").await.unwrap();
+    assert_eq!(figures(&json), (1.into(), 1.into(), 1.into()));
+    let cached = f.kv.insights().comparison_counts(&base, &head).await.unwrap().unwrap();
+    assert_eq!((cached.ahead, cached.files, cached.additions, cached.deletions), (1, 1, 1, 0));
+
+    // A hit does not diff at all: the cached figures are what the JSON shows.
+    let marked = CachedComparisonCounts { ahead: 7, files: 9, additions: 42, deletions: 5, ..cached };
+    f.kv.insights().put_comparison_counts(&base, &head, marked).await.unwrap();
+    let json = pulls.json(&ctx, "https://rbit.test").await.unwrap();
+    assert_eq!(figures(&json), (7.into(), 42.into(), 9.into()));
+    assert_eq!(json["deletions"], 5);
+
+    // Counts written under another file limit are recomputed.
+    f.kv.insights().put_comparison_counts(&base, &head, CachedComparisonCounts { max_files: 0, ..marked }).await.unwrap();
+    assert_eq!(figures(&pulls.json(&ctx, "https://rbit.test").await.unwrap()), (1.into(), 1.into(), 1.into()));
+}
+
+#[tokio::test]
+async fn pull_request_events_without_subscribers_build_no_payload() {
+    let f = Fixture::new().await;
+    let mut events = f.services.events.subscribe();
+    let number = f.create(&f.alice, "alice", "feature").await.unwrap();
+    let opened = events.recv().await.unwrap();
+    assert!(matches!(opened, DomainEvent::Issue { action: IssueAction::Opened, .. }));
+    let ctx = f.open_pull(&f.alice, number).await;
+    let (base, head) = f.services.pulls.compared_ids(&ctx).await.unwrap();
+
+    assert_eq!(f.services.webhooks.handle_event(&opened).await.unwrap(), 0);
+    assert_eq!(f.kv.insights().comparison_counts(&base, &head).await.unwrap(), None, "nothing was diffed for nobody");
+    // Tools still get the payload on request.
+    assert!(f.services.pulls.payload(&opened, "https://rbit.test").await.unwrap().is_some());
 }
 
 #[tokio::test]
@@ -333,6 +377,27 @@ async fn review_tally_rechecks_grants_for_repeated_former_writers() {
     assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals, [fixture.carol.id()]);
     fixture.services.collaborators.remove(&fixture.alice, &repo, "carol").await.unwrap();
     assert_eq!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().tally.approvals.len(), 0);
+}
+
+#[tokio::test]
+async fn a_merge_box_from_loaded_reviews_counts_the_same_votes() {
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let number = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    pulls.submit_review(&fixture.carol, &ctx, ReviewVerdict::RequestChanges, "Not yet").await.unwrap();
+    pulls.submit_review(&fixture.carol, &ctx, ReviewVerdict::Approve, "Now").await.unwrap();
+    for viewer in [Some(&fixture.alice), Some(&fixture.carol), None] {
+        // What the conversation page loaded for this viewer (no pending reviews: never counted).
+        let reviews = pulls.reviews(viewer, &ctx).await.unwrap();
+        let read = pulls.merge_box(viewer, &ctx).await.unwrap();
+        let passed = pulls.merge_box_from(viewer, &ctx, &reviews).await.unwrap();
+        assert_eq!(passed.tally.approvals, [fixture.carol.id()]);
+        assert_eq!((passed.tally.approvals, passed.tally.changes_requested), (read.tally.approvals, read.tally.changes_requested));
+        assert_eq!(passed.evaluation.can_merge(), read.evaluation.can_merge());
+        assert_eq!((passed.can_merge, passed.can_delete_head), (read.can_merge, read.can_delete_head));
+        assert_eq!(passed.default_squash_message, read.default_squash_message);
+    }
 }
 
 #[tokio::test]

@@ -317,8 +317,8 @@ The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports a
 them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH client.
 
 The orange frog is rbit's logo and mascot. The original artwork lives in
-[`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
-the README and landing page. After replacing it, run `npm run icons` to regenerate
+[`scripts/icons/logo.png`](scripts/icons/logo.png), outside the embedded assets so the
+binary does not carry it. After replacing it, run `npm run icons` to regenerate
 the browser, home-screen, and installable-app icons, and commit the generated PNGs.
 
 ## Workspace

@@ -61,6 +61,121 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
   commit history focused on the selected branch and its paginated commits.
+- Spell highlighted spans' classes from a static table and size highlighted output once,
+  so highlighting allocates nothing per span.
+- Keep the widest line's width with each cached highlighted file, so file and blame views
+  served from the cache no longer rescan every line to size the code column.
+- Build diff rows with numeric line numbers and text moved out of the computed diff, so
+  large commit, compare and pull request diffs no longer allocate three strings per row.
+- Render pull request Files changed rows like any other diff: the file carries where
+  comments go and one delegated handler opens the form from a line number (one tab stop
+  per file, moved with the arrow keys), instead of two htmx links per line. Without
+  scripts, each hunk header links to the form at its first line.
+- Mount diff pages from the content an htmx swap brings in, instead of searching the whole
+  document after every swap.
+- Configure the Markdown sanitiser once per process instead of once per document with
+  repository links.
+- Cache rendered READMEs, Markdown files and release notes by content and location (8 MiB,
+  least recently used first), so viewing a document again skips rendering it. Comments are
+  never cached.
+- Mark a viewed issue or pull request's notification read only when the viewer has unread
+  notifications, so other signed-in views no longer take the database's write lock.
+- Load a pull request conversation's sidebar, merge box parts and closed head branch
+  concurrently, and count merge box reviews from the ones the page already loaded.
+
+- Skip htmx's scan of every attribute for `hx-on` handlers at startup and after each
+  swap; rbit uses none, and its Content Security Policy would block them.
+
+- Correct the performance notes: page JavaScript ships bundled and minified as
+  `app.bundle.js`.
+
+- Darken scrollbars through the root's hover state instead of a universal `:hover`
+  rule, so moving the pointer no longer restyles each element it crosses.
+
+- Keep htmx history snapshots of at most 64,000 characters (was 200,000); larger
+  pages are refetched on back and forward instead of slowing every navigation.
+
+- Size long file and diff placeholders once per page load and history restore instead
+  of twice.
+
+- Look for diagrams, reply buttons, mirror progress, language listings, repository
+  documents and the render time only within newly swapped content, not the whole page.
+
+- Check whether a page is large enough to skip its history snapshot by looking for its
+  4,000th element instead of counting all of them.
+
+- Collect links preloaded once visible as htmx swaps them in, instead of searching the
+  whole page for them after every navigation.
+
+- Answer asset revalidations carrying a current `ETag` with `304 Not Modified`, and send
+  embedded and pre-compressed asset bytes without copying them for each response.
+
+- Keep the 650 KB source artwork of the logo out of the binary: it moved to
+  `scripts/icons/logo.png`, where `npm run icons` reads it; nothing served it.
+
+- Disable Nagle's algorithm on accepted HTTP connections, and show an nginx upstream with
+  keep-alive connections to rbit in the deployment guide.
+
+- Load the Mermaid renderer from a content-hashed, immutable URL instead of revalidating
+  it for every diagram, and cache theme stylesheets linked by the theme picker.
+
+- Leave the inlined stylesheets out of pages fetched by htmx (boosted navigation, preloads,
+  history restores), which discards `<head>` anyway, and render them without copying.
+
+- Put the deferred page scripts before the inlined stylesheets so browsers start fetching
+  them sooner.
+
+- Keep three htmx history snapshots instead of ten, since htmx rewrites the whole cache on
+  every navigation.
+
+- Serve `/assets/branding.css` with the static assets and cache it for good at the URL
+  pages link, which names the current branding colours.
+
+- Stop counting commits behind the base for pull request tabs, creation, header counts and
+  API statistics; only the compare page shows that number.
+
+- Build pull request webhook payloads only when a webhook subscribes to the event; each
+  one diffed the pull request.
+
+- Cache pull request line and file statistics with the header counts, so API pull
+  request lists and pull request webhooks reuse them instead of diffing each pull request.
+  Counts cached by earlier versions are recomputed once.
+
+- Check review comments for outdated files with one repository read per push instead of
+  one per comment.
+
+- Resolve only the default branch of each repository for profile and organization
+  contribution calendars instead of every branch.
+
+- Persist the last commit of every entry of any directory listed in full, not only of
+  the default branch's root, so revisiting a directory or branch does not walk history
+  again once the short in-memory reuse expires.
+
+- Write each repository's commit-graph after pushes and during periodic maintenance, and
+  read root trees from it in last-commit walks. Existing repositories get one at the
+  first maintenance run after upgrading.
+
+- Count a repository's open issues and pull requests from the open index entries only,
+  instead of every thread the repository ever had.
+
+- Build issue and pull request list queries from the filters in use only, and read the
+  default newest-first page in index order up to its limit. Upgrade note: migration
+  `0045` adds the index `issues_by_repo_created`.
+
+- Search assignees among a repository's possible writers instead of checking every account.
+
+- Resolve `@mentions` through the account name index instead of reading every account.
+
+- Read a signed-in request's user, password-change restriction and unread notification
+  indicator in one database query instead of three.
+
+- Report whether opening a thread marked its notification read, so pages only check the
+  unread indicator again when it may have changed.
+
+- Load the dashboard's repositories, recent repositories and organizations concurrently.
+
+- Refresh SQLite's query planner statistics (`PRAGMA optimize`) after migrations and on
+  the maintenance schedule.
 
 ## [0.1.3] - 2026-10-21
 

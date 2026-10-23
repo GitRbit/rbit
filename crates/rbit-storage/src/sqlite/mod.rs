@@ -45,7 +45,7 @@ use std::{path::Path, str::FromStr, time::Duration};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous};
 
 pub use access_tokens::{AccessTokenStore, NewAccessToken};
-pub use accounts::{AccountStore, LoginRecord, NewUser};
+pub use accounts::{AccountStore, LoginRecord, NewUser, SessionUser};
 pub use repositories::{NewRepository, RepositoryStore};
 
 use crate::StorageError;
@@ -76,12 +76,24 @@ impl Database {
 
         let database = Self { pool };
         database.migrate().await?;
+        database.optimize().await?;
         Ok(database)
     }
 
     /// Applies migrations embedded in the binary at compile time.
     pub async fn migrate(&self) -> Result<(), StorageError> {
         sqlx::migrate!("./migrations").run(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Refreshes the query planner's table statistics where they are missing or out of
+    /// date (`PRAGMA optimize`), so it can tell a selective index from a poor one. Run
+    /// after migrations (new indexes) and from periodic maintenance: `SQLite` only
+    /// analyses tables whose size changed a lot since their last analysis, with a bounded
+    /// sample, so it usually does nothing. `0x10002` considers every table, not only those
+    /// the pooled connection it happens to run on has queried.
+    pub async fn optimize(&self) -> Result<(), StorageError> {
+        sqlx::query("PRAGMA optimize = 0x10002").execute(&self.pool).await?;
         Ok(())
     }
 
@@ -240,5 +252,44 @@ impl Database {
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.
     pub async fn close(&self) {
         self.pool.close().await;
+    }
+}
+
+/// Query plan assertions for the stores' unit tests: the plan is the evidence that a
+/// statement reads only the rows it needs.
+#[cfg(test)]
+pub(crate) mod plans {
+    use super::Database;
+
+    /// A freshly migrated database in a temporary directory (kept alive by the guard).
+    pub(crate) async fn database() -> (tempfile::TempDir, Database) {
+        let dir = tempfile::tempdir().unwrap();
+        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+        (dir, database)
+    }
+
+    #[tokio::test]
+    async fn optimize_analyses_tables_that_gained_rows() {
+        let (_dir, database) = database().await;
+        let analyzed = || async {
+            sqlx::query_scalar::<_, String>("SELECT tbl FROM sqlite_stat1 WHERE tbl = 'accounts'")
+                .fetch_all(&database.pool)
+                .await
+                .unwrap_or_default()
+        };
+        assert!(analyzed().await.is_empty(), "empty tables are left alone");
+        sqlx::query("INSERT INTO accounts (kind, name, created_at, updated_at) VALUES ('user', 'ada', 0, 0)")
+            .execute(&database.pool)
+            .await
+            .unwrap();
+        database.optimize().await.unwrap();
+        assert!(!analyzed().await.is_empty(), "the planner now knows the table's size");
+    }
+
+    /// The `detail` lines of `EXPLAIN QUERY PLAN sql`, in order. Parameters stay unbound.
+    pub(crate) async fn query_plan(database: &Database, sql: &str) -> Vec<String> {
+        let rows: Vec<(i64, i64, i64, String)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}"))).fetch_all(&database.pool).await.unwrap();
+        rows.into_iter().map(|(_, _, _, detail)| detail).collect()
     }
 }

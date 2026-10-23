@@ -209,18 +209,10 @@ pub async fn load(ctx: &ServiceContext, issue: &Issue, pull: &PullRequest, base_
     };
     let head = pull.merged_head_sha.clone().unwrap_or_else(|| pull.head_sha.clone());
     let stats = match &base_sha {
-        Some(base) => match system.reader.compare(base.clone(), head, DiffLimits::default(), 0).await {
-            Ok(comparison) => PullStats {
-                commits: comparison.ahead,
-                additions: comparison.additions(),
-                deletions: comparison.deletions(),
-                changed_files: comparison.files.len(),
-            },
-            Err(error) => {
-                tracing::debug!(%error, pull = issue.id.0, "cannot compute pull request statistics");
-                PullStats::default()
-            }
-        },
+        Some(base) => stats(ctx, &system, base, &head).await.unwrap_or_else(|error| {
+            tracing::debug!(%error, pull = issue.id.0, "cannot compute pull request statistics");
+            PullStats::default()
+        }),
         None => PullStats::default(),
     };
     let data = PullJson {
@@ -240,6 +232,30 @@ pub async fn load(ctx: &ServiceContext, issue: &Issue, pull: &PullRequest, base_
         blocked: false,
     };
     Ok(pull_request(&data, base_url))
+}
+
+/// The size figures of comparing `head` against `base` (full commit ids of a pull
+/// request): from the comparison cache the Files changed tab and the header counts share,
+/// otherwise computed with the default diff limits and remembered for the next list or
+/// webhook.
+async fn stats(ctx: &ServiceContext, system: &RepoContext, base: &str, head: &str) -> Result<PullStats, ServiceError> {
+    let size = |n: u64| usize::try_from(n).unwrap_or(usize::MAX);
+    if let Some(counts) = super::cached_comparison(ctx, base, head).await {
+        return Ok(PullStats {
+            commits: size(counts.ahead),
+            additions: size(counts.additions),
+            deletions: size(counts.deletions),
+            changed_files: size(counts.files),
+        });
+    }
+    let comparison = system.reader.compare_ahead(base.to_owned(), head.to_owned(), DiffLimits::default(), 0).await?;
+    super::remember_comparison(ctx, &comparison).await;
+    Ok(PullStats {
+        commits: comparison.ahead,
+        additions: comparison.additions(),
+        deletions: comparison.deletions(),
+        changed_files: comparison.files.len(),
+    })
 }
 
 /// Labels, assignees and milestone of one thread, read like `IssueService::metadata` does
