@@ -31,7 +31,7 @@ async fn open_database(config: &Config) -> anyhow::Result<Database> {
     tokio::fs::create_dir_all(storage.repositories_dir())
         .await
         .with_context(|| format!("cannot create data directory {}", storage.data_dir.display()))?;
-    Database::open(&storage.sqlite_path()).await.context("cannot open SQLite database")
+    Database::open_with_key_file(&storage.sqlite_path(), &storage.secret_key_path()).await.context("cannot open SQLite database")
 }
 
 pub async fn run(config: Config) -> anyhow::Result<()> {

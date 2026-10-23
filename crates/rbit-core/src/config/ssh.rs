@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn host_key_defaults_to_the_data_directory() {
-        let storage = StorageConfig { data_dir: PathBuf::from("data") };
+        let storage = StorageConfig { data_dir: PathBuf::from("data"), secret_key_file: None };
         assert_eq!(SshConfig::default().host_key_path(&storage), PathBuf::from("data").join("ssh").join("host_ed25519"));
         let custom = SshConfig { host_key_path: Some(PathBuf::from("/etc/key")), ..SshConfig::default() };
         assert_eq!(custom.host_key_path(&storage), PathBuf::from("/etc/key"));

@@ -48,14 +48,24 @@ const SERVER: &[Spec] = &[
     },
 ];
 
-const STORAGE: &[Spec] = &[Spec {
-    key: "data_dir",
-    label: "Data directory",
-    help: "Read-only here. Stop the server, move the data and update the deployment file or environment.",
-    kind: Kind::Text,
-    optional: false,
-    max: "",
-}];
+const STORAGE: &[Spec] = &[
+    Spec {
+        key: "data_dir",
+        label: "Data directory",
+        help: "Read-only here. Stop the server, move the data and update the deployment file or environment.",
+        kind: Kind::Text,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "secret_key_file",
+        label: "Secret key file",
+        help: "Read-only here. The key that encrypts stored credentials; empty means secret.key in the data directory. Back it up with the database.",
+        kind: Kind::Text,
+        optional: true,
+        max: "",
+    },
+];
 
 const SECURITY: &[Spec] = &[
     Spec {

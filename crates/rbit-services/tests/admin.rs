@@ -56,7 +56,10 @@ async fn configuration_stages_validated_settings_masks_secrets_and_can_reset() {
     admin.stage_configuration(&root, &masked).await.unwrap();
     let stored =
         fixture.database.instance_settings().load().await.unwrap().into_iter().find(|(key, _)| key == "deployment_config").unwrap().1;
-    assert!(stored.contains("smtp-private-value") && stored.contains("metrics-private-value"));
+    assert!(!stored.contains("smtp-private-value") && !stored.contains("metrics-private-value"), "secrets are stored sealed");
+    let opened = rbit_services::admin::configuration::open_stored(&stored, fixture.database.sealing_key()).unwrap();
+    assert_eq!(opened.mail.smtp_password, "smtp-private-value");
+    assert_eq!(opened.operations.metrics_token.as_deref(), Some("metrics-private-value"));
 
     let mut invalid_value: serde_json::Value = serde_json::from_str(&masked).unwrap();
     invalid_value["storage"]["data_dir"] = "different-data".into();

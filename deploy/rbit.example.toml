@@ -19,6 +19,10 @@ open_registration = false
 # SQLite database, redb store and bare repositories all live here. Back it up with
 # `rbit backup --output DIR` (see docs/deployment.md).
 data_dir = "/var/lib/rbit"
+# The key that encrypts stored credentials (TOTP seeds, webhook and push mirror secrets,
+# saved SMTP/OIDC secrets). Default: <data_dir>/secret.key, created on first start. Back
+# it up with the database; set this to keep it elsewhere (e.g. a container secret).
+# secret_key_file = "/etc/rbit/secret.key"
 
 [security]
 session_lifetime_days = 30

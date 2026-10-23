@@ -95,6 +95,8 @@ sections. Pure Rust, trivially unit-testable.
   `reviews()` and `branch_protection()`. Milestone 3: `commit_statuses()`,
   `notification_email()`, `server_secrets()` (named, server-generated keys, created on
   first use with `get_or_insert`), `lfs()` and `external_identities()`.
+- `sealing` — AES-256-GCM encryption of the credentials stores must read back, under a key
+  file outside the database (`SealingKey`; see "Secrets" in §3.3).
 - `kv/` — a `redb` database with typed table definitions. Used for sessions and derived,
   rebuildable data (caches). Everything in redb can be lost without losing user data.
 
@@ -338,7 +340,7 @@ stars              account_id → accounts, repo_id → repositories, created_at
 access_tokens      id, account_id → accounts, name, token_digest BLOB UNIQUE, hint,
                    scope(read|write|admin), created_at, last_used_at, expires_at
 instance_settings  key PRIMARY KEY, value, updated_at       (administrator overrides of config defaults)
-two_factor         account_id → accounts, secret, created_at, confirmed_at, last_used_step (replay guard)
+two_factor         account_id → accounts, secret (sealed), created_at, confirmed_at, last_used_step (replay guard)
 recovery_codes     account_id → accounts, code_digest, used_at
 audit_events       id, created_at, category, action, actor_id, actor_name, target_name, ip_address, detail
 email_tokens       digest PRIMARY KEY, account_id → accounts, purpose(reset|verify), email, created_at,
@@ -439,7 +441,7 @@ branch_protection_required_checks (rule_id → branch_protections, context) PK  
 notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at
 notification_emails id, account_id → accounts, issue_id → issues, dedup_key, created_at,
                    UNIQUE(account_id, issue_id, dedup_key); index on created_at (pruned with the inbox)
-server_secrets     name PK, secret BLOB, created_at        (server-generated keys, stored raw — §5)
+server_secrets     name PK, secret BLOB, created_at        (server-generated keys, sealed — §5)
 
 -- milestone 3: Git LFS (L)
 lfs_objects        oid PK (64 hex), size, created_at, unlinked_at (stamped when a link is deleted)
@@ -494,10 +496,20 @@ taken by passkeys before wave B landed (sqlx applies missing lower versions in o
 the gaps are harmless).
 
 Secrets (passwords, sessions, tokens, recovery codes, email links) are only ever stored
-hashed — with two documented exceptions, both because HMAC needs the raw key: **webhook
-secrets** are stored as given, and **`server_secrets`** holds keys rbit generates itself
-(256 bits from the OS, created on first use): `notification_unsubscribe` signs
-unsubscribe links and `external-sign-in` seals the sign-in flow cookie (see §5).
+hashed — except values rbit must read back: TOTP seeds, **webhook secrets** and **push
+mirror secrets** (HMAC, TOTP and Git need the raw value), **`server_secrets`** (keys rbit
+generates itself, 256 bits from the OS, created on first use: `notification_unsubscribe`
+signs unsubscribe links and `external-sign-in` seals the sign-in flow cookie, see §5), and
+the secret fields (`*password`, `*secret`, `*token`) of the administrator-saved
+configuration in `instance_settings`. These are **sealed** (`rbit-storage/src/sealing.rs`):
+AES-256-GCM with a random 96-bit nonce per value, stored as `enc:v1:` + base64(nonce ‖
+ciphertext ‖ tag), under a 256-bit key in a file outside the database —
+`<data_dir>/secret.key` (created `0600` on first start) or `[storage] secret_key_file`.
+A copy of `rbit.db` alone reveals none of them. Values without the prefix are legacy
+plaintext and read as is; `Database::open` seals them in one transaction at start-up
+(idempotent), and refuses to start when sealed values exist but the key file is missing
+or does not open them, instead of generating a key that would orphan them. Migration
+`0042` only widens the push mirror secret column for the longer sealed form.
 
 Users and organisations share one namespace (`accounts`), exactly like GitHub URLs
 (`/rbit` can be either). Timestamps are Unix seconds (`INTEGER`).
@@ -530,10 +542,16 @@ DIR/
 ├── repositories/<owner>/<id>.git  # git clone --mirror --no-local of every repository in that snapshot
 ├── attachments/<repo>/<asset>     # every release file listed in that snapshot (not attachments/tmp)
 ├── lfs/<aa>/<bb>/<oid>            # every Git LFS object listed in that snapshot
+├── secret.key                     # the sealing key, when it lives in the data directory
 └── manifest.json                  # written last; its presence marks a complete backup
 ```
 
-The manifest records `format` (currently **3**; 2 had no `lfs/`, 1 no `attachments/`), the
+The directory is created `0700`, and the database, key and manifest `0600` (Unix). The key
+is copied only from its default place: with `[storage] secret_key_file` it is meant to be
+kept apart, so the manifest's `secret_key` names where it is instead, and a warning reminds
+the operator to back it up separately.
+
+The manifest records `format` (currently **4**; 3 had no `secret.key`, 2 no `lfs/`, 1 no `attachments/`), the
 rbit version, the time, and counts (accounts, repositories, attachments, `lfs_objects`) plus
 the ids of repositories, attachments and LFS objects that disappeared between the snapshot
 and the copy (`missing_lfs_objects` for the last). Release files and LFS objects are written
@@ -1105,8 +1123,8 @@ links the object.
 | Sessions | 32 random bytes from the OS CSPRNG, base64url in an `HttpOnly; SameSite=Lax` cookie (`Secure` behind HTTPS). Only SHA-256 digest stored. Sliding expiry. |
 | Access tokens | `rbit_` + 256 random bits (`rit_` from earlier releases is still accepted: the digest covers only the random part); only the SHA-256 digest is stored, plus a 4-character hint shown as `…a1b2`. Used as the Git HTTP password and as the API bearer token; scope (`read`/`write`/`admin`) caps the owner's access, so a read token can clone but never push, and only an admin token changes settings, webhooks or deletes. Optional expiry; `last_used_at` is recorded at most hourly. Max 50 per user. |
 | Repository access | One pure policy (`repo_access`) decides every check — pages, API, Git over HTTP and SSH — from the viewer's grants (organisation role and base permission, teams, collaborator entry); SQL listings use one readable-by predicate tested against it. Leaving an organisation revokes its team memberships and collaborator entries in the same transaction (trigger). |
-| Webhook secrets | **An exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored as given. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
-| Server keys | The other exception: `server_secrets` holds 256-bit keys rbit generates itself on first use and never shows — `notification_unsubscribe` (unsubscribe links) and `external-sign-in` (the sign-in flow cookie, PKCE verifiers and nonces). HMAC needs them raw. The Git LFS token key is never stored (drawn at start-up). |
+| Webhook secrets | **An exception to "secrets only as digests":** HMAC signing needs the raw value, so the secret is stored sealed (§3.3), not hashed. It is write-only — never shown, returned by the API, logged or copied into the delivery log (the UI only says "configured"). |
+| Server keys | The other exception: `server_secrets` holds 256-bit keys rbit generates itself on first use and never shows — `notification_unsubscribe` (unsubscribe links) and `external-sign-in` (the sign-in flow cookie, PKCE verifiers and nonces). HMAC needs them raw, so they are sealed (§3.3) rather than hashed. The Git LFS token key is never stored (drawn at start-up). |
 | Outbound requests (SSRF) | Webhook deliveries, remote Git operations and external sign-in requests refuse internal addresses (`network::is_internal_address`) unless `allow_private_addresses`; sign-in providers use the webhooks' guarded resolver (no redirects, no proxy, `https` only, 1 MiB responses); webhooks check inside the DNS resolver at connection time, follow no redirects and ignore proxy variables; remote Git pins validated addresses, refuses redirects/proxies, and runs without prompts or credential helpers. See §4.3. |
 | Release files | Stored by numeric id only; downloads are `application/octet-stream` + `attachment` + `nosniff`, so an uploaded HTML file can never render on the site's origin. The size limit is enforced while the upload streams; names are validated (no `/`, `\`, control characters or leading dots). |
 | CSRF | Unsafe methods require `Sec-Fetch-Site: same-origin` or a matching `Origin` header. Combined with `SameSite=Lax` cookies. **One exemption:** `POST /email/unsubscribe/{token}` (exactly that path shape, `middleware::is_one_click_unsubscribe`), which mail clients send from their own origin (RFC 8058); it needs no session, the signed token is the authorisation, and all it can do is turn that account's notification emails off. |

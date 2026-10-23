@@ -119,11 +119,16 @@ impl ServerConfig {
 pub struct StorageConfig {
     /// Root directory for the `SQLite` database, the redb store and bare repositories.
     pub data_dir: PathBuf,
+    /// The key that seals credentials stored in the database (TOTP seeds, webhook and push
+    /// mirror secrets, saved SMTP and OIDC secrets). Defaults to `<data_dir>/secret.key`,
+    /// created on first start; set it to keep the key apart from the data, e.g. a mounted
+    /// container secret. Back it up: the sealed values are unreadable without it.
+    pub secret_key_file: Option<PathBuf>,
 }
 
 impl Default for StorageConfig {
     fn default() -> Self {
-        Self { data_dir: PathBuf::from("data") }
+        Self { data_dir: PathBuf::from("data"), secret_key_file: None }
     }
 }
 
@@ -142,6 +147,11 @@ impl StorageConfig {
         let path = self.data_dir.join(name);
         let legacy = self.data_dir.join(legacy);
         if !path.exists() && legacy.exists() { legacy } else { path }
+    }
+
+    /// The secret key file: `secret_key_file`, or `secret.key` in the data directory.
+    pub fn secret_key_path(&self) -> PathBuf {
+        self.secret_key_file.clone().unwrap_or_else(|| self.data_dir.join("secret.key"))
     }
 
     pub fn repositories_dir(&self) -> PathBuf {
