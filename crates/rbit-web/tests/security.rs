@@ -190,6 +190,38 @@ async fn branding_reaches_public_surfaces_and_configuration_is_admin_only() {
 }
 
 #[tokio::test]
+async fn hsts_follows_the_public_url_and_external_images_can_be_blocked() {
+    let headers = |fixture: Fixture| async move {
+        let response = fixture.router.oneshot(Request::builder().uri("/login").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let hsts = response.headers().get(header::STRICT_TRANSPORT_SECURITY).map(|value| value.to_str().unwrap().to_owned());
+        (hsts, response.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().to_owned())
+    };
+    let (hsts, policy) = headers(Fixture::new().await).await;
+    assert_eq!(hsts, None, "plain HTTP instances send no HSTS");
+    assert!(policy.contains("img-src 'self' data: https:;"), "{policy}");
+
+    let https = Fixture::configured(|config| config.server.public_url = "https://git.example.com".into()).await;
+    let (hsts, _) = headers(https).await;
+    assert_eq!(hsts.as_deref(), Some("max-age=31536000"));
+    let subdomains = Fixture::configured(|config| {
+        config.server.public_url = "HTTPS://git.example.com".into();
+        config.security.hsts_include_subdomains = true;
+    })
+    .await;
+    assert_eq!(headers(subdomains).await.0.as_deref(), Some("max-age=31536000; includeSubDomains"));
+    let off = Fixture::configured(|config| {
+        config.server.public_url = "https://git.example.com".into();
+        config.security.hsts = false;
+        config.security.external_images = false;
+    })
+    .await;
+    let (hsts, policy) = headers(off).await;
+    assert_eq!(hsts, None);
+    assert!(policy.contains("img-src 'self' data:;") && !policy.contains("https:"), "{policy}");
+}
+
+#[tokio::test]
 async fn ref_picker_page_and_fragment_enforce_repository_visibility() {
     let fixture = Fixture::new().await;
     let owner = fixture

@@ -10,6 +10,9 @@
 //! * The fork keeps the parent's visibility (a private parent yields a private fork),
 //!   description and default branch; its branches and tags are copied on disk with
 //!   `git clone --bare --local` (see [`rbit_git::fork`]).
+//! * A fork cannot be made public while its parent, or any repository further up the
+//!   fork network, is private ([`has_private_ancestor`]): that would publish the private
+//!   history. (Forks are not removed when someone loses access to the parent.)
 //! * The row is created first; if the disk step (or recording the relationship) fails,
 //!   the row is removed again so metadata and disk never drift apart.
 //! * Forking publishes [`DomainEvent::RepositoryForked`] — not `RepositoryCreated`.
@@ -19,12 +22,14 @@ use std::collections::HashSet;
 
 use rbit_core::{RepoId, RepoName, User, repository::OwnedRepository};
 use rbit_git::fork::fork_repository;
-use rbit_storage::NewRepository;
+use rbit_storage::{Database, NewRepository};
 
 use crate::{DomainEvent, RepoContext, RepositoryService, ServiceContext, ServiceError};
 
 /// Forks listed on the forks page.
 pub const MAX_LISTED_FORKS: u32 = 100;
+/// How far up a fork network [`has_private_ancestor`] looks.
+const MAX_FORK_DEPTH: usize = 64;
 
 /// Raw fork form input.
 #[derive(Debug, Clone, Default)]
@@ -144,4 +149,21 @@ impl ForkService {
         let forks = store.list_readable(repo.repo.repo.id, viewer, is_admin, limit, offset).await?;
         Ok((forks, store.count_readable(repo.repo.repo.id, viewer, is_admin).await?))
     }
+}
+
+/// Whether a repository `repo` descends from (its parent, that one's parent, ...) is
+/// private. Deleted parents end the walk; a cycle or an implausibly deep network counts
+/// as private, so the answer errs on the side of keeping a fork hidden.
+pub(crate) async fn has_private_ancestor(database: &Database, repo: RepoId) -> Result<bool, ServiceError> {
+    let forks = database.forks();
+    let mut seen = HashSet::from([repo]);
+    let mut current = repo;
+    for _ in 0..MAX_FORK_DEPTH {
+        let Some(parent) = forks.parent_of(current).await? else { return Ok(false) };
+        if !parent.repo.visibility.is_public() || !seen.insert(parent.repo.id) {
+            return Ok(true);
+        }
+        current = parent.repo.id;
+    }
+    Ok(true)
 }

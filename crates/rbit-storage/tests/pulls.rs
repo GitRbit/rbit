@@ -173,8 +173,33 @@ async fn heads_mergeability_drafts_and_merges() {
     let found: Vec<u32> = database.issue_search().search(&drafts, 25, 0).await.unwrap().iter().map(|issue| issue.number.get()).collect();
     assert_eq!(found, [two.number.get()]);
     assert_eq!(store.unknown_mergeability(10).await.unwrap().len(), 1);
-    assert!(store.set_base(two.id, "release", Timestamp(42)).await.unwrap());
+    // Changing the base dismisses approvals (only), in the same transaction.
+    let reviews = database.reviews();
+    let review =
+        |reviewer: &User, state| NewReview { pull: two.id, reviewer: reviewer.id(), state, body: "", commit_sha: "11", at: Timestamp(41) };
+    let (approval, _) = reviews.create_submitted(&review(&bob, ReviewState::Approved), &[]).await.unwrap();
+    let (changes, _) = reviews.create_submitted(&review(&alice, ReviewState::ChangesRequested), &[]).await.unwrap();
+    let dismissed = store.set_base(two.id, "release", alice.id(), "Base changed", Timestamp(42)).await.unwrap();
+    assert_eq!(dismissed, Some(vec![(approval.id, Some(bob.id()))]));
     assert_eq!(store.find(two.id).await.unwrap().unwrap().base_branch, "release");
+    let stored = reviews.find(two.id, approval.id).await.unwrap().unwrap();
+    assert_eq!(
+        (stored.state, stored.dismissed_by, stored.dismissal_message.as_deref()),
+        (ReviewState::Dismissed, Some(alice.id()), Some("Base changed"))
+    );
+    assert_eq!(reviews.find(two.id, changes.id).await.unwrap().unwrap().state, ReviewState::ChangesRequested);
+    assert_eq!(store.set_base(two.id, "release", alice.id(), "", Timestamp(43)).await.unwrap(), None, "unchanged");
+    // A closed pull request keeps its base.
+    let closed = TimelineEvent::Closed { reason: StateReason::NotPlanned, commit: None, pull: None };
+    database
+        .issues()
+        .set_state(two.id, IssueState::Closed, Some(StateReason::NotPlanned), Some(alice.id()), &closed, Timestamp(44))
+        .await
+        .unwrap();
+    assert_eq!(store.set_base(two.id, "main", alice.id(), "", Timestamp(45)).await.unwrap(), None, "closed");
+    assert_eq!(store.find(two.id).await.unwrap().unwrap().base_branch, "release");
+    let reopened = TimelineEvent::Reopened;
+    database.issues().set_state(two.id, IssueState::Open, None, Some(alice.id()), &reopened, Timestamp(46)).await.unwrap();
 
     let record = MergeRecord {
         merged_by: Some(alice.id()),

@@ -60,9 +60,11 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
     std::fs::create_dir(&source).unwrap();
     let run = |args: &[&str], email: &str, date: &str| git(&source, args, email, date);
     run(&["init", "-q"], "alice@example.com", "2024-02-29T12:00:00Z");
-    run(&["commit", "--allow-empty", "-qm", "leap day"], "ALICE@example.com", "2024-02-29T12:00:00Z");
+    // Commits with the user's public noreply address count for everyone; commits with
+    // their private account email only for themselves, or a viewer could confirm it.
+    run(&["commit", "--allow-empty", "-qm", "leap day"], "ALICE@noreply.localhost", "2024-02-29T12:00:00Z");
     run(&["commit", "--allow-empty", "-qm", "another author"], "bob@example.com", "2024-03-01T12:00:00Z");
-    run(&["commit", "--allow-empty", "-qm", "next year"], "alice@example.com", "2025-01-01T12:00:00Z");
+    run(&["commit", "--allow-empty", "-qm", "next year"], "alice@noreply.localhost", "2025-01-01T12:00:00Z");
     // Deliberately non-monotonic author dates must not stop the walk prematurely.
     run(&["commit", "--allow-empty", "-qm", "backdated"], "alice@example.com", "2024-01-01T12:00:00Z");
     for (owner, name, visibility) in
@@ -103,7 +105,11 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
     let own = services.contributions.account(Some(&alice), &alice.account, start, end).await.unwrap();
     assert_eq!(own.days.values().sum::<usize>(), 3);
     let public = services.contributions.account(None, &alice.account, start, end).await.unwrap();
-    assert_eq!(public.days.values().sum::<usize>(), 2, "private activity must not leak through the cache; forks count once");
+    assert_eq!(
+        public.days.values().sum::<usize>(),
+        1,
+        "private activity and the private email must not leak through the cache; forks count once"
+    );
     assert_eq!(public.repositories, 2, "both visible repositories are represented even when their commits overlap");
     let organization = services.contributions.account(None, &org.account, start, end).await.unwrap();
     assert_eq!(organization.days.values().sum::<usize>(), 3, "organization counts all authors");
@@ -121,7 +127,7 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
 
 async fn assert_contribution_pages(router: axum::Router) {
     for (url, expected) in [
-        ("/alice?year=2024", "2 commits in 2024"),
+        ("/alice?year=2024", "1 commit in 2024"),
         ("/alice?year=2025&tab=stars", "1 commit in 2025"),
         ("/acme?year=2024", "3 commits in 2024"),
         ("/acme/public/activity?year=2024", "3 commits in 2024"),
@@ -136,7 +142,7 @@ async fn assert_contribution_pages(router: axum::Router) {
         assert!(html.contains("Commit activity in"));
         assert!(html.contains("Commit calendar by quarter"));
         assert!(!html.contains("Scrollable commit calendar"));
-        assert!(!html.contains("ALICE@example.com"), "author email is never rendered");
+        assert!(!html.contains("ALICE@noreply.localhost") && !html.contains("alice@example.com"), "author email is never rendered");
         if url.contains("/activity?") {
             assert!(html.contains("data-repo-tab=\"activity\""));
             assert!(

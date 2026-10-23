@@ -300,6 +300,17 @@ impl TimelineService {
         Ok(())
     }
 
+    /// Comment `id` on this thread and its author (`None` once the account is deleted),
+    /// as [`Self::timeline`] shows it. `ctx` must have been opened for the viewer.
+    pub async fn find_comment(&self, ctx: &IssueContext, id: CommentId) -> Result<(Comment, Option<Account>), ServiceError> {
+        let comment = self.ctx.database.issues().find_comment(ctx.issue.id, id).await?.ok_or(ServiceError::NotFound)?;
+        let author = match comment.author {
+            Some(author) => self.ctx.database.accounts().find_accounts(&[author]).await?.into_iter().next(),
+            None => None,
+        };
+        Ok((comment, author))
+    }
+
     /// At most `limit` (1..=[`MAX_TIMELINE_PAGE`]) entries after `cursor`, with what
     /// `viewer` may do with each comment and the accounts and sources events name.
     /// `CrossReferenced` events whose source the viewer cannot read are dropped here.

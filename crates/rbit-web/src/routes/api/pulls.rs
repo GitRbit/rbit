@@ -318,10 +318,12 @@ pub struct MergeRequest {
     commit_title: Option<String>,
     commit_message: Option<String>,
     sha: Option<String>,
+    /// The base branch the caller reviewed against (an rbit extension).
+    base: Option<String>,
 }
 
 /// `PUT /repos/{owner}/{repo}/pulls/{number}/merge`: `200 {sha, merged, message}`, `405`
-/// when it cannot be merged, `409` when `sha` is not the head.
+/// when it cannot be merged, `409` when `sha` is not the head or `base` not the base branch.
 pub async fn merge(
     State(state): State<AppState>,
     caller: Caller,
@@ -338,6 +340,7 @@ pub async fn merge(
         title: request.commit_title.unwrap_or_default(),
         message: request.commit_message.unwrap_or_default(),
         expected_head: request.sha.filter(|sha| !sha.is_empty()),
+        expected_base: request.base.filter(|base| !base.is_empty()),
         delete_head_branch: false,
         bypass: false,
     };
@@ -345,6 +348,9 @@ pub async fn merge(
         Ok(sha) => Ok(Json(json!({ "sha": sha, "merged": true, "message": "Pull Request successfully merged" }))),
         Err(MergeFailure::HeadChanged) => {
             Err(ApiError::new(StatusCode::CONFLICT, "Head branch was modified. Review and try the merge again."))
+        }
+        Err(MergeFailure::BaseChanged) => {
+            Err(ApiError::new(StatusCode::CONFLICT, "Base branch was changed. Review and try the merge again."))
         }
         Err(MergeFailure::Blocked(message)) => Err(ApiError::new(StatusCode::METHOD_NOT_ALLOWED, message)),
         Err(MergeFailure::Service(error)) => Err(error.into()),

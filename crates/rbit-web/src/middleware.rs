@@ -12,7 +12,7 @@ pub use cache::{
     is_preload, preload_guard,
 };
 pub use errors::error_pages;
-pub use security::{csrf_origin_check, rate_limit, security_headers};
+pub use security::{SecurityHeaders, csrf_origin_check, rate_limit, security_headers};
 
 #[cfg(test)]
 use crate::{error::WebError, themes::Theme};
@@ -31,7 +31,12 @@ use security::is_one_click_unsubscribe;
 
 #[cfg(test)]
 mod tests {
-    use axum::{Router, body::Body, middleware::from_fn, routing::get};
+    use axum::{
+        Router,
+        body::Body,
+        middleware::{from_fn, from_fn_with_state},
+        routing::get,
+    };
     use tower::ServiceExt;
 
     use super::*;
@@ -101,7 +106,7 @@ mod tests {
             .route("/o/r/raw/main/file", get(|| async { "bytes" }))
             .route("/missing", get(|| async { (StatusCode::NOT_FOUND, axum::response::Html("<p>not found</p>")) }))
             .layer(from_fn(html_caching))
-            .layer(from_fn(security_headers))
+            .layer(from_fn_with_state(SecurityHeaders::default(), security_headers))
             .layer(from_fn(preload_guard))
     }
 

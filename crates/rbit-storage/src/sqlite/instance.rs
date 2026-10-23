@@ -9,6 +9,10 @@ use sqlx::SqlitePool;
 
 use crate::StorageError;
 
+/// The administrator-saved deployment configuration (a JSON document). Its credential
+/// fields are [sealed](crate::sealing::SealingKey::seal_secret_fields) by the caller.
+pub const DEPLOYMENT_CONFIG_KEY: &str = "deployment_config";
+
 #[derive(Debug, Clone)]
 pub struct InstanceSettingsStore {
     pool: SqlitePool,

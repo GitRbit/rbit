@@ -12,6 +12,11 @@
 //!    sanitiser's attribute filter also resolves relative `<a href>` and `<img src>`
 //!    targets (from Markdown and from raw HTML alike) to repository URLs, after
 //!    ammonia has already discarded dangerous schemes.
+//!
+//! Every `id` in the output (heading anchors, footnotes and raw HTML alike) is prefixed
+//! with [`ID_PREFIX`], as GitHub does, so a document cannot claim an id the page itself
+//! uses (such as `issuecomment-12`, which htmx targets); in-document `#fragment` links
+//! are rewritten to match.
 
 use std::{
     borrow::Cow,
@@ -22,6 +27,9 @@ use std::{
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
 use crate::urls::{DocumentBase, LinkKind, ResolvedLink};
+
+/// The prefix of every `id` a rendered document carries.
+pub const ID_PREFIX: &str = "user-content-";
 
 /// Renders untrusted Markdown. The output is sanitised with ammonia, so it is safe to
 /// insert into a page verbatim even when the input contains raw HTML.
@@ -77,6 +85,9 @@ fn render(source: &str, base: Option<&DocumentBase>, rewrite: Option<Rewrite<'_>
             builder.attribute_filter(move |element, attribute, value| {
                 if element == "a" && attribute == "href" && kept.contains(value) {
                     return Some(Cow::Borrowed(value));
+                }
+                if let Some(fragment) = prefixed_fragment(element, attribute, value) {
+                    return Some(Cow::Owned(fragment));
                 }
                 resolve_attribute(&base, element, attribute, value)
             });
@@ -154,6 +165,12 @@ fn resolve_attribute<'u>(base: &DocumentBase, element: &str, attribute: &str, va
         // Without its target the link renders as plain text (and the image as nothing).
         ResolvedLink::Dropped => None,
     }
+}
+
+/// `#x` → `#user-content-x` for in-document links, so they reach the prefixed ids.
+fn prefixed_fragment(element: &str, attribute: &str, value: &str) -> Option<String> {
+    let fragment = value.strip_prefix('#').filter(|fragment| !fragment.is_empty())?;
+    (element == "a" && attribute == "href" && !fragment.starts_with(ID_PREFIX)).then(|| format!("#{ID_PREFIX}{fragment}"))
 }
 
 /// URLs in srcset may contain commas (notably data URLs), so a comma alone is not
@@ -255,6 +272,7 @@ fn configured_builder() -> ammonia::Builder<'static> {
         .add_tag_attributes("p", ["align"])
         .add_tag_attributes("div", ["align"])
         .add_generic_attributes(["id"])
+        .id_prefix(Some(ID_PREFIX))
         .link_rel(Some("noopener noreferrer nofollow"));
     builder
 }
@@ -267,6 +285,8 @@ fn sanitizer() -> &'static ammonia::Builder<'static> {
         builder.attribute_filter(|element, attribute, value| {
             if matches!(element, "source" | "img") && attribute == "srcset" {
                 Some(Cow::Owned(resolve_srcset(None, value)))
+            } else if let Some(fragment) = prefixed_fragment(element, attribute, value) {
+                Some(Cow::Owned(fragment))
             } else {
                 Some(Cow::Borrowed(value))
             }
@@ -360,7 +380,7 @@ mod tests {
     #[test]
     fn anchors_and_mail_links_are_untouched() {
         let html = render_markdown("[top](#intro) [mail](mailto:ada@example.com)", Some(&in_docs()));
-        assert!(html.contains(r##"href="#intro""##), "{html}");
+        assert!(html.contains(r##"href="#user-content-intro""##), "{html}");
         assert!(html.contains(r#"href="mailto:ada@example.com""#), "{html}");
     }
 
@@ -373,7 +393,7 @@ mod tests {
     #[test]
     fn headings_get_stable_unique_ids() {
         let html = render_markdown("# Getting started\n\n## Getting started\n\n### `cargo` & Rust!\n\n## Custom {#mine}\n", None);
-        let anchor = |id: &str| format!(r#"<a id="{id}" rel="noopener noreferrer nofollow"></a>"#);
+        let anchor = |id: &str| format!(r#"<a id="user-content-{id}" rel="noopener noreferrer nofollow"></a>"#);
         assert!(
             html.contains(&format!(
                 "{}
@@ -398,7 +418,7 @@ mod tests {
             )),
             "{html}"
         );
-        assert!(html.contains(r#"<h2 id="mine">"#), "{html}");
+        assert!(html.contains(r#"<h2 id="user-content-mine">"#), "{html}");
         assert!(
             !render_markdown(
                 "# !!!
@@ -407,5 +427,20 @@ mod tests {
             .contains("<a id"),
             "no empty anchors"
         );
+    }
+
+    #[test]
+    fn user_ids_cannot_collide_with_page_ids() {
+        for base in [None, Some(in_docs())] {
+            let html = render_markdown(
+                "<div id=\"issuecomment-1\" name=\"x\">a</div> <span id=\"user-content-kept\"></span>\n\n[c](#issuecomment-1) [k](#user-content-kept)\n\nNote[^1]\n\n[^1]: Footnote.\n",
+                base.as_ref(),
+            );
+            assert!(!html.contains(r#"id="issuecomment-1""#) && html.contains(r#"id="user-content-issuecomment-1""#), "{html}");
+            assert!(html.contains(r##"href="#user-content-issuecomment-1""##), "links follow the prefixed ids: {html}");
+            assert!(html.contains(r#"id="user-content-kept""#) && html.contains(r##"href="#user-content-kept""##), "{html}");
+            assert!(!html.contains("name="), "{html}");
+            assert!(!html.contains(r#" id="1""#) && !html.contains(r##"href="#1""##), "footnotes are prefixed too: {html}");
+        }
     }
 }
