@@ -176,6 +176,7 @@ async fn sql_listings_agree_with_the_policy() {
     let fan_account = fan.account.clone();
     let viewers = [None, Some(&root), Some(&olga), Some(&alice), Some(&bob), Some(&carol), Some(&dave), Some(&eve), Some(&fan)];
     assert_bulk_grants(&fixture, &repos, &viewers).await;
+    assert_personal_dashboard_visibility(&fixture, &repos, &viewers, &alice).await;
     for viewer in viewers {
         let label = viewer.map_or("anonymous".to_owned(), |user| user.name().to_string());
         let mut readable = BTreeSet::new();
@@ -354,4 +355,79 @@ async fn collaborators_are_set_idempotently_and_access_is_explained() {
     let as_bob = fixture.open_as(&bob, "acme", "rocket").await;
     assert!(matches!(collaborators.access_of(&as_bob, "carol").await, Err(ServiceError::Forbidden)));
     assert!(matches!(collaborators.set(&bob, &as_bob, "carol", Permission::Admin).await, Err(ServiceError::Forbidden)));
+}
+
+/// Personal dashboard rows and counts use the same complete permission matrix.
+async fn assert_personal_dashboard_visibility(
+    fixture: &Fixture,
+    repos: &[(String, &str, rbit_core::RepoId)],
+    viewers: &[Option<&User>],
+    author: &User,
+) {
+    let ids: Vec<_> = viewers.iter().flatten().map(|viewer| viewer.id()).collect();
+    for (_, _, repo) in repos {
+        let issue = fixture
+            .database
+            .issues()
+            .create(&rbit_storage::sqlite::issues::NewIssue {
+                repo: *repo,
+                kind: rbit_core::IssueKind::Issue,
+                title: rbit_core::IssueTitle::parse("Mentioned report").unwrap(),
+                body: rbit_core::IssueText::body("").unwrap(),
+                author: author.id(),
+                at: rbit_core::Timestamp(1),
+            })
+            .await
+            .unwrap();
+        fixture.database.issue_search().record_mentions(issue.id, &ids).await.unwrap();
+    }
+    for viewer in viewers.iter().flatten() {
+        let mut expected = BTreeSet::new();
+        for (owner, name, id) in repos {
+            if fixture.access(Some(viewer), owner, name).await.can_read() {
+                expected.insert(id.0);
+            }
+        }
+        let results = fixture
+            .services
+            .issues
+            .dashboard(
+                viewer,
+                rbit_core::IssueKind::Issue,
+                rbit_services::issues::DashboardRelation::Mentioned,
+                &rbit_core::issue_query::IssueQuery::parse("is:open"),
+                1,
+            )
+            .await
+            .unwrap();
+        assert_eq!(results.total, expected.len() as u64);
+        assert_eq!(results.open, expected.len() as u64);
+        assert_eq!(results.issues.iter().map(|issue| issue.repo_id.0).collect::<BTreeSet<_>>(), expected);
+    }
+}
+
+#[tokio::test]
+async fn personal_dashboards_drop_private_threads_after_membership_revocation() {
+    let fixture = Fixture::new().await;
+    let olga = fixture.user("olga", false).await;
+    let bob = fixture.user("bob", false).await;
+    let org = fixture.org(&olga, "closed", BasePermission::Read).await;
+    fixture.database.orgs().add_member(org.id, bob.id(), OrgRole::Member).await.unwrap();
+    let repo = fixture.repo(&olga, "closed", "vault", Visibility::Private).await;
+    let context = fixture.open_as(&bob, "closed", "vault").await;
+    fixture
+        .services
+        .issues
+        .create(&bob, &context, rbit_services::issues::NewIssueInput { title: "My private report".into(), ..Default::default() })
+        .await
+        .unwrap();
+    let query = rbit_core::issue_query::IssueQuery::parse("is:open");
+    let relation = rbit_services::issues::DashboardRelation::Created;
+    assert_eq!(fixture.services.issues.dashboard(&bob, rbit_core::IssueKind::Issue, relation, &query, 1).await.unwrap().total, 1);
+    fixture.database.orgs().remove_member(org.id, bob.id()).await.unwrap();
+    let results = fixture.services.issues.dashboard(&bob, rbit_core::IssueKind::Issue, relation, &query, 1).await.unwrap();
+    assert_eq!(results.total, 0);
+    assert_eq!(results.open, 0);
+    assert_eq!(results.issues.len(), 0);
+    assert!(fixture.services.issues.dashboard_repository(&bob, repo).await.unwrap().is_none());
 }

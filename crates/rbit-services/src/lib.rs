@@ -211,6 +211,9 @@ impl Services {
         let lfs = LfsService::new(ctx.clone());
         let accounts = AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone());
 
+        let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
+        issues.index_existing_mentions().await?;
+
         Ok(Self {
             accounts: accounts.clone(),
             contributions: contributions::ContributionService::new(ctx.clone()),
@@ -242,7 +245,7 @@ impl Services {
             mirrors: MirrorService::new(ctx.clone()),
             releases: releases.clone(),
             preferences: PreferenceService::new(ctx.clone()),
-            issues: IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone()),
+            issues,
             references,
             pulls: PullService::with_shared(ctx.clone(), timeline.clone(), throttle.clone()),
             timeline,

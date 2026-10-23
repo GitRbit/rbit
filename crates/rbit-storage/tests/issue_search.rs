@@ -15,7 +15,7 @@ use rbit_storage::{
 };
 
 struct Fixture {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     database: Database,
     alice: User,
     bob: User,
@@ -50,7 +50,7 @@ impl Fixture {
             default_branch: "main".to_owned(),
         };
         let repo = database.repositories().create(new).await.unwrap().id;
-        Self { _dir: dir, database, alice, bob, repo }
+        Self { dir, database, alice, bob, repo }
     }
 
     async fn issue(&self, kind: IssueKind, title: &str, body: &str, author: AccountId, at: i64) -> IssueId {
@@ -160,4 +160,99 @@ async fn every_filter_and_order() {
     assert_eq!(fixture.numbers(&text(&["spelling"])).await, [3]);
     issues.delete(three).await.unwrap();
     assert_eq!(fixture.numbers(&text(&["spelling"])).await, Vec::<u32>::new());
+}
+
+#[tokio::test]
+async fn dashboard_relationships_visibility_and_pagination() {
+    use rbit_core::Permission;
+    use rbit_storage::sqlite::issue_search::{DashboardRelation, DashboardScope};
+    let fixture = Fixture::new().await;
+    let alice = fixture.alice.id();
+    let bob = fixture.bob.id();
+    let one = fixture.issue(IssueKind::Issue, "Public one", "", bob, 10).await;
+    let two = fixture.issue(IssueKind::Issue, "Public two", "", bob, 10).await;
+    let hidden = fixture
+        .database
+        .repositories()
+        .create(NewRepository {
+            owner_id: alice,
+            name: "vault".parse().unwrap(),
+            description: None,
+            visibility: Visibility::Private,
+            default_branch: "main".into(),
+        })
+        .await
+        .unwrap();
+    let secret = fixture
+        .database
+        .issues()
+        .create(&NewIssue {
+            repo: hidden.id,
+            kind: IssueKind::Issue,
+            title: IssueTitle::parse("Secret").unwrap(),
+            body: IssueText::body("").unwrap(),
+            author: bob,
+            at: Timestamp(20),
+        })
+        .await
+        .unwrap();
+    let store = fixture.database.issue_search();
+    let mut filter = SearchFilter::new(RepoId(0));
+    filter.dashboard = Some(DashboardScope { viewer: bob, is_admin: false, relation: DashboardRelation::Created });
+    assert_eq!(store.state_counts(&filter).await.unwrap(), (2, 0));
+    assert_eq!(store.search(&filter, 1, 0).await.unwrap()[0].id, two);
+    assert_eq!(store.search(&filter, 1, 1).await.unwrap()[0].id, one);
+    fixture.database.repositories().grant_collaborator(hidden.id, bob, Permission::Read).await.unwrap();
+    assert_eq!(store.state_counts(&filter).await.unwrap(), (3, 0));
+    assert_eq!(store.search(&filter, 1, 0).await.unwrap()[0].id, secret.id);
+    fixture.database.collaborators().remove(hidden.id, bob).await.unwrap();
+    assert_eq!(store.count(&filter).await.unwrap(), 2);
+    fixture.database.issue_meta().add_assignee(one, bob, alice, Timestamp(21)).await.unwrap();
+    filter.dashboard.as_mut().unwrap().relation = DashboardRelation::Assigned;
+    assert_eq!(store.search(&filter, 25, 0).await.unwrap()[0].id, one);
+    store.record_mentions(two, &[bob]).await.unwrap();
+    store.record_mentions(secret.id, &[bob]).await.unwrap();
+    filter.dashboard.as_mut().unwrap().relation = DashboardRelation::Mentioned;
+    assert_eq!(store.search(&filter, 25, 0).await.unwrap().iter().map(|i| i.id).collect::<Vec<_>>(), vec![two]);
+    fixture.database.issues().delete(two).await.unwrap();
+    assert_eq!(store.count(&filter).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn dashboard_review_requests_follow_current_requests_and_ignore_pending_mentions() {
+    use rbit_storage::sqlite::issue_search::{DashboardRelation, DashboardScope};
+    let fixture = Fixture::new().await;
+    let pull = fixture.issue(IssueKind::Pull, "A pull request", "", fixture.alice.id(), 10).await;
+    let raw = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db")))
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO pull_requests (issue_id, repo_id, head_repo_id, head_branch, base_branch, head_sha, created_at, updated_at) VALUES (?1, ?2, ?2, 'feature/topic', 'main', 'abc', 10, 10)").bind(pull.0).bind(fixture.repo.0).execute(&raw).await.unwrap();
+    sqlx::query("INSERT INTO pull_review_requests (pull_id, user_id, created_at) VALUES (?, ?, 10)")
+        .bind(pull.0)
+        .bind(fixture.bob.id().0)
+        .execute(&raw)
+        .await
+        .unwrap();
+    let mut filter = SearchFilter::new(RepoId(0));
+    filter.dashboard = Some(DashboardScope { viewer: fixture.bob.id(), is_admin: false, relation: DashboardRelation::ReviewRequested });
+    let store = fixture.database.issue_search();
+    assert_eq!(store.count(&filter).await.unwrap(), 1);
+    sqlx::query("DELETE FROM pull_review_requests WHERE pull_id = ?").bind(pull.0).execute(&raw).await.unwrap();
+    assert_eq!(store.count(&filter).await.unwrap(), 0);
+    sqlx::query(
+        "INSERT INTO pull_reviews (pull_id, reviewer_id, state, body, commit_sha, created_at) VALUES (?, ?, 'pending', '@bob', 'abc', 10)",
+    )
+    .bind(pull.0)
+    .bind(fixture.alice.id().0)
+    .execute(&raw)
+    .await
+    .unwrap();
+    assert_eq!(store.mention_sources(2, 0).await.unwrap(), Vec::<(i64, i64, String)>::new());
+    sqlx::query("UPDATE pull_reviews SET state = 'commented', submitted_at = 11").execute(&raw).await.unwrap();
+    let sources = store.mention_sources(2, 0).await.unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].1, pull.0);
+    assert_eq!(sources[0].2, "@bob");
+    raw.close().await;
 }

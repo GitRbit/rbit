@@ -13,6 +13,8 @@
   <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}<span>New<span class="hidden sm:inline"> repository</span></span></a>
 </header>
 
+<nav class="mb-4 flex gap-4 text-[13px]" aria-label="Personal dashboards"><a href="/issues" class="link">Issues</a><a href="/pulls" class="link">Pull requests</a></nav>
+
 <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
   <section class="box self-start" aria-labelledby="repos-title">
     <div class="box-header flex-wrap gap-y-2 py-2">

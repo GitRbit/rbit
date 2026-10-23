@@ -550,3 +550,13 @@ async fn import_and_push_mirror_tables_start_empty() {
     assert_eq!(db.count("SELECT COUNT(*) FROM repo_imports").await, 0, "imports go with their repository");
     assert_eq!(db.count("SELECT COUNT(*) FROM repo_push_mirrors").await, 0, "push mirrors go with their repository");
 }
+
+#[tokio::test]
+async fn dashboard_mentions_start_empty_and_index_completion_persists() {
+    let db = upgraded().await;
+    assert!(db.exists("table", "issue_mentions").await);
+    assert_eq!(db.count("SELECT COUNT(*) FROM issue_mentions").await, 0);
+    assert!(!db.database.issue_search().mentions_indexed().await.unwrap());
+    db.database.issue_search().finish_mentions_index().await.unwrap();
+    assert!(db.database.issue_search().mentions_indexed().await.unwrap());
+}
