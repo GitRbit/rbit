@@ -6,7 +6,7 @@
     {% if form.can_comment %}
     <form method="post" action="{{ form.action_url }}" class="p-3 sm:p-4">
       <label for="{{ form.anchor }}-body" class="label">Add a comment</label>
-      <textarea id="{{ form.anchor }}-body" name="body" class="input mt-1.5 h-32 resize-y py-2 text-[13px]" rows="6" maxlength="65536" placeholder="Write a comment. Use @ for users and # for issues or pull requests." data-discussion-editor data-suggestions="{{ form.suggestions_url }}" aria-autocomplete="list" aria-controls="discussion-suggestions"></textarea>
+      <textarea id="{{ form.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-32 resize-y py-2 text-[13px]" rows="6" maxlength="65536" placeholder="Write a comment. Use @ for users and # for issues or pull requests." data-discussion-editor data-suggestions="{{ form.suggestions_url }}" aria-autocomplete="list" aria-controls="discussion-suggestions"></textarea>
       <div id="discussion-suggestions" class="box mt-2 max-h-64 overflow-y-auto" role="listbox" aria-label="Mention suggestions" hidden></div>
       <p class="hint mt-2" data-discussion-status aria-live="polite">Markdown is supported. Use @name, #123 or owner/repo#123 to link a user, issue or pull request.</p>
       {% if form.locked %}<p class="hint mt-2 flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}This conversation is locked; only collaborators can comment.</p>{% endif %}

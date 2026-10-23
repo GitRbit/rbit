@@ -21,6 +21,7 @@ mod issues;
 mod labels;
 mod lfs;
 mod listing;
+mod markdown_preview;
 mod milestones;
 mod mirrors;
 mod notification_email;
@@ -95,6 +96,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/", get(home::index))
         .route("/explore", get(home::explore))
+        .merge(markdown_preview::routes(state))
         .route("/login", get(auth::login_form).post(auth::login))
         .route("/signup", get(auth::signup_form).post(auth::signup))
         .route("/logout", post(auth::logout))

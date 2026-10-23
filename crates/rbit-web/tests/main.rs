@@ -4,6 +4,7 @@
 mod admin_configuration;
 mod contributions;
 mod listings;
+mod markdown_preview;
 mod mirror_progress;
 mod properties;
 mod repository_documents;

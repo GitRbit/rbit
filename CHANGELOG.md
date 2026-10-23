@@ -21,6 +21,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   name until another account claims the old name. Private repository redirects are only
   visible to authorized readers.
 
+- Preview Markdown before submitting issue and pull request descriptions, comments,
+  reviews and browser file edits, with repository links and sanitized HTML.
+
 ### Upgrade notes
 
 - Startup applies migration `0042_account_redirects.sql`, adding account-name redirects

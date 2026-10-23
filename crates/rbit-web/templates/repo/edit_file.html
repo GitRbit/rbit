@@ -18,22 +18,12 @@
     <input class="input font-mono text-xs" id="file-path" name="path" value="{{ path }}" maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" required {% if is_new %}autofocus{% endif %}>
 
     <div class="mt-5 flex items-end justify-between gap-3">
-      {% if let Some(preview) = preview_url %}{% if is_markdown %}
-      {#- Integration hook (W): shown once `POST /markdown/preview` exists. -#}
-      <div class="flex gap-1" role="tablist">
-        <span class="tab" aria-current="page">Edit</span>
-        <button type="button" class="tab" hx-post="{{ preview }}" hx-include="#file-content" hx-target="#file-preview" hx-swap="innerHTML">Preview</button>
-      </div>
-      {% else %}<label class="label mb-0" for="file-content">Content</label>{% endif %}
-      {% else %}
       <label class="label mb-0" for="file-content">Content</label>
-      {% endif %}
       <span class="text-xs text-ink-faint">At most {{ max_size }}</span>
     </div>
     {#- The newline after the tag is dropped by the HTML parser, so a file that starts with a blank line keeps it. -#}
-    <textarea class="input mt-2 min-h-96 resize-y py-2 font-mono text-xs leading-5" id="file-content" name="content" rows="24" wrap="off" spellcheck="false" autocapitalize="none" {% if !is_new %}autofocus{% endif %}>
+    <textarea class="input mt-2 min-h-96 resize-y py-2 font-mono text-xs leading-5" id="file-content" name="content" data-markdown-editor data-preview-url="{{ preview_url }}" rows="24" wrap="off" spellcheck="false" autocapitalize="none" {% if !is_new %}autofocus{% endif %}>
 {{ content }}</textarea>
-    {% if preview_url.is_some() && is_markdown %}<div id="file-preview" class="prose-rbit mt-3" aria-live="polite"></div>{% endif %}
 
     {% include "repo/commit_box.html" %}
 
