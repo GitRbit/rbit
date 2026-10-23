@@ -25,6 +25,7 @@ mod push_mirrors;
 mod recovery;
 mod redirects;
 mod releases;
+mod sealing;
 mod statuses;
 mod teams;
 mod two_factor;
