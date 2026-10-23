@@ -292,6 +292,8 @@ pub struct PullPage {
     pub sidebar: IssueSidebar,
     /// "Convert to draft" for open, ready pull requests (author or writers).
     pub can_convert_to_draft: bool,
+    /// Authors and repository writers may retarget an open pull request.
+    pub can_change_base: bool,
 }
 
 #[derive(Debug, Template, WebTemplate)]

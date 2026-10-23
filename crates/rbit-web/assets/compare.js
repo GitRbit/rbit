@@ -17,11 +17,12 @@ async function search(input, state) {
   const repo = form.elements[`${input.name}_repo`]?.value || form.dataset.repository;
   const status = field(input).querySelector('[data-compare-status]');
   const list = field(input).querySelector('[role=listbox]');
+  const branchesOnly = form.dataset.branchesOnly === 'true';
   // Repository values come from editable fields. Encode each path part before fetching.
   const parts = repo.split('/');
   if (parts.length !== 2 || parts.some(part => !part || part === '.' || part === '..')) return;
   const url = `/${parts.map(encodeURIComponent).join('/')}/compare/refs?${new URLSearchParams({ q: state.query ?? input.value, branches: String(form.dataset.branchesOnly === 'true') })}`;
-  status.textContent = 'Finding branches and tags…';
+  status.textContent = branchesOnly ? 'Finding branches…' : 'Finding branches and tags…';
   try {
     const response = await fetch(url, { signal: state.controller.signal, headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('Search failed');
@@ -41,9 +42,9 @@ async function search(input, state) {
     }
     list.hidden = options.length === 0;
     input.setAttribute('aria-expanded', String(options.length > 0));
-    status.textContent = options.length === 50 ? 'First 50 matches. Type more to narrow the list.' : options.length ? '' : 'No matches. You can type a revision or commit ID.';
+    status.textContent = options.length === 50 ? 'First 50 matches. Type more to narrow the list.' : options.length ? '' : branchesOnly ? 'No matching branches. Enter an existing branch name.' : 'No matches. You can type a revision or commit ID.';
   } catch (error) {
-    if (error.name !== 'AbortError' && searches.get(input) === state) status.textContent = 'Search is unavailable. Type a revision and press Compare.';
+    if (error.name !== 'AbortError' && searches.get(input) === state) status.textContent = branchesOnly ? 'Search is unavailable. Enter an existing branch name.' : 'Search is unavailable. Type a revision and press Compare.';
   }
 }
 function schedule(input, delay, all = false) {

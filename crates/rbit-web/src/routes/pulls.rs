@@ -517,8 +517,8 @@ async fn conversation(
         user.is_some() && (permissions.can_triage || user.is_some_and(|user| ctx.issue().is_author(user) && permissions.can_comment));
     let reviewers = ReviewersView::new(&data, can_request && is_open, &urls);
     let review_form = review_form(&ctx, &data, user);
-    let can_convert_to_draft =
-        is_open && !ctx.pull.is_draft && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_change_base = is_open && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_convert_to_draft = can_change_base && !ctx.pull.is_draft;
     if let Some(user) = user {
         state.services.notifications.mark_thread_read(user.id(), ctx.issue().id).await;
         if page.has_unread_notifications {
@@ -539,6 +539,7 @@ async fn conversation(
         reviewers,
         sidebar,
         can_convert_to_draft,
+        can_change_base,
     };
     Ok(view.into_response())
 }

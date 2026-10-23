@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   conversation and Files changed tabs; state changes appear in the timeline.
 - Migration `0041` adds review conversation resolution metadata. Existing conversations
   remain unresolved; back up the database before upgrading as usual.
+- Change an open pull request's base branch from its Conversation tab, with searchable
+  branch choices for the author and repository writers.
 
 ### Changed
 

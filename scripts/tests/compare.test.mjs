@@ -36,3 +36,22 @@ test('cancelled requests cannot replace newer choices', async () => {
   await pending;
   assert.equal(h.list.children.length, 0);
 });
+
+test('base picker searches its repository and gives branch-only guidance', async () => {
+  const h = harness();
+  h.input.name = 'base';
+  h.form.elements = {};
+  h.form.dataset = { repository: 'alice/demo', branchesOnly: 'true' };
+  h.context.input = h.input;
+  const search = () => vm.runInContext('var state = {controller: new AbortController()}; searches.set(input, state); search(input, state)', h.context);
+  let pending = search();
+  assert.match(h.requests[0].url, /^\/alice\/demo\/compare\/refs\?q=fix&branches=true$/);
+  assert.equal(h.status.textContent, 'Finding branches…');
+  h.requests[0].resolve({ ok: true, json: async () => [] });
+  await pending;
+  assert.equal(h.status.textContent, 'No matching branches. Enter an existing branch name.');
+  pending = search();
+  h.requests[1].resolve({ ok: false });
+  await pending;
+  assert.equal(h.status.textContent, 'Search is unavailable. Enter an existing branch name.');
+});
