@@ -12,7 +12,7 @@ use axum::{
     body::Body,
     extract::{Path, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
-    middleware::{from_fn, from_fn_with_state},
+    middleware::from_fn_with_state,
     response::{IntoResponse, Response},
     routing::get,
 };
@@ -32,7 +32,7 @@ pub fn routes(state: &AppState) -> Router<AppState> {
         .route("/{owner}/{repo}/archive/{*rest}", get(download))
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))
-        .layer(from_fn(middleware::security_headers))
+        .layer(from_fn_with_state(middleware::SecurityHeaders::new(&state.config), middleware::security_headers))
 }
 
 /// `GET /{owner}/{repo}/archive/{revision}.zip|.tar.gz` (the revision may contain `/`).

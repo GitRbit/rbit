@@ -304,9 +304,10 @@ mod tests {
     async fn mermaid_style_permissions_are_confined_to_a_sandboxed_frame() {
         use tower::ServiceExt as _;
 
-        let app = axum::Router::new()
-            .route("/assets/{*path}", axum::routing::get(serve))
-            .layer(axum::middleware::from_fn(crate::middleware::security_headers));
+        let app = axum::Router::new().route("/assets/{*path}", axum::routing::get(serve)).layer(axum::middleware::from_fn_with_state(
+            crate::middleware::SecurityHeaders::default(),
+            crate::middleware::security_headers,
+        ));
         let response = app
             .oneshot(axum::http::Request::builder().uri("/assets/mermaid-frame.html").body(axum::body::Body::empty()).unwrap())
             .await

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+#[expect(clippy::struct_excessive_bools, reason = "independent configuration switches")]
 pub struct SecurityConfig {
     /// How long a session stays valid without activity, in days.
     pub session_lifetime_days: u32,
@@ -26,6 +27,18 @@ pub struct SecurityConfig {
     /// random one is generated and logged when the server starts without any user.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup_token: Option<String>,
+    /// Send `Strict-Transport-Security: max-age=31536000` when `server.public_url` is
+    /// `https://`, so browsers refuse plain HTTP to this host for a year. Turn off only
+    /// while moving the instance away from HTTPS.
+    pub hsts: bool,
+    /// Add `includeSubDomains` to that header. Off by default: it binds every subdomain
+    /// of the host to HTTPS as well.
+    pub hsts_include_subdomains: bool,
+    /// Let pages show images from other sites (Markdown `![](https://...)`), which also
+    /// tells those sites who viewed the page and when. Off restricts images to this
+    /// instance and inline `data:` images; external ones (including a branding logo on
+    /// another host) then do not load.
+    pub external_images: bool,
 }
 
 impl Default for SecurityConfig {
@@ -36,6 +49,9 @@ impl Default for SecurityConfig {
             min_password_length: 10,
             trusted_proxies: Vec::new(),
             rate_limit: true,
+            hsts: true,
+            hsts_include_subdomains: false,
+            external_images: true,
             setup_token: None,
         }
     }
@@ -184,6 +200,10 @@ mod tests {
         assert!(config.security.is_trusted_proxy(ip("10.1.2.3")));
         assert!(!config.security.is_trusted_proxy(ip("11.0.0.1")));
         assert!(config.security.rate_limit);
+        assert!(config.security.hsts && !config.security.hsts_include_subdomains && config.security.external_images);
+        let json = r#"{"security": {"hsts": false, "external_images": false}}"#;
+        let config: Wrapper = serde_json::from_str(json).unwrap();
+        assert!(!config.security.hsts && !config.security.external_images);
         assert!(serde_json::from_str::<Wrapper>(r#"{"security": {"trusted_proxies": ["nope"]}}"#).is_err());
         assert!(!SecurityConfig::default().is_trusted_proxy(ip("127.0.0.1")));
     }

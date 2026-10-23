@@ -108,6 +108,30 @@ const SECURITY: &[Spec] = &[
         optional: false,
         max: "",
     },
+    Spec {
+        key: "hsts",
+        label: "Send HSTS",
+        help: "Send Strict-Transport-Security (one year) when the public URL is https://, so browsers refuse plain HTTP to this host. Turn off only while moving away from HTTPS.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "hsts_include_subdomains",
+        label: "HSTS includes subdomains",
+        help: "Add includeSubDomains to that header, binding every subdomain of the host to HTTPS as well.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "external_images",
+        label: "Allow external images",
+        help: "Let pages show images from other sites, which also tells those sites who viewed the page. Off limits images to this instance and inline data: images.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
 ];
 
 const REPOSITORY: &[Spec] = &[

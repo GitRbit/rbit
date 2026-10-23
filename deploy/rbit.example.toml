@@ -37,6 +37,12 @@ rate_limit = true
 # Signing up the first account needs a setup token, generated and logged at start-up
 # while there is no user. Set one here for automated deployments.
 # setup_token = "a long random string"
+# Strict-Transport-Security (one year) when public_url is https://.
+hsts = true
+hsts_include_subdomains = false
+# Show images hosted on other sites in Markdown. They learn who viewed the page; false
+# limits images to this instance.
+external_images = true
 
 [repository]
 default_branch = "main"
