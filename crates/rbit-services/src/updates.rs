@@ -309,6 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn worker_caches_checks_sends_no_running_version_and_stops_promptly() {
+        crate::webhooks::delivery::install_crypto_provider();
         let requests = Arc::new(AtomicUsize::new(0));
         let observed = requests.clone();
         let app = Router::new().route(
@@ -358,6 +359,7 @@ mod tests {
 
     #[tokio::test]
     async fn upstream_redirects_oversized_json_and_timeouts_do_not_produce_notices() {
+        crate::webhooks::delivery::install_crypto_provider();
         let app = Router::new()
             .route("/redirect", get(|| async { (StatusCode::FOUND, [(header::LOCATION, "https://evil.example")]) }))
             .route("/large", get(|| async { "x".repeat(MAX_RESPONSE_BYTES + 1) }))
