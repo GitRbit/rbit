@@ -16,6 +16,7 @@ mod lfs;
 mod notification_email;
 mod orgs;
 mod protection;
+mod pull_base;
 mod pulls;
 mod redirects;
 mod repositories;
