@@ -59,6 +59,39 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
   commit history focused on the selected branch and its paginated commits.
 
+### Security
+
+- Dismiss approvals when a pull request's base branch changes, refuse merges whose
+  expected base no longer matches (`base` on the API merge endpoint), rate-limit base
+  changes and refuse them on pull requests closed concurrently.
+- Throttle current-password checks in settings per account, stop successful sign-ins from
+  refilling a client's failure budget, and share the sign-in budget between an account's
+  username and email.
+- Require a one-time setup token, logged at start-up or set with `security.setup_token`,
+  to sign up the first account of a fresh instance. Cap sessions at
+  `security.session_max_age_days` (default 90) however active they stay.
+- Limit Git over HTTP and SSH with a shared process cap, per-client request limits, idle
+  and total timeouts and `repository.max_push_bytes` (default 2 GiB); never run
+  repository hooks; limit archive downloads per client with idle and total timeouts.
+- Encrypt TOTP seeds, webhook and push mirror secrets, server signing keys and secret
+  configuration fields at rest with a key file (`<data_dir>/secret.key`, or
+  `storage.secret_key_file`). Existing values are encrypted on the first start; back up
+  the key file with the database and discard backups taken before the upgrade.
+- Migration `0042` widens push mirror secrets to fit their encrypted form.
+- Create backups owner-only (0700 directory, 0600 files) and include the key file.
+- Ask for a push mirror's credential again when its URL moves to another host.
+- Count commits by a user's private account email on their contribution calendar only
+  for that user and site administrators.
+- Prefix ids in rendered Markdown with `user-content-` so they cannot collide with page
+  anchors; in-document links are rewritten to match.
+- Send `Strict-Transport-Security` with an `https://` public URL (`security.hsts`,
+  `security.hsts_include_subdomains`), and add `security.external_images` to keep pages
+  from loading images on other sites.
+- Refuse to make a fork public while a repository it was forked from is private.
+- Look up single API comments directly instead of loading their whole timeline.
+- Keep local data, databases and keys out of the Docker build context.
+- Update `ctutils` to 0.4.5 (RUSTSEC-2026-0385).
+
 ## [0.1.3] - 2026-10-21
 
 ### Security
