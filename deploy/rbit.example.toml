@@ -49,6 +49,24 @@ default_branch = "main"
 # The git executable used for smart HTTP, `git gc` and backups.
 git_binary = "/usr/bin/git"
 max_render_bytes = 1048576
+# Git processes (clones, fetches, pushes over HTTP and SSH) running at once; more are
+# refused with 503 + Retry-After over HTTP.
+# max_git_processes = 128
+# Concurrent smart-HTTP Git requests from one address (429 beyond). Behind a reverse proxy
+# this needs [security] trusted_proxies, or every client shares the proxy's address.
+# max_git_requests_per_ip = 16
+# A smart-HTTP Git exchange is stopped after this long without traffic either way…
+# git_idle_timeout_seconds = 300
+# …or after this long in all.
+# git_max_seconds = 21600
+# Largest pack one push may send, in bytes (2 GiB; 0 = unlimited). Raise the reverse
+# proxy's body limit to match.
+# max_push_bytes = 2147483648
+# Source archive (zip, tar.gz) downloads one address may run at once, and when a stalled
+# or overlong download is stopped.
+# max_archives_per_ip = 2
+# archive_idle_timeout_seconds = 60
+# archive_max_seconds = 3600
 
 [mail]
 # "disabled" (password reset and verification explain that email is unavailable),

@@ -680,3 +680,61 @@ async fn git_lfs_authenticate_returns_a_signed_header() {
     assert_refused(&refused, "Git LFS is not enabled");
     disabled.server.take().unwrap().shutdown().await;
 }
+
+/// Runs `command` on a new channel, sends `input` and EOF; returns the exit status and output.
+async fn exec_with_input(client: &client::Handle<PersistentClient>, command: &str, input: &[u8]) -> (u32, String) {
+    let work = async {
+        let mut channel = client.channel_open_session().await.unwrap();
+        channel.exec(true, command).await.unwrap();
+        channel.data(input).await.unwrap();
+        channel.eof().await.unwrap();
+        let mut status = None;
+        let mut output = Vec::new();
+        while let Some(message) = channel.wait().await {
+            match message {
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => output.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+                _ => {}
+            }
+        }
+        (status.expect("command exited"), String::from_utf8_lossy(&output).into_owned())
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), work).await.unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn git_commands_share_the_git_process_limit() {
+    let mut harness = Harness::start_with(|config| config.repository.max_git_processes = 1).await;
+    let owner = harness.user("alice").await;
+    harness
+        .services
+        .repositories
+        .create(&owner, CreateRepository { name: "project".to_owned(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[44; 32]));
+    let public = key.public_key().to_openssh().unwrap();
+    harness.services.ssh_keys.add_user_key(&owner, AddSshKey { title: "test".to_owned(), key: public }).await.unwrap();
+    let client = persistent_client(&harness, key).await;
+    let fetch = "git-upload-pack 'alice/project.git'";
+
+    // Smart HTTP holds the only slot: SSH is refused instead of starting git.
+    let held = harness.services.git_processes.try_acquire(None).unwrap();
+    let (status, message) = exec_with_input(&client, fetch, b"0000").await;
+    assert_ne!(status, 0);
+    assert!(message.contains("busy"), "{message}");
+
+    drop(held);
+    let (status, message) = exec_with_input(&client, fetch, b"0000").await;
+    assert_eq!(status, 0, "{message}");
+    // The finished command gives its slot back (just after reporting its status).
+    let released = async {
+        while harness.services.git_processes.available() == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), released).await.expect("the slot was not released");
+
+    client.disconnect(russh::Disconnect::ByApplication, "done", "").await.unwrap();
+    harness.server.take().unwrap().shutdown().await;
+}

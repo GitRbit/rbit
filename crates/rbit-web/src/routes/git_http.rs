@@ -15,6 +15,11 @@
 //! Pushes to pull mirrors are refused (`403`): a mirror only changes by fetching its
 //! upstream. Every other push passes the push gate ([`push_gate`]: branch protection
 //! reads the command list before git starts) after those checks.
+//!
+//! Every request that runs git takes a slot of the Git process limit it shares with SSH
+//! (`[repository] max_git_processes`, `503` when full) and of its client address
+//! (`max_git_requests_per_ip`, `429`), both with `Retry-After`. An exchange is stopped when
+//! no bytes move either way for `git_idle_timeout_seconds`, or after `git_max_seconds`.
 
 use async_compression::tokio::bufread::GzipDecoder;
 use axum::{
@@ -27,16 +32,26 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rbit_auth::AccessTokenSecret;
 use rbit_core::{TokenScope, User};
-use rbit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, protection::PushActor, two_factor::GitPasswordOutcome};
+use rbit_services::{
+    ConcurrencySlot, RepoContext, ServiceError, ThrottleScope,
+    limits::{RETRY_AFTER_SECONDS, Refused},
+    mirrors,
+    protection::PushActor,
+    two_factor::GitPasswordOutcome,
+};
 use rbit_transport::{
     ReceiveOptions, Service,
     receive::{self, CommandLimits, Intercept},
 };
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
-use tokio_util::io::{ReaderStream, StreamReader};
+use tokio_util::io::StreamReader;
 
-use crate::{AppState, client_ip::Client};
+use crate::{
+    AppState,
+    client_ip::Client,
+    supervise::{Activity, StreamLimits, Watched, supervised_body},
+};
 
 #[derive(Debug, Deserialize)]
 pub struct InfoRefsQuery {
@@ -60,15 +75,49 @@ pub async fn info_refs(
         Err(Denied::TokenRequired) => return remote_error(service, TOKEN_REQUIRED),
         Err(denied) => return denied.into_response(),
     };
+    let _slot = match admit(&state, &client) {
+        Ok(slot) => slot,
+        Err(refused) => return busy(refused),
+    };
 
-    match state.transport.advertise_refs(service, &ctx.disk_path, git_protocol(&headers)).await {
-        Ok(body) => ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
-            .into_response(),
-        Err(error) => {
+    // The advertisement is buffered, so nothing moves until git is done: bound it whole.
+    let advertisement = state.transport.advertise_refs(service, &ctx.disk_path, git_protocol(&headers));
+    match tokio::time::timeout(state.config.repository.git_idle_timeout(), advertisement).await {
+        Ok(Ok(body)) => {
+            ([(header::CONTENT_TYPE, service.advertisement_content_type()), (header::CACHE_CONTROL, "no-cache".to_owned())], body)
+                .into_response()
+        }
+        Ok(Err(error)) => {
             tracing::error!(%error, %owner, %repo, "ref advertisement failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+        Err(_) => {
+            tracing::warn!(%owner, %repo, %service, "ref advertisement exceeded the time limit");
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
     }
+}
+
+/// A slot of the Git process limits for this client (refusals answer with [`busy`]).
+fn admit(state: &AppState, client: &Client) -> Result<ConcurrencySlot, Refused> {
+    state.services.git_processes.try_acquire(client.ip()).inspect_err(|refused| {
+        tracing::debug!(ip = ?client.ip(), %refused, "Git request refused");
+    })
+}
+
+/// `503` when the instance is busy, `429` when the client holds its share; both with
+/// `Retry-After`.
+fn busy(refused: Refused) -> Response {
+    let status = match refused {
+        Refused::Busy => StatusCode::SERVICE_UNAVAILABLE,
+        Refused::TooManyFromClient => StatusCode::TOO_MANY_REQUESTS,
+    };
+    (status, [(header::RETRY_AFTER, RETRY_AFTER_SECONDS.to_string())], refused.to_string()).into_response()
+}
+
+/// The idle and total time limits of one exchange.
+fn exchange_limits(state: &AppState) -> StreamLimits {
+    StreamLimits { idle: state.config.repository.git_idle_timeout(), total: state.config.repository.git_max_duration() }
 }
 
 /// `POST /{owner}/{repo}.git/git-upload-pack` (fetch, clone)
@@ -99,8 +148,15 @@ async fn run_service(
         Ok(authorized) => authorized,
         Err(denied) => return denied.into_response(),
     };
+    // Held by the response stream until git is done or the exchange is stopped.
+    let slot = match admit(&state, &client) {
+        Ok(slot) => slot,
+        Err(refused) => return busy(refused),
+    };
 
-    let request = request_reader(&headers, body);
+    // Uploaded bytes count as activity, and a stalled upload fails (the push gate included).
+    let activity = Activity::start(exchange_limits(&state));
+    let request: Request = Box::new(Watched::new(request_reader(&headers, body), activity.clone()));
     // The push gate runs on the resolved repository, after the access and mirror checks.
     let (request, options) = if service.is_write() {
         match push_gate(&state, &ctx, user.as_ref(), request).await {
@@ -131,7 +187,7 @@ async fn run_service(
         });
     }
 
-    let mut response = Body::from_stream(ReaderStream::new(session.output)).into_response();
+    let mut response = supervised_body(session.output, slot, activity).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_str(&service.result_content_type()).expect("static content type"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -380,6 +436,16 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], mirrors::PUSH_REFUSED.as_bytes());
+    }
+
+    #[test]
+    fn refused_slots_carry_retry_after() {
+        let busy_instance = busy(Refused::Busy);
+        assert_eq!(busy_instance.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(busy_instance.headers()[header::RETRY_AFTER], RETRY_AFTER_SECONDS.to_string().as_str());
+        let busy_client = busy(Refused::TooManyFromClient);
+        assert_eq!(busy_client.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(busy_client.headers().contains_key(header::RETRY_AFTER));
     }
 
     #[test]

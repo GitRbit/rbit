@@ -23,6 +23,7 @@ pub mod instance;
 pub mod issues;
 pub mod jobs;
 pub mod lfs;
+pub mod limits;
 pub mod mail;
 pub mod mirrors;
 pub mod notification_email;
@@ -78,6 +79,7 @@ pub use instance::InstanceService;
 pub use issues::IssueService;
 pub use jobs::JobService;
 pub use lfs::LfsService;
+pub use limits::{ConcurrencyLimiter, ConcurrencySlot};
 pub use mail::MailService;
 pub use mirrors::MirrorService;
 pub use notification_email::NotificationEmailService;
@@ -155,6 +157,9 @@ pub struct Services {
     pub forks: ForkService,
     pub mirrors: MirrorService,
     pub releases: ReleaseService,
+    /// Git transport processes, shared by smart HTTP and SSH (`[repository]
+    /// max_git_processes`; per address: `max_git_requests_per_ip`, applied to HTTP).
+    pub git_processes: ConcurrencyLimiter,
     // Frontend wave: themes (T).
     pub preferences: PreferenceService,
     // Milestone 2 wave B: the shared issue timeline (T0).
@@ -249,6 +254,7 @@ impl Services {
             forks: ForkService::new(ctx.clone(), repositories.clone()),
             mirrors: MirrorService::new(ctx.clone()),
             releases: releases.clone(),
+            git_processes: ConcurrencyLimiter::new(config.repository.max_git_processes(), config.repository.max_git_requests_per_ip()),
             preferences: PreferenceService::new(ctx.clone()),
             issues,
             references,

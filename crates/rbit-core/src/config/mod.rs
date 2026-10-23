@@ -24,7 +24,7 @@ mod ssh;
 mod updates;
 mod webhooks;
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -179,10 +179,111 @@ pub struct RepositoryConfig {
     pub git_binary: PathBuf,
     /// Files larger than this are not rendered inline in the browser.
     pub max_render_bytes: usize,
+    /// Git transport processes (clones, fetches and pushes over HTTP and SSH) running at
+    /// once across the instance; further requests are refused (`503` over HTTP).
+    pub max_git_processes: usize,
+    /// Concurrent smart-HTTP Git requests from one IP address (`429` beyond). Behind a
+    /// reverse proxy this needs `[security] trusted_proxies`, or every client shares one.
+    pub max_git_requests_per_ip: usize,
+    /// Seconds a smart-HTTP Git exchange may go without traffic in either direction.
+    pub git_idle_timeout_seconds: u64,
+    /// Upper bound, in seconds, on a single smart-HTTP Git exchange (a very large clone
+    /// or push).
+    pub git_max_seconds: u64,
+    /// Largest pack one push may send, in bytes (git's `receive.maxInputSize`), over HTTP
+    /// and SSH. 0 means unlimited.
+    pub max_push_bytes: u64,
+    /// Source archive downloads one IP address may have running at once.
+    pub max_archives_per_ip: usize,
+    /// Seconds an archive download may stall (the client not reading, or git not writing).
+    pub archive_idle_timeout_seconds: u64,
+    /// Upper bound, in seconds, on one archive download.
+    pub archive_max_seconds: u64,
 }
 
 impl Default for RepositoryConfig {
     fn default() -> Self {
-        Self { default_branch: "main".to_owned(), git_binary: PathBuf::from("git"), max_render_bytes: 1024 * 1024 }
+        Self {
+            default_branch: "main".to_owned(),
+            git_binary: PathBuf::from("git"),
+            max_render_bytes: 1024 * 1024,
+            max_git_processes: 128,
+            max_git_requests_per_ip: 16,
+            git_idle_timeout_seconds: 300,
+            git_max_seconds: 6 * 60 * 60,
+            max_push_bytes: 2 * 1024 * 1024 * 1024,
+            max_archives_per_ip: 2,
+            archive_idle_timeout_seconds: 60,
+            archive_max_seconds: 60 * 60,
+        }
+    }
+}
+
+impl RepositoryConfig {
+    /// [`Self::max_git_processes`], at least one.
+    pub fn max_git_processes(&self) -> usize {
+        self.max_git_processes.max(1)
+    }
+
+    /// [`Self::max_git_requests_per_ip`], at least one.
+    pub fn max_git_requests_per_ip(&self) -> usize {
+        self.max_git_requests_per_ip.max(1)
+    }
+
+    pub fn git_idle_timeout(&self) -> Duration {
+        Duration::from_secs(self.git_idle_timeout_seconds.max(1))
+    }
+
+    pub fn git_max_duration(&self) -> Duration {
+        Duration::from_secs(self.git_max_seconds.max(1))
+    }
+
+    /// [`Self::max_push_bytes`], or `None` when pushes are unlimited.
+    pub fn max_push_bytes(&self) -> Option<u64> {
+        (self.max_push_bytes > 0).then_some(self.max_push_bytes)
+    }
+
+    /// [`Self::max_archives_per_ip`], at least one.
+    pub fn max_archives_per_ip(&self) -> usize {
+        self.max_archives_per_ip.max(1)
+    }
+
+    pub fn archive_idle_timeout(&self) -> Duration {
+        Duration::from_secs(self.archive_idle_timeout_seconds.max(1))
+    }
+
+    pub fn archive_max_duration(&self) -> Duration {
+        Duration::from_secs(self.archive_max_seconds.max(1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repository_limits_have_floors() {
+        let defaults = RepositoryConfig::default();
+        assert_eq!(defaults.max_push_bytes(), Some(2 * 1024 * 1024 * 1024));
+        assert_eq!(defaults.git_idle_timeout(), Duration::from_secs(300));
+        let zeroed = RepositoryConfig {
+            max_git_processes: 0,
+            max_git_requests_per_ip: 0,
+            git_idle_timeout_seconds: 0,
+            git_max_seconds: 0,
+            max_push_bytes: 0,
+            max_archives_per_ip: 0,
+            archive_idle_timeout_seconds: 0,
+            archive_max_seconds: 0,
+            ..defaults
+        };
+        assert_eq!(zeroed.max_git_processes(), 1);
+        assert_eq!(zeroed.max_git_requests_per_ip(), 1);
+        assert_eq!(zeroed.git_idle_timeout(), Duration::from_secs(1));
+        assert_eq!(zeroed.git_max_duration(), Duration::from_secs(1));
+        assert_eq!(zeroed.max_push_bytes(), None, "0 means unlimited");
+        assert_eq!(zeroed.max_archives_per_ip(), 1);
+        assert_eq!(zeroed.archive_idle_timeout(), Duration::from_secs(1));
+        assert_eq!(zeroed.archive_max_duration(), Duration::from_secs(1));
     }
 }

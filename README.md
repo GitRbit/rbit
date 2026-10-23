@@ -270,7 +270,7 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[server]` | HTTP listener and identity | `bind`, `public_url`, `site_name`, `open_registration` (default for the runtime setting) |
 | `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files, LFS objects) |
 | `[security]` | Sessions and abuse protection | `session_lifetime_days`, `session_max_age_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit`, `setup_token`, `hsts` / `hsts_include_subdomains` (with an `https://` public URL), `external_images` (false keeps viewers from loading images on other sites) |
-| `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes` |
+| `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes`, Git transport limits (`max_git_processes`, `max_git_requests_per_ip`, `git_idle_timeout_seconds`, `git_max_seconds`, `max_push_bytes`), archive download limits (`max_archives_per_ip`, `archive_idle_timeout_seconds`, `archive_max_seconds`) |
 | `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `from_name`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password`, `timeout_seconds` |
 | `[ssh]` | Built-in SSH server | `enabled`, `bind`, `public_host`, `public_port`, `host_key_path`, connection limits and timeouts |
 | `[operations]` | Maintenance and metrics | `metrics`, `metrics_token`, `warm_caches_on_push`, `maintenance_interval_minutes`, `job_concurrency`, insights cache limits |
