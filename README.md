@@ -19,20 +19,10 @@ JavaScript runtime — download it, run it, push.
 [Development](#development) · [Community](#community)
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-repo-dark.avif">
-    <img src="docs/screenshot-repo-light.avif" width="880" alt="The rbit repository hosted in rbit: the file list with each entry's latest commit, and a sidebar with the description, language breakdown and branch count">
-  </picture>
+  <img src="docs/rbit_preview1.avif" width="880" alt="rbit preview 1">
 </p>
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-pr-dark.avif">
-    <img src="docs/screenshot-pr-light.avif" width="640" alt="A pull request's Files changed tab in rbit, with a reviewer's line comment and the author's reply under the changed code">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-mobile-dark.avif">
-    <img src="docs/screenshot-mobile-light.avif" width="200" alt="The same repository page on a phone">
-  </picture>
+  <img src="docs/rbit_preview2.avif" width="880" alt="rbit preview 2">
 </p>
 
 ## Quick start
