@@ -9,6 +9,7 @@ mod auth;
 mod blame;
 mod collaborators;
 mod compare;
+mod dashboards;
 mod edits;
 // Milestone 3: external sign-in (O).
 mod external_auth;
@@ -143,6 +144,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         // Milestone 2 wave B: the shared timeline forms (T0), then the workstreams.
         .merge(timeline::routes())
         .merge(issues::routes())
+        .merge(dashboards::routes())
         .merge(labels::routes())
         .merge(milestones::routes())
         .merge(notifications::routes())

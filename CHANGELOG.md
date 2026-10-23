@@ -23,6 +23,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Preview Markdown before submitting issue and pull request descriptions, comments,
   reviews and browser file edits, with repository links and sanitized HTML.
+- Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
+  visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
+  Markdown mentions once at startup in bounded batches.
 
 ### Upgrade notes
 

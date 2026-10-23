@@ -49,15 +49,15 @@ for release history.
 - **Repository documents:** document tabs, a searchable heading outline and Mermaid diagrams.
 - **Activity:** contribution heatmaps on user and organisation profiles and repository commits.
 - **Administration:** instance branding and deployment configuration forms.
+- **Personal dashboards:** cross-repository `/issues` and `/pulls` with created, assigned,
+  mentioned and review-requested views.
 
 Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
 reviews and repository Markdown files, using the same sanitized rendering as saved text.
 
 ## Near-term priorities
 
-Planned follow-up work:
-
-- **Personal dashboards:** cross-repository `/issues` and `/pulls` views.
+The current near-term priorities are implemented in the features above.
 
 ## Longer-term ideas
 

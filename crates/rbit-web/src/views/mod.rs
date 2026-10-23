@@ -15,6 +15,7 @@ pub mod commit;
 pub mod compare;
 pub mod components;
 pub mod contributions;
+pub mod dashboards;
 pub mod edits;
 pub mod errors;
 // Milestone 3: external sign-in (O).
