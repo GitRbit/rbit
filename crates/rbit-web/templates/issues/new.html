@@ -11,7 +11,7 @@
     <input class="input" id="issue-title" name="title" value="{{ title }}" maxlength="256" required autofocus>
 
     <label class="label mt-5" for="issue-body">Description <span class="font-normal text-ink-faint">Markdown; #12 and @name link</span></label>
-    <textarea class="input h-56 resize-y py-2 text-[13px]" id="issue-body" name="body" rows="10" maxlength="65536">{{ body }}</textarea>
+    <textarea class="input h-56 resize-y py-2 text-[13px]" id="issue-body" name="body" data-markdown-editor rows="10" maxlength="65536">{{ body }}</textarea>
 
     {% if can_triage %}
     <div class="mt-6 grid gap-4 sm:grid-cols-3">

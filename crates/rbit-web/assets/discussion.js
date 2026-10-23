@@ -78,6 +78,14 @@ document.addEventListener('input', event => {
   const version = revision;
   if (mentionAt(input.value, input.selectionStart)) timer = setTimeout(() => suggestions(input, version), 150);
 });
+document.addEventListener('focusin', event => {
+  const input = editor();
+  // Keep option buttons available for click selection, but close suggestions when
+  // the user moves to Preview or another control. Cancelling also invalidates a
+  // lookup that resolves after the source editor has lost focus.
+  if (!input || event.target === input || listFor(input).contains(event.target)) return;
+  cancel(); close(input);
+});
 document.addEventListener('keydown', event => {
   const input = event.target;
   if (!input.matches?.('[data-discussion-editor]')) return;

@@ -50,12 +50,14 @@ for release history.
 - **Activity:** contribution heatmaps on user and organisation profiles and repository commits.
 - **Administration:** instance branding and deployment configuration forms.
 
+Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
+reviews and repository Markdown files, using the same sanitized rendering as saved text.
+
 ## Near-term priorities
 
 Planned follow-up work:
 
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` views.
-- **Markdown editing:** preview Markdown before submitting it.
 
 ## Longer-term ideas
 

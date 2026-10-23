@@ -92,7 +92,7 @@
           <input type="hidden" name="side" value="{{ thread.side }}">
           <input type="hidden" name="line" value="{{ thread.line }}">
           <label class="label" for="{{ thread.anchor }}-body">Comment on line {{ thread.line }}</label>
-          <textarea id="{{ thread.anchor }}-body" name="body" class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Markdown is supported" required autofocus></textarea>
+          <textarea id="{{ thread.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Markdown is supported" required autofocus></textarea>
           <div class="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <a href="{{ pull.urls.files }}#{{ thread.anchor }}" class="btn h-11 sm:h-8">Cancel</a>
             <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Start a review</button>

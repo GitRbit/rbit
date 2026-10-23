@@ -25,6 +25,7 @@ import "./mirror-progress.js";
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";
+import "./markdown-preview.js";
 
 // Long code and diff views: exact placeholder heights for virtual blocks.
 import "./blocks.js";
