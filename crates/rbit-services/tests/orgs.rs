@@ -96,16 +96,32 @@ async fn create_makes_the_creator_owner() {
 
 #[tokio::test]
 async fn create_validates_and_shares_the_user_namespace() {
-    let fixture = Fixture::new().await;
-    let alice = fixture.user("alice", false).await;
-    let create = |name: &str| CreateOrganization { name: name.to_owned(), ..CreateOrganization::default() };
+    {
+        eprintln!("organization namespace validation: fixture initialization begin");
+        let fixture = Fixture::new().await;
+        eprintln!("organization namespace validation: fixture initialization complete");
+        eprintln!("organization namespace validation: user insert begin");
+        let alice = fixture.user("alice", false).await;
+        eprintln!("organization namespace validation: user insert complete");
+        let create = |name: &str| CreateOrganization { name: name.to_owned(), ..CreateOrganization::default() };
 
-    assert!(invalid(fixture.services.orgs.create(&alice, create("")).await));
-    assert!(invalid(fixture.services.orgs.create(&alice, create("bad name")).await));
-    assert!(invalid(fixture.services.orgs.create(&alice, create("settings")).await));
-    assert!(matches!(fixture.services.orgs.create(&alice, create("Alice")).await, Err(ServiceError::Conflict("name"))));
-    let long = CreateOrganization { name: "ok".into(), display_name: "x".repeat(101), ..CreateOrganization::default() };
-    assert!(invalid(fixture.services.orgs.create(&alice, long).await));
+        assert!(invalid(fixture.services.orgs.create(&alice, create("")).await));
+        assert!(invalid(fixture.services.orgs.create(&alice, create("bad name")).await));
+        assert!(invalid(fixture.services.orgs.create(&alice, create("settings")).await));
+        assert!(matches!(
+            {
+                eprintln!("organization namespace validation: duplicate name await begin");
+                let result = fixture.services.orgs.create(&alice, create("Alice")).await;
+                eprintln!("organization namespace validation: duplicate name await complete");
+                result
+            },
+            Err(ServiceError::Conflict("name"))
+        ));
+        let long = CreateOrganization { name: "ok".into(), display_name: "x".repeat(101), ..CreateOrganization::default() };
+        assert!(invalid(fixture.services.orgs.create(&alice, long).await));
+        eprintln!("organization namespace validation: assertions complete; leaving fixture scope");
+    }
+    eprintln!("organization namespace validation: fixture scope teardown complete");
 }
 
 #[tokio::test]

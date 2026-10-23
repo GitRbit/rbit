@@ -2,5 +2,7 @@
 # test in its own process. CI uses the `ci` profile.
 
 [profile.ci]
+# Fail hung tests after five minutes; retries remain disabled by default.
+slow-timeout = { period = "60s", terminate-after = 5 }
 # Report every failing test in one run instead of stopping at the first.
 fail-fast = false
