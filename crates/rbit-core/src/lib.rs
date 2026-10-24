@@ -33,6 +33,8 @@ pub mod file_edit;
 // Milestone 3: importing and push mirrors (M).
 pub mod import;
 pub mod push_mirror;
+// Actions: foundation (F).
+pub mod actions;
 
 pub use access::RepoAccess;
 pub use access_token::{AccessToken, AccessTokenId, TokenScope};
