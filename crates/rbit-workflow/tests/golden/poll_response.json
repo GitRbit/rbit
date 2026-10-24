@@ -1,0 +1,149 @@
+{
+  "task": {
+    "version": 1,
+    "task_id": 42,
+    "template": {
+      "version": 1,
+      "job_id": "test",
+      "name": "test (linux, stable)",
+      "needs": [
+        "build"
+      ],
+      "if": "${{ success() && github.ref == 'refs/heads/main' }}",
+      "runs_on": [
+        "ubuntu-latest"
+      ],
+      "matrix": {
+        "os": "linux",
+        "rust": "stable"
+      },
+      "strategy": {
+        "fail_fast": true,
+        "max_parallel": 2,
+        "job_index": 0,
+        "job_total": 4
+      },
+      "permissions": {
+        "contents": "read",
+        "issues": "none",
+        "pull_requests": "write"
+      },
+      "concurrency": {
+        "group": "ci-refs/heads/main",
+        "cancel_in_progress": true
+      },
+      "timeout_minutes": 360,
+      "continue_on_error": false,
+      "workflow_env": {
+        "CARGO_TERM_COLOR": "always"
+      },
+      "env": {
+        "RUST": "${{ matrix.rust }}"
+      },
+      "defaults": {
+        "shell": "bash",
+        "working_directory": null
+      },
+      "outputs": {
+        "version": "${{ steps.meta.outputs.version }}"
+      },
+      "container": {
+        "image": "docker.io/library/rust:1.94",
+        "env": {},
+        "credentials": {
+          "username": "ci",
+          "password": "${{ secrets.REGISTRY_PASSWORD }}"
+        }
+      },
+      "services": [
+        {
+          "id": "postgres",
+          "image": "postgres:17",
+          "env": {
+            "POSTGRES_PASSWORD": "pw"
+          },
+          "credentials": null
+        }
+      ],
+      "steps": [
+        {
+          "id": null,
+          "name": null,
+          "if": null,
+          "action": {
+            "uses": {
+              "uses": "actions/checkout@v4",
+              "kind": "checkout",
+              "version": 1,
+              "with": {
+                "fetch-depth": "0"
+              }
+            }
+          },
+          "shell": null,
+          "working_directory": null,
+          "env": {},
+          "continue_on_error": null,
+          "timeout_minutes": null
+        },
+        {
+          "id": "meta",
+          "name": "Test on ${{ matrix.os }}",
+          "if": "always()",
+          "action": {
+            "run": "cargo test --locked\necho \"version=1\" >> \"$GITHUB_OUTPUT\"\n"
+          },
+          "shell": "bash",
+          "working_directory": "crates",
+          "env": {
+            "TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+          },
+          "continue_on_error": "${{ matrix.rust == 'nightly' }}",
+          "timeout_minutes": "30"
+        }
+      ]
+    },
+    "contexts": {
+      "github": {
+        "event": {
+          "ref": "refs/heads/main"
+        },
+        "event_name": "push",
+        "ref": "refs/heads/main",
+        "repository": "alice/app",
+        "run_id": "9",
+        "server_url": "https://git.example.com",
+        "sha": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "inputs": {},
+      "vars": {
+        "DEPLOY_HOST": "deploy.example.com"
+      },
+      "needs": {
+        "build": {
+          "result": "success",
+          "outputs": {
+            "artifact": "app.tar"
+          }
+        }
+      }
+    },
+    "secrets": {
+      "REGISTRY_PASSWORD": "s3cr3t-registry"
+    },
+    "token": "rbat_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "checkout": {
+      "url": "https://git.example.com/alice/app",
+      "repository": "alice/app",
+      "sha": "0123456789abcdef0123456789abcdef01234567",
+      "ref": "refs/heads/main"
+    },
+    "cache": {
+      "repository_id": 5,
+      "read": [
+        "refs/heads/main"
+      ],
+      "write": "refs/heads/main"
+    }
+  }
+}

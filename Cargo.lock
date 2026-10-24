@@ -4419,6 +4419,8 @@ dependencies = [
  "regex-automata",
  "serde",
  "serde-saphyr",
+ "serde_json",
+ "zeroize",
 ]
 
 [[package]]

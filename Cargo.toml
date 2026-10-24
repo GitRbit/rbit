@@ -115,6 +115,9 @@ regex-automata = "0.4"
 # Workflow files: a panic-free YAML deserializer with budgets (depth, nodes, alias replays)
 # and source locations. Only its deserializer; payloads are emitted by rbit-workflow.
 serde-saphyr = { version = "2.0", default-features = false, features = ["deserialize"] }
+# Secrets in job specifications and runner messages are zeroed on drop; zeroize is already
+# in the tree through argon2.
+zeroize = "1.9"
 
 # Testing
 tempfile = "3"

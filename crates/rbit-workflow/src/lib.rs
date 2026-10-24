@@ -14,6 +14,11 @@
 //! * [`plan()`] — the jobs of a run: matrices expanded, `runs-on` and names interpolated
 //!   ([`expr`]), each with its single-job [`payload`] (emitted by [`emit`]); and the
 //!   run's concurrency group.
+//! * [`spec`] — the stored [`spec::JobTemplate`] of a planned job and the [`spec::JobSpec`]
+//!   a runner receives for one task.
+//! * [`protocol`] — the request and response types of runner protocol v1, its version,
+//!   headers, body caps and error codes.
+//! * [`secret`] — the zeroizing, redacting [`secret::Secret`] those messages carry.
 //!
 //! The Actions foundation (workstream F of `docs/design/actions.md`) owns this crate.
 
@@ -27,6 +32,9 @@ pub mod parse;
 pub mod pattern;
 pub mod payload;
 pub mod plan;
+pub mod protocol;
+pub mod secret;
+pub mod spec;
 pub mod trigger;
 pub mod yaml;
 

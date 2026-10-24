@@ -308,7 +308,7 @@ fn only_keys_at(config: &Mapping, path: &str, allowed: &[&str]) -> Result<(), Wo
     }
 }
 
-fn valid_job_id(id: &str) -> bool {
+pub(crate) fn valid_job_id(id: &str) -> bool {
     let mut bytes = id.bytes();
     id.len() <= MAX_JOB_ID_BYTES
         && bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
