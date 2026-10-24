@@ -8,6 +8,7 @@
 //! * [`classify_pull_request`] decides whether a pull request run is trusted (§11.1), and
 //!   [`token_permissions`] what its task token may do (§11.4).
 //! * [`RunnerLabel`], [`SecretName`] and [`VariableName`] are validated at construction.
+//! * [`records`] holds the stored records (runs, jobs, tasks, runners, secrets, …).
 //!
 //! The Actions foundation (workstream F) owns this file.
 
@@ -16,6 +17,13 @@ use std::{fmt, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 use crate::{AccountId, RepoAccess, RepoId};
+
+pub mod records;
+
+pub use records::{
+    Job, LogState, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, ScheduleEntry, SealedSecret, SecretInfo,
+    SecretVisibility, Step, Task, TrustedUser, Variable,
+};
 
 macro_rules! id {
     ($(#[$meta:meta])* $name:ident) => {

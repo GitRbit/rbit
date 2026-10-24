@@ -2,6 +2,13 @@
 
 mod access_tokens;
 mod accounts;
+// Actions: foundation (F).
+mod actions_rows;
+pub mod actions_runners;
+pub mod actions_runs;
+pub mod actions_schedules;
+pub mod actions_secrets;
+pub mod actions_settings;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
@@ -235,6 +242,28 @@ impl Database {
 
     pub fn push_mirrors(&self) -> push_mirrors::PushMirrorStore {
         push_mirrors::PushMirrorStore::new(self.pool.clone())
+    }
+
+    // Actions: foundation (F).
+
+    pub fn actions_settings(&self) -> actions_settings::ActionsSettingsStore {
+        actions_settings::ActionsSettingsStore::new(self.pool.clone())
+    }
+
+    pub fn actions_runners(&self) -> actions_runners::ActionsRunnerStore {
+        actions_runners::ActionsRunnerStore::new(self.pool.clone())
+    }
+
+    pub fn actions_runs(&self) -> actions_runs::ActionsRunStore {
+        actions_runs::ActionsRunStore::new(self.pool.clone())
+    }
+
+    pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {
+        actions_secrets::ActionsSecretStore::new(self.pool.clone())
+    }
+
+    pub fn actions_schedules(&self) -> actions_schedules::ActionsScheduleStore {
+        actions_schedules::ActionsScheduleStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.
