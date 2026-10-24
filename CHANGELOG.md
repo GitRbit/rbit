@@ -31,6 +31,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
   visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
   Markdown mentions once at startup in bounded batches.
+- Archive repositories from the settings danger zone or with `PATCH /api/v1/repos/{owner}/{repo}`
+  (`"archived": true`). Archived repositories are read-only: pushes over HTTP and SSH,
+  merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused (the API answers 403
+  "Repository was archived so is read-only."), while reading, cloning, forking and starring
+  keep working. Pull and push mirrors pause until the repository is unarchived. Pages show
+  a banner and hide write controls, lists mark archived repositories, and Explore filters
+  them (`?archived=true|false`). Archiving and unarchiving are audited and send a
+  `repository` webhook (`archived` / `unarchived`); repository objects gain `archived`.
 - Notify in the footer and administrator dashboard when a newer stable rbit release
   is available, using a bounded daily background check of the upstream GitHub release
   feed. Release checks never send the running version or instance identity.
@@ -39,6 +48,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   integration User-Agents; administrator-only diagnostics remain available.
 
 ### Upgrade notes
+
+- Startup applies migration `0044_repo_archives.sql`, adding the `repo_archives` table.
+  Existing repositories stay unarchived and their rows are unchanged; back up the database
+  before upgrading as usual.
 
 - Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
   and their maintenance triggers. Existing account names and IDs are unchanged; names

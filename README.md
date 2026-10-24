@@ -119,6 +119,11 @@ they do not install or download an update automatically.
   restricted pushers — enforced over HTTPS and SSH and for merges.
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
+- **Archived repositories**: administrators archive a finished project from its settings (or the API's
+  `archived` field) to make it read-only. It can still be read, cloned, forked and starred, but pushes over
+  HTTPS and SSH, merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused, and its pull and push mirrors pause.
+  Lists mark archived repositories and Explore can hide or show only them; unarchiving restores everything.
 
 Change your username in **Settings → Account** using your current password. Your profile
 links, repository URLs and Git HTTP/SSH remotes continue to work under old account names

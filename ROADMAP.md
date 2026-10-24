@@ -51,6 +51,8 @@ for release history.
 - **Administration:** instance branding and deployment configuration forms.
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` with created, assigned,
   mentioned and review-requested views.
+- **Archived repositories:** read-only repositories that can still be cloned, forked and
+  starred, with a banner, list badges and an Explore filter.
 
 Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
 reviews and repository Markdown files, using the same sanitized rendering as saved text.
@@ -68,7 +70,6 @@ Ideas with no schedule yet:
 - A native gitoxide transport for `receive-pack`, behind a configuration switch, so pushes
   no longer need the `git` binary.
 - Email digests.
-- Archived (read-only) repositories.
 - Git LFS over pure SSH (`git-lfs-transfer`); today SSH clients use
   `git-lfs-authenticate` and HTTP.
 
