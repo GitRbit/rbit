@@ -21,8 +21,8 @@
 //!   author with them) are audited. Re-running an untrusted run is not approving it: it
 //!   waits again unless its author would skip the wait today.
 //! * [`ActionsService::settled`] follows every transition of a run's jobs: the scheduler's
-//!   version moves when jobs became waiting, and a finished run lets the next held run of its
-//!   group start. The runner protocol calls it after finishing tasks and sweeping.
+//!   version moves when jobs became waiting, the jobs' commit statuses are reported
+//!   ([`super::statuses`]), and a finished run lets the next held run of its group start. The runner protocol calls it after finishing tasks and sweeping.
 //!
 //! Workstream T (triggers and runs) owns this file.
 
@@ -183,6 +183,7 @@ impl ActionsService {
         if start == RunStart::Runnable {
             self.bump_tasks_version();
         }
+        self.report_statuses(run.id).await?;
         Ok(Some(run))
     }
 
@@ -217,7 +218,7 @@ impl ActionsService {
             if cancel_in_progress || other.status == Status::Blocked {
                 if let Some(settled) = store.cancel_run(repo, other.id, Timestamp::now()).await? {
                     tracing::info!(repo = repo.0, run = other.id.0, group, "workflow run cancelled by its concurrency group");
-                    self.followed_up(&settled);
+                    self.followed_up(&settled).await?;
                 }
             } else {
                 busy = true;
@@ -229,7 +230,7 @@ impl ActionsService {
     /// Follows up a transition of a run's jobs (see the module documentation). Call it
     /// after every store transition that returns [`Settled`].
     pub async fn settled(&self, settled: &Settled) -> Result<(), ServiceError> {
-        self.followed_up(settled);
+        self.followed_up(settled).await?;
         if !settled.run_status.is_done() {
             return Ok(());
         }
@@ -241,11 +242,13 @@ impl ActionsService {
         Ok(())
     }
 
-    /// What every transition needs, without the group: the scheduler's version.
-    fn followed_up(&self, settled: &Settled) {
+    /// What every transition needs, without the group: the scheduler's version and the
+    /// jobs' commit statuses.
+    async fn followed_up(&self, settled: &Settled) -> Result<(), ServiceError> {
         if !settled.now_waiting.is_empty() {
             self.bump_tasks_version();
         }
+        self.report_statuses(settled.run_id).await
     }
 
     /// Starts the oldest held run of `group` once no other run of it is active.
@@ -259,7 +262,7 @@ impl ActionsService {
         let Some(next) = unfinished.iter().find(|run| run.status == Status::Blocked) else { return Ok(()) };
         if let Some(settled) = store.release_run(repo, next.id, Timestamp::now()).await? {
             tracing::info!(repo = repo.0, run = next.id.0, group, "held workflow run released");
-            self.followed_up(&settled);
+            self.followed_up(&settled).await?;
         }
         Ok(())
     }
@@ -316,7 +319,7 @@ impl ActionsService {
             return Err(ServiceError::Invalid("no job of the run matches".to_owned()));
         };
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
-        self.followed_up(&settled);
+        self.followed_up(&settled).await?;
         store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
     }
 
@@ -342,7 +345,7 @@ impl ActionsService {
         let Some(settled) = settled else {
             return Err(ServiceError::Invalid("the run does not wait for approval".to_owned()));
         };
-        self.followed_up(&settled);
+        self.followed_up(&settled).await?;
         let full_name = repo.repo.full_name();
         let detail = format!("run #{} of {} at {}", run.number, run.workflow_path, run.sha);
         self.audit().record(AuditEntry::new(AuditAction::ActionsRunApproved).by(actor).on(full_name.clone()).detail(detail)).await;

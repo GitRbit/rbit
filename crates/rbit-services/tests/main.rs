@@ -11,6 +11,7 @@ mod actions_fixture;
 mod actions_pulls;
 mod actions_pushes;
 mod actions_runs;
+mod actions_statuses;
 mod admin;
 mod audit;
 mod edits;

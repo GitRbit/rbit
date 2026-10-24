@@ -126,7 +126,6 @@ impl StatusService {
     /// Records `report` on commit `sha` (a full id of `repo`, not checked) as rbit Actions:
     /// no creator and no permission check — the caller is the Actions service reporting its
     /// own jobs. `None` when the commit already has the most statuses one context may have.
-    #[expect(dead_code, reason = "the Actions job statuses are its only caller, and they come next")]
     pub(crate) async fn create_as_system(
         &self,
         repo: RepoId,
