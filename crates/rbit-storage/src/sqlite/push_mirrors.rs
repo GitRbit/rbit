@@ -204,10 +204,12 @@ impl PushMirrorStore {
         Ok(result.rows_affected())
     }
 
-    /// Enabled mirrors due at `now`, longest overdue first.
+    /// Enabled mirrors due at `now`, longest overdue first. Mirrors of archived
+    /// repositories are never due: they pause until the repository is unarchived.
     pub async fn due(&self, now: Timestamp, limit: u32) -> Result<Vec<PushMirror>, StorageError> {
-        let rows: Vec<PushMirrorRow> =
-            sqlx::query_as(select_push_mirror!("WHERE enabled = 1 AND next_sync_at <= ? ORDER BY next_sync_at, id LIMIT ?"))
+        let rows: Vec<PushMirrorRow> = sqlx::query_as(select_push_mirror!(
+            "WHERE enabled = 1 AND next_sync_at <= ? AND repo_id NOT IN (SELECT repo_id FROM repo_archives) ORDER BY next_sync_at, id LIMIT ?"
+        ))
                 .bind(now.seconds())
                 .bind(limit)
                 .fetch_all(&self.pool)
@@ -215,10 +217,14 @@ impl PushMirrorStore {
         Ok(rows.into_iter().map(PushMirror::from).collect())
     }
 
-    /// The earliest time an enabled mirror is due, if any.
+    /// The earliest time an enabled mirror of a repository that is not archived is due,
+    /// if any.
     pub async fn next_due(&self) -> Result<Option<Timestamp>, StorageError> {
-        let next: Option<i64> =
-            sqlx::query_scalar("SELECT MIN(next_sync_at) FROM repo_push_mirrors WHERE enabled = 1").fetch_one(&self.pool).await?;
+        let next: Option<i64> = sqlx::query_scalar(
+            "SELECT MIN(next_sync_at) FROM repo_push_mirrors WHERE enabled = 1 AND repo_id NOT IN (SELECT repo_id FROM repo_archives)",
+        )
+        .fetch_one(&self.pool)
+        .await?;
         Ok(next.map(Timestamp))
     }
 

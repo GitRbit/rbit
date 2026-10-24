@@ -430,6 +430,7 @@ mod tests {
                 created_at: Timestamp(1_792_022_400),
                 updated_at: Timestamp(1_792_022_460),
                 pushed_at: None,
+                archived_at: None,
             },
             owner,
         }

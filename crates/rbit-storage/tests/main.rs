@@ -7,6 +7,7 @@ mod query_count;
 
 mod access_tokens;
 mod accounts;
+mod archives;
 mod collaborators;
 mod external_identities;
 mod imports;

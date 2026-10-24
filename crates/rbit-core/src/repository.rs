@@ -90,6 +90,19 @@ pub struct Repository {
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     pub pushed_at: Option<Timestamp>,
+    /// When the repository was archived; `None` while it accepts changes.
+    pub archived_at: Option<Timestamp>,
+}
+
+/// Why an archived repository refuses a change, shown to people and Git clients alike.
+pub const ARCHIVED_READ_ONLY: &str = "This repository is archived and read-only; an administrator can unarchive it in its settings";
+
+impl Repository {
+    /// Archived repositories are read-only: they can be read, cloned, forked and starred,
+    /// but nothing in them changes until they are unarchived.
+    pub const fn is_archived(&self) -> bool {
+        self.archived_at.is_some()
+    }
 }
 
 /// A repository together with its owner — the shape almost every page needs.

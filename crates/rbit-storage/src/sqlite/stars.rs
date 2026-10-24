@@ -112,7 +112,8 @@ impl StarStore {
     ) -> Result<Vec<OwnedRepository>, StorageError> {
         let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM stars s JOIN repositories r ON r.id = s.repo_id JOIN accounts o ON o.id = r.owner_id \
              WHERE s.account_id = ?1 AND ",

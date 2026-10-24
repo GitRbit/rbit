@@ -560,3 +560,18 @@ async fn dashboard_mentions_start_empty_and_index_completion_persists() {
     db.database.issue_search().finish_mentions_index().await.unwrap();
     assert!(db.database.issue_search().mentions_indexed().await.unwrap());
 }
+
+#[tokio::test]
+async fn existing_repositories_upgrade_unarchived_and_can_be_archived() {
+    let db = upgraded().await;
+    assert!(db.exists("table", "repo_archives").await);
+    assert_eq!(db.count("SELECT COUNT(*) FROM repo_archives").await, 0);
+    let repositories = db.database.repositories();
+    let rocket = repositories.find_by_path("ACME", "Rocket").await.unwrap().unwrap();
+    assert!(!rocket.repo.is_archived(), "repositories from before the migration accept changes");
+
+    assert!(db.database.repo_settings().archive(ROCKET, ALICE, Timestamp(1_800_000_000)).await.unwrap());
+    let rocket = repositories.find_by_path("ACME", "Rocket").await.unwrap().unwrap();
+    assert_eq!(rocket.repo.archived_at, Some(Timestamp(1_800_000_000)));
+    assert_eq!(rocket.repo.default_branch, "trunk", "the repository row is untouched");
+}

@@ -57,7 +57,8 @@ macro_rules! select_owned_repo {
     ($($clause:expr),+) => {
         concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM repositories r JOIN accounts o ON o.id = r.owner_id ",
             $($clause),+
@@ -161,7 +162,8 @@ impl RepositoryStore {
         let row: RepositoryRow = sqlx::query_as(
             "INSERT INTO repositories (owner_id, name, description, visibility, default_branch, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?) \
-             RETURNING id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at",
+             RETURNING id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at, \
+             NULL AS archived_at",
         )
         .bind(new.owner_id.0)
         .bind(new.name.as_str())
