@@ -26,6 +26,8 @@
 //!   runs (a mirror, a task) starts none. Closing a pull request first cancels its runs that
 //!   have not started (waiting, held or awaiting approval). A skip marker in the title skips
 //!   its runs.
+//! * A push that may start runs and moves the default branch also refreshes the
+//!   repository's schedule ([`super::schedules`]), whatever its commit message says.
 //! * A new repository gets its Actions settings row (`enable_for_new_repositories`) before
 //!   any later event is read, so its first push already sees it.
 //! * `RecvError::Lagged`: logged and counted ([`ActionsService::missed_events`]); nothing is
@@ -172,6 +174,15 @@ impl ActionsService {
             .collect();
         if updates.is_empty() {
             return Ok(Vec::new());
+        }
+        let default_head = updates
+            .iter()
+            .find(|update| update.branch() == Some(owned.repo.default_branch.as_str()))
+            .and_then(|update| update.after.clone());
+        if let Some(head) = default_head
+            && let Err(error) = self.refresh_schedules(&owned, &head, Timestamp::now()).await
+        {
+            tracing::warn!(%error, repo = %owned.full_name(), "cannot refresh the repository's schedule");
         }
         let reader = self.reader(&owned);
         let (limits, default_branch, full_name) = (self.limits(), owned.repo.default_branch.clone(), owned.full_name());

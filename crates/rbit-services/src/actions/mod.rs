@@ -119,6 +119,7 @@ impl ActionsService {
         // from here on is missed.
         let events = self.inner.ctx.events.subscribe();
         self.inner.tasks.spawn(self.clone().follow_events(events));
+        self.inner.tasks.spawn(self.clone().run_schedules());
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from

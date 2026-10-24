@@ -5,6 +5,7 @@ mod access;
 // Actions: foundation (F).
 mod actions;
 // Actions: triggers (T).
+mod actions_dispatch;
 #[path = "support/actions_fixture.rs"]
 mod actions_fixture;
 mod actions_pulls;
