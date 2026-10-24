@@ -26,7 +26,7 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rbit_auth::AccessTokenSecret;
-use rbit_core::{TokenScope, User};
+use rbit_core::{PushSource, TokenScope, User};
 use rbit_services::{RepoContext, ServiceError, ThrottleScope, mirrors, protection::PushActor, two_factor::GitPasswordOutcome};
 use rbit_transport::{
     ReceiveOptions, Service,
@@ -95,15 +95,16 @@ async fn run_service(
     body: Body,
     service: Service,
 ) -> Response {
-    let (ctx, user) = match authorize(&state, &client, &headers, &owner, &repo, service).await {
+    let (ctx, caller) = match authorize(&state, &client, &headers, &owner, &repo, service).await {
         Ok(authorized) => authorized,
         Err(denied) => return denied.into_response(),
     };
+    let user = caller.as_ref().map(|caller| &caller.user);
 
     let request = request_reader(&headers, body);
     // The push gate runs on the resolved repository, after the access and mirror checks.
     let (request, options) = if service.is_write() {
-        match push_gate(&state, &ctx, user.as_ref(), request).await {
+        match push_gate(&state, &ctx, user, request).await {
             Gate::Pass(request, options) => (request, options),
             Gate::Answer(response) => return response,
         }
@@ -112,8 +113,11 @@ async fn run_service(
     };
 
     // Taken after the verdict and before git starts, so the push's ref updates can be
-    // reported afterwards.
-    let pending = if service.is_write() { Some(state.services.pushes.begin(&ctx, user.as_ref().map(User::id)).await) } else { None };
+    // reported afterwards. `authorize` admits no anonymous push, so every push has a caller.
+    let pending = match &caller {
+        Some(caller) if service.is_write() => Some(state.services.pushes.begin(&ctx, caller.push_source()).await),
+        _ => None,
+    };
     let session = match state.transport.serve(service, &ctx.disk_path, git_protocol(&headers), options, request) {
         Ok(session) => session,
         Err(error) => {
@@ -263,8 +267,17 @@ pub(super) struct GitCaller {
     pub(super) token_scope: Option<TokenScope>,
 }
 
+impl GitCaller {
+    /// Where a push by this caller comes from. Every caller is a user today; a task token
+    /// (`docs/design/actions.md` §11.3) becomes a caller kind of its own that maps to
+    /// [`PushSource::Task`], so its pushes start no runs (§11.5).
+    pub(super) fn push_source(&self) -> PushSource {
+        PushSource::User(self.user.id())
+    }
+}
+
 /// Resolves credentials and checks that they grant `service` on the repository.
-/// Returns the repository and the authenticated account, if any.
+/// Returns the repository and the authenticated caller, if any.
 async fn authorize(
     state: &AppState,
     client: &Client,
@@ -272,7 +285,7 @@ async fn authorize(
     owner: &str,
     repo: &str,
     service: Service,
-) -> Result<(RepoContext, Option<User>), Denied> {
+) -> Result<(RepoContext, Option<GitCaller>), Denied> {
     let caller = authenticate(state, client, headers).await?;
     let user = caller.as_ref().map(|caller| &caller.user);
 
@@ -292,14 +305,14 @@ async fn authorize(
         ctx.access = scope.limit(ctx.access);
     }
     if !service.is_write() {
-        return Ok((ctx, user.cloned()));
+        return Ok((ctx, caller));
     }
     if !ctx.access.can_write() {
         return Err(if caller.is_none() { Denied::Challenge } else { Denied::Forbidden });
     }
     // Checked after access, so only those who could otherwise push learn it is a mirror.
     match state.services.mirrors.is_mirror(ctx.repo.repo.id).await {
-        Ok(false) => Ok((ctx, user.cloned())),
+        Ok(false) => Ok((ctx, caller)),
         Ok(true) => Err(Denied::Mirror),
         Err(error) => {
             tracing::error!(%error, "git mirror check failed");
@@ -385,6 +398,26 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         let body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
         assert_eq!(&body[..], mirrors::PUSH_REFUSED.as_bytes());
+    }
+
+    #[test]
+    fn users_push_as_themselves() {
+        let user = User {
+            account: rbit_core::Account {
+                id: rbit_core::AccountId(5),
+                kind: rbit_core::AccountKind::User,
+                name: "alice".parse().unwrap(),
+                display_name: None,
+                bio: None,
+                created_at: rbit_core::Timestamp(1_792_022_400),
+            },
+            email: "alice@example.com".parse().unwrap(),
+            is_admin: false,
+        };
+        for token_scope in [None, Some(TokenScope::Write)] {
+            let caller = GitCaller { user: user.clone(), token_scope };
+            assert_eq!(caller.push_source(), PushSource::User(rbit_core::AccountId(5)));
+        }
     }
 
     #[test]

@@ -76,7 +76,8 @@ struct ForgeState {
 
 impl FakeForge {
     /// Builds the source repository and starts serving it. `clone_url` overrides the
-    /// clone URL the API reports (to make the Git copy fail).
+    /// clone URL the API reports (to make the Git copy fail). An empty `token` serves the
+    /// Git remote without authentication.
     pub async fn start(token: &str, clone_url: Option<&str>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let remote_dir = build_repository(dir.path());
@@ -376,8 +377,13 @@ async fn listing(
 }
 
 /// Whether `headers` carry the token as Git and LFS send it (Basic, token as password).
+/// Whether a Git or LFS request carries the token. With an empty token the remote is
+/// public, as a pull mirror's upstream must be (mirrors send no credentials).
 fn has_git_token(state: &ForgeState, headers: &HeaderMap) -> bool {
     use base64::Engine as _;
+    if state.token.is_empty() {
+        return true;
+    }
     let expected = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("x-access-token:{}", state.token)));
     headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) == Some(expected.as_str())
 }

@@ -41,7 +41,7 @@ use std::{
 };
 
 use rbit_core::{
-    Account, RepoId, Timestamp, User,
+    Account, PushSource, RepoId, Timestamp, User,
     release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseId, validate_asset_name, validate_release_name, validate_release_notes},
 };
 use rbit_git::GitError;
@@ -260,7 +260,7 @@ impl ReleaseService {
     /// Creates tag `tag` at `target` for a new release, reported like a push of the tag
     /// ([`DomainEvent::RepositoryPushed`]) so caches and webhooks see it.
     async fn create_tag(&self, repo: &RepoContext, actor: &User, tag: &str, target: &str) -> Result<(), ServiceError> {
-        let pending = self.inner.pushes.begin(repo, Some(actor.id())).await;
+        let pending = self.inner.pushes.begin(repo, PushSource::User(actor.id())).await;
         match repo.reader.create_tag(tag.to_owned(), target.to_owned()).await {
             Ok(_) => {
                 self.inner.pushes.complete(pending).await;

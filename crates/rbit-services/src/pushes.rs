@@ -1,15 +1,17 @@
 //! Recording accepted pushes.
 //!
 //! Both Git transports (smart HTTP and SSH) call [`PushService::begin`] before running
-//! `git receive-pack` and [`PushService::complete`] once it succeeded. Completing a push
-//! marks the repository as pushed and publishes [`DomainEvent::RepositoryPushed`] with the
-//! refs that changed, computed from snapshots taken before and after (`receive-pack`
-//! runs without hooks, so this is how rbit learns what a push did).
+//! `git receive-pack` and [`PushService::complete`] once it succeeded; so does everything
+//! else that changes refs (mirror fetches, merges, browser edits, release tags, deleting a
+//! merged head branch). Completing a push marks the repository as pushed and publishes
+//! [`DomainEvent::RepositoryPushed`] with the refs that changed, computed from snapshots
+//! taken before and after (`receive-pack` runs without hooks, so this is how rbit learns
+//! what a push did), and with the [`PushSource`] the caller named.
 //!
 //! Recording never fails the push: the objects are already accepted, so problems reading
 //! refs or updating `pushed_at` are logged and the event is still published.
 
-use rbit_core::{AccountId, RepoId};
+use rbit_core::{PushSource, RepoId};
 use rbit_git::{RefSnapshot, RepositoryReader};
 
 use crate::{DomainEvent, RepoContext, ServiceContext};
@@ -19,11 +21,11 @@ pub struct PushService {
     ctx: ServiceContext,
 }
 
-/// A push in progress: who pushes where, and the refs as they were before.
+/// A push in progress: where it came from, where it goes, and the refs as they were before.
 #[derive(Debug)]
 pub struct PendingPush {
     repo: RepoId,
-    pusher: Option<AccountId>,
+    source: PushSource,
     reader: RepositoryReader,
     before: Option<RefSnapshot>,
 }
@@ -33,9 +35,9 @@ impl PushService {
         Self { ctx }
     }
 
-    /// Snapshots the refs of `repo` before `git receive-pack` starts. `pusher` is the
-    /// authenticated account, or `None` for a deploy key.
-    pub async fn begin(&self, repo: &RepoContext, pusher: Option<AccountId>) -> PendingPush {
+    /// Snapshots the refs of `repo` before `git receive-pack` starts. `source` is who is
+    /// accountable for the push; the event reports it unchanged.
+    pub async fn begin(&self, repo: &RepoContext, source: PushSource) -> PendingPush {
         let before = match repo.reader.ref_snapshot().await {
             Ok(snapshot) => Some(snapshot),
             Err(error) => {
@@ -43,7 +45,7 @@ impl PushService {
                 None
             }
         };
-        PendingPush { repo: repo.repo.repo.id, pusher, reader: repo.reader.clone(), before }
+        PendingPush { repo: repo.repo.repo.id, source, reader: repo.reader.clone(), before }
     }
 
     /// Records a push that `git receive-pack` accepted and publishes
@@ -60,7 +62,7 @@ impl PushService {
                 Vec::new()
             }
         };
-        self.ctx.events.publish(DomainEvent::RepositoryPushed { repo: push.repo, pusher: push.pusher, updates });
+        self.ctx.events.publish(DomainEvent::RepositoryPushed { repo: push.repo, source: push.source, updates });
     }
 }
 
@@ -68,7 +70,7 @@ impl PushService {
 mod tests {
     use std::{path::Path, process::Command, sync::Arc};
 
-    use rbit_core::{Config, Visibility};
+    use rbit_core::{Config, PushSource, Visibility};
     use rbit_storage::{Database, KvStore};
 
     use crate::{CreateRepository, DomainEvent, Services, SignUp};
@@ -100,7 +102,7 @@ mod tests {
         let repo = services.repositories.open(Some(&user), "ada", "demo").await.unwrap();
         let mut events = services.events.subscribe();
 
-        let pending = services.pushes.begin(&repo, Some(user.id())).await;
+        let pending = services.pushes.begin(&repo, PushSource::User(user.id())).await;
         let work = tempfile::tempdir().unwrap();
         git(work.path(), &["init", "-q"]);
         std::fs::write(work.path().join("README.md"), "# Demo\n").unwrap();
@@ -109,10 +111,10 @@ mod tests {
         git(work.path(), &["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:refs/heads/main"]);
         services.pushes.complete(pending).await;
 
-        let DomainEvent::RepositoryPushed { repo: pushed, pusher, updates } = events.recv().await.unwrap() else {
+        let DomainEvent::RepositoryPushed { repo: pushed, source, updates } = events.recv().await.unwrap() else {
             panic!("expected a push event");
         };
-        assert_eq!((pushed, pusher), (repo.repo.repo.id, Some(user.id())));
+        assert_eq!((pushed, source), (repo.repo.repo.id, PushSource::User(user.id())));
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].branch(), Some("main"));
         assert!(updates[0].is_created() && updates[0].after.as_ref().is_some_and(|id| id.len() == 40));

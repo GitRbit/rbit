@@ -19,7 +19,7 @@ use std::sync::{
 };
 
 use rbit_core::{
-    AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
+    AccountId, CommentId, IssueId, IssueKind, IssueNumber, PushSource, ReleaseId, RepoId, ReviewId,
     issue::{CommentAction, IssueAction, ReviewAction},
     membership::Permission,
     status::StatusId,
@@ -35,11 +35,13 @@ const CHANNEL_CAPACITY: usize = 1024;
 /// subscribers always read current state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainEvent {
-    /// A push (HTTP or SSH) was accepted. Published by [`crate::PushService::complete`].
+    /// Refs of a repository changed: a push over HTTP or SSH, a mirror fetch, or a
+    /// change made in the browser (a merge, a file edit, a release's tag). Published by
+    /// [`crate::PushService::complete`].
     RepositoryPushed {
         repo: RepoId,
-        /// The account that pushed; `None` for deploy keys.
-        pusher: Option<AccountId>,
+        /// Where the push came from; [`PushSource::pusher`] is the account, if any.
+        source: PushSource,
         /// The refs the push changed, ordered by name. Empty when nothing changed (or the
         /// refs could not be read; that is logged).
         updates: Vec<RefUpdate>,
@@ -203,7 +205,7 @@ mod tests {
         bus.publish(DomainEvent::UserSignedUp { user: AccountId(1) });
 
         let mut subscriber = bus.subscribe();
-        let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), pusher: Some(AccountId(1)), updates: Vec::new() };
+        let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), source: PushSource::User(AccountId(1)), updates: Vec::new() };
         bus.publish(pushed.clone());
         assert_eq!(subscriber.recv().await.unwrap(), pushed);
     }

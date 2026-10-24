@@ -20,6 +20,7 @@ pub mod network;
 pub mod org;
 pub mod protection;
 pub mod pull;
+pub mod push_source;
 pub mod ref_update;
 pub mod references;
 pub mod release;
@@ -48,6 +49,7 @@ pub use issue::{
 pub use membership::{BasePermission, Permission, TeamName};
 pub use names::{AccountName, Email, NameError, RepoName};
 pub use org::{OrgMember, OrgMembership, OrgRole, Organization};
+pub use push_source::PushSource;
 pub use ref_update::RefUpdate;
 pub use release::ReleaseId;
 pub use repository::{OwnedRepository, RepoId, RepoSort, Repository, Visibility};

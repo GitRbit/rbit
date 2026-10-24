@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rbit_core::{Config, User, Visibility};
+use rbit_core::{Config, PushSource, User, Visibility};
 use rbit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, releases::ReleaseInput};
 use rbit_storage::{Database, KvStore, NewUser};
 use tokio::io::AsyncReadExt;
@@ -123,10 +123,10 @@ async fn a_release_can_create_its_tag_from_a_branch() {
     assert_eq!(release.tag_name, "v3");
     let main = repo.reader.commit_id("main".into()).await.unwrap();
     assert_eq!(repo.reader.commit_id("v3".into()).await.unwrap(), main);
-    let DomainEvent::RepositoryPushed { updates, pusher, .. } = events.recv().await.unwrap() else {
+    let DomainEvent::RepositoryPushed { updates, source, .. } = events.recv().await.unwrap() else {
         panic!("the new tag is reported first")
     };
-    assert_eq!((updates.len(), updates[0].tag(), pusher), (1, Some("v3"), Some(alice.id())));
+    assert_eq!((updates.len(), updates[0].tag(), source), (1, Some("v3"), PushSource::User(alice.id())));
     assert!(matches!(events.recv().await.unwrap(), DomainEvent::ReleasePublished { .. }));
 
     assert!(matches!(releases.create(&repo, &alice, new_tag("v4", "nope")).await, Err(ServiceError::Invalid(_))));

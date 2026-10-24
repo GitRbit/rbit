@@ -5,7 +5,7 @@
 use std::{path::Path, process::Command, sync::Arc};
 
 use rbit_core::{
-    Config, IssueNumber, IssueState, Permission, StateReason, TimelineEvent, User, Visibility,
+    Config, IssueNumber, IssueState, Permission, PushSource, StateReason, TimelineEvent, User, Visibility,
     issue::{IssueAction, MergeStrategy, ReviewState},
     pull::{HeadSpec, Mergeability, ReviewSide},
 };
@@ -104,7 +104,7 @@ impl Fixture {
     /// Pushes `refspec` from the work tree to `owner/demo` and reports it like a transport.
     async fn push(&self, pusher: &User, owner: &str, args: &[&str]) {
         let repo = self.repo(pusher, owner).await;
-        let pending = self.services.pushes.begin(&repo, Some(pusher.id())).await;
+        let pending = self.services.pushes.begin(&repo, PushSource::User(pusher.id())).await;
         let mut full = vec!["push", "-q"];
         full.extend_from_slice(args);
         let path = repo.disk_path.to_str().unwrap().to_owned();
@@ -112,8 +112,8 @@ impl Fixture {
         git(&self.work, &full);
         let mut events = self.services.events.subscribe();
         self.services.pushes.complete(pending).await;
-        let Ok(DomainEvent::RepositoryPushed { repo, pusher, updates }) = events.recv().await else { panic!("a push event") };
-        self.services.pulls.handle_push(repo, pusher, &updates).await.unwrap();
+        let Ok(DomainEvent::RepositoryPushed { repo, source, updates }) = events.recv().await else { panic!("a push event") };
+        self.services.pulls.handle_push(repo, source, &updates).await.unwrap();
     }
 
     async fn open_pull(&self, viewer: &User, number: u32) -> PullContext {
@@ -284,7 +284,14 @@ async fn a_fork_pull_request_follows_pushes_and_outlives_the_fork() {
 
     let before = ctx.pull.head_sha.clone();
     commit(&fixture.work, "fork.txt", "from the fork, fixed\n", "Fix the typo");
+    let mut published = fixture.services.events.subscribe();
     fixture.push(&fixture.bob, "bob", &["fork-work"]).await;
+    // `synchronize` knows where the push that moved the head came from.
+    let synchronized = std::iter::from_fn(|| published.try_recv().ok()).find_map(|event| match event {
+        DomainEvent::Issue { actor, action: IssueAction::Synchronized { source, .. }, .. } => Some((actor, source)),
+        _ => None,
+    });
+    assert_eq!(synchronized, Some((Some(fixture.bob.id()), PushSource::User(fixture.bob.id()))));
     let moved = fixture.open_pull(&fixture.alice, number).await;
     assert_ne!(moved.pull.head_sha, before);
     assert_eq!(base.reader.commit_id(format!("refs/pull/{number}/head")).await.unwrap(), moved.pull.head_sha);

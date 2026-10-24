@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use rbit_core::{Config, Permission, User, Visibility};
+use rbit_core::{Config, Permission, PushSource, User, Visibility};
 use rbit_services::{CreateRepository, RepoContext, ServiceError, Services, push_mirrors::PushMirrorInput};
 use rbit_storage::{Database, NewUser};
 
@@ -151,7 +151,7 @@ async fn pushes_to_the_repository_are_mirrored_in_the_background() {
 
     // Both are pushed once right away (empty), then only the one that syncs on push follows.
     wait_until(|| async { fx.services.push_mirrors.list(&repo).await.unwrap().iter().all(|m| m.last_attempt_at.is_some()) }).await;
-    let pending = fx.services.pushes.begin(&repo, Some(alice.id())).await;
+    let pending = fx.services.pushes.begin(&repo, PushSource::User(alice.id())).await;
     push_commit(&repo, &fx.dir.path().join("scratch"), "main", "a.txt");
     fx.services.pushes.complete(pending).await;
     wait_until(|| async { refs(&remote) == ["refs/heads/main"] }).await;

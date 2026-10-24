@@ -12,7 +12,7 @@ use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AccountId, NameError, RepoAccess, RepoId, Timestamp, User};
+use crate::{AccountId, NameError, PushSource, RepoAccess, RepoId, Timestamp, User};
 
 // ------------------------------------------------------------------ ids
 
@@ -551,6 +551,9 @@ pub enum IssueAction {
     Synchronized {
         before: String,
         after: String,
+        /// Where the push that moved it came from. The event's `actor` is only its
+        /// account; Actions also needs to know a mirror or task push (§11.2).
+        source: PushSource,
     },
     ReviewRequested {
         reviewer: AccountId,

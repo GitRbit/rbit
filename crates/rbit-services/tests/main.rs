@@ -8,10 +8,14 @@ mod admin;
 mod audit;
 mod edits;
 mod external_auth;
+// The fake GitHub that imports and mirrors fetch from.
+#[path = "support/fake_forge.rs"]
+mod fake_forge;
 mod forks;
 mod imports;
 mod issues;
 mod lfs;
+mod mirrors;
 mod notification_email;
 mod notifications;
 mod orgs;

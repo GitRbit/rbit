@@ -2,12 +2,8 @@
 //! LFS objects, labels, milestones, issues and pull requests with preserved numbers and
 //! attribution, releases with files — against real stores and a temporary data directory.
 
-#[path = "support/fake_forge.rs"]
-mod fake_forge;
-
 use std::{sync::Arc, time::Duration};
 
-use fake_forge::{FakeForge, LFS_CONTENT, RELEASE_FILE};
 use rbit_core::{
     Config, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, StateReason, Timestamp, User, Visibility,
     config::AuthorMapping,
@@ -17,6 +13,8 @@ use rbit_core::{
 use rbit_services::{DomainEvent, RepoContext, ServiceError, Services, imports::ImportInput};
 use rbit_storage::{Database, NewUser, sqlite::issues::NewIssue, sqlite::issues::StoredTimelineItem};
 use tokio::io::AsyncReadExt;
+
+use crate::fake_forge::{FakeForge, LFS_CONTENT, RELEASE_FILE};
 
 const TOKEN: &str = "ghp_secret123";
 

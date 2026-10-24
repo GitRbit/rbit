@@ -10,7 +10,7 @@
 use std::{sync::Arc, sync::atomic::Ordering, time::Duration};
 
 use rbit_core::{
-    AccountId, Issue, RefUpdate, RepoId, StateReason, TimelineEvent, Timestamp,
+    AccountId, Issue, PushSource, RefUpdate, RepoId, StateReason, TimelineEvent, Timestamp,
     issue::IssueAction,
     pull::{Mergeability, PullRequest},
 };
@@ -69,8 +69,8 @@ impl PullService {
                 event = events.recv() => event,
             };
             match event {
-                Ok(DomainEvent::RepositoryPushed { repo, pusher, updates }) => {
-                    if let Err(error) = self.handle_push(repo, pusher, &updates).await {
+                Ok(DomainEvent::RepositoryPushed { repo, source, updates }) => {
+                    if let Err(error) = self.handle_push(repo, source, &updates).await {
                         tracing::warn!(%error, repo = repo.0, "cannot update pull requests after a push");
                     }
                 }
@@ -92,15 +92,15 @@ impl PullService {
 
     /// Applies one push to the pull requests whose head or base it moved. Public so tests
     /// can drive it without the background task.
-    pub async fn handle_push(&self, repo: RepoId, pusher: Option<AccountId>, updates: &[RefUpdate]) -> Result<(), ServiceError> {
+    pub async fn handle_push(&self, repo: RepoId, source: PushSource, updates: &[RefUpdate]) -> Result<(), ServiceError> {
         let store = self.ctx().database.pulls();
         for update in updates {
             let Some(branch) = update.branch() else { continue };
             for (issue, pull) in store.open_with_head(repo, branch).await? {
-                self.head_moved(&issue, &pull, update, pusher).await?;
+                self.head_moved(&issue, &pull, update, source).await?;
             }
             for (issue, pull) in store.open_with_base(repo, branch).await? {
-                self.base_moved(&issue, &pull, update, pusher).await?;
+                self.base_moved(&issue, &pull, update, source.pusher()).await?;
             }
         }
         self.inner.wake.notify_one();
@@ -138,13 +138,10 @@ impl PullService {
         Ok(queued)
     }
 
-    async fn head_moved(
-        &self,
-        issue: &Issue,
-        pull: &PullRequest,
-        update: &RefUpdate,
-        pusher: Option<AccountId>,
-    ) -> Result<(), ServiceError> {
+    /// The head branch moved. `source` travels on to `IssueAction::Synchronized`, so the
+    /// `synchronize` event knows a mirror or task push from a person's (§11.2).
+    async fn head_moved(&self, issue: &Issue, pull: &PullRequest, update: &RefUpdate, source: PushSource) -> Result<(), ServiceError> {
+        let pusher = source.pusher();
         let Some(after) = &update.after else {
             self.inner.timeline.record(issue.id, pusher, TimelineEvent::HeadRefDeleted { branch: pull.head_branch.clone() }).await?;
             return Ok(());
@@ -176,7 +173,7 @@ impl PullService {
             .timeline
             .record(issue.id, pusher, TimelineEvent::HeadPushed { before: before.clone(), after: stored.clone(), count, forced })
             .await?;
-        self.publish(issue, pusher, IssueAction::Synchronized { before, after: stored.clone() });
+        self.publish(issue, pusher, IssueAction::Synchronized { before, after: stored.clone(), source });
         self.mark_outdated(issue, &base, &stored).await?;
         Ok(())
     }
