@@ -49,7 +49,7 @@ pub mod trust;
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicI64, Ordering},
+        atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -80,6 +80,11 @@ struct Inner {
     tasks_version: AtomicI64,
     /// Workflow evaluations at once (`[actions] evaluation_concurrency`).
     evaluations: Arc<Semaphore>,
+    // Actions: triggers (T).
+    /// Concurrency-group decisions, one at a time (see [`runs`]).
+    groups: tokio::sync::Mutex<()>,
+    /// Domain events the subscriber missed because it fell behind.
+    missed_events: AtomicU64,
 }
 
 impl ActionsService {
@@ -97,6 +102,9 @@ impl ActionsService {
                 started: AtomicBool::new(false),
                 tasks_version: AtomicI64::new(initial_tasks_version()),
                 evaluations,
+                // Actions: triggers (T).
+                groups: tokio::sync::Mutex::new(()),
+                missed_events: AtomicU64::new(0),
             }),
         })
     }
@@ -107,6 +115,10 @@ impl ActionsService {
             return;
         }
         tracing::info!(evaluation_concurrency = self.config().evaluation_concurrency, "Actions is enabled");
+        // Actions: triggers (T). Subscribed before anything else runs, so no event published
+        // from here on is missed.
+        let events = self.inner.ctx.events.subscribe();
+        self.inner.tasks.spawn(self.clone().follow_events(events));
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from
@@ -126,6 +138,11 @@ impl ActionsService {
 
     pub fn config(&self) -> &ActionsConfig {
         &self.inner.ctx.config.actions
+    }
+
+    // Actions: triggers (T).
+    fn ctx(&self) -> &ServiceContext {
+        &self.inner.ctx
     }
 
     /// The limits a workflow file of this instance is parsed and planned within.
