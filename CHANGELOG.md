@@ -7,13 +7,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-10-23
+## [0.1.4] - 2026-10-24
 
 ### Security
 
 - Update `crypto-bigint` to 0.7.6 and `ctutils` to 0.4.5 to address constant-time
   arithmetic issues ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)).
-- Update `ctutils` to 0.4.4 to fix constant-time comparisons
+- Include the `ctutils` constant-time comparison fixes
   ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
 
 ### Added
@@ -39,6 +39,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Update `async-compression` to 0.4.51 and its compression codec dependencies.
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
   commit history focused on the selected branch and its paginated commits.
 

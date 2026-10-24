@@ -1,6 +1,6 @@
 # rbit — Handoff
 
-## Current project status — 2026-10-23
+## Current project status — 2026-10-24
 
 The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
 licensed under MIT OR Apache-2.0. The workspace version is `0.1.4`, and
