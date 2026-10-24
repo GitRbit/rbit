@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -21,6 +21,7 @@ rbit-services = { path = "crates/rbit-services" }
 rbit-web = { path = "crates/rbit-web" }
 rbit-ssh = { path = "crates/rbit-ssh" }
 rbit-mail = { path = "crates/rbit-mail" }
+rbit-workflow = { path = "crates/rbit-workflow" }
 
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }
@@ -106,6 +107,11 @@ proptest = "1"
 # Windows builds need neither CMake nor NASM.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 # --- R: repository essentials (archives, releases, blame, compare, forks, mirrors) ---
+
+# --- Actions ---
+# GitHub filter patterns compile to anchored expressions; regex-automata is already in the
+# tree (through fancy-regex and tracing-subscriber), so the patterns add no crate.
+regex-automata = "0.4"
 
 # Testing
 tempfile = "3"
