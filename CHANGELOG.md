@@ -9,6 +9,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Update `crypto-bigint` to 0.7.6 and `ctutils` to 0.4.5 to address constant-time
+  arithmetic issues ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)).
 - Update `ctutils` to 0.4.4 to fix constant-time comparisons
   ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
 
@@ -51,6 +53,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Clarify the README introduction to describe rbit as Git hosting and a Git forge.
 - Clarify private security reporting, remove the broken conduct-reporting contact,
   and add automated checks for GitHub repository configuration and submission paths.
 
