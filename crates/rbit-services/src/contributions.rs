@@ -272,6 +272,8 @@ mod tests {
             disk_path: path,
             repo: rbit_core::OwnedRepository { owner: owner.account, repo: repository },
             access: rbit_core::RepoAccess::Read,
+            viewer: None,
+            collaborator: None,
         }
     }
 

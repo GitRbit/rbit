@@ -4306,6 +4306,9 @@ dependencies = [
 name = "rbit-storage"
 version = "0.1.3"
 dependencies = [
+ "futures-util",
+ "metrics",
+ "metrics-exporter-prometheus",
  "postcard",
  "rbit-core",
  "redb",

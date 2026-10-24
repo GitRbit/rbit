@@ -378,14 +378,23 @@ impl PullService {
 
     /// Whether `actor` may delete the head branch: write access to the head repository and
     /// no protection rule against deleting it (`ProtectionService::may_delete_branch`).
+    ///
+    /// A head branch in the base repository uses the access this request already computed
+    /// for `actor` there; a fork's head opens the fork for them.
     pub async fn may_delete_head(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
         let Some(head) = &ctx.head_repo else { return Ok(false) };
-        let head_ctx = match self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await {
-            Ok(head_ctx) => head_ctx,
-            Err(ServiceError::NotFound) => return Ok(false),
-            Err(error) => return Err(error),
+        let opened;
+        let head_ctx = if head.repo.id == ctx.repo().repo.repo.id && ctx.repo().viewer == Some(actor.id()) {
+            ctx.repo()
+        } else {
+            opened = match self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await {
+                Ok(head_ctx) => head_ctx,
+                Err(ServiceError::NotFound) => return Ok(false),
+                Err(error) => return Err(error),
+            };
+            &opened
         };
-        Ok(head_ctx.access.can_write() && self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await?)
+        Ok(head_ctx.access.can_write() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
     }
 
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete

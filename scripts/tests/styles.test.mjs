@@ -18,3 +18,21 @@ test("scrollbars still darken while the pointer is over the page", () => {
   assert.match(app, /html\s*\{\s*scrollbar-color:\s*var\(--line-strong\) transparent;\s*\}/);
   assert.match(app, /html:hover\s*\{\s*scrollbar-color:\s*var\(--ink-faint\) transparent;\s*\}/);
 });
+
+test("the file tree's current-file marker moves without a transition", () => {
+  // diff.js moves `aria-current` while the page scrolls; a colour transition on the rows
+  // would restyle and repaint the sticky tree on every frame of each fade.
+  const app = sources.find(([name]) => name === "app.css")[1];
+  const rules = [...app.matchAll(/(?:^|\n)([^{}\n]*\.diff-tree-item[^{}]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length > 0);
+  for (const [, selector, body] of rules) {
+    if (selector.includes(":hover")) continue;
+    const unconditional = body.replace(/\bhover:[\w-]+/g, "");
+    assert.doesNotMatch(unconditional, /\btransition(?!-none\b)/, `${selector.trim()} declares a transition`);
+  }
+  const base = rules.find(([, selector]) => selector.trim() === ".diff-tree-item")[2];
+  // File rows are links: without this they keep the base layer's fade on every `a`.
+  assert.match(app, /(?:^|\n)\s*a\s*\{\s*@apply transition-colors/, "the base layer fades links");
+  assert.match(base.replace(/\bhover:[\w-]+/g, ""), /\btransition-none\b/, "rows override the links' fade");
+  assert.match(base, /\bhover:transition-colors\b/, "hovering still fades in");
+});

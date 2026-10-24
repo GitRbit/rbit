@@ -7,12 +7,12 @@
 //! them from its teams when they leave it), and teams are only granted repositories of
 //! their own organisation.
 
+use super::pool::Pool;
 use rbit_core::{
     Account, AccountId, RepoId, Timestamp,
     membership::{Permission, Team, TeamGrant, TeamId, TeamName, TeamSummary},
     repository::OwnedRepository,
 };
-use sqlx::SqlitePool;
 
 use super::{
     collaborators::parse_permission,
@@ -77,11 +77,11 @@ pub enum TeamChange {
 
 #[derive(Debug, Clone)]
 pub struct TeamStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl TeamStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

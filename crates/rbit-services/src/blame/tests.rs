@@ -271,6 +271,8 @@ fn fixture() -> (tempfile::TempDir, RepoContext) {
             },
         },
         access: RepoAccess::Read,
+        viewer: None,
+        collaborator: None,
         reader: RepositoryReader::new(path.clone()),
         disk_path: path,
     };

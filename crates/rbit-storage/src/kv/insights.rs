@@ -210,6 +210,7 @@ impl InsightsCache {
     }
 
     pub async fn put_language_stats(&self, commit_id: &str, stats: &CachedLanguageStats) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let key = commit_id.to_owned();
         let value = encode(stats)?;
@@ -235,6 +236,7 @@ impl InsightsCache {
     }
 
     pub async fn put_last_commits(&self, commit_id: &str, directory: &str, commits: &CachedLastCommits) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (commit_id, directory) = (commit_id.to_owned(), directory.to_owned());
         let value = encode(commits)?;
@@ -263,6 +265,7 @@ impl InsightsCache {
     }
 
     pub async fn put_contributions(&self, tip: &str, policy: &str, records: Arc<CachedContributions>) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (tip, policy) = (tip.to_owned(), policy.to_owned());
         tokio::task::spawn_blocking(move || {
@@ -288,6 +291,7 @@ impl InsightsCache {
     }
 
     pub async fn put_comparison_counts(&self, base: &str, head: &str, counts: CachedComparisonCounts) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (base, head) = (base.to_owned(), head.to_owned());
         let value = encode(&counts)?;

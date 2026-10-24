@@ -2,20 +2,20 @@
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{RepoId, Timestamp, mirror::Mirror};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
 #[derive(Debug, sqlx::FromRow)]
-struct MirrorRow {
-    repo_id: i64,
-    url: String,
-    interval_minutes: i64,
-    next_sync_at: i64,
-    last_sync_at: Option<i64>,
-    last_error: Option<String>,
-    created_at: i64,
+pub(crate) struct MirrorRow {
+    pub(crate) repo_id: i64,
+    pub(crate) url: String,
+    pub(crate) interval_minutes: i64,
+    pub(crate) next_sync_at: i64,
+    pub(crate) last_sync_at: Option<i64>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) created_at: i64,
 }
 
 impl TryFrom<MirrorRow> for Mirror {
@@ -47,11 +47,11 @@ fn minutes(value: u64) -> Result<i64, StorageError> {
 
 #[derive(Debug, Clone)]
 pub struct MirrorStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl MirrorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

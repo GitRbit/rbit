@@ -2,8 +2,8 @@
 //!
 //! Workstream D owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{RepoId, RepoName, Timestamp, Visibility};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -17,11 +17,11 @@ pub struct RepoGeneralSettings {
 
 #[derive(Debug, Clone)]
 pub struct RepoSettingsStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl RepoSettingsStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

@@ -6,7 +6,9 @@ use rbit_core::{
     AccountId, OrgRole, RepoId, Timestamp,
     membership::{BasePermission, Collaborator, Permission},
 };
-use sqlx::{SqliteExecutor, SqlitePool};
+use sqlx::SqliteExecutor;
+
+use super::pool::Pool;
 
 use super::rows::AccountRow;
 use crate::StorageError;
@@ -69,11 +71,11 @@ pub(crate) async fn upsert<'e>(
 
 #[derive(Debug, Clone)]
 pub struct CollaboratorStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl CollaboratorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

@@ -19,6 +19,7 @@ pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+mod pool;
 pub mod preferences;
 pub mod profiles;
 pub mod protection;
@@ -46,7 +47,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePo
 
 pub use access_tokens::{AccessTokenStore, NewAccessToken};
 pub use accounts::{AccountStore, LoginRecord, NewUser, SessionUser};
-pub use repositories::{NewRepository, RepositoryStore};
+pub use repositories::{ForkParent, NewRepository, RepositoryPage, RepositoryStore};
 
 use crate::StorageError;
 
@@ -97,156 +98,161 @@ impl Database {
         Ok(())
     }
 
+    /// The shared pool, labelled with `store` for the contention metrics (`pool`).
+    fn store(&self, store: &'static str) -> pool::Pool {
+        pool::Pool::new(self.pool.clone(), store)
+    }
+
     pub fn accounts(&self) -> AccountStore {
-        AccountStore::new(self.pool.clone())
+        AccountStore::new(self.store("accounts"))
     }
 
     pub fn repositories(&self) -> RepositoryStore {
-        RepositoryStore::new(self.pool.clone())
+        RepositoryStore::new(self.store("repositories"))
     }
 
     pub fn access_tokens(&self) -> AccessTokenStore {
-        AccessTokenStore::new(self.pool.clone())
+        AccessTokenStore::new(self.store("access_tokens"))
     }
 
     pub fn audit(&self) -> audit::AuditStore {
-        audit::AuditStore::new(self.pool.clone())
+        audit::AuditStore::new(self.store("audit"))
     }
 
     pub fn recovery(&self) -> recovery::RecoveryStore {
-        recovery::RecoveryStore::new(self.pool.clone())
+        recovery::RecoveryStore::new(self.store("recovery"))
     }
 
     pub fn ssh_keys(&self) -> ssh_keys::SshKeyStore {
-        ssh_keys::SshKeyStore::new(self.pool.clone())
+        ssh_keys::SshKeyStore::new(self.store("ssh_keys"))
     }
 
     pub fn two_factor(&self) -> two_factor::TwoFactorStore {
-        two_factor::TwoFactorStore::new(self.pool.clone())
+        two_factor::TwoFactorStore::new(self.store("two_factor"))
     }
 
     pub fn admin(&self) -> admin::AdminStore {
-        admin::AdminStore::new(self.pool.clone())
+        admin::AdminStore::new(self.store("admin"))
     }
 
     pub fn instance_settings(&self) -> instance::InstanceSettingsStore {
-        instance::InstanceSettingsStore::new(self.pool.clone())
+        instance::InstanceSettingsStore::new(self.store("instance_settings"))
     }
 
     pub fn orgs(&self) -> orgs::OrgStore {
-        orgs::OrgStore::new(self.pool.clone())
+        orgs::OrgStore::new(self.store("orgs"))
     }
 
     pub fn profiles(&self) -> profiles::ProfileStore {
-        profiles::ProfileStore::new(self.pool.clone())
+        profiles::ProfileStore::new(self.store("profiles"))
     }
 
     pub fn repo_settings(&self) -> repo_settings::RepoSettingsStore {
-        repo_settings::RepoSettingsStore::new(self.pool.clone())
+        repo_settings::RepoSettingsStore::new(self.store("repo_settings"))
     }
 
     pub fn stars(&self) -> stars::StarStore {
-        stars::StarStore::new(self.pool.clone())
+        stars::StarStore::new(self.store("stars"))
     }
 
     // Milestone 2 wave A.
 
     pub fn collaborators(&self) -> collaborators::CollaboratorStore {
-        collaborators::CollaboratorStore::new(self.pool.clone())
+        collaborators::CollaboratorStore::new(self.store("collaborators"))
     }
 
     pub fn teams(&self) -> teams::TeamStore {
-        teams::TeamStore::new(self.pool.clone())
+        teams::TeamStore::new(self.store("teams"))
     }
 
     pub fn webhooks(&self) -> webhooks::WebhookStore {
-        webhooks::WebhookStore::new(self.pool.clone())
+        webhooks::WebhookStore::new(self.store("webhooks"))
     }
 
     pub fn releases(&self) -> releases::ReleaseStore {
-        releases::ReleaseStore::new(self.pool.clone())
+        releases::ReleaseStore::new(self.store("releases"))
     }
 
     pub fn forks(&self) -> forks::ForkStore {
-        forks::ForkStore::new(self.pool.clone())
+        forks::ForkStore::new(self.store("forks"))
     }
 
     pub fn mirrors(&self) -> mirrors::MirrorStore {
-        mirrors::MirrorStore::new(self.pool.clone())
+        mirrors::MirrorStore::new(self.store("mirrors"))
     }
 
     // Frontend wave (T).
 
     pub fn preferences(&self) -> preferences::PreferenceStore {
-        preferences::PreferenceStore::new(self.pool.clone())
+        preferences::PreferenceStore::new(self.store("preferences"))
     }
 
     // Milestone 2 wave B: the shared issue core (T0), then the workstreams.
 
     pub fn issues(&self) -> issues::IssueStore {
-        issues::IssueStore::new(self.pool.clone())
+        issues::IssueStore::new(self.store("issues"))
     }
 
     pub fn issue_meta(&self) -> issue_meta::IssueMetaStore {
-        issue_meta::IssueMetaStore::new(self.pool.clone())
+        issue_meta::IssueMetaStore::new(self.store("issue_meta"))
     }
 
     pub fn issue_search(&self) -> issue_search::IssueSearchStore {
-        issue_search::IssueSearchStore::new(self.pool.clone())
+        issue_search::IssueSearchStore::new(self.store("issue_search"))
     }
 
     pub fn notifications(&self) -> notifications::NotificationStore {
-        notifications::NotificationStore::new(self.pool.clone())
+        notifications::NotificationStore::new(self.store("notifications"))
     }
 
     pub fn pulls(&self) -> pulls::PullStore {
-        pulls::PullStore::new(self.pool.clone())
+        pulls::PullStore::new(self.store("pulls"))
     }
 
     pub fn reviews(&self) -> reviews::ReviewStore {
-        reviews::ReviewStore::new(self.pool.clone())
+        reviews::ReviewStore::new(self.store("reviews"))
     }
 
     pub fn branch_protection(&self) -> protection::BranchProtectionStore {
-        protection::BranchProtectionStore::new(self.pool.clone())
+        protection::BranchProtectionStore::new(self.store("branch_protection"))
     }
 
     // Milestone 3: commit statuses (S).
 
     pub fn commit_statuses(&self) -> statuses::CommitStatusStore {
-        statuses::CommitStatusStore::new(self.pool.clone())
+        statuses::CommitStatusStore::new(self.store("commit_statuses"))
     }
 
     // Milestone 3: email notifications (N).
 
     pub fn notification_email(&self) -> notification_email::NotificationEmailStore {
-        notification_email::NotificationEmailStore::new(self.pool.clone())
+        notification_email::NotificationEmailStore::new(self.store("notification_email"))
     }
 
     pub fn server_secrets(&self) -> server_secrets::ServerSecretStore {
-        server_secrets::ServerSecretStore::new(self.pool.clone())
+        server_secrets::ServerSecretStore::new(self.store("server_secrets"))
     }
 
     // Milestone 3: Git LFS (L).
 
     pub fn lfs(&self) -> lfs::LfsStore {
-        lfs::LfsStore::new(self.pool.clone())
+        lfs::LfsStore::new(self.store("lfs"))
     }
 
     // Milestone 3: external sign-in (O).
 
     pub fn external_identities(&self) -> external_identities::ExternalIdentityStore {
-        external_identities::ExternalIdentityStore::new(self.pool.clone())
+        external_identities::ExternalIdentityStore::new(self.store("external_identities"))
     }
 
     // Milestone 3: importing and push mirrors (M).
 
     pub fn imports(&self) -> imports::ImportStore {
-        imports::ImportStore::new(self.pool.clone())
+        imports::ImportStore::new(self.store("imports"))
     }
 
     pub fn push_mirrors(&self) -> push_mirrors::PushMirrorStore {
-        push_mirrors::PushMirrorStore::new(self.pool.clone())
+        push_mirrors::PushMirrorStore::new(self.store("push_mirrors"))
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.
@@ -286,10 +292,118 @@ pub(crate) mod plans {
         assert!(!analyzed().await.is_empty(), "the planner now knows the table's size");
     }
 
+    /// `.cargo/config.toml` builds the bundled `SQLite` with the query planner stability
+    /// guarantee on, so no statement is re-prepared because a parameter was rebound.
+    #[tokio::test]
+    async fn plans_never_depend_on_bound_values() {
+        let (_dir, database) = database().await;
+        let qpsg: bool = sqlx::query_scalar("SELECT sqlite_compileoption_used('ENABLE_QPSG')").fetch_one(&database.pool).await.unwrap();
+        assert!(qpsg, "SQLite was built without SQLITE_ENABLE_QPSG (LIBSQLITE3_FLAGS in .cargo/config.toml)");
+    }
+
     /// The `detail` lines of `EXPLAIN QUERY PLAN sql`, in order. Parameters stay unbound.
     pub(crate) async fn query_plan(database: &Database, sql: &str) -> Vec<String> {
         let rows: Vec<(i64, i64, i64, String)> =
             sqlx::query_as(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}"))).fetch_all(&database.pool).await.unwrap();
         rows.into_iter().map(|(_, _, _, detail)| detail).collect()
+    }
+
+    /// Planner statistics an instance could have: what `PRAGMA optimize` records.
+    #[derive(Debug, Clone, Copy)]
+    pub(crate) enum Stats {
+        /// None at all, as on a new instance before its tables are analysed.
+        None,
+        /// Every table analysed at one row, as on a new instance with its first account
+        /// and repository (and as long as no table has grown enough to be re-analysed).
+        Tiny,
+        /// Every table analysed at a million rows, ten per value of an index's first
+        /// column and one per unique key.
+        Large,
+    }
+
+    pub(crate) const STATS: [Stats; 3] = [Stats::None, Stats::Tiny, Stats::Large];
+
+    /// The `detail` lines of `EXPLAIN QUERY PLAN sql` with the planner believing `stats`:
+    /// on one connection of its own, with `sqlite_stat1` written for every table and
+    /// index (and `sqlite_stat4` emptied), then reloaded with `ANALYZE sqlite_schema`.
+    pub(crate) async fn query_plan_with(database: &Database, stats: Stats, sql: &str) -> Vec<String> {
+        let mut conn = database.pool.acquire().await.unwrap();
+        // Creates the statistics tables if this database has none yet.
+        sqlx::query("ANALYZE sqlite_schema").execute(&mut *conn).await.unwrap();
+        sqlx::query("DELETE FROM sqlite_stat1").execute(&mut *conn).await.unwrap();
+        let has_stat4: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM sqlite_schema WHERE name = 'sqlite_stat4')")
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap();
+        if has_stat4 {
+            sqlx::query("DELETE FROM sqlite_stat4").execute(&mut *conn).await.unwrap();
+        }
+        let rows = match stats {
+            Stats::None => None,
+            Stats::Tiny => Some(1_u64),
+            Stats::Large => Some(1_000_000),
+        };
+        if let Some(rows) = rows {
+            let tables: Vec<String> = sqlx::query_scalar(
+                "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND sql NOT LIKE 'CREATE VIRTUAL%'",
+            )
+            .fetch_all(&mut *conn)
+            .await
+            .unwrap();
+            for table in tables {
+                let indexes: Vec<(String, bool)> =
+                    sqlx::query_as("SELECT name, \"unique\" FROM pragma_index_list(?)").bind(&table).fetch_all(&mut *conn).await.unwrap();
+                // A table's own row count is recorded only when it has no index.
+                let mut entries = if indexes.is_empty() { vec![(None, rows.to_string())] } else { Vec::new() };
+                for (index, unique) in indexes {
+                    let columns: i64 =
+                        sqlx::query_scalar("SELECT COUNT(*) FROM pragma_index_info(?)").bind(&index).fetch_one(&mut *conn).await.unwrap();
+                    let per_column = (1..=columns).map(|column| {
+                        if unique && column == columns { 1 } else { (rows / 10_u64.pow(u32::try_from(column).unwrap())).max(1) }
+                    });
+                    let stat = std::iter::once(rows).chain(per_column).map(|n| n.to_string()).collect::<Vec<_>>().join(" ");
+                    entries.push((Some(index), stat));
+                }
+                for (index, stat) in entries {
+                    sqlx::query("INSERT INTO sqlite_stat1 (tbl, idx, stat) VALUES (?, ?, ?)")
+                        .bind(&table)
+                        .bind(index)
+                        .bind(stat)
+                        .execute(&mut *conn)
+                        .await
+                        .unwrap();
+                }
+            }
+        }
+        sqlx::query("ANALYZE sqlite_schema").execute(&mut *conn).await.unwrap();
+        let rows: Vec<(i64, i64, i64, String)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(format!("EXPLAIN QUERY PLAN {sql}"))).fetch_all(&mut *conn).await.unwrap();
+        // Leave no statistics behind for the next test on this pool.
+        sqlx::query("DELETE FROM sqlite_stat1").execute(&mut *conn).await.unwrap();
+        sqlx::query("ANALYZE sqlite_schema").execute(&mut *conn).await.unwrap();
+        rows.into_iter().map(|(_, _, _, detail)| detail).collect()
+    }
+
+    /// Fails unless `sql` reads every table by a key under every [`STATS`]: no plan line
+    /// is a `SCAN` other than those starting with one of `allowed` (such as a JSON list of
+    /// ids, `SCAN json_each`).
+    pub(crate) async fn assert_no_scans(database: &Database, sql: &str, allowed: &[&str]) {
+        for stats in STATS {
+            let plan = query_plan_with(database, stats, sql).await;
+            let scans: Vec<_> =
+                plan.iter().filter(|detail| detail.starts_with("SCAN") && !allowed.iter().any(|ok| detail.starts_with(ok))).collect();
+            assert!(scans.is_empty(), "{stats:?} statistics: {scans:?} in {plan:#?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn statistics_scenarios_reach_the_planner() {
+        let (_dir, database) = database().await;
+        // With one-row statistics a join by primary key is cheaper as a scan of the
+        // inner table, so the scenarios do change plans.
+        let sql = "SELECT f.repo_id FROM repo_forks f JOIN repositories r ON r.id = f.parent_id WHERE f.created_at = 0";
+        let tiny = query_plan_with(&database, Stats::Tiny, sql).await;
+        let large = query_plan_with(&database, Stats::Large, sql).await;
+        assert_ne!(tiny, large, "{tiny:#?}");
     }
 }

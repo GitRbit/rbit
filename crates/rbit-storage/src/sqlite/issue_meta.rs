@@ -9,10 +9,10 @@
 //! `IssueStore::touch`. Validation (name lengths, colours, limits) is the services'; the
 //! schema's `CHECK`s are the last line of defence.
 
+use super::pool::Pool;
 use rbit_core::{
     Account, AccountId, CommentId, IssueId, IssueNumber, IssueState, LabelId, MilestoneId, RepoId, Timestamp, issue::LabelSnapshot,
 };
-use sqlx::SqlitePool;
 
 use super::rows::AccountRow;
 use crate::StorageError;
@@ -65,6 +65,15 @@ const ASSIGNABLE: &str = r"WITH candidates (id) AS (
 /// column in `lower()` would read every account instead.
 const ACCOUNTS_NAMED: &str =
     "SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name IN (SELECT value FROM json_each(?)) ORDER BY name";
+
+/// The first ten accounts whose name starts with prefix `?2` (`?1` being its `LIKE`
+/// pattern and `?3` the prefix followed by `char::MAX`), by name. The range on the
+/// name's unique index is spelled out: with the query planner stability guarantee
+/// (`SQLITE_ENABLE_QPSG`) the planner no longer reads the bound pattern to derive it, and
+/// `LIKE ?1` alone would walk the index from the start. The `NOCASE` range holds every
+/// name with the prefix in any case, so the `LIKE` keeps the exact meaning.
+const MENTION_CANDIDATES: &str = "SELECT id, kind, name, display_name, bio, created_at FROM accounts \
+     WHERE name >= ?2 AND name < ?3 AND name LIKE ?1 ESCAPE '\\' ORDER BY name LIMIT 10";
 
 // ------------------------------------------------------------------ types
 
@@ -256,6 +265,43 @@ struct AssigneeRow {
     account: AccountRow,
 }
 
+/// Labels (`[id, name, color]`), assignees (`[id, kind, name, display_name, bio,
+/// created_at]`) and the milestone (`[id, title]`) of issue `?1`, each as JSON, so one
+/// thread's metadata is one statement rather than one per kind. Labels and assignees are
+/// in name order (with the columns' collation, `NOCASE`), as the batch reads order them.
+///
+/// Each label, assignee and milestone row is a scalar subquery by primary key rather than
+/// a join, so every table is read by key under any planner statistics (as
+/// `REPOSITORY_PAGE` explains); as joins, one-row statistics made `SQLite` scan labels,
+/// accounts and milestones. Both link tables cascade on delete, so every link has its row.
+const ONE_ISSUE_METADATA: &str = "SELECT \
+     (SELECT json_group_array(json((SELECT json_array(l.id, l.name, l.color) FROM labels l WHERE l.id = il.label_id)) \
+       ORDER BY (SELECT l.name FROM labels l WHERE l.id = il.label_id) COLLATE NOCASE) \
+      FROM issue_labels il WHERE il.issue_id = ?1) AS labels, \
+     (SELECT json_group_array(json((SELECT json_array(a.id, a.kind, a.name, a.display_name, a.bio, a.created_at) \
+       FROM accounts a WHERE a.id = ia.user_id)) \
+       ORDER BY (SELECT a.name FROM accounts a WHERE a.id = ia.user_id) COLLATE NOCASE) \
+      FROM issue_assignees ia WHERE ia.issue_id = ?1) AS assignees, \
+     (SELECT json_array(m.id, m.title) FROM milestones m \
+      WHERE m.id = (SELECT milestone_id FROM issue_milestones WHERE issue_id = ?1)) AS milestone";
+
+/// What [`IssueMetaStore::metadata_of`] reads about one thread.
+#[derive(Debug, Clone, Default)]
+pub struct OneIssueMetadata {
+    /// By name, as [`IssueMetaStore::labels_of`] orders them.
+    pub labels: Vec<LabelSnapshot>,
+    /// By name, as [`IssueMetaStore::assignees_of`] orders them.
+    pub assignees: Vec<Account>,
+    pub milestone: Option<IssueMilestone>,
+}
+
+/// An account as [`ONE_ISSUE_METADATA`] encodes it.
+type AccountColumns = (i64, String, String, Option<String>, Option<String>, i64);
+
+fn json<T: serde::de::DeserializeOwned>(what: &str, value: &str) -> Result<T, StorageError> {
+    serde_json::from_str(value).map_err(|e| corrupt(what, e))
+}
+
 /// `LIKE` pattern for names starting with `prefix`, wildcards escaped.
 fn prefix_pattern(prefix: &str) -> String {
     let mut pattern = String::with_capacity(prefix.len() + 1);
@@ -273,11 +319,11 @@ fn prefix_pattern(prefix: &str) -> String {
 
 #[derive(Debug, Clone)]
 pub struct IssueMetaStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl IssueMetaStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -447,6 +493,29 @@ impl IssueMetaStore {
             .into_iter()
             .map(|row| (IssueId(row.issue_id), LabelSnapshot { id: LabelId(row.id), name: row.name, color: row.color }))
             .collect())
+    }
+
+    /// The labels, assignees and milestone of one thread, in one statement: what
+    /// [`Self::labels_of`], [`Self::assignees_of`] and [`Self::milestones_of`] return for it.
+    pub async fn metadata_of(&self, issue: IssueId) -> Result<OneIssueMetadata, StorageError> {
+        let (labels, assignees, milestone): (String, String, Option<String>) =
+            sqlx::query_as(ONE_ISSUE_METADATA).bind(issue.0).fetch_one(&self.pool).await?;
+        let labels: Vec<LabelSnapshot> = json::<Vec<(i64, String, String)>>("labels", &labels)?
+            .into_iter()
+            .map(|(id, name, color)| LabelSnapshot { id: LabelId(id), name, color })
+            .collect();
+        let assignees = json::<Vec<AccountColumns>>("assignees", &assignees)?
+            .into_iter()
+            .map(|(id, kind, name, display_name, bio, created_at)| {
+                Account::try_from(AccountRow { id, kind, name, display_name, bio, created_at })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let milestone = milestone.map(|value| json::<(i64, String)>("milestone", &value)).transpose()?.map(|(id, title)| IssueMilestone {
+            issue,
+            id: MilestoneId(id),
+            title,
+        });
+        Ok(OneIssueMetadata { labels, assignees, milestone })
     }
 
     /// Puts `label` on `issue`; `false` when it already was there.
@@ -630,7 +699,8 @@ impl IssueMetaStore {
 
     /// Sets (or with `None` clears) the milestone of `issue` and returns the previous one.
     pub async fn set_milestone(&self, issue: IssueId, milestone: Option<MilestoneId>) -> Result<Option<IssueMilestone>, StorageError> {
-        let mut tx = self.pool.begin().await?;
+        // Reads before it writes: take the write lock first (see `Pool::begin`).
+        let mut tx = self.pool.begin_immediate().await?;
         let previous: Option<(i64, String)> = sqlx::query_as(
             "SELECT m.id, m.title FROM issue_milestones im JOIN milestones m ON m.id = im.milestone_id WHERE im.issue_id = ?",
         )
@@ -712,12 +782,12 @@ impl IssueMetaStore {
 
     /// Public account names for mention completion, with a fixed result bound.
     pub async fn mention_candidates(&self, prefix: &str) -> Result<Vec<Account>, StorageError> {
-        let rows: Vec<AccountRow> = sqlx::query_as(
-            "SELECT id, kind, name, display_name, bio, created_at FROM accounts WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 10",
-        )
-        .bind(prefix_pattern(prefix))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<AccountRow> = sqlx::query_as(MENTION_CANDIDATES)
+            .bind(prefix_pattern(prefix))
+            .bind(prefix)
+            .bind(format!("{prefix}{}", char::MAX))
+            .fetch_all(&self.pool)
+            .await?;
         rows.into_iter().map(Account::try_from).collect()
     }
 
@@ -824,6 +894,30 @@ mod tests {
     use crate::sqlite::plans;
 
     #[tokio::test]
+    async fn one_issue_metadata_reads_by_key() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, ONE_ISSUE_METADATA).await;
+        // Each kind is read through the thread's key; only the constant row is "scanned".
+        let searches: Vec<&str> = plan.iter().map(String::as_str).filter(|detail| detail.starts_with("SEARCH ")).collect();
+        assert!(plan.iter().filter(|detail| detail.starts_with("SCAN")).all(|detail| detail == "SCAN CONSTANT ROW"), "{plan:#?}");
+        assert_eq!(
+            searches,
+            [
+                "SEARCH il USING PRIMARY KEY (issue_id=?)",
+                "SEARCH l USING INTEGER PRIMARY KEY (rowid=?)",
+                "SEARCH l USING INTEGER PRIMARY KEY (rowid=?)",
+                "SEARCH ia USING COVERING INDEX sqlite_autoindex_issue_assignees_1 (issue_id=?)",
+                "SEARCH a USING INTEGER PRIMARY KEY (rowid=?)",
+                "SEARCH a USING INTEGER PRIMARY KEY (rowid=?)",
+                "SEARCH m USING INTEGER PRIMARY KEY (rowid=?)",
+                "SEARCH issue_milestones USING INTEGER PRIMARY KEY (rowid=?)",
+            ],
+            "{plan:#?}"
+        );
+        plans::assert_no_scans(&database, ONE_ISSUE_METADATA, &["SCAN CONSTANT ROW"]).await;
+    }
+
+    #[tokio::test]
     async fn assignee_search_never_scans_accounts() {
         let (_dir, database) = plans::database().await;
         let plan = plans::query_plan(&database, ASSIGNABLE).await;
@@ -841,6 +935,31 @@ mod tests {
         // Before: `SCAN accounts USING INDEX sqlite_autoindex_accounts_1`.
         assert_eq!(plan[0], "SEARCH accounts USING INDEX sqlite_autoindex_accounts_1 (name=?)", "{plan:?}");
         assert!(plan.iter().all(|line| !line.starts_with("SCAN accounts")), "{plan:?}");
+    }
+
+    #[tokio::test]
+    async fn mention_completion_seeks_the_prefix_range() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, MENTION_CANDIDATES).await;
+        assert_eq!(plan, ["SEARCH accounts USING INDEX sqlite_autoindex_accounts_1 (name>? AND name<?)"]);
+    }
+
+    #[tokio::test]
+    async fn mention_completion_matches_prefixes_in_any_case() {
+        let (_dir, database) = plans::database().await;
+        for name in ["ada", "Adam", "adb", "bob", "a_x", "abx"] {
+            sqlx::query("INSERT INTO accounts (kind, name, created_at, updated_at) VALUES ('user', ?, 0, 0)")
+                .bind(name)
+                .execute(&database.pool)
+                .await
+                .unwrap();
+        }
+        let store = IssueMetaStore::new(database.store("issue_meta"));
+        let names = |accounts: Vec<Account>| accounts.into_iter().map(|account| account.name.to_string()).collect::<Vec<_>>();
+        assert_eq!(names(store.mention_candidates("AD").await.unwrap()), ["ada", "Adam", "adb"]);
+        assert_eq!(names(store.mention_candidates("a_").await.unwrap()), ["a_x"], "wildcards are literal");
+        assert_eq!(names(store.mention_candidates("").await.unwrap()).len(), 6);
+        assert!(store.mention_candidates("z").await.unwrap().is_empty());
     }
 
     #[test]

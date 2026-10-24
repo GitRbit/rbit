@@ -28,6 +28,7 @@ use rbit_core::{
 use rbit_git::DiffLimits;
 use rbit_services::{
     RepoContext, ServiceError,
+    issues::MetadataNeeds,
     pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict},
     timeline::{IssueContext, TimelineCursor},
 };
@@ -250,7 +251,8 @@ async fn list(
     let issues = &state.services.issues;
     let ctx = &loaded.ctx;
     let (results, labels, milestones, people) = tokio::try_join!(
-        issues.search(viewer.user(), ctx, &query, params.page.unwrap_or(1)),
+        // Rows show labels, not assignees or milestones.
+        issues.search_with(viewer.user(), ctx, &query, params.page.unwrap_or(1), MetadataNeeds::Labels),
         issues.labels(ctx),
         issues.milestones(ctx, None),
         issues.assignable(ctx, ""),
@@ -513,9 +515,10 @@ async fn conversation(
     // Then what needs the reviews, with the viewer's read mark: the merge box counts the
     // reviews just loaded instead of reading them again.
     let merge_box = async { if is_open { pulls.merge_box_from(user, &ctx, &data).await.map(Some) } else { Ok(None) } };
+    let thread_unread = sidebar.as_ref().is_ok_and(|sidebar| sidebar.thread_unread);
     let mark_viewed = async {
         if let Some(user) = user {
-            super::issues::mark_viewed(&state, &mut page, user, ctx.issue().id).await;
+            super::issues::mark_viewed(&state, &mut page, user, ctx.issue().id, thread_unread).await;
         }
     };
     let (review_views, merge_box, ()) = tokio::join!(review_views(&state, &ctx, &data, user), merge_box, mark_viewed);

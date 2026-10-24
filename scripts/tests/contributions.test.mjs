@@ -7,6 +7,8 @@ const source = await readFile(new URL('../../crates/rbit-web/assets/contribution
 
 function mount() {
   const listeners = new Map();
+  const windowListeners = new Map();
+  let documentQueries = 0;
   class Element {
     constructor(dataset = {}) { this.dataset = dataset; this.attributes = {}; this.style = {}; this.offsetWidth = 200; this.offsetHeight = 30; }
     closest(selector) { return selector === '[data-contribution-day]' ? this : selector === 'svg' ? svg : calendar; }
@@ -32,12 +34,12 @@ function mount() {
     querySelectorAll: () => [...days, mobileCopy],
   };
   const document = {
-    querySelectorAll: () => [tooltip],
+    querySelectorAll: () => { documentQueries++; return [tooltip]; },
     createElement: () => new Element(),
     addEventListener: (name, handler) => listeners.set(name, handler),
   };
-  vm.runInNewContext(source, { document, Element, Intl, Date, innerWidth: 320, addEventListener() {} });
-  return { days, mobileCopy, tooltip, details, listeners };
+  vm.runInNewContext(source, { document, Element, Intl, Date, innerWidth: 320, addEventListener: (name, handler) => windowListeners.set(name, handler) });
+  return { days, mobileCopy, tooltip, details, listeners, windowListeners, documentQueries: () => documentQueries };
 }
 
 test('calendar hover displays an immediate count tooltip within the viewport', () => {
@@ -71,4 +73,15 @@ test('calendar supports keyboard selection and date navigation', () => {
   page.listeners.get('keydown')({ target: page.days[0], key: 'ArrowDown', preventDefault() { prevented++; } });
   assert.equal(page.days[1].focused, true);
   assert.equal(prevented, 2);
+});
+
+test('scrolling hides a shown tooltip without searching the document', () => {
+  const page = mount();
+  page.windowListeners.get('scroll')();
+  page.listeners.get('pointerover')({ target: page.days[0] });
+  assert.equal(page.tooltip.hidden, false);
+  page.windowListeners.get('scroll')();
+  assert.equal(page.tooltip.hidden, true);
+  page.windowListeners.get('scroll')();
+  assert.equal(page.documentQueries(), 0);
 });

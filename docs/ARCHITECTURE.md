@@ -1292,6 +1292,13 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   walks read parents from it, and last-commit walks read root tree ids from it instead of
   decoding commit objects; commits newer than the graph fall back to the object database.
 - SQLite tuned: WAL, `synchronous = NORMAL`, memory-mapped I/O, prepared statement cache.
+  Every store shares one pool through `sqlite::pool::Pool`, which labels it with the
+  store's name and records connection waits, `BEGIN IMMEDIATE` write lock waits, write
+  transaction durations and busy errors (`rbit_sqlite_*`). A transaction that reads
+  before it writes begins with `BEGIN IMMEDIATE`: in WAL mode a deferred one cannot
+  upgrade its read to a write through the busy handler, so it fails at once with
+  `SQLITE_BUSY` while another writer holds the lock, or `SQLITE_BUSY_SNAPSHOT` if one
+  committed after its first read.
 - Streaming Git transport: pack data is never buffered in memory.
 - One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
   Git reads share opened config, refs and pack indexes instead of reopening them.
@@ -1321,6 +1328,39 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   signed-in request costs one query for the user, the password-change restriction and the
   header's unread indicator together. `PRAGMA optimize` refreshes planner statistics after
   migrations and on the maintenance schedule.
+- Every statement on the pool is one connection acquisition, and under load the pool is
+  the limit, so pages keep their statement counts small and fixed:
+  - A repository page opens the repository with its whole header in one statement
+    (`RepositoryStore::find_page`: the viewer's grants, stars, readable forks, parent,
+    mirror and open counts as subqueries and one-row joins). Access is decided from that
+    row in Rust, on every request, before anything is shown; only a private fork parent
+    is opened again for the viewer.
+  - The request's `RepoContext` carries the viewer's access and collaborator grant, so a
+    same-repository head branch and the "Leave" box reuse them.
+  - A thread is read with its author; one thread's labels, assignees and milestone are
+    one statement (`json_group_array`); the pull request list reads only labels.
+  - A viewed thread is marked read only when the sidebar's subscription query says it
+    has an unread notification, and the header's dot is re-read only when that changed
+    a row.
+  - Rows from many repositories (dashboards, the inbox) are access-checked in one
+    `readable_by!` statement over the page's repository ids, never per row.
+  - Cached comparison counts are written only on a miss.
+
+  `rbit-web/tests/work_counts.rs` pins the counts below with `rbit_storage::count_work`
+  (acquisitions, statements and insights cache writes counted on the request's task); the
+  signed-in viewer is neither owner nor collaborator. A change that adds a statement to
+  these pages must update them here.
+
+  | Page | Anonymous | Signed in |
+  |---|---|---|
+  | `/` | 3 | 5 |
+  | Repository home | 2 | 3 |
+  | Issue | 4 | 8 (6 with nothing unread there) |
+  | Pull request conversation | 9 | 11 |
+  | Pull request list (two rows) | 10 | 11 |
+  | Pull request Files changed | 6 | 7 |
+  | `/issues` (two rows, two repositories) | — | 9 |
+  | `/notifications` (two repositories) | — | 4 |
 - Session expiry scans use a read snapshot. Write transactions recheck and remove at
   most 256 candidates at a time, so a scan does not monopolize the writer or remove a
   session renewed since the snapshot.

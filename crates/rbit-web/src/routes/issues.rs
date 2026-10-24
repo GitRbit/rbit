@@ -291,7 +291,7 @@ async fn show(
     let (thread_view, sidebar) =
         tokio::try_join!(thread(&state, &ctx, viewer.user(), after, options), sidebar(&state, &ctx, viewer.user()))?;
     if let Some(user) = viewer.user() {
-        mark_viewed(&state, &mut page, user, ctx.issue.id).await;
+        mark_viewed(&state, &mut page, user, ctx.issue.id, sidebar.thread_unread).await;
     }
     let list = format!("{}/issues", loaded.urls.home());
     Ok(IssuePage {
@@ -308,15 +308,17 @@ async fn show(
 }
 
 /// Marks `user`'s notification about the thread they are viewing read, and refreshes the
-/// header's unread dot. A viewer without unread notifications (the page's own check) has
-/// nothing to mark, so the write, which takes SQLite's write lock even when it changes
-/// no row, is skipped.
-pub(super) async fn mark_viewed(state: &AppState, page: &mut Page, user: &User, issue: IssueId) {
-    if !page.has_unread_notifications {
+/// header's unread dot. Only a thread with an unread notification (`thread_unread`, read
+/// with the sidebar's subscription) is written to, since the write takes SQLite's write
+/// lock even when it changes no row, and the dot is read again only when the write
+/// changed one.
+pub(super) async fn mark_viewed(state: &AppState, page: &mut Page, user: &User, issue: IssueId, thread_unread: bool) {
+    if !thread_unread {
         return;
     }
-    state.services.notifications.mark_thread_read(user.id(), issue).await;
-    page.has_unread_notifications = state.services.notifications.has_unread(user.id()).await.unwrap_or(false);
+    if state.services.notifications.mark_thread_read(user.id(), issue).await {
+        page.has_unread_notifications = state.services.notifications.has_unread(user.id()).await.unwrap_or(false);
+    }
 }
 
 // ------------------------------------------------------------------ sidebar forms

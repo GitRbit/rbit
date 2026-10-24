@@ -11,8 +11,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use super::pool::Pool;
 use rbit_core::{AccountId, IssueId, IssueKind, IssueNumber, IssueState, RepoId, StateReason, Timestamp};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -87,6 +87,12 @@ pub struct Subscription {
     pub reason: NotificationReason,
     pub subscribed: bool,
 }
+
+/// Issue `?1`'s subscription row of user `?2` (both `NULL` without one) and whether
+/// that user has an unread notification about it (`UNIQUE (user_id, issue_id)`).
+const THREAD_STATE: &str = "SELECT s.reason, s.subscribed, \
+     EXISTS (SELECT 1 FROM notifications WHERE user_id = ?2 AND issue_id = ?1 AND unread = 1) AS unread \
+     FROM (SELECT 1) LEFT JOIN issue_subscriptions s ON s.issue_id = ?1 AND s.user_id = ?2";
 
 /// One already-authorized recipient of an activity. Direct participation is optional;
 /// an explicit unsubscribe is never overwritten by automatic participation.
@@ -194,11 +200,11 @@ fn count(value: i64) -> u64 {
 
 #[derive(Debug, Clone)]
 pub struct NotificationStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl NotificationStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -245,6 +251,22 @@ impl NotificationStore {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    /// `user`'s subscription to `issue`, if any, and whether they have an unread
+    /// notification about it: what a thread's page needs, in one statement.
+    pub async fn thread_state(&self, issue: IssueId, user: AccountId) -> Result<(Option<Subscription>, bool), StorageError> {
+        let (reason, subscribed, unread): (Option<String>, Option<bool>, bool) =
+            sqlx::query_as(THREAD_STATE).bind(issue.0).bind(user.0).fetch_one(&self.pool).await?;
+        let subscription = match (reason, subscribed) {
+            (Some(reason), Some(subscribed)) => {
+                let reason =
+                    NotificationReason::parse(&reason).ok_or_else(|| StorageError::Corrupt(format!("subscription reason: {reason}")))?;
+                Some(Subscription { reason, subscribed })
+            }
+            _ => None,
+        };
+        Ok((subscription, unread))
     }
 
     pub async fn subscription(&self, issue: IssueId, user: AccountId) -> Result<Option<Subscription>, StorageError> {
@@ -331,7 +353,7 @@ impl NotificationStore {
         let input = serde_json::to_string(&input).map_err(|error| StorageError::Corrupt(format!("notification recipients: {error}")))?;
         // Acquire the writer before reading subscriptions: another subscription update
         // must not turn a read-then-write snapshot into SQLITE_BUSY_SNAPSHOT.
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         if recipients.iter().any(|recipient| recipient.participation.is_some()) {
             sqlx::query(concat!(
                 "INSERT INTO issue_subscriptions (issue_id, user_id, reason, subscribed, updated_at) \
@@ -531,6 +553,24 @@ impl NotificationStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::plans;
+
+    #[tokio::test]
+    async fn thread_state_reads_both_rows_by_key() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, THREAD_STATE).await;
+        let searches: Vec<&str> = plan.iter().map(String::as_str).filter(|detail| detail.starts_with("SEARCH ")).collect();
+        assert_eq!(
+            searches,
+            [
+                "SEARCH s USING PRIMARY KEY (issue_id=? AND user_id=?) LEFT-JOIN",
+                "SEARCH notifications USING INDEX sqlite_autoindex_notifications_1 (user_id=? AND issue_id=?)",
+            ],
+            "{plan:#?}"
+        );
+        // The constant one-row subquery the subscription is joined to is not a table.
+        plans::assert_no_scans(&database, THREAD_STATE, &["SCAN CONSTANT ROW", "SCAN (subquery-"]).await;
+    }
 
     #[test]
     fn reasons_round_trip_in_strength_order() {

@@ -7,8 +7,8 @@
 //!
 //! Milestone 1 workstream H owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, RepoId, Timestamp, User, repository::OwnedRepository};
-use sqlx::SqlitePool;
 
 use super::rows::{OwnedRepositoryRow, UserRow};
 use crate::StorageError;
@@ -189,11 +189,11 @@ fn insert_error(error: sqlx::Error) -> StorageError {
 
 #[derive(Debug, Clone)]
 pub struct SshKeyStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl SshKeyStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

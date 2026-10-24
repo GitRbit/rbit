@@ -151,6 +151,20 @@ pub struct IssueSearchResults {
     pub per_page: u32,
     /// Problems with the query (unknown qualifiers, `@me` signed out).
     pub hints: Vec<String>,
+    /// The listed threads' repositories the viewer may read, by id: filled by
+    /// [`IssueService::dashboard`] (whose rows come from many repositories), empty
+    /// otherwise.
+    pub repositories: HashMap<RepoId, OwnedRepository>,
+}
+
+/// Which of a listed thread's metadata a page shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MetadataNeeds {
+    /// Labels, assignees and milestone.
+    #[default]
+    All,
+    /// Labels only (the pull request list): one statement instead of three.
+    Labels,
 }
 
 impl IssueSearchResults {
@@ -298,9 +312,15 @@ impl IssueService {
     // ------------------------------------------------------------------ the hook
 
     /// Labels, assignees and milestone of each of `issues`: every id gets an entry, empty
-    /// when it has none (or does not exist). One batch query per kind of metadata.
+    /// when it has none (or does not exist). One batch query per kind of metadata; a
+    /// single thread (its own page, the API) takes one statement for all three.
     pub async fn metadata(&self, issues: &[IssueId]) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError> {
         let store = self.ctx.database.issue_meta();
+        if let [issue] = issues {
+            let one = store.metadata_of(*issue).await?;
+            let milestone = one.milestone.map(|milestone| MilestoneRef { id: milestone.id, title: milestone.title });
+            return Ok(HashMap::from([(*issue, IssueMetadata { labels: one.labels, assignees: one.assignees, milestone })]));
+        }
         let (labels, assignees, milestones) =
             tokio::try_join!(store.labels_of(issues), store.assignees_of(issues), store.milestones_of(issues))?;
         let mut map: HashMap<IssueId, IssueMetadata> = issues.iter().map(|id| (*id, IssueMetadata::default())).collect();
@@ -312,6 +332,19 @@ impl IssueService {
         }
         for milestone in milestones {
             map.entry(milestone.issue).or_default().milestone = Some(MilestoneRef { id: milestone.id, title: milestone.title });
+        }
+        Ok(map)
+    }
+
+    /// [`Self::metadata`] limited to what `needs` names.
+    async fn metadata_for(&self, issues: &[IssueId], needs: MetadataNeeds) -> Result<HashMap<IssueId, IssueMetadata>, ServiceError> {
+        if needs == MetadataNeeds::All {
+            return self.metadata(issues).await;
+        }
+        let labels = self.ctx.database.issue_meta().labels_of(issues).await?;
+        let mut map: HashMap<IssueId, IssueMetadata> = issues.iter().map(|id| (*id, IssueMetadata::default())).collect();
+        for (issue, label) in labels {
+            map.entry(issue).or_default().labels.push(label);
         }
         Ok(map)
     }
@@ -397,11 +430,24 @@ impl IssueService {
         query: &IssueQuery,
         page: u32,
     ) -> Result<IssueSearchResults, ServiceError> {
+        self.search_with(viewer, repo, query, page, MetadataNeeds::All).await
+    }
+
+    /// [`Self::search`], reading only the metadata the page shows (`needs`); the rest of
+    /// each entry of [`IssueSearchResults::metadata`] stays empty.
+    pub async fn search_with(
+        &self,
+        viewer: Option<&User>,
+        repo: &RepoContext,
+        query: &IssueQuery,
+        page: u32,
+        needs: MetadataNeeds,
+    ) -> Result<IssueSearchResults, ServiceError> {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
         let (filter, hints) = self.search_filter(viewer, repo.repo.repo.id, query).await?;
-        self.search_results(&filter, hints, page).await
+        self.search_results(&filter, hints, page, needs).await
     }
 
     async fn search_filter(
@@ -450,17 +496,21 @@ impl IssueService {
         let (mut filter, hints) = self.search_filter(Some(&viewer), RepoId(0), query).await?;
         filter.kind = Some(kind);
         filter.dashboard = Some(DashboardScope { viewer: viewer.id(), is_admin: viewer.is_admin, relation });
-        self.search_results(&filter, hints, page).await
+        let mut results = self.search_results(&filter, hints, page, MetadataNeeds::All).await?;
+        // Each row's repository, access rechecked for the viewer just loaded: one batch
+        // over the page's distinct repositories.
+        let ids: Vec<RepoId> = distinct(&results.issues.iter().map(|issue| issue.repo_id).collect::<Vec<_>>());
+        results.repositories = self.ctx.database.repositories().readable_among(&ids, viewer.id(), viewer.is_admin).await?;
+        Ok(results)
     }
 
-    /// Current repository metadata for a displayed dashboard thread, rechecking access.
-    pub async fn dashboard_repository(&self, viewer: &User, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {
-        let Some(viewer) = self.ctx.database.accounts().find_active_user(viewer.id()).await? else { return Ok(None) };
-        let Some(repo) = self.ctx.database.admin().find_repository(id).await? else { return Ok(None) };
-        if self.access_of(&viewer, &repo).await?.can_read() { Ok(Some(repo)) } else { Ok(None) }
-    }
-
-    async fn search_results(&self, filter: &SearchFilter, hints: Vec<String>, page: u32) -> Result<IssueSearchResults, ServiceError> {
+    async fn search_results(
+        &self,
+        filter: &SearchFilter,
+        hints: Vec<String>,
+        page: u32,
+        needs: MetadataNeeds,
+    ) -> Result<IssueSearchResults, ServiceError> {
         let store = self.ctx.database.issue_search();
         let (open, closed) = store.state_counts(filter).await?;
         let total = match filter.state {
@@ -478,6 +528,7 @@ impl IssueService {
             page: page.max(1),
             per_page: ISSUES_PER_PAGE,
             hints,
+            repositories: HashMap::new(),
         };
         results.page = results.page.min(results.page_count());
         let offset = u64::from(results.page - 1) * u64::from(ISSUES_PER_PAGE);
@@ -486,7 +537,7 @@ impl IssueService {
         let author_ids: Vec<AccountId> = distinct(&results.issues.iter().filter_map(|issue| issue.author).collect::<Vec<_>>());
         let (authors, metadata) = tokio::try_join!(
             async { Ok::<_, ServiceError>(self.ctx.database.accounts().find_accounts(&author_ids).await?) },
-            self.metadata(&ids)
+            self.metadata_for(&ids, needs)
         )?;
         results.authors = authors.into_iter().map(|account| (account.id, account)).collect();
         results.metadata = metadata;
@@ -530,6 +581,7 @@ impl IssueService {
             page: page.max(1),
             per_page,
             hints: Vec::new(),
+            repositories: HashMap::new(),
         })
     }
 

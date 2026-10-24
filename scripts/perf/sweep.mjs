@@ -10,6 +10,9 @@
 //     --throttle 6    CPU slowdown (1 = none); 6 approximates a mid-range phone
 //     --width 1280 --height 1000
 //     --json out.json also write every run
+//     --credentials target/perf/credentials.txt  sign in first (as seed.mjs's account) at
+//                     every page's origin; one host per signed-in server, since cookies
+//                     ignore the port (e.g. 127.0.0.1:3021 and localhost:3022)
 //     --no-backdrop a,b  pages (by name) swept with `backdrop-filter` off on the sticky bars,
 //                     as `scroll-probe.js`'s `noBackdrop` does; give one URL two names to
 //                     compare, e.g. `blur=URL plain=URL --no-backdrop plain`
@@ -27,7 +30,7 @@
 //                     placeholder (`contain-intrinsic-block-size` length plus padding and
 //                     borders) more than 2 px off their rendered height; `--json` lists them
 import { writeFileSync } from "node:fs";
-import { launch, parseArgs, quantile, summary, sweepExpression } from "./edge.mjs";
+import { launch, parseArgs, signIn, quantile, summary, sweepExpression } from "./edge.mjs";
 
 const { options, pages } = parseArgs(process.argv.slice(2), {
   rounds: 5,
@@ -37,6 +40,7 @@ const { options, pages } = parseArgs(process.argv.slice(2), {
   width: 1280,
   height: 1000,
   json: "",
+  credentials: "",
   "no-backdrop": "",
 });
 const noBackdrop = new Set(options["no-backdrop"].split(",").filter(Boolean));
@@ -88,6 +92,7 @@ const PLACEHOLDERS = `(() => {
 })()`;
 
 const browser = await launch(options);
+if (options.credentials) await signIn(browser, pages, options.credentials);
 // A constructed sheet: the page's CSP (`style-src 'self'`) blocks an inline <style>.
 const BACKDROP_OFF = `(() => {
   const sheet = new CSSStyleSheet();

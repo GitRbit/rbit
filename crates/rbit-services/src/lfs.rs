@@ -262,7 +262,8 @@ impl LfsService {
         let storage = &self.inner.ctx.repositories;
         let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = storage.reader(repo.repo.owner_id, repo.repo.id);
-        RepoContext { repo, access, reader, disk_path }
+        // The access is capped by the token, so it is not the user's own.
+        RepoContext { repo, access, viewer: None, collaborator: None, reader, disk_path }
     }
 
     // ------------------------------------------------------------------ batch

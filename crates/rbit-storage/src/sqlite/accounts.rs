@@ -3,8 +3,8 @@
 //! Suspension is enforced here: [`AccountStore::find_login`] reports it so sign-in can be
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
+use super::pool::Pool;
 use rbit_core::{Account, AccountId, AccountKind, AccountName, Email, Timestamp, User};
-use sqlx::SqlitePool;
 
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
@@ -78,11 +78,11 @@ pub struct NewUser {
 
 #[derive(Debug, Clone)]
 pub struct AccountStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AccountStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -292,7 +292,7 @@ impl AccountStore {
 /// across both paths. The first INSERT acquires `SQLite`'s write lock before we inspect
 /// the logins. No password hashing or other slow work runs while holding the lock.
 pub(super) async fn insert_user(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut super::pool::WriteTransaction,
     mut new: NewUser,
     registration_open: Option<bool>,
     email_verified: bool,

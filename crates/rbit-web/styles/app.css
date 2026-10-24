@@ -945,10 +945,15 @@
 .diff-tree-row:not([data-depth="0"], [data-depth="1"], [data-depth="2"], [data-depth="3"], [data-depth="4"],
   [data-depth="5"], [data-depth="6"], [data-depth="7"], [data-depth="8"], [data-depth="9"]) { --depth: 10; }
 
-/* One row per folder or file. Indent guides run down from each ancestor folder's chevron. */
+/* One row per folder or file. Indent guides run down from each ancestor folder's chevron.
+   Colours fade only into a hover: diff.js moves the current-file marker (below) while the
+   page scrolls, and a transition there would restyle and repaint the whole sticky tree
+   on every frame of the fade, twice per file passed (about half the main thread's paint
+   time scrolling a 152-file pull request, see docs/performance-followups.md). File rows
+   are links, so `transition-none` also overrides the base layer's fade on every `a`. */
 .diff-tree-item {
-  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-colors
-    hover:bg-hover hover:text-ink;
+  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-none
+    hover:bg-hover hover:text-ink hover:transition-colors;
   padding-left: calc(0.375rem + var(--depth, 0) * var(--diff-tree-indent));
   background-image: repeating-linear-gradient(
     to right,

@@ -76,19 +76,35 @@ async fn cached_comparison(ctx: &ServiceContext, base: &str, head: &str) -> Opti
     }
 }
 
-/// Remembers the counts of `comparison`, made with the default diff limits, under the
-/// commit ids it resolved (so a short id never fills the cache).
-async fn remember_comparison(ctx: &ServiceContext, comparison: &Comparison) {
+/// What the comparison cache keeps of `comparison`, made with the default diff limits.
+fn comparison_counts(comparison: &Comparison) -> CachedComparisonCounts {
     let count = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
-    let cached = CachedComparisonCounts {
+    CachedComparisonCounts {
         ahead: count(comparison.ahead),
         files: count(comparison.files.len()),
         max_files: counted_max_files(),
         additions: count(comparison.additions()),
         deletions: count(comparison.deletions()),
-    };
-    if let Err(error) = ctx.kv.insights().put_comparison_counts(&comparison.base.id, &comparison.head.id, cached).await {
+    }
+}
+
+/// Remembers the counts of `comparison`, made with the default diff limits, under the
+/// commit ids it resolved (so a short id never fills the cache). For callers that just
+/// missed the cache; [`remember_new_comparison`] checks first.
+async fn remember_comparison(ctx: &ServiceContext, comparison: &Comparison) {
+    if let Err(error) =
+        ctx.kv.insights().put_comparison_counts(&comparison.base.id, &comparison.head.id, comparison_counts(comparison)).await
+    {
         tracing::warn!(%error, "comparison cache write failed");
+    }
+}
+
+/// [`remember_comparison`], unless the cache already holds exactly these counts: a
+/// Files changed view usually diffs a pair it counted before, and a redb write
+/// transaction (a file sync) for an unchanged entry is wasted.
+async fn remember_new_comparison(ctx: &ServiceContext, comparison: &Comparison) {
+    if cached_comparison(ctx, &comparison.base.id, &comparison.head.id).await != Some(comparison_counts(comparison)) {
+        remember_comparison(ctx, comparison).await;
     }
 }
 
@@ -545,7 +561,7 @@ impl PullService {
         let max_commits = self.ctx().config.pulls.max_commits;
         let comparison = ctx.repo().reader.compare_ahead(base.clone(), head.clone(), limits, max_commits).await?;
         if limits == DiffLimits::default() {
-            remember_comparison(self.ctx(), &comparison).await;
+            remember_new_comparison(self.ctx(), &comparison).await;
         }
         Ok(comparison)
     }

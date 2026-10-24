@@ -705,6 +705,8 @@ mod tests {
             disk_path: storage.path_for(owner.id, repo.id),
             repo: OwnedRepository { owner: owner.clone(), repo },
             access: RepoAccess::Write,
+            viewer: None,
+            collaborator: None,
         };
         let issue = Issue {
             id: IssueId(5),

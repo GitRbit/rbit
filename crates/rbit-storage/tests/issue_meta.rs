@@ -134,6 +134,36 @@ async fn labels_attach_to_threads_and_vanish_with_their_deletion() {
     assert!(store.delete_label(fixture.repo, LabelId(999)).await.unwrap().is_none());
 }
 
+/// Setting a milestone reads the previous one before writing; concurrent changes must
+/// queue for the write lock, not fail with `SQLITE_BUSY` on the upgrade.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_milestone_changes_wait_for_the_write_lock() {
+    let fixture = Fixture::new().await;
+    let fields = |title: &str| MilestoneFields { title: title.to_owned(), description: String::new(), due_on: None };
+    let store = fixture.database.issue_meta();
+    let one = store.create_milestone(fixture.repo, &fields("one"), Timestamp(1)).await.unwrap().id;
+    let two = store.create_milestone(fixture.repo, &fields("two"), Timestamp(1)).await.unwrap().id;
+    let mut issues = Vec::new();
+    for i in 0..4 {
+        issues.push(fixture.issue(IssueKind::Issue, &format!("Issue {i}")).await);
+    }
+    let tasks: Vec<_> = (0..16)
+        .map(|task| {
+            let store = fixture.database.issue_meta();
+            let issue = issues[task % issues.len()];
+            tokio::spawn(async move {
+                for round in 0..10 {
+                    let milestone = if (task + round) % 2 == 0 { one } else { two };
+                    store.set_milestone(issue, Some(milestone)).await.unwrap();
+                }
+            })
+        })
+        .collect();
+    for task in tasks {
+        task.await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn milestones_track_progress_and_one_per_thread() {
     let fixture = Fixture::new().await;
@@ -310,4 +340,36 @@ async fn new_threads_get_their_metadata_at_once_and_mentions_resolve() {
     let names = ["bob", "Bob", "ALICE"].map(str::to_owned);
     let found = store.accounts_named(&names).await.unwrap();
     assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"], "each account once, whatever the case");
+}
+
+/// One thread's metadata in one statement is exactly what the three batch reads return.
+#[tokio::test]
+async fn one_threads_metadata_matches_the_batch_reads() {
+    let fixture = Fixture::new().await;
+    let store = fixture.database.issue_meta();
+    let issue = fixture.issue(IssueKind::Issue, "Crash").await;
+    let empty = store.metadata_of(issue).await.unwrap();
+    assert!(empty.labels.is_empty() && empty.assignees.is_empty() && empty.milestone.is_none());
+
+    let bob = user(&fixture.database, "bob").await;
+    for (name, color) in [("ui", "#123456"), ("bug", "#d73a4a"), ("Docs \"quoted\"", "#000000")] {
+        let created = store.create_label(fixture.repo, &label(name, color), Timestamp(1)).await.unwrap();
+        store.add_label(issue, created.id, Timestamp(2)).await.unwrap();
+    }
+    store.add_assignee(issue, bob.id(), fixture.alice.id(), Timestamp(1)).await.unwrap();
+    store.add_assignee(issue, fixture.alice.id(), fixture.alice.id(), Timestamp(1)).await.unwrap();
+    let fields = MilestoneFields { title: "v1 \\ next".to_owned(), description: String::new(), due_on: None };
+    let milestone = store.create_milestone(fixture.repo, &fields, Timestamp(1)).await.unwrap();
+    store.set_milestone(issue, Some(milestone.id)).await.unwrap();
+
+    let one = store.metadata_of(issue).await.unwrap();
+    let labels: Vec<_> = store.labels_of(&[issue]).await.unwrap().into_iter().map(|(_, label)| label).collect();
+    assert_eq!(one.labels, labels);
+    assert_eq!(one.labels.len(), 3);
+    let names = |accounts: &[rbit_core::Account]| accounts.iter().map(|a| (a.id, a.name.to_string(), a.created_at)).collect::<Vec<_>>();
+    let assignees: Vec<_> = store.assignees_of(&[issue]).await.unwrap().into_iter().map(|(_, account)| account).collect();
+    assert_eq!(names(&one.assignees), names(&assignees));
+    assert_eq!(one.assignees.len(), 2);
+    assert_eq!(one.milestone, store.milestones_of(&[issue]).await.unwrap().pop());
+    assert!(one.milestone.is_some());
 }

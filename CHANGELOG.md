@@ -39,6 +39,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
   reporting hides public version output and omits version numbers from outgoing
   integration User-Agents; administrator-only diagnostics remain available.
+- Export SQLite contention metrics: connection pool waits, write lock waits, write
+  transaction durations and `SQLITE_BUSY`/`SQLITE_BUSY_SNAPSHOT` errors by store
+  (`rbit_sqlite_*`, see the deployment guide's metrics table).
 
 ### Upgrade notes
 
@@ -54,11 +57,53 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - Clarify the README introduction to describe rbit as Git hosting and a Git forge.
+- Editing an issue or pull request's title or description no longer fails with "database
+  is locked" when another write happens at the same moment: the edit now waits for the
+  write lock instead of reading first and failing to upgrade.
+- Setting an issue's milestone no longer fails with "database is locked" under
+  concurrent writes, for the same reason.
 - Clarify private security reporting, remove the broken conduct-reporting contact,
   and add automated checks for GitHub repository configuration and submission paths.
 
 ### Changed
 
+- Build the bundled SQLite with the query planner stability guarantee
+  (`SQLITE_ENABLE_QPSG`, set in `.cargo/config.toml`), so a statement is no longer
+  re-parsed and re-planned on every execution once `PRAGMA optimize` has recorded
+  `sqlite_stat4` samples or when it has a `LIKE ?`. With 16 concurrent requests this
+  more than doubles issue list and issue page throughput. Mention completion seeks its
+  name range explicitly, as the planner no longer derives it from the bound pattern.
+- Resolve a full commit id without gix's abbreviated-id lookup, which re-read the object
+  database's directory state on every call. Repository pages pass the commit they
+  resolved to each later read, so this was several file system scans per page.
+- Read the repository page lookup, the dashboards' and inbox's repository check, a
+  thread's author and a thread's metadata through scalar subqueries by key instead of
+  joins, so their plans no longer turn into scans of `repositories`, `accounts` or
+  `issues` when the planner's statistics describe tiny tables, as on a new instance.
+- Count the stars of both repository lists on a signed-in home page in one statement.
+- Remember a pull request's comparison counts from its Files changed tab only when the
+  cache does not hold them yet, instead of committing a redb write on every view.
+- Recheck access to the repositories of the `/issues` and `/pulls` dashboards' rows and of
+  the notification inbox in one statement per page, instead of up to three per row.
+- Show a collaborator's "Leave" box on the repository home from the grants read when the
+  repository was opened, instead of reading the collaborator row again.
+- Read only the labels of the pull request list's rows, the only metadata it shows.
+- Decide whether the viewer may delete a pull request's head branch from the access
+  already computed for the request when the branch is in the base repository, instead
+  of opening that repository again.
+- Mark a viewed issue or pull request's notification read only when that thread has an
+  unread one (read with the sidebar's subscription), and refresh the header's unread dot
+  only when something was marked, instead of whenever the viewer had anything unread.
+- Read one issue or pull request's labels, assignees and milestone in one statement
+  instead of three, for its page, the API and single-row lists.
+- Read an issue or pull request's author together with the thread, in one statement.
+- Load a repository page's header (the viewer's grants, stars, readable forks, parent,
+  mirror and open issue and pull request counts) in the same statement as the repository:
+  one statement instead of six anonymous, seven signed in. Access is still decided from
+  that row, on every request, before anything is shown.
+- Count the SQLite acquisitions, statements and insights cache writes each request makes
+  in tests (`rbit_storage::count_work`), and pin the counts of the busiest pages, so a
+  change cannot add a query to them unnoticed.
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
   commit history focused on the selected branch and its paginated commits.
 - Spell highlighted spans' classes from a static table and size highlighted output once,
@@ -97,6 +142,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Size long file and diff placeholders once per page load and history restore instead
   of twice.
+
+- Move the diff file tree's current-file marker without a colour fade, so scrolling a
+  large commit, compare or pull request no longer repaints the whole tree for every frame
+  of the fade; hovering a row still fades in.
+
+- Hide the activity calendar's tooltip on scroll by remembering which one is shown,
+  instead of searching the whole document on every scroll event of every page.
+
+- Let the headless scroll measurements (`scripts/perf/sweep.mjs`, `trace.mjs`) sign in
+  as the fixture's account with `--credentials`, to measure signed-in pages.
 
 - Look for diagrams, reply buttons, mirror progress, language listings, repository
   documents and the render time only within newly swapped content, not the whole page.

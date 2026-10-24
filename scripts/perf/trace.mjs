@@ -11,6 +11,9 @@
 //     --throttle 6    CPU slowdown (1 = none); 6 approximates a mid-range phone
 //     --width 1280 --height 1000
 //     --json out.json also write every run
+//     --credentials target/perf/credentials.txt  sign in first (as seed.mjs's account) at
+//                     every page's origin; one host per signed-in server, since cookies
+//                     ignore the port (e.g. 127.0.0.1:3021 and localhost:3022)
 //
 // e.g. node scripts/perf/trace.mjs --rounds 5 --throttle 6 \
 //        old=http://localhost:3032/perf/perf-fixture/compare/main...big-change \
@@ -21,7 +24,7 @@
 // can nest in other phases), so they do not add up to it. Compare like with like. A second
 // table divides by the frames drawn: a page that keeps up draws more of them in a sweep.
 import { writeFileSync } from "node:fs";
-import { launch, parseArgs, summary, sweepExpression } from "./edge.mjs";
+import { launch, parseArgs, signIn, summary, sweepExpression } from "./edge.mjs";
 
 const { options, pages } = parseArgs(process.argv.slice(2), {
   rounds: 5,
@@ -31,6 +34,7 @@ const { options, pages } = parseArgs(process.argv.slice(2), {
   width: 1280,
   height: 1000,
   json: "",
+  credentials: "",
 });
 if (!pages.length) {
   console.error("usage: node scripts/perf/trace.mjs [--rounds 5] [--ms 6000] [--throttle 6] name=url …");
@@ -51,6 +55,7 @@ const PHASES = {
 };
 
 const browser = await launch(options);
+if (options.credentials) await signIn(browser, pages, options.credentials);
 const traceOnce = async (url) => {
   await browser.goto(url);
   const events = [];

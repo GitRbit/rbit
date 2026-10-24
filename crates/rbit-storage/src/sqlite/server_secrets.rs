@@ -5,18 +5,18 @@
 //! needs a stable server-side key (HMAC-signed links, for instance) can keep one here
 //! under its own name. Values are raw key material: never log them or send them anywhere.
 
+use super::pool::Pool;
 use rbit_core::Timestamp;
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
 #[derive(Debug, Clone)]
 pub struct ServerSecretStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ServerSecretStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

@@ -377,6 +377,11 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
 | `rbit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
 | `rbit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
+| `rbit_sqlite_acquire_wait_seconds` | histogram | `mode` (`query` = one statement, `transaction`) — waiting for a pooled database connection |
+| `rbit_sqlite_acquire_timeouts_total` | counter | `mode` — connection waits that gave up (30 s) |
+| `rbit_sqlite_write_lock_wait_seconds` | histogram | `store` — `BEGIN IMMEDIATE`, waiting for the database's single write lock |
+| `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
+| `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.

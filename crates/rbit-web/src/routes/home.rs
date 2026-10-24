@@ -13,7 +13,7 @@ use crate::{
     error::WebResult,
     extract::Viewer,
     views::{
-        components::{OrgLink, Pagination},
+        components::{OrgLink, Pagination, RepoCard},
         home::{DashboardPage, ExplorePage, LandingPage, SortLink, explore_url, sort_label},
         layout::Page,
     },
@@ -26,16 +26,20 @@ const RECENT_ON_HOME: u32 = 8;
 /// one instead of their sum.
 pub async fn index(State(state): State<AppState>, viewer: Viewer, page: Page) -> WebResult<Response> {
     let repositories = &state.services.repositories;
-    let recent = async { super::listing::repo_cards(&state, &repositories.recent_public(RECENT_ON_HOME).await?).await };
-
     let Some(user) = viewer.user() else {
+        let recent = async { super::listing::repo_cards(&state, &repositories.recent_public(RECENT_ON_HOME).await?).await };
         let counts = async { WebResult::Ok(state.services.instance.public_counts().await?) };
         let (recent, counts) = tokio::try_join!(recent, counts)?;
         return Ok(LandingPage { page, recent, counts }.into_response());
     };
-    let repos = async { super::listing::repo_cards(&state, &repositories.list_for_dashboard(user).await?).await };
+    let repos = async { WebResult::Ok(repositories.list_for_dashboard(user).await?) };
+    let recent = async { WebResult::Ok(repositories.recent_public(RECENT_ON_HOME).await?) };
     let orgs = async { WebResult::Ok(state.services.orgs.memberships(user).await?.iter().map(OrgLink::from).collect::<Vec<_>>()) };
     let (repos, recent, orgs) = tokio::try_join!(repos, recent, orgs)?;
+    // Both lists' star counts in one statement.
+    let listed: Vec<_> = repos.iter().chain(&recent).cloned().collect();
+    let star_counts = state.services.stars.counts(&listed).await?;
+    let (repos, recent) = (RepoCard::list(&repos, &star_counts), RepoCard::list(&recent, &star_counts));
     let can_create_org = state.services.orgs.can_create(user);
     Ok(DashboardPage { page: page.titled("Dashboard"), repos, recent, orgs, can_create_org }.into_response())
 }

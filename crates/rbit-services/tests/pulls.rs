@@ -723,3 +723,24 @@ async fn required_status_checks_gate_merges_and_statuses_wake_the_worker() {
     pulls.merge(&fixture.alice, &ctx, Fixture::merge_input(MergeStrategy::Merge)).await.unwrap();
     assert!(fixture.open_pull(&fixture.alice, number).await.pull.is_merged());
 }
+
+/// Deleting the head branch needs write access to the head repository. A head in the base
+/// repository reuses the access opened for the same viewer; anyone else, and a fork's
+/// head, are checked against their own access.
+#[tokio::test]
+async fn head_branch_deletion_needs_write_access_to_the_head_repository() {
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let same = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    let as_alice = fixture.open_pull(&fixture.alice, same).await;
+    assert!(pulls.may_delete_head(&fixture.alice, &as_alice).await.unwrap(), "the owner writes to the base repository");
+    let as_bob = fixture.open_pull(&fixture.bob, same).await;
+    assert!(!pulls.may_delete_head(&fixture.bob, &as_bob).await.unwrap(), "a reader may not");
+    assert!(!pulls.may_delete_head(&fixture.bob, &as_alice).await.unwrap(), "another viewer's access is never reused");
+
+    let forked = fixture.create(&fixture.bob, "bob", "feature").await.unwrap();
+    let as_alice = fixture.open_pull(&fixture.alice, forked).await;
+    assert!(!pulls.may_delete_head(&fixture.alice, &as_alice).await.unwrap(), "alice cannot write to bob's fork");
+    let as_bob = fixture.open_pull(&fixture.bob, forked).await;
+    assert!(pulls.may_delete_head(&fixture.bob, &as_bob).await.unwrap(), "bob writes to his fork");
+}

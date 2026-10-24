@@ -12,7 +12,9 @@
 //! goes through [`fts_expression`], which turns user input into a safe FTS5 query.
 
 use rbit_core::{AccountId, Issue, IssueKind, IssueState, RepoId, issue_query::IssueSort};
-use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{QueryBuilder, Sqlite};
+
+use super::pool::Pool;
 
 use super::repositories::readable_by;
 use crate::StorageError;
@@ -321,11 +323,11 @@ impl TryFrom<Row> for Issue {
 
 #[derive(Debug, Clone)]
 pub struct IssueSearchStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl IssueSearchStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
