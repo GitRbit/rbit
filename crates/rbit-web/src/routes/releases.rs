@@ -123,7 +123,7 @@ async fn list(
         header: loaded.header(&state, "releases"),
         releases: listing.releases.iter().map(|detail| ReleaseCard::new(detail, latest.as_ref(), urls)).collect(),
         pagination,
-        can_write: loaded.ctx.access.can_write(),
+        can_write: loaded.ctx.can_write_content(),
         new_url: format!("{}/new", urls.releases()),
         tags_url: urls.tags(),
     })
@@ -168,7 +168,7 @@ async fn release_page(
         page: page.titled(format!("{} · {}", detail.release.name, loaded.ctx.repo.full_name())),
         header: loaded.header(state, "releases"),
         release: ReleaseCard::new(detail, latest.as_ref(), urls),
-        can_write: loaded.ctx.access.can_write(),
+        can_write: loaded.ctx.can_write_content(),
         releases_url: urls.releases(),
         delete_url: urls.release_action(id, "delete"),
         upload_url: urls.release_action(id, "assets"),

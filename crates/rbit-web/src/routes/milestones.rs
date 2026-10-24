@@ -90,7 +90,7 @@ async fn list(
         showing_closed: closed,
         open_url: format!("{home}/milestones"),
         closed_url: format!("{home}/milestones?state=closed"),
-        can_write: loaded.ctx.access.can_write(),
+        can_write: loaded.ctx.can_write_content(),
         new_url: format!("{home}/milestones/new"),
         issues_url: format!("{home}/issues"),
         labels_url: format!("{home}/labels"),
@@ -135,7 +135,7 @@ async fn show(
         open_url: view.url.clone(),
         closed_url: format!("{}?state=closed", view.url),
         pagination,
-        can_write: loaded.ctx.access.can_write(),
+        can_write: loaded.ctx.can_write_content(),
         milestones_url: format!("{home}/milestones"),
         milestone: view,
     })

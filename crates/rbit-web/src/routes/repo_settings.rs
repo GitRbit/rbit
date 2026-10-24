@@ -3,7 +3,8 @@
 //! Workstream D owns this file. Its routes are merged into the page router, so they get
 //! sessions, CSRF protection, security headers and error pages automatically.
 //!
-//! Only repository administrators may see these pages; everyone else gets a 404.
+//! Only repository administrators may see these pages; everyone else gets a 404. The
+//! danger zone archives and unarchives the repository (`POST …/settings/archive`).
 
 use axum::{
     Form, Router,
@@ -33,6 +34,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/{owner}/{repo}/settings", get(show).post(update))
         .route("/{owner}/{repo}/settings/rename", post(rename))
+        .route("/{owner}/{repo}/settings/archive", post(archive))
         .route("/{owner}/{repo}/settings/delete", post(delete))
 }
 
@@ -151,6 +153,31 @@ pub async fn rename(
         }
         Err(other) => Err(other.into()),
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ArchiveFormInput {
+    #[serde(default)]
+    archived: String,
+}
+
+/// `POST /{owner}/{repo}/settings/archive`: archives (`archived=true`) or unarchives
+/// (`archived=false`) the repository, then shows the repository with its new state.
+pub async fn archive(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo)): Path<(String, String)>,
+    Form(form): Form<ArchiveFormInput>,
+) -> WebResult<Response> {
+    let loaded = load_for_admin(&state, &viewer, &owner, &repo).await?;
+    let user = viewer.user().ok_or(WebError::NotFound)?;
+    let archived = match form.archived.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => return Err(WebError::BadRequest("say whether to archive or unarchive the repository".to_owned())),
+    };
+    state.services.repo_settings.set_archived(user, &loaded.ctx, archived).await?;
+    Ok(Redirect::to(&loaded.urls.home()).into_response())
 }
 
 #[derive(Debug, Deserialize)]

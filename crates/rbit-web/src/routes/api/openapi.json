@@ -217,7 +217,7 @@
       "patch": {
         "operationId": "updateRepository",
         "tags": ["repositories"],
-        "summary": "Change name, description, visibility or default branch (administrators; admin scope)",
+        "summary": "Change name, description, visibility or default branch, or archive or unarchive (administrators; admin scope)",
         "security": [{ "token": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepositoryChanges" } } } },
         "responses": {
@@ -651,7 +651,7 @@
       },
       "Repository": {
         "type": "object",
-        "required": ["id", "name", "full_name", "owner", "private", "visibility", "description", "fork", "default_branch", "html_url", "clone_url", "url", "created_at", "updated_at", "pushed_at"],
+        "required": ["id", "name", "full_name", "owner", "private", "visibility", "description", "fork", "default_branch", "html_url", "clone_url", "url", "created_at", "updated_at", "pushed_at", "archived"],
         "properties": {
           "id": { "type": "integer" },
           "name": { "type": "string" },
@@ -668,6 +668,7 @@
           "created_at": { "type": "string", "format": "date-time" },
           "updated_at": { "type": "string", "format": "date-time" },
           "pushed_at": { "type": ["string", "null"], "format": "date-time" },
+          "archived": { "type": "boolean", "description": "Archived repositories are read-only: writes answer 403." },
           "permissions": {
             "type": "object",
             "description": "What the caller may do (single-repository responses only).",
@@ -696,7 +697,8 @@
           "description": { "type": ["string", "null"], "description": "`null` clears it." },
           "private": { "type": "boolean" },
           "visibility": { "type": "string", "enum": ["public", "private"] },
-          "default_branch": { "type": "string", "description": "Must be an existing branch." }
+          "default_branch": { "type": "string", "description": "Must be an existing branch." },
+          "archived": { "type": "boolean", "description": "`true` archives the repository (read-only), `false` unarchives it." }
         }
       },
       "CommitPointer": {

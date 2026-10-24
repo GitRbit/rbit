@@ -178,6 +178,7 @@ impl RepoPage {
             forks_url: format!("{}/forks", self.urls.home()),
             forked_from: self.forked_from.clone(),
             mirror_url: self.mirror_url.clone(),
+            archived: repo.repo.is_archived(),
             issues_url: format!("{}/issues", self.urls.home()),
             pulls_url: format!("{}/pulls", self.urls.home()),
             open_issues: self.open_counts.issues,
@@ -187,9 +188,9 @@ impl RepoPage {
     }
 
     /// Whether the viewer may edit files on `revision` in the browser (Milestone 3, E):
-    /// write access, not a mirror, and `revision` is a branch.
+    /// write access, not archived, not a mirror, and `revision` is a branch.
     pub(super) fn can_edit_on(&self, revision: &str) -> bool {
-        self.ctx.access.can_write()
+        self.ctx.can_write_content()
             && self.mirror_url.is_none()
             && self.refs.iter().any(|r| r.kind == RefKind::Branch && r.name == revision)
     }

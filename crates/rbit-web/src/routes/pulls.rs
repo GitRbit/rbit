@@ -127,7 +127,7 @@ async fn review_views(
     let refs = state.services.references.resolve(ctx.repo(), &texts).await?;
     let refs = ref_context(ctx, refs);
     let urls = PullUrls::for_context(ctx);
-    let can_dismiss = viewer.is_some() && ctx.repo().access.can_write();
+    let can_dismiss = viewer.is_some() && ctx.repo().can_write_content();
     let sources: std::collections::HashMap<_, _> = data.visible_comments().map(|(comment, _)| (comment.id.0, comment)).collect();
     let mut comments: Vec<ReviewCommentView> = Vec::new();
     for entry in &data.reviews {
@@ -411,6 +411,10 @@ async fn new_page(
         Err(ServiceError::Internal(source)) => return Err(WebError::Internal(source)),
         Err(_) => view.problem = Some("Choose two existing branches to compare.".to_owned()),
     }
+    if loaded.ctx.repo.repo.is_archived() {
+        view.problem = Some(rbit_core::repository::ARCHIVED_READ_ONLY.to_owned());
+        view.can_create = false;
+    }
     Ok(view.into_response())
 }
 
@@ -517,7 +521,9 @@ async fn conversation(
         user.is_some() && (permissions.can_triage || user.is_some_and(|user| ctx.issue().is_author(user) && permissions.can_comment));
     let reviewers = ReviewersView::new(&data, can_request && is_open, &urls);
     let review_form = review_form(&ctx, &data, user);
-    let can_change_base = is_open && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_change_base = is_open
+        && !ctx.repo().repo.repo.is_archived()
+        && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
     let can_convert_to_draft = can_change_base && !ctx.pull.is_draft;
     if let Some(user) = user {
         state.services.notifications.mark_thread_read(user.id(), ctx.issue().id).await;
