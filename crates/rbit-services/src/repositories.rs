@@ -13,7 +13,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use rbit_auth::{Grants, repo_access};
 use rbit_core::{
-    Account, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, repository::OwnedRepository,
+    Account, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility,
+    repository::{ArchivedFilter, OwnedRepository},
 };
 use rbit_git::{RepositoryReader, RepositoryStorage};
 use rbit_storage::{NewRepository, RepositoryStore};
@@ -89,6 +90,8 @@ impl RepoContext {
 pub struct RepoSearch {
     pub text: String,
     pub sort: RepoSort,
+    /// Archived repositories are listed unless this says otherwise.
+    pub archived: ArchivedFilter,
     /// 1-based; `0` is treated as `1`.
     pub page: u32,
 }
@@ -258,12 +261,12 @@ impl RepositoryService {
     /// Pages past the end are clamped to the last page.
     pub async fn explore(&self, search: &RepoSearch) -> Result<RepoSearchResults, ServiceError> {
         let text: String = search.text.trim().chars().take(MAX_SEARCH_LEN).collect();
-        let total = u64::try_from(self.store.count_public(&text).await?).unwrap_or_default();
+        let total = u64::try_from(self.store.count_public(&text, search.archived).await?).unwrap_or_default();
         let mut results = RepoSearchResults { repos: Vec::new(), total, page: search.page.max(1), per_page: EXPLORE_PAGE_SIZE };
         results.page = results.page.min(results.page_count());
 
         let offset = (results.page - 1).saturating_mul(EXPLORE_PAGE_SIZE);
-        results.repos = self.store.search_public(&text, search.sort, EXPLORE_PAGE_SIZE, offset).await?;
+        results.repos = self.store.search_public(&text, search.sort, search.archived, EXPLORE_PAGE_SIZE, offset).await?;
         Ok(results)
     }
 

@@ -1,5 +1,5 @@
 //! Archived repositories through the real router, database and templates: the banner,
-//! and the hidden write controls.
+//! the hidden write controls, the list badges and the explore filter.
 use std::sync::Arc;
 
 use axum::{
@@ -51,6 +51,11 @@ impl Fixture {
     }
 }
 
+/// The names of the repositories an explore page lists, in order.
+fn listed(html: &str) -> Vec<&str> {
+    ["frozen", "lively"].into_iter().filter(|name| html.contains(&format!("href=\"/keeper/{name}\""))).collect()
+}
+
 #[tokio::test]
 async fn archived_repositories_show_a_banner_and_no_write_controls() {
     let fixture = Fixture::new().await;
@@ -72,4 +77,25 @@ async fn archived_repositories_show_a_banner_and_no_write_controls() {
     fixture.services.repo_settings.set_archived(&fixture.owner, &frozen, false).await.unwrap();
     let (_, unarchived) = fixture.get("/keeper/frozen/issues").await;
     assert!(!unarchived.contains(BANNER) && unarchived.contains(">New issue<"), "unarchiving brings the controls back");
+}
+
+#[tokio::test]
+async fn lists_mark_archived_repositories_and_explore_filters_them() {
+    let fixture = Fixture::new().await;
+    let (_, all) = fixture.get("/explore").await;
+    assert_eq!(listed(&all), ["frozen", "lively"]);
+    assert_eq!(all.matches(">Archived</span>").count(), 1, "one badge, on the archived repository");
+    assert!(all.contains("href=\"/explore?archived=true\"") && all.contains("href=\"/explore?archived=false\""));
+
+    let (_, active) = fixture.get("/explore?archived=false").await;
+    assert_eq!(listed(&active), ["lively"]);
+    assert!(active.contains("1 repository"));
+    assert!(active.contains("name=\"archived\" value=\"false\""), "searching keeps the filter");
+    let (_, archived) = fixture.get("/explore?archived=true&q=one").await;
+    assert_eq!(listed(&archived), ["frozen"]);
+    let (_, lenient) = fixture.get("/explore?archived=maybe").await;
+    assert_eq!(listed(&lenient), ["frozen", "lively"], "an unknown value lists everything");
+
+    let (_, profile) = fixture.get("/keeper").await;
+    assert_eq!(profile.matches(">Archived</span>").count(), 1, "profiles mark it too");
 }
