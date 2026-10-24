@@ -25,15 +25,15 @@ actions-proto-def `76f6081`, as of 2026-10-23.
 
 | Question | Decision |
 |---|---|
-| Who runs builds? | External Forgejo Runner (first target) and Gitea act_runner, speaking the Connect protocol with binary protobuf at `POST /api/actions/{service}/{method}`. One union `.proto` serves both forks (field numbers do not conflict). |
+| Who runs builds? | **Superseded by §12** — rbit's own `rbit-runner`. *Was:* external Forgejo Runner (first target) and Gitea act_runner, speaking the Connect protocol with binary protobuf at `POST /api/actions/{service}/{method}`. One union `.proto` serves both forks (field numbers do not conflict). |
 | On by default? | **No.** `[actions] enabled = false`. Instance switch, read once at startup; a change needs a restart. Then **per repository**: repository administrators turn Actions on in the repository's settings (default off; `[actions] enable_for_new_repositories` changes the default for *new* repositories only). |
 | What does "disabled" mean? | `Services::actions` is `None` — the service is never constructed. Its routers are not merged, no subscriber, sweeper or scheduler exists, no UI entry renders, no webhook event is offered, workflow files are ignored, task tokens are refused without a database lookup, and **nothing is written** to any `actions_*` table or under `<data_dir>/actions`. The schema still exists (migrations always run). §8 is the proof. |
-| Protocol code | `prost` 0.14 types generated once by a pure-Rust tool (`protox` + `prost-build`, no `protoc`) and **checked in**. Normal builds have no `build.rs`. A test regenerates into a temp dir and fails on drift. |
-| Connect server | Hand-written in Axum (~200 lines): `application/proto` only (415 otherwise), identity encoding only, a body cap per method, Connect JSON errors, `unimplemented` (501) for RPCs we don't serve. The official `connectrpc` crate is pre-1.0 and brings a second protobuf runtime. |
+| Protocol code | **Superseded by §12** — JSON over HTTPS, types in `rbit-workflow::protocol`. *Was:* `prost` 0.14 types generated once by a pure-Rust tool (`protox` + `prost-build`, no `protoc`) and **checked in**. Normal builds have no `build.rs`. A test regenerates into a temp dir and fails on drift. |
+| Connect server | **Superseded by §12** — no Connect. *Was:* hand-written in Axum (~200 lines): `application/proto` only (415 otherwise), identity encoding only, a body cap per method, Connect JSON errors, `unimplemented` (501) for RPCs we don't serve. The official `connectrpc` crate is pre-1.0 and brings a second protobuf runtime. |
 | Workflow parsing | A new pure crate **`rbit-workflow`** (no I/O, no async, no database): YAML → typed model, trigger matching, GitHub's filter-pattern dialect (ported from act's `workflowpattern`, not `globset` — negation order differs), cron, matrix expansion, single-job payload emission. YAML via **`saphyr`** (node tree with spans) + **`serde-saphyr`** (typed, panic-free, budgets) — both MIT OR Apache-2.0, actively released in 2026. Not `yaml-rust` (unmaintained; only syntect pulls it) and not `serde_yaml`/`serde_yml` (deprecated). |
 | Cron | Own 5-field POSIX parser in `rbit-workflow` (UTC, `*`, lists, ranges, steps, names; plus `@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly`). ~250 lines, tested exhaustively — the TOTP precedent: small, specified, no dependency. |
-| Job-level `if:` | Always dispatched; the runner evaluates it and reports `RESULT_SKIPPED`. Correct, costs a runner slot per skipped job. Server-side evaluation is a later optimisation. |
-| Expressions on the server | Only `${{ matrix.* }}` (and literals) inside `runs-on`, `name` and `concurrency.group`'s `github.*` subset (§4.6). Everything else is passed to the runner verbatim. |
+| Job-level `if:` | **Superseded by §12** — evaluated by the server when the job unblocks. *Was:* always dispatched; the runner evaluates it and reports `RESULT_SKIPPED`. Correct, costs a runner slot per skipped job. Server-side evaluation is a later optimisation. |
+| Expressions on the server | **Superseded by §12** — a full shared evaluator (§12.4). *Was:* only `${{ matrix.* }}` (and literals) inside `runs-on`, `name` and `concurrency.group`'s `github.*` subset (§4.6). Everything else is passed to the runner verbatim. |
 | Task credential | `rbat_` + 43 base64url characters (256 bits), only the SHA-256 digest stored (unique index → O(1) lookup), valid **only while its task is running**; the digest column is cleared when the task stops. Accepted by Git smart HTTP (Basic password, any username) and by the REST API (`Bearer`/`token`). |
 | Commit statuses | Posted by a **system actor** (creator `NULL`, shown as "rbit Actions", webhook `sender` `rbit-actions[bot]`). Not the pusher: fork pull request authors have no write access, scheduled runs have no user, and a status must not appear to be something a person typed. `pending` as soon as a job is queued. |
 | Secrets at rest | AES-256-GCM (`aes-gcm` 0.11, RustCrypto, already in `Cargo.lock`), key in a **separate key file** (`<data_dir>/actions/secrets.key`, `0600`), *not* in SQLite — a leaked `rbit.db` or backup archive reveals no secret. §6.3. |
@@ -44,6 +44,8 @@ actions-proto-def `76f6081`, as of 2026-10-23.
 | Mirrors | Pull mirror fetches and imports never start runs. |
 
 ## 2. Scope
+
+> Scope is restated in §12.2; the lists below describe the external-runner design.
 
 **In scope (this branch):** triggers `push` (`branches`, `branches-ignore`, `tags`,
 `tags-ignore`, `paths`, `paths-ignore`), `pull_request` (`types`, `branches`,
@@ -78,6 +80,8 @@ subset; metrics; audit.
 - `.gitea/workflows` and `.rbit/workflows`: two locations are enough; `.forgejo` first.
 
 ## 3. Crates and layering
+
+> `rbit-web::actions_proto`, the Connect endpoint and `tools/protogen` are **dropped**; §12.3 gives the current layering.
 
 ```
 rbit-server ── rbit-web ──┬── rbit-services ──┬── rbit-storage ── rbit-core
@@ -121,6 +125,8 @@ tools/protogen  (workspace member, not a default member, publish = false; protox
 | `statuses.rs` | Status context naming and the system-actor bridge into `StatusService`. |
 
 ## 4. Behaviour
+
+> §4.3–§4.5, and the Forgejo-specific parts of §4.1 and §4.8 (`actions/checkout` paths, `by_task`), are **superseded by §12**.
 
 ### 4.1 Workflow discovery
 
@@ -437,6 +443,8 @@ reads secrets — as with every self-hosted forge; the runner must receive plain
 
 ### 6.4 RPC limits
 
+> **Superseded by §12.6.**
+
 | RPC | Body cap | Other |
 |---|---|---|
 | Ping, Register, Declare, FetchTask, UpdateTask | 1 MiB | ≤ 64 labels, ≤ 1,000 step states |
@@ -557,6 +565,8 @@ committed when templates add classes. Imperative subjects ≤ 72 characters, bod
 why, **human attribution only — no AI co-author trailers**. Never push, never touch `main`.
 
 ### Workstreams
+
+> Commits 9–14 (stream R) and 26–30 are **replaced by the plan in §12.11**.
 
 | Stream | Commits | Runs | Owns (exclusive) |
 |---|---|---|---|
@@ -790,3 +800,454 @@ The ref must be one of the repository's own `refs/heads/*` or `refs/tags/*`. Nev
 - Pull request trigger types gain `ready_for_review` and `edited`, as far as rbit emits them.
 - The docs state plainly that write access to a repository means being able to read its
   secrets through a workflow.
+
+## 12. rbit's own runner (supersedes the external-runner design)
+
+rbit no longer depends on another forge's CI system. It ships **two binaries**:
+
+- `rbit`: the forge, still the control plane only.
+- **`rbit-runner`**: a separate process, built from this workspace. It registers with rbit over rbit's own protocol and runs jobs in containers or a host shell, on the same machine or on others.
+
+The server still never runs a build. Untrusted code never runs inside the forge process or as its user.
+
+These parts stay unchanged and binding:
+- the off-by-default switch and the disabled-is-disabled proof (§1, §8);
+- triggers (§4.2);
+- concurrency, cancel, re-run and approval (§4.6);
+- commit statuses (§4.7);
+- storage (§5), except where §12.8 says otherwise;
+- every security amendment of §11: trust per event, the task-caller allowlist, token permissions, recursion, fairness in SQL, registration tokens, masking and lifecycle.
+
+### 12.1 Decisions
+
+| Question | Decision |
+|---|---|
+| Workflow format | A **GitHub-style subset**: `on` / `jobs` / `steps` YAML with `run:` steps, plus a few **rbit built-ins** for `uses:`. Not the Node, composite or Docker action marketplace. A `uses:` that rbit does not know is a readable workflow error, never a download. |
+| Where workflows live | `.rbit/workflows`, then `.forgejo/workflows`, then `.github/workflows`. Only the **first existing** directory counts; §4.1's other rules still apply. rbit now owns the format, so it gets its own directory; the other two keep simple workflows portable. |
+| Execution | `rbit-runner` has two backends. The **container backend** runs Docker or Podman through their CLI. The **host backend** runs child processes as the runner's user and is loudly flagged as unsafe for untrusted code. |
+| Shared code | `rbit-workflow` stays pure and gains three modules: `expr` (a full evaluator), `spec` (`JobTemplate`, `JobSpec`) and `protocol` (wire types). Server and runner both depend on it. The runner depends on **no** server crate. |
+| Protocol | HTTPS + JSON under `/api/actions/runner/v1/`, authenticated by a bearer runner credential. Fetch is a **long poll** of at most 25 s, woken by `tokio::sync::Notify`; an idle wake does not touch SQLite. Logs are appended by line offset, so retries are harmless. Every state response carries cancellation. |
+| Job-level `if:` | The **server** evaluates it when a job unblocks. Available contexts: `github`, `needs`, `vars`, `inputs`, `matrix`, `strategy` and the status functions. A false condition marks the job `skipped` without using a runner slot. |
+| Strategy | The server enforces `fail-fast` (default `true`) and `max-parallel`. This is possible now that rbit schedules its own jobs. |
+| Artifacts | **In scope**, as stream A (§12.7). Stored under `<data_dir>/actions/artifacts`, with a quota and retention, and not backed up. |
+| Cache | A runner-local `rbit/cache` (§12.5.6). A server-side cache is a later feature. |
+| Removed | Connect, protobuf and `tools/protogen`; `[actions] default_actions_url`; the `forgejo_*` / `gitea_*` context keys; the single-job YAML payload (`payload.rs`, `emit.rs`). |
+
+### 12.2 Workflow subset
+
+Unknown keys are **parse errors** at every level, with line and column, because a typo must not silently change what a job does. GitHub keys that rbit deliberately lacks are also errors: the message names the key and says "not supported by rbit". These are:
+- `workflow_call` and `jobs.<id>.uses`;
+- `environment`;
+- `secrets: inherit`;
+- `container.options`;
+- `services.*.options` and `services.*.volumes`.
+
+| Level | Supported keys |
+|---|---|
+| Workflow | `name`, `run-name` (expressions over `github`, `inputs`, `vars`), `on` (the triggers of §2), `env`, `defaults.run.{shell, working-directory}`, `permissions` (§11.4), `concurrency`, `jobs` |
+| Job | `name`, `needs`, `if`, `runs-on` (a string or a list of labels), `permissions`, `env`, `defaults.run`, `outputs`, `timeout-minutes` (default 360, at most `[actions] endless_timeout_seconds`), `continue-on-error`, `concurrency` (job level, same rules as §11.6), `strategy.{matrix, fail-fast, max-parallel}`, `container` (`image`, `env`, `credentials.{username, password}`), `services.<id>` (`image`, `env`, `credentials`; container backend only), `steps` (at most 256) |
+| Step | `id`, `name`, `if`, `run`, `shell`, `working-directory`, `env`, `uses`, `with`, `continue-on-error`, `timeout-minutes`. A step has exactly one of `run` and `uses`. |
+
+**Shells:**
+
+| Shell | Command or rule |
+|---|---|
+| `bash` | `bash --noprofile --norc -eo pipefail {0}`; the default on Linux and macOS |
+| `sh` | `sh -e {0}` |
+| `pwsh` | the default on Windows when present; otherwise `powershell` |
+| `powershell`, `cmd`, `python` | supported |
+
+Custom `{0}` templates are a later feature and are an error for now.
+
+**Built-ins** for `uses:` are versioned by major version. Their `actions/*` aliases let common GitHub workflows run unchanged. An unsupported `with:` key is a workflow error; it is never ignored.
+
+| `uses:` | Alias of | `with:` |
+|---|---|---|
+| `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `ref`, `path`, `fetch-depth` (default 1; 0 means full history), `fetch-tags`, `submodules` (`false` / `true` / `recursive`), `lfs`, `clean`, `persist-credentials` (default `true`) |
+| `rbit/cache@v1` | `actions/cache@v3` to `@v4`, including `/restore` and `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
+| `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
+| `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple` |
+
+`actions/setup-*` and every other action are errors. The error message suggests a `container` image or a `run:` step instead.
+
+**Not supported in this branch**, each an error:
+- matrices or `runs-on` that depend on `needs` outputs;
+- reusable workflows;
+- composite or JavaScript actions;
+- `docker://` steps;
+- `hashFiles` on the server (it works on the runner only);
+- a step `uses:` with `${{ }}` in the action name.
+
+### 12.3 Crates and layering
+
+```
+rbit-server ── rbit-web ── rbit-services ──┬── rbit-storage ── rbit-core
+                                           └── rbit-workflow ── (serde, serde_json, serde-saphyr)
+rbit-runner (bin) ── rbit-workflow, reqwest (rustls), tokio, clap, tar, flate2
+```
+
+| Crate / module | Owns |
+|---|---|
+| `rbit-workflow::expr` | The lexer, parser, evaluator and functions. A `Contexts` trait lets each side supply the contexts it has. |
+| `rbit-workflow::{model, parse}` | The typed model of §12.2: steps, container, services, env, defaults, outputs and strategy. |
+| `rbit-workflow::builtins` | Maps `uses:` to `Builtin { kind, version, with }`, handles the aliases and validates `with:`. |
+| `rbit-workflow::spec` | `JobTemplate`, planned when a run is created and stored, and `JobSpec`, the template plus per-task data, sent once to a runner. Both are versioned. |
+| `rbit-workflow::protocol` | The request and response types of §12.6, `PROTOCOL_VERSION`, the error codes and the body caps. |
+| `rbit-services::actions::{runners, scheduler, tasks, logs, tokens, sweeper, artifacts}` | The server side of the protocol, without any transport. |
+| `rbit-web::routes::actions_runner` | The JSON endpoint: the auth extractor, the long poll and the body caps. |
+| `rbit-runner` (new crate, binary) | §12.5. |
+
+The runner is a workspace member but **not** a default member: `cargo build` still builds only `rbit`, and release CI builds both. `unsafe_code = "forbid"` applies to the runner too.
+
+### 12.4 Expressions
+
+`rbit-workflow::expr` provides one evaluator. The server uses it when a run is created and when a job unblocks; the runner uses it at step time. A template therefore means the same thing on both sides.
+
+**Grammar:**
+- literals: `null`, booleans, numbers (including hex and exponents) and `'strings'`;
+- context paths with `.name`, `['name']`, `[0]` and the object filter `.*` (as in `needs.*.result`);
+- the operators `!`, `<`, `<=`, `>`, `>=`, `==` and `!=`, with GitHub's loose coercion and case-insensitive string equality;
+- `&&`, `||` and parentheses.
+
+**Functions:** `contains`, `startsWith`, `endsWith`, `format`, `join`, `toJSON`, `fromJSON`, `success`, `failure`, `always` and `cancelled`. `hashFiles` exists on the runner only.
+
+**Values:** `null`, booleans, numbers, strings, arrays and objects, backed by `serde_json::Value`.
+
+**Limits:** a template is at most 4 KiB, nesting at most 32 levels, evaluation at most 10,000 steps, `fromJSON` input at most 1 MiB, and results at most 1 MiB. Exceeding any limit is an evaluation error, never a panic.
+
+**Tests:** a table ported from GitHub's documented examples, plus proptests that parsing never panics, that `print(parse(x))` round-trips, and that evaluating arbitrary ASTs ends within the budget.
+
+| Where | Fields | Contexts |
+|---|---|---|
+| Server, when the run is created | `run-name`, job `name`, `runs-on`, `strategy`, `container.image`, `services.*.image`, workflow and job `concurrency`, `timeout-minutes`, job `continue-on-error` | `github`, `inputs`, `vars`, `matrix`, `strategy` |
+| Server, when a job unblocks | job `if` (default `success()`) | the above, plus `needs` |
+| Runner, at step time | step `if`, `name`, `run`, `env`, `with`, `working-directory`, `shell`, `timeout-minutes`, `continue-on-error`; `container.env`, `container.credentials`, `services.*.env`; job `outputs` (after the last step) | the above, plus `env`, `secrets`, `steps`, `job`, `runner` |
+
+The server never evaluates `secrets.*`. A `run:` script is interpolated as text and written to a file; it is never passed through a shell's argument list.
+
+### 12.5 rbit-runner
+
+#### 12.5.1 Layout and CLI
+
+```
+crates/rbit-runner/src/
+  main.rs  cli.rs  config.rs  client.rs      # protocol client, backoff, idempotency keys
+  poller.rs  task.rs  steps/{run, checkout, cache, artifact}.rs
+  backend/{mod, container, host}.rs  envfiles.rs  commands.rs (`::add-mask::` …)
+  mask.rs  logs.rs (batching, offsets, disk spool)  process.rs (groups, kill)  shutdown.rs
+```
+
+| Command | Does |
+|---|---|
+| `rbit-runner register --url <rbit> --token <registration token> [--name] [--labels]` | Exchanges the registration token for a runner credential, and writes `runner.toml` and `.credential` (mode `0600` on Unix). |
+| `rbit-runner run [--once]` | Polls for tasks and runs them. `--once` makes the runner ephemeral: one task, then it unregisters and exits. |
+| `rbit-runner exec <workflow.yml> [--job id] [--event push] [--backend host\|container]` | Plans and runs a workflow from a local checkout, with no server, using the same parser, planner and executor. Secrets come from `--secret NAME`, read from the environment. |
+| `rbit-runner check` | Checks the configured backends: whether docker or podman is reachable, the git version, and which shells exist. |
+
+There is no self-update. `rbit-runner` ships in the release archives next to `rbit` and as the image `ghcr.io/gitrbit/rbit-runner`.
+
+`runner.toml`:
+
+```toml
+url = "https://git.example.com"
+name = "build-1"
+capacity = 2                       # tasks at once
+work_dir = "/var/lib/rbit-runner"
+[[labels]]                         # runs-on label → how to run it
+name = "ubuntu-latest"
+backend = "container"
+image = "docker.io/library/ubuntu:24.04"
+[[labels]]
+name = "self-hosted"
+backend = "host"                   # warned about at register and every start
+[container]
+program = "docker"                 # or "podman"
+memory = "4g"
+cpus = 2
+pids_limit = 4096
+network = "bridge"                 # per-job networks are created on top
+[cache]
+max_bytes = 10737418240
+```
+
+#### 12.5.2 Container backend
+
+The backend calls the `docker` / `podman` CLI rather than a daemon API crate:
+- The CLI behaves the same for Docker and for rootful and rootless Podman.
+- A security tool avoids hyper/tower API-version churn.
+- Every action is one command line that can be audited.
+- There is no socket-path or socket-permission logic.
+
+For each task:
+1. `network create rbit-<task>`.
+2. For each service, `run -d --network rbit-<task> --network-alias <id>`.
+3. `create` the job container with `--network`, `-v <workspace>:/__w/<repo>`, `-w`, `--label rbit.task=<id>`, `--security-opt no-new-privileges`, `--pids-limit`, `--memory`, `--cpus` and the entrypoint `tail -f /dev/null`.
+4. One `exec` per step, with an **`--env-file`** (mode `0600`, deleted after the step), so secrets never appear in process arguments.
+
+The backend never uses `--privileged`, never mounts the Docker socket and never uses host networking.
+
+A workflow's `container.image` overrides the label's image. Registry credentials go through `login --password-stdin` into a per-task `DOCKER_CONFIG`.
+
+On finish, the task's containers and network are removed with `rm -f`. At start-up a janitor removes anything labelled `rbit.task` that no running task owns.
+
+Checkout, cache and artifacts run **on the host side**, writing into the mounted workspace, so images need no `git`.
+
+#### 12.5.3 Host backend
+
+Steps are child processes of the runner's user, running in the task workspace. Registering or starting a runner with a `host` label prints a warning: any job can read everything that user can, including the runner credential. The runners page shows "host — no isolation".
+
+The host backend is recommended only for repository-scoped runners of trusted repositories. On Windows the shell order is `pwsh`, then `powershell`, then `cmd`; `bash` is available when Git for Windows is installed.
+
+#### 12.5.4 Execution
+
+- **Workspace:** `<work_dir>/tasks/<task>/{workspace, temp, files}`. It is removed after the task, including after a failure. `files` holds the env files.
+- **Environment:**
+  - `CI=true`, `GITHUB_ACTIONS=true` (tools key on it) and `RBIT_ACTIONS=true`;
+  - `GITHUB_*` and `RBIT_*` names for the repository, sha, ref, workspace, run id, number and attempt, job, server URL, API URL and event path (`event.json` in `files`);
+  - `RUNNER_OS`, `RUNNER_ARCH`, `RUNNER_TEMP` and `RUNNER_NAME`.
+
+  The token is **not** in the environment unless a step maps `${{ secrets.GITHUB_TOKEN }}` or `secrets.RBIT_TOKEN`.
+- **Env files:**
+  - `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH` and `GITHUB_STEP_SUMMARY`, with `RBIT_*` aliases pointing at the same files.
+  - Both the `name=value` and heredoc (`name<<EOF`) forms work.
+  - Each file is limited to 1 MiB per step.
+  - `GITHUB_ENV` cannot set `GITHUB_*`, `RBIT_*`, `RUNNER_*`, `NODE_OPTIONS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` or `ENV`.
+- **Workflow commands:**
+  - Supported: `::add-mask::`, `::group::` / `::endgroup::`, `::error|warning|notice ...::`, and `::stop-commands::<token>` / `::<token>::`.
+  - The deprecated `::set-output::`, `::set-env::` and `::add-path::` are refused with a log line.
+- **Masking:**
+  - What is masked: secrets, the task token, `::add-mask::` values, each line of at least 4 characters in a multi-line value, and the base64 encoding of each (three alignments).
+  - Masked text becomes `***` before a log line leaves the runner. Each task uses one Aho-Corasick automaton.
+  - The server pass of §11.10 still runs.
+- **Timeouts and cancellation:** step and job `timeout-minutes` apply, and the server can cancel. Stopping works per platform:
+
+  | Platform | How a step is stopped |
+  |---|---|
+  | Unix | Steps start in their own process group. Stop sends `kill -TERM -<pgid>`, waits a 10 s grace period, then sends `kill -KILL -<pgid>`, using the `kill` program so no `unsafe` is needed. |
+  | Windows | `taskkill /T`, then `taskkill /T /F`. |
+  | Containers | `kill` the job container. |
+
+  A cancelled step reports `cancelled`. `always()` steps still run, within a 5-minute budget after the cancel.
+- **Capacity:** up to `capacity` tasks run at once, each with its own workspace and network.
+- **Shutdown:** SIGTERM or Ctrl-C stops polling. Running tasks get `shutdown_grace` (default 10 min), then are cancelled and reported. A second signal cancels them at once.
+- **Reconnect:** backoff grows exponentially from 1 s to 60 s, with jitter. While the server is unreachable, log lines spool to disk (at most 64 MiB per task) and are sent by offset afterwards. A task whose server-side state is gone (404) is cancelled locally.
+
+#### 12.5.5 Built-in checkout
+
+Checkout uses the `git` CLI (2.30 or later) on the runner host:
+1. `init`.
+2. `remote add origin <url>/<owner>/<repo>`.
+3. `fetch --no-tags --depth=<n> origin <sha>`: by SHA, with tags and full history as `with:` asks.
+4. `checkout --detach`, then a local branch for branch refs.
+
+The token travels as `http.extraHeader` through the `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` environment variables, never in a URL or an argument. With `persist-credentials: true` the header is written into `.git/config`; it dies with the task.
+
+Submodules on this rbit instance use the token; all others use anonymous HTTPS only. `lfs: true` needs `git-lfs` on the runner host.
+
+#### 12.5.6 Built-in cache
+
+Entries live at `<work_dir>/cache/<repo id>/<scope>/<sha256(key)>.tar.gz` (tar + flate2) and are evicted least-recently-used once they exceed `cache.max_bytes`.
+
+Scopes prevent cache poisoning:
+- A run reads its own ref's scope first, then the default branch's.
+- A run writes only to its own ref's scope.
+- An untrusted run writes only to `pull/<n>`.
+
+The cache is runner-local by design, so a hit needs the same runner.
+
+### 12.6 Protocol v1
+
+**Every request:**
+- carries `Rbit-Runner-Protocol: 1` and `User-Agent: rbit-runner/<version>`;
+- has a JSON body (`application/json`). Log and artifact bodies may use `Content-Encoding: gzip`, within a cap on decompressed size and a 1:100 ratio cap.
+
+**Authentication:** runner calls carry `Authorization: Bearer rbrn_<43 base64url>`, the runner credential. The server stores only its SHA-256 digest, in a unique index, so lookup through `RunnerCache` is O(1).
+
+**Errors** are `{"code", "message"}` with these statuses:
+
+| Code | HTTP status |
+|---|---|
+| `unauthenticated` | 401 |
+| `forbidden` | 403 |
+| `not_found` | 404 |
+| `conflict` | 409 |
+| `too_large` | 413 |
+| `unsupported_protocol` | 426; the body lists the supported versions |
+| `throttled` | 429, with `Retry-After` |
+| `unavailable` | 503 |
+
+**Throttling:** only failed authentication spends `ThrottleScope::RunnerAuth`. Registration spends `RunnerRegister`.
+
+| Method & path (`/api/actions/runner/v1/…`) | Body cap | Purpose |
+|---|---|---|
+| `POST register` | 64 KiB | Takes a registration token (§11.9 rules), name, labels and capabilities (`backends`, `os`, `arch`, `capacity`, `version`, `ephemeral`). Returns the runner id, the credential (shown once) and the poll and heartbeat intervals. |
+| `POST declare` | 64 KiB | Sends labels and capabilities at every start. Pinned labels are enforced, and a label change bumps `tasks_version`. |
+| `POST poll` | 4 KiB | Long poll for one task when `free_slots ≥ 1`, with an `Idempotency-Key` header. Returns `200 {task: JobSpec}`, or `204` after at most 25 s. |
+| `POST tasks/{id}/state` | 1 MiB | Heartbeat (at least every 10 s), step states, the result when final, and outputs. Returns `{cancel: bool}`. |
+| `POST tasks/{id}/logs?from=<line>` | 8 MiB | `text/plain` lines, stored only from the server's current line count. A resend overlaps harmlessly; a gap answers `409 {next_line}`. |
+| `PUT tasks/{id}/artifacts/{name}` | `max_artifact_bytes` | Stream A: upload an artifact. |
+| `GET tasks/{id}/artifacts[/{name}]` | — | Stream A: this run's artifacts. |
+| `POST unregister` | 1 KiB | Used by ephemeral runners and by uninstalling `rbit-runner`. |
+
+**Long poll.** The handler checks the runner against the cache only, then loops:
+1. If `tasks_version` has changed since the runner's last empty answer, run the claim query of §11.8 once. It matches labels and scope in SQL, is fair across repositories, and respects `max-parallel` and job concurrency.
+2. On a claim, mint the task token, assemble the `JobSpec` (§12.8) and answer.
+3. Otherwise wait on `Notify::notified()` for the remaining time, then go back to step 1.
+
+An idle runner costs one parked future and **no SQLite access**.
+
+Limits on polls:
+- one poll per runner; a second poll ends the first with `204`;
+- `[actions] max_polls` (default 1024) in total; beyond that the server answers `503`.
+
+The route sits outside the 30 s page/API timeout and has its own 30 s limit.
+
+`Idempotency-Key` is stored on the task per runner and key. If a response is lost and the runner retries the poll, it gets the same task with a **freshly minted** token.
+
+**Lifecycle.** A task is running from its claim until its final state.
+- If no state call arrives for `zombie_timeout_seconds`, the sweeper fails the task.
+- A final state:
+  1. stores step results and outputs, masked and capped as in §11.10;
+  2. clears the token digest;
+  3. finalises the log with gzip;
+  4. settles the job and its dependents (`ActionsService::settled`);
+  5. deletes an ephemeral runner.
+- `{cancel: true}` is answered from the moment the job is cancelled. By then the token is already dead (§11.11).
+
+### 12.7 Artifacts (stream A)
+
+**Storage:** `<data_dir>/actions/artifacts/<run id>/<artifact id>`, one `tar.gz` per artifact. The upload streams to a temp file, its SHA-256 is checked against the runner's `Rbit-Content-Sha256`, and the file is then renamed into place. Each artifact has a row in `actions_artifacts`: run, name, size, digest and `expires_at`.
+
+**Names** match `[A-Za-z0-9._-]{1,128}` and are unique per run attempt; `overwrite: true` replaces an existing one.
+
+**Limits:**
+
+| Setting | Default | Rule |
+|---|---|---|
+| `max_artifact_bytes` | 2 GiB | per artifact |
+| `max_artifact_storage_bytes` | 10 GiB | per repository; an upload beyond it gets `413` |
+| `artifact_retention_days` | 90 | `retention-days` may only lower it |
+
+**Download:** from the run page (any repository reader), and through `download-artifact` within the same run.
+
+**Untrusted runs** may upload; their artifacts count toward the same quota.
+
+**Backups and cleanup:** artifacts are **not backed up**, like logs. The sweeper deletes expired artifacts and the files of deleted runs.
+
+### 12.8 What changes in landed code
+
+| Where | Change |
+|---|---|
+| `rbit-workflow/src/payload.rs`, `emit.rs` | Deleted. A new `spec.rs` builds `JobTemplate` from `PlannedJob`, with every field of §12.2; templates stay strings for the later stages to evaluate. |
+| `rbit-workflow/src/expr.rs` | Becomes `expr/{lex, parse, eval, functions}.rs`. The current subset is a strict sub-language, so its tests stay. |
+| `rbit-workflow/src/{model, parse}.rs` | Parse every key of §12.2 into types, with no raw `Mapping` passthrough, and apply the unknown-key policy. |
+| `rbit-workflow/src/plan.rs` | Evaluates the server-side fields of §12.4 (first row) and carries `fail-fast` and `max-parallel` into the template. |
+| `rbit-core::config::actions` | Drop `default_actions_url`. Add `long_poll_seconds` (25), `max_polls` (1024), `max_artifact_bytes`, `max_artifact_storage_bytes` and `artifact_retention_days`. The admin schema follows. |
+| `migrations/0044_actions.sql` | Unreleased, so the commit that needs a change makes it **in place**. The append-only rule protects released databases, and `upgrade.rs` covers released versions only. Changes: `actions_jobs.payload` holds `JobTemplate` JSON; `request_key` is renamed `idempotency_key`; `actions_runners` gains `capabilities` (JSON) and `protocol`; `actions_jobs` gains `max_parallel_group`; `actions_artifacts` is added (stream A). |
+| `services/actions/context.rs` | `task_context` keeps the `github` context but drops the `forgejo_*`, `gitea_*` and `*_server_version` keys and `default_actions_url`. It becomes `JobSpec.contexts.github`. |
+| `services/actions/triggers.rs` | Discovery looks at `.rbit/workflows` first. |
+| `services/actions/runs.rs` | Stores `JobTemplate`. Evaluates job `if` at unblock, so a skipped job never gets a task. Fail-fast cancels sibling jobs; `max-parallel` gates claims. |
+| Stopped branch `actions/runner` | **Salvaged**, adapted and committed again: `rbit-auth::{task_token, runner_token}`; the services `runners`, `scheduler` (claim SQL, idempotency), `tasks`, `logs` (masker, offsets, gzip finalise), `tokens` and `sweeper`; the task caller in `git_http.rs`, `api/auth.rs` and `lfs.rs` with its allowlist test; the throttle scopes. **Dropped:** `tools/protogen`, `proto/`, `actions_proto`, the Connect codec and routes, and the prost/protox dependencies. |
+| Stream U | Keeps commits 21–23. Commit 24's registration page shows `rbit-runner register --url … --token …` and the label/backend table. Runner rows show backends, OS and architecture, version, capacity and "host — no isolation". Job pages show artifacts once stream A lands. |
+
+### 12.9 Security (additions to §6 and §11)
+
+| Asset / actor | Threat | Control |
+|---|---|---|
+| Runner host | Job code escapes into the host | The docs make the container backend the default. Jobs get no privileged mode, no Docker socket and no host network; they run with `no-new-privileges` and pids, memory and CPU limits; each task gets its own network; rootless Podman is recommended. A container escape is a kernel or runtime bug, so the guidance is dedicated runner hosts, VMs for public repositories and ephemeral runners. |
+| Runner host | The host backend runs untrusted code | A warning appears at register, at start and in the UI. The host backend is never chosen implicitly, because each label maps to exactly one backend. The docs say: repository-scoped runners for trusted repositories only. |
+| Runner credential | Stolen by a job | The credential file is outside every workspace and cannot be read inside containers. On the host backend jobs can read it, and the docs say so. It can be revoked from the UI, and failed authentication is throttled. |
+| Secrets | Leak through process arguments, environment dumps or logs | Secrets enter the environment only where a step maps them, through `--env-file` or env, never through arguments. The runner masks raw, per-line and base64 forms, and the server masks again. Env files are `0600` and deleted after each step. |
+| Other tasks | One task reads another's data on a shared runner | Each task has its own workspace, network and containers. The workspace is deleted after each task. Cache scopes are per repository and ref (§12.5.6). |
+| Server | A malicious runner | A runner sees only jobs within its scope and labels. Every task call checks `task.runner_id`. A runner never receives the secrets of untrusted runs. Its outputs and logs are capped and masked. Statuses come from job results, not from contexts the runner chooses. |
+| Built-ins | Supply chain | Built-ins are compiled into `rbit-runner`. At job time nothing is downloaded except the container images the workflow or the operator names. |
+| Protocol | Replay and DoS | TLS is required: `url` must be `https`, unless `--insecure-http` is given for localhost. Other controls: the bearer credential, idempotency keys per runner, body and ratio caps, poll limits and artifact quotas. |
+
+### 12.10 Roadmap and docs
+
+- **ROADMAP:**
+  - *Available today* gains "Actions: GitHub-style workflows on rbit's own runner".
+  - *Not planned* replaces "A built-in Actions runner" with "Running builds inside the rbit server process — builds run on `rbit-runner`".
+- **README:** a features line and a note on the two binaries.
+- **deployment.md:**
+  - installing the runner: binary, container image, and the systemd unit `deploy/rbit-runner.service`;
+  - the backends and their isolation;
+  - `actions/artifacts` is not backed up.
+- **ARCHITECTURE:** the Actions section, and the crate graph with `rbit-workflow` and `rbit-runner`.
+- **User guide `docs/actions.md`:** the workflow subset, built-ins, expressions and the differences from GitHub.
+
+### 12.11 Commit plan
+
+The base is `feature/actions` with this design commit. The rules of §10 still apply:
+- atomic commits, with the gate passing on each;
+- CSS rebuilt when templates change;
+- the ChaseTheCode identity from the repo config, and no AI trailers;
+- streams never push.
+
+Parallel streams rebase onto `feature/actions` when they land. At most **three** streams build at once.
+
+**P — protocol foundation** (runs first, alone, on `feature/actions`)
+
+1. `Define the job specification and runner protocol types`: `rbit-workflow::{spec, protocol}` with the types, serde, version constants and caps, plus round-trip tests. No behaviour.
+
+**After P, in parallel:** W, S and U (U is already running). N starts when U lands.
+
+| Stream | Branch / worktree | Owns (exclusive) |
+|---|---|---|
+| **W** workflow language | `actions/language`, `rbit-actions-W` | `rbit-workflow/src/**`, except field additions to `spec.rs` and `protocol.rs`, which are coordinated by message |
+| **S** server side of the protocol | `actions/server`, `rbit-actions-S` | `rbit-auth/src/{task_token,runner_token}.rs`, `services/actions/{runners,scheduler,tasks,logs,tokens,sweeper}.rs`, `routes/actions_runner.rs`, `routes/git_http.rs`, `routes/api/auth.rs`, the auth part of `routes/lfs.rs`, `services/throttle.rs`, and the runner and task columns of `migrations/0044` |
+| **U** interface and secrets | `actions/ui`, `rbit-actions-U` | As in §10, adapted per §12.8 |
+| **N** runner | `actions/runner-bin`, `rbit-actions-N` | `crates/rbit-runner/**`, `deploy/rbit-runner.service` |
+
+**W — workflow language**
+
+2. `Evaluate GitHub-style expressions with a shared evaluator`
+3. `Parse steps, containers, services and job settings`
+4. `Resolve built-in actions and their actions/* aliases`
+5. `Plan jobs into rbit job templates`: deletes `payload.rs` and `emit.rs`, and adds the `.rbit/workflows` constant.
+
+**S — server side of the protocol**
+
+6. `Authenticate runners and tasks with hashed credentials`
+7. `Register runners with single-use registration tokens`
+8. `Hand waiting jobs to runners over a long poll`
+9. `Record task state, steps and outputs from runners`
+10. `Append and finalise task logs by line offset`
+11. `Accept task tokens for Git over HTTP, LFS and the API`
+12. `Fail stalled tasks and expire old logs`
+
+**U — interface and secrets** (commits 21–23 are already done)
+
+13. `Manage runners, secrets and variables in settings`
+14. `List all runners in the administration panel`
+
+**N — runner**
+
+15. `Add the rbit-runner crate with registration and config`
+16. `Poll for tasks and report state with reconnects`
+17. `Run steps on the host with env files and masking`
+18. `Check out repositories with the task token`
+19. `Run jobs in Docker or Podman containers with services`
+20. `Enforce timeouts, cancellation and graceful shutdown`
+21. `Cache directories on the runner`
+22. `Run a workflow locally with rbit-runner exec`
+
+**J — join** (runs alone, after W and S)
+
+23. `Create jobs from rbit job templates`: changes T's `runs.rs`, `context.rs` and `triggers.rs`, and cleans up the config.
+24. `Evaluate job conditions and strategy on the server`: `if` at unblock, fail-fast, max-parallel and job concurrency.
+
+**A — artifacts** (after J and N)
+
+25. `Store workflow artifacts uploaded by runners`
+26. `Upload and download artifacts in rbit-runner`
+27. `Show and download artifacts on run pages`
+
+**I — integration** (runs alone)
+
+28. `Send workflow_run and workflow_job webhooks`
+29. `Add the Actions REST API`
+30. `Test Actions end to end with rbit-runner`: a real `rbit-runner` on the host backend inside the e2e harness. Container tests run when `RBIT_E2E_CONTAINER=docker|podman` is set.
+31. `Build and release rbit-runner`: the CI build, release archives and `ghcr.io/gitrbit/rbit-runner`.
+32. `Document Actions`: README, `docs/actions.md`, deployment.md, ARCHITECTURE, ROADMAP, CHANGELOG with upgrade notes, and the example configs.
+33. `Record the Actions design as built`
