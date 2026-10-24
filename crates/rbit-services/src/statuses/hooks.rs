@@ -7,8 +7,17 @@
 //! (`id`, `sha`, `name`, `state`, `context`, `description`, `target_url`, `created_at`,
 //! `updated_at`), the `commit`, the `branches` whose tip it is, `repository`, `sender` and,
 //! for organisation repositories, `organization`. There is no `action`.
+//!
+//! Statuses rbit Actions posted have no creator; their `creator` and `sender` are the bot
+//! account [`actions_bot`], as GitHub shows `github-actions[bot]`.
 
-use rbit_core::{Account, protection::is_protected, repository::OwnedRepository, status::CommitStatus, webhook::WebhookEvent};
+use rbit_core::{
+    Account,
+    protection::is_protected,
+    repository::OwnedRepository,
+    status::{CommitStatus, StatusSource},
+    webhook::WebhookEvent,
+};
 use rbit_git::{CommitSummary, RefKind};
 use serde_json::{Value, json};
 
@@ -23,9 +32,23 @@ use crate::{
 /// Branches listed in a payload (GitHub lists up to 10).
 const MAX_BRANCHES: usize = 10;
 
+// Actions: triggers (T).
+/// The login of the account statuses and webhooks name for rbit Actions.
+pub const ACTIONS_BOT_LOGIN: &str = "rbit-actions[bot]";
+
+/// rbit Actions as an account object: the `creator` of its statuses and the `sender` of
+/// their webhooks. It is no real account, so its id is 0.
+pub fn actions_bot() -> Value {
+    json!({ "id": 0, "login": ACTIONS_BOT_LOGIN, "name": "rbit Actions", "type": "Bot", "html_url": null, "url": null })
+}
+
 /// A status as the REST API returns it: GitHub's fields, `creator` as an account (or
-/// `null` once deleted).
+/// `null` once deleted; the Actions bot for statuses Actions posted).
 pub fn status(status: &CommitStatus, creator: Option<&Account>, repo: &OwnedRepository, base_url: &str) -> Value {
+    let creator = match status.source {
+        StatusSource::Actions => actions_bot(),
+        StatusSource::User => creator.map_or(Value::Null, |who| account(who, base_url)),
+    };
     json!({
         "url": format!("{base_url}/api/v1/repos/{}/statuses/{}", repo.full_name(), status.sha),
         "id": status.id.0,
@@ -35,7 +58,7 @@ pub fn status(status: &CommitStatus, creator: Option<&Account>, repo: &OwnedRepo
         "context": status.context.as_str(),
         "created_at": timestamp(status.created_at),
         "updated_at": timestamp(status.updated_at),
-        "creator": creator.map(|who| account(who, base_url)),
+        "creator": creator,
     })
 }
 
@@ -94,7 +117,10 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
         })
         .collect();
     let fork = ctx.database.forks().forks_among(&[*repo]).await?.contains(repo);
-    let sender = ctx.database.accounts().find_accounts(&[*actor]).await?.pop();
+    let sender = match actor {
+        Some(actor) => ctx.database.accounts().find_accounts(&[*actor]).await?.pop().map(|who| account(&who, base_url)),
+        None => Some(actions_bot()),
+    };
     let body = json!({
         "id": stored.id.0,
         "sha": stored.sha,
@@ -108,7 +134,7 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
         "created_at": timestamp(stored.created_at),
         "updated_at": timestamp(stored.updated_at),
         "repository": repository(&owned, base_url, fork),
-        "sender": sender.as_ref().map(|who| account(who, base_url)),
+        "sender": sender,
     });
     Ok(Some(HookPayload { body: with_organization(body, &owned, base_url), repo: owned, event: WebhookEvent::Status }))
 }

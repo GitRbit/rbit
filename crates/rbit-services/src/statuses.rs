@@ -16,6 +16,11 @@
 //! * Each new status publishes [`DomainEvent::CommitStatus`]: the `status` webhook
 //!   ([`hooks::payload`]) and the pull request service (which re-evaluates the pull
 //!   requests whose head it is) react to it.
+//! * rbit Actions posts the statuses of its jobs through the crate-private
+//!   [`StatusService::create_as_system`]: no creator, `source = actions`, and a webhook
+//!   `sender` of `rbit-actions[bot]`. A status must not look like something a person typed,
+//!   and the people behind a run (a fork's author, nobody for a schedule) may not be able to
+//!   write to the repository. Required checks treat these statuses like any other.
 //! * Reading resolves a branch, tag or commit id ([`StatusService::resolve`]); the
 //!   combined state is [`rbit_core::status::combined_state`] over the latest status of
 //!   each context.
@@ -28,7 +33,7 @@ pub mod hooks;
 use std::collections::HashMap;
 
 use rbit_core::{
-    Account, User,
+    Account, RepoId, User,
     status::{CommitStatus, MAX_STATUSES_PER_CONTEXT, StatusReport, StatusState, combined_state, parse_sha},
 };
 use rbit_git::GitError;
@@ -112,9 +117,30 @@ impl StatusService {
             repo: repo.repo.repo.id,
             status: status.id,
             sha: status.sha.clone(),
-            actor: actor.id(),
+            actor: Some(actor.id()),
         });
         Ok(status)
+    }
+
+    // Actions: triggers (T).
+    /// Records `report` on commit `sha` (a full id of `repo`, not checked) as rbit Actions:
+    /// no creator and no permission check — the caller is the Actions service reporting its
+    /// own jobs. `None` when the commit already has the most statuses one context may have.
+    #[expect(dead_code, reason = "the Actions job statuses are its only caller, and they come next")]
+    pub(crate) async fn create_as_system(
+        &self,
+        repo: RepoId,
+        sha: &str,
+        report: &StatusReport,
+    ) -> Result<Option<CommitStatus>, ServiceError> {
+        let store = self.ctx.database.commit_statuses();
+        let Some(status) = store.create_as_system(repo, sha, report, MAX_STATUSES_PER_CONTEXT).await? else {
+            tracing::warn!(repo = repo.0, sha, context = %report.context.as_str(), "commit status cap reached; Actions status dropped");
+            return Ok(None);
+        };
+        tracing::debug!(repo = repo.0, sha = %status.sha, context = %status.context, state = %status.state, "Actions commit status created");
+        self.ctx.events.publish(DomainEvent::CommitStatus { repo, status: status.id, sha: status.sha.clone(), actor: None });
+        Ok(Some(status))
     }
 
     /// The full id of the commit `reference` (a branch, tag or commit id) names;

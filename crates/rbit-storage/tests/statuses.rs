@@ -2,7 +2,7 @@
 
 use rbit_core::{
     AccountId, RepoId, User, Visibility,
-    status::{StatusReport, StatusState},
+    status::{StatusReport, StatusSource, StatusState},
 };
 use rbit_storage::{Database, NewRepository, NewUser};
 
@@ -113,4 +113,26 @@ async fn statuses_go_with_their_repository_and_outlive_their_creator() {
 
     database.repositories().delete(repo).await.unwrap();
     assert_eq!(store.count(repo, A).await.unwrap(), 0);
+}
+
+// Actions: triggers (T).
+#[tokio::test]
+async fn system_statuses_have_no_creator_and_say_they_come_from_actions() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = open_database(&dir).await;
+    let alice = create_user(&database, "alice").await;
+    let repo = create_repo(&database, alice.id(), "rocket").await;
+    let store = database.commit_statuses();
+    let person = store.create(repo, A, &report("pending", "ci"), alice.id(), 1000).await.unwrap().unwrap();
+    assert_eq!((person.creator, person.source), (Some(alice.id()), StatusSource::User));
+
+    let system = store.create_as_system(repo, A, &report("success", "ci"), 1000).await.unwrap().unwrap();
+    assert_eq!((system.creator, system.source), (None, StatusSource::Actions));
+    assert_eq!(store.find(repo, system.id).await.unwrap().unwrap(), system);
+    assert_eq!(store.latest(repo, A).await.unwrap(), [system], "the newest report wins, whoever posted it");
+
+    for _ in 0..2 {
+        store.create_as_system(repo, B, &report("pending", "ci"), 2).await.unwrap().unwrap();
+    }
+    assert!(store.create_as_system(repo, B, &report("success", "ci"), 2).await.unwrap().is_none(), "capped like any status");
 }

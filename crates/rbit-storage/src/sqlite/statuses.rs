@@ -7,10 +7,13 @@
 //! row with the highest id. [`CommitStatusStore::create`] enforces the per-triple cap in
 //! the same statement as the insert. Validation of the values happens in the service
 //! (`rbit_core::status::StatusReport`).
+//!
+//! Statuses rbit Actions posts ([`CommitStatusStore::create_as_system`]) have no creator
+//! and `source = 'actions'` (migration `0045_commit_status_source.sql`).
 
 use rbit_core::{
     AccountId, RepoId, Timestamp,
-    status::{CommitStatus, StatusContext, StatusId, StatusReport, StatusState},
+    status::{CommitStatus, StatusContext, StatusId, StatusReport, StatusSource, StatusState},
 };
 use sqlx::SqlitePool;
 
@@ -19,7 +22,7 @@ use crate::StorageError;
 /// The columns of a status row, in [`StatusRow`]'s order.
 macro_rules! status_columns {
     () => {
-        "id, repo_id, sha, state, context, description, target_url, creator_id, created_at, updated_at"
+        "id, repo_id, sha, state, context, description, target_url, creator_id, source, created_at, updated_at"
     };
 }
 
@@ -41,6 +44,7 @@ struct StatusRow {
     description: Option<String>,
     target_url: Option<String>,
     creator_id: Option<i64>,
+    source: String,
     created_at: i64,
     updated_at: i64,
 }
@@ -59,6 +63,7 @@ impl TryFrom<StatusRow> for CommitStatus {
             description: row.description,
             target_url: row.target_url,
             creator: row.creator_id.map(AccountId),
+            source: StatusSource::parse(&row.source).ok_or_else(|| corrupt("source", &row.source))?,
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
         })
@@ -80,9 +85,9 @@ impl CommitStatusStore {
         Self { pool }
     }
 
-    /// Stores `report` for commit `sha` (a full, lower-case id) of `repo`. `None` (and
-    /// nothing stored) when the commit already has `max_per_context` reports for this
-    /// context.
+    /// Stores `report` for commit `sha` (a full, lower-case id) of `repo`, posted by
+    /// `creator`. `None` (and nothing stored) when the commit already has `max_per_context`
+    /// reports for this context.
     pub async fn create(
         &self,
         repo: RepoId,
@@ -91,11 +96,34 @@ impl CommitStatusStore {
         creator: AccountId,
         max_per_context: u32,
     ) -> Result<Option<CommitStatus>, StorageError> {
+        self.insert(repo, sha, report, Some(creator), StatusSource::User, max_per_context).await
+    }
+
+    // Actions: triggers (T).
+    /// Stores `report` as rbit Actions: no creator, `source = 'actions'`. Capped like
+    /// [`Self::create`].
+    pub async fn create_as_system(
+        &self,
+        repo: RepoId,
+        sha: &str,
+        report: &StatusReport,
+        max_per_context: u32,
+    ) -> Result<Option<CommitStatus>, StorageError> {
+        self.insert(repo, sha, report, None, StatusSource::Actions, max_per_context).await
+    }
+
+    async fn insert(
+        &self,
+        repo: RepoId,
+        sha: &str,
+        report: &StatusReport,
+        creator: Option<AccountId>,
+        source: StatusSource,
+        max_per_context: u32,
+    ) -> Result<Option<CommitStatus>, StorageError> {
         let now = Timestamp::now().seconds();
         let row: Option<StatusRow> = sqlx::query_as(concat!(
-            "INSERT INTO commit_statuses (repo_id, sha, state, context, description, target_url, creator_id, created_at, updated_at) \
-             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8 \
-             WHERE (SELECT COUNT(*) FROM commit_statuses WHERE repo_id = ?1 AND sha = ?2 AND context = ?4) < ?9 RETURNING ",
+            "INSERT INTO commit_statuses (repo_id, sha, state, context, description, target_url, creator_id, source, created_at,              updated_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9              WHERE (SELECT COUNT(*) FROM commit_statuses WHERE repo_id = ?1 AND sha = ?2 AND context = ?4) < ?10 RETURNING ",
             status_columns!()
         ))
         .bind(repo.0)
@@ -104,7 +132,8 @@ impl CommitStatusStore {
         .bind(report.context.as_str())
         .bind(report.description.as_deref())
         .bind(report.target_url.as_deref())
-        .bind(creator.0)
+        .bind(creator.map(|id| id.0))
+        .bind(source.as_str())
         .bind(now)
         .bind(i64::from(max_per_context))
         .fetch_optional(&self.pool)

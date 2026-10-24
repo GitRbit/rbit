@@ -101,8 +101,9 @@ pub enum DomainEvent {
     CollaboratorChanged { repo: RepoId, user: AccountId, actor: AccountId, change: CollaboratorChange },
     // Milestone 3: commit statuses (S).
     /// A commit status was created on commit `sha` (a full id). Published by
-    /// [`crate::StatusService::create`].
-    CommitStatus { repo: RepoId, status: StatusId, sha: String, actor: AccountId },
+    /// [`crate::StatusService::create`], and with no `actor` for the statuses rbit Actions
+    /// posts for its jobs (Actions: triggers (T)).
+    CommitStatus { repo: RepoId, status: StatusId, sha: String, actor: Option<AccountId> },
 }
 
 /// What happened to a collaborator ([`DomainEvent::CollaboratorChanged`]).
