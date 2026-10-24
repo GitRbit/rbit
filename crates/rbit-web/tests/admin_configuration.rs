@@ -139,6 +139,7 @@ async fn every_section_renders_labeled_controls_without_a_json_editor() {
         "pulls",
         "editor",
         "lfs",
+        "actions",
     ] {
         let response = fixture.get(section).await;
         assert_eq!(response.status(), StatusCode::OK, "{section}");
