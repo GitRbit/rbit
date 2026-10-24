@@ -37,8 +37,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
   reporting hides public version output and omits version numbers from outgoing
   integration User-Agents; administrator-only diagnostics remain available.
+- Collect notification emails into a daily or weekly email digest under Settings →
+  Notifications, at a chosen hour (UTC). Digests are grouped by repository, leave out
+  threads already read in the app, keep the one-click unsubscribe headers and are never
+  sent twice, also after a restart. Immediate emails stay the default. Administrators set
+  the default digest hour under Site administration → Settings (`[notifications]
+  digest_hour`, default 8), and `rbit_notification_digests_total{outcome}` counts sent and
+  failed digests.
 
 ### Upgrade notes
+
+- Startup applies migration `0045_email_digests.sql`, adding the delivery choice and digest
+  hour to `notification_email_settings` and the `notification_digests` and
+  `notification_digest_items` tables. Existing users keep immediate notification emails;
+  nothing changes until someone chooses a digest. Back up the database before upgrading
+  as usual.
 
 - Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
   and their maintenance triggers. Existing account names and IDs are unchanged; names

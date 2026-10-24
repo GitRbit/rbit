@@ -184,6 +184,10 @@ noreply_domain = ""
 email = true
 # What users who never chose get: "off", "participating" or "all".
 default_email = "participating"
+# Users can collect their notification emails into a daily or a weekly (Monday) digest.
+# This is the hour (0-23, UTC) digests are sent at unless a user picks another one;
+# administrators can change it at runtime under Site administration -> Settings.
+digest_hour = 8
 
 [editor]
 # Editing and uploading files in the browser. Text edits are limited by

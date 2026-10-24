@@ -38,8 +38,8 @@ for release history.
 - **Themes:** light, dark and about 500 tinted-theming schemes.
 - **Distribution:** community contribution files, release binaries for
   Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/gitrbit/rbit`.
-- **Email notifications** on top of the in-app inbox, with per-user preferences and
-  one-click unsubscribe.
+- **Email notifications** on top of the in-app inbox, with per-user preferences, daily or
+  weekly digests and one-click unsubscribe.
 - **Editing files in the browser:** create, edit, rename, delete and upload files, committing
   to the branch or to a new branch with a pull request.
 - **Git LFS:** the batch API, uploads and downloads, and file locking.
@@ -67,7 +67,6 @@ Ideas with no schedule yet:
   rbit (rbit itself still would not run builds).
 - A native gitoxide transport for `receive-pack`, behind a configuration switch, so pushes
   no longer need the `git` binary.
-- Email digests.
 - Archived (read-only) repositories.
 - Git LFS over pure SSH (`git-lfs-transfer`); today SSH clients use
   `git-lfs-authenticate` and HTTP.

@@ -182,7 +182,7 @@ Milestone 3 added:
 | Service | Responsibility |
 |---|---|
 | `StatusService` (`statuses`) | Commit statuses: `create` (write access, a full id that exists in the repository — for fork pull requests the head is found in the base repository as `refs/pull/{n}/head`), lists, the combined status per commit and for many commits, and the `status` webhook payload (`statuses::hooks`). `PullService::handle_status` re-evaluates open pull requests whose head received a status. |
-| `NotificationEmailService` (`notification_email`) | Mails what the inbox fan-out writes (§5.1): preferences, the outbox/dedup claim, the per-address budget, threading headers and signed unsubscribe links. |
+| `NotificationEmailService` (`notification_email`) | Mails what the inbox fan-out writes (§5.1): preferences, the outbox/dedup claim, the per-address budget, threading headers and signed unsubscribe links; daily and weekly digests (`notification_email/digests.rs`). |
 | `EditService` (`edits`) | Editing files in the browser (§3.8): authorisation, read-only repositories, the push gate, the author identity, line endings, uploads, and the `PushService` wrapping. |
 | `LfsService` (`lfs`) | Git LFS: objects stored once under `<data_dir>/lfs` and linked per repository (fork networks share where readable), the batch decisions, signed transfer tokens (`lfs::tokens`), locks (`lfs::locks`), `store` for anything that brings objects into a repository, link copies for new forks and orphan clean-up. |
 | `ExternalAuthService` (`external_auth`) | Sign-in with OpenID Connect providers and GitHub (§5.2): the flow cookie, the code exchange and ID token checks (HTTP in `external_auth/client.rs`), linking, unlinking and the register step; `Services::complete_external_sign_in` applies the linking rules. |
@@ -436,10 +436,19 @@ commit_statuses    id, repo_id → repositories, sha (40 or 64 lower-case hex), 
 branch_protection_required_checks (rule_id → branch_protections, context) PK       (≤ 50 per rule)
 
 -- milestone 3: email notifications (N)
-notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at
+notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at,
+                   delivery(immediate|daily|weekly, default immediate), digest_hour (0–23, NULL = default)
 notification_emails id, account_id → accounts, issue_id → issues, dedup_key, created_at,
                    UNIQUE(account_id, issue_id, dedup_key); index on created_at (pruned with the inbox)
 server_secrets     name PK, secret BLOB, created_at        (server-generated keys, stored raw — §5)
+
+-- email digests
+notification_digests id, account_id → accounts, period (Unix second the period starts),
+                   state(claimed|sent|failed|empty), items, created_at, finished_at,
+                   UNIQUE(account_id, period)  (the claim that makes sending idempotent)
+notification_digest_items id, account_id → accounts, repo_id → repositories, issue_id → issues,
+                   reason, headline, excerpt, anchor, created_at, digest_id → notification_digests
+                   (NULL = waiting for the next digest); indexes on pending rows and on age
 
 -- milestone 3: Git LFS (L)
 lfs_objects        oid PK (64 hex), size, created_at, unlinked_at (stamped when a link is deleted)
@@ -481,7 +490,7 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 | `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | | |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0045` | `email_digests` (delivery settings, digests, queued notifications) |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
@@ -489,7 +498,8 @@ that every row survives, the new defaults and triggers apply to old rows, and th
 wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
 continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
 reserved for milestone 3's W, still in progress, and `0038`, `0039` hold M's imports and
-push mirrors. `0032` was
+push mirrors. `0045` adds email digests after the milestone; its upgrade test starts from
+`0043` with a stored preference, which keeps immediate delivery. `0032` was
 taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
 the gaps are harmless).
 
@@ -517,7 +527,8 @@ Users and organisations share one namespace (`accounts`), exactly like GitHub UR
 The TOML/env configuration supplies *defaults*. Site administrators override the site
 name, registration (open/closed), who may create organisations and the default repository
 visibility at runtime from `/admin/settings`. Overrides are stored in `instance_settings`
-and served from memory by `InstanceService` (a synchronous snapshot per request).
+and served from memory by `InstanceService` (a synchronous snapshot per request). The
+default email digest hour (`[notifications] digest_hour`) is one of these settings too.
 
 ### 3.6 Backups
 
@@ -1042,7 +1053,7 @@ repositories, unknown numbers and malformed ids are 404.
 |---|---|
 | Editing files | `/{owner}/{repo}/new/{branch}/{dir…}`, `…/edit/{branch}/{path…}`, `…/delete/{branch}/{path…}` (page router, body limit `6 × max_render_bytes + 256 KiB`), `…/upload/{branch}/{dir…}` (outside the page router, streaming); pencil and trash buttons on the blob page, "Add file" and "Upload files" on tree pages, for writers on branches of non-mirrors |
 | Commit statuses | the merge box lists the head's checks (state, context, description, "Required", "Expected" for required contexts without a report, "Details" with `rel="nofollow noopener noreferrer"`); `/{owner}/{repo}/commit/{revision}` shows a combined mark and the checks (`#checks`); commit lists show the mark per commit; the branch protection form gains "Require status checks to pass" and the required contexts |
-| Email notifications | `GET\|POST /settings/notifications` (off / participating / all, the address and why mail may not arrive), `GET\|POST /email/unsubscribe/{token}` (confirmation page; the POST turns emails off) |
+| Email notifications | `GET\|POST /settings/notifications` (off / participating / all; immediately, daily or weekly digest, and the digest hour; the address and why mail may not arrive), `GET\|POST /email/unsubscribe/{token}` (confirmation page; the POST turns emails off) |
 | External sign-in | `GET /login/{id}` (start), `GET /login/{id}/callback`, `GET\|POST /login/{id}/register` (choose a username), `GET /settings/security/linked/{id}?token=…` (link start, token bound to the session), `POST /settings/security/linked/{id}/unlink`; buttons on the sign-in page, "Sign-in methods" under Settings → Security |
 | Git LFS | the blob page shows the object a pointer names (with a "Stored with Git LFS" badge, LFS images inline) and `raw` streams it |
 
@@ -1176,6 +1187,30 @@ pointing at `/email/unsubscribe/{account id}.{HMAC-SHA256}` (key `notification_u
 in `server_secrets`, verified in constant time); `GET` confirms (link scanners must not
 unsubscribe), `POST` sets the preference to `off` — the one CSRF exemption (§5). Outbox rows
 are pruned with the inbox (`notification_retention_days`).
+
+**Digests.** A user's `delivery` is `immediate` (the default, the behaviour above), `daily`
+or `weekly`. For digest users `deliver` makes the same checks and the same dedup claim, but
+instead of mailing it queues what the email would have said (`notification_digest_items`:
+headline, a one-line excerpt of at most 200 characters, the anchor and the reason; names and
+titles are read at send time) and spends no throttle budget. A task next to the inbox's
+pruning (`NotificationService::spawn_background`) calls `send_digests` on start-up and every
+five minutes. For each user with queued rows it computes the start of the current period
+(`period_start`: the latest day, or Monday, at the user's `digest_hour` UTC, else the
+instance's) and claims it in one transaction: insert `(account, period)` into
+`notification_digests` (unique, so a second sender or a restarted server gets nothing), delete
+queued rows whose thread has no unread inbox row any more (read in the app), and attach the
+rows queued **before** the period started. Later rows wait for the next period; with nothing
+attached no digest is recorded. The claimed digest is then checked again (active, verified,
+emails not `off`, the preference still wants each reason, read access per repository with
+current grants), grouped by repository and thread, rendered (`DigestNotification`: text and
+HTML) with the same `List-Unsubscribe` headers and a stable `Message-ID`
+(`<digest/{account}/{period}@host>`), and delivered with `MailService::deliver` (awaited, not
+the fire-and-forget queue). Its state becomes `sent`, `failed` or `empty`, and
+`rbit_notification_digests_total{outcome}` counts sent and failed ones. Sending is at most
+once: a failed digest, or one interrupted between claim and delivery, is not retried; its
+notifications stay in the inbox. Rows queued before a switch back to `immediate` go out in
+one last daily digest. Nothing is claimed while notification email is unavailable. Digests
+and claimed rows are pruned with the inbox; unclaimed rows are kept at least two weeks.
 
 ### 5.2 External sign-in
 
@@ -1438,6 +1473,6 @@ normal retention removes them.
 | **M2 wave A — A real forge** ✓ | Collaborators, teams and organisation base permission, repository transfer with old-name redirects, REST API `/api/v1` with token scopes and OpenAPI, signed webhooks with a persistent delivery queue, README relative links, archives, blame, compare, releases with attached files, forks, pull mirrors, the theme gallery. |
 | **M2 wave B — Workflow** ✓ | Issues with labels, milestones, assignees, references and search; in-app notifications; pull requests across forks with line comments, reviews, mergeability and merge/squash/rebase; branch protection enforced over HTTP and SSH; REST endpoints and `issues`/`issue_comment`/`pull_request`/`pull_request_review` webhooks ([design/milestone-2b.md](design/milestone-2b.md)). |
 | **M3 — Ready to open-source** (in progress) | Done: MIT OR Apache-2.0, community files and release packaging, `rbit_` tokens; commit statuses and required checks; REST API for collaborators, teams, releases and forks, `member` and `status` webhooks; email notifications; editing files in the browser; Git LFS; external sign-in with OpenID Connect and GitHub; importing from GitHub and Gitea/Forgejo, and push mirrors ([design/milestone-3.md](design/milestone-3.md)). In progress: wave B stretch items (W). |
-| Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses, email digests. |
+| Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses. Email digests have landed. |
 | Later — Platform | Actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |
