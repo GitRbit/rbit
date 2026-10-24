@@ -51,6 +51,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Clarify the README introduction to describe rbit as Git hosting and a Git forge.
 - Clarify private security reporting, remove the broken conduct-reporting contact,
   and add automated checks for GitHub repository configuration and submission paths.
 
