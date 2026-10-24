@@ -1,10 +1,10 @@
 # rbit — Handoff
 
-## Current project status — 2026-10-22
+## Current project status — 2026-10-24
 
 The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
-licensed under MIT OR Apache-2.0. The workspace version is `0.1.3`, and
-[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.3`.
+licensed under MIT OR Apache-2.0. The workspace version is `0.1.4`, and
+[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.4`.
 
 Use [README.md](../README.md#features) for available features and
 [ROADMAP.md](../ROADMAP.md) for current priorities and scope. Source builds require

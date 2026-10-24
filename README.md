@@ -8,11 +8,11 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
 [![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
-**Blazing fast, self-hosted Git — written in Rust, shipped as one binary, with no external services.**
+**Blazing fast, self-hosted Git hosting — written in Rust, shipped as one binary, with no external services.**
 
-rbit gives you repositories, issues, pull requests, reviews and CI checks on your own server, and it is
-built around three things: **speed**, **security** and **performance**. No Postgres, no Redis, no
-JavaScript runtime — download it, run it, push.
+rbit is a Git forge that gives you repositories, issues, pull requests, reviews and CI checks on your
+own server. It is built around three things: **speed**, **security** and **performance**. No Postgres,
+no Redis, no JavaScript runtime — download it, run it, push.
 
 **[Quick start](#quick-start)** · [Why rbit](#why-rbit) · [Features](#features) · [Install](#install) ·
 [First steps](#first-steps) · [Configuration](#configuration) · [Command line](#command-line) ·
