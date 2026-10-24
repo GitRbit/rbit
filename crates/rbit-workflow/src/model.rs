@@ -7,6 +7,7 @@
 //! file is within its [`crate::Limits`].
 
 use crate::{
+    cron::Cron,
     error::Location,
     pattern::Patterns,
     yaml::{Mapping, Node},
@@ -190,11 +191,11 @@ pub enum InputKind {
     Environment,
 }
 
-/// One `schedule` entry.
+/// One `schedule` entry: a valid expression at least [`crate::cron::MIN_INTERVAL_MINUTES`]
+/// apart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Schedule {
-    /// The expression as written.
-    pub cron: String,
+    pub cron: Cron,
     pub at: Location,
 }
 

@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
+    cron::{Cron, MIN_INTERVAL_MINUTES},
     error::{ErrorKind, Location, WorkflowError},
     limits::{Deadline, Limits},
     model::{
@@ -229,10 +230,14 @@ fn parse_schedule(node: &Node) -> Result<Vec<Schedule>, WorkflowError> {
     entries
         .iter()
         .map(|entry| {
-            let cron = mapping(entry, "on.schedule[]")?
+            let (cron, at) = mapping(entry, "on.schedule[]")?
                 .get("cron")
-                .and_then(Node::as_text)
+                .and_then(|node| Some((node.as_text()?, node.at)))
                 .ok_or_else(|| error("each `on.schedule` entry needs a `cron` string", entry.at))?;
+            let cron = Cron::parse(&cron).map_err(|problem| error(format!("`on.schedule`: {problem}"), at))?;
+            if cron.is_too_frequent() {
+                return Err(error(format!("`on.schedule`: `{cron}` runs more often than every {MIN_INTERVAL_MINUTES} minutes"), at));
+            }
             Ok(Schedule { cron, at: entry.at })
         })
         .collect()
@@ -612,6 +617,8 @@ jobs:
             ("on:\n  pull_request:\n    types: [opend]\njobs: {a: {runs-on: x}}\n", "`opend` is not", (3, 12)),
             ("on:\n  schedule: '* * * * *'\njobs: {a: {runs-on: x}}\n", "list of `cron`", (2, 13)),
             ("on:\n  schedule:\n    - crn: x\njobs: {a: {runs-on: x}}\n", "`cron` string", (3, 7)),
+            ("on:\n  schedule:\n    - cron: '61 * * * *'\njobs: {a: {runs-on: x}}\n", "between 0 and 59", (3, 13)),
+            ("on:\n  schedule:\n    - cron: '* * * * *'\njobs: {a: {runs-on: x}}\n", "more often than every 5 minutes", (3, 13)),
             ("on: push\nconcurrency: {cancel-in-progress: true}\njobs: {a: {runs-on: x}}\n", "needs a `group`", (2, 14)),
             ("on: push\nconcurrency: {group: g, cancel-in-progress: '${{ x }}'}\njobs: {a: {runs-on: x}}\n", "true or false", (2, 45)),
             ("on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: '${{ fromJSON(x) }}'}\n", "must be a mapping", (5, 24)),
