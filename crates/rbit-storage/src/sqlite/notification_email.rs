@@ -1,5 +1,6 @@
 //! Email notifications: each user's email preference and the outbox that makes sure a
-//! notification is mailed at most once (migration `0034_notification_email.sql`).
+//! notification is mailed at most once (migration `0034_notification_email.sql`), and how
+//! they are delivered: one by one or in digests (`0045_email_digests.sql`).
 //!
 //! Milestone 3 workstream N (email notifications) owns this file.
 //!
@@ -8,10 +9,17 @@
 
 use std::collections::{BTreeSet, HashSet};
 
-use rbit_core::{AccountId, IssueId, Timestamp, User, config::EmailPreference};
+use rbit_core::{
+    AccountId, IssueId, Timestamp, User,
+    config::{EmailDelivery, EmailPreference},
+};
 use sqlx::SqlitePool;
 
-use super::{notifications::NOTIFICATION_BATCH_SIZE, rows::UserRow};
+use super::{
+    email_digests::{parse_delivery, parse_hour},
+    notifications::NOTIFICATION_BATCH_SIZE,
+    rows::UserRow,
+};
 use crate::StorageError;
 
 /// An active user whose current address is verified, with their email preference.
@@ -19,6 +27,16 @@ use crate::StorageError;
 pub struct EmailRecipient {
     pub user: User,
     pub preference: Option<EmailPreference>,
+    /// How their notification emails are delivered (immediate unless they chose).
+    pub delivery: EmailDelivery,
+}
+
+/// How a user's notification emails are delivered.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeliverySettings {
+    pub delivery: EmailDelivery,
+    /// The hour (UTC) of their digests; `None` follows the instance default.
+    pub digest_hour: Option<u8>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -26,6 +44,13 @@ struct RecipientRow {
     #[sqlx(flatten)]
     user: UserRow,
     preference: Option<String>,
+    delivery: Option<String>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct DeliveryRow {
+    delivery: String,
+    digest_hour: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +72,7 @@ impl NotificationEmailStore {
             let ids = serde_json::to_string(batch).map_err(|error| StorageError::Corrupt(format!("email recipients: {error}")))?;
             let rows: Vec<RecipientRow> = sqlx::query_as(
                 "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, '' AS password_hash, \
-                 s.email AS preference FROM accounts a JOIN user_logins l ON l.account_id = a.id \
+                 s.email AS preference, s.delivery FROM accounts a JOIN user_logins l ON l.account_id = a.id \
                  LEFT JOIN notification_email_settings s ON s.account_id = a.id \
                  WHERE a.id IN (SELECT value FROM json_each(?)) AND l.suspended_at IS NULL AND l.email_verified_at IS NOT NULL \
                  ORDER BY a.id",
@@ -60,7 +85,8 @@ impl NotificationEmailStore {
                     .preference
                     .map(|value| EmailPreference::parse(&value).ok_or_else(|| StorageError::Corrupt(format!("email preference: {value}"))))
                     .transpose()?;
-                recipients.push(EmailRecipient { user: row.user.into_user_and_hash()?.0, preference });
+                let delivery = parse_delivery(row.delivery.as_deref())?;
+                recipients.push(EmailRecipient { user: row.user.into_user_and_hash()?.0, preference, delivery });
             }
         }
         Ok(recipients)
@@ -85,6 +111,38 @@ impl NotificationEmailStore {
         )
         .bind(account.0)
         .bind(preference.as_str())
+        .bind(at.0)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// How `account`'s notification emails are delivered (the defaults if it never chose).
+    pub async fn delivery(&self, account: AccountId) -> Result<DeliverySettings, StorageError> {
+        let row: Option<DeliveryRow> = sqlx::query_as("SELECT delivery, digest_hour FROM notification_email_settings WHERE account_id = ?")
+            .bind(account.0)
+            .fetch_optional(&self.pool)
+            .await?;
+        row.map_or(Ok(DeliverySettings::default()), |row| {
+            Ok(DeliverySettings { delivery: parse_delivery(Some(&row.delivery))?, digest_hour: parse_hour(row.digest_hour)? })
+        })
+    }
+
+    /// Stores (or replaces) the preference and the delivery settings of `account` together.
+    pub async fn save(
+        &self,
+        account: AccountId,
+        preference: EmailPreference,
+        delivery: DeliverySettings,
+        at: Timestamp,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO notification_email_settings (account_id, email, delivery, digest_hour, updated_at) VALUES (?, ?, ?, ?, ?)              ON CONFLICT (account_id) DO UPDATE SET email = excluded.email, delivery = excluded.delivery,              digest_hour = excluded.digest_hour, updated_at = excluded.updated_at",
+        )
+        .bind(account.0)
+        .bind(preference.as_str())
+        .bind(delivery.delivery.as_str())
+        .bind(delivery.digest_hour.map(i64::from))
         .bind(at.0)
         .execute(&self.pool)
         .await?;

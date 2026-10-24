@@ -5,6 +5,8 @@ mod accounts;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
+// Email digests.
+pub mod email_digests;
 // Milestone 3: external sign-in (O).
 pub mod external_identities;
 pub mod forks;
@@ -209,6 +211,12 @@ impl Database {
 
     pub fn notification_email(&self) -> notification_email::NotificationEmailStore {
         notification_email::NotificationEmailStore::new(self.pool.clone())
+    }
+
+    // Email digests.
+
+    pub fn email_digests(&self) -> email_digests::EmailDigestStore {
+        email_digests::EmailDigestStore::new(self.pool.clone())
     }
 
     pub fn server_secrets(&self) -> server_secrets::ServerSecretStore {
