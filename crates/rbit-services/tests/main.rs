@@ -2,6 +2,8 @@
 //! costs far more than compiling the tests themselves.
 
 mod access;
+// Actions: foundation (F).
+mod actions;
 mod admin;
 mod audit;
 mod edits;

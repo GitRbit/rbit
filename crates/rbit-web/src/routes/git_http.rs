@@ -314,6 +314,11 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
     let Some((login, password)) = basic_credentials(headers) else {
         return Ok(None);
     };
+    // Actions: foundation (F). A task token is never tried as a password. No task token is
+    // valid while Actions is disabled, so it is refused before anything is looked up.
+    if rbit_core::actions::looks_like_task_token(&password) {
+        return Err(Denied::Challenge);
+    }
     if AccessTokenSecret::looks_like_token(&password) {
         // Tokens are unguessable, but a client spraying them still spends its budget.
         let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();

@@ -218,6 +218,15 @@ macro_rules! validated_name {
     };
 }
 
+/// The prefix of task tokens (`rbat_` and 43 base64url characters).
+pub const TASK_TOKEN_PREFIX: &str = "rbat_";
+
+/// Whether a presented secret has the shape of a task token, so that it is never tried as
+/// a password or a personal access token.
+pub fn looks_like_task_token(secret: &str) -> bool {
+    secret.starts_with(TASK_TOKEN_PREFIX)
+}
+
 /// Longest runner label, in characters.
 pub const MAX_LABEL_CHARS: usize = 64;
 /// Most labels one runner may declare.
@@ -616,6 +625,15 @@ mod tests {
 
     fn labels(values: &[&str]) -> Vec<RunnerLabel> {
         values.iter().map(|value| value.parse().unwrap()).collect()
+    }
+
+    #[test]
+    fn task_tokens_are_recognised_by_their_prefix() {
+        assert!(looks_like_task_token(&format!("rbat_{}", "A".repeat(43))));
+        assert!(looks_like_task_token("rbat_"));
+        for other in ["rbit_abc", "RBAT_abc", "rbatx", "", "password rbat_"] {
+            assert!(!looks_like_task_token(other), "{other}");
+        }
     }
 
     #[test]

@@ -34,6 +34,8 @@ rbit-ssh.workspace = true
 p256.workspace = true
 # M: the fake GitHub server shared with the services tests.
 base64.workspace = true
+# Actions (F): counting rows in the database of a running server.
+sqlx.workspace = true
 
 [lints]
 workspace = true

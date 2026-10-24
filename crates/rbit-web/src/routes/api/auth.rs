@@ -148,6 +148,12 @@ impl FromRequestParts<AppState> for Caller {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Use Authorization: Bearer <personal access token>"));
         };
+        // Actions: foundation (F). No task token is valid while Actions is disabled, so it is
+        // refused before anything is looked up.
+        if rbit_core::actions::looks_like_task_token(token) {
+            throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
+            return Err(ApiError::unauthorized("Bad credentials"));
+        }
         let Some((user, scope)) = state.services.tokens.authenticate(token).await? else {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Bad credentials"));
