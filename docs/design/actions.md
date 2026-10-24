@@ -655,3 +655,138 @@ the store; T tests claim through the store; U renders fixtures from the store.
 
 Every stream merges by **rebase** (linear history). After each rebase the full gate runs
 again on the rebased tip before the next stream lands.
+
+## 11. Security review amendments
+
+An adversarial review of this contract (before implementation) found the issues below. Each
+resolution here **supersedes** the earlier section it names.
+
+### 11.1 Trust is decided per event, from the actor's current access (supersedes §6.2)
+
+Opening a pull request needs only read access, so "same repository ⇒ author can write" is
+false. Every `pull_request` run is classified when it is created:
+
+- **Trusted** when the actor who caused the event has **write access to the base repository
+  now**: the author for `opened`/`reopened`/`ready_for_review`/`edited`, the **pusher** of the
+  new head for `synchronize` (from the push that moved the head; unknown pusher ⇒ untrusted).
+- Otherwise **untrusted** — this covers fork pull requests *and* same-repository pull
+  requests from readers or from former writers. An untrusted run always gets a **read-only
+  token, no secrets and no variables**, whoever approves it.
+- An untrusted run **waits for approval** (per run, per head SHA; approver needs write
+  access; audited) unless the author is in `actions_trusted_users` for that repository or has
+  a previously merged pull request into it *and* the pusher is that author. Approval and
+  trust never grant secrets to an untrusted run; they only skip the wait.
+- A suspended author's runs are never approved automatically.
+
+Workflows of an untrusted run come from the pull request head (GitHub's behaviour); the docs
+state that a required check from such a run proves only what the head's workflow does.
+
+### 11.2 Where a push came from (supersedes `RepositoryPushed.by_task` in §10/T)
+
+`RepositoryPushed` carries `source: PushSource` — `User(AccountId)`, `DeployKey`, `Mirror`,
+`Import`, `Task(TaskId)`, `System` — replacing the ambiguous `pusher: Option<AccountId>` for
+this decision (keep `pusher` for existing consumers). Only `User` and `DeployKey` pushes start
+runs. `Mirror`, `Import`, `Task` and `System` never do — including the `synchronize` of a pull
+request whose head moved because of such a push.
+
+### 11.3 Task callers are allowlisted (supersedes §4.8 for the API)
+
+A task token is a **caller kind of its own**, never a synthetic user. It is accepted only by:
+Git smart HTTP (fetch; push when the token has `contents: write`), LFS on its own repository
+(download; upload when `contents: write`), and an explicit API allowlist — reading the
+repository's contents, refs, commits, releases; creating commit statuses; creating releases
+and release assets (when `contents: write`); commenting on issues and pull requests of its own
+repository (when the repository token permission is write). Everything else answers `403`. A
+test walks `api::table` and fails for any route that accepts a task caller without being on
+the list. Task callers may never dispatch, re-run, cancel, approve, fork, create tokens,
+webhooks, runners or secrets, or open/close/reopen pull requests.
+
+### 11.4 Token permissions (supersedes §1 "Task credential" permissions)
+
+- Each repository has a **default workflow token permission**, `read` (default) or `write`,
+  in its Actions settings.
+- Top-level and job-level `permissions:` are honoured **coarsely**: `contents` and
+  `issues`/`pull-requests`, `read` or `write`, `read-all`/`write-all`/`{}`. They can only
+  **lower** the repository default, never raise it.
+- Untrusted runs are always read-only.
+- A task push that creates, changes or deletes anything under `.forgejo/workflows/` or
+  `.github/workflows/` is refused, as GitHub refuses it without the `workflows` scope. The same
+  applies to tag pushes that move an existing tag.
+
+### 11.5 Recursion
+
+Pushes, pull request events, statuses and comments made with a task token never start runs
+(§11.2, §11.3). Re-run and dispatch through the API refuse task callers.
+
+### 11.6 Concurrency (supersedes §4.6 concurrency)
+
+- Concurrency is applied **when a run becomes runnable**: on creation for trusted runs, on
+  approval for untrusted runs. An awaiting run cancels nothing.
+- Untrusted runs' groups are namespaced `pr-<number>/<group>`, so they can only affect runs of
+  the same pull request.
+- The expression subset grows to cover the common idioms: `github.workflow`, `github.ref`,
+  `github.head_ref`, `github.base_ref`, `github.event_name`, `github.run_id`,
+  `github.event.pull_request.number`, string literals, and `||` / `&&` with GitHub's
+  falsy rules.
+
+### 11.7 `workflow_dispatch`
+
+The ref must be one of the repository's own `refs/heads/*` or `refs/tags/*`. Never
+`refs/pull/*`, and never a SHA that is reachable only from such a ref.
+
+### 11.8 Scheduling fairness and caps (supersedes §4.3 fetch selection)
+
+- Job labels are stored relationally (`actions_job_labels`). The claim query matches a
+  runner's labels **in SQL**, so no window of unmatched jobs can hide newer ones.
+- Selection is fair across repositories: the oldest waiting job of the repository whose
+  oldest-claimable job waited longest.
+- Caps (configurable): ≤ 256 waiting jobs per repository (new runs beyond the cap fail with
+  a readable error), ≤ 32 runs and ≤ 1,024 jobs created per push event, ≤ 20 `schedule`
+  entries per repository. A scheduled run is skipped while the previous scheduled run of the
+  same workflow is still waiting.
+- An instance-wide log budget (`max_log_storage_bytes`, default 10 GiB): when it is
+  exceeded, the logs of the oldest finished runs are pruned first. Their runs keep a "log
+  expired" marker.
+
+### 11.9 Registration tokens and instance runners (supersedes §6.1 Registration)
+
+- Registration tokens expire after 1 hour and are **single-use** by default. Both can be
+  changed when the token is created, up to 30 days and unlimited uses. A token may pin
+  labels: a runner registered with it can declare only those labels.
+- Instance runners serve only owners an administrator has allowed (`actions_owner_policies`).
+  When `[actions] instance_runners_for_all = true` (default `false`), they serve everyone. The
+  registration page warns that host-mode runners give no isolation and that a runner sees the
+  secrets of every job it runs.
+
+### 11.10 Secrets and outputs (supersedes §6.1 Secrets and §6.3 in part)
+
+- Owner secrets have a visibility: **all repositories** of the owner, or **selected
+  repositories** (`actions_secret_repositories`).
+- The AAD binds `(scope kind, scope id, secret id)`, not names.
+- The server masking pass covers secrets, the task token, and every line (≥ 4 characters) of
+  a multi-line secret. It runs over log rows **and** job outputs before they are stored.
+  Outputs are capped at 1 MiB per job.
+- The key file is never auto-created while sealed secrets exist. rbit then fails closed for
+  secret operations and states the reason.
+- The `0600` mode check applies on Unix only. On Windows the docs require the data directory's
+  ACLs to be restricted, and rbit logs a start-up warning once.
+
+### 11.11 Task lifecycle
+
+- Cancelling a task clears its token digest immediately. The token stops working at once,
+  not when the runner acknowledges.
+- Fetch-retry recovery (`x-runner-request-key`) is looked up per **(runner, key)**.
+- The sweeper also deletes ephemeral runners whose task ended by timeout.
+- Evaluation keeps its semaphore permit until the blocking task actually returns. Parsing and
+  planning check a cooperative deadline so the 10 s budget really stops work.
+
+### 11.12 Smaller items
+
+- Raw log downloads are throttled per client (`ThrottleScope::ActionsLogs`).
+- Statuses created by rbit Actions record their source (`creator NULL` + a `source = actions`
+  column). Requiring a check to come from Actions is a later protection option. Documented.
+- When Actions is switched off, `pending` statuses it posted stay as they are. The docs say
+  so; switching it back on lets the sweeper settle them.
+- Pull request trigger types gain `ready_for_review` and `edited`, as far as rbit emits them.
+- The docs state plainly that write access to a repository means being able to read its
+  secrets through a workflow.
