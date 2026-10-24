@@ -68,7 +68,7 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
                     }
                     body["changes"] = Value::Object(changes);
                 }
-                IssueAction::Synchronized { before, after } => {
+                IssueAction::Synchronized { before, after, .. } => {
                     body["before"] = json!(before);
                     body["after"] = json!(after);
                 }
@@ -167,7 +167,14 @@ mod tests {
 
     #[test]
     fn actions_follow_github() {
-        assert_eq!(pull_request_action(&IssueAction::Synchronized { before: String::new(), after: String::new() }), Some("synchronize"));
+        assert_eq!(
+            pull_request_action(&IssueAction::Synchronized {
+                before: String::new(),
+                after: String::new(),
+                source: rbit_core::PushSource::System,
+            }),
+            Some("synchronize")
+        );
         assert_eq!(pull_request_action(&IssueAction::Closed { reason: rbit_core::StateReason::Merged }), Some("closed"));
         assert_eq!(pull_request_action(&IssueAction::ReadyForReview), Some("ready_for_review"));
     }

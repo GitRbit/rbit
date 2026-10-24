@@ -11,7 +11,7 @@
 //! keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`). DSA,
 //! certificates and unknown algorithms are refused.
 
-use rbit_core::{RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
+use rbit_core::{PushSource, RepoAccess, RepoId, Timestamp, User, repository::OwnedRepository};
 /// The stored keys, re-exported so callers need not depend on the storage layer.
 pub use rbit_storage::sqlite::ssh_keys::{DeployKey, DeployKeyId, SshKey, SshKeyId};
 use rbit_storage::{
@@ -116,6 +116,16 @@ pub enum SshIdentity {
     User { key: SshKeyId, user: User },
     /// A deploy key: one repository, read-only unless `read_only` is false.
     Deploy { key: DeployKeyId, repo: OwnedRepository, read_only: bool },
+}
+
+impl SshIdentity {
+    /// Where a push with this key comes from: the user, or the repository's deploy key.
+    pub fn push_source(&self) -> PushSource {
+        match self {
+            Self::User { user, .. } => PushSource::User(user.id()),
+            Self::Deploy { .. } => PushSource::DeployKey,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

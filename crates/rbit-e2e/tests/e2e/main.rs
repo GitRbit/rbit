@@ -4,6 +4,8 @@
 
 mod access;
 mod accounts;
+// Actions: foundation (F).
+mod actions_disabled;
 mod api;
 mod api_workflow;
 mod compatibility;

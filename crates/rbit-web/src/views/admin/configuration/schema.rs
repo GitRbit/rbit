@@ -858,6 +858,154 @@ const LFS: &[Spec] = &[
     },
 ];
 
+// Actions: foundation (F).
+const ACTIONS: &[Spec] = &[
+    Spec {
+        key: "enabled",
+        label: "Enable this feature",
+        help: "Run workflows on external Forgejo or Gitea runners. When off, Actions is fully absent: no pages, no runner endpoint, no background work, and workflow files are ignored. Restart required.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "enable_for_new_repositories",
+        label: "Enable for new repositories",
+        help: "Turn Actions on for repositories created from now on. Existing repositories keep their own setting.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "default_actions_url",
+        label: "Default actions URL",
+        help: "Where runners fetch uses: owner/repo@ref actions from: an HTTP or HTTPS URL, or self for this instance.",
+        kind: Kind::Text,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "secrets_key_file",
+        label: "Secrets key file",
+        help: "Encryption key for Actions secrets. Blank uses actions/secrets.key in the data directory. Back it up separately.",
+        kind: Kind::Text,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "log_retention_days",
+        label: "Log retention (days)",
+        help: "Days job logs are kept.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "run_retention_days",
+        label: "Run retention (days)",
+        help: "Days finished runs are kept.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "max_log_bytes",
+        label: "Max log (bytes)",
+        help: "Log bytes kept per task; later lines are dropped.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_workflow_bytes",
+        label: "Max workflow file (bytes)",
+        help: "Largest workflow file read, in bytes.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "zombie_timeout_seconds",
+        label: "Heartbeat timeout (seconds)",
+        help: "A running task without a heartbeat for this long fails.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "endless_timeout_seconds",
+        label: "Task time limit (seconds)",
+        help: "A task running for this long fails.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "abandoned_timeout_seconds",
+        label: "Queue time limit (seconds)",
+        help: "A waiting job no runner picks up for this long is cancelled.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "evaluation_concurrency",
+        label: "Evaluation concurrency",
+        help: "Workflow evaluations (Git reads and YAML parsing) running at once, 1 to 16.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "instance_runners_for_all",
+        label: "Instance runners serve everyone",
+        help: "Let instance runners run jobs of every owner. When off, they serve only owners an administrator allowed.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "max_log_storage_bytes",
+        label: "Log storage budget (bytes)",
+        help: "Log bytes kept across the instance; beyond it the oldest finished runs lose their logs first.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_waiting_jobs_per_repository",
+        label: "Max waiting jobs per repository",
+        help: "New runs beyond this many waiting jobs fail with a readable error.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "max_runs_per_event",
+        label: "Max runs per event",
+        help: "Runs one push or pull request event may start.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "max_jobs_per_event",
+        label: "Max jobs per event",
+        help: "Jobs one event may create across its runs.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "max_schedules_per_repository",
+        label: "Max schedules per repository",
+        help: "Scheduled workflow entries per repository.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+];
+
 pub(super) const PROVIDER: &[Spec] = &[
     Spec {
         key: "kind",
@@ -994,6 +1142,8 @@ pub(super) const SECTIONS: &[Section] = &[
     Section { key: "pulls", title: "Pull requests", help: "Merge limits, background checks and author addresses.", fields: PULLS },
     Section { key: "editor", title: "Browser editor", help: "Browser upload size, count and timeout limits.", fields: EDITOR },
     Section { key: "lfs", title: "Git LFS", help: "Large-file storage, object sizes and token lifetime.", fields: LFS },
+    // Actions: foundation (F).
+    Section { key: "actions", title: "Actions", help: "CI/CD on external runners, retention, limits and timeouts.", fields: ACTIONS },
 ];
 
 const MAIL_TRANSPORT: &[(&str, &str)] = &[("disabled", "Disabled"), ("log", "Development log"), ("smtp", "SMTP server")];

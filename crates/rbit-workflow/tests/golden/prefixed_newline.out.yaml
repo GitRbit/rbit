@@ -1,0 +1,15 @@
+name: Step with leading new line
+"on":
+  push: null
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: |-
+
+          Extract tag for variant
+        id: extract_tag
+        run: |
+
+          echo Test

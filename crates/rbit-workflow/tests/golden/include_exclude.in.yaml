@@ -1,0 +1,38 @@
+name: Matrix with include and exclude
+on:
+  push:
+    branches: [main]
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+concurrency: ci-${{ github.ref }}
+jobs:
+  test:
+    runs-on: [self-hosted, "${{ matrix.os }}"]
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, windows]
+        rust: [stable, 1.94]
+        exclude:
+          - os: windows
+            rust: 1.94
+        include:
+          - os: linux
+            experimental: true
+          - os: macos
+            rust: stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo +${{ matrix.rust }} test
+        env:
+          RUST_BACKTRACE: 1
+  lint:
+    runs-on: linux
+    steps:
+      - run: cargo clippy -- -D warnings

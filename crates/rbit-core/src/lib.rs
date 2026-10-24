@@ -20,6 +20,7 @@ pub mod network;
 pub mod org;
 pub mod protection;
 pub mod pull;
+pub mod push_source;
 pub mod ref_update;
 pub mod references;
 pub mod release;
@@ -33,6 +34,8 @@ pub mod file_edit;
 // Milestone 3: importing and push mirrors (M).
 pub mod import;
 pub mod push_mirror;
+// Actions: foundation (F).
+pub mod actions;
 
 pub use access::RepoAccess;
 pub use access_token::{AccessToken, AccessTokenId, TokenScope};
@@ -46,6 +49,7 @@ pub use issue::{
 pub use membership::{BasePermission, Permission, TeamName};
 pub use names::{AccountName, Email, NameError, RepoName};
 pub use org::{OrgMember, OrgMembership, OrgRole, Organization};
+pub use push_source::PushSource;
 pub use ref_update::RefUpdate;
 pub use release::ReleaseId;
 pub use repository::{OwnedRepository, RepoId, RepoSort, Repository, Visibility};

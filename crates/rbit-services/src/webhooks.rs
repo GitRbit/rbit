@@ -379,7 +379,9 @@ impl WebhookService {
     async fn queue_event(&self, event: &DomainEvent, newest: WebhookId) -> Result<usize, ServiceError> {
         let base = self.base_url().to_owned();
         let queued = match event {
-            DomainEvent::RepositoryPushed { repo, pusher, updates } => self.queue_push(*repo, *pusher, updates, newest, &base).await?,
+            DomainEvent::RepositoryPushed { repo, source, updates } => {
+                self.queue_push(*repo, source.pusher(), updates, newest, &base).await?
+            }
             DomainEvent::RepositoryCreated { repo, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;

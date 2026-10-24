@@ -47,6 +47,8 @@ metrics-exporter-prometheus.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+# Actions (F): the query counter shared with rbit-storage's tests.
+tracing-subscriber.workspace = true
 rbit-storage.workspace = true
 tempfile.workspace = true
 

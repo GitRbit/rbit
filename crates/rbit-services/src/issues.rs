@@ -969,7 +969,7 @@ impl IssueService {
                 }
                 Ok(())
             }
-            DomainEvent::RepositoryPushed { repo, pusher, updates } => self.scan_push(*repo, *pusher, updates).await,
+            DomainEvent::RepositoryPushed { repo, source, updates } => self.scan_push(*repo, source.pusher(), updates).await,
             DomainEvent::Issue { issue, actor, action: IssueAction::Opened | IssueAction::Edited { .. }, .. } => {
                 let Some(source) = self.ctx.database.issues().find(*issue).await? else { return Ok(()) };
                 let body = source.body.to_string();

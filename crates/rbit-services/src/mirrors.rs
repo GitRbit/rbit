@@ -12,7 +12,7 @@
 //!   redirects (see [`rbit_git::mirror`]) and pins Git's connection to those approved
 //!   addresses, so DNS changes cannot redirect it into the private network.
 //! * A fetch replaces the mirror's branches and tags with the upstream's and is reported
-//!   through [`PushService`] with `pusher: None`, like any push. Its outcome (time and
+//!   through [`PushService`] as a [`PushSource::Mirror`] push. Its outcome (time and
 //!   error) is stored for the settings page; the next fetch is due an interval later.
 //! * Repository administrators change the interval, ask for an immediate fetch, or stop
 //!   mirroring (the repository then becomes an ordinary one).
@@ -34,7 +34,7 @@ use std::{
 };
 
 use rbit_core::{
-    RepoId, Timestamp, User, Visibility,
+    PushSource, RepoId, Timestamp, User, Visibility,
     mirror::{Mirror, MirrorUrl},
     repository::OwnedRepository,
 };
@@ -247,7 +247,7 @@ impl MirrorService {
         let config = &self.inner.ctx.config;
         let git = &config.repository.git_binary;
         let timeout = Duration::from_secs(config.mirrors.fetch_timeout_seconds);
-        let pending = self.inner.pushes.begin(context, None).await;
+        let pending = self.inner.pushes.begin(context, PushSource::Mirror).await;
         let fetched = {
             // `git fetch` writes into the repository, so a transfer waits for it.
             let _lease = self.inner.ctx.repositories.lease(context.repo.repo.id).await;

@@ -5,8 +5,8 @@
 use std::{path::Path, process::Command, sync::Arc};
 
 use rbit_core::{
-    Config, IssueKind, IssueNumber, IssueState, StateReason, TimelineEvent, User, Visibility, issue::IssueAction, issue_query::IssueQuery,
-    membership::Permission,
+    Config, IssueKind, IssueNumber, IssueState, PushSource, StateReason, TimelineEvent, User, Visibility, issue::IssueAction,
+    issue_query::IssueQuery, membership::Permission,
 };
 use rbit_services::{
     CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
@@ -402,12 +402,12 @@ async fn pushed_commits_reference_and_close_issues_on_the_default_branch_only() 
     let fix = git(work.path(), &["rev-parse", "HEAD"]);
     git(work.path(), &["push", "-q", &path, "feature"]);
 
-    let pushed = |name: &str, before: Option<&str>, after: &str, pusher| DomainEvent::RepositoryPushed {
+    let pushed = |name: &str, before: Option<&str>, after: &str, source| DomainEvent::RepositoryPushed {
         repo: repo.repo.repo.id,
-        pusher,
+        source,
         updates: vec![RefUpdate { name: name.to_owned(), before: before.map(str::to_owned), after: Some(after.to_owned()) }],
     };
-    issues.handle_event(&pushed("refs/heads/feature", None, &fix, Some(fixture.alice.id()))).await.unwrap();
+    issues.handle_event(&pushed("refs/heads/feature", None, &fix, PushSource::User(fixture.alice.id()))).await.unwrap();
     let ctx = fixture.open(&fixture.alice, first).await;
     assert_eq!(ctx.issue.state, IssueState::Open, "a feature branch only references");
     let referenced = TimelineEvent::CommitReferenced { commit: fix.clone(), summary: "Fix the crash".into() };
@@ -416,7 +416,7 @@ async fn pushed_commits_reference_and_close_issues_on_the_default_branch_only() 
 
     // The same commit reaching main (a deploy key: no pusher) closes #1, without a second reference.
     git(work.path(), &["push", "-q", &path, "feature:main"]);
-    issues.handle_event(&pushed("refs/heads/main", Some(&base), &fix, None)).await.unwrap();
+    issues.handle_event(&pushed("refs/heads/main", Some(&base), &fix, PushSource::DeployKey)).await.unwrap();
     let ctx = fixture.open(&fixture.alice, first).await;
     assert_eq!((ctx.issue.state, ctx.issue.closed_by), (IssueState::Closed, None));
     let closed = TimelineEvent::Closed { reason: StateReason::Completed, commit: Some(fix.clone()), pull: None };

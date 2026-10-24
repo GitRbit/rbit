@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 
-use rbit_core::{Config, User, Visibility};
+use rbit_core::{Config, PushSource, User, Visibility};
 use rbit_services::{
     CreateRepository, DomainEvent, Services,
     ssh_keys::{AddDeployKey, AddSshKey},
@@ -412,8 +412,8 @@ async fn clone_push_and_access_control_over_ssh() {
     assert_ok(&harness.git(&alice_key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
     let ctx = harness.services.repositories.open(Some(&alice), "alice", "project").await.unwrap();
     let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
-    let DomainEvent::RepositoryPushed { repo, pusher, updates } = event else { panic!("expected a push event, got {event:?}") };
-    assert_eq!((repo, pusher), (ctx.repo.repo.id, Some(alice.id())));
+    let DomainEvent::RepositoryPushed { repo, source, updates } = event else { panic!("expected a push event, got {event:?}") };
+    assert_eq!((repo, source), (ctx.repo.repo.id, PushSource::User(alice.id())));
     let refs: Vec<&str> = updates.iter().map(|update| update.name.as_str()).collect();
     assert_eq!(refs, ["refs/heads/main"], "the push reports its ref update");
     assert!(ctx.repo.repo.pushed_at.is_some(), "the push is recorded");
@@ -439,6 +439,19 @@ async fn clone_push_and_access_control_over_ssh() {
     assert_ok(&harness.git(&deploy_key, &ci_checkout, &["add", "ci.txt"]).await);
     assert_ok(&harness.git(&deploy_key, &ci_checkout, &["commit", "-q", "-m", "CI"]).await);
     assert_refused(&harness.git(&deploy_key, &ci_checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await, "read-only");
+
+    // A writable deploy key pushes as the repository's deploy key, not as an account.
+    let (writer_key, writer_public) = harness.key("deploy_writer");
+    let input = AddDeployKey { title: "release".to_owned(), key: writer_public, allow_write: true };
+    harness.services.ssh_keys.add_deploy_key(&alice, &ctx, input).await.unwrap();
+    let mut events = harness.services.events.subscribe();
+    assert_ok(&harness.git(&writer_key, &ci_checkout, &["push", "-q", "origin", "HEAD:refs/heads/ci"]).await);
+    let event = tokio::time::timeout(std::time::Duration::from_secs(10), events.recv()).await.unwrap().unwrap();
+    let DomainEvent::RepositoryPushed { source, updates, .. } = event else { panic!("expected a push event, got {event:?}") };
+    assert_eq!(source, PushSource::DeployKey);
+    assert_eq!(source.pusher(), None);
+    let refs: Vec<&str> = updates.iter().map(|update| update.name.as_str()).collect();
+    assert_eq!(refs, ["refs/heads/ci"]);
     let bob_repo = CreateRepository { name: "tools".to_owned(), description: String::new(), visibility: Visibility::Public };
     harness.services.repositories.create(&bob, bob_repo).await.unwrap();
     assert_refused(&harness.git(&deploy_key, &ci, &["clone", &harness.url("bob/tools.git")]).await, "not found");
