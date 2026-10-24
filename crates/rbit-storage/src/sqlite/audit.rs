@@ -114,10 +114,13 @@ pub enum AuditAction {
     // Milestone 3: external sign-in (O).
     ExternalIdentityLinked,
     ExternalIdentityUnlinked,
+    // Actions: triggers (T).
+    ActionsRunApproved,
+    ActionsUserTrusted,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 45] = [
+    pub const ALL: [Self; 47] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -163,6 +166,9 @@ impl AuditAction {
         Self::IssueDeleted,
         Self::ExternalIdentityLinked,
         Self::ExternalIdentityUnlinked,
+        // Actions: triggers (T).
+        Self::ActionsRunApproved,
+        Self::ActionsUserTrusted,
     ];
 
     /// Stable identifier stored in the database.
@@ -213,6 +219,9 @@ impl AuditAction {
             Self::IssueDeleted => "issue_deleted",
             Self::ExternalIdentityLinked => "external_identity_linked",
             Self::ExternalIdentityUnlinked => "external_identity_unlinked",
+            // Actions: triggers (T).
+            Self::ActionsRunApproved => "actions_run_approved",
+            Self::ActionsUserTrusted => "actions_user_trusted",
         }
     }
 
@@ -262,7 +271,10 @@ impl AuditAction {
             | Self::BranchProtectionCreated
             | Self::BranchProtectionChanged
             | Self::BranchProtectionDeleted
-            | Self::BranchProtectionBypassed => AuditCategory::RepositoryAccess,
+            | Self::BranchProtectionBypassed
+            // Actions: triggers (T).
+            | Self::ActionsRunApproved
+            | Self::ActionsUserTrusted => AuditCategory::RepositoryAccess,
             Self::IssueDeleted => AuditCategory::RepositoryContent,
         }
     }
@@ -315,6 +327,9 @@ impl AuditAction {
             Self::IssueDeleted => "Deleted an issue",
             Self::ExternalIdentityLinked => "Linked a sign-in provider",
             Self::ExternalIdentityUnlinked => "Unlinked a sign-in provider",
+            // Actions: triggers (T).
+            Self::ActionsRunApproved => "Approved a workflow run",
+            Self::ActionsUserTrusted => "Trusted a pull request author's workflow runs",
         }
     }
 

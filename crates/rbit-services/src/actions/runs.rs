@@ -15,6 +15,11 @@
 //!   without it the new run is held while another run of the group is active, and a run that
 //!   was only held is replaced by the newer one, as on GitHub. Group decisions are made one
 //!   at a time (`Inner::groups`), so two runs created at once cannot both start.
+//! * People act on runs through [`ActionsService::cancel`], [`ActionsService::rerun`] and
+//!   [`ActionsService::approve`]: writers only, and only people — the caller is a `User`,
+//!   so a task token can never cancel, re-run or approve (§11.5). Approvals (and trusting an
+//!   author with them) are audited. Re-running an untrusted run is not approving it: it
+//!   waits again unless its author would skip the wait today.
 //! * [`ActionsService::settled`] follows every transition of a run's jobs: the scheduler's
 //!   version moves when jobs became waiting, and a finished run lets the next held run of its
 //!   group start. The runner protocol calls it after finishing tasks and sweeping.
@@ -22,10 +27,11 @@
 //! Workstream T (triggers and runs) owns this file.
 
 use rbit_core::{
-    AccountId, RepoId, Timestamp,
+    Account, AccountId, IssueNumber, RepoId, Timestamp, User,
     actions::{PermissionLevel, Run, RunEvent, RunId, RunTrust, Status, TokenPermissions},
     repository::OwnedRepository,
 };
+pub use rbit_storage::sqlite::actions_runs::Rerun;
 use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart, Settled};
 use rbit_workflow::{
     PlannedJob,
@@ -33,7 +39,10 @@ use rbit_workflow::{
 };
 
 use super::ActionsService;
-use crate::ServiceError;
+use crate::{
+    RepoContext, ServiceError,
+    audit::{AuditAction, AuditEntry, AuditService},
+};
 
 /// Longest stored workflow error, in bytes (the column's CHECK).
 pub const MAX_ERROR_BYTES: usize = 2048;
@@ -253,6 +262,134 @@ impl ActionsService {
             self.followed_up(&settled);
         }
         Ok(())
+    }
+}
+
+// ------------------------------------------------------------------ people acting on runs
+
+impl ActionsService {
+    /// Cancels run `id` of `repo` for `actor`, a writer: jobs not yet running at once,
+    /// running ones in the database (their runners learn it on their next update).
+    pub async fn cancel(&self, actor: &User, repo: &RepoContext, id: RunId) -> Result<Run, ServiceError> {
+        require_write(repo)?;
+        let store = self.ctx().database.actions_runs();
+        let repo_id = repo.repo.repo.id;
+        store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+        let Some(settled) = store.cancel_run(repo_id, id, Timestamp::now()).await? else {
+            return Err(ServiceError::Invalid("the run has already finished".to_owned()));
+        };
+        tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), "workflow run cancelled");
+        self.settled(&settled).await?;
+        store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
+    }
+
+    /// Starts finished run `id` again for `actor`, a writer: every job, the failed ones, or
+    /// one job — each with the jobs that need it. The run keeps its number and gets a new
+    /// attempt. An untrusted run stays read-only and waits for approval again unless its
+    /// author would skip the wait today: re-running is not approving.
+    pub async fn rerun(&self, actor: &User, repo: &RepoContext, id: RunId, which: Rerun) -> Result<Run, ServiceError> {
+        require_write(repo)?;
+        let store = self.ctx().database.actions_runs();
+        let repo_id = repo.repo.repo.id;
+        let run = store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+        if let Rerun::Job(job) = which
+            && store.find_job(repo_id, job).await?.is_none_or(|job| job.run_id != id)
+        {
+            return Err(ServiceError::NotFound);
+        }
+        if run.is_workflow_error() {
+            return Err(ServiceError::Invalid("a workflow error has no jobs to run again".to_owned()));
+        }
+        if !run.status.is_done() {
+            return Err(ServiceError::Invalid("only a finished run can be run again".to_owned()));
+        }
+        let awaits = self.awaits_approval(&repo.repo, &run).await?;
+        let decisions = self.inner.groups.lock().await;
+        let start = match (&run.concurrency_group, awaits) {
+            (_, true) => RunStart::AwaitingApproval,
+            (Some(group), false) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id)).await?,
+            (None, false) => RunStart::Runnable,
+        };
+        let settled = store.rerun(repo_id, id, which, start, Timestamp::now()).await?;
+        drop(decisions);
+        let Some(settled) = settled else {
+            return Err(ServiceError::Invalid("no job of the run matches".to_owned()));
+        };
+        tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
+        self.followed_up(&settled);
+        store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
+    }
+
+    /// Approves run `id` of `repo`, which awaits approval, for `actor`, a writer (audited).
+    /// Its concurrency group applies now. The run stays read-only, without secrets or
+    /// variables. With `trust_author`, the pull request's author is trusted in the
+    /// repository from now on: their runs no longer wait (also audited).
+    pub async fn approve(&self, actor: &User, repo: &RepoContext, id: RunId, trust_author: bool) -> Result<Run, ServiceError> {
+        require_write(repo)?;
+        let store = self.ctx().database.actions_runs();
+        let repo_id = repo.repo.repo.id;
+        let run = store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+        if run.status != Status::AwaitingApproval {
+            return Err(ServiceError::Invalid("the run does not wait for approval".to_owned()));
+        }
+        let decisions = self.inner.groups.lock().await;
+        let hold = match &run.concurrency_group {
+            Some(group) => self.enter_group(repo_id, group, run.cancel_in_progress, Some(id)).await? == RunStart::HeldForConcurrency,
+            None => false,
+        };
+        let settled = store.approve_run(repo_id, id, actor.id(), hold, Timestamp::now()).await?;
+        drop(decisions);
+        let Some(settled) = settled else {
+            return Err(ServiceError::Invalid("the run does not wait for approval".to_owned()));
+        };
+        self.followed_up(&settled);
+        let full_name = repo.repo.full_name();
+        let detail = format!("run #{} of {} at {}", run.number, run.workflow_path, run.sha);
+        self.audit().record(AuditEntry::new(AuditAction::ActionsRunApproved).by(actor).on(full_name.clone()).detail(detail)).await;
+        if trust_author && let Some(author) = self.pull_author(repo_id, &run).await? {
+            let settings = self.ctx().database.actions_settings();
+            if settings.trust(repo_id, author.id, actor.id(), Timestamp::now()).await? {
+                let entry = AuditEntry::new(AuditAction::ActionsUserTrusted).by(actor).on(full_name).detail(author.name.to_string());
+                self.audit().record(entry).await;
+            }
+        }
+        store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
+    }
+
+    /// Whether an untrusted run waits for approval when it starts again: the rule of its
+    /// creation (`trust::classify_pull_request`), with today's standing.
+    async fn awaits_approval(&self, repo: &OwnedRepository, run: &Run) -> Result<bool, ServiceError> {
+        if run.trusted {
+            return Ok(false);
+        }
+        let author = self.pull_author(repo.repo.id, run).await?.map(|author| author.id);
+        let trust = self.classify_pull_request(repo, run.actor, author).await?;
+        Ok(matches!(trust, RunTrust::Untrusted { awaits_approval: true }))
+    }
+
+    /// The author of the pull request a run belongs to, if any.
+    async fn pull_author(&self, repo: RepoId, run: &Run) -> Result<Option<Account>, ServiceError> {
+        let Some(number) = run.pull_number.and_then(|number| u32::try_from(number).ok()).and_then(IssueNumber::new) else {
+            return Ok(None);
+        };
+        let database = &self.ctx().database;
+        let Some(author) = database.issues().find_by_number(repo, number).await?.and_then(|issue| issue.author) else { return Ok(None) };
+        Ok(database.accounts().find_accounts(&[author]).await?.pop())
+    }
+
+    fn audit(&self) -> AuditService {
+        AuditService::from_store(self.ctx().database.audit())
+    }
+}
+
+/// Acting on runs needs write access; readers learn the run exists, others do not.
+fn require_write(repo: &RepoContext) -> Result<(), ServiceError> {
+    if repo.access.can_write() {
+        Ok(())
+    } else if repo.access.can_read() {
+        Err(ServiceError::Forbidden)
+    } else {
+        Err(ServiceError::NotFound)
     }
 }
 
