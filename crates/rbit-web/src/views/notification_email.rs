@@ -136,7 +136,16 @@ mod tests {
     }
 
     fn settings(preference: EmailPreference, verified: bool, available: bool) -> EmailSettings {
-        EmailSettings { preference, chosen: true, address: "alice@example.com".parse().unwrap(), verified, available }
+        EmailSettings {
+            preference,
+            chosen: true,
+            delivery: rbit_core::config::EmailDelivery::Immediate,
+            digest_hour: None,
+            default_digest_hour: 8,
+            address: "alice@example.com".parse().unwrap(),
+            verified,
+            available,
+        }
     }
 
     #[test]

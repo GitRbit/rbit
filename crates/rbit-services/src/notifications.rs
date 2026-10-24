@@ -17,7 +17,8 @@
 //! `[issues] notifications = false`.
 //!
 //! Milestone 3 workstream N: the recipients written to the inbox are handed on to
-//! [`NotificationEmailService`], which also mails those who want it.
+//! [`NotificationEmailService`], which also mails those who want it. The background work
+//! here also sends that service's daily and weekly digests.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -49,6 +50,9 @@ use crate::{DomainEvent, NotificationEmailService, ServiceContext, ServiceError,
 pub const NOTIFICATIONS_PER_PAGE: u32 = 50;
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
+/// How often due email digests are looked for; a digest goes out at most this long after
+/// its hour.
+const DIGEST_INTERVAL: Duration = Duration::from_mins(5);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 pub(crate) fn can_read_with_grants(user: &User, repo: &OwnedRepository, stored: Option<&ViewerGrants>) -> bool {
@@ -379,7 +383,8 @@ impl NotificationService {
 
     // ------------------------------------------------------------------ background work
 
-    /// Starts the notification fan-out subscriber and the daily pruning. Called once from
+    /// Starts the notification fan-out subscriber, the daily pruning and, with email, the
+    /// digest schedule. Called once from
     /// [`crate::Services::spawn_background`]; does nothing when notifications are off.
     pub fn spawn_background(&self) {
         if self.background.started.swap(true, Ordering::SeqCst) || !self.enabled() {
@@ -390,6 +395,10 @@ impl NotificationService {
         self.background.tasks.spawn(async move { service.listen(events).await });
         let service = self.clone();
         self.background.tasks.spawn(async move { service.prune_periodically().await });
+        if let Some(email) = self.email.clone() {
+            let shutdown = self.background.shutdown.clone();
+            self.background.tasks.spawn(async move { send_digests_periodically(email, shutdown).await });
+        }
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from
@@ -431,6 +440,29 @@ impl NotificationService {
                 () = self.background.shutdown.cancelled() => break,
                 () = tokio::time::sleep(PRUNE_INTERVAL) => {}
             }
+        }
+    }
+}
+
+/// Sends due digests on start-up (catching up after downtime) and then every
+/// [`DIGEST_INTERVAL`]. A run interrupted by shutdown is safe: claimed digests are never
+/// sent twice.
+async fn send_digests_periodically(email: NotificationEmailService, shutdown: CancellationToken) {
+    loop {
+        let run = tokio::select! {
+            () = shutdown.cancelled() => break,
+            run = email.send_digests() => run,
+        };
+        match run {
+            Ok(run) if run.sent + run.failed + run.empty > 0 => {
+                tracing::info!(sent = run.sent, failed = run.failed, empty = run.empty, "notification digests processed");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "cannot send notification digests"),
+        }
+        tokio::select! {
+            () = shutdown.cancelled() => break,
+            () = tokio::time::sleep(DIGEST_INTERVAL) => {}
         }
     }
 }

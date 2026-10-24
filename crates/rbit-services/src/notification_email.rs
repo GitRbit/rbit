@@ -18,6 +18,11 @@
 //! Delivery goes through the shared [`MailService`] queue. Nothing is sent when the
 //! transport is `disabled`, with `[notifications] email = false`, or with the inbox off.
 //!
+//! **Digests.** Users whose [`EmailDelivery`] is daily or weekly get no email per
+//! notification: what the email would have said is queued instead (after the same checks
+//! and the same dedup claim, but without spending the throttle budget), and [`digests`]
+//! sends it as one email per period, grouped by repository.
+//!
 //! **Threading.** Every message about a thread references `<owner/repo/issues/N@host>`
 //! (`pulls` for pull requests): the opening message uses it as its own `Message-ID`, the
 //! others set `In-Reply-To` and `References` to it. `Reply-To` is never set: rbit receives
@@ -29,15 +34,19 @@
 //! first use (`server_secrets`): unforgeable, and nothing to store per message. Using it
 //! turns notification emails off for that account.
 
+mod digests;
+
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt,
     sync::Arc,
 };
 
+pub use digests::{DigestRun, period_start};
 use hmac::{Hmac, KeyInit, Mac};
 use rbit_core::{
     AccountId, Email, Issue, IssueId, IssueKind, RepoId, StateReason, Timestamp, User,
-    config::EmailPreference,
+    config::{EmailDelivery, EmailPreference},
     issue::{CommentAction, IssueAction, ReviewAction, ReviewState},
     repository::OwnedRepository,
 };
@@ -45,7 +54,11 @@ use rbit_mail::{
     Mail,
     messages::{MailHeaders, ThreadNotification},
 };
-use rbit_storage::sqlite::notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason};
+use rbit_storage::sqlite::{
+    email_digests::NewDigestItem,
+    notification_email::DeliverySettings,
+    notifications::{NOTIFICATION_BATCH_SIZE, NotificationReason},
+};
 use sha2::Sha256;
 use tokio::sync::OnceCell;
 
@@ -60,6 +73,8 @@ const LINK_KEY_NAME: &str = "notification_unsubscribe";
 const LINK_PURPOSE: &str = "rbit/notification-unsubscribe/v1";
 /// Longest excerpt quoted in a message, in characters.
 const MAX_EXCERPT_CHARS: usize = 1000;
+/// Longest excerpt of one notification in a digest, in characters (on one line).
+const MAX_DIGEST_EXCERPT_CHARS: usize = 200;
 /// Where users manage their notification emails.
 pub const SETTINGS_PATH: &str = "/settings/notifications";
 /// The one-click unsubscribe endpoint; the token follows.
@@ -71,6 +86,12 @@ pub struct EmailSettings {
     pub preference: EmailPreference,
     /// Whether the user chose it (otherwise it is the configured default).
     pub chosen: bool,
+    /// Immediately or in daily or weekly digests.
+    pub delivery: EmailDelivery,
+    /// The hour (UTC) the user chose for digests; `None` follows `default_digest_hour`.
+    pub digest_hour: Option<u8>,
+    /// The instance's digest hour (UTC).
+    pub default_digest_hour: u8,
     pub address: Email,
     /// Unverified addresses receive no notification email whatever the preference.
     pub verified: bool,
@@ -91,6 +112,22 @@ struct Activity {
     opening: bool,
 }
 
+/// Where the service reads the time: the system clock, or a test's.
+#[derive(Clone)]
+struct Clock(Arc<dyn Fn() -> Timestamp + Send + Sync>);
+
+impl fmt::Debug for Clock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Clock")
+    }
+}
+
+impl Default for Clock {
+    fn default() -> Self {
+        Self(Arc::new(Timestamp::now))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct NotificationEmailService {
     ctx: ServiceContext,
@@ -99,17 +136,34 @@ pub struct NotificationEmailService {
     instance: InstanceService,
     /// The link-signing key, read (or created) once.
     link_key: Arc<OnceCell<Vec<u8>>>,
+    clock: Clock,
 }
 
 impl NotificationEmailService {
     pub(crate) fn new(ctx: ServiceContext, mail: MailService, throttle: ThrottleService, instance: InstanceService) -> Self {
-        Self { ctx, mail, throttle, instance, link_key: Arc::default() }
+        Self { ctx, mail, throttle, instance, link_key: Arc::default(), clock: Clock::default() }
     }
 
     /// The same service delivering through `mail` (tests use a memory transport).
     #[must_use]
     pub fn with_mail(&self, mail: MailService) -> Self {
         Self { mail, ..self.clone() }
+    }
+
+    /// The same service reading the time from `clock` (tests move it across digest
+    /// periods). It stamps queued notifications and decides which digests are due.
+    #[must_use]
+    pub fn with_clock(&self, clock: impl Fn() -> Timestamp + Send + Sync + 'static) -> Self {
+        Self { clock: Clock(Arc::new(clock)), ..self.clone() }
+    }
+
+    fn now(&self) -> Timestamp {
+        (self.clock.0)()
+    }
+
+    /// The hour (UTC) digests are sent at for users who did not choose one.
+    pub fn default_digest_hour(&self) -> u8 {
+        self.ctx.config.notifications.digest_hour
     }
 
     /// Whether notification emails are sent at all: `[notifications] email`, the inbox
@@ -123,10 +177,15 @@ impl NotificationEmailService {
     /// `user`'s settings for the settings page.
     pub async fn settings(&self, user: &User) -> Result<EmailSettings, ServiceError> {
         let account = self.ctx.database.recovery().find_account(user.id()).await?.ok_or(ServiceError::NotFound)?;
-        let chosen = self.ctx.database.notification_email().preference(user.id()).await?;
+        let store = self.ctx.database.notification_email();
+        let chosen = store.preference(user.id()).await?;
+        let delivery = store.delivery(user.id()).await?;
         Ok(EmailSettings {
             preference: chosen.unwrap_or(self.ctx.config.notifications.default_email),
             chosen: chosen.is_some(),
+            delivery: delivery.delivery,
+            digest_hour: delivery.digest_hour,
+            default_digest_hour: self.default_digest_hour(),
             address: account.email,
             verified: account.email_verified_at.is_some(),
             available: self.available(),
@@ -136,6 +195,23 @@ impl NotificationEmailService {
     /// Stores `user`'s choice.
     pub async fn set_preference(&self, user: &User, preference: EmailPreference) -> Result<(), ServiceError> {
         Ok(self.ctx.database.notification_email().set_preference(user.id(), preference, Timestamp::now()).await?)
+    }
+
+    /// Stores `user`'s choice of what to email and how to deliver it. Digest hours are
+    /// 0–23 (UTC). Notifications already queued for a digest go out with the next one,
+    /// even after switching back to immediate emails.
+    pub async fn set_preferences(
+        &self,
+        user: &User,
+        preference: EmailPreference,
+        delivery: EmailDelivery,
+        digest_hour: Option<u8>,
+    ) -> Result<(), ServiceError> {
+        if digest_hour.is_some_and(|hour| hour > rbit_core::config::MAX_DIGEST_HOUR) {
+            return Err(ServiceError::Invalid("the digest hour must be between 0 and 23".to_owned()));
+        }
+        let settings = DeliverySettings { delivery, digest_hour };
+        Ok(self.ctx.database.notification_email().save(user.id(), preference, settings, Timestamp::now()).await?)
     }
 
     // ------------------------------------------------------------------ one-click unsubscribe
@@ -197,7 +273,7 @@ impl NotificationEmailService {
             Some(actor) => database.accounts().find_accounts(&[actor]).await?.into_iter().next().map(|account| account.name.to_string()),
             None => None,
         };
-        let now = Timestamp::now();
+        let now = self.now();
         let Some(activity) = self.activity(event, &thread, actor_name.as_deref(), now).await? else { return Ok(()) };
         let store = database.notification_email();
         let default = self.ctx.config.notifications.default_email;
@@ -219,26 +295,49 @@ impl NotificationEmailService {
                 .into_iter()
                 .filter_map(|recipient| {
                     let reason = *reasons.get(&recipient.user.id())?;
-                    wants(recipient.preference.unwrap_or(default), reason).then_some((recipient.user, reason))
+                    wants(recipient.preference.unwrap_or(default), reason).then_some((recipient.user, reason, recipient.delivery))
                 })
                 .collect();
             let grant_ids: Vec<_> = users
                 .iter()
-                .map(|(user, _)| user)
+                .map(|(user, _, _)| user)
                 .filter(|user| !user.is_admin && user.id() != owned.repo.owner_id)
                 .map(User::id)
                 .collect();
             let grants = database.repositories().grants_for(repo, owned.repo.owner_id, &grant_ids).await?;
-            let users: Vec<_> = users.into_iter().filter(|(user, _)| can_read_with_grants(user, &owned, grants.get(&user.id()))).collect();
+            let users: Vec<_> =
+                users.into_iter().filter(|(user, _, _)| can_read_with_grants(user, &owned, grants.get(&user.id()))).collect();
             // Rendering may fail (including initializing the unsubscribe signing key).
             // Finish the bounded batch before claiming any of its delivery keys.
             let mut rendered = Vec::with_capacity(users.len());
-            for (user, reason) in users {
-                let mail = self.render(&owned, &thread, &activity, reason, user.email.clone(), user.id()).await?;
-                rendered.push((user, mail));
+            let mut digest = Vec::new();
+            for (user, reason, delivery) in users {
+                if delivery.is_digest() {
+                    digest.push((user.id(), reason));
+                } else {
+                    let mail = self.render(&owned, &thread, &activity, reason, user.email.clone(), user.id()).await?;
+                    rendered.push((user, mail));
+                }
             }
-            let ids: Vec<_> = rendered.iter().map(|(user, _)| user.id()).collect();
+            let ids: Vec<_> = rendered.iter().map(|(user, _)| user.id()).chain(digest.iter().map(|(user, _)| *user)).collect();
+            // One claim for both: switching between immediate and digest delivery never
+            // sends an activity twice.
             let claimed = store.claim_many(&ids, issue, &activity.key, now).await?;
+            let queued: Vec<_> = digest
+                .into_iter()
+                .filter(|(user, _)| claimed.contains(user))
+                .map(|(account, reason)| NewDigestItem {
+                    account,
+                    repo,
+                    issue,
+                    reason,
+                    headline: activity.headline.clone(),
+                    excerpt: one_line_excerpt(&activity.excerpt),
+                    anchor: activity.anchor.clone(),
+                    created_at: now,
+                })
+                .collect();
+            database.email_digests().queue(&queued).await?;
             for (user, mail) in rendered.into_iter().filter(|(user, _)| claimed.contains(&user.id())) {
                 if let Err(error) = self.throttle.check(ThrottleScope::NotificationEmail, &user.email.as_str().to_lowercase()) {
                     tracing::info!(%error, user = %user.name(), "notification email skipped: too many recently");
@@ -250,9 +349,12 @@ impl NotificationEmailService {
         Ok(())
     }
 
-    /// Deletes outbox rows created before `cutoff` (the inbox's retention).
+    /// Deletes outbox rows and digests created before `cutoff` (the inbox's retention).
+    /// Notifications still waiting for a digest are kept for at least two weeks.
     pub(crate) async fn prune(&self, cutoff: Timestamp) -> Result<u64, ServiceError> {
-        Ok(self.ctx.database.notification_email().prune(cutoff).await?)
+        let outbox = self.ctx.database.notification_email().prune(cutoff).await?;
+        let digests = self.ctx.database.email_digests().prune(digests::prune_cutoff(cutoff, self.now())).await?;
+        Ok(outbox + digests)
     }
 
     /// What `event` did to `thread`, or `None` for events that send no email.
@@ -424,8 +526,17 @@ fn capitalised(text: &str) -> String {
 
 /// `text` trimmed and cut to [`MAX_EXCERPT_CHARS`] characters.
 fn excerpt_of(text: &str) -> String {
-    let text = text.trim();
-    match text.char_indices().nth(MAX_EXCERPT_CHARS) {
+    cut(text.trim(), MAX_EXCERPT_CHARS)
+}
+
+/// `text` on one line (runs of whitespace become one space), cut to
+/// [`MAX_DIGEST_EXCERPT_CHARS`] characters.
+fn one_line_excerpt(text: &str) -> String {
+    cut(&text.split_whitespace().collect::<Vec<_>>().join(" "), MAX_DIGEST_EXCERPT_CHARS)
+}
+
+fn cut(text: &str, max_chars: usize) -> String {
+    match text.char_indices().nth(max_chars) {
         Some((end, _)) => format!("{}…", text[..end].trim_end()),
         None => text.to_owned(),
     }
@@ -535,6 +646,10 @@ mod tests {
         let excerpt = excerpt_of(&long);
         assert_eq!(excerpt.chars().count(), MAX_EXCERPT_CHARS + 1);
         assert!(excerpt.ends_with('…'));
+        assert_eq!(one_line_excerpt("  Same\n\nhere,\tplease "), "Same here, please");
+        let excerpt = one_line_excerpt(&"word ".repeat(100));
+        assert_eq!(excerpt.chars().count(), MAX_DIGEST_EXCERPT_CHARS);
+        assert!(excerpt.ends_with("word…"), "cut at a word, trailing space dropped: {excerpt:?}");
         assert_eq!(capitalised("issue #3 was closed."), "Issue #3 was closed.");
         assert_eq!(capitalised(""), "");
     }
