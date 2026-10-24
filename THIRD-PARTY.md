@@ -19,9 +19,11 @@ The vendored script is copied unmodified from `node_modules` by `scripts/vendor.
 | What | Where | Source | License |
 |---|---|---|---|
 | GitHub Actions filter patterns (`workflowpattern`: pattern translation, `Skip`, `Filter`, and its test table) | `crates/rbit-workflow/src/pattern.rs` | [nektos/act](https://github.com/nektos/act) `pkg/workflowpattern`, © 2019 the act authors | MIT |
+| Job parser test workflows (inputs of the payload golden tests, given an `on:` key) | `crates/rbit-workflow/tests/golden/*.in.yaml` except `include_exclude` | [go-gitea/gitea](https://github.com/go-gitea/gitea) `modules/actions/jobparser/testdata`, © The Gitea Authors | MIT |
 
 Ported code is a translation to Rust that keeps the original's behaviour and tests; the MIT
-license text is reproduced below.
+license text is reproduced below (Gitea's is the same text with "Copyright (c) 2016 The
+Gitea Authors").
 
 <details>
 <summary>MIT license (nektos/act)</summary>

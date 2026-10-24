@@ -1,0 +1,146 @@
+name: Matrix with include and exclude
+"on":
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test (macos, stable)
+    runs-on:
+      - self-hosted
+      - macos
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos
+        rust:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo +${{ matrix.rust }} test
+        env:
+          RUST_BACKTRACE: 1
+---
+name: Matrix with include and exclude
+"on":
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test (true, linux, 1.94)
+    runs-on:
+      - self-hosted
+      - linux
+    strategy:
+      fail-fast: false
+      matrix:
+        experimental:
+          - true
+        os:
+          - linux
+        rust:
+          - 1.94
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo +${{ matrix.rust }} test
+        env:
+          RUST_BACKTRACE: 1
+---
+name: Matrix with include and exclude
+"on":
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test (true, linux, stable)
+    runs-on:
+      - self-hosted
+      - linux
+    strategy:
+      fail-fast: false
+      matrix:
+        experimental:
+          - true
+        os:
+          - linux
+        rust:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo +${{ matrix.rust }} test
+        env:
+          RUST_BACKTRACE: 1
+---
+name: Matrix with include and exclude
+"on":
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test (windows, stable)
+    runs-on:
+      - self-hosted
+      - windows
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows
+        rust:
+          - stable
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo +${{ matrix.rust }} test
+        env:
+          RUST_BACKTRACE: 1
+---
+name: Matrix with include and exclude
+"on":
+  push:
+    branches:
+      - main
+env:
+  CARGO_TERM_COLOR: always
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+jobs:
+  lint:
+    name: lint
+    runs-on: linux
+    steps:
+      - run: cargo clippy -- -D warnings
