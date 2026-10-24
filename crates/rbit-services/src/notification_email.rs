@@ -161,9 +161,10 @@ impl NotificationEmailService {
         (self.clock.0)()
     }
 
-    /// The hour (UTC) digests are sent at for users who did not choose one.
+    /// The hour (UTC) digests are sent at for users who did not choose one: the runtime
+    /// instance setting (`[notifications] digest_hour` until an administrator changes it).
     pub fn default_digest_hour(&self) -> u8 {
-        self.ctx.config.notifications.digest_hour
+        self.instance.current().digest_hour
     }
 
     /// Whether notification emails are sent at all: `[notifications] email`, the inbox

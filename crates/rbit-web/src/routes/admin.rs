@@ -412,6 +412,8 @@ pub struct SettingsSubmission {
     org_creation: String,
     #[serde(default)]
     default_visibility: String,
+    /// Missing (an older form) keeps the current hour.
+    digest_hour: Option<String>,
 }
 
 impl SettingsSubmission {
@@ -435,7 +437,8 @@ impl SettingsSubmission {
         }
     }
 
-    fn parse(&self) -> Result<InstanceSettings, ServiceError> {
+    /// The submitted settings; `current_digest_hour` fills in a missing digest hour.
+    fn parse(&self, current_digest_hour: u8) -> Result<InstanceSettings, ServiceError> {
         let invalid = |what: &str| ServiceError::Invalid(format!("choose one of the offered {what} options"));
         Ok(InstanceSettings {
             site_name: self.site_name.clone(),
@@ -443,7 +446,15 @@ impl SettingsSubmission {
             registration: RegistrationMode::parse(&self.registration).ok_or_else(|| invalid("registration"))?,
             org_creation: OrgCreationPolicy::parse(&self.org_creation).ok_or_else(|| invalid("organization"))?,
             default_visibility: Visibility::parse(&self.default_visibility).ok_or_else(|| invalid("visibility"))?,
+            digest_hour: match &self.digest_hour {
+                None => current_digest_hour,
+                Some(_) => self.digest_hour().ok_or_else(|| invalid("digest time"))?,
+            },
         })
+    }
+
+    fn digest_hour(&self) -> Option<u8> {
+        self.digest_hour.as_deref()?.trim().parse::<u8>().ok().filter(|hour| *hour <= rbit_core::config::MAX_DIGEST_HOUR)
     }
 
     /// The form as submitted, for re-rendering after an error.
@@ -454,6 +465,7 @@ impl SettingsSubmission {
             registration_open: self.registration != RegistrationMode::Closed.as_str(),
             admins_only_orgs: self.org_creation == OrgCreationPolicy::AdminsOnly.as_str(),
             private_by_default: self.default_visibility == Visibility::Private.as_str(),
+            digest_hour: self.digest_hour(),
         }
     }
 }
@@ -465,7 +477,7 @@ pub async fn update_settings(
     page: Page,
     Form(form): Form<SettingsSubmission>,
 ) -> WebResult<Response> {
-    let result = match form.parse() {
+    let result = match form.parse(state.services.instance.current().digest_hour) {
         Ok(settings) => state.services.admin.update_settings(&admin, settings).await,
         Err(error) => Err(error),
     };
@@ -563,13 +575,21 @@ mod tests {
             registration: registration.to_owned(),
             org_creation: "admins_only".to_owned(),
             default_visibility: "private".to_owned(),
+            digest_hour: Some("6".to_owned()),
             ..SettingsSubmission::default()
         };
-        let parsed = submission("closed").parse().unwrap();
+        let parsed = submission("closed").parse(8).unwrap();
         assert_eq!(parsed.registration, RegistrationMode::Closed);
         assert_eq!(parsed.org_creation, OrgCreationPolicy::AdminsOnly);
         assert_eq!(parsed.default_visibility, Visibility::Private);
-        assert!(matches!(submission("maybe").parse(), Err(ServiceError::Invalid(_))));
+        assert_eq!(parsed.digest_hour, 6);
+        assert!(matches!(submission("maybe").parse(8), Err(ServiceError::Invalid(_))));
+        for hour in ["24", "", "noon"] {
+            let late = SettingsSubmission { digest_hour: Some(hour.to_owned()), ..submission("closed") };
+            assert!(matches!(late.parse(8), Err(ServiceError::Invalid(_))), "{hour:?}");
+        }
+        let older_form = SettingsSubmission { digest_hour: None, ..submission("closed") };
+        assert_eq!(older_form.parse(8).unwrap().digest_hour, 8, "a form without the field keeps the current hour");
 
         let form = submission("closed").form();
         assert!(!form.registration_open && form.admins_only_orgs && form.private_by_default);
