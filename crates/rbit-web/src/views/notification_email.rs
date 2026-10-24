@@ -4,7 +4,7 @@
 
 use askama::Template;
 use askama_web::WebTemplate;
-use rbit_core::config::EmailPreference;
+use rbit_core::config::{EmailDelivery, EmailPreference, MAX_DIGEST_HOUR};
 use rbit_services::notification_email::EmailSettings;
 
 use crate::views::{
@@ -41,6 +41,58 @@ impl PreferenceOption {
     }
 }
 
+/// One choice of the delivery form.
+#[derive(Debug, Clone)]
+pub struct DeliveryOption {
+    pub value: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub checked: bool,
+}
+
+impl DeliveryOption {
+    fn all(selected: EmailDelivery) -> Vec<Self> {
+        EmailDelivery::ALL
+            .into_iter()
+            .map(|delivery| {
+                let (label, description) = match delivery {
+                    EmailDelivery::Immediate => ("Immediately", "One email for each notification, as it happens."),
+                    EmailDelivery::Daily => ("Daily digest", "One email a day with everything since the last one."),
+                    EmailDelivery::Weekly => ("Weekly digest", "One email every Monday with everything from the week before."),
+                };
+                Self { value: delivery.as_str(), label, description, checked: delivery == selected }
+            })
+            .collect()
+    }
+}
+
+/// One entry of the digest time menu.
+#[derive(Debug, Clone)]
+pub struct HourOption {
+    /// The form value: empty for the instance default, otherwise the hour.
+    pub value: String,
+    pub label: String,
+    pub selected: bool,
+}
+
+impl HourOption {
+    fn all(chosen: Option<u8>, default: u8) -> Vec<Self> {
+        let default = Self { value: String::new(), label: format!("Default ({})", hour_label(default)), selected: chosen.is_none() };
+        std::iter::once(default)
+            .chain((0..=MAX_DIGEST_HOUR).map(|hour| Self {
+                value: hour.to_string(),
+                label: hour_label(hour),
+                selected: chosen == Some(hour),
+            }))
+            .collect()
+    }
+}
+
+/// `08:00 UTC`.
+pub fn hour_label(hour: u8) -> String {
+    format!("{hour:02}:00 UTC")
+}
+
 /// `/settings/notifications`: which notifications are also emailed.
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "settings/notifications.html")]
@@ -48,6 +100,8 @@ pub struct NotificationSettingsPage {
     pub page: Page,
     pub settings_nav: Vec<SettingsLink>,
     pub options: Vec<PreferenceOption>,
+    pub deliveries: Vec<DeliveryOption>,
+    pub hours: Vec<HourOption>,
     /// The address notifications go to.
     pub address: String,
     pub verified: bool,
@@ -64,6 +118,8 @@ impl NotificationSettingsPage {
             page: page.titled("Notifications"),
             settings_nav: SettingsSection::Notifications.nav(),
             options: PreferenceOption::all(settings.preference),
+            deliveries: DeliveryOption::all(settings.delivery),
+            hours: HourOption::all(settings.digest_hour, settings.default_digest_hour),
             address: settings.address.to_string(),
             verified: settings.verified,
             available: settings.available,
@@ -139,7 +195,7 @@ mod tests {
         EmailSettings {
             preference,
             chosen: true,
-            delivery: rbit_core::config::EmailDelivery::Immediate,
+            delivery: EmailDelivery::Immediate,
             digest_hour: None,
             default_digest_hour: 8,
             address: "alice@example.com".parse().unwrap(),
@@ -161,6 +217,16 @@ mod tests {
         let html = NotificationSettingsPage::new(page(), &settings(EmailPreference::Participating, false, true)).render().unwrap();
         assert!(html.contains("Verify"), "unverified addresses are explained");
         assert!(html.contains(r#"href="/settings/account""#));
+
+        assert!(html.contains(r#"value="immediate" class="mt-1 accent-(--ink)" checked"#), "immediate is the default");
+        assert!(html.contains(r#"<option value="" selected>Default (08:00 UTC)</option>"#), "{html}");
+
+        let weekly = EmailSettings { delivery: EmailDelivery::Weekly, digest_hour: Some(17), ..settings(EmailPreference::All, true, true) };
+        let html = NotificationSettingsPage::new(page(), &weekly).render().unwrap();
+        assert!(html.contains(r#"value="weekly" class="mt-1 accent-(--ink)" checked"#));
+        assert!(!html.contains(r#"value="immediate" class="mt-1 accent-(--ink)" checked"#));
+        assert!(html.contains(r#"<option value="17" selected>17:00 UTC</option>"#));
+        assert!(html.contains(r#"<option value="0">00:00 UTC</option>"#));
 
         let html = NotificationSettingsPage::new(page(), &settings(EmailPreference::Off, true, false)).saved(true).render().unwrap();
         assert!(html.contains("not available on this server"));
