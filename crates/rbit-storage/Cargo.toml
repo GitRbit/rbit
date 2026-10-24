@@ -19,8 +19,12 @@ postcard.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+# Pool contention metrics (`sqlite::pool`); the web crate installs the recorder.
+metrics.workspace = true
+futures-util.workspace = true
 
 [dev-dependencies]
+metrics-exporter-prometheus.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true
 

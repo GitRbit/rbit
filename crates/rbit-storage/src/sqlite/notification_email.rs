@@ -8,8 +8,8 @@
 
 use std::collections::{BTreeSet, HashSet};
 
+use super::pool::Pool;
 use rbit_core::{AccountId, IssueId, Timestamp, User, config::EmailPreference};
-use sqlx::SqlitePool;
 
 use super::{notifications::NOTIFICATION_BATCH_SIZE, rows::UserRow};
 use crate::StorageError;
@@ -30,11 +30,11 @@ struct RecipientRow {
 
 #[derive(Debug, Clone)]
 pub struct NotificationEmailStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl NotificationEmailStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

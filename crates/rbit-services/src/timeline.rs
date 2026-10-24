@@ -126,11 +126,8 @@ impl TimelineService {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
-        let issue = self.ctx.database.issues().find_by_number(repo.repo.repo.id, number).await?.ok_or(ServiceError::NotFound)?;
-        let author = match issue.author {
-            Some(id) => self.ctx.database.accounts().find_accounts(&[id]).await?.pop(),
-            None => None,
-        };
+        let (issue, author) =
+            self.ctx.database.issues().find_by_number_with_author(repo.repo.repo.id, number).await?.ok_or(ServiceError::NotFound)?;
         let permissions = issue_permissions(viewer, repo.access, &issue);
         Ok(IssueContext { repo, issue, author, permissions })
     }

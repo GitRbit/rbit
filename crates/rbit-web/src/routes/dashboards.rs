@@ -81,7 +81,7 @@ async fn show(state: &AppState, user: &rbit_core::User, page: Page, params: Para
     let mut rows = Vec::new();
     // At most one page (25 threads), never a cross-repository metadata scan.
     for issue in &results.issues {
-        if let Some(repo) = state.services.issues.dashboard_repository(user, issue.repo_id).await? {
+        if let Some(repo) = results.repositories.get(&issue.repo_id) {
             rows.push(DashboardRow {
                 repository: repo.full_name(),
                 row: IssueRow::new(

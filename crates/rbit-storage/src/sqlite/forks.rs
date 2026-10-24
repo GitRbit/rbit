@@ -5,8 +5,8 @@
 
 use std::collections::HashSet;
 
+use super::pool::Pool;
 use rbit_core::{AccountId, RepoId, Timestamp, repository::OwnedRepository};
-use sqlx::SqlitePool;
 
 use super::{repositories::readable_by, rows::OwnedRepositoryRow};
 use crate::StorageError;
@@ -25,11 +25,11 @@ pub const MAX_NETWORK_DEPTH: u32 = 10;
 
 #[derive(Debug, Clone)]
 pub struct ForkStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ForkStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

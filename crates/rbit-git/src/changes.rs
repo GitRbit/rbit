@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Bounds that keep huge commits from producing huge pages.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiffLimits {
     /// Files beyond this count are omitted entirely.
     pub max_files: usize,

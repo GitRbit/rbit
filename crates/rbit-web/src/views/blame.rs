@@ -29,9 +29,10 @@ use askama_web::WebTemplate;
 use rbit_git::blame::BlameHunk;
 
 use crate::{
+    render::HighlightedFile,
     urls::RepoUrls,
     views::{
-        blocks::{BLOCK_ROWS, column_class, markup_columns},
+        blocks::{BLOCK_ROWS, column_class},
         layout::Page,
         repo::{CommitView, Crumb, RefSwitcher, RepoHeader},
     },
@@ -53,13 +54,13 @@ pub struct BlameHunkView {
     /// The path in that commit, when the file was renamed since.
     pub source_path: Option<String>,
     lines: Range<usize>,
-    lines_html: Arc<[String]>,
+    lines_html: Arc<HighlightedFile>,
 }
 
 impl BlameHunkView {
     /// Pairs each hunk with its lines; `lines_html[i]` is line `i + 1`. Lines the
     /// highlighter did not produce (a trailing line without content) render empty.
-    pub fn build(hunks: &[BlameHunk], lines_html: &Arc<[String]>, urls: &RepoUrls) -> Vec<Self> {
+    pub fn build(hunks: &[BlameHunk], lines_html: &Arc<HighlightedFile>, urls: &RepoUrls) -> Vec<Self> {
         hunks
             .iter()
             .map(|hunk| Self {
@@ -180,12 +181,12 @@ impl BlamePage {
         }
     }
 
-    /// The code's minimum width, from its widest line ([`column_class`]).
+    /// The code's minimum width, from its widest line ([`column_class`]), measured once
+    /// when the file was highlighted. Hunks cover every line of the blamed file, and all
+    /// of them share its highlighted lines.
     pub fn code_columns(&self) -> String {
         let widest = match &self.content {
-            BlameContent::Hunks(hunks) => {
-                hunks.iter().flat_map(BlameHunkView::lines).map(|line| markup_columns(line.html)).max().unwrap_or(0)
-            }
+            BlameContent::Hunks(hunks) => hunks.first().map_or(0, |hunk| hunk.lines_html.widest()),
             BlameContent::Binary | BlameContent::TooLarge => 0,
         };
         column_class(widest)
@@ -218,7 +219,7 @@ mod tests {
             BlameHunk { commit: commit("a"), start_line: 1, line_count: 2, source_path: None },
             BlameHunk { commit: commit("b"), start_line: 3, line_count: 2, source_path: Some("old.rs".into()) },
         ];
-        let lines: Arc<[String]> = ["l1", "l2", "l3"].map(str::to_owned).into();
+        let lines = Arc::new(HighlightedFile::new(["l1", "l2", "l3"].map(str::to_owned).into()));
         let views = BlameHunkView::build(&hunks, &lines, &RepoUrls::new("o", "r"));
         assert!(Arc::ptr_eq(&views[0].lines_html, &lines));
         assert!(Arc::ptr_eq(&views[1].lines_html, &lines));
@@ -244,7 +245,7 @@ mod tests {
                 hunk
             })
             .collect();
-        let lines: Arc<[String]> = (1..start).map(|n| format!("<i>line {n}</i>")).collect();
+        let lines = Arc::new(HighlightedFile::new((1..start).map(|n| format!("<i>line {n}</i>")).collect()));
         BlameHunkView::build(&hunks, &lines, &RepoUrls::new("o", "r"))
     }
 
@@ -332,6 +333,17 @@ mod tests {
             raw_url: "/o/r/raw/main/a.rs".to_owned(),
             content,
         }
+    }
+
+    #[test]
+    fn the_code_column_comes_from_the_cached_width_without_measuring_again() {
+        let hunks = [BlameHunk { commit: commit("a"), start_line: 1, line_count: 1, source_path: None }];
+        // A stored width the line does not have: only a page that reads it reports it.
+        let file = Arc::new(HighlightedFile::with_widest(vec!["<i>x</i>".to_owned()], 30));
+        let views = BlameHunkView::build(&hunks, &file, &RepoUrls::new("o", "r"));
+        assert_eq!(page(BlameContent::Hunks(views)).code_columns(), "cols-32");
+        assert_eq!(page(BlameContent::Hunks(Vec::new())).code_columns(), "cols-8");
+        assert_eq!(page(BlameContent::Binary).code_columns(), "cols-8");
     }
 
     #[test]

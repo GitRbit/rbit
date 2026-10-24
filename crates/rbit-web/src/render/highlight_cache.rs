@@ -6,6 +6,10 @@
 //! picks the syntax) and [`HIGHLIGHTER_VERSION`], so a server that renders differently
 //! never serves old markup. Nothing needs invalidating; old entries simply age out.
 //!
+//! An entry is a [`HighlightedFile`]: the lines and the width of the widest one, measured
+//! once by the job that highlights it, so a warm hit never rescans the file to size the
+//! code column.
+//!
 //! Memory is bounded by [`DEFAULT_MAX_BYTES`], counted over the stored strings; an entry
 //! larger than a quarter of the budget is not kept, so one huge file cannot flush
 //! everything else.
@@ -16,6 +20,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     mem::size_of,
+    ops::Deref,
     sync::{Arc, Mutex, PoisonError},
 };
 
@@ -32,9 +37,56 @@ pub const HIGHLIGHTER_VERSION: u32 = 3;
 /// stay warm at a cost that is small next to the server's other caches.
 pub const DEFAULT_MAX_BYTES: usize = 32 * 1024 * 1024;
 
-/// Both map keys, entry fields, use tick, Arc header and allowance for map nodes.
-const ENTRY_OVERHEAD: usize = 2 * size_of::<Key>() + size_of::<Entry>() + size_of::<u64>() + size_of::<[usize; 8]>();
+/// Both map keys, entry fields, use tick, the shared file, Arc header and allowance for
+/// map nodes.
+const ENTRY_OVERHEAD: usize =
+    2 * size_of::<Key>() + size_of::<Entry>() + size_of::<u64>() + size_of::<HighlightedFile>() + size_of::<[usize; 8]>();
 const MAX_JOBS: usize = 4;
+
+/// A highlighted file: one HTML fragment per line, and the display width of its widest
+/// line (what [`crate::views::blocks::column_class`] sizes the code column from).
+/// Dereferences to the lines.
+#[derive(Debug, PartialEq, Eq)]
+pub struct HighlightedFile {
+    lines: Box<[String]>,
+    widest: usize,
+}
+
+impl HighlightedFile {
+    /// Measures the widest of `lines` ([`crate::views::blocks::markup_columns`]) once.
+    #[must_use]
+    pub fn new(lines: Vec<String>) -> Self {
+        let widest = lines.iter().map(|line| crate::views::blocks::markup_columns(line)).max().unwrap_or(0);
+        Self { lines: lines.into_boxed_slice(), widest }
+    }
+
+    /// The lines: `lines()[i]` is line `i + 1`.
+    #[must_use]
+    pub fn lines(&self) -> &[String] {
+        &self.lines
+    }
+
+    /// The display width of the widest line, in columns.
+    #[must_use]
+    pub fn widest(&self) -> usize {
+        self.widest
+    }
+
+    /// A file whose stored width is `widest`, whatever its lines measure: lets tests show
+    /// that pages read the stored width instead of measuring again.
+    #[cfg(test)]
+    pub(crate) fn with_widest(lines: Vec<String>, widest: usize) -> Self {
+        Self { lines: lines.into_boxed_slice(), widest }
+    }
+}
+
+impl Deref for HighlightedFile {
+    type Target = [String];
+
+    fn deref(&self) -> &[String] {
+        &self.lines
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Key {
@@ -45,7 +97,7 @@ struct Key {
 
 #[derive(Debug)]
 struct Entry {
-    lines: Arc<[String]>,
+    lines: Arc<HighlightedFile>,
     bytes: usize,
     /// When it was last used; its position in [`State::by_use`].
     used: u64,
@@ -54,7 +106,7 @@ struct Entry {
 #[derive(Debug, Default)]
 struct State {
     entries: HashMap<Key, Entry>,
-    running: HashMap<Key, watch::Receiver<Option<Arc<[String]>>>>,
+    running: HashMap<Key, watch::Receiver<Option<Arc<HighlightedFile>>>>,
     /// Use tick → key, least recently used first.
     by_use: BTreeMap<u64, Key>,
     clock: u64,
@@ -117,13 +169,13 @@ impl HighlightCache {
     }
 
     /// The highlighted lines stored for this content and name, marking them recently used.
-    pub fn get(&self, content_id: &str, file_name: &str) -> Option<Arc<[String]>> {
+    pub fn get(&self, content_id: &str, file_name: &str) -> Option<Arc<HighlightedFile>> {
         let key = Self::key(content_id, file_name);
         let mut state = self.lock();
         Self::lookup(&mut state, &key)
     }
 
-    fn lookup(state: &mut State, key: &Key) -> Option<Arc<[String]>> {
+    fn lookup(state: &mut State, key: &Key) -> Option<Arc<HighlightedFile>> {
         let now = state.tick();
         let Some(entry) = state.entries.get_mut(key) else {
             state.misses += 1;
@@ -138,13 +190,13 @@ impl HighlightCache {
     }
 
     /// Stores `lines`, evicting the least recently used entries beyond the budget.
-    pub fn insert(&self, content_id: &str, file_name: &str, lines: Arc<[String]>) {
+    pub fn insert(&self, content_id: &str, file_name: &str, lines: Arc<HighlightedFile>) {
         let key = Self::key(content_id, file_name);
         let bytes = retained_bytes(&key, &lines);
         self.store(&mut self.lock(), key, lines, bytes);
     }
 
-    fn store(&self, state: &mut State, key: Key, lines: Arc<[String]>, bytes: usize) {
+    fn store(&self, state: &mut State, key: Key, lines: Arc<HighlightedFile>, bytes: usize) {
         if bytes > self.inner.max_bytes / 4 {
             return;
         }
@@ -165,7 +217,7 @@ impl HighlightCache {
 
     /// Returns shared markup, or runs one CPU job for this key on the blocking pool.
     /// Excess distinct jobs are rejected instead of accumulating an unbounded queue.
-    pub async fn get_or_compute<F>(&self, content_id: &str, file_name: &str, compute: F) -> WebResult<Arc<[String]>>
+    pub async fn get_or_compute<F>(&self, content_id: &str, file_name: &str, compute: F) -> WebResult<Arc<HighlightedFile>>
     where
         F: FnOnce() -> Vec<String> + Send + 'static,
     {
@@ -193,8 +245,7 @@ impl HighlightCache {
         // under the cache lock. Joining a flight releases its unused source at once.
         if let Some(mut flight) = flight {
             drop(tokio::task::spawn_blocking(move || {
-                let lines: Arc<[String]> = compute().into();
-                flight.complete(lines);
+                flight.complete(Arc::new(HighlightedFile::new(compute())));
             }));
         } else {
             drop(compute);
@@ -217,11 +268,11 @@ impl HighlightCache {
 struct Flight {
     cache: HighlightCache,
     key: Option<Key>,
-    sender: watch::Sender<Option<Arc<[String]>>>,
+    sender: watch::Sender<Option<Arc<HighlightedFile>>>,
 }
 
 impl Flight {
-    fn complete(&mut self, lines: Arc<[String]>) {
+    fn complete(&mut self, lines: Arc<HighlightedFile>) {
         let Some(key) = self.key.as_ref() else { return };
         let bytes = retained_bytes(key, &lines);
         let Some(key) = self.key.take() else { return };
@@ -264,8 +315,8 @@ mod tests {
 
     use super::*;
 
-    fn lines(count: usize, width: usize) -> Arc<[String]> {
-        (0..count).map(|_| "x".repeat(width)).collect()
+    fn lines(count: usize, width: usize) -> Arc<HighlightedFile> {
+        Arc::new(HighlightedFile::new((0..count).map(|_| "x".repeat(width)).collect()))
     }
 
     #[test]
@@ -324,7 +375,7 @@ mod tests {
         let mut large = String::with_capacity(4096);
         large.push('x');
         let capacity = large.capacity();
-        let lines: Arc<[String]> = [large, String::new()].into();
+        let lines = Arc::new(HighlightedFile::new(vec![large, String::new()]));
         cache.insert("id", "a.rs", Arc::clone(&lines));
         assert_eq!(cache.stats().bytes, ENTRY_OVERHEAD + 2 * (2 + 4) + 2 * size_of::<String>() + capacity);
         assert!(Arc::ptr_eq(&lines, &cache.get("id", "a.rs").unwrap()));
@@ -401,9 +452,9 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(other.as_ref(), ["plain"]);
+        assert_eq!(other.lines(), ["plain"]);
         release.send(()).unwrap();
-        assert_eq!(first.await.unwrap().as_ref(), ["rust"]);
+        assert_eq!(first.await.unwrap().lines(), ["rust"]);
     }
 
     #[tokio::test]
@@ -432,8 +483,8 @@ mod tests {
         tokio::pin!(joined);
         assert!(poll!(&mut joined).is_pending());
         release.send(()).unwrap();
-        assert_eq!(joined.await.unwrap().as_ref(), ["shared"]);
-        assert_eq!(cache.get_or_compute("other", "a.rs", || vec!["next".into()]).await.unwrap().as_ref(), ["next"]);
+        assert_eq!(joined.await.unwrap().lines(), ["shared"]);
+        assert_eq!(cache.get_or_compute("other", "a.rs", || vec!["next".into()]).await.unwrap().lines(), ["next"]);
     }
 
     #[tokio::test]
@@ -445,7 +496,7 @@ mod tests {
         assert!(matches!(failed, Err(WebError::Internal(_))));
         assert!(cache.lock().running.is_empty());
         assert_eq!(cache.stats().entries, 0);
-        assert_eq!(cache.get_or_compute("id", "a.rs", || vec!["retry".into()]).await.unwrap().as_ref(), ["retry"]);
+        assert_eq!(cache.get_or_compute("id", "a.rs", || vec!["retry".into()]).await.unwrap().lines(), ["retry"]);
     }
 
     #[tokio::test]

@@ -104,10 +104,16 @@ async fn participants_hear_about_activity_but_never_their_own() {
     assert_eq!(fixture.unread(&fixture.carol).await, [("Crash".to_owned(), NotificationReason::Mention)]);
     assert_eq!(fixture.unread(&dave).await, [], "mentions in code are ignored");
     assert!(notifications.has_unread(fixture.bob.id()).await.unwrap());
+    let session = fixture.services.accounts.start_session(&fixture.bob).await.unwrap();
+    let signed_in = fixture.services.accounts.resume_session(&session).await.unwrap().unwrap();
+    assert!(signed_in.has_unread_notifications, "the session carries the header's indicator");
+    assert!(!signed_in.password_change_required);
 
     // Bob reads it; carol comments: alice (author) and bob (assigned) hear about it.
-    notifications.mark_thread_read(fixture.bob.id(), issue.id).await;
+    assert!(notifications.mark_thread_read(fixture.bob.id(), issue.id).await, "the thread was unread");
+    assert!(!notifications.mark_thread_read(fixture.bob.id(), issue.id).await, "nothing left to mark: no need to look again");
     assert!(!notifications.has_unread(fixture.bob.id()).await.unwrap());
+    assert!(!fixture.services.accounts.resume_session(&session).await.unwrap().unwrap().has_unread_notifications);
     let as_carol = fixture.open(&fixture.carol, issue.number).await;
     fixture.services.timeline.comment(&fixture.carol, &as_carol, "Same here, @carol").await.unwrap();
     fixture.deliver(&mut events).await;
@@ -175,9 +181,15 @@ async fn suspended_users_and_disabled_notifications() {
     let mut events = off.services.events.subscribe();
     let repo = off.repo(&off.alice).await;
     let input = NewIssueInput { title: "Hello".into(), body: "@bob".into(), ..NewIssueInput::default() };
-    off.services.issues.create(&off.alice, &repo, input).await.unwrap();
+    let issue = off.services.issues.create(&off.alice, &repo, input).await.unwrap();
     off.deliver(&mut events).await;
     assert!(!off.services.notifications.has_unread(off.bob.id()).await.unwrap());
+    // Even an inbox row left from when notifications were on is not indicated or marked.
+    let at = rbit_core::Timestamp::now();
+    off.database.notifications().notify(off.bob.id(), issue.id, repo.repo.repo.id, NotificationReason::Mention, None, at).await.unwrap();
+    let session = off.services.accounts.start_session(&off.bob).await.unwrap();
+    assert!(!off.services.accounts.resume_session(&session).await.unwrap().unwrap().has_unread_notifications);
+    assert!(!off.services.notifications.mark_thread_read(off.bob.id(), issue.id).await);
 }
 
 #[tokio::test]

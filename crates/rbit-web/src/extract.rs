@@ -1,7 +1,8 @@
 //! Request extractors.
 //!
 //! The session middleware resolves the cookie once per request and stores a [`Viewer`]
-//! in the request extensions; these extractors only read it. (They are `async` only
+//! (and the header's [`UnreadNotifications`] flag) in the request extensions; these
+//! extractors only read them. (They are `async` only
 //! because the `FromRequestParts` trait requires it.)
 #![allow(unknown_lints, clippy::unused_async_trait_impl)]
 
@@ -48,6 +49,11 @@ impl<S: Send + Sync> FromRequestParts<S> for CurrentSession {
     }
 }
 
+/// Whether the signed-in user has unread notifications, read by the session middleware
+/// together with the user (always `false` while notifications are turned off).
+#[derive(Debug, Clone, Copy)]
+pub struct UnreadNotifications(pub bool);
+
 /// A signed-in user. Anonymous requests are redirected to the sign-in page and returned
 /// to where they were afterwards.
 #[derive(Debug, Clone)]
@@ -85,11 +91,8 @@ impl FromRequestParts<AppState> for Page {
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
         let viewer = Viewer::from_request_parts(parts, state).await?;
         let mut page = Page::new(state, viewer.user(), parts.uri.path()).with_theme(Theme::from_headers(&parts.headers));
-        if let Some(user) = viewer.user().filter(|_| state.config.issues.notifications) {
-            page.has_unread_notifications = state.services.notifications.has_unread(user.id()).await.unwrap_or_else(|error| {
-                tracing::warn!(%error, "cannot check for unread notifications");
-                false
-            });
+        if viewer.user().is_some() {
+            page.has_unread_notifications = parts.extensions.get::<UnreadNotifications>().is_some_and(|unread| unread.0);
         }
         Ok(page)
     }

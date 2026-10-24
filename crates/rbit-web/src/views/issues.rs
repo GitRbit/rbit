@@ -493,6 +493,9 @@ pub struct IssueSidebar {
     pub can_subscribe: bool,
     pub subscribed: bool,
     pub subscription_reason: Option<&'static str>,
+    /// The viewer has an unread notification about this thread (not rendered: the page
+    /// marks it read).
+    pub thread_unread: bool,
     pub subscription_url: String,
     pub can_delete: bool,
     pub delete_url: String,
@@ -575,7 +578,8 @@ pub async fn sidebar(state: &AppState, ctx: &IssueContext, viewer: Option<&User>
     let notifications = &state.services.notifications;
     if let Some(user) = viewer.filter(|_| notifications.enabled()) {
         sidebar.can_subscribe = true;
-        let subscription = notifications.subscription(user.id(), ctx.issue.id).await?;
+        let (subscription, unread) = notifications.thread_state(user.id(), ctx.issue.id).await?;
+        sidebar.thread_unread = unread;
         sidebar.subscribed = subscription.is_some_and(|s| s.subscribed);
         sidebar.subscription_reason = subscription.filter(|s| s.subscribed).map(|s| reason_sentence(s.reason));
     }

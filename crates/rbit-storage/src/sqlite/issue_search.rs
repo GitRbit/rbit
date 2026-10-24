@@ -2,14 +2,19 @@
 //!
 //! Milestone 2 workstream I (issues) owns this file. Keep row types here rather than in `rows.rs`.
 //!
-//! Static queries take every filter as a parameter (an unused filter is `NULL` or
-//! `0`). Repository queries retain an indexed repository equality; dashboards start
-//! from indexed relationship candidates before applying current visibility. Label
-//! lists are bound as JSON arrays for `json_each(?)`. Free text goes through
-//! [`fts_expression`], which turns user input into a safe FTS5 query.
+//! The `WHERE` clause is built per list with [`QueryBuilder`] and holds only the filters
+//! in use, each a bound parameter. A catch-all form (`?N IS NULL OR col = ?N`) would keep
+//! `SQLite` from using `kind` and `state` as index equalities and evaluate every unused
+//! filter's subquery on every row. The default list (one kind, one state, newest first)
+//! then walks `issues_by_repo_created` and stops at the page's `LIMIT`. Dashboards start
+//! from the viewer's indexed relationship candidates and apply current visibility. Label
+//! lists are bound as one JSON array for `json_each(?)` however long they are. Free text
+//! goes through [`fts_expression`], which turns user input into a safe FTS5 query.
 
 use rbit_core::{AccountId, Issue, IssueKind, IssueState, RepoId, issue_query::IssueSort};
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, Sqlite};
+
+use super::pool::Pool;
 
 use super::repositories::readable_by;
 use crate::StorageError;
@@ -120,120 +125,142 @@ pub fn fts_expression(words: &[String]) -> Option<String> {
     Some(terms.join(" "))
 }
 
-/// `WHERE` clause of every list query, with numbered parameters:
-/// `?1` repo, `?2` kind, `?3` state, `?4` merged, `?5` draft, `?6` locked, `?7` author,
-/// `?8` assignee, `?9` no assignee, `?10` labels (JSON), `?11` excluded labels (JSON),
-/// `?12` no label, `?13` milestone title, `?14` no milestone, `?15` FTS expression,
-/// `?18` some assignee, `?19` some milestone, `?20` updated since (`?16` and `?17` are a
-/// page's limit and offset). `?21`–`?23` bind the dashboard viewer, administrator flag
-/// and relationship.
-macro_rules! search_scope {
-    (repo) => {
-        "i.repo_id = ?1"
-    };
-    (dashboard) => {
-        concat!(
-            readable_by!("?21", "?22"),
-            " AND EXISTS (SELECT 1 FROM user_logins ul WHERE ul.account_id = ?21 AND ul.suspended_at IS NULL) \
-             AND i.id IN (SELECT id FROM issues WHERE author_id = ?21 AND ?23 = 'created' \
-                UNION ALL SELECT issue_id FROM issue_assignees WHERE user_id = ?21 AND ?23 = 'assigned' \
-                UNION ALL SELECT issue_id FROM issue_mentions WHERE user_id = ?21 AND ?23 = 'mentioned' \
-                UNION ALL SELECT pull_id FROM pull_review_requests WHERE user_id = ?21 AND ?23 = 'review-requested')"
-        )
-    };
+/// Selected by [`search_query`], in the order of [`Row`].
+const ISSUE_COLUMNS: &str = "SELECT i.id, i.repo_id, i.number, i.kind, i.title, i.body, i.author_id, i.state, i.state_reason, \
+     i.closed_at, i.closed_by, i.locked, i.comment_count, i.created_at, i.updated_at";
+
+/// Appends `FROM issues i … WHERE …` with only the filters `filter` uses (and `state`
+/// instead of its own). Every value is a bound parameter; the SQL text only depends on
+/// which filters are present.
+fn push_filter(query: &mut QueryBuilder<Sqlite>, filter: &SearchFilter, state: Option<IssueState>) {
+    match filter.dashboard {
+        Some(scope) => push_dashboard(query, scope),
+        None => {
+            query.push(" FROM issues i WHERE i.repo_id = ").push_bind(filter.repo.0);
+        }
+    }
+    if let Some(kind) = filter.kind {
+        query.push(" AND i.kind = ").push_bind(kind.as_str());
+    }
+    if let Some(state) = state {
+        query.push(" AND i.state = ").push_bind(state.as_str());
+    }
+    if filter.merged {
+        query.push(" AND i.state_reason = 'merged'");
+    }
+    if filter.draft {
+        query.push(" AND EXISTS (SELECT 1 FROM pull_requests p WHERE p.issue_id = i.id AND p.is_draft = 1)");
+    }
+    if filter.locked {
+        query.push(" AND i.locked = 1");
+    }
+    if let Some(author) = filter.author {
+        query.push(" AND i.author_id = ").push_bind(author.0);
+    }
+    if let Some(assignee) = filter.assignee {
+        query
+            .push(" AND EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id AND ia.user_id = ")
+            .push_bind(assignee.0)
+            .push(")");
+    }
+    if filter.no_assignee {
+        query.push(" AND NOT EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id)");
+    }
+    if filter.any_assignee {
+        query.push(" AND EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id)");
+    }
+    if !filter.labels.is_empty() {
+        // No requested label is missing (`labels.name` compares case-insensitively).
+        query.push(" AND NOT EXISTS (SELECT 1 FROM json_each(").push_bind(json_strings(&filter.labels)).push(
+            ") j WHERE NOT EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id \
+                 WHERE il.issue_id = i.id AND l.name = j.value))",
+        );
+    }
+    if !filter.not_labels.is_empty() {
+        query
+            .push(" AND NOT EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name IN (SELECT value FROM json_each(")
+            .push_bind(json_strings(&filter.not_labels))
+            .push(")))");
+    }
+    if filter.no_label {
+        query.push(" AND NOT EXISTS (SELECT 1 FROM issue_labels il WHERE il.issue_id = i.id)");
+    }
+    if let Some(milestone) = &filter.milestone {
+        query
+            .push(" AND EXISTS (SELECT 1 FROM issue_milestones im JOIN milestones m ON m.id = im.milestone_id WHERE im.issue_id = i.id AND m.title = ")
+            .push_bind(milestone.clone())
+            .push(")");
+    }
+    if filter.no_milestone {
+        query.push(" AND NOT EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)");
+    }
+    if filter.any_milestone {
+        query.push(" AND EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)");
+    }
+    if let Some(fts) = fts_expression(&filter.text) {
+        query.push(" AND i.id IN (SELECT rowid FROM issues_fts WHERE issues_fts MATCH ").push_bind(fts).push(")");
+    }
+    if let Some(since) = filter.updated_since {
+        query.push(" AND i.updated_at >= ").push_bind(since.0);
+    }
 }
 
-macro_rules! search_where {
-    ($scope:ident) => {
-        concat!("WHERE ", search_scope!($scope), " \
-         AND (?2 IS NULL OR i.kind = ?2) \
-         AND (?3 IS NULL OR i.state = ?3) \
-         AND (?4 = 0 OR i.state_reason = 'merged') \
-         AND (?5 = 0 OR EXISTS (SELECT 1 FROM pull_requests p WHERE p.issue_id = i.id AND p.is_draft = 1)) \
-         AND (?6 = 0 OR i.locked = 1) \
-         AND (?7 IS NULL OR i.author_id = ?7) \
-         AND (?8 IS NULL OR EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id AND ia.user_id = ?8)) \
-         AND (?9 = 0 OR NOT EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id)) \
-         AND (SELECT COUNT(*) FROM json_each(?10) j WHERE EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id \
-              WHERE il.issue_id = i.id AND l.name = j.value)) = json_array_length(?10) \
-         AND NOT EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id \
-              WHERE il.issue_id = i.id AND l.name IN (SELECT value FROM json_each(?11))) \
-         AND (?12 = 0 OR NOT EXISTS (SELECT 1 FROM issue_labels il WHERE il.issue_id = i.id)) \
-         AND (?13 IS NULL OR EXISTS (SELECT 1 FROM issue_milestones im JOIN milestones m ON m.id = im.milestone_id \
-              WHERE im.issue_id = i.id AND m.title = ?13)) \
-         AND (?14 = 0 OR NOT EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)) \
-         AND (?15 IS NULL OR i.id IN (SELECT rowid FROM issues_fts WHERE issues_fts MATCH ?15)) \
-         AND (?18 = 0 OR EXISTS (SELECT 1 FROM issue_assignees ia WHERE ia.issue_id = i.id)) \
-         AND (?19 = 0 OR EXISTS (SELECT 1 FROM issue_milestones im WHERE im.issue_id = i.id)) \
-         AND (?20 IS NULL OR i.updated_at >= ?20) \
-         AND (?21 IS NULL OR (?23 = 'created' AND i.author_id = ?21) \
-              OR (?23 = 'assigned' AND EXISTS (SELECT 1 FROM issue_assignees da WHERE da.issue_id = i.id AND da.user_id = ?21)) \
-              OR (?23 = 'mentioned' AND EXISTS (SELECT 1 FROM issue_mentions dm WHERE dm.issue_id = i.id AND dm.user_id = ?21)) \
-              OR (?23 = 'review-requested' AND EXISTS (SELECT 1 FROM pull_review_requests dr WHERE dr.pull_id = i.id AND dr.user_id = ?21))) ")
-    };
+/// Appends `FROM issues i JOIN repositories r … WHERE` for the threads `scope`'s viewer
+/// has the selected relationship with, in repositories they can currently read.
+fn push_dashboard(query: &mut QueryBuilder<Sqlite>, scope: DashboardScope) {
+    // `readable_by!` takes SQL for its two values; mark them and bind each in place.
+    const ADMIN: char = '\u{1}';
+    const VIEWER: char = '\u{2}';
+    query.push(" FROM issues i JOIN repositories r ON r.id = i.repo_id WHERE ");
+    let readable = readable_by!("\u{2}", "\u{1}");
+    let mut rest = readable;
+    while let Some(at) = rest.find([ADMIN, VIEWER]) {
+        query.push(&rest[..at]);
+        if rest[at..].starts_with(ADMIN) {
+            query.push_bind(scope.is_admin);
+        } else {
+            query.push_bind(scope.viewer.0);
+        }
+        rest = &rest[at + 1..];
+    }
+    query.push(rest);
+    query
+        .push(" AND EXISTS (SELECT 1 FROM user_logins ul WHERE ul.account_id = ")
+        .push_bind(scope.viewer.0)
+        .push(" AND ul.suspended_at IS NULL)");
+    query.push(match scope.relation {
+        DashboardRelation::Created => " AND i.author_id = ",
+        DashboardRelation::Assigned => " AND i.id IN (SELECT issue_id FROM issue_assignees WHERE user_id = ",
+        DashboardRelation::Mentioned => " AND i.id IN (SELECT issue_id FROM issue_mentions WHERE user_id = ",
+        DashboardRelation::ReviewRequested => " AND i.id IN (SELECT pull_id FROM pull_review_requests WHERE user_id = ",
+    });
+    query.push_bind(scope.viewer.0);
+    if scope.relation != DashboardRelation::Created {
+        query.push(")");
+    }
 }
 
-/// One page in the given order: `?16` limit, `?17` offset.
-macro_rules! search_page {
-    ($order:literal, $scope:ident) => {
-        concat!(
-            "SELECT i.id, i.repo_id, i.number, i.kind, i.title, i.body, i.author_id, i.state, i.state_reason, i.closed_at, \
-             i.closed_by, i.locked, i.comment_count, i.created_at, i.updated_at FROM issues i JOIN repositories r ON r.id = i.repo_id ",
-            search_where!($scope),
-            "ORDER BY ",
-            $order,
-            " LIMIT ?16 OFFSET ?17"
-        )
-    };
+/// One page of the threads matching `filter`, in its order (ties by globally unique id).
+fn search_query(filter: &SearchFilter, limit: u32, offset: u64) -> QueryBuilder<Sqlite> {
+    let mut query = QueryBuilder::new(ISSUE_COLUMNS);
+    push_filter(&mut query, filter, filter.state);
+    query.push(match filter.sort {
+        IssueSort::CreatedDesc => " ORDER BY i.created_at DESC, i.id DESC",
+        IssueSort::CreatedAsc => " ORDER BY i.created_at ASC, i.id ASC",
+        IssueSort::UpdatedDesc => " ORDER BY i.updated_at DESC, i.id DESC",
+        IssueSort::UpdatedAsc => " ORDER BY i.updated_at ASC, i.id ASC",
+        IssueSort::CommentsDesc => " ORDER BY i.comment_count DESC, i.id DESC",
+    });
+    query.push(" LIMIT ").push_bind(i64::from(limit)).push(" OFFSET ").push_bind(i64::try_from(offset).unwrap_or(i64::MAX));
+    query
 }
 
-/// Preserve the indexed repository equality for ordinary lists.
-macro_rules! page_sql {
-    ($dashboard:expr, $order:literal) => {
-        if $dashboard { search_page!($order, dashboard) } else { search_page!($order, repo) }
-    };
-}
-
-macro_rules! count_sql {
-    ($scope:ident) => {
-        concat!("SELECT COALESCE(SUM(i.state = 'open'), 0), COALESCE(SUM(i.state = 'closed'), 0) FROM issues i JOIN repositories r ON r.id = i.repo_id ", search_where!($scope))
-    };
-}
-
-/// Binds `?1`–`?15` of [`search_where!`] (with `state` overridden by the caller); the
-/// caller binds `?16` and `?17` and then [`bind_extra!`] binds `?18`–`?23`.
-macro_rules! bind_filter {
-    ($query:expr, $filter:expr, $state:expr, $fts:expr) => {
-        $query
-            .bind($filter.repo.0)
-            .bind($filter.kind.map(IssueKind::as_str))
-            .bind($state.map(IssueState::as_str))
-            .bind($filter.merged)
-            .bind($filter.draft)
-            .bind($filter.locked)
-            .bind($filter.author.map(|a| a.0))
-            .bind($filter.assignee.map(|a| a.0))
-            .bind($filter.no_assignee)
-            .bind(json_strings(&$filter.labels))
-            .bind(json_strings(&$filter.not_labels))
-            .bind($filter.no_label)
-            .bind($filter.milestone.as_deref())
-            .bind($filter.no_milestone)
-            .bind($fts)
-    };
-}
-
-/// Binds `?18`–`?23` of [`search_where!`].
-macro_rules! bind_extra {
-    ($query:expr, $filter:expr) => {
-        $query
-            .bind($filter.any_assignee)
-            .bind($filter.any_milestone)
-            .bind($filter.updated_since.map(|at| at.0))
-            .bind($filter.dashboard.map(|scope| scope.viewer.0))
-            .bind($filter.dashboard.is_some_and(|scope| scope.is_admin))
-            .bind($filter.dashboard.map(|scope| scope.relation.as_str()))
-    };
+/// How many threads match `filter` per state, ignoring its own state.
+fn state_counts_query(filter: &SearchFilter) -> QueryBuilder<Sqlite> {
+    let mut query = QueryBuilder::new("SELECT i.state, COUNT(*)");
+    push_filter(&mut query, filter, None);
+    query.push(" GROUP BY i.state");
+    query
 }
 
 fn json_strings(values: &[String]) -> String {
@@ -296,11 +323,11 @@ impl TryFrom<Row> for Issue {
 
 #[derive(Debug, Clone)]
 pub struct IssueSearchStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl IssueSearchStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -337,28 +364,22 @@ impl IssueSearchStore {
 
     /// One page of the threads matching `filter`, in its order (ties by globally unique issue id).
     pub async fn search(&self, filter: &SearchFilter, limit: u32, offset: u64) -> Result<Vec<Issue>, StorageError> {
-        let sql = match filter.sort {
-            IssueSort::CreatedDesc => page_sql!(filter.dashboard.is_some(), "i.created_at DESC, i.id DESC"),
-            IssueSort::CreatedAsc => page_sql!(filter.dashboard.is_some(), "i.created_at ASC, i.id ASC"),
-            IssueSort::UpdatedDesc => page_sql!(filter.dashboard.is_some(), "i.updated_at DESC, i.id DESC"),
-            IssueSort::UpdatedAsc => page_sql!(filter.dashboard.is_some(), "i.updated_at ASC, i.id ASC"),
-            IssueSort::CommentsDesc => page_sql!(filter.dashboard.is_some(), "i.comment_count DESC, i.id DESC"),
-        };
-        let fts = fts_expression(&filter.text);
-        let query = bind_filter!(sqlx::query_as(sql), filter, filter.state, fts)
-            .bind(i64::from(limit))
-            .bind(i64::try_from(offset).unwrap_or(i64::MAX));
-        let rows: Vec<Row> = bind_extra!(query, filter).fetch_all(&self.pool).await?;
+        let rows: Vec<Row> = search_query(filter, limit, offset).build_query_as().fetch_all(&self.pool).await?;
         rows.into_iter().map(Issue::try_from).collect()
     }
 
     /// How many threads match `filter`, ignoring its state: `(open, closed)`, for the tabs.
     pub async fn state_counts(&self, filter: &SearchFilter) -> Result<(u64, u64), StorageError> {
-        let fts = fts_expression(&filter.text);
-        let sql = if filter.dashboard.is_some() { count_sql!(dashboard) } else { count_sql!(repo) };
-        let query = bind_filter!(sqlx::query_as(sql), filter, None::<IssueState>, fts).bind(0_i64).bind(0_i64);
-        let (open, closed): (i64, i64) = bind_extra!(query, filter).fetch_one(&self.pool).await?;
-        Ok((count(open), count(closed)))
+        let rows: Vec<(String, i64)> = state_counts_query(filter).build_query_as().fetch_all(&self.pool).await?;
+        let mut counts = (0, 0);
+        for (state, n) in rows {
+            match IssueState::parse(&state) {
+                Some(IssueState::Open) => counts.0 = count(n),
+                Some(IssueState::Closed) => counts.1 = count(n),
+                None => {}
+            }
+        }
+        Ok(counts)
     }
 
     /// How many threads match `filter` (its state included).
@@ -381,9 +402,60 @@ impl IssueSearchStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::plans;
 
     fn words(input: &[&str]) -> Vec<String> {
         input.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    fn open_issues() -> SearchFilter {
+        SearchFilter { kind: Some(IssueKind::Issue), state: Some(IssueState::Open), ..SearchFilter::new(RepoId(1)) }
+    }
+
+    #[test]
+    fn unused_filters_add_no_sql() {
+        let sql = search_query(&open_issues(), 25, 0).into_string();
+        for absent in ["EXISTS", "json_each", "issues_fts", "IS NULL", "author_id =", "updated_at >="] {
+            assert!(!sql.contains(absent), "{absent} in {sql}");
+        }
+        let filtered = SearchFilter { author: Some(AccountId(2)), labels: words(&["bug"]), ..open_issues() };
+        let sql = search_query(&filtered, 25, 0).into_string();
+        assert!(sql.contains("i.author_id = ") && sql.contains("json_each("), "{sql}");
+        assert!(!sql.contains("issue_milestones"), "{sql}");
+    }
+
+    #[test]
+    fn dashboard_values_are_all_bound_in_place() {
+        for relation in
+            [DashboardRelation::Created, DashboardRelation::Assigned, DashboardRelation::Mentioned, DashboardRelation::ReviewRequested]
+        {
+            let scope = DashboardScope { viewer: AccountId(7), is_admin: false, relation };
+            let sql = search_query(&SearchFilter { dashboard: Some(scope), ..open_issues() }, 25, 0).into_string();
+            assert!(!sql.contains(['\u{1}', '\u{2}']), "{sql}");
+            assert!(!sql.contains("i.repo_id = ?"), "dashboards search every readable repository: {sql}");
+            assert!(sql.contains("r.owner_id = ?") && sql.contains("suspended_at IS NULL"), "{sql}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_default_page_walks_an_index_in_order() {
+        let (_dir, database) = plans::database().await;
+        // Before (catch-all predicates): `SEARCH i USING INDEX sqlite_autoindex_issues_1
+        // (repo_id=?)`, thirteen correlated subqueries and `USE TEMP B-TREE FOR ORDER BY`.
+        let expected = ["SEARCH i USING INDEX issues_by_repo_created (repo_id=? AND kind=? AND state=?)"];
+        for sort in [IssueSort::CreatedDesc, IssueSort::CreatedAsc] {
+            let sql = search_query(&SearchFilter { sort, ..open_issues() }, 25, 0).into_string();
+            assert_eq!(plans::query_plan(&database, &sql).await, expected, "{sort:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn tab_counts_read_one_kind_from_a_covering_index() {
+        let (_dir, database) = plans::database().await;
+        let sql = state_counts_query(&open_issues()).into_string();
+        let plan = plans::query_plan(&database, &sql).await;
+        assert_eq!(plan.len(), 1, "{plan:?}");
+        assert!(plan[0].starts_with("SEARCH i USING COVERING INDEX ") && plan[0].ends_with(" (repo_id=? AND kind=?)"), "{plan:?}");
     }
 
     #[test]

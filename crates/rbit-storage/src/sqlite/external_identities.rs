@@ -9,8 +9,8 @@
 //! account together with its identity, and unlinking an identity only while the account
 //! keeps another way to sign in.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp, User};
-use sqlx::SqlitePool;
 
 use super::accounts::{NewUser, insert_user};
 use crate::StorageError;
@@ -94,11 +94,11 @@ macro_rules! select_identity {
 
 #[derive(Debug, Clone)]
 pub struct ExternalIdentityStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ExternalIdentityStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -216,7 +216,7 @@ impl ExternalIdentityStore {
 
 /// Inserts an identity inside `tx`, reporting which uniqueness rule refused it.
 async fn insert(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut super::pool::WriteTransaction,
     account: AccountId,
     identity: NewExternalIdentity<'_>,
     at: Timestamp,

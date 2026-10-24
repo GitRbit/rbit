@@ -196,6 +196,26 @@ async fn commit_id_resolves_names() {
 }
 
 #[tokio::test]
+async fn commit_id_takes_full_ids_as_objects() {
+    let (dir, reader) = fixture();
+    let id = reader.commit_id("main".into()).await.unwrap();
+    assert_eq!(reader.commit_id(id.clone()).await.unwrap(), id);
+    assert_eq!(reader.commit_id(id.to_uppercase()).await.unwrap(), id, "hex in either case");
+    // A full id names its object even when a branch has that name, as in Git.
+    let git = Git::new(dir.path());
+    git.run(&["tag", "older", "main~1"]);
+    let older = reader.commit_id("older".into()).await.unwrap();
+    assert_ne!(older, id);
+    git.run(&["branch", &id, "older"]);
+    assert_eq!(reader.commit_id(id.clone()).await.unwrap(), id);
+    // A name that only looks like an id is a ref; one that is neither is not found.
+    let hex_branch = "deadbeef".repeat(5);
+    git.run(&["branch", &hex_branch, "older"]);
+    assert_eq!(reader.commit_id(hex_branch).await.unwrap(), older);
+    assert!(reader.commit_id("0".repeat(40)).await.is_err());
+}
+
+#[tokio::test]
 async fn ref_pages_preserve_recent_order_and_default_branch_priority() {
     let (dir, reader) = fixture();
     let git = Git::new(dir.path());

@@ -2,15 +2,18 @@
 //!
 //! Two kinds of work run in the background, both started by [`JobService::spawn_background`]:
 //!
-//! * **Cache warming.** On [`DomainEvent::RepositoryPushed`], the language breakdown and the
-//!   root directory's last-commit map of the default branch are computed and cached, so
-//!   the first visitor after a push gets a fast page. Pushes to a repository whose warm-up
-//!   is already queued are coalesced.
+//! * **Cache warming.** On [`DomainEvent::RepositoryPushed`], the pushed commits are added
+//!   to the repository's commit-graph, then the language breakdown and the root
+//!   directory's last-commit map of the default branch are computed and cached, so the
+//!   first visitor after a push gets a fast page. Pushes to a repository whose warm-up is
+//!   already queued are coalesced.
 //! * **Maintenance**, every `[operations] maintenance_interval_minutes` (± 10 % jitter so
-//!   several instances or restarts do not synchronise): `git gc --auto` for every
-//!   repository on the first run after start-up and afterwards only for repositories pushed
-//!   to since the previous run, then pruning of the insights cache by age and size. An
-//!   idle instance therefore does nothing but wake up on schedule and prune.
+//!   several instances or restarts do not synchronise): `git gc --auto` and an incremental
+//!   commit-graph write for every repository on the first run after start-up and
+//!   afterwards only for repositories pushed to since the previous run, then pruning of the
+//!   insights cache by age and size. An idle instance therefore does nothing but wake up on
+//!   schedule and prune. Last, `SQLite`'s planner statistics are refreshed where
+//!   tables changed a lot (`PRAGMA optimize`).
 //!
 //! All jobs share one semaphore (`[operations] job_concurrency`), so a burst of pushes
 //! or a large instance never runs more than that many Git computations at once. Jobs are
@@ -51,6 +54,7 @@ enum Job {
     WarmCaches,
     GitGc,
     PruneCache,
+    OptimizeDatabase,
 }
 
 impl Job {
@@ -59,6 +63,7 @@ impl Job {
             Self::WarmCaches => "warm_caches",
             Self::GitGc => "git_gc",
             Self::PruneCache => "prune_insights_cache",
+            Self::OptimizeDatabase => "optimize_database",
         }
     }
 }
@@ -225,6 +230,7 @@ impl JobService {
         if context.reader.is_empty().await? {
             return Ok(());
         }
+        self.write_commit_graph(&context).await;
         let branch = context.repo.repo.default_branch.clone();
         let warmed = async {
             self.inner.insights.languages(&context, &branch).await?;
@@ -291,6 +297,12 @@ impl JobService {
                 Err(error) => tracing::warn!(%error, "pruning the insights cache failed"),
             }
         }
+        if !self.inner.shutdown.is_cancelled() {
+            let optimize = async { Ok(self.inner.ctx.database.optimize().await?) };
+            if let Err(error) = timed(Job::OptimizeDatabase, optimize).await {
+                tracing::warn!(%error, "refreshing the database statistics failed");
+            }
+        }
         summary
     }
 
@@ -314,13 +326,26 @@ impl JobService {
         Ok(all)
     }
 
-    /// `git gc --auto` for `repo`; `false` when the repository no longer exists.
+    /// `git gc --auto` for `repo`, then an incremental commit-graph write (gc writes none
+    /// while below its thresholds); `false` when the repository no longer exists.
     async fn collect_garbage(&self, repo: RepoId) -> Result<bool, ServiceError> {
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, repo).await? else { return Ok(false) };
-        // `git gc` has the repository's files open, so a transfer waits for it.
+        // Git has the repository's files open and replaces some, so a transfer waits for it.
         let _lease = self.inner.ctx.repositories.lease(repo).await;
-        self.inner.maintenance.gc_auto(&context.disk_path).await.map_err(ServiceError::internal)?;
+        let maintenance = &self.inner.maintenance;
+        maintenance.gc_auto(&context.disk_path).await.map_err(ServiceError::internal)?;
+        maintenance.write_commit_graph(&context.disk_path).await.map_err(ServiceError::internal)?;
         Ok(true)
+    }
+
+    /// Adds the commits of a push to `repo`'s commit-graph, so history walks right after
+    /// it (the cache warm-up's included) read the graph instead of commit objects.
+    /// Failures only cost speed and are logged.
+    async fn write_commit_graph(&self, context: &RepoContext) {
+        let _lease = self.inner.ctx.repositories.lease(context.repo.repo.id).await;
+        if let Err(error) = self.inner.maintenance.write_commit_graph(&context.disk_path).await {
+            tracing::warn!(%error, repo = %context.repo.full_name(), "writing the commit-graph failed");
+        }
     }
 
     async fn prune_cache(&self) -> Result<u64, ServiceError> {
@@ -399,6 +424,7 @@ mod tests {
         kv: KvStore,
         repo: RepoId,
         disk_path: std::path::PathBuf,
+        sqlite_path: std::path::PathBuf,
     }
 
     async fn fixture(configure: impl FnOnce(&mut Config)) -> Fixture {
@@ -407,7 +433,8 @@ mod tests {
         config.storage.data_dir = dir.path().join("data");
         configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let sqlite_path = config.storage.sqlite_path();
+        let database = Database::open(&sqlite_path).await.unwrap();
         let kv = KvStore::open(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
 
@@ -416,7 +443,7 @@ mod tests {
         let input = CreateRepository { name: "demo".into(), description: String::new(), visibility: Visibility::Public };
         let created = services.repositories.create(&user, input).await.unwrap();
         let disk_path = services.repositories.open(Some(&user), "ada", "demo").await.unwrap().disk_path;
-        Fixture { _dir: dir, services, kv, repo: created.repo.id, disk_path }
+        Fixture { _dir: dir, services, kv, repo: created.repo.id, disk_path, sqlite_path }
     }
 
     fn git(dir: &Path, args: &[&str]) {
@@ -456,23 +483,41 @@ mod tests {
         fixture.services.jobs.shutdown().await;
     }
 
+    /// Whether `bare` has a (split) commit-graph.
+    fn has_commit_graph(bare: &Path) -> bool {
+        bare.join("objects/info/commit-graphs/commit-graph-chain").is_file()
+    }
+
     #[tokio::test]
     async fn warming_an_empty_or_missing_repository_is_a_no_op() {
         let fixture = fixture(|_| {}).await;
         fixture.services.jobs.warm_caches(fixture.repo).await.unwrap();
         fixture.services.jobs.warm_caches(RepoId(999)).await.unwrap();
         assert_eq!(fixture.kv.insights().entry_count().await.unwrap(), 0);
+        assert!(!has_commit_graph(&fixture.disk_path));
+    }
+
+    #[tokio::test]
+    async fn warming_after_a_push_writes_the_commit_graph() {
+        let fixture = fixture(|_| {}).await;
+        push_commit(&fixture.disk_path);
+        assert!(!has_commit_graph(&fixture.disk_path), "pushes and gc --auto write none");
+        fixture.services.jobs.warm_caches(fixture.repo).await.unwrap();
+        assert!(has_commit_graph(&fixture.disk_path));
     }
 
     #[tokio::test]
     async fn maintenance_sweeps_everything_first_then_only_pushed_repositories() {
         let fixture = fixture(|config| config.operations.insights_cache_max_entries = 1).await;
         push_commit(&fixture.disk_path);
-        fixture.services.jobs.warm_caches(fixture.repo).await.unwrap();
         let jobs = &fixture.services.jobs;
 
         let first = jobs.run_maintenance().await;
-        assert_eq!(first, MaintenanceSummary { collected: 1, failed: 0, pruned: 1 });
+        assert_eq!(first, MaintenanceSummary { collected: 1, failed: 0, pruned: 0 });
+        assert!(has_commit_graph(&fixture.disk_path), "maintenance writes the commit-graph gc --auto skipped");
+        fixture.services.jobs.warm_caches(fixture.repo).await.unwrap();
+        jobs.note_push(fixture.repo);
+        assert_eq!(jobs.run_maintenance().await, MaintenanceSummary { collected: 1, failed: 0, pruned: 1 });
 
         let idle = jobs.run_maintenance().await;
         assert_eq!(idle, MaintenanceSummary::default(), "nothing pushed, nothing to do");
@@ -481,6 +526,26 @@ mod tests {
         jobs.note_push(RepoId(999));
         let after_push = jobs.run_maintenance().await;
         assert_eq!(after_push, MaintenanceSummary { collected: 1, failed: 0, pruned: 0 }, "deleted repositories are skipped quietly");
+    }
+
+    #[tokio::test]
+    async fn maintenance_refreshes_planner_statistics() {
+        let fixture = fixture(|_| {}).await;
+        let analyzed = || async {
+            let options = sqlx::sqlite::SqliteConnectOptions::new().filename(&fixture.sqlite_path).read_only(true);
+            let mut connection = sqlx::ConnectOptions::connect(&options).await.unwrap();
+            // The table only exists once something was analysed.
+            let tables: Vec<String> = sqlx::query_scalar("SELECT DISTINCT tbl FROM sqlite_stat1 ORDER BY tbl")
+                .fetch_all(&mut connection)
+                .await
+                .unwrap_or_default();
+            tables
+        };
+        // The fixture's account and repository were created after the database was opened.
+        assert!(!analyzed().await.contains(&"accounts".to_owned()));
+        fixture.services.jobs.run_maintenance().await;
+        let tables = analyzed().await;
+        assert!(tables.contains(&"accounts".to_owned()) && tables.contains(&"repositories".to_owned()), "{tables:?}");
     }
 
     #[tokio::test]

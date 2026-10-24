@@ -89,7 +89,17 @@ function sizeAll(root) {
   }
 }
 
+// The page as loaded, before htmx starts.
 sizeAll(document);
-// New content from any htmx swap, and pages restored from htmx's history cache.
-document.addEventListener("htmx:load", (event) => sizeAll(event.detail.elt));
-document.addEventListener("htmx:historyRestore", () => sizeAll(document));
+// New content from any htmx swap, history restorations included: htmx swaps a restored
+// page in like a response, announcing each new top-level element with `htmx:load`
+// before `htmx:historyRestore`. Its first `htmx:load` announces the page as loaded, on
+// <body>, which was sized above.
+let started = false;
+document.addEventListener("htmx:load", (event) => {
+  const root = event.detail.elt;
+  const initial = !started;
+  started = true;
+  if (initial && root === document.body) return;
+  sizeAll(root);
+});

@@ -8,6 +8,7 @@ use axum::{
     http::header,
     response::{IntoResponse, Redirect, Response},
 };
+use rbit_core::mirror::Mirror;
 use rbit_git::{EntryKind, GitError, RefKind, RefSummary};
 use rbit_services::{RepoContext, ServiceError, StarSummary, timeline::OpenCounts};
 use serde::Deserialize;
@@ -103,27 +104,34 @@ pub(super) struct RepoPage {
     stars: StarSummary,
     fork_count: u64,
     forked_from: Option<ForkedFrom>,
-    mirror_url: Option<String>,
+    mirror: Option<Mirror>,
     open_counts: OpenCounts,
 }
 
 impl RepoPage {
+    /// The repository, access-checked, with its header's data from the same statement
+    /// ([`rbit_services::RepositoryService::open_page`]), and its refs.
     pub(super) async fn load(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
-        let ctx = open_pinned(state, viewer, owner, repo).await?;
+        let (mut ctx, header) = state.services.repositories.open_page(viewer.user(), owner, repo).await?;
+        ctx.reader = ctx.reader.pinned();
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
-        let forks = &state.services.forks;
-        let (refs, stars, fork_count, parent, mirror, open_counts) = tokio::join!(
-            ctx.reader.refs(),
-            state.services.stars.summary(ctx.repo.repo.id, viewer.user()),
-            forks.count(viewer.user(), &ctx),
-            forks.parent(viewer.user(), &ctx),
-            state.services.mirrors.find(&ctx),
-            state.services.timeline.open_counts(ctx.repo.repo.id),
-        );
-        let mirror_url = mirror?.map(|mirror| mirror.url.to_string());
-        let forked_from = parent?.map(|parent| ForkedFrom { full_name: parent.full_name(), url: format!("/{}", parent.full_name()) });
-        let refs = refs.map_err(ServiceError::from)?;
-        Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from, mirror_url, open_counts: open_counts? })
+        let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
+        let forked_from = header.parent.map(|parent| ForkedFrom { url: format!("/{}", parent.full_name()), full_name: parent.full_name() });
+        Ok(Self {
+            ctx,
+            urls,
+            refs,
+            stars: header.stars,
+            fork_count: header.fork_count,
+            forked_from,
+            mirror: header.mirror,
+            open_counts: header.open_counts,
+        })
+    }
+
+    /// The repository's pull mirror settings, when it is one.
+    pub(super) fn mirror(&self) -> Option<&Mirror> {
+        self.mirror.as_ref()
     }
 
     /// Branches then tags, each sorted by name.
@@ -177,7 +185,7 @@ impl RepoPage {
             fork_url: format!("{}/fork", self.urls.home()),
             forks_url: format!("{}/forks", self.urls.home()),
             forked_from: self.forked_from.clone(),
-            mirror_url: self.mirror_url.clone(),
+            mirror_url: self.mirror.as_ref().map(|mirror| mirror.url.to_string()),
             issues_url: format!("{}/issues", self.urls.home()),
             pulls_url: format!("{}/pulls", self.urls.home()),
             open_issues: self.open_counts.issues,
@@ -189,9 +197,7 @@ impl RepoPage {
     /// Whether the viewer may edit files on `revision` in the browser (Milestone 3, E):
     /// write access, not a mirror, and `revision` is a branch.
     pub(super) fn can_edit_on(&self, revision: &str) -> bool {
-        self.ctx.access.can_write()
-            && self.mirror_url.is_none()
-            && self.refs.iter().any(|r| r.kind == RefKind::Branch && r.name == revision)
+        self.ctx.access.can_write() && self.mirror.is_none() && self.refs.iter().any(|r| r.kind == RefKind::Branch && r.name == revision)
     }
 
     pub(super) fn switcher(&self, current: &str, target: RefTarget, path: &str) -> RefSwitcher {
@@ -285,13 +291,9 @@ pub async fn home(
     Query(query): Query<TreeQuery>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    if loaded.mirror_url.is_some()
-        && state
-            .services
-            .mirrors
-            .find(&loaded.ctx)
-            .await?
-            .is_some_and(|mirror| mirror.last_sync_at.is_none() || (mirror.last_error.is_some() && loaded.landing_revision().is_none()))
+    if loaded
+        .mirror()
+        .is_some_and(|mirror| mirror.last_sync_at.is_none() || (mirror.last_error.is_some() && loaded.landing_revision().is_none()))
     {
         return Ok(Redirect::to(&format!("{}/mirror/progress", loaded.urls.home())).into_response());
     }
@@ -349,12 +351,9 @@ async fn render_tree(
     let listing_query = query.listing();
     // Pin the listing and language statistics to the same revision snapshot.
     let listing = reader.tree(commit_id.clone(), path.clone());
-    let (listing, languages, latest_release, collaborator) = tokio::join!(
-        listing,
-        language_bar(state, &loaded, &commit_id),
-        latest_release(state, &loaded),
-        collaborator_access(state, viewer, &loaded)
-    );
+    let (listing, languages, latest_release) =
+        tokio::join!(listing, language_bar(state, &loaded, &commit_id), latest_release(state, &loaded));
+    let collaborator = collaborator_access(viewer, &loaded);
     let view = listing.map_err(ServiceError::from)?;
     let (documents, readme) = repository_documents::load(
         reader,
@@ -418,16 +417,13 @@ async fn render_tree(
 }
 
 /// The viewer's collaborator grant, when they have one and do not administer the
-/// repository, so the sidebar can offer "Leave". Decoration too: failures are logged.
-async fn collaborator_access(state: &AppState, viewer: &Viewer, loaded: &RepoPage) -> Option<CollaboratorAccess> {
+/// repository, so the sidebar can offer "Leave". It was read with the viewer's other
+/// grants when the repository was opened for this request.
+fn collaborator_access(viewer: &Viewer, loaded: &RepoPage) -> Option<CollaboratorAccess> {
     let user = viewer.user().filter(|_| !loaded.ctx.access.can_admin())?;
-    match state.services.collaborators.permission_of(user, &loaded.ctx).await {
-        Ok(permission) => permission.map(|permission| CollaboratorAccess::new(permission, &loaded.urls.home(), user.name().as_str())),
-        Err(error) => {
-            tracing::warn!(%error, repo = %loaded.ctx.repo.full_name(), "collaborator permission unavailable");
-            None
-        }
-    }
+    debug_assert_eq!(loaded.ctx.viewer, Some(user.id()));
+    let permission = loaded.ctx.collaborator?;
+    Some(CollaboratorAccess::new(permission, &loaded.urls.home(), user.name().as_str()))
 }
 
 /// The sidebar language bar for the selected revision. Insights are decoration: a failure
@@ -478,7 +474,7 @@ pub async fn entry_commits(
     let pagination = Pagination::new(filtered.len(), &query, String::new(), vec![]);
     let selected = &filtered[pagination.start..pagination.end];
     let entries: Vec<_> = selected.iter().map(|(_, entry)| (*entry).clone()).collect();
-    let result = state.services.insights.last_commits_page(&ctx, &view.commit.id, &path, &entries).await?;
+    let result = state.services.insights.last_commits_page(&ctx, &view, &path, &entries).await?;
     let commits = &result.commits;
 
     let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());

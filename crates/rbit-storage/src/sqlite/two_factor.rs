@@ -10,8 +10,8 @@
 //! or at least one passkey. Recovery codes belong to the account and are removed with its
 //! last factor.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -132,11 +132,11 @@ macro_rules! has_factor {
 
 #[derive(Debug, Clone)]
 pub struct TwoFactorStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl TwoFactorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -182,7 +182,7 @@ impl TwoFactorStore {
         step: u64,
         recovery_digests: &[[u8; 32]],
     ) -> Result<Option<bool>, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let confirmed = sqlx::query(
             "UPDATE two_factor SET confirmed_at = ?, last_used_step = ? \
@@ -241,7 +241,7 @@ impl TwoFactorStore {
 
     /// Replaces every recovery code of an enabled account. `false` if 2FA is not enabled.
     pub async fn replace_recovery_codes(&self, account: AccountId, digests: &[[u8; 32]]) -> Result<bool, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         if !has_factor(&mut tx, account).await? {
             return Ok(false);
         }
@@ -298,7 +298,7 @@ impl TwoFactorStore {
         passkey: &NewPasskey<'_>,
         recovery_digests: &[[u8; 32]],
     ) -> Result<PasskeyAdded, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let inserted = sqlx::query(
             "INSERT INTO passkeys (account_id, credential_id, public_key, algorithm, sign_count, transports, name, created_at) \
@@ -362,11 +362,11 @@ fn step_value(step: u64) -> i64 {
     i64::try_from(step).unwrap_or(i64::MAX)
 }
 
-async fn has_factor(tx: &mut sqlx::SqliteConnection, account: AccountId) -> Result<bool, StorageError> {
+async fn has_factor(tx: &mut super::pool::Conn, account: AccountId) -> Result<bool, StorageError> {
     Ok(sqlx::query_scalar(concat!("SELECT ", has_factor!())).bind(account.0).fetch_one(&mut *tx).await?)
 }
 
-async fn drop_codes_without_factor(tx: &mut sqlx::SqliteConnection, account: AccountId) -> Result<(), StorageError> {
+async fn drop_codes_without_factor(tx: &mut super::pool::Conn, account: AccountId) -> Result<(), StorageError> {
     sqlx::query(concat!("DELETE FROM recovery_codes WHERE account_id = ?1 AND NOT ", has_factor!()))
         .bind(account.0)
         .execute(&mut *tx)
@@ -374,7 +374,7 @@ async fn drop_codes_without_factor(tx: &mut sqlx::SqliteConnection, account: Acc
     Ok(())
 }
 
-async fn replace_codes(tx: &mut sqlx::SqliteConnection, account: AccountId, digests: &[[u8; 32]]) -> Result<(), StorageError> {
+async fn replace_codes(tx: &mut super::pool::Conn, account: AccountId, digests: &[[u8; 32]]) -> Result<(), StorageError> {
     sqlx::query("DELETE FROM recovery_codes WHERE account_id = ?").bind(account.0).execute(&mut *tx).await?;
     for digest in digests {
         sqlx::query("INSERT INTO recovery_codes (account_id, code_digest) VALUES (?, ?)")

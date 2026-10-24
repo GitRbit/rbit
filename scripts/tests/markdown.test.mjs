@@ -25,7 +25,7 @@ function mount() {
   };
   vm.runInNewContext(source, { document, addEventListener: document.addEventListener });
   frames[0].nextElementSibling = created.find(node => node.tag === 'details');
-  return { handlers, messages, frames, code };
+  return { handlers, messages, frames, code, document };
 }
 
 test('Mermaid rendering sends literal source only to a script-only sandbox and mounts once', () => {
@@ -83,6 +83,22 @@ test('files inserted into the language preview also render their diagrams', () =
   assert.equal(page.frames.length, 2);
   page.frames[1].load();
   assert.equal(page.messages[0][0].source, page.code.textContent);
+});
+
+test('swaps are searched within the swapped element and size messages need no page scan', () => {
+  const page = mount();
+  let pageScans = 0;
+  const scan = page.document.querySelectorAll;
+  page.document.querySelectorAll = selector => { pageScans++; return scan(selector); };
+  const code = { textContent: 'graph LR; X --> Y' };
+  code.parentElement = { parentElement: { matches: () => false }, before: (...nodes) => page.frames.push(nodes[0]) };
+  const main = { querySelectorAll: selector => selector === 'pre > code.language-mermaid' ? [code] : [], matches: () => false };
+  page.handlers['htmx:afterSettle']({ target: main, detail: { elt: main } });
+  assert.equal(page.frames.length, 2);
+  page.handlers.message({ source: page.frames[1].contentWindow, data: { type: 'rbit:mermaid:size', height: 200 } });
+  assert.equal(page.frames[1].attributes.height, '202');
+  assert.equal(page.frames[0].attributes.height, '300', 'other diagrams keep their size');
+  assert.equal(pageScans, 0);
 });
 
 const renderer = (await readFile(new URL('../mermaid-frame.js', import.meta.url), 'utf8')).replace("import mermaid from 'mermaid';", '');

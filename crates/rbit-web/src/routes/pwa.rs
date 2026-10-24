@@ -50,7 +50,7 @@ pub async fn manifest(State(state): State<AppState>, Query(query): Query<Manifes
         // Match the selected theme before the first page paints. The id stays stable.
         "background_color": color,
         "theme_color": color,
-        // PNGs generated from logo.png by `npm run icons`; the maskable icon keeps
+        // PNGs generated from scripts/icons/logo.png by `npm run icons`; the maskable icon keeps
         // the entire mascot inside the safe zone.
         "icons": icons,
         "shortcuts": [
@@ -94,18 +94,35 @@ pub async fn offline(State(state): State<AppState>) -> OfflinePage {
     OfflinePage { page: Page::new(&state, None, "/offline").titled("Offline") }
 }
 
-/// A separate same-origin sheet keeps arbitrary inline styles blocked by the CSP.
-pub async fn branding_styles(State(state): State<AppState>) -> Response {
+/// The colours `base.html` links the branding sheet with (`?color=…&text=…`).
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(default)]
+pub struct BrandingQuery {
+    color: String,
+    text: String,
+}
+
+/// `GET /assets/branding.css`: a separate same-origin sheet keeps arbitrary inline styles
+/// blocked by the CSP.
+///
+/// The sheet is a function of the two colours, and pages link it with both in the query,
+/// so a URL naming the current colours is content-addressed like a hashed asset and is
+/// cached for good; changing the branding changes the URL. Any other URL (stale colours,
+/// none) is revalidated. It depends on no session, so it is served with the static assets.
+pub async fn branding_styles(State(state): State<AppState>, Query(query): Query<BrandingQuery>) -> Response {
     let branding = state.services.instance.current().branding;
-    let css = if branding.primary_color.is_empty() || branding.validate().is_err() {
-        String::new()
-    } else {
+    let valid = !branding.primary_color.is_empty() && branding.validate().is_ok();
+    let css = if valid {
         format!(
             ".btn-primary{{background-color:{};border-color:{};color:{}}}.btn-primary:hover{{background-color:{};border-color:{};filter:brightness(.9)}}",
             branding.primary_color, branding.primary_color, branding.primary_text_color, branding.primary_color, branding.primary_color
         )
+    } else {
+        String::new()
     };
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, "no-cache")], css).into_response()
+    let current = valid && query.color == branding.primary_color && query.text == branding.primary_text_color;
+    let cache_control = if current { "public, max-age=31536000, immutable" } else { "no-cache" };
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8"), (header::CACHE_CONTROL, cache_control)], css).into_response()
 }
 
 #[cfg(test)]

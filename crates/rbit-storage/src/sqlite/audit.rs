@@ -5,8 +5,8 @@
 //! Entries never change once written and never reference other rows: actor and target
 //! names are copied in, so the log stays readable after accounts are renamed or deleted.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
 use super::admin::{ListFilter, Listing};
 use crate::StorageError;
@@ -391,11 +391,11 @@ macro_rules! audit_filter {
 
 #[derive(Debug, Clone)]
 pub struct AuditStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AuditStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

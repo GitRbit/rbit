@@ -143,8 +143,8 @@ impl CachedLastCommits {
     }
 }
 
-/// What a comparison of two commits counts, for headers that show the numbers without the
-/// diff (pull request tabs).
+/// What a comparison of two commits counts, for headers and API statistics that show the
+/// numbers without the diff (pull request tabs, pull request JSON).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CachedComparisonCounts {
     /// Commits in head but not in base.
@@ -153,9 +153,13 @@ pub struct CachedComparisonCounts {
     pub files: u64,
     /// The diff's file limit when it counted: `files` never exceeds it, so counts made
     /// under another limit are not the same answer and readers treat them as a miss.
-    /// Entries written before this field existed no longer decode, so they are misses too.
     pub max_files: u64,
+    /// Lines added and removed across the listed files.
+    pub additions: u64,
+    pub deletions: u64,
 }
+// Entries written before a field existed are shorter and no longer decode, so they read
+// as misses and are overwritten by the next count.
 
 #[derive(Debug, Clone)]
 pub struct InsightsCache {
@@ -206,6 +210,7 @@ impl InsightsCache {
     }
 
     pub async fn put_language_stats(&self, commit_id: &str, stats: &CachedLanguageStats) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let key = commit_id.to_owned();
         let value = encode(stats)?;
@@ -231,6 +236,7 @@ impl InsightsCache {
     }
 
     pub async fn put_last_commits(&self, commit_id: &str, directory: &str, commits: &CachedLastCommits) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (commit_id, directory) = (commit_id.to_owned(), directory.to_owned());
         let value = encode(commits)?;
@@ -259,6 +265,7 @@ impl InsightsCache {
     }
 
     pub async fn put_contributions(&self, tip: &str, policy: &str, records: Arc<CachedContributions>) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (tip, policy) = (tip.to_owned(), policy.to_owned());
         tokio::task::spawn_blocking(move || {
@@ -284,6 +291,7 @@ impl InsightsCache {
     }
 
     pub async fn put_comparison_counts(&self, base: &str, head: &str, counts: CachedComparisonCounts) -> Result<(), StorageError> {
+        crate::work::cache_write();
         let db = Arc::clone(&self.db);
         let (base, head) = (base.to_owned(), head.to_owned());
         let value = encode(&counts)?;
@@ -503,21 +511,30 @@ mod tests {
         assert_eq!(cache.last_commits("c1", "src").await.unwrap(), Some(last));
         assert_eq!(cache.last_commits("c1", "").await.unwrap(), None, "keyed by directory too");
 
-        let counts = CachedComparisonCounts { ahead: 3, files: 12, max_files: 300 };
+        let counts = CachedComparisonCounts { ahead: 3, files: 12, max_files: 300, additions: 40, deletions: 7 };
         assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), None);
         cache.put_comparison_counts("b1", "h1", counts).await.unwrap();
         assert_eq!(cache.comparison_counts("b1", "h1").await.unwrap(), Some(counts));
         assert_eq!(cache.comparison_counts("h1", "b1").await.unwrap(), None, "ordered pair");
-        // An entry from before the file limit was recorded reads as a miss.
-        let old_format = postcard::to_stdvec(&(3_u64, 12_u64)).unwrap();
-        assert_eq!(decode::<CachedComparisonCounts>(&old_format), None);
+        // Entries from before the file limit or the line counts were recorded read as misses.
+        for old_format in [postcard::to_stdvec(&(3_u64, 12_u64)).unwrap(), postcard::to_stdvec(&(3_u64, 12_u64, 300_u64)).unwrap()] {
+            assert_eq!(decode::<CachedComparisonCounts>(&old_format), None);
+        }
+        let tx = cache.db.begin_write().unwrap();
+        let old_format = postcard::to_stdvec(&(3_u64, 12_u64, 300_u64)).unwrap();
+        tx.open_table(COMPARISON_COUNTS).unwrap().insert(("b2", "h2"), old_format.as_slice()).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(cache.comparison_counts("b2", "h2").await.unwrap(), None, "stored old entries are misses");
     }
 
     #[tokio::test]
     async fn prune_removes_comparison_counts() {
         let dir = tempfile::tempdir().unwrap();
         let cache = open_cache(&dir);
-        cache.put_comparison_counts("b1", "h1", CachedComparisonCounts { ahead: 1, files: 1, max_files: 300 }).await.unwrap();
+        cache
+            .put_comparison_counts("b1", "h1", CachedComparisonCounts { ahead: 1, files: 1, max_files: 300, ..Default::default() })
+            .await
+            .unwrap();
         cache.put_language_stats("c1", &stats()).await.unwrap();
         assert_eq!(cache.entry_count().await.unwrap(), 2);
         let report = cache.prune(None, Some(0)).await.unwrap();

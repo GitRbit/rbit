@@ -11,7 +11,7 @@ use std::{
 };
 
 use rbit_core::Timestamp;
-use rbit_git::{CommitSummary, LanguageShare, LanguageStats, LastCommitLimits, TreeEntry};
+use rbit_git::{CommitSummary, LanguageShare, LanguageStats, LastCommitLimits, TreeEntry, TreeView};
 use rbit_storage::kv::{CachedCommit, CachedLanguage, CachedLanguageStats, CachedLastCommits, InsightsCache};
 
 use crate::{RepoContext, ServiceContext, ServiceError};
@@ -56,15 +56,22 @@ impl InsightsService {
         Ok(self.last_commits_inner(repo, revision, path, entries, true).await?.commits.clone())
     }
 
-    /// A requested subset must never populate the persistent whole-directory cache.
+    /// The last commits of `entries`, a page of the directory `tree` read at `path`.
+    ///
+    /// When the page is the whole directory (every entry of `tree`) a complete result is
+    /// persisted like [`Self::last_commits`], so directories other than the warmed root
+    /// survive the short-lived in-memory reuse. A subset must never populate the
+    /// persistent whole-directory cache: readers take any entry it lacks as unresolved.
     pub async fn last_commits_page(
         &self,
         repo: &RepoContext,
-        revision: &str,
+        tree: &TreeView,
         path: &str,
         entries: &[TreeEntry],
     ) -> Result<Arc<rbit_git::LastCommits>, ServiceError> {
-        self.last_commits_inner(repo, revision, path, entries, false).await
+        let requested: HashSet<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        let whole_directory = tree.entries.iter().all(|entry| requested.contains(entry.name.as_str()));
+        self.last_commits_inner(repo, &tree.commit.id, path, entries, whole_directory).await
     }
 
     async fn last_commits_inner(
@@ -178,6 +185,56 @@ fn last_commits_from_cache(cached: &CachedLastCommits, names: &HashSet<&str>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn only_whole_directory_pages_are_persisted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = rbit_core::Config::default();
+        config.storage.data_dir = dir.path().join("data");
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = rbit_storage::Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = rbit_storage::KvStore::open(&config.storage.kv_path()).unwrap();
+        let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
+        let signup = crate::SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };
+        let ada = services.accounts.create_user(signup, Some(true)).await.unwrap();
+        let input = crate::CreateRepository { name: "demo".into(), description: String::new(), visibility: rbit_core::Visibility::Public };
+        services.repositories.create(&ada, input).await.unwrap();
+        let repo = services.repositories.open(Some(&ada), "ada", "demo").await.unwrap();
+
+        let work = dir.path().join("work");
+        std::fs::create_dir_all(work.join("src")).unwrap();
+        for file in ["src/a.rs", "src/b.rs", "src/c.rs"] {
+            std::fs::write(work.join(file), file).unwrap();
+        }
+        for args in [
+            &["init", "-q"][..],
+            &["add", "."],
+            &["commit", "-q", "-m", "Add sources"],
+            &["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:refs/heads/main"],
+        ] {
+            let status = std::process::Command::new("git")
+                .current_dir(&work)
+                .args(["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "init.defaultBranch=main"])
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {args:?}");
+        }
+
+        let tree = repo.reader.tree("main".into(), "src".into()).await.unwrap();
+        let cache = kv.insights();
+        let page = services.insights.last_commits_page(&repo, &tree, "src", &tree.entries[..2]).await.unwrap();
+        assert_eq!(page.commits.len(), 2);
+        assert_eq!(cache.last_commits(&tree.commit.id, "src").await.unwrap(), None, "a subset is never the whole directory");
+
+        let whole = services.insights.last_commits_page(&repo, &tree, "src", &tree.entries).await.unwrap();
+        assert_eq!(whole.commits.len(), 3);
+        let stored = cache.last_commits(&tree.commit.id, "src").await.unwrap().expect("the whole directory is persisted");
+        assert_eq!(stored.iter().count(), 3);
+        // Later pages, whole or not, are answered from the persisted entry.
+        let again = services.insights.last_commits_page(&repo, &tree, "src", &tree.entries[2..]).await.unwrap();
+        assert_eq!(again.commits.keys().collect::<Vec<_>>(), [&tree.entries[2].name]);
+    }
 
     #[test]
     fn commits_survive_the_cache_format() {

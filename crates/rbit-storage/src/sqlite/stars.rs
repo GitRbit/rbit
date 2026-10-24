@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
+use super::pool::Pool;
 use rbit_core::{Account, AccountId, RepoId, Timestamp, repository::OwnedRepository};
-use sqlx::SqlitePool;
 
 use super::{
     repositories::readable_by,
@@ -36,11 +36,11 @@ pub struct StarCount {
 
 #[derive(Debug, Clone)]
 pub struct StarStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl StarStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

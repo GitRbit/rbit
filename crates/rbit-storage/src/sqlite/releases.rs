@@ -4,11 +4,11 @@
 
 use std::collections::HashMap;
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseAuthor, ReleaseId},
 };
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -140,11 +140,11 @@ pub struct NewAsset<'a> {
 
 #[derive(Debug, Clone)]
 pub struct ReleaseStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ReleaseStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

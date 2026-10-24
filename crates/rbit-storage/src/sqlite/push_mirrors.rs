@@ -7,11 +7,11 @@
 //! The secret is read only by [`PushMirrorStore::target`], for the push itself; every
 //! other query leaves it out and reports only whether one is set.
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     push_mirror::{PushMirror, PushMirrorId},
 };
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -93,11 +93,11 @@ pub struct PushTarget {
 
 #[derive(Debug, Clone)]
 pub struct PushMirrorStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl PushMirrorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

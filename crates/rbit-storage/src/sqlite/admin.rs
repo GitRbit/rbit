@@ -4,8 +4,8 @@
 //! their `WHERE` clause, so the check and the write are one atomic statement and two
 //! administrators acting concurrently can never lock the instance out.
 
+use super::pool::Pool;
 use rbit_core::{Account, AccountId, Email, OwnedRepository, RepoId, Timestamp, User};
-use sqlx::SqlitePool;
 
 use super::rows::{AccountRow, OwnedRepositoryRow};
 use crate::StorageError;
@@ -164,11 +164,11 @@ macro_rules! select_user_record {
 
 #[derive(Debug, Clone)]
 pub struct AdminStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AdminStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

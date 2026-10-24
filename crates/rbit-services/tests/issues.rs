@@ -144,6 +144,13 @@ async fn writers_open_issues_with_metadata_and_opened_is_published_once() {
     assert_eq!(metadata.milestone.unwrap().title, "v1");
     let recorded = fixture.events_of(&fixture.alice, issue.number).await;
     assert_eq!(recorded.len(), 3, "labeled, assigned and milestoned: {recorded:?}");
+    // A list that shows only labels reads only labels.
+    let query = rbit_core::issue_query::IssueQuery::parse("is:open");
+    let labels_only = rbit_services::issues::MetadataNeeds::Labels;
+    let listed = fixture.services.issues.search_with(Some(&fixture.alice), &repo, &query, 1, labels_only).await.unwrap();
+    let listed = &listed.metadata[&issue.id];
+    assert_eq!(listed.labels.len(), 1);
+    assert!(listed.assignees.is_empty() && listed.milestone.is_none());
 
     // A reader's metadata is ignored; a carol (not a writer) cannot be assigned.
     let reader_repo = fixture.repo(&fixture.carol).await;

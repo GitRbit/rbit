@@ -9,7 +9,9 @@
 use rbit_core::{
     AccountId, AccountKind, AccountName, OrgMember, OrgMembership, OrgRole, Organization, Timestamp, membership::BasePermission,
 };
-use sqlx::{SqliteExecutor, SqlitePool};
+use sqlx::SqliteExecutor;
+
+use super::pool::Pool;
 
 use super::rows::AccountRow;
 use crate::StorageError;
@@ -105,11 +107,11 @@ pub(crate) async fn role_of<'e>(
 
 #[derive(Debug, Clone)]
 pub struct OrgStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl OrgStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

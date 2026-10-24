@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 const source = await readFile(new URL('../../crates/rbit-web/assets/discussion.js', import.meta.url), 'utf8');
-const context = vm.createContext({ clearTimeout() {}, document: { addEventListener() {}, querySelector() { return null; } } });
+const context = vm.createContext({ clearTimeout() {}, document: { addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; } } });
 vm.runInContext(source, context);
 const mention = (text, caret = text.length) => vm.runInContext(`mentionAt(${JSON.stringify(text)}, ${caret})`, context);
 test('mentions follow the caret without matching mail addresses or cross-repo references', () => {
@@ -59,4 +59,39 @@ test('Preview focus closes mention choices and a late lookup cannot reopen them'
   resolveResponse({ ok: true, json: async () => [['#1', 'A saved issue']] });
   await lookup;
   assert.equal(list.hidden, true, 'even a response that ignores abort cannot reopen the list');
+});
+
+function discussionPage() {
+  const listeners = new Map(), scans = [];
+  const scope = (name, contents = {}) => ({
+    name,
+    matches: () => false,
+    querySelectorAll(selector) { scans.push(`${name} ${selector}`); return contents[selector] ?? []; },
+  });
+  const editor = {};
+  const pageButton = { hidden: true };
+  const document = Object.assign(scope('document', { '[data-reply]': [pageButton] }), {
+    querySelector: selector => selector === '[data-discussion-editor]' ? editor : null,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+  });
+  vm.runInNewContext(source, { clearTimeout() {}, document });
+  scans.length = 0;
+  const settle = elt => listeners.get('htmx:afterSettle')({ target: elt, detail: { elt } });
+  return { scans, scope, settle, pageButton };
+}
+
+test('reply buttons in swapped content are enabled without scanning the page', () => {
+  const page = discussionPage();
+  assert.equal(page.pageButton.hidden, false, 'the loaded page is enhanced');
+  const button = { hidden: true };
+  page.settle(page.scope('comment', { '[data-reply]': [button] }));
+  assert.equal(button.hidden, false);
+  assert.ok(page.scans.every(scan => scan.startsWith('comment ')), page.scans.join(', '));
+});
+
+test('an editor swapped in enables the reply buttons already on the page', () => {
+  const page = discussionPage();
+  page.pageButton.hidden = true;
+  page.settle(page.scope('form', { '[data-discussion-editor]': [{}] }));
+  assert.equal(page.pageButton.hidden, false);
 });

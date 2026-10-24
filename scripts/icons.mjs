@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { Resvg } from "@resvg/resvg-js";
 
 const assets = new URL("../crates/rbit-web/assets/", import.meta.url);
-const mascot = readFileSync(new URL("logo.png", assets)).toString("base64");
+const mascot = readFileSync(new URL("icons/logo.png", import.meta.url)).toString("base64");
 
 function render(size, file, scale = 1, background = false) {
   const edge = 512 * scale;

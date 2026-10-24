@@ -8,11 +8,11 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
 [![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
-**Blazing fast, self-hosted Git — written in Rust, shipped as one binary, with no external services.**
+**Blazing fast, self-hosted Git hosting — written in Rust, shipped as one binary, with no external services.**
 
-rbit gives you repositories, issues, pull requests, reviews and CI checks on your own server, and it is
-built around three things: **speed**, **security** and **performance**. No Postgres, no Redis, no
-JavaScript runtime — download it, run it, push.
+rbit is a Git forge that gives you repositories, issues, pull requests, reviews and CI checks on your
+own server. It is built around three things: **speed**, **security** and **performance**. No Postgres,
+no Redis, no JavaScript runtime — download it, run it, push.
 
 **[Quick start](#quick-start)** · [Why rbit](#why-rbit) · [Features](#features) · [Install](#install) ·
 [First steps](#first-steps) · [Configuration](#configuration) · [Command line](#command-line) ·
@@ -317,8 +317,8 @@ The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports a
 them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH client.
 
 The orange frog is rbit's logo and mascot. The original artwork lives in
-[`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
-the README and landing page. After replacing it, run `npm run icons` to regenerate
+[`scripts/icons/logo.png`](scripts/icons/logo.png), outside the embedded assets so the
+binary does not carry it. After replacing it, run `npm run icons` to regenerate
 the browser, home-screen, and installable-app icons, and commit the generated PNGs.
 
 ## Workspace

@@ -119,15 +119,18 @@ impl NotificationService {
         Ok(self.ctx.database.notifications().has_unread(user).await?)
     }
 
-    /// Marks `user`'s notification about `issue` read, if any. Failures are logged, never
-    /// returned: it runs as a side effect of viewing a page.
-    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) {
+    /// Marks `user`'s notification about `issue` read, if any, and returns whether one was
+    /// unread until now. Only then can the unread indicator have changed, so a page needs
+    /// to ask [`Self::has_unread`] again only on `true`. Failures are logged, never
+    /// returned (as `false`): it runs as a side effect of viewing a page.
+    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) -> bool {
         if !self.enabled() {
-            return;
+            return false;
         }
-        if let Err(error) = self.ctx.database.notifications().mark_issue_read(user, issue).await {
+        self.ctx.database.notifications().mark_issue_read(user, issue).await.unwrap_or_else(|error| {
             tracing::warn!(%error, user = user.0, issue = issue.0, "cannot mark a notification read");
-        }
+            false
+        })
     }
 
     // ------------------------------------------------------------------ subscriptions
@@ -135,6 +138,15 @@ impl NotificationService {
     /// `user`'s subscription to `issue`, if they have one.
     pub async fn subscription(&self, user: AccountId, issue: IssueId) -> Result<Option<Subscription>, ServiceError> {
         Ok(self.ctx.database.notifications().subscription(issue, user).await?)
+    }
+
+    /// `user`'s subscription to `issue` and whether they have an unread notification about
+    /// it, in one statement: a thread's page shows the first and marks the second read
+    /// ([`Self::mark_thread_read`]) only when there is one. While notifications are
+    /// turned off nothing is unread.
+    pub async fn thread_state(&self, user: AccountId, issue: IssueId) -> Result<(Option<Subscription>, bool), ServiceError> {
+        let (subscription, unread) = self.ctx.database.notifications().thread_state(issue, user).await?;
+        Ok((subscription, unread && self.enabled()))
     }
 
     /// Subscribes or unsubscribes `user` by hand (the caller checked they can read it).
@@ -156,21 +168,16 @@ impl NotificationService {
         let per_page = per_page.max(1);
         let offset = u64::from(page.max(1) - 1) * u64::from(per_page);
         let rows = store.list(user.id(), unread_only, per_page, offset).await?;
-        let mut readable: HashMap<RepoId, bool> = HashMap::new();
+        // Whether the user may still read each row's repository: one batch over the
+        // page's distinct repositories (a deleted one is simply not returned).
+        let mut repos: Vec<RepoId> = rows.iter().map(|row| row.repo).collect();
+        repos.sort_unstable_by_key(|id| id.0);
+        repos.dedup();
+        let readable = self.ctx.database.repositories().readable_among(&repos, user.id(), user.is_admin).await?;
         let mut hidden = Vec::new();
         let mut notifications = Vec::with_capacity(rows.len());
         for row in rows {
-            let can_read = if let Some(can_read) = readable.get(&row.repo) {
-                *can_read
-            } else {
-                let can_read = match self.ctx.database.admin().find_repository(row.repo).await? {
-                    Some(repo) => self.can_read(user, &repo).await?,
-                    None => false,
-                };
-                readable.insert(row.repo, can_read);
-                can_read
-            };
-            if can_read {
+            if readable.contains_key(&row.repo) {
                 notifications.push(row);
             } else {
                 hidden.push(row.id);

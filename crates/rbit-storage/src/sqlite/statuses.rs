@@ -8,11 +8,11 @@
 //! the same statement as the insert. Validation of the values happens in the service
 //! (`rbit_core::status::StatusReport`).
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     status::{CommitStatus, StatusContext, StatusId, StatusReport, StatusState},
 };
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -72,11 +72,11 @@ fn json_strings(values: &[String]) -> String {
 
 #[derive(Debug, Clone)]
 pub struct CommitStatusStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl CommitStatusStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
