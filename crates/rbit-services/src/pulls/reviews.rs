@@ -283,6 +283,7 @@ impl PullService {
 
     /// Throws away the viewer's pending review and its comments.
     pub async fn discard_review(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
+        ctx.repo().ensure_writable()?;
         Ok(self.ctx().database.reviews().discard_pending(ctx.issue().id, actor.id()).await?)
     }
 
@@ -314,6 +315,7 @@ impl PullService {
         if !ctx.repo().access.can_write() {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo().ensure_writable()?;
         let message = message.trim();
         if message.is_empty() {
             return Err(ServiceError::Invalid("say why the review is dismissed".to_owned()));
@@ -399,16 +401,18 @@ impl PullService {
     }
 
     fn require_comment(actor: &User, ctx: &PullContext) -> Result<(), ServiceError> {
-        if issue_permissions(Some(actor), ctx.repo().access, ctx.issue()).can_comment { Ok(()) } else { Err(ServiceError::Forbidden) }
+        if !issue_permissions(Some(actor), ctx.repo().access, ctx.issue()).can_comment {
+            return Err(ServiceError::Forbidden);
+        }
+        ctx.repo().ensure_writable()
     }
 
     fn require_triage(actor: &User, ctx: &PullContext) -> Result<(), ServiceError> {
         let permissions = issue_permissions(Some(actor), ctx.repo().access, ctx.issue());
-        if permissions.can_triage || (ctx.issue().is_author(actor) && permissions.can_comment) {
-            Ok(())
-        } else {
-            Err(ServiceError::Forbidden)
+        if !(permissions.can_triage || (ctx.issue().is_author(actor) && permissions.can_comment)) {
+            return Err(ServiceError::Forbidden);
         }
+        ctx.repo().ensure_writable()
     }
 
     fn publish_review(&self, ctx: &PullContext, review: ReviewId, actor: AccountId, action: ReviewAction) {

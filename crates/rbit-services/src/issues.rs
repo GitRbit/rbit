@@ -325,6 +325,7 @@ impl IssueService {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
+        repo.ensure_writable()?;
         let triage = repo.access.can_write();
         let (labels, assignees, milestone) = if triage {
             let labels = self.repo_labels(repo.repo.repo.id, &distinct(&input.labels)).await?;
@@ -381,6 +382,7 @@ impl IssueService {
         if !issue_permissions(Some(actor), ctx.repo.access, &ctx.issue).can_delete {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         let Some(snapshot) = self.ctx.database.issues().delete(ctx.issue.id).await? else { return Err(ServiceError::NotFound) };
         let target = format!("{}#{}", ctx.repo.repo.full_name(), snapshot.number.get());
         self.audit.record(AuditEntry::new(AuditAction::IssueDeleted).by(actor).on(target).detail(snapshot.title.to_string())).await;
@@ -575,7 +577,10 @@ impl IssueService {
     // ------------------------------------------------------------------ triage
 
     fn require_triage(actor: &User, ctx: &IssueContext) -> Result<(), ServiceError> {
-        if issue_permissions(Some(actor), ctx.repo.access, &ctx.issue).can_triage { Ok(()) } else { Err(ServiceError::Forbidden) }
+        if !issue_permissions(Some(actor), ctx.repo.access, &ctx.issue).can_triage {
+            return Err(ServiceError::Forbidden);
+        }
+        ctx.repo.ensure_writable()
     }
 
     /// The labels of `repo` with these ids; an id that is not one of them is invalid.
@@ -725,7 +730,10 @@ impl IssueService {
     // ------------------------------------------------------------------ labels
 
     fn require_writer(repo: &RepoContext) -> Result<(), ServiceError> {
-        if repo.access.can_write() { Ok(()) } else { Err(ServiceError::Forbidden) }
+        if !repo.access.can_write() {
+            return Err(ServiceError::Forbidden);
+        }
+        repo.ensure_writable()
     }
 
     /// The labels of `repo`, by name.

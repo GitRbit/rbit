@@ -58,6 +58,9 @@ pub enum DomainEvent {
     },
     /// A repository moved to another owner, by `actor`.
     RepositoryTransferred { repo: RepoId, from: AccountId, to: AccountId, actor: AccountId },
+    /// A repository was archived (made read-only) or, with `archived: false`, unarchived,
+    /// by `actor`. Published by [`crate::RepoSettingsService::set_archived`].
+    RepositoryArchived { repo: RepoId, archived: bool, actor: AccountId },
     /// `repo` was created as a fork of `parent`. Published by the repository essentials
     /// workstream.
     RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },

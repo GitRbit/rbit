@@ -25,6 +25,9 @@
 //!   once. Every enabled mirror is also pushed every `interval_minutes`, and an
 //!   administrator can ask for a push now. The time, outcome and error of the last attempt
 //!   are kept for the settings page.
+//! * Archived repositories are not pushed: nothing changes in them, so their mirrors
+//!   pause (the scheduler skips them and "push now" is refused) until they are
+//!   unarchived.
 //!
 //! The scheduler ([`PushMirrorService::spawn_background`]) wakes every
 //! [`SCHEDULER_TICK`], after a debounce, or when a push is requested; it runs at most
@@ -212,6 +215,7 @@ impl PushMirrorService {
     /// Schedules a push now (it runs in the background).
     pub async fn sync_now(&self, repo: &RepoContext, id: PushMirrorId) -> Result<(), ServiceError> {
         self.require_admin(repo)?;
+        repo.ensure_writable()?;
         if !self.store().schedule_now(repo.repo.repo.id, id).await? {
             return Err(ServiceError::NotFound);
         }
@@ -228,6 +232,10 @@ impl PushMirrorService {
         let next = Timestamp(Timestamp::now().seconds().saturating_add(i64::try_from(self.interval_minutes() * 60).unwrap_or(i64::MAX)));
         self.store().claim(id, next).await?;
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, target.mirror.repo_id).await? else { return Ok(()) };
+        if context.repo.repo.is_archived() {
+            // Archived since it was picked: it resumes once the repository is unarchived.
+            return Ok(());
+        }
         let outcome = self.attempt(&context, &target).await;
         let error = outcome.err();
         match &error {

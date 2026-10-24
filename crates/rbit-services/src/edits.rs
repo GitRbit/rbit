@@ -5,9 +5,9 @@
 //!
 //! Rules, in the order they are checked:
 //! * the actor needs write access ([`ServiceError::Forbidden`]); pull mirrors are read-only
-//!   (they only change by fetching; [`MIRROR_READ_ONLY`]). rbit has no archived
-//!   repositories yet; when it does, [`EditService::read_only_reason`] is where they are
-//!   refused;
+//!   (they only change by fetching; [`MIRROR_READ_ONLY`]) and so are archived repositories
+//!   ([`rbit_core::repository::ARCHIVED_READ_ONLY`]), both refused by
+//!   [`EditService::read_only_reason`];
 //! * a commit lands on the branch the editor was opened on, or on a new branch starting at
 //!   the same commit ([`CommitTarget`]). Committing to the branch passes the push gate
 //!   ([`crate::ProtectionService::check_push`], as a push updating it would): a refusal is
@@ -184,8 +184,12 @@ impl EditService {
         self.ctx.config.repository.max_render_bytes
     }
 
-    /// Why nobody may edit `repo` even with write access (a mirror), or `None`.
+    /// Why nobody may edit `repo` even with write access (it is archived, or a mirror),
+    /// or `None`.
     pub async fn read_only_reason(&self, repo: &RepoContext) -> Result<Option<&'static str>, ServiceError> {
+        if repo.repo.repo.is_archived() {
+            return Ok(Some(rbit_core::repository::ARCHIVED_READ_ONLY));
+        }
         Ok(self.ctx.database.mirrors().is_mirror(repo.repo.repo.id).await?.then_some(MIRROR_READ_ONLY))
     }
 

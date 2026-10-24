@@ -46,6 +46,25 @@ pub struct RepoContext {
 }
 
 impl RepoContext {
+    /// The archive guard: [`ServiceError::Archived`] when the repository is archived.
+    ///
+    /// Every write to a repository's content asks this, at the same chokepoints branch
+    /// protection uses — the push gate (`ProtectionService::check_push`, for HTTP, SSH and
+    /// browser edits), merges, issues, pull requests, comments, reviews, labels,
+    /// milestones, releases, commit statuses and LFS uploads and locks — after the
+    /// access check, so only people who could otherwise write learn why they may not.
+    /// Reading, cloning, forking and starring never ask; neither do the settings that
+    /// archive, unarchive, transfer or delete the repository.
+    pub fn ensure_writable(&self) -> Result<(), ServiceError> {
+        if self.repo.repo.is_archived() { Err(ServiceError::Archived) } else { Ok(()) }
+    }
+
+    /// Whether the viewer may change the repository's content: write access to a
+    /// repository that is not archived. What pages use to show write controls.
+    pub fn can_write_content(&self) -> bool {
+        self.access.can_write() && !self.repo.repo.is_archived()
+    }
+
     /// Loads repository `id` for system work (background jobs), or `None` if it no
     /// longer exists. See [`Self::for_system`].
     pub(crate) async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {

@@ -289,6 +289,7 @@ impl PullService {
         if !same_repo && !self.network(Some(actor), base).await?.iter().any(|repo| repo.repo.id == head.repo.repo.id) {
             return Err(ServiceError::NotFound);
         }
+        base.ensure_writable()?;
         if self.ctx().database.mirrors().is_mirror(base.repo.repo.id).await? {
             return Err(ServiceError::Invalid("pull requests cannot be opened against a mirror".to_owned()));
         }
@@ -564,6 +565,7 @@ impl PullService {
         if !(ctx.issue().is_author(actor) || ctx.repo().access.can_write()) || !ctx.repo().access.can_read() {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo().ensure_writable()?;
         if !ctx.issue().is_open() {
             return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
         }
@@ -586,6 +588,7 @@ impl PullService {
         if !(ctx.issue().is_author(actor) || ctx.repo().access.can_write()) {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo().ensure_writable()?;
         let branch = branch.trim();
         if !ctx.issue().is_open() || ctx.pull.is_merged() {
             return Err(ServiceError::Invalid("the pull request is closed".to_owned()));
