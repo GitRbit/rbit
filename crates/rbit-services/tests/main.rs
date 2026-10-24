@@ -7,6 +7,7 @@ mod actions;
 // Actions: triggers (T).
 #[path = "support/actions_fixture.rs"]
 mod actions_fixture;
+mod actions_pulls;
 mod actions_pushes;
 mod admin;
 mod audit;

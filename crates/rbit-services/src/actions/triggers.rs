@@ -18,6 +18,14 @@
 //!   and the work checks a cooperative deadline ([`EVALUATION_BUDGET`]); running out of
 //!   time is a workflow error, not a stuck thread.
 //! * A file that fails to parse or plan becomes a workflow-error run on the Actions page.
+//! * Pull requests: `opened`, `reopened`, `synchronize`, `closed`, `edited` and
+//!   `ready_for_review` are matched against `on.pull_request` (`branches` against the base
+//!   branch, `paths` against the pull request's changes). Workflows come from the head
+//!   commit, which `refs/pull/{n}/head` keeps in the base repository; [`super::trust`]
+//!   decides what the run may touch. A `synchronize` caused by a push that may not start
+//!   runs (a mirror, a task) starts none. Closing a pull request first cancels its runs that
+//!   have not started (waiting, held or awaiting approval). A skip marker in the title skips
+//!   its runs.
 //! * A new repository gets its Actions settings row (`enable_for_new_repositories`) before
 //!   any later event is read, so its first push already sees it.
 //! * `RecvError::Lagged`: logged and counted ([`ActionsService::missed_events`]); nothing is
@@ -33,10 +41,16 @@ use std::{
     time::Duration,
 };
 
-use rbit_core::{PushSource, RepoId, Timestamp, actions::Run, actions::RunEvent, actions::RunTrust, repository::OwnedRepository};
+use rbit_core::{
+    AccountId, IssueId, IssueKind, PushSource, RepoId, Timestamp,
+    actions::{Run, RunEvent, RunTrust, Status},
+    issue::IssueAction,
+    repository::OwnedRepository,
+};
 use rbit_git::{CommitSummary, DiffLimits, EntryKind, GitError, RefUpdate, RepositoryReader};
 use rbit_workflow::{
     Deadline, ErrorKind, Event, GroupContext, LazyPaths, Limits, Workflow, WorkflowError,
+    model::ActivityType,
     trigger::{ChangedPaths, has_skip_marker},
 };
 use tokio::{
@@ -120,6 +134,14 @@ impl ActionsService {
                     }
                 });
             }
+            DomainEvent::Issue { repo, issue, kind: IssueKind::Pull, actor, action, .. } => {
+                let this = self.clone();
+                self.inner.tasks.spawn(async move {
+                    if let Err(error) = this.handle_pull_request(repo, issue, actor, &action).await {
+                        tracing::warn!(%error, repo = repo.0, "cannot start workflow runs for a pull request");
+                    }
+                });
+            }
             _ => {}
         }
     }
@@ -192,6 +214,115 @@ impl ActionsService {
             }
         }
         Ok(started)
+    }
+
+    /// Starts the runs a pull request event asks for (`actor` is the event's actor) and
+    /// returns them; closing also cancels the pull request's runs that have not started.
+    /// Public so tests can drive it without the subscriber.
+    pub async fn handle_pull_request(
+        &self,
+        repo: RepoId,
+        issue: IssueId,
+        actor: Option<AccountId>,
+        action: &IssueAction,
+    ) -> Result<Vec<Run>, ServiceError> {
+        let (activity, pusher) = match action {
+            IssueAction::Opened => (ActivityType::Opened, None),
+            IssueAction::Reopened => (ActivityType::Reopened, None),
+            IssueAction::Edited { .. } => (ActivityType::Edited, None),
+            IssueAction::ReadyForReview => (ActivityType::ReadyForReview, None),
+            IssueAction::Closed { .. } => (ActivityType::Closed, None),
+            IssueAction::Synchronized { source, .. } if source.starts_runs() => (ActivityType::Synchronize, Some(source.pusher())),
+            _ => return Ok(Vec::new()),
+        };
+        let database = &self.ctx().database;
+        if !database.actions_settings().is_enabled(repo).await? {
+            return Ok(Vec::new());
+        }
+        let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(Vec::new()) };
+        let (Some(thread), Some(pull)) = (database.issues().find(issue).await?, database.pulls().find(issue).await?) else {
+            return Ok(Vec::new());
+        };
+        let number = i64::from(thread.number.get());
+        if activity == ActivityType::Closed {
+            self.cancel_pull_runs(repo, number).await?;
+        }
+        if has_skip_marker(thread.title.as_str()) {
+            return Ok(Vec::new());
+        }
+        // The author for everything but `synchronize`, whose actor pushed the new head.
+        let cause = pusher.unwrap_or(thread.author);
+        let trust = self.classify_pull_request(&owned, cause, thread.author).await?;
+
+        let reader = self.reader(&owned);
+        let reference = format!("refs/pull/{number}/head");
+        let group = GroupContext {
+            reference: reference.clone(),
+            head_ref: pull.head_branch.clone(),
+            base_ref: pull.base_branch.clone(),
+            event_name: RunEvent::PullRequest.as_str().to_owned(),
+            repository: owned.full_name(),
+            pull_request_number: u64::try_from(number).ok(),
+            ..GroupContext::default()
+        };
+        let (limits, head, base_branch) = (self.limits(), pull.head_sha.clone(), pull.base_branch.clone());
+        let candidates = self
+            .evaluate(move |handle, deadline| {
+                let files = match discover(handle, &reader, &head, &limits, deadline) {
+                    Ok(files) => files,
+                    Err(error) => {
+                        tracing::warn!(%error, head, "cannot read the workflows of a pull request head");
+                        return Vec::new();
+                    }
+                };
+                let event = Event::PullRequest { action: &activity, base_branch: &base_branch };
+                let mut changed = LazyPaths::new(|| changed_paths(handle, &reader, Some(&base_branch), &head));
+                candidates(&files, &event, &mut changed, &group, &limits, deadline)
+            })
+            .await?;
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let event = DomainEvent::Issue { repo, issue, number: thread.number, kind: IssueKind::Pull, actor, action: action.clone() };
+        let base_url = self.ctx().config.server.base_url();
+        let Some(payload) = crate::pulls::hooks::payload(self.ctx(), &event, base_url).await? else { return Ok(Vec::new()) };
+        let payload = context::fit_payload(payload.body);
+        let trigger = Trigger {
+            repo: &owned,
+            event: RunEvent::PullRequest,
+            reference: &reference,
+            sha: &pull.head_sha,
+            title: thread.title.as_str(),
+            actor: cause,
+            trigger_actor: actor,
+            pull_number: Some(number),
+            is_fork: pull.is_cross_repository(),
+            trust,
+            payload: &payload,
+            inputs: None,
+        };
+        let mut allowance = self.allowance();
+        let mut started = Vec::new();
+        for candidate in candidates {
+            started.extend(self.start_run(&trigger, candidate, &mut allowance).await?);
+        }
+        Ok(started)
+    }
+
+    /// Cancels the runs of pull request `number` that have not started: waiting, held or
+    /// awaiting approval. Running ones finish.
+    async fn cancel_pull_runs(&self, repo: RepoId, number: i64) -> Result<(), ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        for run in store.unfinished_for_pull(repo, number).await? {
+            if !matches!(run.status, Status::Waiting | Status::Blocked | Status::AwaitingApproval) {
+                continue;
+            }
+            if let Some(settled) = store.cancel_run(repo, run.id, Timestamp::now()).await? {
+                tracing::info!(repo = repo.0, run = run.id.0, pull = number, "workflow run of a closed pull request cancelled");
+                self.settled(&settled).await?;
+            }
+        }
+        Ok(())
     }
 
     /// A reader of `repo`'s Git data.
