@@ -37,7 +37,8 @@ impl RepoSettingsService {
     /// Updates description, visibility and default branch together.
     ///
     /// A new default branch must exist; the bare repository's `HEAD` is pointed at it so
-    /// that `git clone` checks it out.
+    /// that `git clone` checks it out. A fork of a private repository cannot become
+    /// public (see [`crate::forks`]).
     pub async fn update(&self, repo: &RepoContext, input: UpdateRepository) -> Result<(), ServiceError> {
         require_admin(repo)?;
         let description = input.description.trim();
@@ -49,6 +50,12 @@ impl RepoSettingsService {
         }
 
         let current = &repo.repo.repo;
+        if input.visibility.is_public()
+            && !current.visibility.is_public()
+            && crate::forks::has_private_ancestor(&self.ctx.database, current.id).await?
+        {
+            return Err(ServiceError::Invalid("a fork of a private repository must stay private".to_owned()));
+        }
         let default_branch = match input.default_branch.map(|b| b.trim().to_owned()) {
             Some(branch) if branch != current.default_branch => {
                 let refs = repo.reader.refs().await?;

@@ -22,7 +22,7 @@ pub struct AppStateInner {
 
 impl AppState {
     pub fn new(config: Arc<Config>, services: Services) -> Self {
-        let transport = ProcessTransport::new(config.repository.git_binary.clone());
+        let transport = ProcessTransport::new(config.repository.git_binary.clone()).with_max_push_bytes(config.repository.max_push_bytes());
         Self(Arc::new(AppStateInner { config, services, transport, highlighter: Highlighter::new() }))
     }
 }

@@ -24,6 +24,12 @@
       <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
       <p class="hint">At least {{ min_password_length }} characters.</p>
 
+      {% if setup_required %}
+      <label class="label mt-4" for="setup_token">Setup token</label>
+      <input class="input font-mono" id="setup_token" name="setup_token" value="{{ setup_token }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <p class="hint">This first account administers the server. Find the token in the server log.</p>
+      {% endif %}
+
       <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
     </form>
     {% else %}

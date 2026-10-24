@@ -48,6 +48,10 @@ use tokio::sync::watch;
 /// and URL-safe so it can be embedded in Git remote URLs as is).
 pub const PASSWORD: &str = "correct-horse-battery-staple";
 
+/// The setup token every test server is configured with, so the first sign-up (which
+/// creates the administrator) succeeds. [`Client::sign_up`] always sends it.
+pub const SETUP_TOKEN: &str = "e2e-setup-token";
+
 /// How long in-flight connections may take to finish once a server is asked to stop.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
@@ -84,6 +88,7 @@ impl TestServer {
         let mut config = Config::default();
         // Tests never contact the live upstream release API. Specific worker tests use a local fake.
         config.updates.check_for_updates = false;
+        config.security.setup_token = Some(SETUP_TOKEN.to_owned());
         configure(&mut config);
         config.server.bind = addr;
         config.server.public_url = format!("http://{addr}");
@@ -327,10 +332,11 @@ impl Client {
         Response::read(self.http.post(self.url(path)).multipart(form).send().await).await
     }
 
-    /// Submits the sign-up form for `username` with [`PASSWORD`].
+    /// Submits the sign-up form for `username` with [`PASSWORD`] and [`SETUP_TOKEN`]
+    /// (which only the first sign-up of an instance needs).
     pub async fn sign_up(&self, username: &str) -> Response {
         let email = format!("{username}@example.test");
-        self.post("/signup", &[("username", username), ("email", &email), ("password", PASSWORD)]).await
+        self.post("/signup", &[("username", username), ("email", &email), ("password", PASSWORD), ("setup_token", SETUP_TOKEN)]).await
     }
 
     /// Submits the sign-in form.

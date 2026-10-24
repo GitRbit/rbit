@@ -60,13 +60,28 @@ async fn backup_writes_a_restorable_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let data_dir = dir.path().join("data");
     let (project, empty) = populate(&data_dir).await;
+    // A sealed value: readable after a restore only with the key from the backup.
+    let database = Database::open(&data_dir.join("rbit.db")).await.unwrap();
+    database.server_secrets().get_or_insert("probe", b"sealed value").await.unwrap();
+    database.close().await;
     let backup = dir.path().join("backup");
 
     let output = rbit(&data_dir, &["backup", "--output", backup.to_str().unwrap()]);
     assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["format"], 3);
+    assert_eq!(manifest["format"], 4);
+    assert_eq!(manifest["secret_key"], "secret.key");
+    assert_eq!(std::fs::read(backup.join("secret.key")).unwrap(), std::fs::read(data_dir.join("secret.key")).unwrap());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: PathBuf| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(backup.clone()), 0o700, "the backup directory is private");
+        for file in ["rbit.db", "secret.key", "manifest.json"] {
+            assert_eq!(mode(backup.join(file)), 0o600, "{file} is private");
+        }
+    }
     assert_eq!(manifest["accounts"], 1);
     assert_eq!(manifest["repositories"], 2);
     assert_eq!(manifest["missing_repositories"], serde_json::json!([]));
@@ -93,6 +108,7 @@ async fn backup_writes_a_restorable_snapshot() {
     let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
     let repos = restored.admin().list_repositories(rbit_storage::sqlite::admin::ListFilter { search: "", limit: 10, offset: 0 }).await;
     assert_eq!(repos.unwrap().total, 2);
+    assert_eq!(restored.server_secrets().get_or_insert("probe", b"other").await.unwrap(), b"sealed value");
     restored.close().await;
 
     // Never overwrite an existing backup.
@@ -114,6 +130,28 @@ async fn backup_reports_repositories_missing_from_disk() {
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
     assert_eq!(manifest["repositories"], 1);
     assert_eq!(manifest["missing_repositories"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_key_kept_outside_the_data_directory_is_left_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_dir = dir.path().join("data");
+    populate(&data_dir).await;
+    let key_file = dir.path().join("elsewhere.key");
+    std::fs::copy(data_dir.join("secret.key"), &key_file).unwrap();
+    let backup = dir.path().join("backup");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_rbit"))
+        .args(["backup", "--output", backup.to_str().unwrap()])
+        .env("RBIT_STORAGE__DATA_DIR", &data_dir)
+        .env("RBIT_STORAGE__SECRET_KEY_FILE", &key_file)
+        .env_remove("RBIT_CONFIG")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert!(manifest["secret_key"].as_str().unwrap().starts_with("not included"));
+    assert!(!backup.join("secret.key").exists(), "a separately kept key stays separate");
 }
 
 /// Attaches `app.zip` to a release of `ada/project`'s tag `v1` and returns its path.

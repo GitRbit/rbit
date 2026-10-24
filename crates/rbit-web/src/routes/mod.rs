@@ -172,7 +172,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn(middleware::html_caching))
         // Default privacy headers also cover errors and non-HTML responses. Wrap HTML
         // caching so its ETags and explicit preload freshness remain effective.
-        .layer(from_fn(middleware::security_headers))
+        .layer(from_fn_with_state(middleware::SecurityHeaders::new(&state.config), middleware::security_headers))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, PAGE_TIMEOUT))
         .layer(page_compression())
         // Forms are small; this bounds memory per request for every extractor that buffers.

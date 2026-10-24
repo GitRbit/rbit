@@ -279,7 +279,8 @@ async fn sign_up_sends_a_verification_link() {
     fixture.recovery.spawn_background();
 
     let input = SignUp { username: "bob".to_owned(), email: "bob@example.com".to_owned(), password: PASSWORD.to_owned() };
-    let bob = fixture.services.accounts.sign_up(input).await.unwrap();
+    let setup_token = fixture.services.accounts.setup_token().unwrap_or_default().to_owned();
+    let bob = fixture.services.accounts.sign_up(input, &setup_token).await.unwrap();
     assert!(!fixture.is_verified(&bob).await);
 
     let mail = fixture.mail(1).await;
