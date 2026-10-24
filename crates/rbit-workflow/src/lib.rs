@@ -4,8 +4,21 @@
 //! an event without touching Git, the database or the network. No I/O, no async, and no
 //! dependency on other rbit crates, so every rule here is tested with plain tables.
 //!
+//! * [`yaml`] — the YAML document tree, parsed within budgets.
+//! * [`parse()`] — a workflow file into the typed [`model`], within [`Limits`] and a
+//!   [`Deadline`]; problems come back as a [`WorkflowError`] with a line and column.
 //! * [`pattern`] — GitHub's filter-pattern dialect for `branches`, `tags` and `paths`.
 //!
 //! The Actions foundation (workstream F of `docs/design/actions.md`) owns this crate.
 
+pub mod error;
+pub mod limits;
+pub mod model;
+pub mod parse;
 pub mod pattern;
+pub mod yaml;
+
+pub use error::{ErrorKind, Location, WorkflowError};
+pub use limits::{Deadline, Limits};
+pub use model::Workflow;
+pub use parse::parse;

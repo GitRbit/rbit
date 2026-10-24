@@ -112,6 +112,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 # GitHub filter patterns compile to anchored expressions; regex-automata is already in the
 # tree (through fancy-regex and tracing-subscriber), so the patterns add no crate.
 regex-automata = "0.4"
+# Workflow files: a panic-free YAML deserializer with budgets (depth, nodes, alias replays)
+# and source locations. Only its deserializer; payloads are emitted by rbit-workflow.
+serde-saphyr = { version = "2.0", default-features = false, features = ["deserialize"] }
 
 # Testing
 tempfile = "3"

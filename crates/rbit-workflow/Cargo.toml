@@ -8,6 +8,11 @@ license.workspace = true
 
 [dependencies]
 regex-automata.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true
