@@ -191,3 +191,31 @@ async fn an_approved_run_waits_while_its_group_is_busy() {
     let repo = writer.repo.repo.id;
     assert_eq!(fixture.database.actions_runs().find_run(repo, second.id).await.unwrap().unwrap().status, Status::Waiting, "released");
 }
+
+// Actions: archived repositories.
+#[tokio::test]
+async fn archived_repositories_start_nothing_and_refuse_reruns() {
+    let fixture = Box::pin(Fixture::new()).await;
+    let workflow = "on: [push, workflow_dispatch]\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
+    let run = pushed(&fixture, &[(".forgejo/workflows/ci.yml", workflow)], "CI").await;
+    let actions = fixture.actions();
+    let writer = fixture.repo(&fixture.carol).await;
+    actions.cancel(&fixture.carol, &writer, run.id).await.unwrap();
+
+    let repo = writer.repo.repo.id;
+    fixture.database.repo_settings().archive(repo, fixture.alice.id(), Timestamp::now()).await.unwrap();
+    let archived = fixture.repo(&fixture.carol).await;
+    assert!(matches!(actions.rerun(&fixture.carol, &archived, run.id, Rerun::All).await, Err(ServiceError::Archived)));
+    let request = rbit_services::actions::dispatch::DispatchRequest {
+        workflow: "ci.yml".into(),
+        reference: "main".into(),
+        inputs: std::collections::BTreeMap::new(),
+    };
+    assert!(matches!(actions.dispatch(&fixture.carol, &archived, &request).await, Err(ServiceError::Archived)));
+
+    // A push that reached the repository before it was archived starts nothing now either.
+    fixture.commit(&[("README.md", "late")], "Late");
+    let update = fixture.push_ref("refs/heads/main").await;
+    let runs = actions.handle_push(repo, PushSource::User(fixture.alice.id()), &[update]).await.unwrap();
+    assert!(runs.is_empty(), "an archived repository starts no runs: {runs:?}");
+}

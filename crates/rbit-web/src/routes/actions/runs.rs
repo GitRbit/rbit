@@ -171,7 +171,8 @@ pub async fn show(
     let detail = actions.run_detail(&loaded.ctx, run_number(&run)?).await?;
     let urls = ActionsUrls::new(&loaded.urls.home());
     let run = &detail.run;
-    let can_write = loaded.ctx.access.can_write();
+    // Writer controls follow the repository's content: none in an archived one.
+    let can_write = loaded.ctx.can_write_content();
     let finished = run.status.is_done();
     let has_jobs = !run.is_workflow_error();
     let any_failed = detail.jobs.iter().any(|job| matches!(job.status, Status::Failure | Status::Cancelled));

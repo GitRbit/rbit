@@ -113,6 +113,11 @@ impl ActionsService {
         candidate: Candidate,
         allowance: &mut Allowance,
     ) -> Result<Option<Run>, ServiceError> {
+        // An archived repository is read-only: nothing starts there, whatever the trigger.
+        if trigger.repo.repo.is_archived() {
+            tracing::debug!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "the repository is archived; no run");
+            return Ok(None);
+        }
         if allowance.runs == 0 {
             tracing::warn!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "an event may start at most {} runs; skipped", self.config().max_runs_per_event);
             return Ok(None);
@@ -303,6 +308,7 @@ impl ActionsService {
     /// author would skip the wait today: re-running is not approving.
     pub async fn rerun(&self, actor: &User, repo: &RepoContext, id: RunId, which: Rerun) -> Result<Run, ServiceError> {
         require_write(repo)?;
+        repo.ensure_writable()?;
         let store = self.ctx().database.actions_runs();
         let repo_id = repo.repo.repo.id;
         let run = store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
@@ -340,6 +346,7 @@ impl ActionsService {
     /// repository from now on: their runs no longer wait (also audited).
     pub async fn approve(&self, actor: &User, repo: &RepoContext, id: RunId, trust_author: bool) -> Result<Run, ServiceError> {
         require_write(repo)?;
+        repo.ensure_writable()?;
         let store = self.ctx().database.actions_runs();
         let repo_id = repo.repo.repo.id;
         let run = store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)?;

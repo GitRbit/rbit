@@ -86,7 +86,7 @@ pub async fn show(
     open_one(&mut steps);
     let people = actions.run_detail(&loaded.ctx, number).await?.people;
     let finished = detail.job.status.is_done();
-    let can_rerun = loaded.ctx.access.can_write() && finished && detail.run.status.is_done();
+    let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
     Ok(JobPage {
         page: page.titled(format!("{} · {} #{} · {}", detail.job.name, detail.run.workflow_name, number, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),

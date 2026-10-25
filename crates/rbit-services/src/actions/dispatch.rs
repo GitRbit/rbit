@@ -48,6 +48,7 @@ impl ActionsService {
         if !repo.access.can_write() {
             return Err(if repo.access.can_read() { ServiceError::Forbidden } else { ServiceError::NotFound });
         }
+        repo.ensure_writable()?;
         let owned = &repo.repo;
         if !self.ctx().database.actions_settings().is_enabled(owned.repo.id).await? {
             return Err(ServiceError::NotFound);
