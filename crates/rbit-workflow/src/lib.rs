@@ -11,6 +11,8 @@
 //! * [`trigger`] — whether a push, pull request, dispatch or schedule tick starts a
 //!   workflow, and dispatch input checks.
 //! * [`cron`] — `schedule` expressions and their next fire time.
+//! * [`expr`] — GitHub's expression language: one evaluator, shared by the server and
+//!   `rbit-runner`, each supplying the contexts it has.
 //! * [`plan()`] — the jobs of a run: matrices expanded, `runs-on` and names interpolated
 //!   ([`expr`]), each with its single-job [`payload`] (emitted by [`emit`]); and the
 //!   run's concurrency group.

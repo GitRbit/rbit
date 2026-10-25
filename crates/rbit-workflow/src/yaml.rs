@@ -129,6 +129,27 @@ impl Node {
         self.as_scalar().filter(|scalar| scalar.value != ScalarValue::Null).map(Scalar::text)
     }
 
+    /// The node as JSON data, as an expression sees it. Integers stay integers where JSON
+    /// can hold them; non-finite floats, which JSON cannot, become `null`.
+    pub fn to_json(&self) -> serde_json::Value {
+        use serde_json::Value as Json;
+        match &self.value {
+            Value::Scalar(scalar) => match &scalar.value {
+                ScalarValue::Null => Json::Null,
+                ScalarValue::Bool(value) => Json::Bool(*value),
+                #[allow(clippy::cast_precision_loss, reason = "beyond 64 bits, only the magnitude of a number is meaningful")]
+                ScalarValue::Int(value) => i64::try_from(*value)
+                    .map(Json::from)
+                    .or_else(|_| u64::try_from(*value).map(Json::from))
+                    .unwrap_or_else(|_| serde_json::Number::from_f64(*value as f64).map_or(Json::Null, Json::Number)),
+                ScalarValue::Float(value) => serde_json::Number::from_f64(*value).map_or(Json::Null, Json::Number),
+                ScalarValue::String(text) => Json::String(text.clone()),
+            },
+            Value::Sequence(items) => Json::Array(items.iter().map(Self::to_json).collect()),
+            Value::Mapping(mapping) => Json::Object(mapping.iter().map(|(key, value)| (key.name.clone(), value.to_json())).collect()),
+        }
+    }
+
     /// Equality of data, ignoring locations and spelling (`1.10` equals `1.1`, `1` does not
     /// equal `1.0` or `"1"`), as Go's `reflect.DeepEqual` compares decoded values.
     pub fn same_value(&self, other: &Self) -> bool {

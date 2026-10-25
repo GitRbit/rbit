@@ -12,13 +12,15 @@
 //! The workflow-level `concurrency.group` is evaluated here too, against the `github.*`
 //! values rbit knows ([`GroupContext`]).
 
+use serde_json::{Map, Value, json};
+
 use crate::{
     error::{Location, WorkflowError},
-    expr::{ExprValue, Template},
+    expr::{ContextMap, Template, to_text},
     limits::{Deadline, Limits},
     model::{Job, Matrix, Permissions, Workflow},
     payload,
-    yaml::{Mapping, Node, ScalarValue, Value},
+    yaml::{self, Mapping, Node, ScalarValue},
 };
 
 /// One matrix combination: each key and its value, keys in sorted order.
@@ -52,7 +54,7 @@ impl PlannedJob {
         }
         let at = Location::new(0, 0);
         let mapping = Mapping(self.matrix.iter().map(|(key, value)| (crate::yaml::Key { name: key.clone(), at }, value.clone())).collect());
-        Some(crate::emit::json(&Node::new(Value::Mapping(mapping), at)))
+        Some(crate::emit::json(&Node::new(yaml::Value::Mapping(mapping), at)))
     }
 }
 
@@ -159,15 +161,15 @@ fn matrix_name(combination: &Combination) -> String {
 /// A YAML value as Go's `fmt.Sprint` prints it once decoded into `interface{}`.
 fn go_format(node: &Node) -> String {
     match &node.value {
-        Value::Scalar(scalar) => match &scalar.value {
+        yaml::Value::Scalar(scalar) => match &scalar.value {
             ScalarValue::Null => "<nil>".to_owned(),
             ScalarValue::Bool(value) => value.to_string(),
             ScalarValue::Int(value) => value.to_string(),
             ScalarValue::Float(value) => go_float(*value),
             ScalarValue::String(text) => text.clone(),
         },
-        Value::Sequence(items) => format!("[{}]", items.iter().map(go_format).collect::<Vec<_>>().join(" ")),
-        Value::Mapping(mapping) => {
+        yaml::Value::Sequence(items) => format!("[{}]", items.iter().map(go_format).collect::<Vec<_>>().join(" ")),
+        yaml::Value::Mapping(mapping) => {
             let mut entries: Vec<(&str, String)> = mapping.iter().map(|(key, value)| (key.name.as_str(), go_format(value))).collect();
             entries.sort_unstable();
             format!("map[{}]", entries.iter().map(|(key, value)| format!("{key}:{value}")).collect::<Vec<_>>().join(" "))
@@ -194,54 +196,34 @@ fn go_float(value: f64) -> String {
     format!("{value}")
 }
 
-/// The value of `matrix.<key>` in an expression (`null` for a key the combination does
-/// not have, as on GitHub), or `None` for anything else.
-fn matrix_lookup(combination: &Combination) -> impl Fn(&[String]) -> Option<ExprValue> + '_ {
-    move |path| match path {
-        [context, key] if context == "matrix" => {
-            let Some((_, node)) = combination.iter().find(|(name, _)| name.eq_ignore_ascii_case(key)) else {
-                return Some(ExprValue::Null);
-            };
-            match &node.value {
-                Value::Scalar(scalar) => Some(match &scalar.value {
-                    ScalarValue::Null => ExprValue::Null,
-                    ScalarValue::Bool(value) => ExprValue::Bool(*value),
-                    #[allow(clippy::cast_precision_loss, reason = "expressions compute with doubles, as on GitHub")]
-                    ScalarValue::Int(value) => ExprValue::Number(*value as f64),
-                    ScalarValue::Float(value) => ExprValue::Number(*value),
-                    ScalarValue::String(text) => ExprValue::String(text.clone()),
-                }),
-                _ => None,
-            }
-        }
-        _ => None,
-    }
+/// The contexts a job's `runs-on` and `name` are evaluated with: its `matrix`.
+fn matrix_contexts(combination: &Combination) -> ContextMap {
+    let matrix: Map<String, Value> = combination.iter().map(|(key, value)| (key.clone(), value.to_json())).collect();
+    ContextMap::new().with("matrix", matrix)
 }
 
-/// `runs-on` with matrix values interpolated. `${{ matrix.x }}` whose value is a list
-/// contributes every item. Anything but `matrix.*` cannot be evaluated by rbit and is
-/// refused: a runner is chosen before the job runs.
+/// `runs-on` with matrix values interpolated. A label that is exactly one expression whose
+/// value is a list (`${{ matrix.labels }}`) contributes every item. Anything but `matrix`
+/// cannot be evaluated yet and is refused: a runner is chosen before the job runs.
 fn runs_on(job: &Job, combination: &Combination) -> Result<Vec<String>, WorkflowError> {
     let refuse = |label: &str, problem: &dyn std::fmt::Display| {
         WorkflowError::plan(format!("job `{}`: runs-on `{label}`: {problem}", job.id), Some(job.at))
     };
-    let lookup = matrix_lookup(combination);
+    let contexts = matrix_contexts(combination);
     let mut labels = Vec::new();
     for label in &job.runs_on {
-        let template = Template::parse(label).map_err(|problem| refuse(label, &problem))?;
-        let list = template.as_single_expr().and_then(|expr| match expr {
-            crate::expr::Expr::Path(path) if path.len() == 2 && path[0] == "matrix" => {
-                combination.iter().find(|(name, _)| name.eq_ignore_ascii_case(&path[1])).and_then(|(_, node)| node.as_sequence())
-            }
-            _ => None,
-        });
-        match list {
-            Some(items) => {
+        let value = Template::parse(label).and_then(|template| template.evaluate(&contexts)).map_err(|problem| refuse(label, &problem))?;
+        match value {
+            Value::Array(items) => {
                 for item in items {
-                    labels.push(item.as_text().ok_or_else(|| refuse(label, &"a matrix list for runs-on must hold strings"))?);
+                    let Value::String(item) = item else {
+                        return Err(refuse(label, &"a list for runs-on must hold strings"));
+                    };
+                    labels.push(item);
                 }
             }
-            None => labels.push(template.render(&lookup).map_err(|problem| refuse(label, &problem))?),
+            Value::Object(_) => return Err(refuse(label, &"runs-on must be a string or a list of strings")),
+            other => labels.push(to_text(&other)),
         }
     }
     if labels.is_empty() || labels.iter().any(String::is_empty) {
@@ -255,7 +237,7 @@ fn runs_on(job: &Job, combination: &Combination) -> Result<Vec<String>, Workflow
 fn job_name(job: &Job, combination: &Combination) -> String {
     match &job.name {
         Some(name) => {
-            Template::parse(name).map_or_else(|_| name.clone(), |template| template.render_partially(&matrix_lookup(combination)))
+            Template::parse(name).map_or_else(|_| name.clone(), |template| template.render_partially(&matrix_contexts(combination)))
         }
         None if combination.is_empty() => job.id.clone(),
         None => format!("{} {}", job.id, matrix_name(combination)),
@@ -263,6 +245,9 @@ fn job_name(job: &Job, combination: &Combination) -> String {
 }
 
 /// The `github.*` values a workflow-level `concurrency.group` may use (§11.6).
+///
+/// Other `github` properties are `null` until runs are created from job templates with the
+/// whole `github` context.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GroupContext {
     /// The workflow's name, or its path when it has none.
@@ -280,6 +265,22 @@ pub struct GroupContext {
     pub pull_request_number: Option<u64>,
 }
 
+impl GroupContext {
+    /// The values as a `github` context.
+    pub fn github(&self) -> Value {
+        json!({
+            "workflow": self.workflow,
+            "ref": self.reference,
+            "head_ref": self.head_ref,
+            "base_ref": self.base_ref,
+            "event_name": self.event_name,
+            "repository": self.repository,
+            "run_id": self.run_id,
+            "event": {"pull_request": {"number": self.pull_request_number}},
+        })
+    }
+}
+
 /// The run's concurrency group and whether it cancels runs in progress, or `None` when
 /// the workflow sets no concurrency.
 pub fn concurrency_group(workflow: &Workflow, context: &GroupContext) -> Result<Option<(String, bool)>, WorkflowError> {
@@ -287,26 +288,8 @@ pub fn concurrency_group(workflow: &Workflow, context: &GroupContext) -> Result<
         return Ok(None);
     };
     let refuse = |problem: &dyn std::fmt::Display| WorkflowError::plan(format!("concurrency group: {problem}"), Some(concurrency.at));
-    let lookup = |path: &[String]| -> Option<ExprValue> {
-        let path: Vec<&str> = path.iter().map(String::as_str).collect();
-        let text = |value: &str| Some(ExprValue::String(value.to_owned()));
-        match path.as_slice() {
-            ["github", "workflow"] => text(&context.workflow),
-            ["github", "ref"] => text(&context.reference),
-            ["github", "head_ref"] => text(&context.head_ref),
-            ["github", "base_ref"] => text(&context.base_ref),
-            ["github", "event_name"] => text(&context.event_name),
-            ["github", "repository"] => text(&context.repository),
-            #[allow(clippy::cast_precision_loss, reason = "expressions compute with doubles, as on GitHub")]
-            ["github", "run_id"] => Some(ExprValue::Number(context.run_id as f64)),
-            #[allow(clippy::cast_precision_loss, reason = "expressions compute with doubles, as on GitHub")]
-            ["github", "event", "pull_request", "number"] => {
-                Some(context.pull_request_number.map_or(ExprValue::Null, |number| ExprValue::Number(number as f64)))
-            }
-            _ => None,
-        }
-    };
-    let group = Template::parse(&concurrency.group).and_then(|template| template.render(&lookup)).map_err(|problem| refuse(&problem))?;
+    let contexts = ContextMap::new().with("github", context.github());
+    let group = Template::parse(&concurrency.group).and_then(|template| template.render(&contexts)).map_err(|problem| refuse(&problem))?;
     if group.is_empty() {
         return Err(refuse(&"evaluates to an empty group"));
     }
@@ -436,7 +419,7 @@ jobs:
 
     #[test]
     fn runs_on_refusals() {
-        for runs_on in ["${{ github.ref }}", "${{ matrix.missing }}", "${{ format('x') }}", "${{ matrix.empty }}", "${{ matrix.nested }}"] {
+        for runs_on in ["${{ github.ref }}", "${{ matrix.missing }}", "${{ format( }}", "${{ matrix.empty }}", "${{ matrix.nested }}"] {
             let source = format!(
                 "on: push\njobs:\n  j:\n    runs-on: \"{runs_on}\"\n    strategy: {{matrix: {{empty: [''], nested: [[{{a: 1}}]]}}}}\n"
             );
