@@ -4423,6 +4423,7 @@ dependencies = [
  "rbit-services",
  "rbit-storage",
  "rbit-transport",
+ "rbit-workflow",
  "rust-embed",
  "serde",
  "serde_json",

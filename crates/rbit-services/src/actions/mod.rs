@@ -93,6 +93,9 @@ struct Inner {
     // Actions: interface and secrets (U).
     /// The secrets key, looked at once (see [`secrets`]).
     secrets_key: tokio::sync::OnceCell<secrets::KeyState>,
+    // Actions: S.
+    /// Every runner by credential digest, loaded on first use (see [`runners`]).
+    runners: tokio::sync::OnceCell<runners::RunnerCache>,
 }
 
 impl ActionsService {
@@ -115,6 +118,8 @@ impl ActionsService {
                 missed_events: AtomicU64::new(0),
                 // Actions: interface and secrets (U).
                 secrets_key: tokio::sync::OnceCell::new(),
+                // Actions: S.
+                runners: tokio::sync::OnceCell::new(),
             }),
         })
     }

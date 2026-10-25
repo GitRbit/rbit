@@ -50,6 +50,13 @@ pub enum ThrottleScope {
     /// Milestone 3 (O): returns from external sign-in providers (keyed by client address);
     /// a callback that fails (bad state, refused token) costs extra.
     ExternalSignIn,
+    // Actions: S.
+    /// Runner credentials on the runner protocol (keyed by client address). Only failed
+    /// authentication spends it: a runner polling every few seconds never notices, a client
+    /// guessing credentials is stopped ([`ThrottleService::check_client_failures`]).
+    RunnerAuth,
+    /// Runner registrations (keyed by client address); invalid registration tokens cost extra.
+    RunnerRegister,
 }
 
 /// A budget: `burst` units, refilled one per `refill`; failures cost `failure_cost` more.
@@ -113,6 +120,11 @@ impl Bucket {
             // Ten callbacks at once, then one every 30 seconds; a failure costs three. Only
             // used per client address, which gets five times that.
             Self::Scope(ThrottleScope::ExternalSignIn) => Limit::new(10, 30, 3),
+            // Actions: S. Failures only (see `check_client_failures`): ten wrong credentials,
+            // then one every six seconds; per client address five times that.
+            Self::Scope(ThrottleScope::RunnerAuth) => Limit::new(10, 6, 1),
+            // Five registrations, then one a minute; a wrong token costs two more.
+            Self::Scope(ThrottleScope::RunnerRegister) => Limit::new(5, 60, 2),
             // Generous: a person clicking around never notices, a script hammering forms does.
             Self::UnsafeRequest => Limit::new(60, 1, 0),
         }
@@ -172,6 +184,14 @@ impl ThrottleService {
         self.penalise(Bucket::Client(scope), address, Instant::now());
     }
 
+    // Actions: S.
+    /// Fails with [`ServiceError::RateLimited`] when `address` has no budget left in `scope`,
+    /// without spending any: for scopes that only failures spend
+    /// ([`ThrottleScope::RunnerAuth`]), charged with [`Self::record_client_failure`].
+    pub fn check_client_failures(&self, scope: ThrottleScope, address: &str) -> Result<(), ServiceError> {
+        self.peek(Bucket::Client(scope), address, Instant::now())
+    }
+
     /// Like [`Self::reset`], for a client address.
     pub fn reset_client(&self, scope: ThrottleScope, address: &str) {
         if self.enabled {
@@ -209,6 +229,20 @@ impl ThrottleService {
             buckets.retain(|_, tat| *tat > now);
         }
         buckets.insert(key, next);
+        Ok(())
+    }
+
+    /// Whether one unit is available at `now`, without spending it.
+    fn peek(&self, bucket: Bucket, key: &str, now: Instant) -> Result<(), ServiceError> {
+        if !self.enabled {
+            return Ok(());
+        }
+        let limit = bucket.limit();
+        let tat = self.lock().get(&(bucket, bucket_key(key))).copied().unwrap_or(now).max(now);
+        let debt = (tat + limit.refill).saturating_duration_since(now);
+        if debt > limit.capacity() {
+            return Err(ServiceError::RateLimited { retry_after_seconds: whole_seconds(debt.saturating_sub(limit.capacity())) });
+        }
         Ok(())
     }
 
@@ -325,6 +359,27 @@ mod tests {
         throttle.check(ThrottleScope::SignIn, "203.0.113.7").unwrap();
         throttle.reset_client(ThrottleScope::SignIn, "203.0.113.7");
         throttle.check_client(ThrottleScope::SignIn, "203.0.113.7").unwrap();
+    }
+
+    // Actions: S.
+    #[test]
+    fn runner_authentication_spends_only_on_failure() {
+        let throttle = ThrottleService::with_enabled(true);
+        let now = Instant::now();
+        let bucket = Bucket::Client(ThrottleScope::RunnerAuth);
+        for _ in 0..1000 {
+            throttle.peek(bucket, "203.0.113.7", now).unwrap();
+        }
+        let mut failures = 0;
+        while throttle.peek(bucket, "203.0.113.7", now).is_ok() {
+            throttle.penalise(bucket, "203.0.113.7", now);
+            failures += 1;
+        }
+        assert_eq!(failures, bucket.limit().burst, "every failure costs one unit");
+        assert!(retry_after(throttle.peek(bucket, "203.0.113.7", now)).is_some());
+        throttle.peek(bucket, "198.51.100.1", now).unwrap();
+        throttle.peek(bucket, "203.0.113.7", now + bucket.limit().refill).unwrap();
+        assert!(ThrottleService::with_enabled(false).check_client_failures(ThrottleScope::RunnerAuth, "x").is_ok());
     }
 
     #[test]

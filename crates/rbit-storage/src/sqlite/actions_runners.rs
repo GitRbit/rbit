@@ -12,7 +12,7 @@ use rbit_core::{
 };
 use sqlx::SqlitePool;
 
-use super::actions_rows::{labels, labels_json, runner_columns, runner_scope, timestamp};
+use super::actions_rows::{bytes, labels, labels_json, runner_columns, runner_scope, timestamp};
 use crate::StorageError;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -53,13 +53,26 @@ impl TryFrom<RunnerRow> for Runner {
 }
 
 macro_rules! select_runner {
-    ($clause:expr) => {
+    ($extra:literal, $clause:literal) => {
         concat!(
             "SELECT id, uuid, name, scope_kind, owner_id, repo_id, labels, pinned_labels, version, ephemeral, disabled, \
-             last_online, created_at FROM actions_runners ",
+             last_online, created_at",
+            $extra,
+            " FROM actions_runners ",
             $clause
         )
     };
+    ($clause:literal) => {
+        select_runner!("", $clause)
+    };
+}
+
+/// A runner row and the digest of its credential (`select_runner!(", token_digest", …)`).
+#[derive(Debug, sqlx::FromRow)]
+struct RunnerWithDigest {
+    #[sqlx(flatten)]
+    runner: RunnerRow,
+    token_digest: Vec<u8>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -283,6 +296,13 @@ impl ActionsRunnerStore {
     pub async fn all(&self) -> Result<Vec<Runner>, StorageError> {
         let rows: Vec<RunnerRow> = sqlx::query_as(select_runner!("ORDER BY id")).fetch_all(&self.pool).await?;
         rows.into_iter().map(Runner::try_from).collect()
+    }
+
+    // Actions: S.
+    /// Every runner with the digest of its credential: what the runner cache is loaded from.
+    pub async fn all_with_digests(&self) -> Result<Vec<(Runner, [u8; 32])>, StorageError> {
+        let rows: Vec<RunnerWithDigest> = sqlx::query_as(select_runner!(", token_digest", "ORDER BY id")).fetch_all(&self.pool).await?;
+        rows.into_iter().map(|row| Ok((Runner::try_from(row.runner)?, bytes("runner token digest", &row.token_digest)?))).collect()
     }
 
     /// The runners of exactly `scope`, oldest first.
