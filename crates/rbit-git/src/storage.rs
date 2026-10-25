@@ -111,8 +111,10 @@ impl RepositoryStorage {
         Ok(())
     }
 
-    /// Permanently removes a repository from disk.
+    /// Permanently removes a repository from disk after readers and background jobs
+    /// release their open files, keeping new work out until deletion finishes.
     pub async fn delete(&self, owner: AccountId, repo: RepoId) -> Result<(), GitError> {
+        let _lease = self.exclusive(repo).await;
         let path = self.path_for(owner, repo);
         match tokio::fs::remove_dir_all(&path).await {
             Ok(()) => Ok(()),
@@ -132,6 +134,31 @@ fn head_ref(branch: &str) -> Result<String, GitError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn deletion_waits_for_open_repository_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = RepositoryStorage::new(dir.path());
+        let owner = AccountId(1);
+        let repo = RepoId(2);
+        let path = storage.create(owner, repo, "main").await.unwrap();
+        let lease = storage.lease(repo).await;
+        // A reader or cache warm-up may have a repository file open after a push.
+        // Windows refuses deletion while that handle lives; Unix must wait too.
+        let open = std::fs::File::open(path.join("HEAD")).unwrap();
+        let deleting = tokio::spawn({
+            let storage = storage.clone();
+            async move { storage.delete(owner, repo).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!deleting.is_finished(), "deletion must wait for the repository's lease");
+        assert!(path.join("HEAD").exists(), "no files are removed while the repository is in use");
+        drop(open);
+        drop(lease);
+        tokio::time::timeout(std::time::Duration::from_secs(5), deleting).await.unwrap().unwrap().unwrap();
+        assert!(!path.exists());
+        storage.delete(owner, repo).await.unwrap();
+    }
 
     #[tokio::test]
     async fn set_head_points_head_at_branch() {
