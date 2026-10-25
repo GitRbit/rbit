@@ -84,8 +84,30 @@ impl Fixture {
     async fn run(&self, workflow: &str, title: &str, event: RunEvent) -> rbit_core::actions::Run {
         let (needs, labels) = (vec!["build".to_owned()], vec!["ubuntu-latest".to_owned()]);
         let jobs = [
-            NewJob { key: "build", name: "build", matrix: None, needs: &[], runs_on: &labels, permissions: None, payload: b"{}" },
-            NewJob { key: "test", name: "test", matrix: None, needs: &needs, runs_on: &labels, permissions: None, payload: b"{}" },
+            NewJob {
+                key: "build",
+                name: "build",
+                matrix: None,
+                needs: &[],
+                runs_on: &labels,
+                permissions: None,
+                payload: b"{}",
+                condition: false,
+                max_parallel: None,
+                group: None,
+            },
+            NewJob {
+                key: "test",
+                name: "test",
+                matrix: None,
+                needs: &needs,
+                runs_on: &labels,
+                permissions: None,
+                payload: b"{}",
+                condition: false,
+                max_parallel: None,
+                group: None,
+            },
         ];
         let new = NewRun {
             repo: self.repo_id().await,

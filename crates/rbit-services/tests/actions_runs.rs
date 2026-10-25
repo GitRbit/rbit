@@ -52,10 +52,11 @@ async fn writers_cancel_and_run_again() {
     let store = fixture.database.actions_runs();
     let settled = store.finish_task(claimed.task.id, Status::Failure, Timestamp::now()).await.unwrap().unwrap();
     actions.settled(&settled).await.unwrap();
-    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Waiting), ("c", Status::Waiting)]));
+    // `b` needs `a` and has no `if:` of its own, so the default `success()` skips it.
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Waiting)]));
     let cancelled = actions.cancel(&fixture.carol, &writer, run.id).await.unwrap();
     assert_eq!(cancelled.status, Status::Cancelled);
-    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Cancelled), ("c", Status::Cancelled)]));
+    assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Failure), ("b", Status::Skipped), ("c", Status::Cancelled)]));
     assert!(matches!(actions.cancel(&fixture.carol, &writer, run.id).await, Err(ServiceError::Invalid(_))), "already finished");
 
     let version = actions.tasks_version();

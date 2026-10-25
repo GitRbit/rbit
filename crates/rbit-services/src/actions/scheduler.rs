@@ -327,7 +327,7 @@ impl ActionsService {
 
     /// The `needs` context: for every needed job, its result over all its matrix instances
     /// and their outputs merged.
-    async fn needs(&self, run: &Run, template: &JobTemplate) -> Result<BTreeMap<String, Needed>, ServiceError> {
+    pub(super) async fn needs(&self, run: &Run, template: &JobTemplate) -> Result<BTreeMap<String, Needed>, ServiceError> {
         if template.needs.is_empty() {
             return Ok(BTreeMap::new());
         }

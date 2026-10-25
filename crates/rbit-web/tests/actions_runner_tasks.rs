@@ -86,6 +86,9 @@ pub async fn seed_run(fixture: &Fixture, jobs: &[(JobTemplate, Vec<u8>)], truste
             runs_on,
             permissions: None,
             payload,
+            condition: false,
+            max_parallel: None,
+            group: None,
         })
         .collect();
     let run = fixture

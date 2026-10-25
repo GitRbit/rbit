@@ -326,6 +326,13 @@ pub struct NewJob<'a> {
     /// The effective `permissions:` as a JSON object.
     pub permissions: Option<&'a str>,
     pub payload: &'a [u8],
+    // Actions: join (J).
+    /// The job has its own `if:`: it stays blocked until [`ActionsRunStore::decide`].
+    pub condition: bool,
+    /// `strategy.max-parallel`.
+    pub max_parallel: Option<u32>,
+    /// Job-level `concurrency.group`.
+    pub group: Option<&'a str>,
 }
 
 /// Filters of the runs list. `before` pages by id (newest first), `offset` by position
@@ -391,6 +398,21 @@ pub struct Settled {
     pub run_status: RunStatus,
     /// Jobs that became waiting: the scheduler's version must move.
     pub now_waiting: Vec<JobId>,
+    // Actions: join (J).
+    /// Jobs whose needs are done and whose own `if:` the caller must now decide.
+    pub to_decide: Vec<JobId>,
+}
+
+// Actions: join (J).
+/// How a job's own `if:` came out (see [`ActionsRunStore::decide`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    /// True: the job waits for a runner.
+    Run,
+    /// False: the job is skipped, like one whose needs failed.
+    Skip,
+    /// The condition could not be evaluated: the job fails, as on GitHub.
+    Fail,
 }
 
 /// Which jobs a re-run starts again.
@@ -458,10 +480,12 @@ impl ActionsRunStore {
         .await?;
         let mut waiting = Vec::new();
         for job in new.jobs {
-            let status = initial_status(new.start, !job.needs.is_empty());
+            // A job with its own `if:` waits for the server's decision like one with needs.
+            let status = initial_status(new.start, !job.needs.is_empty() || job.condition);
             let job_id: i64 = sqlx::query_scalar(
                 "INSERT INTO actions_jobs (run_id, repo_id, job_key, name, matrix, needs, permissions, payload, status, created_at, \
-                 queued_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) RETURNING id",
+                 queued_at, condition, max_parallel, job_group) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
+                 RETURNING id",
             )
             .bind(run_id)
             .bind(new.repo.0)
@@ -474,6 +498,9 @@ impl ActionsRunStore {
             .bind(status.code())
             .bind(new.now.0)
             .bind((status == Status::Waiting).then_some(new.now.0))
+            .bind(job.condition)
+            .bind(job.max_parallel)
+            .bind(job.group)
             .fetch_one(&mut *tx)
             .await?;
             insert_labels(&mut tx, job_id, job.runs_on).await?;
@@ -1170,6 +1197,96 @@ impl ActionsRunStore {
             .await?;
         Ok(result.rows_affected() == 1)
     }
+
+    // Actions: join (J).
+    /// Settles job `job`'s own `if:` (listed in [`Settled::to_decide`]): it waits for a
+    /// runner, is skipped, or fails (the condition could not be evaluated). `None` when the
+    /// job is no longer blocked — someone decided first, or the run was cancelled.
+    pub async fn decide(&self, job: JobId, decision: Decision, now: Timestamp) -> Result<Option<Settled>, StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let (status, queued) = match decision {
+            Decision::Run => (Status::Waiting, Some(now.0)),
+            Decision::Skip => (Status::Skipped, None),
+            Decision::Fail => (Status::Failure, None),
+        };
+        let run: Option<i64> = sqlx::query_scalar(
+            "UPDATE actions_jobs SET status = ?2, queued_at = COALESCE(?3, queued_at), \
+             finished_at = CASE WHEN ?3 IS NULL THEN ?4 ELSE finished_at END WHERE id = ?1 AND status = 7 AND condition = 1 RETURNING run_id",
+        )
+        .bind(job.0)
+        .bind(status.code())
+        .bind(queued)
+        .bind(now.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(run) = run else { return Ok(None) };
+        let waiting = if decision == Decision::Run { vec![job.0] } else { Vec::new() };
+        let settled = settle(&mut tx, RunId(run), waiting, now).await?;
+        tx.commit().await?;
+        Ok(Some(settled))
+    }
+
+    /// Cancels the unfinished jobs among `jobs` of run `run` (`strategy.fail-fast`: the
+    /// matrix siblings of a job that failed). Running ones are cancelled in the database —
+    /// their task tokens die at once, as with [`Self::cancel_run`] (§11.11) — and their
+    /// runners learn it on their next state call.
+    pub async fn cancel_jobs(&self, run: RunId, jobs: &[JobId], now: Timestamp) -> Result<Option<Settled>, StorageError> {
+        if jobs.is_empty() {
+            return Ok(None);
+        }
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut cancelled = 0;
+        for job in jobs {
+            sqlx::query(
+                "UPDATE actions_tasks SET token_digest = NULL WHERE status = 6 AND job_id = ?1 \
+                 AND job_id IN (SELECT id FROM actions_jobs WHERE run_id = ?2)",
+            )
+            .bind(job.0)
+            .bind(run.0)
+            .execute(&mut *tx)
+            .await?;
+            let result = sqlx::query(
+                "UPDATE actions_jobs SET status = 3, finished_at = ?3 WHERE id = ?1 AND run_id = ?2 AND status IN (5, 6, 7, 8)",
+            )
+            .bind(job.0)
+            .bind(run.0)
+            .bind(now.0)
+            .execute(&mut *tx)
+            .await?;
+            cancelled += result.rows_affected();
+        }
+        if cancelled == 0 {
+            return Ok(None);
+        }
+        let settled = settle(&mut tx, run, Vec::new(), now).await?;
+        tx.commit().await?;
+        Ok(Some(settled))
+    }
+
+    /// Settles run `run` again without changing anything: what [`Self::create_run`] did,
+    /// as a [`Settled`] the caller can follow up (jobs to decide, the scheduler's version).
+    pub async fn resettle(&self, run: RunId, now: Timestamp) -> Result<Settled, StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let waiting: Vec<i64> =
+            sqlx::query_scalar("SELECT id FROM actions_jobs WHERE run_id = ? AND status = 5").bind(run.0).fetch_all(&mut *tx).await?;
+        let settled = settle(&mut tx, run, waiting, now).await?;
+        tx.commit().await?;
+        Ok(settled)
+    }
+
+    /// Jobs left blocked with their `if:` undecided although their needs are done and their
+    /// run is not held — a decision lost to a restart — oldest first, for the sweeper.
+    pub async fn undecided(&self, limit: u32) -> Result<Vec<JobId>, StorageError> {
+        let ids: Vec<i64> = sqlx::query_scalar(concat!(
+            "SELECT id FROM actions_jobs WHERE condition = 1 AND status = 7 AND NOT EXISTS (",
+            "SELECT 1 FROM json_each(actions_jobs.needs) n JOIN actions_jobs d ON d.run_id = actions_jobs.run_id AND d.job_key = n.value ",
+            "WHERE d.status NOT IN (1, 2, 3, 4)) AND run_id IN (SELECT id FROM actions_runs WHERE status NOT IN (7, 8)) ORDER BY id LIMIT ?"
+        ))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(ids.into_iter().map(JobId).collect())
+    }
 }
 
 /// The waiting job a runner may take, oldest first: the repository has Actions on, the
@@ -1184,6 +1301,10 @@ const CLAIM_CANDIDATE: &str = "SELECT j.id FROM actions_jobs j \
          ELSE j.repo_id = ?3 END \
      AND EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id) \
      AND NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label NOT IN (SELECT value FROM json_each(?5))) \
+     AND (j.max_parallel IS NULL OR (SELECT COUNT(*) FROM actions_jobs s \
+         WHERE s.run_id = j.run_id AND s.job_key = j.job_key AND s.status = 6) < j.max_parallel) \
+     AND (j.job_group IS NULL OR NOT EXISTS (SELECT 1 FROM actions_jobs g \
+         WHERE g.repo_id = j.repo_id AND g.job_group = j.job_group AND g.status = 6)) \
      ORDER BY j.queued_at, j.id LIMIT 1";
 
 /// A run's status before its first settling: held and awaiting runs keep theirs, which
@@ -1232,27 +1353,77 @@ async fn release(tx: &mut SqliteConnection, repo: RepoId, run: RunId, now: Times
     settle(tx, run, Vec::new(), now).await.map(Some)
 }
 
+/// The blocked jobs of run `?1` whose needs have all finished.
+macro_rules! needs_done {
+    () => {
+        "run_id = ?1 AND status = 7 AND NOT EXISTS (\
+         SELECT 1 FROM json_each(actions_jobs.needs) n JOIN actions_jobs d ON d.run_id = actions_jobs.run_id AND d.job_key = n.value \
+         WHERE d.status NOT IN (1, 2, 3, 4))"
+    };
+}
+
+/// A job needed by the row did not succeed (every matrix instance of a needed key counts).
+macro_rules! a_need_failed {
+    () => {
+        "EXISTS (SELECT 1 FROM json_each(actions_jobs.needs) n JOIN actions_jobs d ON d.run_id = actions_jobs.run_id \
+         AND d.job_key = n.value WHERE d.status <> 1)"
+    };
+}
+
 /// Unblocks the jobs whose needs have all finished — unless the run is held for its
 /// concurrency group or awaits approval (its stored status says so) — then recomputes the
 /// run's status and times. `now_waiting` lists jobs the caller already made waiting.
+///
+/// A job without its own `if:` follows GitHub's default, `success()`: it waits for a runner
+/// when every job it needs succeeded and is skipped otherwise, which can finish the needs of
+/// others in turn. A job with its own `if:` stays blocked and is listed in
+/// [`Settled::to_decide`] for the caller to evaluate (§12.4).
 async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>, now: Timestamp) -> Result<Settled, StorageError> {
     let run_status: i64 = sqlx::query_scalar("SELECT status FROM actions_runs WHERE id = ?").bind(run.0).fetch_one(&mut *tx).await?;
     let held = matches!(status(run_status)?, Status::Blocked | Status::AwaitingApproval);
+    let mut to_decide = Vec::new();
     if !held {
+        // Each round's skips may finish the needs of further jobs, so this ends after as
+        // many rounds as the run's longest `needs` chain.
+        loop {
+            let skipped: Vec<i64> = sqlx::query_scalar(concat!(
+                "UPDATE actions_jobs SET status = 4, finished_at = ?2 WHERE ",
+                needs_done!(),
+                " AND condition = 0 AND ",
+                a_need_failed!(),
+                " RETURNING id"
+            ))
+            .bind(run.0)
+            .bind(now.0)
+            .fetch_all(&mut *tx)
+            .await?;
+            if skipped.is_empty() {
+                break;
+            }
+        }
         let unblocked: Vec<i64> = sqlx::query_scalar(concat!(
-            "UPDATE actions_jobs SET status = 5, queued_at = ?1 WHERE run_id = ?2 AND status = 7 AND NOT EXISTS (",
-            "SELECT 1 FROM json_each(actions_jobs.needs) n JOIN actions_jobs d ON d.run_id = actions_jobs.run_id AND d.job_key = n.value ",
-            "WHERE d.status NOT IN (1, 2, 3, 4)) RETURNING id"
+            "UPDATE actions_jobs SET status = 5, queued_at = ?2 WHERE ",
+            needs_done!(),
+            " AND condition = 0 RETURNING id"
         ))
-        .bind(now.0)
         .bind(run.0)
+        .bind(now.0)
         .fetch_all(&mut *tx)
         .await?;
         now_waiting.extend(unblocked);
+        to_decide = sqlx::query_scalar(concat!("SELECT id FROM actions_jobs WHERE ", needs_done!(), " AND condition = 1 ORDER BY id"))
+            .bind(run.0)
+            .fetch_all(&mut *tx)
+            .await?;
     }
     let codes: Vec<i64> = sqlx::query_scalar("SELECT status FROM actions_jobs WHERE run_id = ?").bind(run.0).fetch_all(&mut *tx).await?;
     let statuses = codes.into_iter().map(status).collect::<Result<Vec<_>, _>>()?;
-    let aggregated = aggregate(statuses.iter().copied());
+    let aggregated = match aggregate(statuses.iter().copied()) {
+        // Every job blocked on a decision (its own `if:`) is not a run held for its group:
+        // a blocked run status would stop the next settle from unblocking anything.
+        Status::Blocked if !held => Status::Waiting,
+        other => other,
+    };
     let started = statuses.contains(&Status::Running);
     sqlx::query(
         "UPDATE actions_runs SET status = ?1, started_at = CASE WHEN ?2 THEN COALESCE(started_at, ?3) ELSE started_at END, \
@@ -1266,7 +1437,12 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
     .execute(&mut *tx)
     .await?;
     now_waiting.sort_unstable();
-    Ok(Settled { run_id: run, run_status: aggregated, now_waiting: now_waiting.into_iter().map(JobId).collect() })
+    Ok(Settled {
+        run_id: run,
+        run_status: aggregated,
+        now_waiting: now_waiting.into_iter().map(JobId).collect(),
+        to_decide: to_decide.into_iter().map(JobId).collect(),
+    })
 }
 
 #[cfg(test)]

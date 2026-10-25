@@ -5,15 +5,15 @@
 use rbit_core::{
     AccountId, RepoId, Timestamp, Visibility,
     actions::{
-        DefaultTokenPermission, JobStatus, RunEvent, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope, SealedSecret,
-        SecretName, SecretScope, SecretVisibility, Status, VariableName,
+        DefaultTokenPermission, JobId, JobStatus, RunEvent, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope,
+        SealedSecret, SecretName, SecretScope, SecretVisibility, Status, VariableName,
     },
 };
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::{
         actions_runners::{Declaration, NewRegistrationToken, NewRunner, RegistrationRefusal},
-        actions_runs::{ClaimRequest, NewJob, NewRun, Rerun, RunFilter, RunStart, StepUpdate},
+        actions_runs::{ClaimRequest, Decision, NewJob, NewRun, Rerun, RunFilter, RunStart, StepUpdate},
         actions_schedules::NewSchedule,
     },
 };
@@ -125,7 +125,18 @@ impl Fixture {
 }
 
 fn job<'a>(key: &'a str, needs: &'a [String], runs_on: &'a [String]) -> NewJob<'a> {
-    NewJob { key, name: key, matrix: None, needs, runs_on, permissions: None, payload: b"jobs: {}\n" }
+    NewJob {
+        key,
+        name: key,
+        matrix: None,
+        needs,
+        runs_on,
+        permissions: None,
+        payload: b"jobs: {}\n",
+        condition: false,
+        max_parallel: None,
+        group: None,
+    }
 }
 
 fn new_run<'a>(repo: RepoId, jobs: &'a [NewJob<'a>], start: RunStart) -> NewRun<'a> {
@@ -576,21 +587,120 @@ async fn finishing_tasks_unblocks_dependents_and_settles_the_run() {
     assert_eq!(store.outputs(first.job.id).await.unwrap(), [("empty".to_owned(), String::new()), ("version".to_owned(), "1.2".to_owned())]);
 
     let settled = store.finish_task(first.task.id, Status::Failure, Timestamp(NOW.0 + 30)).await.unwrap().unwrap();
-    assert_eq!(settled.run_status, Status::Waiting, "lint still waits, test is now waiting");
+    assert_eq!(settled.run_status, Status::Waiting, "lint still waits");
     let test_job = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "test").unwrap();
-    assert_eq!(settled.now_waiting, [test_job.id], "a failed need still unblocks: the runner's if: decides");
+    assert!(settled.now_waiting.is_empty() && settled.to_decide.is_empty());
+    assert_eq!(test_job.status, Status::Skipped, "without its own if:, a job whose need failed is skipped (success())");
     assert_eq!(store.finish_task(first.task.id, Status::Success, NOW).await.unwrap(), None, "already finished");
     assert_eq!(store.running_task_by_token(&[71; 32]).await.unwrap(), None, "the token died with the task");
     assert_eq!(store.task(first.task.id).await.unwrap().unwrap().stopped_at, Some(Timestamp(NOW.0 + 30)));
 
-    for digest in [[72; 32], [73; 32]] {
-        let next = store.claim(&claim(runner, scope, &labels, &digest)).await.unwrap().unwrap();
-        let result = if next.job.key == "test" { Status::Skipped } else { Status::Success };
-        store.finish_task(next.task.id, result, Timestamp(NOW.0 + 40)).await.unwrap().unwrap();
-    }
+    let next = store.claim(&claim(runner, scope, &labels, &[72; 32])).await.unwrap().unwrap();
+    assert_eq!(next.job.key, "lint");
+    store.finish_task(next.task.id, Status::Success, Timestamp(NOW.0 + 40)).await.unwrap().unwrap();
+    assert!(store.claim(&claim(runner, scope, &labels, &[73; 32])).await.unwrap().is_none(), "nothing is left to run");
     let finished = store.run(run.id).await.unwrap().unwrap();
     assert_eq!((finished.status, finished.finished_at), (Status::Failure, Some(Timestamp(NOW.0 + 40))));
     assert!(store.finish_task(first.task.id, Status::Running, NOW).await.is_err(), "a result must be final");
+}
+
+// Actions: join (J).
+#[tokio::test]
+async fn jobs_with_their_own_if_wait_for_the_servers_decision() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let (none, needs_build, linux) = (Vec::<String>::new(), strings(&["build"]), strings(&["linux"]));
+    let jobs = [
+        job("build", &none, &linux),
+        NewJob { condition: true, ..job("report", &needs_build, &linux) },
+        NewJob { condition: true, ..job("notify", &none, &linux) },
+        job("deploy", &needs_build, &linux),
+    ];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let key = |key: &str| key.to_owned();
+    let status_of = |jobs: &[rbit_core::actions::Job], wanted: &str| jobs.iter().find(|job| job.key == wanted).unwrap().status;
+
+    // A condition with no needs is decided at once; until then no runner may take it.
+    let undecided = store.undecided(10).await.unwrap();
+    let all = store.jobs(run.id).await.unwrap();
+    let notify = all.iter().find(|job| job.key == "notify").unwrap().id;
+    assert_eq!(undecided, [notify]);
+    let first = store.claim(&claim(runner, scope, &labels, &[90; 32])).await.unwrap().unwrap();
+    assert_eq!(first.job.key, key("build"), "the undecided job is never claimed");
+    assert!(store.claim(&claim(runner, scope, &labels, &[91; 32])).await.unwrap().is_none());
+    let settled = store.decide(notify, Decision::Skip, NOW).await.unwrap().unwrap();
+    assert!(settled.now_waiting.is_empty(), "a skipped job waits for nothing");
+    assert_eq!(store.decide(notify, Decision::Run, NOW).await.unwrap(), None, "decided once");
+
+    // `build` fails: `deploy` follows success() and is skipped; `report` is the server's call.
+    let settled = store.finish_task(first.task.id, Status::Failure, NOW).await.unwrap().unwrap();
+    let report = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "report").unwrap().id;
+    assert_eq!(settled.to_decide, [report]);
+    let jobs_now = store.jobs(run.id).await.unwrap();
+    assert_eq!((status_of(&jobs_now, "deploy"), status_of(&jobs_now, "report")), (Status::Skipped, Status::Blocked));
+    let settled = store.decide(report, Decision::Run, NOW).await.unwrap().unwrap();
+    assert_eq!(settled.now_waiting, [report], "always(): it runs after a failure");
+    let next = store.claim(&claim(runner, scope, &labels, &[92; 32])).await.unwrap().unwrap();
+    assert_eq!(next.job.key, key("report"));
+    assert!(store.undecided(10).await.unwrap().is_empty(), "every condition is decided");
+}
+
+#[tokio::test]
+async fn max_parallel_and_job_groups_gate_claims_and_fail_fast_cancels() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let (none, linux) = (Vec::<String>::new(), strings(&["linux"]));
+    let jobs = [
+        NewJob { max_parallel: Some(1), ..job("matrix", &none, &linux) },
+        NewJob { max_parallel: Some(1), ..job("matrix", &none, &linux) },
+        NewJob { group: Some("deploy"), ..job("one", &none, &linux) },
+        NewJob { group: Some("deploy"), ..job("two", &none, &linux) },
+    ];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let mut claimed = Vec::new();
+    for seed in 100..110u8 {
+        match store.claim(&claim(runner, scope, &labels, &[seed; 32])).await.unwrap() {
+            Some(next) => claimed.push(next),
+            None => break,
+        }
+    }
+    let keys: Vec<&str> = claimed.iter().map(|next| next.job.key.as_str()).collect();
+    assert_eq!(keys, ["matrix", "one"], "one matrix job at a time, one job of the group at a time");
+
+    let siblings: Vec<JobId> = store.jobs(run.id).await.unwrap().into_iter().filter(|job| job.key == "matrix").map(|job| job.id).collect();
+    store.finish_task(claimed[0].task.id, Status::Failure, NOW).await.unwrap().unwrap();
+    let settled = store.cancel_jobs(run.id, &siblings, NOW).await.unwrap().unwrap();
+    assert!(settled.now_waiting.is_empty(), "cancelling makes nothing wait");
+    let statuses: Vec<Status> =
+        store.jobs(run.id).await.unwrap().into_iter().filter(|job| job.key == "matrix").map(|job| job.status).collect();
+    assert_eq!(statuses, [Status::Failure, Status::Cancelled], "only the unfinished sibling is cancelled");
+    assert_eq!(store.cancel_jobs(run.id, &siblings, NOW).await.unwrap(), None, "nothing left to cancel");
+
+    store.finish_task(claimed[1].task.id, Status::Success, NOW).await.unwrap().unwrap();
+    let next = store.claim(&claim(runner, scope, &labels, &[120; 32])).await.unwrap().unwrap();
+    assert_eq!(next.job.key, "two", "the group's next job runs once the first finished");
+}
+
+#[tokio::test]
+async fn cancelling_a_running_sibling_kills_its_task_token() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let (none, linux) = (Vec::<String>::new(), strings(&["linux"]));
+    let jobs = [job("matrix", &none, &linux), job("matrix", &none, &linux)];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let first = store.claim(&claim(runner, scope, &labels, &[130; 32])).await.unwrap().unwrap();
+    let second = store.claim(&claim(runner, scope, &labels, &[131; 32])).await.unwrap().unwrap();
+    assert!(store.running_task_by_token(&[131; 32]).await.unwrap().is_some());
+    store.finish_task(first.task.id, Status::Failure, NOW).await.unwrap().unwrap();
+    store.cancel_jobs(run.id, &[second.job.id], NOW).await.unwrap().unwrap();
+    assert_eq!(store.running_task_by_token(&[131; 32]).await.unwrap(), None, "the cancelled sibling's token is dead at once");
+    assert_eq!(store.job(second.job.id).await.unwrap().unwrap().status, Status::Cancelled);
 }
 
 #[tokio::test]
@@ -687,12 +797,15 @@ async fn reruns_restart_failed_jobs_and_their_dependents() {
     let scope = RunnerScope::Repository(fx.rocket);
     let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
     assert_eq!(store.rerun(fx.rocket, run.id, Rerun::All, RunStart::Runnable, NOW).await.unwrap(), None, "still running");
-    for seed in 0..4u8 {
-        let claimed = store.claim(&claim(runner, scope, &labels, &[100 + seed; 32])).await.unwrap().unwrap();
+    // `c` needs the failing `b`, so it is skipped rather than claimed.
+    let mut seed = 100u8;
+    while let Some(claimed) = store.claim(&claim(runner, scope, &labels, &[seed; 32])).await.unwrap() {
+        seed += 1;
         let result = if claimed.job.key == "b" { Status::Failure } else { Status::Success };
         store.add_outputs(claimed.job.id, &[("out", "1")], 1024).await.unwrap();
         store.finish_task(claimed.task.id, result, NOW).await.unwrap().unwrap();
     }
+    assert_eq!(seed, 103, "a, b and d ran");
     assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Failure);
     let settled = store.rerun(fx.rocket, run.id, Rerun::Failed, RunStart::Runnable, Timestamp(NOW.0 + 100)).await.unwrap().unwrap();
     assert_eq!(settled.run_status, Status::Waiting);

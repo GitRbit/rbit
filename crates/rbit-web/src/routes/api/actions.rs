@@ -701,8 +701,30 @@ mod tests {
     async fn run(fixture: &Fixture, repo: RepoId, spec: Spec<'_>) -> Run {
         let (needs, labels) = (vec!["build".to_owned()], vec!["linux".to_owned()]);
         let jobs = [
-            NewJob { key: "build", name: "build", matrix: None, needs: &[], runs_on: &labels, permissions: None, payload: b"{}" },
-            NewJob { key: "test", name: "test", matrix: None, needs: &needs, runs_on: &labels, permissions: None, payload: b"{}" },
+            NewJob {
+                key: "build",
+                name: "build",
+                matrix: None,
+                needs: &[],
+                runs_on: &labels,
+                permissions: None,
+                payload: b"{}",
+                condition: false,
+                max_parallel: None,
+                group: None,
+            },
+            NewJob {
+                key: "test",
+                name: "test",
+                matrix: None,
+                needs: &needs,
+                runs_on: &labels,
+                permissions: None,
+                payload: b"{}",
+                condition: false,
+                max_parallel: None,
+                group: None,
+            },
         ];
         let actor = spec.actor.map(User::id);
         let new = NewRun {

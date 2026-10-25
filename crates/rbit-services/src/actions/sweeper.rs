@@ -45,6 +45,9 @@ pub struct Swept {
     pub expired_logs: usize,
     pub deleted_runs: u64,
     pub deleted_tokens: u64,
+    // Actions: join (J).
+    /// Job conditions decided late (their decision was lost to a restart).
+    pub decided: usize,
 }
 
 impl ActionsService {
@@ -85,6 +88,8 @@ impl ActionsService {
             swept.abandoned += 1;
             self.settled(&settled).await?;
         }
+        // Actions: join (J).
+        swept.decided = self.decide_stragglers().await?;
 
         for task in store.unfinalised_logs(RUNS_PER_PASS).await? {
             self.finalise_log(task).await?;

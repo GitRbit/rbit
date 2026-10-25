@@ -155,7 +155,14 @@ CREATE TABLE actions_jobs (
     started_at   INTEGER,
     finished_at  INTEGER,
     -- The `workflow_job` action last announced to webhooks, so each is sent once.
-    announced    TEXT    CHECK (announced IN ('queued', 'in_progress', 'completed', 'waiting'))
+    announced    TEXT    CHECK (announced IN ('queued', 'in_progress', 'completed', 'waiting')),
+    -- The job has its own `if:`, which the server decides once its needs are done (§12.4):
+    -- until then it stays blocked, so no runner can take it first.
+    condition    INTEGER NOT NULL DEFAULT 0 CHECK (condition IN (0, 1)),
+    -- `strategy.max-parallel`: at most this many jobs of the same key run at once.
+    max_parallel INTEGER CHECK (max_parallel IS NULL OR max_parallel >= 1),
+    -- Job-level `concurrency.group`: one job of a group runs at a time in the repository.
+    job_group    TEXT    CHECK (job_group IS NULL OR length(job_group) BETWEEN 1 AND 1024)
 ) STRICT;
 
 CREATE INDEX actions_jobs_by_run ON actions_jobs (run_id);

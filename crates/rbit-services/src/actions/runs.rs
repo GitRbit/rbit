@@ -180,10 +180,11 @@ impl ActionsService {
             .await?;
         drop(decisions);
         tracing::info!(repo = %trigger.repo.full_name(), run = run.id.0, number = run.number, workflow = %run.workflow_path, event = %run.event, status = %run.status, "workflow run created");
-        if start == RunStart::Runnable {
-            self.bump_tasks_version();
-        }
-        self.report_statuses(run.id).await?;
+        // Actions: join (J). Following up the creation decides the jobs that start with their
+        // own `if:`, moves the scheduler's version and reports the statuses.
+        let settled = self.ctx().database.actions_runs().resettle(run.id, Timestamp::now()).await?;
+        self.followed_up(&settled).await?;
+        let run = self.ctx().database.actions_runs().run(run.id).await?.unwrap_or(run);
         Ok(Some(run))
     }
 
@@ -233,22 +234,30 @@ impl ActionsService {
     /// after every store transition that returns [`Settled`].
     pub async fn settled(&self, settled: &Settled) -> Result<(), ServiceError> {
         self.followed_up(settled).await?;
-        if !settled.run_status.is_done() {
-            return Ok(());
-        }
+        // The server's decisions may have finished the run since `settled` was taken.
         let store = self.ctx().database.actions_runs();
         let Some(run) = store.run(settled.run_id).await? else { return Ok(()) };
+        if !run.status.is_done() {
+            return Ok(());
+        }
         if let Some(group) = &run.concurrency_group {
             self.release_next(run.repo_id, group).await?;
         }
         Ok(())
     }
 
-    /// What every transition needs, without the group: the scheduler's version and the
-    /// jobs' commit statuses.
+    /// What every transition needs, without the group: the server's decisions about jobs
+    /// (conditions, fail-fast; each may settle more), the scheduler's version and the jobs'
+    /// commit statuses.
     async fn followed_up(&self, settled: &Settled) -> Result<(), ServiceError> {
-        if !settled.now_waiting.is_empty() {
-            self.bump_tasks_version();
+        // Actions: join (J). Each decision unblocks or finishes at least one job, so this
+        // ends after at most as many rounds as the run has jobs.
+        let mut pending = vec![settled.clone()];
+        while let Some(next) = pending.pop() {
+            if !next.now_waiting.is_empty() {
+                self.bump_tasks_version();
+            }
+            pending.extend(self.decide_jobs(&next).await?);
         }
         self.report_statuses(settled.run_id).await
     }
@@ -474,6 +483,10 @@ impl JobRows {
                 runs_on: &job.runs_on,
                 permissions: self.permissions[index].as_deref(),
                 payload: &self.templates[index],
+                // Actions: join (J).
+                condition: job.condition.is_some(),
+                max_parallel: job.strategy.max_parallel,
+                group: job.concurrency.as_ref().map(|concurrency| concurrency.group.as_str()),
             })
             .collect()
     }

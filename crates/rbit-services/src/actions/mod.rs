@@ -25,6 +25,7 @@
 //! | [`tokens`] | Task tokens for Git, LFS and the API; what a task's push may not do |
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
+//! | [`conditions`] | Job `if:` once its needs are done, fail-fast |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Zombie and endless tasks, abandoned jobs, log and run retention, the log budget, stale tokens |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
@@ -33,6 +34,8 @@
 //! fields and start-up lines in marked blocks.
 
 pub mod browse;
+// Actions: join (J).
+pub mod conditions;
 pub mod context;
 pub mod dispatch;
 pub mod hooks;
