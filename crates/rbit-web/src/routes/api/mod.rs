@@ -42,6 +42,8 @@ mod teams;
 mod test_support;
 // Milestone 3: commit statuses (S).
 mod statuses;
+// Actions: integration (I).
+mod actions;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
@@ -208,11 +210,13 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
 /// The Actions endpoints (served only when Actions is enabled). The integration workstream
 /// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
 fn actions_routes() -> Vec<ApiRoute> {
-    Vec::new()
+    // Actions: integration (I).
+    actions::routes()
 }
 
 /// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
-const ACTIONS_FRAGMENTS: [(&str, &str); 0] = [];
+// Actions: integration (I).
+const ACTIONS_FRAGMENTS: [(&str, &str); 1] = [("actions", include_str!("openapi/actions.json"))];
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.

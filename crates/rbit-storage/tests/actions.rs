@@ -364,6 +364,40 @@ async fn runs_are_numbered_and_found_only_in_their_repository() {
     assert_eq!(store.event(after.id).await.unwrap(), Some(("{}".to_owned(), None)));
 }
 
+// Actions: integration (I).
+#[tokio::test]
+async fn runs_are_paged_by_offset_counted_and_filtered_by_several_statuses() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let (none, linux) = (Vec::new(), strings(&["linux"]));
+    let jobs = [job("build", &none, &linux)];
+    let mut runs = Vec::new();
+    for _ in 0..4 {
+        runs.push(store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap());
+    }
+    store.create_run(&new_run(fx.other, &jobs, RunStart::Runnable)).await.unwrap();
+    store.cancel_run(fx.rocket, runs[0].id, NOW).await.unwrap();
+    let failed = NewRun { error: Some("broken"), ..new_run(fx.rocket, &[], RunStart::Runnable) };
+    store.create_run(&failed).await.unwrap();
+
+    let numbers = |runs: Vec<rbit_core::actions::Run>| runs.iter().map(|run| run.number).collect::<Vec<_>>();
+    let page = RunFilter { limit: 2, offset: 1, ..RunFilter::default() };
+    assert_eq!(numbers(store.list_runs(fx.rocket, &page).await.unwrap()), [4, 3]);
+    assert_eq!(store.count_runs(fx.rocket, &page).await.unwrap(), 5, "the count ignores the page");
+    let past = RunFilter { limit: 2, offset: 5, ..RunFilter::default() };
+    assert_eq!(store.list_runs(fx.rocket, &past).await.unwrap(), []);
+
+    let done = [Status::Success, Status::Failure, Status::Cancelled, Status::Skipped];
+    let finished = RunFilter { statuses: &done, limit: 10, ..RunFilter::default() };
+    assert_eq!(numbers(store.list_runs(fx.rocket, &finished).await.unwrap()), [5, 1]);
+    assert_eq!(store.count_runs(fx.rocket, &finished).await.unwrap(), 2);
+    let both = RunFilter { status: Some(Status::Cancelled), ..finished.clone() };
+    assert_eq!(numbers(store.list_runs(fx.rocket, &both).await.unwrap()), [1], "status and statuses apply together");
+    let schedule = RunFilter { event: Some(RunEvent::Schedule), ..finished };
+    assert_eq!(store.count_runs(fx.rocket, &schedule).await.unwrap(), 0);
+    assert_eq!(store.count_runs(fx.other, &RunFilter::default()).await.unwrap(), 1);
+}
+
 async fn sqlx_delete_runs(fx: &Fixture) {
     assert!(fx.db.actions_runs().delete_finished_before(Timestamp(NOW.0 + 1)).await.unwrap() >= 1);
     assert_eq!(fx.db.actions_runs().find_run_by_number(fx.rocket, 2).await.unwrap(), None, "the finished workflow error went");
@@ -502,6 +536,12 @@ async fn finishing_tasks_unblocks_dependents_and_settles_the_run() {
         .await
         .unwrap();
     assert_eq!(store.steps(first.task.id).await.unwrap()[0].log_length, 4);
+    // Actions: integration (I).
+    assert_eq!(
+        store.steps_of_tasks(&[first.task.id, rbit_core::actions::TaskId(999)]).await.unwrap(),
+        store.steps(first.task.id).await.unwrap()
+    );
+    assert_eq!(store.steps_of_tasks(&[]).await.unwrap(), []);
     store.set_log_progress(first.task.id, 4, 120, false).await.unwrap();
     assert_eq!(store.add_outputs(first.job.id, &[("version", "1.2"), ("empty", "")], 1024).await.unwrap(), ["empty", "version"]);
     assert_eq!(

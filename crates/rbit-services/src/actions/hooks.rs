@@ -6,7 +6,9 @@
 //! `actions_jobs`) and publishes a [`DomainEvent::ActionsRun`] or
 //! [`DomainEvent::ActionsJob`] for each change. The compare-and-set in the store makes each
 //! action go out once, however many callers race. [`payload`] then builds GitHub's shapes
-//! (subsets) for [`crate::WebhookService::handle_event`].
+//! (subsets) for [`crate::WebhookService::handle_event`]. The REST API returns runs and
+//! jobs with the same builders, [`workflow_run`] and [`workflow_job`], so the two never
+//! disagree.
 //!
 //! | Event | Action | When |
 //! |---|---|---|
@@ -24,8 +26,11 @@
 //!
 //! The integration workstream (I) owns this file.
 
+use std::collections::BTreeMap;
+
 use rbit_core::{
-    actions::{Job, Run, RunEvent, RunId, Status},
+    Account, AccountId,
+    actions::{Job, Run, RunEvent, RunId, Status, Step},
     repository::OwnedRepository,
     webhook::WebhookEvent,
 };
@@ -167,10 +172,8 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
     let Some(owned) = database.admin().find_repository(repo).await? else { return Ok(None) };
     let Some(run) = database.actions_runs().find_run(repo, run).await? else { return Ok(None) };
     let fork = database.forks().forks_among(&[repo]).await?.contains(&repo);
-    let sender = match run.trigger_actor.or(run.actor) {
-        Some(actor) => database.accounts().find_accounts(&[actor]).await?.pop().map_or_else(actions_bot, |who| account(&who, base_url)),
-        None => actions_bot(),
-    };
+    let people = people(ctx, [run.actor, run.trigger_actor]).await?;
+    let sender = run.trigger_actor.or(run.actor).and_then(|id| people.get(&id)).map_or_else(actions_bot, |who| account(who, base_url));
     let mut body = json!({
         "action": action,
         "repository": repository(&owned, base_url, fork),
@@ -178,34 +181,54 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
     });
     match job {
         None => {
-            body["workflow_run"] = workflow_run(&run, &owned, base_url, ctx).await?;
+            body["workflow_run"] = workflow_run(&run, &owned, &people, base_url);
             body["workflow"] = json!({ "path": run.workflow_path, "name": run.workflow_name });
         }
         Some(job) => {
-            let Some(job) = database.actions_runs().find_job(repo, job).await? else { return Ok(None) };
-            body["workflow_job"] = workflow_job(&job, &run, &owned, base_url);
+            let store = database.actions_runs();
+            let Some(job) = store.find_job(repo, job).await? else { return Ok(None) };
+            let steps = store.steps_of_tasks(job.task_id.as_slice()).await?;
+            body["workflow_job"] = workflow_job(&job, &run, &owned, &steps, base_url);
         }
     }
     Ok(Some(HookPayload { body: with_organization(body, &owned, base_url), repo: owned, event: kind }))
 }
 
-/// A run as `workflow_run` shows it.
-async fn workflow_run(run: &Run, repo: &OwnedRepository, base_url: &str, ctx: &ServiceContext) -> Result<Value, ServiceError> {
+/// The accounts among `ids`, by id, in one query: what [`workflow_run`] takes its actors from.
+pub async fn people(
+    ctx: &ServiceContext,
+    ids: impl IntoIterator<Item = Option<AccountId>>,
+) -> Result<BTreeMap<AccountId, Account>, ServiceError> {
+    let mut ids: Vec<AccountId> = ids.into_iter().flatten().collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let accounts = ctx.database.accounts().find_accounts(&ids).await?;
+    Ok(accounts.into_iter().map(|account| (account.id, account)).collect())
+}
+
+/// The file name a workflow is known by in URLs and the API (`ci.yml`).
+pub fn workflow_file(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// A run as `workflow_run` and the REST API show it; its actors come from `people`
+/// ([`people`]), so a list needs one lookup for all its runs.
+pub fn workflow_run(run: &Run, repo: &OwnedRepository, people: &BTreeMap<AccountId, Account>, base_url: &str) -> Value {
     let full_name = repo.full_name();
-    let actor = match run.actor {
-        Some(id) => ctx.database.accounts().find_accounts(&[id]).await?.pop().map(|who| account(&who, base_url)),
-        None => None,
-    };
-    let triggering = match run.trigger_actor {
-        Some(id) if Some(id) != run.actor => ctx.database.accounts().find_accounts(&[id]).await?.pop().map(|who| account(&who, base_url)),
-        _ => actor.clone(),
-    };
+    let api = format!("{base_url}/api/v1/repos/{full_name}/actions");
+    let person = |id: Option<AccountId>| id.and_then(|id| people.get(&id)).map(|who| account(who, base_url));
+    let actor = person(run.actor);
+    let triggering = person(run.trigger_actor.or(run.actor));
     let head_branch = run.reference.strip_prefix("refs/heads/").or_else(|| run.reference.strip_prefix("refs/tags/"));
-    Ok(json!({
+    json!({
         "id": run.id.0,
         "name": run.workflow_name,
         "display_title": run.title,
         "path": run.workflow_path,
+        "workflow_id": workflow_file(&run.workflow_path),
         "run_number": run.number,
         "run_attempt": run.attempt,
         "event": run.event.as_str(),
@@ -215,24 +238,44 @@ async fn workflow_run(run: &Run, repo: &OwnedRepository, base_url: &str, ctx: &S
         "head_sha": run.sha,
         "pull_requests": run.pull_number.map_or_else(Vec::new, |number| vec![json!({ "number": number })]),
         "html_url": format!("{base_url}/{full_name}/actions/runs/{}", run.number),
-        "url": format!("{base_url}/api/v1/repos/{full_name}/actions/runs/{}", run.id.0),
+        "url": format!("{api}/runs/{}", run.id.0),
+        "jobs_url": format!("{api}/runs/{}/jobs", run.id.0),
+        "cancel_url": format!("{api}/runs/{}/cancel", run.id.0),
+        "rerun_url": format!("{api}/runs/{}/rerun", run.id.0),
         "created_at": timestamp(run.created_at),
         "run_started_at": run.started_at.map(timestamp),
         "updated_at": timestamp(run.finished_at.or(run.started_at).unwrap_or(run.created_at)),
         "actor": actor,
         "triggering_actor": triggering,
         "is_schedule": run.event == RunEvent::Schedule,
-    }))
+    })
 }
 
-/// A job as `workflow_job` shows it.
-fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, base_url: &str) -> Value {
+/// A job as `workflow_job` and the REST API show it, with `steps`, the steps of its
+/// current task (others are ignored).
+pub fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, steps: &[Step], base_url: &str) -> Value {
     let full_name = repo.full_name();
+    let api = format!("{base_url}/api/v1/repos/{full_name}/actions");
+    let steps: Vec<Value> = steps
+        .iter()
+        .filter(|step| Some(step.task_id) == job.task_id)
+        .map(|step| {
+            json!({
+                "name": step.name,
+                "number": step.number + 1,
+                "status": github_status(step.status),
+                "conclusion": conclusion(step.status),
+                "started_at": step.started_at.map(timestamp),
+                "completed_at": step.stopped_at.map(timestamp),
+            })
+        })
+        .collect();
     json!({
         "id": job.id.0,
         "run_id": run.id.0,
         "run_attempt": job.attempt,
-        "run_url": format!("{base_url}/api/v1/repos/{full_name}/actions/runs/{}", run.id.0),
+        "url": format!("{api}/jobs/{}", job.id.0),
+        "run_url": format!("{api}/runs/{}", run.id.0),
         "html_url": job_url(base_url, repo, run.number, job.id),
         "name": job.name,
         "workflow_name": run.workflow_name,
@@ -242,6 +285,7 @@ fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, base_url: &str) ->
         "conclusion": conclusion(job.status),
         "labels": job.runs_on,
         "runner_id": job.runner_id.map(|runner| runner.0),
+        "steps": steps,
         "created_at": timestamp(job.created_at),
         "started_at": job.started_at.map(timestamp),
         "completed_at": job.finished_at.map(timestamp),

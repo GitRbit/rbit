@@ -11,6 +11,7 @@ use rbit_services::{
     actions::hooks::{JobAction, RunAction},
     webhooks::{HookTarget, SecretUpdate, WebhookInput},
 };
+use rbit_storage::sqlite::actions_runs::StepUpdate;
 use serde_json::Value;
 use tokio::sync::broadcast::Receiver;
 
@@ -112,6 +113,16 @@ async fn workflow_webhooks_have_githubs_shape() {
     assert_eq!(payload["workflow_run"]["display_title"], "Build it");
     assert_eq!(payload["workflow_run"]["html_url"], format!("https://git.example.com/alice/rocket/actions/runs/{}", run.number));
     assert_eq!(payload["workflow"]["path"], ".forgejo/workflows/ci.yml");
+    // The REST API's run, built by the same function.
+    assert_eq!(payload["workflow_run"]["workflow_id"], "ci.yml");
+    assert_eq!(
+        payload["workflow_run"]["jobs_url"],
+        format!("https://git.example.com/api/v1/repos/alice/rocket/actions/runs/{}/jobs", run.id.0)
+    );
+    assert_eq!(
+        (payload["workflow_run"]["actor"]["login"].as_str(), payload["workflow_run"]["triggering_actor"]["login"].as_str()),
+        (Some("alice"), Some("alice"))
+    );
     assert_eq!(payload["repository"]["full_name"], "alice/rocket");
     assert_eq!(payload["sender"]["login"], "alice");
 
@@ -122,6 +133,38 @@ async fn workflow_webhooks_have_githubs_shape() {
     assert_eq!(payload["workflow_job"]["run_id"], run.id.0);
     assert_eq!(payload["workflow_job"]["labels"], serde_json::json!(["x"]));
     assert_eq!(payload["workflow_job"]["workflow_name"], "CI");
+    assert_eq!(payload["workflow_job"]["steps"], serde_json::json!([]), "no runner took it yet");
+    assert_eq!(payload["workflow_job"]["url"], format!("https://git.example.com/api/v1/repos/alice/rocket/actions/jobs/{}", job.id.0));
+
+    // Once a runner reports steps, they are numbered from 1 as on GitHub.
+    let claimed = fixture.claim(&["x"], 1).await.unwrap();
+    let step = StepUpdate {
+        number: 0,
+        name: "Checkout",
+        status: Status::Success,
+        started_at: Some(Timestamp(100)),
+        stopped_at: Some(Timestamp(102)),
+        log_index: 0,
+        log_length: 3,
+    };
+    fixture.database.actions_runs().put_steps(claimed.task.id, &[step]).await.unwrap();
+    let running = DomainEvent::ActionsJob { repo: repo_id, run: run.id, job: job.id, action: JobAction::InProgress };
+    assert_eq!(webhooks.handle_event(&running).await.unwrap(), 1);
+    let log = webhooks.deliveries(HookTarget::Repository(&repo), hook.id, 1, 10).await.unwrap();
+    let started = log.deliveries.iter().find(|delivery| delivery.action.as_deref() == Some("in_progress")).unwrap();
+    let payload: Value = serde_json::from_str(&started.payload).unwrap();
+    assert_eq!(payload["workflow_job"]["status"], "in_progress");
+    assert_eq!(
+        payload["workflow_job"]["steps"],
+        serde_json::json!([{
+            "name": "Checkout",
+            "number": 1,
+            "status": "completed",
+            "conclusion": "success",
+            "started_at": Timestamp(100).iso8601(),
+            "completed_at": Timestamp(102).iso8601(),
+        }])
+    );
 }
 
 #[tokio::test]

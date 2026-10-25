@@ -107,6 +107,32 @@ macro_rules! select_run {
     };
 }
 
+// Actions: integration (I).
+/// The `WHERE` clause of a [`RunFilter`] for repository `?1`; [`bind_run_filter!`] binds
+/// `?1` to `?8`.
+macro_rules! runs_where {
+    () => {
+        "WHERE repo_id = ?1 AND (?2 IS NULL OR workflow_path = ?2) AND (?3 IS NULL OR event = ?3) AND (?4 IS NULL OR status = ?4) \
+         AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6) AND (?7 IS NULL OR id < ?7) \
+         AND (?8 IS NULL OR status IN (SELECT value FROM json_each(?8)))"
+    };
+}
+
+/// Binds the parameters of [`runs_where!`] to `$query`.
+macro_rules! bind_run_filter {
+    ($query:expr, $repo:expr, $filter:expr) => {
+        $query
+            .bind($repo.0)
+            .bind($filter.workflow_path)
+            .bind($filter.event.map(RunEvent::as_str))
+            .bind($filter.status.map(Status::code))
+            .bind($filter.actor.map(|actor| actor.0))
+            .bind($filter.reference)
+            .bind($filter.before.map(|run| run.0))
+            .bind(status_codes($filter.statuses))
+    };
+}
+
 #[derive(Debug, sqlx::FromRow)]
 struct JobRow {
     id: i64,
@@ -226,6 +252,28 @@ struct StepRow {
     log_length: i64,
 }
 
+impl TryFrom<StepRow> for Step {
+    type Error = StorageError;
+
+    fn try_from(row: StepRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            task_id: TaskId(row.task_id),
+            number: row.number,
+            name: row.name,
+            status: status(row.status)?,
+            started_at: timestamp(row.started_at),
+            stopped_at: timestamp(row.stopped_at),
+            log_index: row.log_index,
+            log_length: row.log_length,
+        })
+    }
+}
+
+/// `statuses` as the JSON array `?8` of [`runs_where!`] takes; `None` when empty.
+fn status_codes(statuses: &[Status]) -> Option<String> {
+    (!statuses.is_empty()).then(|| format!("[{}]", statuses.iter().map(|status| status.code().to_string()).collect::<Vec<_>>().join(",")))
+}
+
 /// How a new or re-run run starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStart {
@@ -280,7 +328,8 @@ pub struct NewJob<'a> {
     pub payload: &'a [u8],
 }
 
-/// Filters of the runs list. `before` pages by id (newest first).
+/// Filters of the runs list. `before` pages by id (newest first), `offset` by position
+/// (the API's pages).
 #[derive(Debug, Clone, Default)]
 pub struct RunFilter<'a> {
     pub workflow_path: Option<&'a str>,
@@ -291,6 +340,12 @@ pub struct RunFilter<'a> {
     pub reference: Option<&'a str>,
     pub before: Option<RunId>,
     pub limit: u32,
+    // Actions: integration (I).
+    /// One of these statuses, when not empty (a GitHub status such as `completed` stands
+    /// for several); applies together with `status`.
+    pub statuses: &'a [RunStatus],
+    /// Runs skipped after the filters apply.
+    pub offset: u32,
 }
 
 /// A runner asking for work.
@@ -459,21 +514,34 @@ impl ActionsRunStore {
 
     /// The repository's runs, newest first.
     pub async fn list_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<Vec<Run>, StorageError> {
-        let rows: Vec<RunRow> = sqlx::query_as(select_run!(
-            "WHERE repo_id = ?1 AND (?2 IS NULL OR workflow_path = ?2) AND (?3 IS NULL OR event = ?3) AND (?4 IS NULL OR status = ?4) \
-             AND (?5 IS NULL OR actor_id = ?5) AND (?6 IS NULL OR ref = ?6) AND (?7 IS NULL OR id < ?7) ORDER BY id DESC LIMIT ?8"
-        ))
-        .bind(repo.0)
-        .bind(filter.workflow_path)
-        .bind(filter.event.map(RunEvent::as_str))
-        .bind(filter.status.map(Status::code))
-        .bind(filter.actor.map(|actor| actor.0))
-        .bind(filter.reference)
-        .bind(filter.before.map(|run| run.0))
-        .bind(filter.limit)
+        let query = sqlx::query_as(select_run!(concat!(runs_where!(), " ORDER BY id DESC LIMIT ?9 OFFSET ?10")));
+        let rows: Vec<RunRow> = bind_run_filter!(query, repo, filter).bind(filter.limit).bind(filter.offset).fetch_all(&self.pool).await?;
+        rows.into_iter().map(Run::try_from).collect()
+    }
+
+    // Actions: integration (I).
+    /// How many runs of the repository [`Self::list_runs`] pages through with `filter`
+    /// (its `limit` and `offset` aside).
+    pub async fn count_runs(&self, repo: RepoId, filter: &RunFilter<'_>) -> Result<u64, StorageError> {
+        let query = sqlx::query_scalar(concat!("SELECT COUNT(*) FROM actions_runs ", runs_where!()));
+        let count: i64 = bind_run_filter!(query, repo, filter).fetch_one(&self.pool).await?;
+        Ok(u64::try_from(count).unwrap_or_default())
+    }
+
+    /// The steps of `tasks`, by task and number.
+    pub async fn steps_of_tasks(&self, tasks: &[TaskId]) -> Result<Vec<Step>, StorageError> {
+        if tasks.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = format!("[{}]", tasks.iter().map(|task| task.0.to_string()).collect::<Vec<_>>().join(","));
+        let rows: Vec<StepRow> = sqlx::query_as(
+            "SELECT task_id, number, name, status, started_at, stopped_at, log_index, log_length FROM actions_steps \
+             WHERE task_id IN (SELECT value FROM json_each(?)) ORDER BY task_id, number",
+        )
+        .bind(ids)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter().map(Run::try_from).collect()
+        rows.into_iter().map(Step::try_from).collect()
     }
 
     /// The run's event payload (JSON) and dispatch inputs.
@@ -720,20 +788,7 @@ impl ActionsRunStore {
         .bind(task.0)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter()
-            .map(|row| {
-                Ok(Step {
-                    task_id: TaskId(row.task_id),
-                    number: row.number,
-                    name: row.name,
-                    status: status(row.status)?,
-                    started_at: timestamp(row.started_at),
-                    stopped_at: timestamp(row.stopped_at),
-                    log_index: row.log_index,
-                    log_length: row.log_length,
-                })
-            })
-            .collect()
+        rows.into_iter().map(Step::try_from).collect()
     }
 
     /// Records how much of the task's log is written.
