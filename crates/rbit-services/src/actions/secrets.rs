@@ -200,10 +200,11 @@ async fn write_key(path: &Path, key: &SecretsKey) -> io::Result<()> {
 fn check_mode(path: &Path) -> Result<(), KeyUnavailable> {
     use std::os::unix::fs::PermissionsExt;
 
-    let metadata =
-        tokio::fs::metadata(path).await.map_err(|error| KeyUnavailable(format!("reading {} failed: {error}", path.display())))?;
+    let metadata = std::fs::metadata(path).map_err(|error| KeyUnavailable(format!("reading {} failed: {error}", path.display())))?;
     let mode = metadata.permissions().mode();
-    if mode & 0o077 == 0 {
+    // The group's and others' read, write and execute bits.
+    let shared = mode & 0o077;
+    if shared == 0 {
         Ok(())
     } else {
         Err(KeyUnavailable(format!(
