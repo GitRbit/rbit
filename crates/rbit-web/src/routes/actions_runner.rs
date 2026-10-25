@@ -30,7 +30,7 @@ use std::{io::Read as _, sync::Arc, time::Duration};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRequestParts, Request, State},
+    extract::{FromRequestParts, Path, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts},
     middleware::{Next, from_fn},
     response::{IntoResponse, Response},
@@ -42,7 +42,7 @@ use rbit_services::{
 };
 use rbit_workflow::protocol::{
     BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest,
-    PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, UnregisterRequest,
+    PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -71,6 +71,7 @@ pub fn routes() -> Router<AppState> {
         .route(&path(Endpoint::Register), post(register))
         .route(&path(Endpoint::Declare), post(declare))
         .route(&path(Endpoint::Poll), post(poll))
+        .route(&path(Endpoint::TaskState), post(task_state))
         .route(&path(Endpoint::Unregister), post(unregister))
         .layer(from_fn(require_protocol))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, CALL_TIMEOUT))
@@ -129,6 +130,29 @@ async fn poll(
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(PollResponse { task })).into_response())
+}
+
+/// `POST tasks/{id}/state`: heartbeat, steps, outputs and the result; answers `{cancel}`.
+async fn task_state(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let request: TaskStateRequest = read_json(&headers, body, Endpoint::TaskState).await?;
+    let response = actions(&state)?.task_state(&runner, task, &request).await?;
+    Ok(Json(response).into_response())
+}
+
+/// A task id from the path; anything else names no task.
+fn task_id(id: &str) -> Result<rbit_core::actions::TaskId, Refusal> {
+    id.parse()
+        .ok()
+        .filter(|id| *id > 0)
+        .map(rbit_core::actions::TaskId)
+        .ok_or_else(|| RunnerError::not_found("there is no such task").into())
 }
 
 /// `POST unregister`: the runner removes itself.

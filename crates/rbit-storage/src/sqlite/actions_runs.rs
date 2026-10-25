@@ -771,6 +771,29 @@ impl ActionsRunStore {
         Ok(())
     }
 
+    /// Updates the state of existing steps of a task, by number (their names stay as
+    /// created); numbers without a step are ignored.
+    pub async fn update_steps(&self, task: TaskId, steps: &[StepUpdate<'_>]) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        for step in steps {
+            sqlx::query(
+                "UPDATE actions_steps SET status = ?1, started_at = ?2, stopped_at = ?3, log_index = ?4, log_length = ?5 \
+                 WHERE task_id = ?6 AND number = ?7",
+            )
+            .bind(step.status.code())
+            .bind(step.started_at.map(|at| at.0))
+            .bind(step.stopped_at.map(|at| at.0))
+            .bind(step.log_index)
+            .bind(step.log_length)
+            .bind(task.0)
+            .bind(step.number)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Creates or updates steps of a task, by number.
     pub async fn put_steps(&self, task: TaskId, steps: &[StepUpdate<'_>]) -> Result<(), StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;

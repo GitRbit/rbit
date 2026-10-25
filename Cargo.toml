@@ -124,11 +124,12 @@ aes-gcm = { version = "0.11", default-features = false, features = ["aes", "allo
 # rbit-runner's runner.toml is read and written as a document of its own; toml 0.8 is
 # already in the tree through figment, so writing it adds no crate.
 toml = "0.8"
-# rbit-runner masks every secret with one Aho-Corasick automaton per task; aho-corasick is
-# already in the tree (through regex), so masking adds no crate.
+# rbit-runner and the server's second pass mask every secret with one Aho-Corasick automaton
+# per task; aho-corasick is already in the tree (through regex), so masking adds no crate.
 aho-corasick = "1.1"
-# rbit-runner's local cache stores tar.gz archives. flate2 is already in the tree (through
-# async-compression); tar is new, without its xattr feature, and brings no other crate.
+# rbit-runner's local cache stores tar.gz archives, runner bodies may arrive gzipped and the
+# server gzips finished task logs. flate2 is already in the tree (through async-compression);
+# tar is new, without its xattr feature, and brings no other crate.
 flate2 = "1.1"
 tar = { version = "0.4", default-features = false }
 

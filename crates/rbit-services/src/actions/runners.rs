@@ -175,14 +175,14 @@ impl RunnerCache {
     }
 
     /// Adds a newly registered runner.
-    fn insert(&self, runner: &Runner, digest: TokenDigest) -> Arc<CachedRunner> {
+    pub(super) fn insert(&self, runner: &Runner, digest: TokenDigest) -> Arc<CachedRunner> {
         let cached = Arc::new(CachedRunner::new(runner, digest));
         self.by_digest.write().unwrap_or_else(PoisonError::into_inner).insert(digest, Arc::clone(&cached));
         cached
     }
 
     /// Replaces runner `runner.id` with its stored state; nothing when it is not cached.
-    fn refresh(&self, runner: &Runner) -> Option<Arc<CachedRunner>> {
+    pub(super) fn refresh(&self, runner: &Runner) -> Option<Arc<CachedRunner>> {
         let mut runners = self.by_digest.write().unwrap_or_else(PoisonError::into_inner);
         let digest = runners.values().find(|cached| cached.id == runner.id)?.digest;
         let fresh = Arc::new(runners[&digest].refreshed(runner));
@@ -191,7 +191,7 @@ impl RunnerCache {
     }
 
     /// Forgets runner `id`: its credential stops working at once.
-    fn remove(&self, id: RunnerId) {
+    pub(super) fn remove(&self, id: RunnerId) {
         self.by_digest.write().unwrap_or_else(PoisonError::into_inner).retain(|_, runner| runner.id != id);
     }
 

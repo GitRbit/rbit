@@ -20,8 +20,8 @@
 //! | [`statuses`] | Commit statuses for jobs |
 //! | [`runners`] | Registration tokens, `register`, `declare`, `unregister`, the runner cache, runners in settings |
 //! | [`scheduler`] | `poll`: the long poll, claims, idempotent retries, job specifications |
-//! | [`tasks`] | `UpdateTask` |
-//! | [`logs`] | `UpdateLog`, log files and retention |
+//! | [`tasks`] | `tasks/{id}/state`: heartbeats, steps, outputs, results, cancellation |
+//! | [`logs`] | The masking pass, log files, reads and retention |
 //! | [`tokens`] | Task tokens for Git and the API |
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
@@ -100,6 +100,8 @@ struct Inner {
     wake: tokio::sync::Notify,
     /// The polls held open now, one per runner.
     polls: scheduler::Polls,
+    /// What each running task's outputs and logs are masked with (see [`logs`]).
+    masks: std::sync::Mutex<std::collections::HashMap<rbit_core::actions::TaskId, Arc<logs::Masker>>>,
 }
 
 impl ActionsService {
@@ -126,6 +128,7 @@ impl ActionsService {
                 runners: tokio::sync::OnceCell::new(),
                 wake: tokio::sync::Notify::new(),
                 polls: scheduler::Polls::default(),
+                masks: std::sync::Mutex::default(),
             }),
         })
     }

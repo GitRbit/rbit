@@ -1,7 +1,8 @@
 //! The runner protocol's task calls over HTTP (`docs/design/actions.md` §12.6): the long
 //! poll — claims, empty answers, wake-ups, one poll per runner, the instance's cap,
-//! idempotent retries, and that an idle poll touches no SQLite — and what a claimed job's
-//! specification holds. Jobs are seeded through the store with job template payloads.
+//! idempotent retries, and that an idle poll touches no SQLite — what a claimed job's
+//! specification holds, and task state calls: steps, outputs, results, cancellation and
+//! ephemeral runners. Jobs are seeded through the store with job template payloads.
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
@@ -192,6 +193,13 @@ async fn a_retried_poll_gets_the_same_task_with_a_fresh_token() {
     let (_, other) = poll(&fixture, &credential, Some("next")).await;
     assert_eq!(spec(&other).template.job_id, "test", "a new key claims the next job");
 
+    // Once the task stopped, its key resends nothing and claims nothing.
+    let done = json!({"steps": [], "outputs": {}, "result": "success"});
+    assert_eq!(state(&fixture, &credential, first.task_id.0, &done).await.0, StatusCode::OK);
+    seed(&fixture, &[payload(&template("later", &["linux"], &[]))]).await;
+    assert_eq!(poll(&fixture, &credential, Some("retry-me")).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(spec(&poll(&fixture, &credential, Some("fresh")).await.1).template.job_id, "later");
+
     let (status, json) = poll(&fixture, &credential, Some("not a key")).await;
     assert_eq!((status, json["code"].as_str()), (StatusCode::BAD_REQUEST, Some("bad_request")));
 }
@@ -313,4 +321,119 @@ async fn variables_reach_trusted_runs_only() {
     let untrusted = spec(&poll(&fixture, &credential, Some("b")).await.1);
     assert!(untrusted.contexts.vars.is_empty() && untrusted.secrets.is_empty(), "an untrusted run gets no variables or secrets");
     assert_eq!(untrusted.cache.write, format!("untrusted/{}", run.id.0));
+}
+
+/// `POST tasks/{task}/state` with `body`.
+pub async fn state(fixture: &Fixture, credential: &str, task: impl std::fmt::Display, body: &Value) -> (StatusCode, Value) {
+    let answer = fixture.call(&format!("tasks/{task}/state"), Some(credential), body.to_string()).await;
+    (answer.status, answer.json)
+}
+
+fn step(index: u32, status: &str) -> Value {
+    json!({"index": index, "status": status, "started_at": 100, "stopped_at": null, "log_index": 0, "log_length": 0})
+}
+
+#[tokio::test]
+async fn state_calls_record_steps_outputs_and_the_result() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[])), payload(&template("test", &["linux"], &["build"]))]).await;
+    let build = spec(&poll(&fixture, &credential, Some("b")).await.1);
+    let task = build.task_id.0;
+    let token = build.token.expose().to_owned();
+
+    let body = json!({"steps": [step(0, "running")], "outputs": {"version": "1.2.3", "leak": format!("token={token}")}, "result": null});
+    let (status, json) = state(&fixture, &credential, task, &body).await;
+    assert_eq!((status, &json), (StatusCode::OK, &json!({"cancel": false})));
+    let store = fixture.database.actions_runs();
+    let task_id = rbit_core::actions::TaskId(task);
+    let steps = store.steps(task_id).await.unwrap();
+    assert_eq!((steps[0].status, steps[0].name.as_str(), steps[1].status), (Status::Running, "Build", Status::Waiting));
+    let jobs = store.jobs(run.id).await.unwrap();
+    let outputs = store.outputs(jobs[0].id).await.unwrap();
+    assert_eq!(outputs, [("leak".to_owned(), "token=***".to_owned()), ("version".to_owned(), "1.2.3".to_owned())], "masked");
+
+    let resent = json!({"steps": [], "outputs": {"version": "9.9.9"}, "result": null});
+    assert_eq!(state(&fixture, &credential, task, &resent).await.0, StatusCode::OK);
+    assert_eq!(store.outputs(jobs[0].id).await.unwrap()[1].1, "1.2.3", "outputs are kept when first seen");
+
+    let mut done = json!({"steps": [step(0, "success"), step(1, "success")], "outputs": {}, "result": "success"});
+    done["steps"][1]["log_index"] = json!(3);
+    let (status, json) = state(&fixture, &credential, task, &done).await;
+    assert_eq!((status, &json), (StatusCode::OK, &json!({"cancel": false})));
+    let stored = store.task(task_id).await.unwrap().unwrap();
+    assert_eq!(stored.status, Status::Success);
+    let digest = rbit_auth::TaskTokenSecret::parse(&token).unwrap().digest();
+    assert!(store.running_task_by_token(&digest).await.unwrap().is_none(), "the token died with the task");
+    let jobs = store.jobs(run.id).await.unwrap();
+    assert_eq!((jobs[0].status, jobs[1].status), (Status::Success, Status::Waiting), "the dependent unblocked");
+    assert_eq!(store.steps(task_id).await.unwrap()[1].log_index, 3);
+
+    // A late call about a stopped task changes nothing.
+    let late = json!({"steps": [step(0, "failure")], "outputs": {"late": "x"}, "result": "failure"});
+    assert_eq!(state(&fixture, &credential, task, &late).await, (StatusCode::OK, json!({"cancel": false})));
+    assert_eq!(store.task(task_id).await.unwrap().unwrap().status, Status::Success);
+    assert_eq!(store.outputs(jobs[0].id).await.unwrap().len(), 2);
+
+    let test = spec(&poll(&fixture, &credential, Some("t")).await.1);
+    assert_eq!(test.contexts.needs["build"].outputs["version"], "1.2.3");
+}
+
+#[tokio::test]
+async fn state_calls_are_for_the_runners_own_tasks() {
+    let fixture = quick().await;
+    let owner = fixture.runner(&["linux"]).await;
+    let other = fixture.runner(&["linux"]).await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = spec(&poll(&fixture, &owner, Some("o")).await.1).task_id.0;
+    let heartbeat = json!({"steps": [], "outputs": {}, "result": null});
+    let (status, json) = state(&fixture, &other, task, &heartbeat).await;
+    assert_eq!((status, json["code"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden")));
+    for unknown in ["9999", "0", "abc"] {
+        assert_eq!(state(&fixture, &owner, unknown, &heartbeat).await.0, StatusCode::NOT_FOUND, "{unknown}");
+    }
+    let running_at_the_end = json!({"steps": [step(0, "running")], "outputs": {}, "result": "success"});
+    assert_eq!(state(&fixture, &owner, task, &running_at_the_end).await.0, StatusCode::BAD_REQUEST);
+    let bad_output = json!({"steps": [], "outputs": {"1st": "x"}, "result": null});
+    assert_eq!(state(&fixture, &owner, task, &bad_output).await.0, StatusCode::BAD_REQUEST);
+    let unauthenticated = fixture.call(&format!("tasks/{task}/state"), None, heartbeat.to_string()).await;
+    assert_eq!(unauthenticated.status, StatusCode::UNAUTHORIZED);
+    let huge = format!("{{\"steps\": [], \"outputs\": {{\"a\": \"{}\"}}, \"result\": null}}", "x".repeat(1_100_000));
+    assert_eq!(fixture.call(&format!("tasks/{task}/state"), Some(&owner), huge).await.status, StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn cancellation_reaches_the_runner_in_the_answer() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let spec = spec(&poll(&fixture, &credential, Some("c")).await.1);
+    let repo = fixture.repo().await;
+    fixture.actions().cancel(&fixture.alice, &repo, run.id).await.unwrap();
+    let digest = rbit_auth::TaskTokenSecret::parse(spec.token.expose()).unwrap().digest();
+    let store = fixture.database.actions_runs();
+    assert!(store.running_task_by_token(&digest).await.unwrap().is_none(), "the token dies with the cancel, not with the answer");
+    let heartbeat = json!({"steps": [], "outputs": {}, "result": null});
+    assert_eq!(state(&fixture, &credential, spec.task_id.0, &heartbeat).await, (StatusCode::OK, json!({"cancel": true})));
+    let stopped = json!({"steps": [step(0, "cancelled"), step(1, "skipped")], "outputs": {}, "result": "cancelled"});
+    assert_eq!(state(&fixture, &credential, spec.task_id.0, &stopped).await, (StatusCode::OK, json!({"cancel": true})));
+    let job = &store.jobs(run.id).await.unwrap()[0];
+    assert_eq!(job.status, Status::Cancelled);
+    assert_eq!(store.task(job.task_id.unwrap()).await.unwrap().unwrap().status, Status::Cancelled);
+}
+
+#[tokio::test]
+async fn ephemeral_runners_go_away_after_their_task() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let mut declaration = crate::actions_runner::declare_body(&["linux"]);
+    declaration["capabilities"]["ephemeral"] = json!(true);
+    assert_eq!(fixture.call("declare", Some(&credential), declaration.to_string()).await.status, StatusCode::OK);
+    seed(&fixture, &[payload(&template("build", &["linux"], &[])), payload(&template("more", &["linux"], &[]))]).await;
+    let spec = spec(&poll(&fixture, &credential, Some("e1")).await.1);
+    assert_eq!(poll(&fixture, &credential, Some("e2")).await.0, StatusCode::NO_CONTENT, "one task at a time");
+    let done = json!({"steps": [step(0, "success"), step(1, "success")], "outputs": {}, "result": "success"});
+    assert_eq!(state(&fixture, &credential, spec.task_id.0, &done).await.0, StatusCode::OK);
+    let gone = fixture.call("declare", Some(&credential), declaration.to_string()).await;
+    assert_eq!(gone.status, StatusCode::UNAUTHORIZED, "the runner was deleted with its task");
 }

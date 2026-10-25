@@ -58,6 +58,16 @@ use crate::ServiceError;
 /// Longest stored step name, in characters (the column's CHECK).
 const MAX_STEP_NAME_CHARS: usize = 1024;
 
+/// What a retried poll's key found.
+enum Resumed {
+    /// Its task, still running, with a new token.
+    Task(Box<JobSpec>),
+    /// A task that has stopped since (or a token already cleared by a cancel).
+    Spent,
+    /// Nothing: the key is new.
+    Unknown,
+}
+
 /// What one run of the claim query gave a runner.
 enum Claim {
     Task(Box<JobSpec>),
@@ -131,10 +141,14 @@ impl ActionsService {
         let Some(slot) = self.inner.polls.enter(runner.id, self.config().max_polls) else {
             return Err(RunnerError::unavailable("the server holds as many polls as it may; try again shortly"));
         };
-        if let Some(key) = key
-            && let Some(spec) = self.resume(runner, key).await?
-        {
-            return Ok(Some(spec));
+        if let Some(key) = key {
+            match self.resume(runner, key).await? {
+                Resumed::Task(spec) => return Ok(Some(*spec)),
+                // The key's task has stopped: there is nothing to resend, and the key may
+                // not claim again. The runner polls anew with a new key.
+                Resumed::Spent => return Ok(None),
+                Resumed::Unknown => {}
+            }
         }
         let deadline = tokio::time::Instant::now() + self.config().long_poll();
         loop {
@@ -167,27 +181,31 @@ impl ActionsService {
 
     /// The task a retried poll with `key` already claimed, with a fresh token, if it still
     /// runs on this runner.
-    async fn resume(&self, runner: &CachedRunner, key: &str) -> Result<Option<JobSpec>, RunnerError> {
+    async fn resume(&self, runner: &CachedRunner, key: &str) -> Result<Resumed, RunnerError> {
         let store = self.ctx().database.actions_runs();
         let task = match runner.remembered(key) {
             Some(task) => store.task(task).await?,
             None if !runner.keys_loaded.swap(true, Ordering::SeqCst) => store.task_by_idempotency_key(runner.id, key).await?,
             None => None,
         };
-        let Some(task) = task.filter(|task| task.runner_id == Some(runner.id) && task.status == Status::Running) else {
-            return Ok(None);
-        };
+        let Some(task) = task.filter(|task| task.runner_id == Some(runner.id)) else { return Ok(Resumed::Unknown) };
+        if task.status != Status::Running {
+            return Ok(Resumed::Spent);
+        }
         let token = TaskTokenSecret::generate();
         if !store.replace_task_token(task.id, &token.digest()).await? {
-            return Ok(None);
+            return Ok(Resumed::Spent);
         }
-        let Some(job) = store.job(task.job_id).await? else { return Ok(None) };
+        let Some(job) = store.job(task.job_id).await? else { return Ok(Resumed::Spent) };
         tracing::info!(task = task.id.0, runner = runner.id.0, "poll retried: the same task with a new token");
         match self.job_spec(&job, &task, &token).await? {
-            Ok(spec) => Ok(Some(spec)),
+            Ok(spec) => {
+                self.remember_masks(&spec);
+                Ok(Resumed::Task(Box::new(spec)))
+            }
             Err(reason) => {
                 self.fail_unrunnable(&task, &reason).await?;
-                Ok(None)
+                Ok(Resumed::Spent)
             }
         }
     }
@@ -219,6 +237,7 @@ impl ActionsService {
             tracing::info!(task = claimed.task.id.0, job = claimed.job.id.0, runner = runner.id.0, "job claimed");
             match self.job_spec(&claimed.job, &claimed.task, &token).await? {
                 Ok(spec) => {
+                    self.remember_masks(&spec);
                     let names: Vec<String> = spec.template.steps.iter().enumerate().map(|(index, step)| step_name(index, step)).collect();
                     store.create_steps(claimed.task.id, &names).await?;
                     self.report_statuses(claimed.job.run_id).await?;
