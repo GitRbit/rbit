@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-10-24
+
 ### Security
 
 - Update `gix` to 0.90.0 to prevent untrusted repository configuration from disabling
@@ -14,7 +16,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ([GHSA-q54r-jf2p-rfr2](https://github.com/advisories/GHSA-q54r-jf2p-rfr2)).
 - Update `crypto-bigint` to 0.7.6 and `ctutils` to 0.4.5 to address constant-time
   arithmetic issues ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)).
-- Update `ctutils` to 0.4.4 to fix constant-time comparisons
+- Include the `ctutils` constant-time comparison fixes
   ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
 
 ### Added
@@ -22,37 +24,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Resolve and reopen pull request review conversations as a repository writer or the
   conversation's author. Resolved conversations collapse with their replies in the
   conversation and Files changed tabs; state changes appear in the timeline.
-- Migration `0041` adds review conversation resolution metadata. Existing conversations
-  remain unresolved; back up the database before upgrading as usual.
 - Change an open pull request's base branch from its Conversation tab, with searchable
   branch choices for the author and repository writers.
 - Change your username from account settings with current-password confirmation. Old
-  profile links, repository URLs, and Git HTTP/SSH remotes follow the account's current
-  name until another account claims the old name. Private repository redirects are only
-  visible to authorized readers.
-
+  profile links, repository URLs and Git HTTP/SSH remotes follow the current account
+  until another account claims the old name; private redirects require repository access.
 - Preview Markdown before submitting issue and pull request descriptions, comments,
   reviews and browser file edits, with repository links and sanitized HTML.
 - Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
-  visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
-  Markdown mentions once at startup in bounded batches.
-- Notify in the footer and administrator dashboard when a newer stable rbit release
-  is available, using a bounded daily background check of the upstream GitHub release
-  feed. Release checks never send the running version or instance identity.
-- Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
+  visibility-aware counts and global pagination.
+- Notify in the footer and administrator dashboard when a newer stable rbit release is
+  available, using a bounded daily background check of the upstream GitHub release feed.
+  Release checks never send the running version, instance identity or repository data.
+- Add independent `[updates] check_for_updates` and `report_version` controls. Disabling
   reporting hides public version output and omits version numbers from outgoing
   integration User-Agents; administrator-only diagnostics remain available.
 
-### Upgrade notes
+### Changed
 
-- Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
-  and their maintenance triggers. Existing account names and IDs are unchanged; names
-  abandoned before this upgrade cannot be reconstructed.
-
-- Automatic release checks are enabled by default. Set
-  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
-  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
-  Configuration changes take effect after restart; release checks add no database migration.
+- Update `async-compression` to 0.4.51 and its compression codec dependencies.
+- Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
+  commit history focused on the selected branch and its paginated commits.
 
 ### Fixed
 
@@ -60,10 +52,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Clarify private security reporting, remove the broken conduct-reporting contact,
   and add automated checks for GitHub repository configuration and submission paths.
 
-### Changed
+### Upgrade notes
 
-- Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
-  commit history focused on the selected branch and its paginated commits.
+- Back up the database before upgrading. Startup applies migrations `0041`–`0043`;
+  migrations only move forward. To roll back, restore the pre-upgrade backup before
+  starting the previous binary.
+- Migration `0041` adds review conversation resolution metadata. Existing conversations
+  remain unresolved.
+- Migration `0042` adds account-name redirects and their maintenance triggers. Existing
+  account names and IDs are unchanged; names abandoned before the upgrade cannot be
+  reconstructed.
+- Migration `0043` stores dashboard mention membership. First startup indexes existing
+  Markdown bodies, comments and submitted reviews in batches of 100, so large databases
+  can take longer to start. The backfill is restart-safe and runs once. Live mention
+  updates use the existing eventual event subscriber; no replay guarantee is introduced.
+- Automatic release checks are enabled by default. Set
+  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
+  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
+  Configuration changes take effect after restart. These controls need no additional
+  database migration and do not install updates.
 
 ## [0.1.3] - 2026-10-21
 
