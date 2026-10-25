@@ -27,10 +27,10 @@
 //! The server side of the runner protocol (stream S) owns this file.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     sync::{
-        Arc, PoisonError, RwLock,
-        atomic::{AtomicI64, Ordering},
+        Arc, Mutex, PoisonError, RwLock,
+        atomic::{AtomicBool, AtomicI64, Ordering},
     },
     time::Duration,
 };
@@ -40,6 +40,7 @@ use rbit_core::{
     Account, AccountKind, Timestamp, User,
     actions::{
         RegistrationToken, RegistrationTokenId, Runner, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope, Status,
+        TaskId,
     },
     org::OrgRole,
 };
@@ -64,6 +65,8 @@ pub const DEFAULT_REGISTRATION_LIFETIME: Duration = Duration::from_hours(1);
 pub const MAX_REGISTRATION_LIFETIME: Duration = Duration::from_hours(30 * 24);
 /// `last_online` is written at most this often per runner.
 const SEEN_GRANULARITY_SECONDS: i64 = 60;
+/// Idempotency keys of claims remembered per runner, newest last.
+const REMEMBERED_KEYS: usize = 32;
 
 /// A runner as protocol calls see it: what authentication, scheduling and the poll need,
 /// without a database round trip.
@@ -82,6 +85,15 @@ pub struct CachedRunner {
     last_seen: AtomicI64,
     /// The `last_seen` value last written to `last_online`.
     seen_written: AtomicI64,
+    /// The `tasks_version` of this runner's last poll that found nothing: while the version
+    /// has not moved since, nothing new can be there for it, so a poll waits without a query.
+    pub(super) idle_version: AtomicI64,
+    /// The idempotency keys of this runner's recent claims and their tasks, so a retried
+    /// poll is recognised without a query (see [`super::scheduler`]).
+    recent_keys: Mutex<VecDeque<(String, TaskId)>>,
+    /// Whether this process has looked a key of this runner up in SQLite yet: a retry
+    /// across a restart is found there once; claims since are in `recent_keys`.
+    pub(super) keys_loaded: AtomicBool,
 }
 
 impl CachedRunner {
@@ -98,6 +110,9 @@ impl CachedRunner {
             digest,
             last_seen: AtomicI64::new(online),
             seen_written: AtomicI64::new(online),
+            idle_version: AtomicI64::new(0),
+            recent_keys: Mutex::new(VecDeque::new()),
+            keys_loaded: AtomicBool::new(false),
         }
     }
 
@@ -106,12 +121,34 @@ impl CachedRunner {
         let fresh = Self::new(runner, self.digest);
         fresh.last_seen.store(self.last_seen.load(Ordering::SeqCst).max(fresh.last_seen.load(Ordering::SeqCst)), Ordering::SeqCst);
         fresh.seen_written.store(self.seen_written.load(Ordering::SeqCst), Ordering::SeqCst);
+        fresh.idle_version.store(self.idle_version.load(Ordering::SeqCst), Ordering::SeqCst);
+        fresh.keys_loaded.store(self.keys_loaded.load(Ordering::SeqCst), Ordering::SeqCst);
+        fresh
+            .recent_keys
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone_from(&self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner));
         fresh
     }
 
     /// Notes a call at `now`; written to the database later, coalesced.
     pub fn seen(&self, now: Timestamp) {
         self.last_seen.fetch_max(now.0, Ordering::SeqCst);
+    }
+
+    /// The task this runner claimed with idempotency key `key`, if this process remembers.
+    pub(super) fn remembered(&self, key: &str) -> Option<TaskId> {
+        let keys = self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner);
+        keys.iter().rev().find(|(known, _)| known == key).map(|(_, task)| *task)
+    }
+
+    /// Remembers that the claim with `key` gave this runner `task`.
+    pub(super) fn remember(&self, key: &str, task: TaskId) {
+        let mut keys = self.recent_keys.lock().unwrap_or_else(PoisonError::into_inner);
+        if keys.len() == REMEMBERED_KEYS {
+            keys.pop_front();
+        }
+        keys.push_back((key.to_owned(), task));
     }
 }
 
@@ -341,10 +378,12 @@ impl ActionsService {
         Ok(runner)
     }
 
-    /// The intervals runners are told to keep: the longest poll and the protocol's heartbeat.
+    /// The intervals runners are told to keep: `[actions] long_poll_seconds` and the
+    /// protocol's heartbeat.
     pub fn intervals(&self) -> Intervals {
+        let long_poll = self.config().long_poll_seconds.clamp(1, MAX_LONG_POLL.as_secs());
         Intervals {
-            long_poll_seconds: u32::try_from(MAX_LONG_POLL.as_secs()).unwrap_or(25),
+            long_poll_seconds: u32::try_from(long_poll).unwrap_or(1),
             heartbeat_seconds: u32::try_from(MAX_HEARTBEAT_INTERVAL.as_secs()).unwrap_or(10),
         }
     }
@@ -739,12 +778,21 @@ mod tests {
         assert_eq!(cache.get(&first.digest()).unwrap().name, "one");
         assert!(cache.get(&RunnerCredential::generate().digest()).is_none());
 
-        cache.get(&first.digest()).unwrap().seen(Timestamp(500));
+        let cached = cache.get(&first.digest()).unwrap();
+        cached.seen(Timestamp(500));
+        cached.idle_version.store(42, Ordering::SeqCst);
+        cached.remember("key-1", TaskId(3));
         let mut changed = runner(1, "renamed");
         changed.disabled = true;
         let fresh = cache.refresh(&changed).unwrap();
         assert!(fresh.disabled && fresh.name == "renamed");
         assert_eq!(fresh.last_seen.load(Ordering::SeqCst), 500, "what the process learnt survives");
+        assert_eq!((fresh.idle_version.load(Ordering::SeqCst), fresh.remembered("key-1")), (42, Some(TaskId(3))));
+        assert_eq!(fresh.remembered("key-2"), None);
+        for task in 0..40 {
+            fresh.remember(&format!("k{task}"), TaskId(task));
+        }
+        assert_eq!((fresh.remembered("k39"), fresh.remembered("k0")), (Some(TaskId(39)), None), "only the newest are kept");
         assert!(cache.refresh(&runner(9, "unknown")).is_none());
 
         let second = RunnerCredential::generate();

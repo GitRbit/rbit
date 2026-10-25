@@ -18,8 +18,8 @@
 //! | [`schedules`] | Schedule refresh and the ticker |
 //! | [`trust`] | Pull request trust |
 //! | [`statuses`] | Commit statuses for jobs |
-//! | [`runners`] | Registration and the runner cache |
-//! | [`scheduler`] | `FetchTask` |
+//! | [`runners`] | Registration tokens, `register`, `declare`, `unregister`, the runner cache, runners in settings |
+//! | [`scheduler`] | `poll`: the long poll, claims, idempotent retries, job specifications |
 //! | [`tasks`] | `UpdateTask` |
 //! | [`logs`] | `UpdateLog`, log files and retention |
 //! | [`tokens`] | Task tokens for Git and the API |
@@ -80,8 +80,8 @@ struct Inner {
     shutdown: CancellationToken,
     tasks: TaskTracker,
     started: AtomicBool,
-    /// `FetchTask`'s version: moves whenever a job becomes waiting or a runner's labels
-    /// change, so a runner polling with the current version is answered without SQLite.
+    /// The scheduler's version: moves whenever a job becomes waiting or a runner's labels
+    /// change, so a poll that already looked at this version waits without SQLite.
     tasks_version: AtomicI64,
     /// Workflow evaluations at once (`[actions] evaluation_concurrency`).
     evaluations: Arc<Semaphore>,
@@ -96,6 +96,10 @@ struct Inner {
     // Actions: S.
     /// Every runner by credential digest, loaded on first use (see [`runners`]).
     runners: tokio::sync::OnceCell<runners::RunnerCache>,
+    /// Wakes the polls waiting for work whenever `tasks_version` moves (see [`scheduler`]).
+    wake: tokio::sync::Notify,
+    /// The polls held open now, one per runner.
+    polls: scheduler::Polls,
 }
 
 impl ActionsService {
@@ -120,6 +124,8 @@ impl ActionsService {
                 secrets_key: tokio::sync::OnceCell::new(),
                 // Actions: S.
                 runners: tokio::sync::OnceCell::new(),
+                wake: tokio::sync::Notify::new(),
+                polls: scheduler::Polls::default(),
             }),
         })
     }
@@ -182,6 +188,8 @@ impl ActionsService {
     /// Moves the `FetchTask` version after a job became waiting or a runner's labels changed.
     pub fn bump_tasks_version(&self) {
         self.inner.tasks_version.fetch_add(1, Ordering::SeqCst);
+        // Actions: S. Every waiting poll looks again.
+        self.inner.wake.notify_waiters();
     }
 
     /// The semaphore every workflow evaluation holds a permit of until its blocking work

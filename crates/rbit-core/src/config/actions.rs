@@ -33,6 +33,10 @@
 //! max_jobs_per_event = 1024
 //! # `schedule` entries per repository.
 //! max_schedules_per_repository = 20
+//! # How long a runner's poll for work is held open, in seconds (at most 25).
+//! long_poll_seconds = 25
+//! # Runner polls held open at once across the instance; beyond it polls are refused (503).
+//! max_polls = 1024
 //! ```
 //!
 //! The switch is read once at start-up: with `enabled = false` the Actions service is never
@@ -92,7 +96,16 @@ pub struct ActionsConfig {
     pub max_jobs_per_event: u32,
     /// `schedule` entries per repository.
     pub max_schedules_per_repository: u32,
+    // Actions: S.
+    /// How long a runner's poll is held open, in seconds; at most [`MAX_LONG_POLL_SECONDS`].
+    pub long_poll_seconds: u64,
+    /// Polls held open at once; beyond it a poll is answered "unavailable".
+    pub max_polls: usize,
 }
+
+// Actions: S.
+/// The longest poll the runner protocol allows (`rbit_workflow::protocol::MAX_LONG_POLL`).
+pub const MAX_LONG_POLL_SECONDS: u64 = 25;
 
 impl Default for ActionsConfig {
     fn default() -> Self {
@@ -115,6 +128,9 @@ impl Default for ActionsConfig {
             max_runs_per_event: 32,
             max_jobs_per_event: 1024,
             max_schedules_per_repository: 20,
+            // Actions: S.
+            long_poll_seconds: MAX_LONG_POLL_SECONDS,
+            max_polls: 1024,
         }
     }
 }
@@ -147,6 +163,13 @@ impl ActionsConfig {
         {
             return Err("Actions run, job and schedule caps must not be zero".into());
         }
+        // Actions: S.
+        if !(1..=MAX_LONG_POLL_SECONDS).contains(&self.long_poll_seconds) {
+            return Err(format!("the Actions long poll must be between 1 and {MAX_LONG_POLL_SECONDS} seconds"));
+        }
+        if self.max_polls == 0 {
+            return Err("Actions must allow at least one runner poll".into());
+        }
         if !EVALUATION_CONCURRENCY.contains(&self.evaluation_concurrency) {
             return Err(format!(
                 "Actions evaluation concurrency must be between {} and {}",
@@ -170,6 +193,12 @@ impl ActionsConfig {
     /// [`Self::endless_timeout_seconds`] as a duration.
     pub fn endless_timeout(&self) -> Duration {
         Duration::from_secs(self.endless_timeout_seconds)
+    }
+
+    // Actions: S.
+    /// [`Self::long_poll_seconds`] as a duration.
+    pub fn long_poll(&self) -> Duration {
+        Duration::from_secs(self.long_poll_seconds)
     }
 
     /// [`Self::abandoned_timeout_seconds`] as a duration.
@@ -206,6 +235,7 @@ mod tests {
         assert_eq!(config.max_waiting_jobs_per_repository, 256);
         assert_eq!((config.max_runs_per_event, config.max_jobs_per_event), (32, 1024));
         assert_eq!(config.max_schedules_per_repository, 20);
+        assert_eq!((config.long_poll(), config.max_polls), (Duration::from_secs(25), 1024));
         assert_eq!(config.validate(), Ok(()));
     }
 
@@ -248,6 +278,10 @@ mod tests {
         assert!(!valid(|c| c.max_runs_per_event = 0));
         assert!(!valid(|c| c.max_jobs_per_event = 0));
         assert!(!valid(|c| c.max_schedules_per_repository = 0));
+        assert!(valid(|c| c.long_poll_seconds = 1));
+        assert!(!valid(|c| c.long_poll_seconds = 0));
+        assert!(!valid(|c| c.long_poll_seconds = 26));
+        assert!(!valid(|c| c.max_polls = 0));
         assert!(!valid(|c| c.evaluation_concurrency = 0));
         assert!(!valid(|c| c.evaluation_concurrency = 17));
     }

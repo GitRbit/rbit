@@ -755,6 +755,22 @@ impl ActionsRunStore {
         Ok(result.rows_affected() == 1)
     }
 
+    // Actions: S.
+    /// Creates the steps of a newly claimed task, waiting, named in order from 0.
+    pub async fn create_steps(&self, task: TaskId, names: &[String]) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        for (number, name) in names.iter().enumerate() {
+            sqlx::query("INSERT INTO actions_steps (task_id, number, name, status) VALUES (?, ?, ?, 5) ON CONFLICT DO NOTHING")
+                .bind(task.0)
+                .bind(i64::try_from(number).unwrap_or(i64::MAX))
+                .bind(name)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Creates or updates steps of a task, by number.
     pub async fn put_steps(&self, task: TaskId, steps: &[StepUpdate<'_>]) -> Result<(), StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;

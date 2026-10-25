@@ -41,8 +41,8 @@ use rbit_services::{
     actions::runners::{CachedRunner, RunnerError},
 };
 use rbit_workflow::protocol::{
-    BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, MAX_GZIP_RATIO, PROTOCOL_HEADER, RegisterRequest,
-    SUPPORTED_PROTOCOL_VERSIONS, UnregisterRequest,
+    BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest,
+    PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -70,6 +70,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(&path(Endpoint::Register), post(register))
         .route(&path(Endpoint::Declare), post(declare))
+        .route(&path(Endpoint::Poll), post(poll))
         .route(&path(Endpoint::Unregister), post(unregister))
         .layer(from_fn(require_protocol))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, CALL_TIMEOUT))
@@ -109,6 +110,25 @@ async fn declare(
     let request: DeclareRequest = read_json(&headers, body, Endpoint::Declare).await?;
     let response = actions(&state)?.declare_runner(&runner, &request).await?;
     Ok(Json(response).into_response())
+}
+
+/// `POST poll`: one task, or `204` once the long poll has passed. The answer carries the
+/// task's secrets and token, so nothing may keep it.
+async fn poll(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let request: PollRequest = read_json(&headers, body, Endpoint::Poll).await?;
+    let key = match headers.get(IDEMPOTENCY_KEY_HEADER) {
+        Some(value) => Some(value.to_str().map_err(|_| RunnerError::bad_request("the Idempotency-Key is not ASCII"))?),
+        None => None,
+    };
+    let Some(task) = actions(&state)?.poll(&runner, &request, key).await? else {
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    };
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(PollResponse { task })).into_response())
 }
 
 /// `POST unregister`: the runner removes itself.

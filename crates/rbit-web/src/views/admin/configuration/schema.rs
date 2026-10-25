@@ -1004,6 +1004,23 @@ const ACTIONS: &[Spec] = &[
         optional: false,
         max: "4294967295",
     },
+    // Actions: S.
+    Spec {
+        key: "long_poll_seconds",
+        label: "Runner long poll (seconds)",
+        help: "How long a runner's poll for work is held open, 1 to 25.",
+        kind: Kind::Number,
+        optional: false,
+        max: "25",
+    },
+    Spec {
+        key: "max_polls",
+        label: "Max runner polls",
+        help: "Runner polls held open at once; beyond it polls are refused until one ends.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
 ];
 
 pub(super) const PROVIDER: &[Spec] = &[
