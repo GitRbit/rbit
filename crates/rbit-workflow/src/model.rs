@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-pub use crate::spec::{Env, RegistryCredentials, RunDefaults};
+pub use crate::spec::{Builtin, BuiltinKind, Env, RegistryCredentials, RunDefaults, StepAction};
 use crate::{
     cron::Cron,
     error::Location,
@@ -331,6 +331,7 @@ pub struct Step {
     pub name: Option<String>,
     /// `if`, as written; `None` means `success()`.
     pub condition: Option<String>,
+    /// `run`, or `uses` resolved to a built-in ([`crate::builtins`]).
     pub action: StepAction,
     /// `shell` (`run` steps only): one of [`Shell`]'s names, or an expression.
     pub shell: Option<String>,
@@ -342,15 +343,6 @@ pub struct Step {
     /// `timeout-minutes` as written (a number or an expression).
     pub timeout_minutes: Option<String>,
     pub at: Location,
-}
-
-/// What a step does: exactly one of `run` and `uses`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StepAction {
-    /// A `run:` script.
-    Run(String),
-    /// `uses:` and its `with:` values, as templates.
-    Uses { uses: String, with: BTreeMap<String, String> },
 }
 
 /// The shells a `run` step may name (§12.2). Custom `{0}` command templates are a later

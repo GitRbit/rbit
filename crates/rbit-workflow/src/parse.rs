@@ -19,13 +19,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
+    builtins,
     cron::{Cron, MIN_INTERVAL_MINUTES},
     error::{ErrorKind, Location, WorkflowError},
     expr::{CONTEXTS, Condition, Expr, Function, Template},
     limits::{Deadline, Limits},
     model::{
-        ActivityType, Concurrency, Container, Dispatch, DispatchInput, Env, Filter, InputKind, Job, Matrix, On, Permission, Permissions,
-        PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell, Step, StepAction, Strategy, Workflow,
+        ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, Filter, InputKind, Job, Matrix, On, Permission,
+        Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell, Step, StepAction,
+        Strategy, Workflow,
     },
     pattern::Patterns,
     spec::{MAX_NAME_BYTES, MAX_SERVICES, MAX_STEPS},
@@ -901,8 +903,11 @@ fn parse_step(node: &Node, path: &str) -> Result<Step, WorkflowError> {
                 .as_text()
                 .filter(|uses| !uses.is_empty())
                 .ok_or_else(|| error(format!("`{path}.uses` must name an action"), uses_node.at))?;
-            let with = config.get("with").map(|node| parse_with(node, &field("with"))).transpose()?.unwrap_or_default();
-            StepAction::Uses { uses, with }
+            let (kind, version) = builtins::resolve(&uses).map_err(|problem| error(format!("`{path}.uses`: {problem}"), uses_node.at))?;
+            let check = |key: &str, value: &str| builtins::check_input(kind, &uses, key, value);
+            let with = config.get("with").map(|node| parse_with(node, &field("with"), &check)).transpose()?.unwrap_or_default();
+            builtins::check_required(kind, &uses, &with).map_err(|problem| error(format!("`{path}`: {problem}"), uses_node.at))?;
+            StepAction::Uses(Builtin { uses, kind, version, with })
         }
     };
     let shell = config.get("shell").filter(|node| !node.is_null()).map(|node| parse_shell(node, &field("shell"))).transpose()?;
@@ -921,8 +926,12 @@ fn parse_step(node: &Node, path: &str) -> Result<Step, WorkflowError> {
     Ok(Step { id, name, condition, action, shell, working_directory, env, continue_on_error, timeout_minutes, at: node.at })
 }
 
-/// `with`: scalar values, as templates.
-fn parse_with(node: &Node, path: &str) -> Result<BTreeMap<String, String>, WorkflowError> {
+/// `with`: scalar values, as templates, each passing `check` (the built-in's inputs).
+fn parse_with(
+    node: &Node,
+    path: &str,
+    check: &dyn Fn(&str, &str) -> Result<(), String>,
+) -> Result<BTreeMap<String, String>, WorkflowError> {
     if node.is_null() {
         return Ok(BTreeMap::new());
     }
@@ -935,6 +944,7 @@ fn parse_with(node: &Node, path: &str) -> Result<BTreeMap<String, String>, Workf
             _ => return Err(error(format!("`{value_path}` must be a string, number or boolean"), value.at)),
         };
         template(&text, Scope::Runner, &value_path, value.at)?;
+        check(&key.name, &text).map_err(|problem| error(format!("`{value_path}`: {problem}"), key.at))?;
         with.insert(key.name.clone(), text);
     }
     Ok(with)
@@ -1013,6 +1023,7 @@ fn check_needs(jobs: &[Job]) -> Result<(), WorkflowError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::spec::BuiltinKind;
 
     fn parse_ok(source: &str) -> Workflow {
         parse(source.as_bytes(), &Limits::default(), &Deadline::NONE).unwrap_or_else(|error| panic!("{error}\n{source}"))
@@ -1352,10 +1363,12 @@ jobs:
         assert_eq!(test.steps.len(), 2);
         assert_eq!(
             test.steps[0].action,
-            StepAction::Uses {
+            StepAction::Uses(Builtin {
                 uses: "actions/checkout@v4".into(),
+                kind: BuiltinKind::Checkout,
+                version: 1,
                 with: BTreeMap::from([("fetch-depth".into(), "0".into()), ("lfs".into(), "true".into())])
-            }
+            })
         );
         let meta = &test.steps[1];
         assert_eq!(
@@ -1503,7 +1516,20 @@ jobs:
             ("    steps:\n      - {id: a, run: x}\n      - {id: a, run: y}\n", "step id `a` is used twice", (7, 9)),
             ("    steps:\n      - {id: 1a, run: x}\n", "`1a` must start with a letter", (6, 14)),
             ("    steps:\n      - {run: x, with: {}}\n", "steps[0].with` only applies", (6, 18)),
-            ("    steps:\n      - {uses: y, with: {a: [1]}}\n", "`jobs.a.steps[0].with.a` must be a string", (6, 29)),
+            ("    steps:\n      - {uses: rbit/checkout@v1, with: {ref: [1]}}\n", "`jobs.a.steps[0].with.ref` must be a string", (6, 46)),
+            ("    steps:\n      - {uses: actions/setup-node@v4}\n", "`jobs.a.steps[0].uses`: `actions/setup-node` is not one of", (6, 16)),
+            ("    steps:\n      - {uses: 'docker://alpine'}\n", "`docker://` steps are not supported by rbit", (6, 16)),
+            (
+                "    steps:\n      - {uses: actions/checkout@v4, with: {token: x}}\n",
+                "`jobs.a.steps[0].with.token`: `actions/checkout@v4` has no input `token`",
+                (6, 44),
+            ),
+            ("    steps:\n      - {uses: actions/checkout@v4, with: {lfs: maybe}}\n", "`lfs` must be true or false", (6, 44)),
+            (
+                "    steps:\n      - {uses: actions/cache@v4, with: {path: x}}\n",
+                "`jobs.a.steps[0]`: `actions/cache@v4` needs `with.key`",
+                (6, 16),
+            ),
             ("    steps:\n      - {run: x, env: {A: {b: c}}}\n", "`jobs.a.steps[0].env.A` must be a string", (6, 27)),
             ("    steps:\n      - {run: x, continue-on-error: maybe}\n", "true, false or an expression", (6, 37)),
             ("    steps:\n      - {run: x, continue-on-error: 'x ${{ true }}'}\n", "true, false or an expression", (6, 37)),
@@ -1538,7 +1564,10 @@ jobs:
         assert_eq!(step("{run: x, continue-on-error: false}").continue_on_error.as_deref(), Some("false"));
         assert_eq!(step("{run: x, if: false}").condition.as_deref(), Some("false"));
         assert_eq!(step("{run: x, if: \"contains(github.ref, 'x')\"}").condition.as_deref(), Some("contains(github.ref, 'x')"));
-        assert_eq!(step("{uses: x}").action, StepAction::Uses { uses: "x".into(), with: BTreeMap::new() });
+        assert!(matches!(
+            step("{uses: rbit/download-artifact@v1}").action,
+            StepAction::Uses(Builtin { kind: BuiltinKind::DownloadArtifact, .. })
+        ));
         let job = |job: &str| job_err(&format!("    runs-on: x\n{job}    steps: [{{run: x}}]\n"));
         assert!(job("    timeout-minutes: -1\n").message.contains("a positive number"));
         assert!(job("    strategy: {max-parallel: 1.5}\n").message.contains("a positive whole number"));

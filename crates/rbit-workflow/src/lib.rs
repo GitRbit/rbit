@@ -10,6 +10,8 @@
 //! * [`pattern`] — GitHub's filter-pattern dialect for `branches`, `tags` and `paths`.
 //! * [`trigger`] — whether a push, pull request, dispatch or schedule tick starts a
 //!   workflow, and dispatch input checks.
+//! * [`builtins`] — `uses:` resolved to the built-in actions `rbit-runner` carries, with
+//!   their `actions/*` aliases and checked `with:` inputs.
 //! * [`cron`] — `schedule` expressions and their next fire time.
 //! * [`expr`] — GitHub's expression language: one evaluator, shared by the server and
 //!   `rbit-runner`, each supplying the contexts it has.
@@ -24,6 +26,7 @@
 //!
 //! The Actions foundation (workstream F of `docs/design/actions.md`) owns this crate.
 
+pub mod builtins;
 pub mod cron;
 pub mod emit;
 pub mod error;
