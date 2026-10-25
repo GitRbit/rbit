@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, RwLock};
 
-use rbit_core::{InstanceSettings, OrgCreationPolicy, RegistrationMode, User, Visibility};
+use rbit_core::{InstanceSettings, OrgCreationPolicy, RegistrationMode, User, Visibility, config::MAX_DIGEST_HOUR};
 pub use rbit_storage::sqlite::admin::PublicCounts;
 use rbit_storage::sqlite::{admin::AdminStore, instance::InstanceSettingsStore};
 
@@ -22,6 +22,7 @@ mod key {
     pub const REGISTRATION: &str = "registration";
     pub const ORG_CREATION: &str = "org_creation";
     pub const DEFAULT_VISIBILITY: &str = "default_visibility";
+    pub const DIGEST_HOUR: &str = "digest_hour";
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +61,10 @@ impl InstanceService {
             return Err(ServiceError::Forbidden);
         }
         new.branding.validate().map_err(ServiceError::Invalid)?;
+        if new.digest_hour > MAX_DIGEST_HOUR {
+            return Err(ServiceError::Invalid(format!("the digest hour must be between 0 and {MAX_DIGEST_HOUR}")));
+        }
+        let digest_hour = new.digest_hour.to_string();
         let branding = serde_json::to_string(&new.branding).map_err(ServiceError::internal)?;
         let new = InstanceSettings { site_name: validate_site_name(&new.site_name)?, ..new };
 
@@ -70,6 +75,7 @@ impl InstanceService {
                 (key::REGISTRATION, new.registration.as_str()),
                 (key::ORG_CREATION, new.org_creation.as_str()),
                 (key::DEFAULT_VISIBILITY, new.default_visibility.as_str()),
+                (key::DIGEST_HOUR, digest_hour.as_str()),
             ])
             .await?;
 
@@ -79,6 +85,7 @@ impl InstanceService {
             registration = new.registration.as_str(),
             org_creation = new.org_creation.as_str(),
             default_visibility = new.default_visibility.as_str(),
+            digest_hour = new.digest_hour,
             "instance settings updated"
         );
         match self.settings.write() {
@@ -118,6 +125,7 @@ fn apply_override(settings: &mut InstanceSettings, key: &str, value: &str) {
         key::REGISTRATION => RegistrationMode::parse(value).map(|mode| settings.registration = mode),
         key::ORG_CREATION => OrgCreationPolicy::parse(value).map(|policy| settings.org_creation = policy),
         key::DEFAULT_VISIBILITY => Visibility::parse(value).map(|visibility| settings.default_visibility = visibility),
+        key::DIGEST_HOUR => value.parse::<u8>().ok().filter(|hour| *hour <= MAX_DIGEST_HOUR).map(|hour| settings.digest_hour = hour),
         _ => None,
     }
     .is_some();
@@ -149,6 +157,8 @@ mod tests {
         apply_override(&mut settings, "org_creation", "admins_only");
         apply_override(&mut settings, "default_visibility", "private");
         apply_override(&mut settings, "default_visibility", "secret");
+        apply_override(&mut settings, "digest_hour", "19");
+        apply_override(&mut settings, "digest_hour", "24");
         apply_override(&mut settings, "site_name", "");
         apply_override(&mut settings, "unknown", "value");
 
@@ -160,6 +170,7 @@ mod tests {
                 registration: RegistrationMode::Closed,
                 org_creation: OrgCreationPolicy::AdminsOnly,
                 default_visibility: Visibility::Private,
+                digest_hour: 19,
             }
         );
     }

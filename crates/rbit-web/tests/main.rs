@@ -7,6 +7,7 @@ mod contributions;
 mod listings;
 mod markdown_preview;
 mod mirror_progress;
+mod notification_settings;
 mod properties;
 mod repository_documents;
 mod security;

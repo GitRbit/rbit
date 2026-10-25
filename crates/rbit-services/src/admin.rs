@@ -305,11 +305,13 @@ impl AdminService {
 /// e.g. `registration: open → closed; site name: rbit → Forge`.
 fn describe_changes(before: &InstanceSettings, after: &InstanceSettings) -> String {
     let mut description = if before.branding == after.branding { String::new() } else { "branding changed; ".to_owned() };
+    let (hour_before, hour_after) = (format!("{:02}:00 UTC", before.digest_hour), format!("{:02}:00 UTC", after.digest_hour));
     let fields = [
         ("site name", before.site_name.as_str(), after.site_name.as_str()),
         ("registration", before.registration.as_str(), after.registration.as_str()),
         ("organization creation", before.org_creation.as_str(), after.org_creation.as_str()),
         ("default visibility", before.default_visibility.as_str(), after.default_visibility.as_str()),
+        ("email digest hour", hour_before.as_str(), hour_after.as_str()),
     ];
     description.push_str(
         &fields

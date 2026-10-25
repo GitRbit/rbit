@@ -139,6 +139,7 @@ fn settings(site_name: &str, registration: RegistrationMode) -> InstanceSettings
         registration,
         org_creation: OrgCreationPolicy::AdminsOnly,
         default_visibility: Visibility::Private,
+        digest_hour: 21,
     }
 }
 
@@ -154,12 +155,15 @@ async fn instance_settings_persist_and_apply_immediately() {
     assert!(forbidden(fixture.services.instance.update(&alice, settings("Mine", RegistrationMode::Open)).await));
     assert!(invalid(fixture.services.instance.update(&admin, settings("   ", RegistrationMode::Open)).await));
     assert!(invalid(fixture.services.instance.update(&admin, settings(&"x".repeat(51), RegistrationMode::Open)).await));
+    let late = InstanceSettings { digest_hour: 24, ..settings("Forge", RegistrationMode::Open) };
+    assert!(invalid(fixture.services.instance.update(&admin, late).await), "digest hours are 0-23");
 
     fixture.services.instance.update(&admin, settings("  Forge  ", RegistrationMode::Closed)).await.unwrap();
     let expected = settings("Forge", RegistrationMode::Closed);
     assert_eq!(fixture.services.instance.current(), expected);
     assert_eq!(fixture.services.admin.dashboard(&admin).await.unwrap().settings, expected, "shared in-memory copy");
     assert_eq!(fixture.restart().await.instance.current(), expected, "survives a restart");
+    assert_eq!(fixture.services.notification_email.default_digest_hour(), 21, "digests follow the runtime default");
 }
 
 #[tokio::test]

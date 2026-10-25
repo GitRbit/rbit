@@ -9,6 +9,7 @@ mod access_tokens;
 mod accounts;
 mod archives;
 mod collaborators;
+mod email_digests;
 mod external_identities;
 mod imports;
 mod issue_meta;

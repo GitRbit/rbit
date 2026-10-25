@@ -10,6 +10,7 @@ mod archives;
 mod compatibility;
 mod edge;
 mod edits;
+mod email_digests;
 mod essentials;
 mod harness;
 mod issues;
