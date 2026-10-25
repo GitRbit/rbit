@@ -20,6 +20,7 @@
 use std::{
     collections::BTreeMap,
     path::{Component, Path, PathBuf},
+    time::Duration,
 };
 
 use base64::Engine as _;
@@ -29,7 +30,7 @@ use tokio::process::Command;
 use super::{Inputs, Outcome};
 use crate::{
     job::Job,
-    process::{self, Exit},
+    process::{self, Exit, Stopper},
 };
 
 /// The `with:` of a checkout that matter for its commands.
@@ -171,7 +172,7 @@ pub fn target(workspace: &Path, path: &str) -> Option<PathBuf> {
 }
 
 /// Runs a checkout step.
-pub async fn checkout(job: &mut Job, inputs: &Inputs) -> Outcome {
+pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>) -> Outcome {
     let Some(target) = target(&job.dirs.workspace, inputs.get("path")) else {
         return job.fail("`with.path` must stay inside the workspace");
     };
@@ -194,17 +195,17 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs) -> Outcome {
         job.reporter.log(&format!("[command]git {}", args.join(" ")));
         let mut command = Command::new(&git);
         command.args(&args).current_dir(&target).envs(&env);
+        process::isolate(&mut command);
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().to_ascii_uppercase().starts_with("RBIT_RUNNER_") {
                 command.env_remove(name);
             }
         }
-        let cancel = job.reporter.cancellation().clone();
+        let signal = job.stop_signal(timeout);
         let reporter = &job.reporter;
-        match process::run_streaming(command, MAX_LOG_LINE_BYTES, async move { cancel.cancelled().await }, |line| reporter.log(&line)).await
-        {
+        match process::run_streaming(command, MAX_LOG_LINE_BYTES, signal.wait(), &Stopper::Host, |line| reporter.log(&line)).await {
             Ok(Exit::Code(Some(0))) => {}
-            Ok(Exit::Stopped) => return Outcome::cancelled(),
+            Ok(Exit::Stopped) => return job.stopped(signal.reason()),
             Ok(Exit::Code(code)) => {
                 let code = code.map_or_else(|| "a signal".to_owned(), |code| format!("exit code {code}"));
                 return job.fail(&format!("`git {}` failed with {code}", args.first().map_or("", String::as_str)));

@@ -35,7 +35,7 @@ use tokio::process::Command;
 use super::{Dirs, StepCommand, View};
 use crate::{
     config::{ContainerConfig, RunnerConfig},
-    process::{self, Exit},
+    process::{self, Exit, Stopper},
     task::Reporter,
 };
 
@@ -300,7 +300,10 @@ impl Container {
         let mut command = self.cli();
         command.args(args).envs(inherited.iter().map(|(name, value)| (name, value)));
         let cancel = reporter.cancellation().clone();
-        match process::run_streaming(command, MAX_LOG_LINE_BYTES, async move { cancel.cancelled().await }, |line| reporter.log(&line)).await
+        match process::run_streaming(command, MAX_LOG_LINE_BYTES, async move { cancel.cancelled().await }, &Stopper::Host, |line| {
+            reporter.log(&line);
+        })
+        .await
         {
             Ok(Exit::Code(Some(0))) => Ok(()),
             Ok(Exit::Stopped) => Err("cancelled".to_owned()),
@@ -374,6 +377,18 @@ impl Container {
                     None => _ = self.shells.insert(line.trim().to_owned()),
                 }
             }
+        }
+    }
+
+    /// How a step of this job is stopped: inside the container.
+    pub fn stopper(&self) -> Stopper {
+        Stopper::Container {
+            program: self.program.clone(),
+            env: vec![
+                ("DOCKER_CONFIG".to_owned(), self.private.join("docker")),
+                ("REGISTRY_AUTH_FILE".to_owned(), self.private.join("auth.json")),
+            ],
+            container: self.names.job.clone(),
         }
     }
 

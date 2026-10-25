@@ -182,7 +182,7 @@ jobs:
             cp "target/${{ matrix.target }}/release/$exe$suffix" "dist/$NAME/"
           done
           cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY.md "dist/$NAME/"
-          cp deploy/rbit.example.toml deploy/rbit.service "dist/$NAME/"
+          cp deploy/rbit.example.toml deploy/rbit.service deploy/rbit-runner.example.toml deploy/rbit-runner.service "dist/$NAME/"
           cd dist
           if [[ "${{ matrix.archive }}" == zip ]]; then
             7z a -tzip "$NAME.zip" "$NAME" > /dev/null

@@ -7,7 +7,7 @@
 pub mod checkout;
 pub mod run;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use rbit_workflow::{
     builtins,
@@ -74,7 +74,7 @@ impl Inputs {
 }
 
 /// Runs a built-in action.
-pub async fn builtin(job: &mut Job, builtin: &Builtin) -> Outcome {
+pub async fn builtin(job: &mut Job, builtin: &Builtin, timeout: Option<Duration>) -> Outcome {
     job.reporter.log(&format!("##[group]Run {}", builtin.uses));
     for (name, value) in &builtin.with {
         job.reporter.log(&format!("  {name}: {value}"));
@@ -85,7 +85,7 @@ pub async fn builtin(job: &mut Job, builtin: &Builtin) -> Outcome {
         Err(error) => return job.fail(&error),
     };
     match builtin.kind {
-        BuiltinKind::Checkout => checkout::checkout(job, &inputs).await,
+        BuiltinKind::Checkout => checkout::checkout(job, &inputs, timeout).await,
         BuiltinKind::UploadArtifact | BuiltinKind::DownloadArtifact => {
             job.fail(&format!("`{}`: artifacts are not available in rbit Actions yet", builtin.uses))
         }

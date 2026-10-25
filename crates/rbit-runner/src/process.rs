@@ -102,17 +102,92 @@ pub enum Exit {
     Stopped,
 }
 
+/// How long a stopped step has between the polite and the forceful signal.
+pub const STOP_GRACE: Duration = Duration::from_secs(10);
+
+/// How a running step is stopped (§12.5.4 "Timeouts and cancellation").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stopper {
+    /// A process on the host. On Unix it runs in its own process group, which gets
+    /// `kill -TERM`, then `kill -KILL` after [`STOP_GRACE`], through the `kill` program so
+    /// no `unsafe` is needed. On Windows the tree gets `taskkill /T`, then `taskkill /T /F`.
+    Host,
+    /// A step `exec`-ed in a container: every process in it but its init gets `kill
+    /// -TERM -1`, then `kill -KILL -1`, so the container stays for later `always()` steps.
+    /// If that fails, the container itself is killed.
+    Container { program: PathBuf, env: Vec<(String, PathBuf)>, container: String },
+}
+
+/// Puts a step's process in its own process group (Unix), so it can be stopped with
+/// everything it started.
+pub fn isolate(command: &mut Command) {
+    #[cfg(unix)]
+    command.process_group(0);
+    #[cfg(not(unix))]
+    let _ = command;
+}
+
+impl Stopper {
+    /// Sends the polite (`force == false`) or forceful signal; `true` when it was sent.
+    async fn signal(&self, pid: Option<u32>, force: bool) -> bool {
+        let (program, args, env): (PathBuf, Vec<String>, &[(String, PathBuf)]) = match self {
+            Self::Host if cfg!(windows) => {
+                let Some(pid) = pid else { return false };
+                let mut args = vec!["/T".to_owned()];
+                if force {
+                    args.push("/F".to_owned());
+                }
+                args.extend(["/PID".to_owned(), pid.to_string()]);
+                (find_program("taskkill").unwrap_or_else(|| PathBuf::from("taskkill")), args, &[])
+            }
+            Self::Host => {
+                let Some(pid) = pid else { return false };
+                let signal = if force { "KILL" } else { "TERM" };
+                let args = ["-s", signal, "--", &format!("-{pid}")].map(str::to_owned).to_vec();
+                (find_program("kill").unwrap_or_else(|| PathBuf::from("kill")), args, &[])
+            }
+            Self::Container { program, env, container } => {
+                let signal = if force { "-KILL" } else { "-TERM" };
+                (program.clone(), ["exec", container, "kill", signal, "-1"].map(str::to_owned).to_vec(), env.as_slice())
+            }
+        };
+        let mut command = Command::new(&program);
+        command.args(&args).envs(env.iter().map(|(name, value)| (name, value)));
+        let sent = capture(command, None, Duration::from_secs(30)).await.is_ok_and(|output| output.success);
+        if let (Self::Container { program, env, container }, false, true) = (self, sent, force) {
+            let mut command = Command::new(program);
+            command.args(["kill", container.as_str()]).envs(env.iter().map(|(name, value)| (name, value)));
+            return capture(command, None, Duration::from_secs(30)).await.is_ok_and(|output| output.success);
+        }
+        sent
+    }
+
+    /// The polite signal, [`STOP_GRACE`], then the forceful one.
+    async fn escalate(self, pid: Option<u32>) {
+        self.signal(pid, false).await;
+        tokio::time::sleep(STOP_GRACE).await;
+        self.signal(pid, true).await;
+    }
+}
+
 /// Runs `command` to its end, handing each line of its standard output and error to
 /// `on_line` as it comes (lines longer than `max_line` bytes are cut into pieces). When
-/// `stop` fires first, the process is killed and [`Exit::Stopped`] returned.
+/// `stop` fires first, the process is stopped as `stopper` says and [`Exit::Stopped`]
+/// returned once it has ended.
 pub async fn run_streaming(
     mut command: Command,
     max_line: usize,
     stop: impl Future<Output = ()>,
+    stopper: &Stopper,
     mut on_line: impl FnMut(String),
 ) -> std::io::Result<Exit> {
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = command.spawn()?;
+    let pid = child.id();
+    // The escalation runs beside the wait; it says when its forceful signal is out, and
+    // is aborted as soon as the process has ended, so no signal reaches a reused id.
+    let (forced, mut forced_signal) = tokio::sync::mpsc::channel::<()>(1);
+    let mut escalation: Option<tokio::task::JoinHandle<()>> = None;
     let (sender, mut lines) = tokio::sync::mpsc::channel::<String>(256);
     let readers: Vec<_> = [child.stdout.take().map(Pipe::Out), child.stderr.take().map(Pipe::Err)]
         .into_iter()
@@ -121,7 +196,7 @@ pub async fn run_streaming(
         .collect();
     drop(sender);
     tokio::pin!(stop);
-    let mut stopped = false;
+    let mut stop_sent = false;
     let mut status = None;
     // Once the process has exited, its output is read for a little longer: a background
     // process it left behind may hold the pipes open indefinitely.
@@ -138,17 +213,28 @@ pub async fn run_streaming(
                 drain_until = Some(tokio::time::Instant::now() + OUTPUT_DRAIN);
             }
             () = tokio::time::sleep_until(drain_until.unwrap_or_else(tokio::time::Instant::now)), if drain_until.is_some() => break,
-            () = &mut stop, if !stopped => {
-                stopped = true;
+            () = &mut stop, if !stop_sent => {
+                stop_sent = true;
+                let (stopper, forced) = (stopper.clone(), forced.clone());
+                escalation = Some(tokio::spawn(async move {
+                    stopper.escalate(pid).await;
+                    let _ = forced.send(()).await;
+                }));
+            }
+            Some(()) = forced_signal.recv(), if status.is_none() => {
+                // The grace period is over and the forceful signal is out; make sure.
                 let _ = child.start_kill();
             }
         }
+    }
+    if let Some(escalation) = escalation {
+        escalation.abort();
     }
     for reader in readers {
         reader.abort();
     }
     let code = status.and_then(|status| status.code());
-    Ok(if stopped { Exit::Stopped } else { Exit::Code(code) })
+    Ok(if stop_sent { Exit::Stopped } else { Exit::Code(code) })
 }
 
 /// How long output is still read after a step's process has exited.

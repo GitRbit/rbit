@@ -416,6 +416,14 @@ max_bytes = 10737418240
     }
 
     #[test]
+    fn the_shipped_example_is_valid() {
+        let example: RunnerConfig = toml::from_str(include_str!("../../../deploy/rbit-runner.example.toml")).unwrap();
+        example.validate().unwrap();
+        assert_eq!((example.capacity, example.shutdown_grace_seconds), (2, 600));
+        assert!(host_warning(&example).is_none(), "the example's host label stays commented out");
+    }
+
+    #[test]
     fn unknown_keys_and_unsafe_settings_are_refused() {
         assert!(toml::from_str::<RunnerConfig>("url='https://a'\nname='n'\nlabels=[]\n[container]\npid_limit=1\n").is_err());
         let refused: [Refusal; 9] = [

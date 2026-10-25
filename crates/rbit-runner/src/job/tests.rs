@@ -331,3 +331,46 @@ async fn container_jobs_drive_the_cli() {
         "{calls}"
     );
 }
+
+#[tokio::test]
+async fn a_step_that_runs_too_long_is_stopped_and_fails() {
+    if find_program("sh").is_none() {
+        return;
+    }
+    let sh = |script: &str| with(step(script), |step| step.shell = Some("sh".into()));
+    let steps = vec![
+        with(sh("echo before; sleep 14; echo after"), |step| step.timeout_minutes = Some("${{ 0.02 }}".into())),
+        sh("echo skipped after a failure"),
+        with(sh("echo always ran"), |step| step.condition = Some("always()".into())),
+        with(sh("echo x"), |step| step.timeout_minutes = Some("soon".into())),
+    ];
+    let started = tokio::time::Instant::now();
+    let (result, reporter, _work) = execute(host_job(steps)).await;
+    let text = reporter.lines().join("\n");
+    assert!(started.elapsed() < Duration::from_secs(18), "{:?}", started.elapsed());
+    assert_eq!(result, TaskResult::Failure, "{text}");
+    assert_eq!(statuses(&reporter), [StepStatus::Failure, StepStatus::Skipped, StepStatus::Success, StepStatus::Skipped], "{text}");
+    assert!(text.contains("exceeded its timeout of 0.02 minutes") && text.contains("always ran"), "{text}");
+    assert!(!reporter.lines().iter().any(|line| line == "after"), "the step was stopped: {text}");
+}
+
+#[tokio::test]
+async fn steps_after_a_cancellation_share_a_budget() {
+    let work = tempfile::tempdir().unwrap();
+    let spec = host_job(vec![step("echo")]);
+    let reporter = Arc::new(Reporter::new(spec.task_id, &work.path().join("task"), 1).unwrap());
+    let mut job = Job::prepare(&loaded(work.path()), spec, reporter).unwrap();
+    let signal = job.stop_signal(Some(Duration::from_secs(3600)));
+    assert!(
+        signal.interrupt.is_some() && signal.deadline.is_some_and(|(_, why)| why == StopReason::StepTimeout(Duration::from_secs(3600)))
+    );
+
+    job.interrupted_at = Some(Instant::now().checked_sub(CANCEL_BUDGET.checked_sub(Duration::from_secs(1)).unwrap()).unwrap());
+    let short = job.stop_signal(Some(Duration::from_millis(1)));
+    assert_eq!(short.deadline.map(|(_, why)| why), Some(StopReason::StepTimeout(Duration::from_millis(1))));
+    let signal = job.stop_signal(Some(Duration::from_secs(3600)));
+    assert!(signal.interrupt.is_none(), "a cancellation does not stop the steps it allows");
+    assert_eq!(signal.deadline.map(|(_, why)| why), Some(StopReason::Budget));
+    tokio::time::timeout(Duration::from_secs(5), signal.wait()).await.unwrap();
+    assert_eq!(signal.reason(), StopReason::Budget);
+}

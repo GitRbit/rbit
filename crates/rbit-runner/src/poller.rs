@@ -44,11 +44,28 @@ pub struct Poller<E> {
     once: bool,
     backoff: Backoff,
     min_poll_gap: Duration,
+    /// Cancels every running task (the second stage of a shutdown).
+    cancel_tasks: CancellationToken,
 }
 
 impl<E: Executor> Poller<E> {
     pub fn new(client: Client, loaded: Loaded, executor: Arc<E>, once: bool) -> Self {
-        Self { client, loaded, executor, once, backoff: Backoff::RECONNECT, min_poll_gap: MIN_POLL_GAP }
+        Self {
+            client,
+            loaded,
+            executor,
+            once,
+            backoff: Backoff::RECONNECT,
+            min_poll_gap: MIN_POLL_GAP,
+            cancel_tasks: CancellationToken::new(),
+        }
+    }
+
+    /// Running tasks are cancelled when `cancel_tasks` is.
+    #[must_use]
+    pub fn cancel_tasks_with(mut self, cancel_tasks: CancellationToken) -> Self {
+        self.cancel_tasks = cancel_tasks;
+        self
     }
 
     /// The same poller with a faster backoff, for tests.
@@ -64,6 +81,7 @@ impl<E: Executor> Poller<E> {
         let Some(intervals) = self.declare(&shutdown).await? else { return Ok(()) };
         let mut pacing = Pacing::new(intervals.heartbeat_seconds);
         pacing.backoff = self.backoff;
+        pacing.cancel_all = self.cancel_tasks.clone();
         let long_poll = Duration::from_secs(intervals.long_poll_seconds.into());
         let capacity = if self.once { 1 } else { self.loaded.config.capacity };
         tracing::info!(
@@ -104,7 +122,7 @@ impl<E: Executor> Poller<E> {
                         }
                         continue;
                     };
-                    self.start(claimed, permit, &mut running, pacing);
+                    self.start(claimed, permit, &mut running, pacing.clone());
                     if self.once {
                         break;
                     }
@@ -439,6 +457,25 @@ mod tests {
         poller(&server, work.path(), executor, true).run(CancellationToken::new()).await.unwrap();
         assert_eq!(server.log(TaskId(6)).len(), 100);
         assert_eq!(server.final_state(TaskId(6)).unwrap().result, Some(TaskResult::Success));
+    }
+
+    #[tokio::test]
+    async fn a_shutdown_cancels_running_tasks_after_it_stops_polling() {
+        let server = FakeServer::start().await;
+        server.push_task(job_spec(11, 1));
+        let seen = Arc::default();
+        let work = tempfile::tempdir().unwrap();
+        let (stop_polling, cancel_tasks) = (CancellationToken::new(), CancellationToken::new());
+        let poller = poller(&server, work.path(), wait_for_cancel(Arc::clone(&seen)), false).cancel_tasks_with(cancel_tasks.clone());
+        let runner = tokio::spawn(poller.run(stop_polling.clone()));
+        server.wait_for(|server| server.log(TaskId(11)) == ["working"]).await;
+        stop_polling.cancel();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(seen.lock().unwrap().is_empty(), "the running task keeps going during the grace period");
+        cancel_tasks.cancel();
+        runner.await.unwrap().unwrap();
+        assert_eq!(*seen.lock().unwrap(), [TaskId(11)]);
+        assert_eq!(server.final_state(TaskId(11)).unwrap().result, Some(TaskResult::Cancelled));
     }
 
     #[tokio::test]

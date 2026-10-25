@@ -1,0 +1,59 @@
+# systemd unit for rbit-runner, which runs rbit Actions jobs. Install:
+#
+#   sudo useradd --system --home-dir /var/lib/rbit-runner --shell /usr/sbin/nologin rbit-runner
+#   sudo usermod -aG docker rbit-runner        # container labels with rootful Docker
+#   sudo install -m 0755 rbit-runner /usr/local/bin/rbit-runner
+#   sudo install -m 0644 deploy/rbit-runner.service /etc/systemd/system/rbit-runner.service
+#   sudo install -d -m 0750 -o rbit-runner -g rbit-runner /var/lib/rbit-runner
+#   sudo -u rbit-runner RBIT_RUNNER_TOKEN=<registration token> rbit-runner register \
+#       --config /var/lib/rbit-runner/runner.toml --url https://git.example.com --name build-1
+#   sudo systemctl daemon-reload && sudo systemctl enable --now rbit-runner
+#
+# `register` writes runner.toml and the runner credential (.credential, mode 0600) into
+# /var/lib/rbit-runner; task workspaces and the cache go to /var/lib/rbit-runner/work.
+# Membership of the docker group is root-equivalent on that host: prefer rootless Podman
+# (`program = "podman"` in runner.toml) or a dedicated runner machine or VM. Labels with
+# `backend = "host"` run jobs as this user with no isolation; use them only for trusted
+# repositories. Logs: journalctl -u rbit-runner -f.
+
+[Unit]
+Description=rbit Actions runner
+Documentation=https://github.com/GitRbit/rbit/blob/main/docs/deployment.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=rbit-runner
+Group=rbit-runner
+ExecStart=/usr/local/bin/rbit-runner --config /var/lib/rbit-runner/runner.toml run
+Restart=on-failure
+RestartSec=10s
+# Graceful shutdown: SIGTERM stops polling, running tasks get shutdown_grace_seconds
+# (600 by default) and are then cancelled and reported. Only the runner gets the signal
+# (KillMode=mixed), so the steps are stopped by the runner, not all at once by systemd;
+# the stop timeout leaves room for the grace period and the final reports.
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=11min
+
+WorkingDirectory=/var/lib/rbit-runner
+Environment=RUST_LOG=info
+# journald stores log lines verbatim; keep ANSI colour codes out of them.
+Environment=NO_COLOR=1
+UMask=0027
+LimitNOFILE=65536
+
+# --- Hardening -------------------------------------------------------------------
+# Kept light on purpose: host-backend jobs run as this user and may need the usual tools.
+# The runner itself never needs new privileges, and job containers get
+# no-new-privileges from the runner.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

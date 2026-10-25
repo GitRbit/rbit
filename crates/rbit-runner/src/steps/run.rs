@@ -13,7 +13,7 @@
 //! read: outputs become the step's outputs, `GITHUB_ENV` and `GITHUB_PATH` entries apply
 //! to the following steps.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use rbit_workflow::{model::Shell, protocol::MAX_LOG_LINE_BYTES, spec::StepTemplate};
 
@@ -27,7 +27,14 @@ use crate::{
 };
 
 /// Runs `script` as step `index`.
-pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str, step_env: &BTreeMap<String, String>) -> Outcome {
+pub async fn run(
+    job: &mut Job,
+    index: usize,
+    step: &StepTemplate,
+    script: &str,
+    step_env: &BTreeMap<String, String>,
+    timeout: Option<Duration>,
+) -> Outcome {
     let script = match job.render(script) {
         Ok(script) => script,
         Err(error) => return job.fail(&format!("`run`: {error}")),
@@ -89,20 +96,12 @@ pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str,
             return job.fail(&format!("cannot prepare the step: {error}"));
         }
     };
+    let signal = job.stop_signal(timeout);
     let exit = {
         let reporter = &job.reporter;
         let mut commands = Commands::default();
-        // A cancellation stops the step it finds running; a step that starts after it
-        // (`always()`, `cancelled()`) is not stopped by it.
-        let cancel = reporter.cancellation().clone();
-        let after_cancel = cancel.is_cancelled();
-        let stopped = async move {
-            if after_cancel {
-                std::future::pending::<()>().await;
-            }
-            cancel.cancelled().await;
-        };
-        process::run_streaming(prepared.command, MAX_LOG_LINE_BYTES, stopped, |line| match commands.process(&line) {
+        let stopper = job.backend.stopper();
+        process::run_streaming(prepared.command, MAX_LOG_LINE_BYTES, signal.wait(), &stopper, |line| match commands.process(&line) {
             Line::Print(text) => reporter.log(&text),
             Line::AddMask(value) => reporter.add_mask(&value),
             Line::Nothing => {}
@@ -116,10 +115,7 @@ pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str,
     let written = files.collect();
     let outcome = match exit {
         Err(error) => job.fail(&format!("cannot start `{}`: {error}", command.program)),
-        Ok(Exit::Stopped) => {
-            job.reporter.log("##[error]The step was cancelled");
-            Outcome::cancelled()
-        }
+        Ok(Exit::Stopped) => job.stopped(signal.reason()),
         Ok(Exit::Code(Some(0))) => Outcome::success(BTreeMap::new()),
         Ok(Exit::Code(Some(code))) => job.fail(&format!("Process completed with exit code {code}.")),
         Ok(Exit::Code(None)) => job.fail("The process was killed by a signal."),

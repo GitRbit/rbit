@@ -25,6 +25,7 @@ mod mask;
 mod poller;
 mod process;
 mod register;
+mod shutdown;
 mod steps;
 mod task;
 #[cfg(test)]
@@ -33,7 +34,6 @@ mod testing;
 use std::{io::IsTerminal as _, path::Path, sync::Arc};
 
 use clap::Parser as _;
-use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use crate::{
@@ -66,15 +66,9 @@ async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
     if loaded.config.backends().contains(&rbit_workflow::protocol::Backend::Container) {
         backend::container::janitor(&loaded.config).await;
     }
-    let shutdown = CancellationToken::new();
-    let signal = shutdown.clone();
-    tokio::spawn(async move {
-        let _ = tokio::signal::ctrl_c().await;
-        tracing::info!("stopping: no new tasks are taken");
-        signal.cancel();
-    });
+    let shutdown = shutdown::Shutdown::listen(std::time::Duration::from_secs(loaded.config.shutdown_grace_seconds));
     let executor = JobExecutor::new(Arc::new(loaded.clone()));
-    poller::Poller::new(client, loaded, Arc::new(executor), once).run(shutdown).await
+    poller::Poller::new(client, loaded, Arc::new(executor), once).cancel_tasks_with(shutdown.cancel_tasks).run(shutdown.stop_polling).await
 }
 
 /// Logs to standard error; `RUST_LOG` overrides the level.

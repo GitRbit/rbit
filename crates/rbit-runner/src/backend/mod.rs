@@ -91,6 +91,14 @@ impl Backend {
         }
     }
 
+    /// How a running step is stopped.
+    pub fn stopper(&self) -> crate::process::Stopper {
+        match self {
+            Self::Host(_) => crate::process::Stopper::Host,
+            Self::Container(container) => container.stopper(),
+        }
+    }
+
     /// The program `name` as the step would find it on `path` (the step's `PATH`).
     pub fn find(&self, name: &str, path: &str) -> Option<String> {
         match self {

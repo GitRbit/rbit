@@ -49,6 +49,7 @@ impl Host {
         let mut env = self.base_env.clone();
         env.extend(step.env.iter().map(|(name, value)| (env_key(name), value.clone())));
         command.env_clear().envs(env).current_dir(&step.cwd);
+        crate::process::isolate(&mut command);
         command
     }
 }

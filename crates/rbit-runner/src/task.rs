@@ -128,6 +128,13 @@ impl Reporter {
         self.masker.mask(text).into_owned()
     }
 
+    /// The same reporter, also cancelled when `parent` is (the runner's shutdown).
+    #[must_use]
+    pub fn cancelled_by(mut self, parent: &CancellationToken) -> Self {
+        self.cancel = parent.child_token();
+        self
+    }
+
     /// Cancelled when the server cancels the task or forgets it.
     pub fn cancellation(&self) -> &CancellationToken {
         &self.cancel
@@ -272,13 +279,19 @@ fn now() -> i64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |elapsed| i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX))
 }
 
-/// How often a running task reports.
-#[derive(Debug, Clone, Copy)]
+/// How often a running task reports, and what cancels every task at once.
+#[derive(Debug, Clone)]
 pub struct Pacing {
     pub heartbeat: Duration,
     pub backoff: Backoff,
     pub final_deadline: Duration,
+    /// The runner's shutdown: it cancels every running task, and then a final report is
+    /// retried for [`SHUTDOWN_REPORT_DEADLINE`] only.
+    pub cancel_all: CancellationToken,
 }
+
+/// How long the end of a task is retried once the runner is shutting down.
+pub const SHUTDOWN_REPORT_DEADLINE: Duration = Duration::from_secs(30);
 
 impl Pacing {
     /// The server's heartbeat interval, never longer than the protocol allows.
@@ -287,6 +300,7 @@ impl Pacing {
             heartbeat: Duration::from_secs(heartbeat_seconds.into()).clamp(Duration::from_secs(1), MAX_HEARTBEAT_INTERVAL),
             backoff: Backoff::RECONNECT,
             final_deadline: FINAL_REPORT_DEADLINE,
+            cancel_all: CancellationToken::new(),
         }
     }
 }
@@ -297,6 +311,7 @@ pub async fn run<E: Executor>(client: Client, work_dir: &Path, spec: JobSpec, ex
     let dir = task_dir(work_dir, task);
     let reporter = match Reporter::new(task, &dir, spec.template.steps.len()) {
         Ok(reporter) => {
+            let reporter = reporter.cancelled_by(&pacing.cancel_all);
             // Before anything is logged: every secret, and the token.
             for value in spec.secrets.values().chain([&spec.token]) {
                 reporter.add_mask(value.expose());
@@ -311,7 +326,7 @@ pub async fn run<E: Executor>(client: Client, work_dir: &Path, spec: JobSpec, ex
     tracing::info!(task = %task, job = %spec.template.name, "task started");
 
     let stop = CancellationToken::new();
-    let heartbeat = tokio::spawn(heartbeat(client.clone(), Arc::clone(&reporter), pacing, stop.clone()));
+    let heartbeat = tokio::spawn(heartbeat(client.clone(), Arc::clone(&reporter), pacing.clone(), stop.clone()));
     let result = executor.execute(spec, Arc::clone(&reporter)).await;
     stop.cancel();
     let _ = heartbeat.await;
@@ -368,11 +383,14 @@ async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop
 /// Sends the rest of the log and the final state, retrying until `pacing.final_deadline`.
 async fn finish(client: &Client, reporter: &Reporter, result: TaskResult, pacing: Pacing) {
     let mut backoff = pacing.backoff;
-    let deadline = tokio::time::Instant::now() + pacing.final_deadline;
+    let mut deadline = tokio::time::Instant::now() + pacing.final_deadline;
     loop {
         let sent = reporter.report(client, Some(result)).await.is_ok();
         if sent && (reporter.log.is_flushed() || reporter.is_gone()) {
             return;
+        }
+        if pacing.cancel_all.is_cancelled() {
+            deadline = deadline.min(tokio::time::Instant::now() + SHUTDOWN_REPORT_DEADLINE);
         }
         if tokio::time::Instant::now() >= deadline {
             tracing::error!(task = %reporter.task_id, "giving up on reporting the task's end; the server will time it out");

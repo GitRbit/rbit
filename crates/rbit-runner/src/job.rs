@@ -17,7 +17,15 @@
 //!
 //! After the last step the job's `outputs` are evaluated, masked and reported.
 
-use std::{collections::BTreeMap, future::Future, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use rbit_workflow::{
     expr::{Condition, ContextMap, Status, Template, Value, to_text},
@@ -25,6 +33,7 @@ use rbit_workflow::{
     spec::{Env, JobSpec, RegistryCredentials, StepAction, StepTemplate},
 };
 use serde_json::{Map, json};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     backend::{
@@ -123,6 +132,62 @@ pub struct Job {
     /// The `steps` context.
     pub steps: Map<String, Value>,
     pub phase: Phase,
+    /// Fires when the task is cancelled, the job times out or the runner shuts down.
+    pub interrupt: CancellationToken,
+    /// Set when the job's own `timeout-minutes` fired the interrupt.
+    pub timed_out: Arc<AtomicBool>,
+    /// When the job first saw the interrupt; steps after it share the cancel budget.
+    pub interrupted_at: Option<Instant>,
+}
+
+/// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
+/// together.
+pub const CANCEL_BUDGET: Duration = Duration::from_mins(5);
+
+/// Why a step was stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopReason {
+    Cancelled,
+    StepTimeout(Duration),
+    Budget,
+}
+
+/// What stops one step, and afterwards why it did.
+#[derive(Debug)]
+pub struct StopSignal {
+    interrupt: Option<CancellationToken>,
+    deadline: Option<(Instant, StopReason)>,
+    reason: Arc<std::sync::Mutex<Option<StopReason>>>,
+}
+
+impl StopSignal {
+    /// Completes when the step must stop.
+    pub fn wait(&self) -> impl Future<Output = ()> + Send + 'static {
+        let (interrupt, deadline, reason) = (self.interrupt.clone(), self.deadline, Arc::clone(&self.reason));
+        async move {
+            let interrupted = async {
+                match &interrupt {
+                    Some(interrupt) => interrupt.cancelled().await,
+                    None => std::future::pending().await,
+                }
+            };
+            let expired = async {
+                match deadline {
+                    Some((at, _)) => tokio::time::sleep_until(at.into()).await,
+                    None => std::future::pending().await,
+                }
+            };
+            let why = tokio::select! {
+                () = interrupted => StopReason::Cancelled,
+                () = expired => deadline.map_or(StopReason::Budget, |(_, why)| why),
+            };
+            *reason.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(why);
+        }
+    }
+
+    pub fn reason(&self) -> StopReason {
+        self.reason.lock().unwrap_or_else(std::sync::PoisonError::into_inner).unwrap_or(StopReason::Cancelled)
+    }
 }
 
 impl Job {
@@ -135,6 +200,7 @@ impl Job {
             .ok_or_else(|| format!("this runner serves none of the labels `{}`", template.runs_on.join("`, `")))?
             .clone();
         let dirs = Dirs::create(reporter.dir()).map_err(|error| format!("cannot create the task directories: {error}"))?;
+        let interrupt = reporter.cancellation().child_token();
         let backend = match label.backend {
             BackendKind::Host => {
                 if template.container.is_some() {
@@ -191,6 +257,9 @@ impl Job {
             path: Vec::new(),
             steps: Map::new(),
             phase: Phase::Success,
+            interrupt,
+            timed_out: Arc::new(AtomicBool::new(false)),
+            interrupted_at: None,
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());
@@ -262,9 +331,24 @@ impl Job {
 
     /// Runs every step, then evaluates the job's outputs.
     pub async fn run(&mut self) -> TaskResult {
+        let minutes = self.spec.template.timeout_minutes;
+        let timer = {
+            let (interrupt, timed_out, reporter) = (self.interrupt.clone(), Arc::clone(&self.timed_out), Arc::clone(&self.reporter));
+            tokio::spawn(async move {
+                tokio::select! {
+                    () = interrupt.cancelled() => {}
+                    () = tokio::time::sleep(Duration::from_secs(u64::from(minutes) * 60)) => {
+                        reporter.log(&format!("##[error]The job has exceeded its timeout of {minutes} minutes"));
+                        timed_out.store(true, Ordering::SeqCst);
+                        interrupt.cancel();
+                    }
+                }
+            })
+        };
         let steps = self.spec.template.steps.clone();
         for (index, step) in steps.iter().enumerate() {
-            if self.reporter.cancellation().is_cancelled() && self.phase != Phase::Cancelled {
+            if self.interrupt.is_cancelled() && self.interrupted_at.is_none() {
+                self.interrupted_at = Some(Instant::now());
                 self.phase = Phase::Cancelled;
                 self.sync_contexts();
             }
@@ -295,13 +379,17 @@ impl Job {
             self.reporter.finish_step(index, outcome.status);
             self.record(step, &outcome, conclusion);
         }
+        timer.abort();
         self.outputs();
-        if self.reporter.cancellation().is_cancelled() {
+        if self.interrupt.is_cancelled() {
             self.phase = Phase::Cancelled;
         }
         match self.phase {
             Phase::Success => TaskResult::Success,
             Phase::Failure => TaskResult::Failure,
+            // A job that ran out of time failed; one the server or the runner stopped
+            // was cancelled.
+            Phase::Cancelled if self.timed_out.load(Ordering::SeqCst) => TaskResult::Failure,
             Phase::Cancelled => TaskResult::Cancelled,
         }
     }
@@ -312,12 +400,69 @@ impl Job {
             Err(error) => return self.fail(&format!("`env`: {error}")),
         };
         self.set_env_context(&step_env);
+        let timeout = match self.step_timeout(step) {
+            Ok(timeout) => timeout,
+            Err(error) => {
+                self.set_env_context(&BTreeMap::new());
+                return self.fail(&format!("`timeout-minutes`: {error}"));
+            }
+        };
         let outcome = match &step.action {
-            StepAction::Run(script) => steps::run::run(self, index, step, script, &step_env).await,
-            StepAction::Uses(builtin) => steps::builtin(self, builtin).await,
+            StepAction::Run(script) => steps::run::run(self, index, step, script, &step_env, timeout).await,
+            StepAction::Uses(builtin) => steps::builtin(self, builtin, timeout).await,
         };
         self.set_env_context(&BTreeMap::new());
         outcome
+    }
+
+    /// A step's `timeout-minutes`, evaluated.
+    fn step_timeout(&self, step: &StepTemplate) -> Result<Option<Duration>, String> {
+        let Some(text) = step.timeout_minutes.as_deref() else { return Ok(None) };
+        let minutes = rbit_workflow::expr::to_number(&self.evaluate(text)?);
+        if !(minutes.is_finite() && minutes > 0.0) {
+            return Err(format!("`{text}` is not a positive number of minutes"));
+        }
+        Ok(Some(Duration::from_secs_f64((minutes * 60.0).min(1e9))))
+    }
+
+    /// What stops the next step. Before an interrupt: the interrupt, or the step's own
+    /// timeout. After it: whichever comes first of the step's timeout and the end of the
+    /// shared [`CANCEL_BUDGET`].
+    pub fn stop_signal(&self, timeout: Option<Duration>) -> StopSignal {
+        let now = Instant::now();
+        let step = timeout.map(|timeout| (now + timeout, StopReason::StepTimeout(timeout)));
+        let reason = Arc::default();
+        match self.interrupted_at {
+            None => StopSignal { interrupt: Some(self.interrupt.clone()), deadline: step, reason },
+            Some(at) => {
+                let budget = (at + CANCEL_BUDGET, StopReason::Budget);
+                let deadline = match step {
+                    Some(step) if step.0 < budget.0 => step,
+                    _ => budget,
+                };
+                StopSignal { interrupt: None, deadline: Some(deadline), reason }
+            }
+        }
+    }
+
+    /// The outcome of a step that `reason` stopped.
+    pub fn stopped(&self, reason: StopReason) -> Outcome {
+        match reason {
+            StopReason::Cancelled => {
+                self.reporter.log("##[error]The step was cancelled");
+                Outcome::cancelled()
+            }
+            StopReason::StepTimeout(timeout) => {
+                self.fail(&format!("The step has exceeded its timeout of {} minutes", timeout.as_secs_f64() / 60.0))
+            }
+            StopReason::Budget => {
+                self.reporter.log(&format!(
+                    "##[error]Steps after a cancellation may take {} minutes together; this one was stopped",
+                    CANCEL_BUDGET.as_secs() / 60
+                ));
+                Outcome::cancelled()
+            }
+        }
     }
 
     /// Logs `message` as an error and fails the step.
