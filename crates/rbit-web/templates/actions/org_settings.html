@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "org/nav_context.html" %}{% endblock %}
+{% block content %}
+{% include "org/header.html" %}
+{#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
+<div class="mt-6 max-w-3xl" hx-history="false">
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ header.settings_url }}">Settings</a> <span class="text-ink-faint">/</span> Actions</p>
+  <h2 class="mt-1 text-xl font-semibold tracking-tight">Actions</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">Secrets and variables for the workflows of <span class="text-ink">{{ header.name }}</span>'s repositories. A repository's own secret or variable of the same name wins.</p>
+
+  {% include "actions/notice.html" %}
+
+  {#- Owner runners and their registration tokens go here, with the server side of the
+      runner protocol. -#}
+
+  {% include "actions/secrets.html" %}
+
+  {% include "actions/variables.html" %}
+</div>
+{% endblock %}

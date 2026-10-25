@@ -24,6 +24,7 @@
 //! | [`logs`] | `UpdateLog`, log files and retention |
 //! | [`tokens`] | Task tokens for Git and the API |
 //! | [`secrets`] | Secrets and variables |
+//! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Stalled tasks, abandoned jobs, retention |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
@@ -41,6 +42,8 @@ pub mod runs;
 pub mod scheduler;
 pub mod schedules;
 pub mod secrets;
+// Actions: interface and secrets (U).
+pub mod settings;
 pub mod statuses;
 pub mod sweeper;
 pub mod tasks;

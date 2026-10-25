@@ -13,6 +13,8 @@ mod actions_pulls;
 mod actions_pushes;
 mod actions_runs;
 mod actions_secrets;
+// Actions: interface and secrets (U).
+mod actions_settings;
 mod actions_statuses;
 mod admin;
 mod audit;

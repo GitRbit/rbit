@@ -46,6 +46,8 @@ const KEY_PREFIX: &str = "rbit-actions-key-v1:";
 const AAD_PREFIX: &[u8] = b"rbit-actions-secret-v1";
 /// Largest secret or variable value, in bytes (`rbit_workflow::spec::MAX_SECRET_BYTES`).
 pub const MAX_VALUE_BYTES: usize = rbit_workflow::spec::MAX_SECRET_BYTES;
+/// Largest variable value, in bytes: what `actions_variables.value` holds.
+pub const MAX_VARIABLE_BYTES: usize = 48 * 1024;
 /// Most secrets, and separately most variables, in one scope. A repository and its owner
 /// together stay below the 1,024 a task may receive.
 pub const MAX_PER_SCOPE: u64 = 500;
@@ -259,7 +261,7 @@ impl ActionsTarget<'_> {
         }
     }
 
-    fn require_manager(&self) -> Result<(), ServiceError> {
+    pub(super) fn require_manager(&self) -> Result<(), ServiceError> {
         if self.can_manage() { Ok(()) } else { Err(ServiceError::Forbidden) }
     }
 }
@@ -327,7 +329,7 @@ impl ActionsService {
     ) -> Result<SecretInfo, ServiceError> {
         target.require_manager()?;
         let name: SecretName = name.parse().map_err(|error| ServiceError::Invalid(format!("{error}")))?;
-        check_value("secret", value)?;
+        check_value("secret", value, MAX_VALUE_BYTES)?;
         let scope = target.scope();
         if matches!(scope, SecretScope::Repository(_)) && visibility != SecretVisibility::All {
             return Err(ServiceError::Invalid("a repository secret is visible to its repository only".to_owned()));
@@ -404,7 +406,7 @@ impl ActionsService {
     pub async fn put_variable(&self, actor: &User, target: ActionsTarget<'_>, name: &str, value: &str) -> Result<Variable, ServiceError> {
         target.require_manager()?;
         let name: VariableName = name.parse().map_err(|error| ServiceError::Invalid(format!("{error}")))?;
-        check_value("variable", value)?;
+        check_value("variable", value, MAX_VARIABLE_BYTES)?;
         let scope = target.scope();
         let store = self.ctx().database.actions_secrets();
         let exists = store.variables(scope).await?.iter().any(|variable| variable.name == name);
@@ -480,13 +482,13 @@ impl ActionsService {
     }
 }
 
-/// Values are 1 to [`MAX_VALUE_BYTES`] bytes without NUL.
-fn check_value(kind: &str, value: &str) -> Result<(), ServiceError> {
+/// Values are 1 to `max` bytes without NUL.
+fn check_value(kind: &str, value: &str, max: usize) -> Result<(), ServiceError> {
     if value.is_empty() {
         return Err(ServiceError::Invalid(format!("a {kind} needs a value")));
     }
-    if value.len() > MAX_VALUE_BYTES {
-        return Err(ServiceError::Invalid(format!("a {kind} is at most {} KiB", MAX_VALUE_BYTES / 1024)));
+    if value.len() > max {
+        return Err(ServiceError::Invalid(format!("a {kind} is at most {} KiB", max / 1024)));
     }
     if value.contains('\0') {
         return Err(ServiceError::Invalid(format!("a {kind} must not contain NUL characters")));
@@ -602,10 +604,11 @@ mod tests {
 
     #[test]
     fn values_are_checked() {
-        assert!(check_value("secret", "x").is_ok());
-        assert!(check_value("secret", "").is_err());
-        assert!(check_value("secret", "a\0b").is_err());
-        assert!(check_value("secret", &"x".repeat(MAX_VALUE_BYTES)).is_ok());
-        assert!(check_value("secret", &"x".repeat(MAX_VALUE_BYTES + 1)).is_err());
+        assert!(check_value("secret", "x", MAX_VALUE_BYTES).is_ok());
+        assert!(check_value("secret", "", MAX_VALUE_BYTES).is_err());
+        assert!(check_value("secret", "a\0b", MAX_VALUE_BYTES).is_err());
+        assert!(check_value("secret", &"x".repeat(MAX_VALUE_BYTES), MAX_VALUE_BYTES).is_ok());
+        assert!(check_value("secret", &"x".repeat(MAX_VALUE_BYTES + 1), MAX_VALUE_BYTES).is_err());
+        assert!(check_value("variable", &"x".repeat(MAX_VARIABLE_BYTES + 1), MAX_VARIABLE_BYTES).is_err());
     }
 }

@@ -122,10 +122,14 @@ pub enum AuditAction {
     ActionsSecretDeleted,
     ActionsVariableSet,
     ActionsVariableDeleted,
+    ActionsEnabled,
+    ActionsDisabled,
+    ActionsTokenPermissionChanged,
+    ActionsUserUntrusted,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 51] = [
+    pub const ALL: [Self; 55] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -179,6 +183,10 @@ impl AuditAction {
         Self::ActionsSecretDeleted,
         Self::ActionsVariableSet,
         Self::ActionsVariableDeleted,
+        Self::ActionsEnabled,
+        Self::ActionsDisabled,
+        Self::ActionsTokenPermissionChanged,
+        Self::ActionsUserUntrusted,
     ];
 
     /// Stable identifier stored in the database.
@@ -237,6 +245,10 @@ impl AuditAction {
             Self::ActionsSecretDeleted => "actions_secret_deleted",
             Self::ActionsVariableSet => "actions_variable_set",
             Self::ActionsVariableDeleted => "actions_variable_deleted",
+            Self::ActionsEnabled => "actions_enabled",
+            Self::ActionsDisabled => "actions_disabled",
+            Self::ActionsTokenPermissionChanged => "actions_token_permission_changed",
+            Self::ActionsUserUntrusted => "actions_user_untrusted",
         }
     }
 
@@ -294,7 +306,11 @@ impl AuditAction {
             | Self::ActionsSecretSet
             | Self::ActionsSecretDeleted
             | Self::ActionsVariableSet
-            | Self::ActionsVariableDeleted => AuditCategory::RepositoryAccess,
+            | Self::ActionsVariableDeleted
+            | Self::ActionsEnabled
+            | Self::ActionsDisabled
+            | Self::ActionsTokenPermissionChanged
+            | Self::ActionsUserUntrusted => AuditCategory::RepositoryAccess,
             Self::IssueDeleted => AuditCategory::RepositoryContent,
         }
     }
@@ -355,6 +371,10 @@ impl AuditAction {
             Self::ActionsSecretDeleted => "Deleted an Actions secret",
             Self::ActionsVariableSet => "Set an Actions variable",
             Self::ActionsVariableDeleted => "Deleted an Actions variable",
+            Self::ActionsEnabled => "Turned Actions on for a repository",
+            Self::ActionsDisabled => "Turned Actions off for a repository",
+            Self::ActionsTokenPermissionChanged => "Changed the default workflow token permission",
+            Self::ActionsUserUntrusted => "Stopped trusting a pull request author's workflow runs",
         }
     }
 

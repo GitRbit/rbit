@@ -232,6 +232,7 @@ mod tests {
             avatar: Avatar { initials: "A".to_owned(), palette: 0 },
             is_admin: false,
             can_create_org: false,
+            has_actions: false,
         };
         let signed_in = |unread| {
             let page = Page { viewer: Some(viewer.clone()), has_unread_notifications: unread, ..page() };

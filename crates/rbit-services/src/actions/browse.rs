@@ -120,7 +120,10 @@ impl ActionsService {
     }
 
     /// The accounts among `ids`, by id.
-    async fn people(&self, ids: impl IntoIterator<Item = Option<AccountId>>) -> Result<BTreeMap<AccountId, Account>, ServiceError> {
+    pub(super) async fn people(
+        &self,
+        ids: impl IntoIterator<Item = Option<AccountId>>,
+    ) -> Result<BTreeMap<AccountId, Account>, ServiceError> {
         let mut ids: Vec<AccountId> = ids.into_iter().flatten().collect();
         ids.sort_unstable();
         ids.dedup();

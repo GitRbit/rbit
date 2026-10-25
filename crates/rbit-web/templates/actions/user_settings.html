@@ -1,0 +1,18 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+{#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
+<div hx-history="false">
+  <h2 class="text-xl font-semibold tracking-tight">Actions</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">Secrets and variables for the workflows of your own repositories. A repository's own secret or variable of the same name wins.</p>
+
+  {% include "actions/notice.html" %}
+
+  {#- Runners for your repositories and their registration tokens go here, with the server
+      side of the runner protocol. -#}
+
+  {% include "actions/secrets.html" %}
+
+  {% include "actions/variables.html" %}
+</div>
+{% endblock %}

@@ -11,6 +11,7 @@
 //! secrets) owns the handlers.
 
 mod runs;
+mod settings;
 
 use axum::{
     Router,
@@ -60,4 +61,10 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
         .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
+        .route("/{owner}/{repo}/settings/actions", get(settings::repository).post(settings::save_repository))
+        .route("/{owner}/{repo}/settings/actions/secrets", get(settings::to_repository).post(settings::repository_secret))
+        .route("/{owner}/{repo}/settings/actions/variables", get(settings::to_repository).post(settings::repository_variable))
+        .route("/{owner}/{repo}/settings/actions/trusted", post(settings::untrust))
+        .route("/{owner}/settings/actions", get(settings::organization).post(settings::save_organization))
+        .route("/settings/actions", get(settings::personal).post(settings::save_personal))
 }

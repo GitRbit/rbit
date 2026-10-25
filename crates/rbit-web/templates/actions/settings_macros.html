@@ -1,0 +1,40 @@
+{#- Pieces of the Actions settings forms (views::actions_settings). -#}
+
+{#- Where an owner secret goes: all of the owner's repositories or the ticked ones. -#}
+{% macro visibility(selected) %}
+<fieldset class="mt-5">
+  <legend class="label">Repository access</legend>
+  <div class="box overflow-hidden">
+    <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+      <input type="radio" name="visibility" value="all" class="mt-1 accent-(--ink)" {% if !selected %}checked{% endif %}>
+      <span>
+        <span class="block font-medium">All repositories</span>
+        <span class="block text-[13px] text-ink-muted">Every repository of this owner, including ones created later.</span>
+      </span>
+    </label>
+    <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+      <input type="radio" name="visibility" value="selected" class="mt-1 accent-(--ink)" {% if selected %}checked{% endif %}>
+      <span>
+        <span class="block font-medium">Selected repositories</span>
+        <span class="block text-[13px] text-ink-muted">Only the repositories ticked below.</span>
+      </span>
+    </label>
+  </div>
+</fieldset>
+{% endmacro %}
+
+{#- The owner's repositories as checkboxes named `repository`; expects `Vec<RepoChoice>`. -#}
+{% macro repositories(choices) %}
+{% if choices.is_empty() %}
+<p class="hint">This owner has no repositories yet.</p>
+{% else %}
+<div class="box mt-3 overflow-hidden">
+  {% for choice in choices.iter() %}
+  <label class="flex min-h-11 cursor-pointer items-center gap-3 border-b border-line px-4 py-2 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
+    <input type="checkbox" name="repository" value="{{ choice.id }}" class="accent-(--ink)" {% if choice.checked %}checked{% endif %}>
+    <span class="min-w-0 truncate font-mono text-[13px]">{{ choice.name }}</span>
+  </label>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

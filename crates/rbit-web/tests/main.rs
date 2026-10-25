@@ -9,6 +9,7 @@ mod query_count;
 mod actions_disabled;
 // Actions: interface and secrets (U).
 mod actions_pages;
+mod actions_settings;
 mod admin_configuration;
 mod contributions;
 mod listings;

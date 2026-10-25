@@ -67,6 +67,9 @@ pub struct RepoHeader {
     pub open_pulls: u64,
     /// `/{owner}/{repo}/actions`, when the instance and the repository have Actions on.
     pub actions_url: Option<String>,
+    /// `/{owner}/{repo}/settings/actions`, when the instance has Actions and the viewer
+    /// administers the repository: the settings page links it as a card.
+    pub actions_settings_url: Option<String>,
     /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
     /// or `"activity"`, `"actions"`, `"settings"`; compared in `repo/subnav.html`.
     pub active_tab: &'static str,

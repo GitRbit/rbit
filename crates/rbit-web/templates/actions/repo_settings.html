@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+{#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
+<div class="mx-auto max-w-3xl" hx-history="false">
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> Actions</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">Actions</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">Workflows under <span class="font-mono text-ink">.rbit/workflows</span> run on runners when their events happen in <span class="text-ink">{{ header.owner }}/{{ header.name }}</span>.</p>
+
+  {% include "actions/notice.html" %}
+
+  <form method="post" action="{{ action_url }}" class="box mt-6" novalidate>
+    <div class="box-header">
+      <h2 class="text-[13px] font-medium">General</h2>
+    </div>
+    <div class="p-4">
+      {% call ui::form_error(general_error) %}{% endcall %}
+      <label class="flex cursor-pointer items-start gap-3">
+        <input type="checkbox" name="enabled" value="on" class="mt-1 accent-(--ink)" {% if enabled %}checked{% endif %}>
+        <span>
+          <span class="block font-medium">Run workflows in this repository</span>
+          <span class="block text-[13px] text-ink-muted">Off: no new runs start and the Actions tab is hidden. Earlier runs and their logs are kept.</span>
+        </span>
+      </label>
+
+      <fieldset class="mt-5">
+        <legend class="label">Default workflow token permission</legend>
+        <div class="box overflow-hidden">
+          {% for option in permissions %}
+          <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
+            <input type="radio" name="token_permission" value="{{ option.value }}" class="mt-1 accent-(--ink)" {% if option.selected %}checked{% endif %}>
+            <span>
+              <span class="block font-medium">{{ option.label }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+            </span>
+          </label>
+          {% endfor %}
+        </div>
+        <p class="hint">A workflow's <span class="font-mono">permissions:</span> can only lower it. Runs from forks and outside authors always get a read-only token.</p>
+      </fieldset>
+    </div>
+    <div class="flex justify-end border-t border-line px-4 py-3">
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save changes</button>
+    </div>
+  </form>
+
+  {#- Runners (this repository's, and those inherited from the owner and the instance) and
+      registration tokens go here, with the server side of the runner protocol. -#}
+
+  {% include "actions/secrets.html" %}
+
+  {% include "actions/variables.html" %}
+
+  <section class="mt-8" aria-labelledby="trusted-title">
+    <h2 id="trusted-title" class="text-[13px] font-medium">Trusted pull request authors</h2>
+    <p class="mt-1 text-[13px] text-ink-muted">Their pull requests from forks run without waiting for approval, still with a read-only token and without secrets or variables. Authors are added from a run's approval with “always run this author's pull requests”.</p>
+    <div class="box mt-4">
+      {% if trusted.is_empty() %}
+      {% call ui::empty_state("users", "No trusted authors", "Pull requests from forks and from people without write access wait for a writer to approve each run.") %}{% endcall %}
+      {% else %}
+      <ul>
+        {% for author in trusted %}
+        <li class="row items-start gap-3 py-3 sm:items-center">
+          <div class="min-w-0 flex-1">
+            <a class="block truncate font-medium hover:underline hover:underline-offset-4" href="{{ author.url }}">{{ author.name }}</a>
+            <p class="mt-0.5 text-xs text-ink-muted">Trusted <time datetime="{{ author.since_iso }}">{{ author.since }}</time>{% if let Some(approver) = author.approved_by %} by {{ approver }}{% endif %}</p>
+          </div>
+          <form method="post" action="{{ trusted_url }}" class="shrink-0">
+            <input type="hidden" name="user" value="{{ author.id }}">
+            <button class="btn h-10 sm:h-8" type="submit" aria-label="Stop trusting {{ author.name }}">Remove</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
