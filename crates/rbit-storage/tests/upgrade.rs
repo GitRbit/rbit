@@ -623,6 +623,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     assert_eq!(
         tables,
         [
+            "actions_artifacts",
             "actions_job_labels",
             "actions_job_outputs",
             "actions_jobs",
@@ -672,7 +673,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
          INSERT INTO actions_owner_policies (owner_id, instance_runners, updated_by, updated_at) VALUES (10, 1, 2, 1); \
          INSERT INTO actions_registration_tokens (digest, scope_kind, repo_id, created_by, created_at, expires_at) \
              VALUES (zeroblob(32), 'repository', 6, 2, 1, 2); \
-         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);",
+         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);",
     )
     .execute(&db.raw)
     .await

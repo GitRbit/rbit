@@ -253,7 +253,7 @@ fn is_object_id(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn random_name() -> Result<String, ServiceError> {
+pub(super) fn random_name() -> Result<String, ServiceError> {
     let mut bytes = [0u8; 12];
     getrandom::fill(&mut bytes).map_err(|error| ServiceError::internal(std::io::Error::other(error.to_string())))?;
     Ok(bytes.iter().fold(String::with_capacity(24), |mut name, byte| {

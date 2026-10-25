@@ -21,8 +21,8 @@ use crate::{AccountId, RepoAccess, RepoId};
 pub mod records;
 
 pub use records::{
-    Job, LogState, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities, ScheduleEntry,
-    SealedSecret, SecretInfo, SecretVisibility, Step, Task, TrustedUser, Variable,
+    Artifact, Job, LogState, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities,
+    ScheduleEntry, SealedSecret, SecretInfo, SecretVisibility, Step, Task, TrustedUser, Variable,
 };
 
 macro_rules! id {
@@ -67,6 +67,16 @@ id!(
     /// A plain configuration variable.
     VariableId
 );
+// Actions: artifacts (A).
+id!(
+    /// Files a job uploaded.
+    ArtifactId
+);
+
+/// The shape of an artifact name: 1 to 128 of `[A-Za-z0-9._-]` (§12.7).
+pub fn valid_artifact_name(name: &str) -> bool {
+    (1..=128).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
 
 /// The life cycle of a run or a job, with Forgejo's numbers (`0` is Forgejo's "unknown"
 /// and never stored). [`Status::AwaitingApproval`] is rbit's own.

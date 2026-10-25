@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AccountId, RepoId, Timestamp,
     actions::{
-        DefaultTokenPermission, JobId, JobStatus, RegistrationTokenId, RunId, RunStatus, RunnerId, RunnerLabel, RunnerScope, SecretId,
-        SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
+        ArtifactId, DefaultTokenPermission, JobId, JobStatus, RegistrationTokenId, RunId, RunStatus, RunnerId, RunnerLabel, RunnerScope,
+        SecretId, SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
     },
 };
 
@@ -342,6 +342,24 @@ pub struct TrustedUser {
     pub user_id: AccountId,
     pub approved_by: Option<AccountId>,
     pub created_at: Timestamp,
+}
+
+// Actions: artifacts (A).
+/// Files a job of a run uploaded, as one tar.gz.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Artifact {
+    pub id: ArtifactId,
+    pub run_id: RunId,
+    pub repo_id: RepoId,
+    /// The run attempt that uploaded it.
+    pub attempt: i64,
+    pub job_id: Option<JobId>,
+    pub name: String,
+    /// Bytes of the tar.gz.
+    pub size: u64,
+    pub sha256: [u8; 32],
+    pub created_at: Timestamp,
+    pub expires_at: Timestamp,
 }
 
 #[cfg(test)]

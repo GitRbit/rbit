@@ -83,7 +83,7 @@ pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
-/// The endpoints of protocol v1, apart from artifacts, which stream A adds.
+/// The endpoints of protocol v1, apart from artifacts (see [`ARTIFACTS_PATH`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Endpoint {
     /// `POST register`: [`RegisterRequest`] → [`RegisterResponse`].
@@ -534,6 +534,40 @@ impl ErrorCode {
             Self::Unavailable | Self::Unknown => 503,
         }
     }
+}
+
+// Actions: artifacts (A).
+/// Where a task's artifacts are, below [`BASE_PATH`] (`{id}` is the task id):
+/// `PUT …/{name}` uploads one (a tar.gz, with [`CONTENT_SHA256_HEADER`] and
+/// [`ArtifactQuery`]), `GET` lists the run's ([`ArtifactList`]), `GET …/{name}` downloads one.
+/// The upload's cap is the server's `[actions] max_artifact_bytes`, not a protocol constant.
+pub const ARTIFACTS_PATH: &str = "tasks/{id}/artifacts";
+
+/// The query of an artifact upload.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactQuery {
+    /// `retention-days`; it can only lower the server's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention_days: Option<u32>,
+    /// Replace an artifact of the same name in this run attempt.
+    #[serde(default)]
+    pub overwrite: bool,
+}
+
+/// One artifact of a run, as uploads answer and lists show it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactInfo {
+    pub name: String,
+    /// Bytes of the tar.gz.
+    pub size: u64,
+    /// Its SHA-256, as 64 lowercase hex digits.
+    pub sha256: String,
+}
+
+/// The answer to `GET tasks/{id}/artifacts`: the newest attempt's artifact of each name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactList {
+    pub artifacts: Vec<ArtifactInfo>,
 }
 
 /// The body of every error answer.

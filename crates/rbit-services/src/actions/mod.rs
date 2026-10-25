@@ -26,6 +26,7 @@
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`conditions`] | Job `if:` once its needs are done, fail-fast |
+//! | [`artifacts`] | Artifacts: uploads, downloads, quota and retention |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Zombie and endless tasks, abandoned jobs, log and run retention, the log budget, stale tokens |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
@@ -33,6 +34,8 @@
 //! The Actions foundation (workstream F) owns this file; the other workstreams append their
 //! fields and start-up lines in marked blocks.
 
+// Actions: artifacts (A).
+pub mod artifacts;
 pub mod browse;
 // Actions: join (J).
 pub mod conditions;

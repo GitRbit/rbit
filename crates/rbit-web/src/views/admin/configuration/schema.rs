@@ -1013,6 +1013,31 @@ const ACTIONS: &[Spec] = &[
         optional: false,
         max: "18446744073709551615",
     },
+    // Actions: artifacts (A).
+    Spec {
+        key: "max_artifact_bytes",
+        label: "Max artifact size (bytes)",
+        help: "Largest artifact a job may upload.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_artifact_storage_bytes",
+        label: "Artifact storage per repository (bytes)",
+        help: "Artifact bytes kept per repository; uploads beyond it are refused. Artifacts are not backed up.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "artifact_retention_days",
+        label: "Artifact retention (days)",
+        help: "Days artifacts are kept. A workflow's retention-days may only lower it.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
 ];
 
 pub(super) const PROVIDER: &[Spec] = &[

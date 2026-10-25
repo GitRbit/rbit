@@ -38,11 +38,15 @@ use axum::{
 };
 use rbit_services::{
     ServiceError, ThrottleScope,
-    actions::runners::{CachedRunner, RunnerError},
+    actions::{
+        artifacts::Upload,
+        runners::{CachedRunner, RunnerError},
+    },
 };
 use rbit_workflow::protocol::{
-    BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER,
-    PollRequest, PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
+    ARTIFACTS_PATH, ArtifactInfo, ArtifactList, ArtifactQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest, Endpoint, ErrorBody,
+    ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest, PollResponse, RegisterRequest,
+    SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -60,7 +64,15 @@ pub const PATHS: &[&str] = &[
     "/api/actions/runner/v1/tasks/{id}/state",
     "/api/actions/runner/v1/tasks/{id}/logs",
     "/api/actions/runner/v1/unregister",
+    // Actions: artifacts (A).
+    "/api/actions/runner/v1/tasks/{id}/artifacts",
+    "/api/actions/runner/v1/tasks/{id}/artifacts/{name}",
 ];
+
+// Actions: artifacts (A).
+/// Uploads and downloads stream up to `[actions] max_artifact_bytes`, so they get their
+/// own limit instead of [`CALL_TIMEOUT`].
+const ARTIFACT_TIMEOUT: Duration = Duration::from_hours(1);
 
 /// The endpoint's own limit; outside it, the page and API timeouts do not apply.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -76,6 +88,14 @@ pub fn routes() -> Router<AppState> {
         .route(&path(Endpoint::Unregister), post(unregister))
         .layer(from_fn(require_protocol))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, CALL_TIMEOUT))
+        // Actions: artifacts (A).
+        .merge(
+            Router::new()
+                .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}"), axum::routing::get(list_artifacts))
+                .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}/{{name}}"), axum::routing::get(download_artifact).put(upload_artifact))
+                .layer(from_fn(require_protocol))
+                .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, ARTIFACT_TIMEOUT)),
+        )
 }
 
 fn path(endpoint: Endpoint) -> String {
@@ -164,6 +184,71 @@ async fn task_logs(
     let body = read_body(&headers, body, Endpoint::TaskLogs).await?;
     let response = actions(&state)?.append_log(&runner, task, query.from, &body).await?;
     Ok(Json(response).into_response())
+}
+
+// Actions: artifacts (A).
+fn artifact_info(artifact: &rbit_core::actions::Artifact) -> ArtifactInfo {
+    let sha256 = artifact.sha256.iter().fold(String::with_capacity(64), |mut hex, byte| {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    ArtifactInfo { name: artifact.name.clone(), size: artifact.size, sha256 }
+}
+
+/// `PUT tasks/{id}/artifacts/{name}`: the tar.gz body, streamed; answers `201` with it.
+async fn upload_artifact(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path((id, name)): Path<(String, String)>,
+    query: Result<Query<ArtifactQuery>, axum::extract::rejection::QueryRejection>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let Ok(Query(query)) = query else {
+        return Err(RunnerError::bad_request("the query is `retention_days=<days>&overwrite=<bool>`").into());
+    };
+    let digest = headers
+        .get(CONTENT_SHA256_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| RunnerError::bad_request(format!("an upload needs the {CONTENT_SHA256_HEADER} header")))?;
+    let upload = Upload { name: &name, sha256: digest, retention_days: query.retention_days, overwrite: query.overwrite };
+    let reader = tokio_util::io::StreamReader::new(futures_util::TryStreamExt::map_err(body.into_data_stream(), |error| {
+        std::io::Error::other(error.to_string())
+    }));
+    let artifact = actions(&state)?.upload_artifact(&runner, task, &upload, reader).await?;
+    Ok((StatusCode::CREATED, Json(artifact_info(&artifact))).into_response())
+}
+
+/// `GET tasks/{id}/artifacts`: the run's artifacts so far.
+async fn list_artifacts(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path(id): Path<String>,
+) -> Result<Response, Refusal> {
+    let artifacts = actions(&state)?.task_artifacts(&runner, task_id(&id)?).await?;
+    Ok(Json(ArtifactList { artifacts: artifacts.iter().map(artifact_info).collect() }).into_response())
+}
+
+/// `GET tasks/{id}/artifacts/{name}`: one artifact's tar.gz, with its digest.
+async fn download_artifact(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path((id, name)): Path<(String, String)>,
+) -> Result<Response, Refusal> {
+    let (artifact, file) = actions(&state)?.open_task_artifact(&runner, task_id(&id)?, &name).await?;
+    let info = artifact_info(&artifact);
+    let mut response = Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
+    if let Ok(value) = HeaderValue::from_str(&info.sha256) {
+        headers.insert(CONTENT_SHA256_HEADER, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&artifact.size.to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+    Ok(response)
 }
 
 /// A task id from the path; anything else names no task.
@@ -319,7 +404,9 @@ mod tests {
 
     #[test]
     fn paths_are_the_protocols() {
-        let expected: Vec<String> = Endpoint::ALL.iter().map(|endpoint| path(*endpoint)).collect();
+        let mut expected: Vec<String> = Endpoint::ALL.iter().map(|endpoint| path(*endpoint)).collect();
+        // Actions: artifacts (A).
+        expected.extend([format!("{BASE_PATH}/{ARTIFACTS_PATH}"), format!("{BASE_PATH}/{ARTIFACTS_PATH}/{{name}}")]);
         assert_eq!(PATHS, expected);
     }
 

@@ -31,6 +31,11 @@
 //! max_jobs_per_event = 1024
 //! # `schedule` entries per repository.
 //! max_schedules_per_repository = 20
+//! # Largest artifact one job may upload, artifact bytes kept per repository, and days they
+//! # are kept (a workflow's `retention-days` may only lower it). Artifacts are not backed up.
+//! max_artifact_bytes = 2147483648
+//! max_artifact_storage_bytes = 10737418240
+//! artifact_retention_days = 90
 //! # How long a runner's poll for work is held open, in seconds (at most 25).
 //! long_poll_seconds = 25
 //! # Runner polls held open at once across the instance; beyond it polls are refused (503).
@@ -94,6 +99,13 @@ pub struct ActionsConfig {
     pub long_poll_seconds: u64,
     /// Polls held open at once; beyond it a poll is answered "unavailable".
     pub max_polls: usize,
+    // Actions: artifacts (A).
+    /// Largest artifact a job may upload, in bytes.
+    pub max_artifact_bytes: u64,
+    /// Artifact bytes kept per repository; an upload beyond it is refused.
+    pub max_artifact_storage_bytes: u64,
+    /// Days artifacts are kept; a workflow's `retention-days` may only lower it.
+    pub artifact_retention_days: u32,
 }
 
 // Actions: S.
@@ -123,6 +135,10 @@ impl Default for ActionsConfig {
             // Actions: S.
             long_poll_seconds: MAX_LONG_POLL_SECONDS,
             max_polls: 1024,
+            // Actions: artifacts (A).
+            max_artifact_bytes: 2 * 1024 * 1024 * 1024,
+            max_artifact_storage_bytes: 10 * 1024 * 1024 * 1024,
+            artifact_retention_days: 90,
         }
     }
 }
@@ -152,6 +168,10 @@ impl ActionsConfig {
         }
         if self.max_polls == 0 {
             return Err("Actions must allow at least one runner poll".into());
+        }
+        // Actions: artifacts (A).
+        if self.max_artifact_bytes == 0 || self.max_artifact_storage_bytes < self.max_artifact_bytes || self.artifact_retention_days == 0 {
+            return Err("Actions artifact limits must not be zero, and a repository's artifact storage must hold one artifact".into());
         }
         if !EVALUATION_CONCURRENCY.contains(&self.evaluation_concurrency) {
             return Err(format!(

@@ -4,6 +4,8 @@ mod access_tokens;
 mod accounts;
 // Actions: foundation (F).
 mod actions_rows;
+// Actions: artifacts (A).
+pub mod actions_artifacts;
 pub mod actions_runners;
 pub mod actions_runs;
 pub mod actions_schedules;
@@ -264,6 +266,11 @@ impl Database {
 
     pub fn actions_schedules(&self) -> actions_schedules::ActionsScheduleStore {
         actions_schedules::ActionsScheduleStore::new(self.pool.clone())
+    }
+
+    // Actions: artifacts (A).
+    pub fn actions_artifacts(&self) -> actions_artifacts::ActionsArtifactStore {
+        actions_artifacts::ActionsArtifactStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

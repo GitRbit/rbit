@@ -47,7 +47,9 @@ pub struct Swept {
     pub deleted_tokens: u64,
     // Actions: join (J).
     /// Job conditions decided late (their decision was lost to a restart).
-    pub decided: usize,
+    pub decided: usize, // Actions: artifacts (A).
+    /// Artifacts that expired, removed with their files.
+    pub expired_artifacts: usize,
 }
 
 impl ActionsService {
@@ -90,6 +92,8 @@ impl ActionsService {
         }
         // Actions: join (J).
         swept.decided = self.decide_stragglers().await?;
+        // Actions: artifacts (A).
+        swept.expired_artifacts = self.expire_artifacts(now).await?;
 
         for task in store.unfinalised_logs(RUNS_PER_PASS).await? {
             self.finalise_log(task).await?;

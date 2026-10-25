@@ -298,3 +298,24 @@ CREATE TABLE actions_schedules (
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX actions_schedules_due ON actions_schedules (next_at) WHERE paused = 0;
+
+-- Actions: artifacts (A). Files a job uploaded, one tar.gz each under
+-- <data_dir>/actions/artifacts/<run id>/<artifact id>.tar.gz (never backed up).
+CREATE TABLE actions_artifacts (
+    id          INTEGER PRIMARY KEY,
+    run_id      INTEGER NOT NULL REFERENCES actions_runs (id) ON DELETE CASCADE,
+    -- Denormalised from the run for the per-repository quota.
+    repo_id     INTEGER NOT NULL REFERENCES repositories (id) ON DELETE CASCADE,
+    -- The run attempt that uploaded it; names are unique per attempt.
+    attempt     INTEGER NOT NULL CHECK (attempt >= 1),
+    job_id      INTEGER REFERENCES actions_jobs (id) ON DELETE SET NULL,
+    name        TEXT    NOT NULL CHECK (length(name) BETWEEN 1 AND 128 AND name NOT GLOB '*[^A-Za-z0-9._-]*'),
+    size        INTEGER NOT NULL CHECK (size >= 0),
+    sha256      BLOB    NOT NULL CHECK (length(sha256) = 32),
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL,
+    UNIQUE (run_id, attempt, name)
+) STRICT;
+
+CREATE INDEX actions_artifacts_by_repo ON actions_artifacts (repo_id);
+CREATE INDEX actions_artifacts_expiring ON actions_artifacts (expires_at);

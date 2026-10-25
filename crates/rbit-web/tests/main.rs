@@ -6,6 +6,8 @@
 mod query_count;
 
 // Actions: foundation (F).
+// Actions: artifacts (A).
+mod actions_artifacts;
 mod actions_disabled;
 // Actions: interface and secrets (U).
 mod actions_job_pages;
