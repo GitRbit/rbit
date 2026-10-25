@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -121,6 +121,9 @@ zeroize = "1.9"
 # Actions secrets are sealed with AES-256-GCM under a key kept outside SQLite; aes-gcm is
 # already in the tree (through pkcs5), so sealing adds no crate.
 aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc", "zeroize"] }
+# rbit-runner's runner.toml is read and written as a document of its own; toml 0.8 is
+# already in the tree through figment, so writing it adds no crate.
+toml = "0.8"
 
 # Testing
 tempfile = "3"

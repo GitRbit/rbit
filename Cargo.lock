@@ -4265,6 +4265,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-runner"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "rbit-workflow",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rbit-server"
 version = "0.1.3"
 dependencies = [
@@ -4487,6 +4506,7 @@ dependencies = [
  "rustls-pki-types",
  "rustls-platform-verifier",
  "serde",
+ "serde_json",
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
