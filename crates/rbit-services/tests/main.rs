@@ -18,6 +18,7 @@ mod actions_settings;
 // Actions: S.
 mod actions_runners;
 mod actions_statuses;
+mod actions_tokens;
 mod admin;
 mod audit;
 mod edits;

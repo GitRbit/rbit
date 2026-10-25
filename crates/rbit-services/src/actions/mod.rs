@@ -22,7 +22,7 @@
 //! | [`scheduler`] | `poll`: the long poll, claims, idempotent retries, job specifications |
 //! | [`tasks`] | `tasks/{id}/state`: heartbeats, steps, outputs, results, cancellation |
 //! | [`logs`] | `tasks/{id}/logs`: appends by line offset, masking, gzip, reads for pages |
-//! | [`tokens`] | Task tokens for Git and the API |
+//! | [`tokens`] | Task tokens for Git, LFS and the API; what a task's push may not do |
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |

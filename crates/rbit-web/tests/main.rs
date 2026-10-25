@@ -13,6 +13,7 @@ mod actions_settings;
 // Actions: S.
 mod actions_runner;
 mod actions_runner_tasks;
+mod actions_tokens;
 mod admin_configuration;
 mod contributions;
 mod listings;
