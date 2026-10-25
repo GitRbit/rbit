@@ -4273,6 +4273,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "clap",
+ "flate2",
  "getrandom 0.4.3",
  "rbit-workflow",
  "reqwest",
@@ -4280,6 +4281,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "tar",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -5559,6 +5561,16 @@ dependencies = [
  "thiserror",
  "walkdir",
  "yaml-rust",
+]
+
+[[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
 ]
 
 [[package]]

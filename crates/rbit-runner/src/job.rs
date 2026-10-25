@@ -43,7 +43,10 @@ use crate::{
     },
     config::{Label, Loaded},
     contexts::{self, Eval},
-    steps::{self, Outcome},
+    steps::{
+        self, Outcome,
+        cache::{PendingSave, Store},
+    },
     task::{Executor, Reporter},
 };
 
@@ -138,6 +141,10 @@ pub struct Job {
     pub timed_out: Arc<AtomicBool>,
     /// When the job first saw the interrupt; steps after it share the cancel budget.
     pub interrupted_at: Option<Instant>,
+    /// The runner's cache.
+    pub cache: Store,
+    /// `rbit/cache` saves to make after the last step.
+    pub post_saves: Vec<PendingSave>,
 }
 
 /// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
@@ -260,6 +267,8 @@ impl Job {
             interrupt,
             timed_out: Arc::new(AtomicBool::new(false)),
             interrupted_at: None,
+            cache: Store { root: loaded.work_dir.join("cache"), max_bytes: loaded.config.cache.max_bytes },
+            post_saves: Vec::new(),
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());
@@ -269,6 +278,25 @@ impl Job {
             job.sync_contexts();
         }
         Ok(job)
+    }
+
+    /// The saves `rbit/cache` steps left, made only when the job succeeded.
+    async fn save_caches(&mut self) {
+        let saves = std::mem::take(&mut self.post_saves);
+        if saves.is_empty() {
+            return;
+        }
+        if self.phase != Phase::Success || self.interrupt.is_cancelled() {
+            self.reporter.log("Not saving caches: the job did not succeed");
+            return;
+        }
+        for save in saves {
+            self.reporter.log(&format!("##[group]Post: save cache `{}`", save.key));
+            if let Err(error) = steps::cache::save(self, &save.key, &save.paths).await {
+                self.reporter.log(&format!("##[warning]{error}"));
+            }
+            self.reporter.log("##[endgroup]");
+        }
     }
 
     /// Starts what the job runs in: for the container backend, the network, the services
@@ -380,6 +408,7 @@ impl Job {
             self.record(step, &outcome, conclusion);
         }
         timer.abort();
+        self.save_caches().await;
         self.outputs();
         if self.interrupt.is_cancelled() {
             self.phase = Phase::Cancelled;

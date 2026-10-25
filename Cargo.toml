@@ -127,6 +127,10 @@ toml = "0.8"
 # rbit-runner masks every secret with one Aho-Corasick automaton per task; aho-corasick is
 # already in the tree (through regex), so masking adds no crate.
 aho-corasick = "1.1"
+# rbit-runner's local cache stores tar.gz archives. flate2 is already in the tree (through
+# async-compression); tar is new, without its xattr feature, and brings no other crate.
+flate2 = "1.1"
+tar = { version = "0.4", default-features = false }
 
 # Testing
 tempfile = "3"

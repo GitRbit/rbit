@@ -19,6 +19,8 @@ aho-corasick.workspace = true
 anyhow.workspace = true
 base64.workspace = true
 clap.workspace = true
+# The runner-local cache: tar archives, gzip-compressed.
+flate2.workspace = true
 # Idempotency keys and backoff jitter.
 getrandom.workspace = true
 # The protocol client: JSON over HTTPS with rustls and the `ring` provider (as the server's
@@ -29,6 +31,7 @@ serde.workspace = true
 serde_json.workspace = true
 # hashFiles.
 sha2.workspace = true
+tar.workspace = true
 tokio.workspace = true
 # Cancellation that tasks, heartbeats and the poll loop share.
 tokio-util.workspace = true

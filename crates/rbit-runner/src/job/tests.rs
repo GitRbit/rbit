@@ -374,3 +374,48 @@ async fn steps_after_a_cancellation_share_a_budget() {
     tokio::time::timeout(Duration::from_secs(5), signal.wait()).await.unwrap();
     assert_eq!(signal.reason(), StopReason::Budget);
 }
+
+fn cache_step(with: &[(&str, &str)]) -> StepTemplate {
+    let mut template = step("");
+    template.id = Some("cache".into());
+    template.action = StepAction::Uses(rbit_workflow::spec::Builtin {
+        uses: "actions/cache@v4".into(),
+        kind: rbit_workflow::spec::BuiltinKind::Cache,
+        version: 1,
+        with: with.iter().map(|(key, value)| ((*key).to_owned(), (*value).to_owned())).collect(),
+    });
+    template
+}
+
+#[tokio::test]
+async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
+    let work = tempfile::tempdir().unwrap();
+    let executor = JobExecutor::new(Arc::new(loaded(work.path())));
+    let run = |task: i64, steps: Vec<StepTemplate>| {
+        let executor = executor.clone();
+        let work = work.path().to_path_buf();
+        async move {
+            let mut spec = host_job(steps);
+            spec.task_id = rbit_workflow::protocol::TaskId(task);
+            spec.template.outputs = [("hit".to_owned(), "${{ steps.cache.outputs.cache-hit }}".to_owned())].into();
+            let dir = crate::task::task_dir(&work, spec.task_id);
+            let reporter = Arc::new(Reporter::new(spec.task_id, &dir, spec.template.steps.len()).unwrap());
+            let result = executor.execute(spec, Arc::clone(&reporter)).await;
+            (result, reporter)
+        }
+    };
+    let key = [("key", "deps-${{ runner.os }}-1"), ("path", "cachedir")];
+    let (result, reporter) = run(1, vec![cache_step(&key), step("mkdir cachedir\necho cached > cachedir/x")]).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(text.contains("No cache entry") && text.contains("Saved the cache entry `deps-"), "{text}");
+    assert_eq!(reporter.state().outputs["hit"], "false");
+
+    let (result, reporter) = run(2, vec![cache_step(&key), step("cat cachedir/x")]).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(text.contains("Restoring the cache entry") && reporter.lines().iter().any(|line| line.trim() == "cached"), "{text}");
+    assert_eq!(reporter.state().outputs["hit"], "true");
+    assert!(!text.contains("Saved the cache entry"), "an exact hit is not saved again");
+    assert!(work.path().join("cache/1/refs/heads/main").is_dir(), "entries live under the repository and scope");
+}
