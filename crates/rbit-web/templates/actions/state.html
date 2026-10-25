@@ -1,0 +1,11 @@
+{#- A run's, job's or step's state as one icon; expects `look: StateLook` (views::actions). -#}
+{% import "macros.html" as ui %}
+<span class="inline-flex size-5 shrink-0 items-center justify-center {{ look.tone }}" title="{{ look.label }}">
+  {%- if look.key == "success" -%}{% call ui::icon("circle-check", "size-4") %}{% endcall %}
+  {%- else if look.key == "failure" || look.key == "error" -%}{% call ui::icon("x", "size-4") %}{% endcall %}
+  {%- else if look.key == "cancelled" || look.key == "skipped" -%}{% call ui::icon("circle-slash", "size-4") %}{% endcall %}
+  {%- else if look.key == "running" -%}{% call ui::icon("circle-dot", "size-4") %}{% endcall %}
+  {%- else if look.key == "approval" -%}{% call ui::icon("shield", "size-4") %}{% endcall %}
+  {%- else -%}{% call ui::icon("clock", "size-4") %}{% endcall %}{%- endif -%}
+  <span class="sr-only">{{ look.label }}</span>
+</span>

@@ -5,6 +5,8 @@
 //! business logic and never build URLs by hand.
 
 pub mod account;
+// Actions: interface and secrets (U).
+pub mod actions;
 pub mod admin;
 pub mod auth;
 pub mod blame;

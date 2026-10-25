@@ -10,7 +10,13 @@
 //! The Actions foundation (workstream F) owns the route list; workstream U (interface and
 //! secrets) owns the handlers.
 
-use axum::{Router, http::Method};
+mod runs;
+
+use axum::{
+    Router,
+    http::Method,
+    routing::{get, post},
+};
 
 use crate::AppState;
 
@@ -43,5 +49,15 @@ pub const PATHS: &[(&str, &[Method])] = &[
 
 /// The Actions pages. Merged only when Actions is enabled (see `routes::page_routes`).
 pub fn routes() -> Router<AppState> {
+    // Actions: interface and secrets (U).
     Router::new()
+        .route("/{owner}/{repo}/actions", get(runs::list))
+        .route("/{owner}/{repo}/actions/workflows/{workflow}", get(runs::workflow))
+        .route("/{owner}/{repo}/actions/runs/{run}", get(runs::show))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs", get(runs::jobs))
+        .route("/{owner}/{repo}/actions/runs/{run}/cancel", post(runs::cancel))
+        .route("/{owner}/{repo}/actions/runs/{run}/rerun", post(runs::rerun_all))
+        .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
+        .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
 }

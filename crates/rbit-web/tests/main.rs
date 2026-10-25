@@ -7,6 +7,8 @@ mod query_count;
 
 // Actions: foundation (F).
 mod actions_disabled;
+// Actions: interface and secrets (U).
+mod actions_pages;
 mod admin_configuration;
 mod contributions;
 mod listings;

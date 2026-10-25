@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+{#- Workflows stack above the runs on phones and sit beside them from `md` up. -#}
+<div class="flex flex-col gap-6 md:flex-row md:items-start">
+  <nav class="md:w-56 md:shrink-0" aria-label="Workflows">
+    <h2 class="mb-2 text-[13px] font-medium text-ink-muted">Workflows</h2>
+    <ul class="box divide-y divide-line">
+      <li><a class="flex min-h-11 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if workflow.is_none() %}font-medium text-ink{% else %}text-ink-muted{% endif %}" href="{{ all_url }}" {% if workflow.is_none() %}aria-current="page"{% endif %}>All workflows</a></li>
+      {% for link in workflows %}
+      <li><a class="flex min-h-11 min-w-0 items-center gap-2 px-3 text-[13px] hover:bg-subtle {% if link.is_current %}font-medium text-ink{% else %}text-ink-muted{% endif %}" href="{{ link.url }}" title="{{ link.file }}" {% if link.is_current %}aria-current="page"{% endif %}><span class="truncate">{{ link.name }}</span></a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+
+  <div class="min-w-0 flex-1">
+    <div class="mb-3 flex min-h-8 items-center gap-3">
+      <h1 class="text-[13px] font-medium text-ink-muted">{% if let Some(name) = workflow %}{{ name }}{% else %}All workflow runs{% endif %}</h1>
+    </div>
+
+    <form method="get" action="{{ filters.action }}" class="mb-3 flex flex-wrap items-center gap-2" role="search">
+      <label class="sr-only" for="runs-branch">Branch</label>
+      <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-branch" type="search" name="branch" value="{{ filters.branch }}" placeholder="Branch" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="runs-actor">Actor</label>
+      <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-actor" type="search" name="actor" value="{{ filters.actor }}" placeholder="Actor" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <label class="sr-only" for="runs-event">Event</label>
+      <div class="relative w-full sm:w-40">
+        <select class="input cursor-pointer appearance-none pr-9" id="runs-event" name="event">
+          <option value="">Any event</option>
+          {% for option in filters.events %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+        </select>
+        {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      </div>
+      <label class="sr-only" for="runs-status">Status</label>
+      <div class="relative w-full sm:w-44">
+        <select class="input cursor-pointer appearance-none pr-9" id="runs-status" name="status">
+          <option value="">Any status</option>
+          {% for option in filters.statuses %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+        </select>
+        {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+      </div>
+      <button class="btn h-10 sm:h-9" type="submit">Filter</button>
+      {% if filters.any %}<a href="{{ filters.action }}" class="btn btn-ghost h-10 sm:h-9">Clear</a>{% endif %}
+    </form>
+
+    <div class="box">
+      {% if runs.is_empty() %}
+      {% if filters.any %}
+      {% call ui::empty_state("zap", "No matching runs", "No workflow run matches these filters.") %}{% endcall %}
+      {% else %}
+      {% call ui::empty_state("zap", "No workflow runs yet", "Add a workflow file under .rbit/workflows and push it: runs show up here as runners pick them up.") %}{% endcall %}
+      {% endif %}
+      {% else %}
+      <ul>
+        {% for run in runs %}
+        <li class="row items-start gap-3 py-3">
+          {% let look = run.look %}
+          {% include "actions/state.html" %}
+          <div class="min-w-0 flex-1">
+            <a class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ run.url }}">{{ run.title }}</a>
+            <p class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-muted">
+              <span>{{ run.workflow }} #{{ run.number }}</span><span aria-hidden="true">·</span><span>{{ run.event }}</span>
+              {% if !run.reference.is_empty() %}<span aria-hidden="true">·</span><span class="font-mono">{{ run.reference }}</span>{% endif %}
+              {% if let Some(actor) = run.actor %}<span aria-hidden="true">·</span><span>{{ actor }}</span>{% endif %}
+            </p>
+            {% if let Some(error) = run.error %}<p class="mt-1 whitespace-pre-wrap break-words text-xs text-danger">{{ error }}</p>{% endif %}
+          </div>
+          <div class="shrink-0 text-right text-xs text-ink-faint">
+            <time class="block whitespace-nowrap" datetime="{{ run.when_iso }}">{{ run.when }}</time>
+            {% if let Some(duration) = run.duration %}<span class="mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap tabular-nums">{% call ui::icon("clock", "size-3") %}{% endcall %}{{ duration }}</span>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    {% if let Some(url) = next_url %}
+    <nav class="mt-4 flex justify-end" aria-label="Pagination">
+      <a href="{{ url }}" class="btn" rel="next">Older runs{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+    </nav>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

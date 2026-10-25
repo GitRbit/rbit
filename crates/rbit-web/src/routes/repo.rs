@@ -105,6 +105,8 @@ pub(super) struct RepoPage {
     forked_from: Option<ForkedFrom>,
     mirror_url: Option<String>,
     open_counts: OpenCounts,
+    // Actions: interface and secrets (U).
+    actions_on: bool,
 }
 
 impl RepoPage {
@@ -112,18 +114,37 @@ impl RepoPage {
         let ctx = open_pinned(state, viewer, owner, repo).await?;
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
         let forks = &state.services.forks;
-        let (refs, stars, fork_count, parent, mirror, open_counts) = tokio::join!(
+        // Actions: interface and secrets (U). Only an instance with Actions asks the
+        // repository whether it has them on.
+        let actions_on = async {
+            match &state.services.actions {
+                Some(actions) => actions.enabled_for(ctx.repo.repo.id).await,
+                None => Ok(false),
+            }
+        };
+        let (refs, stars, fork_count, parent, mirror, open_counts, actions_on) = tokio::join!(
             ctx.reader.refs(),
             state.services.stars.summary(ctx.repo.repo.id, viewer.user()),
             forks.count(viewer.user(), &ctx),
             forks.parent(viewer.user(), &ctx),
             state.services.mirrors.find(&ctx),
             state.services.timeline.open_counts(ctx.repo.repo.id),
+            actions_on,
         );
         let mirror_url = mirror?.map(|mirror| mirror.url.to_string());
         let forked_from = parent?.map(|parent| ForkedFrom { full_name: parent.full_name(), url: format!("/{}", parent.full_name()) });
         let refs = refs.map_err(ServiceError::from)?;
-        Ok(Self { ctx, urls, refs, stars: stars?, fork_count: fork_count?, forked_from, mirror_url, open_counts: open_counts? })
+        Ok(Self {
+            ctx,
+            urls,
+            refs,
+            stars: stars?,
+            fork_count: fork_count?,
+            forked_from,
+            mirror_url,
+            open_counts: open_counts?,
+            actions_on: actions_on?,
+        })
     }
 
     /// Branches then tags, each sorted by name.
@@ -182,6 +203,7 @@ impl RepoPage {
             pulls_url: format!("{}/pulls", self.urls.home()),
             open_issues: self.open_counts.issues,
             open_pulls: self.open_counts.pulls,
+            actions_url: self.actions_on.then(|| format!("{}/actions", self.urls.home())),
             active_tab,
         }
     }

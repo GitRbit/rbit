@@ -30,6 +30,9 @@
     <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
     <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
     <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>Activity</a>
+    {% if let Some(actions_url) = header.actions_url %}
+    <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>Actions</a>
+    {% endif %}
     {% if header.can_admin %}
     <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
     {% endif %}

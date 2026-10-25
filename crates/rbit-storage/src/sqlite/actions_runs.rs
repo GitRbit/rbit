@@ -1015,6 +1015,19 @@ impl ActionsRunStore {
         let result = sqlx::query("DELETE FROM actions_runs WHERE finished_at < ?").bind(before.0).execute(&self.pool).await?;
         Ok(result.rows_affected())
     }
+
+    // Actions: interface and secrets (U).
+    /// The workflows that have runs in `repo`, by path, each with the name of its newest
+    /// run (the runs page's sidebar).
+    pub async fn workflows(&self, repo: RepoId) -> Result<Vec<(String, String)>, StorageError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT r.workflow_path, r.workflow_name FROM actions_runs r              WHERE r.id IN (SELECT MAX(id) FROM actions_runs WHERE repo_id = ? GROUP BY workflow_path) ORDER BY r.workflow_path",
+        )
+        .bind(repo.0)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
 }
 
 /// The waiting job a runner may take, oldest first: the repository has Actions on, the

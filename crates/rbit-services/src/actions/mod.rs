@@ -24,12 +24,14 @@
 //! | [`logs`] | `UpdateLog`, log files and retention |
 //! | [`tokens`] | Task tokens for Git and the API |
 //! | [`secrets`] | Secrets and variables |
+//! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Stalled tasks, abandoned jobs, retention |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
 //!
 //! The Actions foundation (workstream F) owns this file; the other workstreams append their
 //! fields and start-up lines in marked blocks.
 
+pub mod browse;
 pub mod context;
 pub mod dispatch;
 pub mod hooks;
