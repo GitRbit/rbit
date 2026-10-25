@@ -1251,3 +1251,86 @@ Parallel streams rebase onto `feature/actions` when they land. At most **three**
 31. `Build and release rbit-runner`: the CI build, release archives and `ghcr.io/gitrbit/rbit-runner`.
 32. `Document Actions`: README, `docs/actions.md`, deployment.md, ARCHITECTURE, ROADMAP, CHANGELOG with upgrade notes, and the example configs.
 33. `Record the Actions design as built`
+
+## 13. As built
+
+Everything in §12.11 landed on `feature/actions`, in that plan's order with two extra
+commits: dropping the external runners' settings and context keys, and planning runs with
+the full `github` context. This section records where the code differs from the text above,
+and what is known to be missing. Where they disagree, this section and the code win.
+
+### 13.1 Deviations
+
+**Workflow language (`rbit-workflow`)**
+- Matrices may use expressions over `github`, `inputs` and `vars` (§12.4's first row counts
+  `strategy` as server-evaluated, which is read as including the matrix).
+- Every `${{ }}` is checked at parse time against the contexts its field may use; status
+  functions outside `if` and `hashFiles` outside steps are parse errors. Text around `${{ }}`
+  in an `if:` is an error (GitHub treats it as always true).
+- More keys are "not supported by rbit" than §12.2 lists: container and service `ports` and
+  `volumes`, `cancel-timeout-minutes`, `snapshot`, and job-level `with` and `secrets`.
+  `cancel-in-progress` must be a literal boolean.
+- Planning happens before a run exists, so `github.run_number` and `run_attempt` are absent
+  then and `github.event` carries only the pull request number, dispatch inputs or schedule;
+  tasks get the full context.
+
+**Server**
+- Jobs without their own `if:` follow `success()` in SQL; jobs with one stay blocked until
+  the server decides them (`conditions.rs`), so no runner can claim an undecided job. The
+  sweeper decides any a restart left undecided.
+- Fail-fast cancels a failed matrix job's unfinished siblings; the run then aggregates as
+  *cancelled*, because `aggregate` ranks cancelled above failed (GitHub reports failure).
+- Job-level concurrency groups gate claims (one running job per group and repository) but
+  `cancel-in-progress` is not applied to job groups.
+- The claim query takes the oldest claimable job; §11.8's per-repository fairness is that
+  order, not a separate round-robin.
+- Step rows are created at claim time from the template's names; state calls update them.
+- Webhook actions are announced once each through `announced` columns on runs and jobs,
+  checked on every `report_statuses`.
+- Artifacts are unique per run attempt; downloads take the newest attempt's artifact of each
+  name.
+
+**rbit-runner**
+- PowerShell steps run with `-NoProfile -NonInteractive -ExecutionPolicy Bypass`.
+- A cancelled container step is stopped with `kill -TERM -1`, then `kill -KILL -1`, inside
+  the job container, so `always()` steps still have a container to run in; only if that
+  fails is the container killed.
+- Multi-line environment values cannot go in `--env-file`; they are passed as `-e NAME` with
+  the value in the container CLI's own environment, still never in an argument.
+- `temp` and `files` are mounted too (`/__w/_temp`, `/__w/_files`); the env files the CLI
+  reads live in a directory no container mounts. The janitor removes only containers labelled
+  with its own runner's name.
+- A job that reaches `timeout-minutes` reports failure; a cancel reports cancelled.
+- The cache refuses glob patterns and `!` exclusions, and container jobs cache only paths in
+  the workspace. `runner.toml`'s grace key is `shutdown_grace_seconds`.
+- `rbit-runner exec` checks out the committed `HEAD` of the local repository.
+- Host-backend steps inherit the runner's environment, minus `RBIT_RUNNER_*`.
+
+**Interface and API**
+- Runners are managed on their own pages (`…/settings/actions/runners`, also for
+  organisations and users, and `/admin/runners`). The register command shown reads the token
+  from the terminal so it stays out of shell history.
+- The REST API identifies workflows by file name, takes secret values in plain JSON over
+  TLS, answers 409 for actions on a run in the wrong state, and never trusts an author on
+  approval.
+
+### 13.2 Known gaps
+
+- **Task tokens on API writes.** Statuses, releases and comments are on the task allowlist,
+  but their handlers need a `User`, so a task gets 403 there; workflows cannot post commit
+  statuses or comments yet.
+- **No dispatch form, attempt picker or log timestamps** on the pages; dispatch is API-only.
+- **The step summary** (`GITHUB_STEP_SUMMARY`) is read and capped but not sent; the protocol
+  has no field for it.
+- **REST API:** no job log, runner, registration token or artifact endpoints.
+- **Metrics:** the Actions metrics of §9 are not exported.
+- **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
+  of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
+- **Not exercised yet:** the container backend against a real Docker or Podman, the
+  Unix-only runner code (process groups, file modes) outside CI, and the new pages at 375 px
+  and in the dark theme (the stylesheet was not built where they were written).
+
+### 13.3 Commits
+
+Commits carry the contributor's configured Git identity, which is not the one §12.11 names,
+and no AI co-author trailers, as `CONTRIBUTING.md` requires.
