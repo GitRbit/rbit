@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-25
+
 ### Security
 
 - Dismiss approvals when a pull request's base branch changes, refuse merges whose
@@ -39,7 +41,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Refuse to make a fork public while a repository it was forked from is private.
 - Look up single API comments directly instead of loading their whole timeline.
 - Keep local data, databases and keys out of the Docker build context.
-
 
 ### Added
 
@@ -240,16 +241,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
-- Startup applies migration `0047_email_digests.sql`, adding the delivery choice and digest
-  hour to `notification_email_settings` and the `notification_digests` and
-  `notification_digest_items` tables. Existing users keep immediate notification emails;
-  nothing changes until someone chooses a digest. Back up the database before upgrading
-  as usual.
-- Startup applies migration `0046_repo_archives.sql`, adding the `repo_archives` table.
-  Existing repositories stay unarchived and their rows are unchanged; back up the database
-  before upgrading as usual.
-- Back up the database before upgrading. Migration `0045` adds the issue-list ordering
-  index and runs automatically at startup; migrations only move forward.
+- Back up the database, repositories and attachments before upgrading from 0.1.4.
+  Startup applies migrations `0044`–`0047` automatically; migrations only move forward.
+  To roll back, restore the complete pre-upgrade backup before starting the older binary.
+- Migration `0044` widens push mirror secrets for encryption. On first startup, existing
+  TOTP seeds, webhook and push mirror secrets, server signing keys and secret configuration
+  fields are encrypted with `<data_dir>/secret.key` (or `storage.secret_key_file`). Keep
+  that key with every post-upgrade backup; a database containing sealed values cannot be
+  opened without its original key. The backup command includes it as `secret.key`; restore
+  it to the configured key-file location together with the matching database. Replace
+  obsolete plaintext backups after the upgrade and rollback window are complete.
+- Migration `0045` adds the issue-list ordering index. Existing repositories receive a
+  commit-graph at the first maintenance run, and SQLite planner statistics refresh after
+  migrations and during scheduled maintenance.
+- Migration `0046` adds `repo_archives`. Existing repositories remain unarchived.
+- Migration `0047` adds email delivery preferences and digest tables. Existing users keep
+  immediate notification emails until they choose a daily or weekly digest. Digest hours
+  use UTC; the administrator default is `[notifications] digest_hour = 8`.
+- Fresh instances require the one-time setup token from startup logs (or
+  `security.setup_token`) to register the first administrator. Existing instances need no
+  setup token. Active sessions now have a maximum age of 90 days by default
+  (`security.session_max_age_days`); older sessions require a new sign-in.
+- Restart with the new binary or container image to apply the Git transfer limits,
+  security headers and refreshed web assets. Review the documented configuration defaults
+  in [deploy/rbit.example.toml](deploy/rbit.example.toml) before changing limits.
 
 ## [0.1.4] - 2026-10-24
 
@@ -315,7 +330,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
   Configuration changes take effect after restart. These controls need no additional
   database migration and do not install updates.
-
 
 ## [0.1.3] - 2026-10-21
 

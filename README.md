@@ -31,7 +31,8 @@ no Redis, no JavaScript runtime — download it, run it, push.
 docker run -d --name rbit -p 3000:3000 -v rbit-data:/data ghcr.io/gitrbit/rbit:latest
 ```
 
-Open <http://localhost:3000> and sign up — **the first account becomes the site administrator**.
+Retrieve the one-time setup token with `docker logs rbit`, then open
+<http://localhost:3000> and sign up with it — **the first account becomes the site administrator**.
 Create a repository (or import one from GitHub or Gitea), then push:
 
 ```bash
@@ -166,7 +167,7 @@ aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_
 changelog, the third-party notices, the example configuration and the systemd unit.
 
 ```bash
-version=0.1.0                       # the release you want
+version=0.1.5                       # the release you want
 target=x86_64-unknown-linux-gnu     # or aarch64-unknown-linux-gnu, aarch64-apple-darwin, ...
 curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/rbit-$version-$target.tar.gz"
 curl -LO "https://github.com/GitRbit/rbit/releases/download/v$version/SHA256SUMS"
@@ -181,7 +182,7 @@ For a real server (a system user, TLS in front, systemd, backups) follow
 ### Container image
 
 Multi-architecture images (`linux/amd64`, `linux/arm64`) are published to the GitHub
-Container Registry for every release, tagged with the version (`0.1.0`, `0.1`) and `latest`:
+Container Registry for every release, tagged with the version (`0.1.5`, `0.1`) and `latest`:
 
 ```bash
 docker run -d --name rbit -p 3000:3000 -v rbit-data:/data \

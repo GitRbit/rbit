@@ -1,10 +1,23 @@
 # rbit — Handoff
 
-## Current project status — 2026-10-24
+## Current project status — 2026-10-25
 
 The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
-licensed under MIT OR Apache-2.0. The workspace version is `0.1.4`, and
-[CHANGELOG.md](../CHANGELOG.md) records releases through `0.1.4`.
+licensed under MIT OR Apache-2.0. The workspace version is `0.1.5`, and
+[CHANGELOG.md](../CHANGELOG.md) records prepared releases through `0.1.5`.
+
+Version 0.1.5 follows the separately prepared 0.1.4 release and includes security
+hardening, rendering and database performance improvements, archived repositories and
+notification email digests. The Actions branch remains outside this release.
+
+Upgrading from 0.1.4 applies migrations `0044`–`0047`. Take a complete pre-upgrade backup,
+then keep the generated/configured secret key with every post-upgrade database backup;
+restoring sealed credentials requires the original key. See the 0.1.5 upgrade notes in
+[CHANGELOG.md](../CHANGELOG.md#015---2026-10-25) and the deployment backup instructions.
+
+This commit prepares the next version; it does not publish a tag or release artifacts.
+Publish only after all prerequisite feature PRs and this version change reach main and
+the final main commit passes CI.
 
 Use [README.md](../README.md#features) for available features and
 [ROADMAP.md](../ROADMAP.md) for current priorities and scope. Source builds require
