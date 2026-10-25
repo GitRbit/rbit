@@ -19,6 +19,7 @@ mod commands;
 mod config;
 mod contexts;
 mod envfiles;
+mod exec;
 mod job;
 mod logs;
 mod mask;
@@ -51,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Register(args) => register::run(&cli.config, args).await,
         Command::Check => check::run(&cli.config).await,
         Command::Run { once } => run(&cli.config, once).await,
-        Command::Exec(_) => anyhow::bail!("`rbit-runner exec` is not available in this build yet"),
+        Command::Exec(args) => exec::run(&cli.config, args).await,
     }
 }
 

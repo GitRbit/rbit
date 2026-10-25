@@ -151,11 +151,7 @@ impl EnvFiles {
             if bytes.len() as u64 > MAX_FILE_BYTES {
                 return Err(format!("{name} is larger than {} MiB", MAX_FILE_BYTES / 1024 / 1024));
             }
-            // Windows PowerShell's `Out-File -Encoding utf8` writes a byte order mark.
-            if bytes.starts_with(b"\xEF\xBB\xBF") {
-                bytes.drain(..3);
-            }
-            String::from_utf8(bytes).map_err(|_| format!("{name} is not UTF-8"))
+            decode(bytes).ok_or_else(|| format!("{name} is neither UTF-8 nor UTF-16"))
         };
         let mut written = Written::default();
         for (name, value) in parse_entries(&text(Kind::Output)?).map_err(|error| format!("GITHUB_OUTPUT: {error}"))? {
@@ -173,6 +169,25 @@ impl EnvFiles {
         written.path = text(Kind::Path)?.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect();
         written.summary = text(Kind::StepSummary)?;
         Ok(written)
+    }
+}
+
+/// An env file's text. Windows PowerShell writes UTF-8 with a byte order mark
+/// (`Out-File -Encoding utf8`) and UTF-16 with one (`>>`); both are read as written.
+fn decode(mut bytes: Vec<u8>) -> Option<String> {
+    let utf16 = |bytes: &[u8], little: bool| {
+        let units: Vec<u16> =
+            bytes.as_chunks::<2>().0.iter().map(|&pair| if little { u16::from_le_bytes(pair) } else { u16::from_be_bytes(pair) }).collect();
+        String::from_utf16(&units).ok()
+    };
+    match bytes.as_slice() {
+        [0xEF, 0xBB, 0xBF, ..] => {
+            bytes.drain(..3);
+            String::from_utf8(bytes).ok()
+        }
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, true),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, false),
+        _ => String::from_utf8(bytes).ok(),
     }
 }
 
@@ -268,6 +283,15 @@ mod tests {
         assert_eq!(written.path, ["/opt/tool/bin", "/usr/local/x"]);
         assert_eq!(written.summary, "# Done\n");
         assert!(!output.exists(), "the files are removed after the step");
+    }
+
+    #[test]
+    fn powershell_encodings_are_read() {
+        let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain("a=1\r\n".encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        assert_eq!(decode(utf16).as_deref(), Some("a=1\r\n"));
+        assert_eq!(decode(b"\xEF\xBB\xBFa=1\n".to_vec()).as_deref(), Some("a=1\n"));
+        assert_eq!(decode(b"\xFF\xFE\x00\xD8".to_vec()), None, "a lone surrogate");
+        assert_eq!(decode(vec![0xC3]), None);
     }
 
     #[test]

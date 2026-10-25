@@ -49,6 +49,15 @@ pub fn task_dir(work_dir: &Path, task: TaskId) -> PathBuf {
     work_dir.join("tasks").join(task.to_string())
 }
 
+/// A sink for log lines.
+struct Echo(Box<dyn Fn(&str) + Send + Sync>);
+
+impl std::fmt::Debug for Echo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Echo")
+    }
+}
+
 /// What the executor tells the server about a task.
 #[derive(Debug)]
 pub struct Reporter {
@@ -57,6 +66,8 @@ pub struct Reporter {
     log: TaskLog,
     /// Everything logged or reported as an output passes through it.
     masker: Masker,
+    /// Where `rbit-runner exec` prints the log as it is written.
+    echo: Option<Echo>,
     progress: Mutex<Progress>,
     changed: Notify,
     cancel: CancellationToken,
@@ -92,6 +103,7 @@ impl Reporter {
             dir: dir.to_path_buf(),
             log,
             masker: Masker::default(),
+            echo: None,
             progress: Mutex::new(Progress { steps, current: None, outputs: BTreeMap::new(), gone: false }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
@@ -128,6 +140,18 @@ impl Reporter {
         self.masker.mask(text).into_owned()
     }
 
+    /// The same reporter, also printing each log line, masked, to `sink`.
+    #[must_use]
+    pub fn echo_to(mut self, sink: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        self.echo = Some(Echo(Box::new(sink)));
+        self
+    }
+
+    /// The job's outputs as reported.
+    pub fn outputs(&self) -> BTreeMap<String, String> {
+        self.lock().outputs.clone()
+    }
+
     /// The same reporter, also cancelled when `parent` is (the runner's shutdown).
     #[must_use]
     pub fn cancelled_by(mut self, parent: &CancellationToken) -> Self {
@@ -143,7 +167,13 @@ impl Reporter {
     /// Appends a line (or several, at newlines) to the task log, counted to the current
     /// step.
     pub fn log(&self, text: &str) {
-        let kept = self.log.push(&self.masker.mask(text));
+        let masked = self.masker.mask(text);
+        if let Some(Echo(sink)) = &self.echo {
+            for line in masked.split('\n') {
+                sink(line.strip_suffix('\r').unwrap_or(line));
+            }
+        }
+        let kept = self.log.push(&masked);
         let mut progress = self.lock();
         if let Some(index) = progress.current {
             progress.steps[index].log_length += kept;
