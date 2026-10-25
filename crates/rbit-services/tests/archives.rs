@@ -126,6 +126,7 @@ impl Fixture {
             title: String::new(),
             message: String::new(),
             expected_head: None,
+            expected_base: None,
             delete_head_branch: false,
             bypass: false,
         }
