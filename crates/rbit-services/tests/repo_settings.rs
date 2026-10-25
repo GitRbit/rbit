@@ -188,6 +188,26 @@ async fn delete_repository() {
 }
 
 #[tokio::test]
+async fn a_page_that_read_the_repository_deletes_it_without_waiting_for_itself() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", false).await;
+    let mut repo = fixture.repo(&alice, "doomed", Visibility::Public).await;
+    fixture.push_branches(&repo, &["main"]);
+    git(&repo.disk_path, &["gc", "--quiet"]);
+    repo.reader = repo.reader.pinned();
+    assert!(!repo.reader.is_empty().await.unwrap(), "the settings page pins the repository");
+    let page_reader = repo.reader.clone();
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), fixture.services.repo_settings.delete(&alice, &repo, "alice/doomed"))
+        .await
+        .expect("deletion closes this request's pinned reader before waiting for other work")
+        .unwrap();
+    assert!(!repo.disk_path.exists());
+    drop(page_reader);
+    assert!(matches!(fixture.open(Some(&alice), "alice", "doomed").await, Err(ServiceError::NotFound)));
+}
+
+#[tokio::test]
 async fn creating_and_deleting_repositories_publish_events() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice", false).await;

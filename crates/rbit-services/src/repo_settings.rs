@@ -143,6 +143,9 @@ impl RepoSettingsService {
             return Err(ServiceError::Invalid(format!("type \"{full_name}\" to confirm")));
         }
         let current = &repo.repo.repo;
+        // The settings page may have pinned this repository while loading its refs.
+        // Close our own handle before deletion waits for other requests and jobs.
+        repo.reader.close();
         self.ctx.repositories.delete(current.owner_id, current.id).await?;
         self.store().delete(current.id).await?;
         tracing::info!(repo = %full_name, "repository deleted");
