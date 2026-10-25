@@ -947,6 +947,23 @@ impl ActionsRunStore {
         Ok(ids.into_iter().map(TaskId).collect())
     }
 
+    /// Log bytes kept across the instance (`[actions] max_log_storage_bytes`).
+    pub async fn stored_log_bytes(&self) -> Result<u64, StorageError> {
+        let bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(log_bytes), 0) FROM actions_tasks WHERE log_state != 'expired'")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(u64::try_from(bytes).unwrap_or_default())
+    }
+
+    /// Stopped tasks whose log was never finalised (a runner that went away, a crash).
+    pub async fn unfinalised_logs(&self, limit: u32) -> Result<Vec<TaskId>, StorageError> {
+        let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM actions_tasks WHERE status != 6 AND log_state = 'live' ORDER BY id LIMIT ?")
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(ids.into_iter().map(TaskId).collect())
+    }
+
     /// Running tasks started before `before` (the endless sweep).
     pub async fn long_running_tasks(&self, before: Timestamp) -> Result<Vec<TaskId>, StorageError> {
         let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM actions_tasks WHERE status = 6 AND started_at < ? ORDER BY id")

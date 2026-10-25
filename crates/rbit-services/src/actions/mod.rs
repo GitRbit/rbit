@@ -1,4 +1,4 @@
-//! rbit Actions: CI/CD on external Forgejo and Gitea runners (`docs/design/actions.md`).
+//! rbit Actions: CI/CD on rbit's own runner, `rbit-runner` (`docs/design/actions.md`).
 //!
 //! [`ActionsService`] exists only when `[actions] enabled` is set: [`ActionsService::new`]
 //! answers `None` otherwise, and `Services::actions` stays `None`. With it absent there is no
@@ -26,7 +26,7 @@
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
-//! | [`sweeper`] | Stalled tasks, abandoned jobs, retention |
+//! | [`sweeper`] | Zombie and endless tasks, abandoned jobs, log and run retention, the log budget, stale tokens |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
 //!
 //! The Actions foundation (workstream F) owns this file; the other workstreams append their
@@ -154,6 +154,8 @@ impl ActionsService {
         self.inner.tasks.spawn(async move {
             let _ = this.secrets_key().await;
         });
+        // Actions: S. Stalled tasks, abandoned jobs, retention.
+        self.inner.tasks.spawn(self.clone().run_sweeper());
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from
