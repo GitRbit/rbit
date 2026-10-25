@@ -238,7 +238,7 @@ impl Job {
         self.set_env_context(&step_env);
         let outcome = match &step.action {
             StepAction::Run(script) => steps::run::run(self, index, step, script, &step_env).await,
-            StepAction::Uses(builtin) => steps::builtin(self, builtin),
+            StepAction::Uses(builtin) => steps::builtin(self, builtin).await,
         };
         self.set_env_context(&BTreeMap::new());
         outcome
@@ -436,4 +436,4 @@ pub fn task_env(github: &Map<String, Value>, view: &View, runner: &str, os: &str
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

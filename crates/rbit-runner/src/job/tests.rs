@@ -23,7 +23,7 @@ fn loaded(work: &std::path::Path) -> Loaded {
     Loaded { config: config::tests::config(), work_dir: work.to_path_buf(), credential_path: work.join(config::CREDENTIAL_FILE) }
 }
 
-fn step(script: &str) -> StepTemplate {
+pub(crate) fn step(script: &str) -> StepTemplate {
     StepTemplate {
         id: None,
         name: None,
@@ -37,7 +37,7 @@ fn step(script: &str) -> StepTemplate {
     }
 }
 
-fn host_job(steps: Vec<StepTemplate>) -> JobSpec {
+pub(crate) fn host_job(steps: Vec<StepTemplate>) -> JobSpec {
     let mut spec = job_spec(1, 1);
     spec.template.runs_on = vec!["self-hosted".into()];
     spec.template.steps = steps;
@@ -48,7 +48,7 @@ fn host_job(steps: Vec<StepTemplate>) -> JobSpec {
 }
 
 /// Runs `spec` as the poller would, and returns the result and the reporter.
-async fn execute(spec: JobSpec) -> (TaskResult, Arc<Reporter>, tempfile::TempDir) {
+pub(crate) async fn execute(spec: JobSpec) -> (TaskResult, Arc<Reporter>, tempfile::TempDir) {
     execute_with(spec, |_| {}).await
 }
 
