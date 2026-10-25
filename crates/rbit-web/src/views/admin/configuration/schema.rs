@@ -863,7 +863,7 @@ const ACTIONS: &[Spec] = &[
     Spec {
         key: "enabled",
         label: "Enable this feature",
-        help: "Run workflows on external Forgejo or Gitea runners. When off, Actions is fully absent: no pages, no runner endpoint, no background work, and workflow files are ignored. Restart required.",
+        help: "Run workflows on rbit-runner. When off, Actions is fully absent: no pages, no runner endpoint, no background work, and workflow files are ignored. Restart required.",
         kind: Kind::Toggle,
         optional: false,
         max: "",
@@ -873,14 +873,6 @@ const ACTIONS: &[Spec] = &[
         label: "Enable for new repositories",
         help: "Turn Actions on for repositories created from now on. Existing repositories keep their own setting.",
         kind: Kind::Toggle,
-        optional: false,
-        max: "",
-    },
-    Spec {
-        key: "default_actions_url",
-        label: "Default actions URL",
-        help: "Where runners fetch uses: owner/repo@ref actions from: an HTTP or HTTPS URL, or self for this instance.",
-        kind: Kind::Text,
         optional: false,
         max: "",
     },

@@ -1,15 +1,13 @@
-//! `[actions]`: CI/CD on external Forgejo or Gitea runners.
+//! `[actions]`: CI/CD on rbit's own runner, `rbit-runner`.
 //!
 //! ```toml
 //! [actions]
-//! # CI/CD on external Forgejo or Gitea runners. Off by default; when off, Actions is fully
+//! # CI/CD with rbit-runner. Off by default; when off, Actions is fully
 //! # absent: no pages, no runner endpoint, no background work, workflow files are ignored.
 //! # Changing it needs a restart.
 //! enabled = false
 //! # Turn Actions on for repositories created from now on (existing ones keep their setting).
 //! enable_for_new_repositories = false
-//! # Where `uses: owner/repo@ref` actions are fetched from: a URL, or "self" for this instance.
-//! default_actions_url = "https://data.forgejo.org"
 //! # Encryption key for secrets; empty = <data_dir>/actions/secrets.key. Back it up separately.
 //! secrets_key_file = ""
 //! log_retention_days = 90
@@ -51,9 +49,6 @@ use serde::{Deserialize, Serialize};
 
 use super::StorageConfig;
 
-/// The `default_actions_url` value that means "this instance's own public URL".
-pub const SELF_ACTIONS_URL: &str = "self";
-
 /// Bounds of [`ActionsConfig::evaluation_concurrency`].
 pub const EVALUATION_CONCURRENCY: std::ops::RangeInclusive<usize> = 1..=16;
 
@@ -64,8 +59,6 @@ pub struct ActionsConfig {
     pub enabled: bool,
     /// Default of the per-repository switch for repositories created from now on.
     pub enable_for_new_repositories: bool,
-    /// Where runners fetch `uses: owner/repo@ref` actions from: an HTTP(S) URL, or `self`.
-    pub default_actions_url: String,
     /// Key file for encrypted secrets; empty means `<data_dir>/actions/secrets.key`.
     pub secrets_key_file: PathBuf,
     /// Days job logs are kept.
@@ -112,7 +105,6 @@ impl Default for ActionsConfig {
         Self {
             enabled: false,
             enable_for_new_repositories: false,
-            default_actions_url: "https://data.forgejo.org".to_owned(),
             secrets_key_file: PathBuf::new(),
             log_retention_days: 90,
             run_retention_days: 365,
@@ -136,17 +128,8 @@ impl Default for ActionsConfig {
 }
 
 impl ActionsConfig {
-    /// Checks the values a typo could make meaningless. The URL is checked only for its
-    /// shape here; `rbit_services::admin::configuration` parses it fully.
+    /// Checks the values a typo could make meaningless.
     pub fn validate(&self) -> Result<(), String> {
-        let url = self.default_actions_url.as_str();
-        let remote = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"));
-        if url != SELF_ACTIONS_URL && remote.is_none_or(|rest| rest.is_empty() || rest.starts_with('/')) {
-            return Err("the default actions URL must be an HTTP or HTTPS URL, or \"self\"".into());
-        }
-        if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err("the default actions URL must not contain spaces or control characters".into());
-        }
         if [self.zombie_timeout_seconds, self.endless_timeout_seconds, self.abandoned_timeout_seconds].contains(&0) {
             return Err("Actions timeouts must not be zero".into());
         }
@@ -223,7 +206,6 @@ mod tests {
     fn off_by_default_with_documented_defaults() {
         let config = ActionsConfig::default();
         assert!(!config.enabled && !config.enable_for_new_repositories);
-        assert_eq!(config.default_actions_url, "https://data.forgejo.org");
         assert_eq!((config.log_retention_days, config.run_retention_days), (90, 365));
         assert_eq!((config.max_log_bytes, config.max_workflow_bytes), (67_108_864, 262_144));
         assert_eq!(config.zombie_timeout(), Duration::from_mins(10));
@@ -256,16 +238,8 @@ mod tests {
             change(&mut config);
             config.validate().is_ok()
         };
-        assert!(valid(|c| c.default_actions_url = "self".into()));
-        assert!(valid(|c| c.default_actions_url = "http://git.internal:3000/".into()));
         assert!(valid(|c| c.evaluation_concurrency = 1));
         assert!(valid(|c| c.evaluation_concurrency = 16));
-        assert!(!valid(|c| c.default_actions_url = String::new()));
-        assert!(!valid(|c| c.default_actions_url = "Self".into()));
-        assert!(!valid(|c| c.default_actions_url = "ftp://example.com".into()));
-        assert!(!valid(|c| c.default_actions_url = "https://".into()));
-        assert!(!valid(|c| c.default_actions_url = "https:///path".into()));
-        assert!(!valid(|c| c.default_actions_url = "https://exa mple.com".into()));
         assert!(!valid(|c| c.zombie_timeout_seconds = 0));
         assert!(!valid(|c| c.endless_timeout_seconds = 0));
         assert!(!valid(|c| c.abandoned_timeout_seconds = 0));

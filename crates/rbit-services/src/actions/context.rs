@@ -17,7 +17,6 @@ use std::collections::BTreeMap;
 use rbit_core::{
     Account, AccountId,
     actions::{Job, Run, RunEvent},
-    config::SELF_ACTIONS_URL,
     repository::OwnedRepository,
 };
 use rbit_git::{CommitSummary, RefUpdate};
@@ -141,13 +140,11 @@ pub struct ContextInput<'a> {
     pub actor: &'a str,
     pub triggering_actor: &'a str,
     pub base_url: &'a str,
-    /// `[actions] default_actions_url`, with `self` resolved.
-    pub default_actions_url: &'a str,
     pub retention_days: u32,
 }
 
 /// The `github` context of a task, without its `token`. Ids and numbers are strings, as
-/// Forgejo and Gitea send them.
+/// GitHub's runner environment has them.
 pub fn github_context(input: &ContextInput<'_>) -> Value {
     let run = input.run;
     let pull = (run.event == RunEvent::PullRequest).then(|| &input.event["pull_request"]);
@@ -176,8 +173,6 @@ pub fn github_context(input: &ContextInput<'_>) -> Value {
         "server_url": input.base_url,
         "api_url": format!("{}/api/v1", input.base_url),
         "retention_days": input.retention_days.to_string(),
-        "forgejo_default_actions_url": input.default_actions_url,
-        "gitea_default_actions_url": input.default_actions_url,
     });
     if let Some(inputs) = &input.inputs {
         context["inputs"] = inputs.clone();
@@ -209,15 +204,8 @@ impl ActionsService {
             actor: &actor,
             triggering_actor: &triggering_actor,
             base_url: self.ctx().config.server.base_url(),
-            default_actions_url: &self.default_actions_url(),
             retention_days: self.config().log_retention_days,
         }))
-    }
-
-    /// `[actions] default_actions_url`, with `self` meaning this instance.
-    pub fn default_actions_url(&self) -> String {
-        let configured = &self.config().default_actions_url;
-        if configured == SELF_ACTIONS_URL { self.ctx().config.server.base_url().to_owned() } else { configured.clone() }
     }
 }
 
@@ -297,7 +285,6 @@ mod tests {
             actor: "alice",
             triggering_actor: "bob",
             base_url: "https://git.example.com",
-            default_actions_url: "https://data.forgejo.org",
             retention_days: 90,
         })
     }
@@ -337,8 +324,6 @@ mod tests {
             "server_url": "https://git.example.com",
             "api_url": "https://git.example.com/api/v1",
             "retention_days": "90",
-            "forgejo_default_actions_url": "https://data.forgejo.org",
-            "gitea_default_actions_url": "https://data.forgejo.org",
         });
         assert_eq!(context, expected);
     }

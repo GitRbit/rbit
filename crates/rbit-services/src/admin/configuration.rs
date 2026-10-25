@@ -107,11 +107,6 @@ pub fn validate_configuration(config: &Config) -> Result<(), String> {
     }
     // Actions: foundation (F).
     config.actions.validate()?;
-    if config.actions.default_actions_url != rbit_core::config::SELF_ACTIONS_URL
-        && reqwest::Url::parse(&config.actions.default_actions_url).ok().is_none_or(|url| url.host_str().is_none())
-    {
-        return Err("the default actions URL must be an absolute HTTP or HTTPS URL, or \"self\"".into());
-    }
     Ok(())
 }
 
@@ -178,13 +173,6 @@ mod tests {
     fn actions_settings_are_validated() {
         let mut config = Config::default();
         assert_eq!(validate_configuration(&config), Ok(()));
-        config.actions.default_actions_url = "self".into();
-        assert_eq!(validate_configuration(&config), Ok(()));
-        for url in ["https://", "https://[::1", "data.forgejo.org"] {
-            config.actions.default_actions_url = url.into();
-            assert!(validate_configuration(&config).is_err(), "{url}");
-        }
-        config.actions.default_actions_url = "https://code.example.com".into();
         config.actions.evaluation_concurrency = 0;
         assert!(validate_configuration(&config).is_err());
     }

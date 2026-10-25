@@ -49,7 +49,7 @@ pub use ssh::SshConfig;
 pub use updates::UpdateConfig;
 pub use webhooks::WebhookConfig;
 // Actions: foundation (F).
-pub use actions::{ActionsConfig, EVALUATION_CONCURRENCY, SELF_ACTIONS_URL};
+pub use actions::{ActionsConfig, EVALUATION_CONCURRENCY};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
