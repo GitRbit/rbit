@@ -25,7 +25,7 @@ use crate::{
     extract::{SignedIn, Viewer},
     routes::repo::RepoPage,
     views::{
-        actions::{ActionsUrls, RunFilters, RunPage, RunRow, RunSummary, RunsPage, WorkflowLink, job_rows, workflow_file},
+        actions::{ActionsUrls, ArtifactRow, RunFilters, RunPage, RunRow, RunSummary, RunsPage, WorkflowLink, job_rows, workflow_file},
         layout::Page,
     },
 };
@@ -175,6 +175,9 @@ pub async fn show(
     let finished = run.status.is_done();
     let has_jobs = !run.is_workflow_error();
     let any_failed = detail.jobs.iter().any(|job| matches!(job.status, Status::Failure | Status::Cancelled));
+    // Actions: artifacts (A).
+    let artifacts =
+        actions.run_artifacts(&loaded.ctx, run.id).await?.iter().map(|artifact| ArtifactRow::new(artifact, &urls, run.number)).collect();
     Ok(RunPage {
         page: page.titled(format!("{} #{} · Actions · {}", run.workflow_name, run.number, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
@@ -189,6 +192,7 @@ pub async fn show(
         rerun_url: (finished && has_jobs).then(|| urls.run_action(run.number, "rerun")),
         rerun_failed_url: (finished && has_jobs && any_failed).then(|| urls.run_action(run.number, "rerun-failed")),
         approve_url: urls.run_action(run.number, "approve"),
+        artifacts,
     })
 }
 
@@ -282,4 +286,38 @@ pub async fn approve(
     let trust_author = form.trust_author.as_deref() == Some("true");
     actions(&state)?.approve(&user, &loaded.ctx, id, trust_author).await?;
     Ok(Redirect::to(&url))
+}
+
+// Actions: artifacts (A).
+/// `GET /{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}`: the artifact's tar.gz.
+pub async fn artifact(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, run, artifact)): Path<(String, String, String, String)>,
+) -> WebResult<axum::response::Response> {
+    use axum::{
+        http::{HeaderValue, header},
+        response::IntoResponse as _,
+    };
+    let actions = actions(&state)?;
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let detail = actions.run_detail(&ctx, run_number(&run)?).await?;
+    let id = rbit_core::actions::ArtifactId(artifact.parse().map_err(|_| WebError::NotFound)?);
+    let (artifact, file) = actions.open_artifact(&ctx, id).await?;
+    if artifact.run_id != detail.run.id {
+        return Err(WebError::NotFound);
+    }
+    let mut response = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
+    if let Ok(value) = HeaderValue::from_str(&artifact.size.to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+    // Names are [A-Za-z0-9._-], so they need no quoting beyond the quotes.
+    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{}.tar.gz\"", artifact.name)) {
+        headers.insert(header::CONTENT_DISPOSITION, value);
+    }
+    Ok(response)
 }

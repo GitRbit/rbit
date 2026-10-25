@@ -76,6 +76,18 @@
     </li>
     {% endfor %}
   </ul>
+  {% if !artifacts.is_empty() %}
+  <h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">Artifacts</h2>
+  <ul class="box">
+    {% for artifact in artifacts %}
+    <li class="row gap-3 py-2.5">
+      {% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+      <a class="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ artifact.url }}" hx-boost="false" download>{{ artifact.name }}</a>
+      <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ artifact.size }} · expires <time datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time></span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% endif %}
 </section>
 {% endblock %}

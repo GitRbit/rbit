@@ -120,3 +120,55 @@ async fn a_full_repository_takes_no_more_artifacts() {
     assert_eq!(answer.status, StatusCode::PAYLOAD_TOO_LARGE);
     assert!(answer.json()["message"].as_str().unwrap().contains("storage"), "{:?}", answer.json());
 }
+
+async fn page(fixture: &Fixture, user: &rbit_core::User, path: &str) -> Answer {
+    let token = fixture.services.accounts.start_session(user).await.unwrap();
+    let request = Request::builder()
+        .uri(path)
+        .header(header::HOST, "localhost:3000")
+        .header(header::COOKIE, format!("rbit_session={}", token.encode()))
+        .body(Body::empty())
+        .unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    let (status, headers) = (response.status(), response.headers().clone());
+    Answer { status, headers, body: to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec() }
+}
+
+#[tokio::test]
+async fn run_pages_list_artifacts_and_readers_download_them() {
+    let fixture = Fixture::new().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = spec(&poll(&fixture, &credential, Some("a")).await.1).task_id.0;
+    assert_eq!(upload(&fixture, &credential, task, "dist-linux", "", b"archive").await.status, StatusCode::CREATED);
+    let run_url = format!("/alice/rocket/actions/runs/{}", run.number);
+
+    let alice = fixture.alice.clone();
+    let shown = page(&fixture, &alice, &run_url).await;
+    let html = String::from_utf8_lossy(&shown.body).into_owned();
+    assert!(html.contains("dist-linux") && html.contains("Artifacts"), "{html}");
+    let artifact = fixture.database.actions_artifacts().of_run(run.id, rbit_core::Timestamp::now()).await.unwrap().remove(0);
+    let download_url = format!("{run_url}/artifacts/{}", artifact.id.0);
+    assert!(html.contains(&download_url));
+
+    let download = page(&fixture, &alice, &download_url).await;
+    assert_eq!(download.status, StatusCode::OK);
+    assert_eq!(download.body, b"archive");
+    assert_eq!(download.headers[header::CONTENT_TYPE], "application/gzip");
+    assert_eq!(download.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist-linux.tar.gz\"");
+    assert_eq!(
+        page(&fixture, &alice, &format!("/alice/rocket/actions/runs/{}/artifacts/{}", run.number + 1, artifact.id.0)).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let bob = fixture
+        .services
+        .accounts
+        .create_user(
+            rbit_services::SignUp { username: "bob".into(), email: "bob@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page(&fixture, &bob, &download_url).await.status, StatusCode::NOT_FOUND, "the repository is private");
+}

@@ -38,6 +38,8 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", &[Method::GET]),
+    // Actions: artifacts (A).
+    ("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", &[Method::GET]),
     ("/{owner}/{repo}/settings/actions", &[Method::GET, Method::POST]),
     ("/{owner}/{repo}/settings/actions/runners", &[Method::GET, Method::POST]),
     ("/{owner}/{repo}/settings/actions/runners/{runner}", &[Method::POST]),
@@ -53,6 +55,21 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/admin/runners", &[Method::GET, Method::POST]),
     ("/admin/runners/{runner}", &[Method::POST]),
 ];
+
+// Actions: artifacts (A).
+/// Artifact downloads. Merged outside the page router (no 30-second timeout, no
+/// compression: archives are already gzipped), only when Actions is enabled, so this
+/// router applies the session, rate-limit, CSRF and security-header middleware itself.
+pub fn file_routes(state: &AppState) -> Router<AppState> {
+    use axum::middleware::{from_fn, from_fn_with_state};
+    Router::new()
+        .route("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", get(runs::artifact))
+        .layer(from_fn_with_state(state.clone(), crate::middleware::error_pages))
+        .layer(from_fn_with_state(state.clone(), crate::middleware::session))
+        .layer(from_fn_with_state(state.clone(), crate::middleware::rate_limit))
+        .layer(from_fn(crate::middleware::csrf_origin_check))
+        .layer(from_fn(crate::middleware::security_headers))
+}
 
 /// The Actions pages. Merged only when Actions is enabled (see `routes::page_routes`).
 pub fn routes() -> Router<AppState> {

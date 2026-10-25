@@ -89,6 +89,8 @@ pub fn router(state: AppState) -> Router {
         .merge(lfs::routes())
         // Actions: foundation (F). The runner endpoint exists only when Actions is enabled.
         .merge(if state.services.actions.is_some() { actions_runner::routes() } else { Router::new() })
+        // Actions: artifacts (A). Downloads stream, so they sit outside the page router.
+        .merge(if state.services.actions.is_some() { actions::file_routes(&state) } else { Router::new() })
         // Before any route: a hover preload must never reach a side-effecting handler.
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))

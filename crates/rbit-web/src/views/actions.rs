@@ -355,6 +355,31 @@ pub struct RunPage {
     pub rerun_url: Option<String>,
     pub rerun_failed_url: Option<String>,
     pub approve_url: String,
+    // Actions: artifacts (A).
+    pub artifacts: Vec<ArtifactRow>,
+}
+
+// Actions: artifacts (A).
+/// An artifact on the run page.
+#[derive(Debug, Clone)]
+pub struct ArtifactRow {
+    pub name: String,
+    pub size: String,
+    pub expires: String,
+    pub expires_iso: String,
+    pub url: String,
+}
+
+impl ArtifactRow {
+    pub fn new(artifact: &rbit_core::actions::Artifact, urls: &ActionsUrls, number: i64) -> Self {
+        Self {
+            name: artifact.name.clone(),
+            size: crate::render::format_size(artifact.size),
+            expires: artifact.expires_at.relative(),
+            expires_iso: artifact.expires_at.iso8601(),
+            url: format!("{}/artifacts/{}", urls.run(number), artifact.id.0),
+        }
+    }
 }
 
 // ------------------------------------------------------------------ the job page
