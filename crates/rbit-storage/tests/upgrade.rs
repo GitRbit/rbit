@@ -565,8 +565,8 @@ async fn email_digest_tables_start_empty_and_existing_preferences_stay_immediate
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("rbit.db");
     let raw = pool(&path).await;
-    // The last migration before digests.
-    sqlx::migrate!("./migrations").run_to(43, &raw).await.unwrap();
+    // The last migration before digests, including sealing, query indexes and archives.
+    sqlx::migrate!("./migrations").run_to(46, &raw).await.unwrap();
     sqlx::raw_sql(MILESTONE_1_ROWS).execute(&raw).await.unwrap();
     sqlx::raw_sql(
         "INSERT INTO notification_email_settings (account_id, email, updated_at) VALUES (2, 'all', 10); \
