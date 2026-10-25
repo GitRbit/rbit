@@ -11,6 +11,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Update `crypto-bigint` to 0.7.9, replacing the yanked 0.7.6 release while retaining
+  its constant-time arithmetic fixes and incorporating the subsequent upstream corrections.
 - Dismiss approvals when a pull request's base branch changes, refuse merges whose
   expected base no longer matches (`base` on the API merge endpoint), rate-limit base
   changes and refuse them on pull requests closed concurrently.
