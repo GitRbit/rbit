@@ -150,6 +150,41 @@ async fn change_email() {
 }
 
 #[tokio::test]
+async fn wrong_current_passwords_are_throttled_per_account() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    let bob = fixture.user("bob").await;
+    let new_password = "a much better passphrase";
+
+    // A few mistakes, then the right password restores the budget.
+    for _ in 0..5 {
+        let wrong = fixture.profiles().change_email(&alice, "nope".to_owned(), "a@example.com").await;
+        assert!(matches!(wrong, Err(ServiceError::InvalidCredentials)));
+    }
+    fixture.profiles().change_email(&alice, PASSWORD.to_owned(), "alice@example.org").await.unwrap();
+
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        match fixture.profiles().change_password(&alice, "nope".to_owned(), new_password.to_owned()).await {
+            Err(ServiceError::InvalidCredentials) => assert!(attempts < 20, "never throttled"),
+            Err(ServiceError::RateLimited { retry_after_seconds }) => {
+                assert!(retry_after_seconds > 0);
+                break;
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert!(attempts > 5, "the budget was restored by the success");
+    // Even the right password is refused now, on both forms; other accounts are unaffected.
+    let right = fixture.profiles().change_password(&alice, PASSWORD.to_owned(), new_password.to_owned()).await;
+    assert!(matches!(right, Err(ServiceError::RateLimited { .. })));
+    let email = fixture.profiles().change_email(&alice, PASSWORD.to_owned(), "b@example.com").await;
+    assert!(matches!(email, Err(ServiceError::RateLimited { .. })));
+    fixture.profiles().change_password(&bob, PASSWORD.to_owned(), new_password.to_owned()).await.unwrap();
+}
+
+#[tokio::test]
 async fn change_password() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice").await;

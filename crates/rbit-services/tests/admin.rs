@@ -56,7 +56,10 @@ async fn configuration_stages_validated_settings_masks_secrets_and_can_reset() {
     admin.stage_configuration(&root, &masked).await.unwrap();
     let stored =
         fixture.database.instance_settings().load().await.unwrap().into_iter().find(|(key, _)| key == "deployment_config").unwrap().1;
-    assert!(stored.contains("smtp-private-value") && stored.contains("metrics-private-value"));
+    assert!(!stored.contains("smtp-private-value") && !stored.contains("metrics-private-value"), "secrets are stored sealed");
+    let opened = rbit_services::admin::configuration::open_stored(&stored, fixture.database.sealing_key()).unwrap();
+    assert_eq!(opened.mail.smtp_password, "smtp-private-value");
+    assert_eq!(opened.operations.metrics_token.as_deref(), Some("metrics-private-value"));
 
     let mut invalid_value: serde_json::Value = serde_json::from_str(&masked).unwrap();
     invalid_value["storage"]["data_dir"] = "different-data".into();
@@ -168,11 +171,12 @@ async fn closed_registration_still_allows_the_first_account_and_admin_creation()
     let signup = |name: &str| SignUp { username: name.to_owned(), email: format!("{name}@example.com"), password: PASSWORD.to_owned() };
 
     assert!(services.accounts.registration_open().await.unwrap(), "bootstrap rule");
-    let first = services.accounts.sign_up(signup("root")).await.unwrap();
+    let token = services.accounts.setup_token().expect("a token while there is no user").to_owned();
+    let first = services.accounts.sign_up(signup("root"), &token).await.unwrap();
     assert!(first.is_admin, "the first user administers the instance");
 
     assert!(!services.accounts.registration_open().await.unwrap());
-    assert!(matches!(services.accounts.sign_up(signup("bob")).await, Err(ServiceError::RegistrationClosed)));
+    assert!(matches!(services.accounts.sign_up(signup("bob"), &token).await, Err(ServiceError::RegistrationClosed)));
 
     let bob = services.admin.create_user(&first, signup("bob"), false).await.unwrap();
     assert!(!bob.is_admin);
@@ -182,6 +186,47 @@ async fn closed_registration_still_allows_the_first_account_and_admin_creation()
     // Opening registration at runtime takes effect without a restart.
     services.instance.update(&first, settings("rbit", RegistrationMode::Open)).await.unwrap();
     assert!(services.accounts.registration_open().await.unwrap());
+}
+
+#[tokio::test]
+async fn the_first_sign_up_needs_the_setup_token() {
+    for open in [false, true] {
+        let fixture = Fixture::new().await;
+        let mut config = (*fixture.config).clone();
+        config.server.open_registration = open;
+        let services = Services::new(Arc::new(config), &fixture.database, &fixture.kv).await.unwrap();
+        let signup = |name: &str| SignUp { username: name.to_owned(), email: format!("{name}@example.com"), password: PASSWORD.to_owned() };
+        let token = services.accounts.setup_token().unwrap().to_owned();
+        assert_eq!(token.len(), 32, "128 random bits, hex-encoded");
+        assert!(services.accounts.setup_required().await.unwrap());
+
+        let wrong = format!("{}{}", &token[..31], if token.ends_with('0') { '1' } else { '0' });
+        for attempt in ["", "nope", &wrong, &token[..31]] {
+            assert!(invalid(services.accounts.sign_up(signup("mallory"), attempt).await), "{attempt:?} must be refused");
+        }
+        let root = services.accounts.sign_up(signup("root"), &format!(" {token}\n")).await.unwrap();
+        assert!(root.is_admin);
+        assert!(!services.accounts.setup_required().await.unwrap());
+
+        // Later sign-ups ignore the token entirely.
+        let later = services.accounts.sign_up(signup("bob"), "").await;
+        assert_eq!(later.is_ok(), open);
+
+        // A restart with users generates no token.
+        let restarted = Services::new(Arc::clone(&fixture.config), &fixture.database, &fixture.kv).await.unwrap();
+        assert!(restarted.accounts.setup_token().is_none());
+    }
+}
+
+#[tokio::test]
+async fn a_configured_setup_token_is_used_as_is() {
+    let fixture = Fixture::new().await;
+    let mut config = (*fixture.config).clone();
+    config.security.setup_token = Some(" chosen-by-the-operator ".to_owned());
+    let services = Services::new(Arc::new(config), &fixture.database, &fixture.kv).await.unwrap();
+    assert_eq!(services.accounts.setup_token(), Some("chosen-by-the-operator"));
+    let input = SignUp { username: "root".to_owned(), email: "root@example.com".to_owned(), password: PASSWORD.to_owned() };
+    assert!(services.accounts.sign_up(input, "chosen-by-the-operator").await.unwrap().is_admin);
 }
 
 // ---------------------------------------------------------------------- suspension
@@ -194,10 +239,11 @@ async fn concurrent_signups_respect_the_bootstrap_boundary() {
         config.server.open_registration = open;
         let services = Services::new(Arc::new(config), &fixture.database, &fixture.kv).await.unwrap();
         let signup = |name: &str| SignUp { username: name.to_owned(), email: format!("{name}@example.com"), password: PASSWORD.to_owned() };
+        let token = services.accounts.setup_token().unwrap().to_owned();
         let (first, second, third) = tokio::join!(
-            services.accounts.sign_up(signup("alice")),
-            services.accounts.sign_up(signup("bob")),
-            services.accounts.sign_up(signup("carol")),
+            services.accounts.sign_up(signup("alice"), &token),
+            services.accounts.sign_up(signup("bob"), &token),
+            services.accounts.sign_up(signup("carol"), &token),
         );
         let outcomes = [first, second, third];
         assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), if open { 3 } else { 1 });

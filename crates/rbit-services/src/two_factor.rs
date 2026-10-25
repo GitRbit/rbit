@@ -504,6 +504,17 @@ fn ip_key(client: &ClientInfo) -> String {
     client.ip.map_or_else(|| "unknown".to_owned(), |ip| ip.to_canonical().to_string())
 }
 
+/// The sign-in throttle key for a login as typed. Prefixed so that no typed login can
+/// share a bucket with an [`account_key`].
+fn login_key(login: &str) -> String {
+    format!("login:{login}")
+}
+
+/// The sign-in throttle key for a resolved account.
+fn account_key(account: AccountId) -> String {
+    format!("account:{}", account.0)
+}
+
 /// A trimmed passkey name, `Passkey` when left empty.
 fn passkey_name(name: &str) -> Result<String, ServiceError> {
     let name = name.trim();
@@ -519,20 +530,36 @@ fn passkey_name(name: &str) -> Result<String, ServiceError> {
 // ---------------------------------------------------------------------- flows across services
 
 impl Services {
-    /// Checks a password sign-in, throttled per client address and per login, and
+    /// Checks a password sign-in, throttled per client address, per login as typed and
+    /// per account it resolves to (so a username and an email share one budget), and
     /// audited. Enrolled users get a pending second step instead of a session.
+    ///
+    /// A success restores the login's and the account's budget but not the address's:
+    /// signing in to one's own account must not buy more guesses at others.
     pub async fn sign_in(&self, login: &str, password: String, client: &ClientInfo) -> Result<SignInOutcome, ServiceError> {
         let (ip, login) = (ip_key(client), login.trim());
+        let typed = login_key(login);
         self.throttle.check_client(ThrottleScope::SignIn, &ip)?;
-        self.throttle.check(ThrottleScope::SignIn, login)?;
+        self.throttle.check(ThrottleScope::SignIn, &typed)?;
 
-        let user = match self.accounts.authenticate(login, password).await {
+        // The account's budget moves in step with the typed login's (checked after it,
+        // charged with it), so it only ever runs out first when other aliases spent it.
+        let (account, result) = self
+            .accounts
+            .authenticate_resolved(login, password, |account| {
+                account.map_or(Ok(()), |account| self.throttle.check(ThrottleScope::SignIn, &account_key(account)))
+            })
+            .await;
+        let user = match result {
             Ok(user) => user,
             Err(error) => {
                 let reason = match &error {
                     ServiceError::InvalidCredentials => {
                         self.throttle.record_client_failure(ThrottleScope::SignIn, &ip);
-                        self.throttle.record_failure(ThrottleScope::SignIn, login);
+                        self.throttle.record_failure(ThrottleScope::SignIn, &typed);
+                        if let Some(account) = account {
+                            self.throttle.record_failure(ThrottleScope::SignIn, &account_key(account));
+                        }
                         "wrong username or password"
                     }
                     ServiceError::Forbidden => "account suspended",
@@ -542,8 +569,8 @@ impl Services {
                 return Err(error);
             }
         };
-        self.throttle.reset_client(ThrottleScope::SignIn, &ip);
-        self.throttle.reset(ThrottleScope::SignIn, login);
+        self.throttle.reset(ThrottleScope::SignIn, &typed);
+        self.throttle.reset(ThrottleScope::SignIn, &account_key(user.id()));
 
         if self.two_factor.is_enabled(user.id()).await? {
             return Ok(SignInOutcome::SecondFactorRequired(self.two_factor.start_pending(user.id(), "password")));

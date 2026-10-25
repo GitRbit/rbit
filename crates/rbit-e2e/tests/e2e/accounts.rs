@@ -36,6 +36,48 @@ async fn first_sign_up_becomes_administrator_and_later_ones_do_not() {
 }
 
 #[tokio::test]
+async fn the_first_sign_up_needs_the_setup_token() {
+    let server = TestServer::start();
+    server.client().get("/signup").await.expect_status(StatusCode::OK).expect_contains(&[r#"name="setup_token""#]);
+
+    let anonymous = server.client();
+    for token in ["", "wrong-token"] {
+        let form = [("username", "mallory"), ("email", "mallory@example.test"), ("password", PASSWORD), ("setup_token", token)];
+        anonymous.post("/signup", &form).await.expect_status(StatusCode::UNPROCESSABLE_ENTITY).expect_contains(&["setup token"]);
+    }
+
+    let alice = server.sign_up("alice").await;
+    alice.get("/admin").await.expect_status(StatusCode::OK);
+    // Later sign-ups neither show nor need it.
+    let page = server.client().get("/signup").await;
+    assert!(!page.body.contains(r#"name="setup_token""#));
+    let form = [("username", "bob"), ("email", "bob@example.test"), ("password", PASSWORD)];
+    server.client().post("/signup", &form).await.expect_redirect("/");
+}
+
+#[tokio::test]
+async fn guessing_the_current_password_in_settings_is_throttled() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let form =
+        [("current_password", "a wrong guess"), ("new_password", "another long password"), ("confirm_password", "another long password")];
+    let mut statuses = Vec::new();
+    for _ in 0..20 {
+        let response = alice.post("/settings/account/password", &form).await;
+        statuses.push(response.status);
+        if response.status == StatusCode::TOO_MANY_REQUESTS {
+            assert!(response.header("retry-after").is_some());
+            break;
+        }
+    }
+    assert_eq!(statuses.last(), Some(&StatusCode::TOO_MANY_REQUESTS), "{statuses:?}");
+    assert!(statuses[..statuses.len() - 1].iter().all(|status| *status == StatusCode::UNPROCESSABLE_ENTITY));
+    // The email form shares the budget, even with the right password.
+    let email = [("current_password", PASSWORD), ("email", "alice@elsewhere.test")];
+    alice.post("/settings/account/email", &email).await.expect_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
 async fn sign_in_and_out() {
     let server = TestServer::start();
     let alice = server.sign_up("alice").await;

@@ -5,6 +5,7 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | Path (under `data_dir`) | Contents | Back up? |
 |---|---|---|
 | `rbit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
+| `secret.key` | The key that seals credentials stored in `rbit.db` (see [Secret key](#secret-key)) | **Yes**, with the database |
 | `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
 | `attachments/<repo-id>/<asset-id>` | Files attached to releases | **Yes** (not `attachments/tmp`) |
 | `lfs/<aa>/<bb>/<oid>` | Git LFS objects, stored once however many repositories use them | **Yes** |
@@ -29,7 +30,33 @@ production-minded values. The ones that matter most:
   submissions are checked against. A mismatch breaks sign-in.
 - `server.bind` — keep it on loopback (`127.0.0.1:3000`) behind a proxy.
 - `storage.data_dir` — the directory above.
+- `storage.secret_key_file` — where the [secret key](#secret-key) lives, if not in
+  `data_dir`.
 - `repository.git_binary` — the `git` used for smart HTTP, `git gc` and backups.
+
+### Secret key
+
+Credentials rbit must be able to read back — TOTP seeds, webhook and push mirror secrets,
+the server's own signing keys, and the SMTP password, OIDC client secrets and metrics token
+saved from the administrator configuration page — are stored in `rbit.db` encrypted
+(AES-256-GCM) with a 256-bit key that is **not** in the database. A copy of `rbit.db` on
+its own therefore reveals none of them.
+
+The key is `<data_dir>/secret.key`, generated on first start (mode `0600`; rbit warns if
+other users can read it). To keep it apart from the data, for example as a container
+secret, point `storage.secret_key_file` (`RBIT_STORAGE__SECRET_KEY_FILE`) at another
+file; a missing file there is generated too. The file holds the key in base64, so
+`head -c 32 /dev/urandom | base64 > secret.key` makes one in advance.
+
+**Back the key up together with the database.** Without it the encrypted values cannot be
+read: users lose their authenticator-app sign-in, webhooks and push mirrors their secrets.
+rbit refuses to start, rather than generate a new key, if the database holds encrypted
+values and the key file is missing, and also if the key file does not match them.
+
+Upgrading from a version without the key: on the first start rbit creates the key and
+encrypts the existing plaintext values in place. Backups taken before the upgrade still
+hold them in plaintext; delete or re-encrypt those old backups (restoring one and starting
+rbit encrypts it again).
 
 ## Docker
 
@@ -422,8 +449,15 @@ DIR/
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
 ├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 ├── lfs/<aa>/<bb>/<oid>                every Git LFS object listed in that snapshot
-└── manifest.json                      format (3), version, time, counts; written last
+├── secret.key                         the secret key, when it lives in the data directory
+└── manifest.json                      format (4), version, time, counts; written last
 ```
+
+The backup directory is created `0700` and the database, key and manifest `0600`: the
+backup holds password hashes and the key to every stored credential. Keep it as private as
+the data directory. With `storage.secret_key_file` set, the key is deliberately **not**
+copied (the manifest says where it is): back it up separately, ideally not next to the
+database backups.
 
 The repositories are mirrored through Git's pack protocol, which copies each repository's
 refs and every object they reach consistently even during a push or `git gc`. A
@@ -461,13 +495,14 @@ The backup directory mirrors the data directory, so restoring is a copy:
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
    sudo mkdir -m 0750 /var/lib/rbit
-   sudo cp -a DIR/rbit.db DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
+   sudo cp -a DIR/rbit.db DIR/secret.key DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
    sudo chown -R rbit:rbit /var/lib/rbit
    ```
    For Docker, copy into the volume, e.g.
-   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
-   Backups in format 2 have no `lfs/` (and format 1 no `attachments/`): leave out what is
-   not there.
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/secret.key /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
+   Backups in format 3 have no `secret.key`, format 2 no `lfs/` (and format 1 no
+   `attachments/`): leave out what is not there. With `storage.secret_key_file` set,
+   restore the key from where you keep it instead.
 4. Start rbit. Pending migrations (if the backup came from an older version) run on
    start-up; a fresh `rbit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.

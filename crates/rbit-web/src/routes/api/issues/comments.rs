@@ -69,20 +69,11 @@ async fn comment_thread(state: &AppState, caller: &Caller, path: &IdPath) -> Api
     Ok((state.services.timeline.open(caller.user(), repo, number).await?, id))
 }
 
-/// The comment `id` on `ctx` as the API shows it.
-async fn find_comment(state: &AppState, caller: &Caller, ctx: &IssueContext, id: CommentId) -> ApiResult<Value> {
-    let entries = all_entries(state, caller, ctx).await?;
-    entries
-        .iter()
-        .find(|entry| matches!(entry, TimelineEntry::Comment { comment, .. } if comment.id == id))
-        .and_then(|entry| comment_value(entry, ctx, base(state)))
-        .ok_or_else(ApiError::not_found)
-}
-
 /// `GET /repos/{owner}/{repo}/issues/comments/{id}`
 pub(super) async fn get_comment(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<Json<Value>> {
     let (ctx, id) = comment_thread(&state, &caller, &path).await?;
-    Ok(Json(find_comment(&state, &caller, &ctx, id).await?))
+    let (comment, author) = state.services.timeline.find_comment(&ctx, id).await?;
+    Ok(Json(issue_json::comment(&comment, author.as_ref(), &ctx.issue, &ctx.repo.repo, base(&state))))
 }
 
 /// `PATCH /repos/{owner}/{repo}/issues/comments/{id}`: its author only.

@@ -675,6 +675,8 @@ pub struct MergeForm {
     #[serde(default)]
     expected_head: String,
     #[serde(default)]
+    expected_base: String,
+    #[serde(default)]
     delete_branch: Option<String>,
     #[serde(default)]
     bypass: Option<String>,
@@ -694,6 +696,7 @@ async fn merge(
         title: form.title,
         message: form.message,
         expected_head: Some(form.expected_head).filter(|head| !head.is_empty()),
+        expected_base: Some(form.expected_base).filter(|base| !base.is_empty()),
         delete_head_branch: form.delete_branch.is_some(),
         bypass: form.bypass.is_some(),
     };

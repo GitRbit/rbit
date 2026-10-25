@@ -411,7 +411,7 @@ impl PullService {
         }
     }
 
-    fn publish_review(&self, ctx: &PullContext, review: ReviewId, actor: AccountId, action: ReviewAction) {
+    pub(super) fn publish_review(&self, ctx: &PullContext, review: ReviewId, actor: AccountId, action: ReviewAction) {
         let issue = ctx.issue();
         self.ctx().events.publish(DomainEvent::PullRequestReview {
             repo: issue.repo_id,

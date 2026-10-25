@@ -13,7 +13,7 @@
     <input class="input font-mono text-xs" id="push-mirror-secret" name="secret" type="password" maxlength="1024" autocomplete="new-password" spellcheck="false" {% if form.has_secret %}placeholder="Configured — leave blank to keep it"{% endif %}>
   </div>
 </div>
-<p class="hint">Sent to the remote over HTTP Basic authentication. It cannot be shown again.</p>
+<p class="hint">Sent to the remote over HTTP Basic authentication. It cannot be shown again{% if form.has_secret %}, and must be entered again if the remote moves to another host{% endif %}.</p>
 
 <label class="mt-5 flex cursor-pointer items-start gap-3">
   <input type="checkbox" name="sync_on_push" value="on" class="mt-1 accent-(--ink)" {% if form.sync_on_push %}checked{% endif %}>

@@ -80,12 +80,44 @@ fn is_cross_site(headers: &HeaderMap) -> bool {
     origin_host != host.to_str().ok()
 }
 
+/// The configurable parts of [`security_headers`], worked out once from the config.
+#[derive(Debug, Clone)]
+pub struct SecurityHeaders {
+    /// `Strict-Transport-Security`, when the instance is served over HTTPS.
+    hsts: Option<HeaderValue>,
+    /// The CSP `img-src` sources.
+    img_src: &'static str,
+}
+
+impl Default for SecurityHeaders {
+    /// No HSTS, external images allowed: what an `http://` instance with the default
+    /// `[security]` settings sends.
+    fn default() -> Self {
+        Self { hsts: None, img_src: "'self' data: https:" }
+    }
+}
+
+impl SecurityHeaders {
+    pub fn new(config: &rbit_core::Config) -> Self {
+        let security = &config.security;
+        let https = config.server.public_url.get(..8).is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"));
+        let hsts = (security.hsts && https).then(|| {
+            HeaderValue::from_static(if security.hsts_include_subdomains {
+                "max-age=31536000; includeSubDomains"
+            } else {
+                "max-age=31536000"
+            })
+        });
+        Self { hsts, img_src: if security.external_images { "'self' data: https:" } else { "'self' data:" } }
+    }
+}
+
 /// Adds defensive headers to responses that can depend on a browser session.
 ///
 /// Default to private, revalidated caching even for raw files, downloads and errors.
 /// Cookie authentication alone does not prevent a shared HTTP cache from storing them.
 /// This layer wraps HTML caching so explicit page and handler cache policies win.
-pub async fn security_headers(request: Request, next: Next) -> Response {
+pub async fn security_headers(State(settings): State<SecurityHeaders>, request: Request, next: Next) -> Response {
     let theme = Theme::from_headers(request.headers());
     let mut response = next.run(request).await;
     // Keep style attributes and arbitrary inline styles blocked. Only our exact embedded
@@ -99,21 +131,28 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
             styles.push_str(&crate::assets::style_source(&path));
         }
         let policy = format!(
-            "default-src 'self'; img-src 'self' data: https:; style-src 'self' {styles}; script-src 'self'; \
-             object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            "default-src 'self'; img-src {}; style-src 'self' {styles}; script-src 'self'; \
+             object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+            settings.img_src
         );
         response
             .headers_mut()
             .entry(header::CONTENT_SECURITY_POLICY)
             .or_insert(HeaderValue::from_str(&policy).expect("valid embedded style hashes"));
     }
-    let headers = response.headers_mut();
-    let defaults = [
-        (
-            header::CONTENT_SECURITY_POLICY,
-            "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; \
+    if !response.headers().contains_key(header::CONTENT_SECURITY_POLICY) {
+        let policy = format!(
+            "default-src 'self'; img-src {}; style-src 'self'; script-src 'self'; \
              object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
-        ),
+            settings.img_src
+        );
+        response.headers_mut().insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_str(&policy).expect("valid policy"));
+    }
+    let headers = response.headers_mut();
+    if let Some(hsts) = settings.hsts {
+        headers.entry(header::STRICT_TRANSPORT_SECURITY).or_insert(hsts);
+    }
+    let defaults = [
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         (header::REFERRER_POLICY, "strict-origin-when-cross-origin"),
         (header::X_FRAME_OPTIONS, "DENY"),

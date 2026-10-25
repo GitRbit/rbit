@@ -26,8 +26,12 @@ pub struct SignupPage {
     pub error: FormError,
     pub username: String,
     pub email: String,
+    /// Re-filled after a failed attempt, like the username.
+    pub setup_token: String,
     pub min_password_length: usize,
     pub registration_open: bool,
+    /// The instance has no user yet: ask for the setup token from the server log.
+    pub setup_required: bool,
 }
 
 /// The second sign-in step for accounts with two-factor authentication.

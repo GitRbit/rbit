@@ -32,7 +32,7 @@ use std::{
 
 use rbit_core::User;
 use rbit_services::{
-    PendingPush, RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, protection::PushActor, ssh_keys::SshIdentity,
+    ConcurrencySlot, PendingPush, RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, protection::PushActor, ssh_keys::SshIdentity,
 };
 use rbit_transport::{
     ReceiveOptions, Service, TransportError, is_safe_protocol_header,
@@ -442,8 +442,16 @@ impl Handler for Connection {
                 return finish_with_git_error(session, channel, pending, message);
             }
         };
+        // Shared with smart HTTP; per-address limits are the connection limits here.
+        let process = match self.shared.services.git_processes.try_acquire(None) {
+            Ok(process) => process,
+            Err(refused) => {
+                tracing::info!(peer = %self.peer, repo = %command.full_name(), service = %command.service, %refused, "SSH Git request refused");
+                return finish_with_message(session, channel, &format!("ERROR: {refused}\r\n"), FAILURE);
+            }
+        };
         session.channel_success(channel)?;
-        tokio::spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending));
+        tokio::spawn(run_git(Arc::clone(&self.shared), identity, command, ctx, pending, process));
         Ok(())
     }
 }
@@ -461,8 +469,16 @@ fn same_key_holder(previous: &SshIdentity, current: &SshIdentity) -> bool {
 }
 
 /// Runs the Git service for an authorised `exec` request, streaming between the channel
-/// and git, then reports git's exit status and closes the channel.
-async fn run_git(shared: Arc<Shared>, identity: SshIdentity, command: GitCommand, ctx: RepoContext, pending: PendingChannel) {
+/// and git, then reports git's exit status and closes the channel. `_process` is the
+/// command's place within the Git process limit, held until it ends.
+async fn run_git(
+    shared: Arc<Shared>,
+    identity: SshIdentity,
+    command: GitCommand,
+    ctx: RepoContext,
+    pending: PendingChannel,
+    _process: ConcurrencySlot,
+) {
     let PendingChannel { channel, protocol, _slot } = pending;
     let (mut client, writer) = channel.split();
     let mut stdout = writer.make_writer();

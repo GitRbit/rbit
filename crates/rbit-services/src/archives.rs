@@ -4,34 +4,36 @@
 //!
 //! An archive is produced by `git archive` while it is downloaded, so it costs a process
 //! and CPU for as long as the client reads. [`ArchiveService`] therefore allows at most
-//! [`MAX_CONCURRENT_ARCHIVES`] at once; the slot is held by the returned stream and freed
-//! when it is dropped. When every slot is taken the caller is told to retry
-//! ([`ArchiveError::Busy`]) instead of queueing unboundedly.
+//! [`MAX_CONCURRENT_ARCHIVES`] at once, and `[repository] max_archives_per_ip` of them for
+//! one client; the slot is held by the returned stream and freed when it is dropped. When
+//! no slot is free the caller is told to retry ([`ArchiveError::Busy`],
+//! [`ArchiveError::TooManyFromClient`]) instead of queueing unboundedly. The web layer
+//! bounds how long a download may stall or last, so a slow reader cannot keep a slot.
 
 use std::{
     io,
+    net::IpAddr,
     pin::Pin,
-    sync::Arc,
     task::{Context, Poll},
 };
 
 use rbit_git::archive::{ArchiveFormat, ArchiveStream, Archiver};
-use tokio::{
-    io::{AsyncRead, ReadBuf},
-    sync::{OwnedSemaphorePermit, Semaphore},
-};
+use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::{RepoContext, ServiceContext, ServiceError};
+use crate::{
+    RepoContext, ServiceContext, ServiceError,
+    limits::{self, ConcurrencyLimiter, ConcurrencySlot, Refused},
+};
 
 /// Archives produced at the same time, instance-wide.
 pub const MAX_CONCURRENT_ARCHIVES: usize = 4;
 /// What a busy instance suggests as `Retry-After`, in seconds.
-pub const BUSY_RETRY_SECONDS: u64 = 10;
+pub const BUSY_RETRY_SECONDS: u64 = limits::RETRY_AFTER_SECONDS;
 
 #[derive(Debug, Clone)]
 pub struct ArchiveService {
     archiver: Archiver,
-    permits: Arc<Semaphore>,
+    slots: ConcurrencyLimiter,
 }
 
 /// Why an archive could not be started.
@@ -40,8 +42,21 @@ pub enum ArchiveError {
     /// Every archive slot is in use; retry after [`BUSY_RETRY_SECONDS`].
     #[error("too many archives are being prepared; try again shortly")]
     Busy,
+    /// The client already downloads as many archives as one address may; retry after
+    /// [`BUSY_RETRY_SECONDS`].
+    #[error("too many archives are being downloaded from this address; try again shortly")]
+    TooManyFromClient,
     #[error(transparent)]
     Service(#[from] ServiceError),
+}
+
+impl From<Refused> for ArchiveError {
+    fn from(refused: Refused) -> Self {
+        match refused {
+            Refused::Busy => Self::Busy,
+            Refused::TooManyFromClient => Self::TooManyFromClient,
+        }
+    }
 }
 
 /// An archive ready to stream.
@@ -64,7 +79,7 @@ impl std::fmt::Debug for Archive {
 /// The streamed bytes of an [`Archive`].
 pub struct ArchiveBody {
     stream: ArchiveStream,
-    _permit: OwnedSemaphorePermit,
+    _slot: ConcurrencySlot,
 }
 
 impl std::fmt::Debug for ArchiveBody {
@@ -82,13 +97,23 @@ impl AsyncRead for ArchiveBody {
 impl ArchiveService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
         let ServiceContext { config, .. } = ctx;
-        Self { archiver: Archiver::new(config.repository.git_binary.clone()), permits: Arc::new(Semaphore::new(MAX_CONCURRENT_ARCHIVES)) }
+        Self {
+            archiver: Archiver::new(config.repository.git_binary.clone()),
+            slots: ConcurrencyLimiter::new(MAX_CONCURRENT_ARCHIVES, config.repository.max_archives_per_ip()),
+        }
     }
 
     /// Starts an archive of `revision` (a branch, tag or commit id) of a repository the
     /// caller already opened for its viewer, so access is exactly that of browsing.
-    pub async fn archive(&self, repo: &RepoContext, revision: &str, format: ArchiveFormat) -> Result<Archive, ArchiveError> {
-        let permit = Arc::clone(&self.permits).try_acquire_owned().map_err(|_| ArchiveError::Busy)?;
+    /// `client` is the requester's address, for the per-address limit.
+    pub async fn archive(
+        &self,
+        repo: &RepoContext,
+        revision: &str,
+        format: ArchiveFormat,
+        client: IpAddr,
+    ) -> Result<Archive, ArchiveError> {
+        let slot = self.slots.try_acquire(Some(client))?;
         let commit_id = repo.reader.commit_id(revision.to_owned()).await.map_err(ServiceError::from)?;
         let base_name = archive_base_name(repo.repo.repo.name.as_str(), revision);
         let stream = self.archiver.start(&repo.disk_path, &commit_id, &base_name, format).map_err(ServiceError::from)?;
@@ -97,7 +122,7 @@ impl ArchiveService {
             commit_id,
             file_name: format!("{base_name}{}", format.extension()),
             format,
-            body: ArchiveBody { stream, _permit: permit },
+            body: ArchiveBody { stream, _slot: slot },
         })
     }
 }

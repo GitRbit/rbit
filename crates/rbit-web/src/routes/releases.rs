@@ -74,7 +74,7 @@ pub fn file_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn_with_state(state.clone(), middleware::session))
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))
-        .layer(from_fn(middleware::security_headers))
+        .layer(from_fn_with_state(middleware::SecurityHeaders::new(&state.config), middleware::security_headers))
 }
 
 fn parse_id(id: &str) -> WebResult<ReleaseId> {

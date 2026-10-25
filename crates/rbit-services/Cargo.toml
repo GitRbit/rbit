@@ -18,6 +18,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 getrandom.workspace = true
+# The first account's setup token is compared in constant time.
+subtle.workspace = true
 metrics.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
 ssh-key.workspace = true

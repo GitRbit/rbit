@@ -4,20 +4,22 @@
 //! Milestone 3 workstream N (email notifications) added this store; any feature that
 //! needs a stable server-side key (HMAC-signed links, for instance) can keep one here
 //! under its own name. Values are raw key material: never log them or send them anywhere.
+//! They are stored [sealed](crate::sealing).
 
 use rbit_core::Timestamp;
 use sqlx::SqlitePool;
 
-use crate::StorageError;
+use crate::{StorageError, sealing::SealingKey};
 
 #[derive(Debug, Clone)]
 pub struct ServerSecretStore {
     pool: SqlitePool,
+    key: SealingKey,
 }
 
 impl ServerSecretStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: SqlitePool, key: SealingKey) -> Self {
+        Self { pool, key }
     }
 
     /// The secret stored as `name`, storing `fresh` first if there is none yet. Concurrent
@@ -25,11 +27,13 @@ impl ServerSecretStore {
     pub async fn get_or_insert(&self, name: &str, fresh: &[u8]) -> Result<Vec<u8>, StorageError> {
         sqlx::query("INSERT INTO server_secrets (name, secret, created_at) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING")
             .bind(name)
-            .bind(fresh)
+            .bind(self.key.seal(fresh)?.into_bytes())
             .bind(Timestamp::now().seconds())
             .execute(&self.pool)
             .await?;
-        Ok(sqlx::query_scalar("SELECT secret FROM server_secrets WHERE name = ?").bind(name).fetch_one(&self.pool).await?)
+        let stored: Vec<u8> =
+            sqlx::query_scalar("SELECT secret FROM server_secrets WHERE name = ?").bind(name).fetch_one(&self.pool).await?;
+        Ok(self.key.open(&stored)?)
     }
 }
 
