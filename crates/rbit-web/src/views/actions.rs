@@ -1,4 +1,5 @@
-//! rbit Actions pages: a repository's runs and one run with its jobs.
+//! rbit Actions pages: a repository's runs, one run with its jobs, and one job with its
+//! steps and their logs.
 //!
 //! Colour marks state only (`text-success`, `text-danger`, `text-warning`); everything else
 //! stays monochrome. Every page works without JavaScript: the run page refreshes its job
@@ -12,11 +13,18 @@ use askama::Template;
 use askama_web::WebTemplate;
 use rbit_core::{
     Account, AccountId, Timestamp,
-    actions::{Job, Run, RunEvent, Status},
+    actions::{Job, Run, RunEvent, Status, Step},
 };
-use rbit_services::actions::statuses::duration;
+use rbit_services::actions::{logs::LogWindow, statuses::duration};
 
-use crate::views::{layout::Page, repo::RepoHeader};
+use crate::{
+    render::escape_html,
+    views::{
+        blocks::{Block, blocks, column_class, markup_columns},
+        layout::Page,
+        repo::{CodeLine, RepoHeader},
+    },
+};
 
 /// How a state is shown: the key picks the icon in `actions/state.html`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +129,11 @@ impl ActionsUrls {
 /// names one.
 pub fn workflow_file(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
+}
+
+/// How long `job` ran, or has been running.
+pub fn job_duration(job: &Job) -> Option<String> {
+    elapsed(job.started_at, job.finished_at)
 }
 
 /// One row of the runs list.
@@ -344,6 +357,179 @@ pub struct RunPage {
     pub approve_url: String,
 }
 
+// ------------------------------------------------------------------ the job page
+
+/// Lines of one step shown on the job page; the step's log page shows up to
+/// `rbit_services::actions::logs::STEP_VIEW_LINES`, the raw log everything.
+pub const JOB_PAGE_STEP_LINES: usize = 1000;
+/// Bytes of one step shown on the job page.
+pub const JOB_PAGE_STEP_BYTES: usize = 256 * 1024;
+
+/// `line` without ANSI escape sequences (colours, cursor moves, OSC titles and links):
+/// logs are shown as text, never as terminal output.
+pub fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            // CSI: parameters and intermediates, then one final byte in `@`..=`~`.
+            Some('[') => {
+                chars.next();
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            // OSC: until BEL or ESC `\`.
+            Some(']') => {
+                chars.next();
+                while let Some(c) = chars.next() {
+                    if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            // Any other escape is two characters long.
+            Some(_) => {
+                chars.next();
+            }
+            None => {}
+        }
+    }
+    out
+}
+
+/// One log line as HTML: escaped, without ANSI escapes, with the runner's workflow command
+/// markers (`##[group]`, `##[error]` …, see rbit-runner's `commands`) as text and tone.
+pub fn log_line_html(line: &str) -> String {
+    let line = strip_ansi(line);
+    let markers: [(&str, &str, &str); 6] = [
+        ("##[group]", "font-semibold text-ink", ""),
+        ("##[endgroup]", "text-ink-faint", ""),
+        ("##[error]", "text-danger", "Error: "),
+        ("##[warning]", "text-warning", "Warning: "),
+        ("##[notice]", "text-ink", "Notice: "),
+        ("##[debug]", "text-ink-faint", ""),
+    ];
+    for (marker, tone, label) in markers {
+        if let Some(rest) = line.strip_prefix(marker) {
+            return format!(r#"<span class="{tone}">{label}{}</span>"#, escape_html(rest));
+        }
+    }
+    escape_html(&line)
+}
+
+/// A step's log lines, ready for `repo/code` blocks.
+#[derive(Debug, Clone, Default)]
+pub struct StepLog {
+    /// Escaped HTML, one per line.
+    pub lines: Vec<String>,
+    /// The step-relative number of `lines[0]`, from 1.
+    pub first: usize,
+    /// Earlier lines were left out (see the step's log page or the raw log).
+    pub more_before: bool,
+    pub truncated: bool,
+    pub expired: bool,
+}
+
+impl StepLog {
+    /// `window` of a step whose log starts at task-log line `step_start`.
+    pub fn new(window: &LogWindow, step_start: u64) -> Self {
+        let first = usize::try_from(window.first_line.saturating_sub(step_start)).unwrap_or(0) + 1;
+        Self {
+            lines: window.lines.iter().map(|line| log_line_html(line)).collect(),
+            first,
+            more_before: window.more_before,
+            truncated: window.truncated,
+            expired: window.expired,
+        }
+    }
+
+    pub fn blocks(&self) -> Vec<Block<CodeLine<'_>>> {
+        blocks(self.lines.iter().enumerate().map(|(index, html)| CodeLine { number: self.first + index, html }))
+    }
+
+    pub fn columns(&self) -> String {
+        column_class(self.lines.iter().map(|line| markup_columns(line)).max().unwrap_or(0))
+    }
+}
+
+/// One step on the job page.
+#[derive(Debug, Clone)]
+pub struct StepView {
+    pub number: i64,
+    pub name: String,
+    pub look: StateLook,
+    pub duration: Option<String>,
+    /// Shown expanded: the running step, else the first that failed.
+    pub open: bool,
+    /// `None` for a step that never started.
+    pub log: Option<StepLog>,
+    /// The step's own log page.
+    pub log_url: String,
+}
+
+impl StepView {
+    pub fn new(step: &Step, log: Option<StepLog>, log_url: String) -> Self {
+        Self {
+            number: step.number,
+            name: step.name.clone(),
+            look: StateLook::of(step.status),
+            duration: elapsed(step.started_at, step.stopped_at),
+            open: false,
+            log,
+            log_url,
+        }
+    }
+}
+
+/// Opens the running step, or else the first failed one.
+pub fn open_one(steps: &mut [StepView]) {
+    let running = steps.iter().position(|step| step.look.key == "running");
+    let failed = steps.iter().position(|step| step.look.key == "failure");
+    if let Some(index) = running.or(failed) {
+        steps[index].open = true;
+    }
+}
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/job.html")]
+pub struct JobPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub run: RunSummary,
+    pub run_url: String,
+    pub name: String,
+    pub look: StateLook,
+    pub duration: Option<String>,
+    pub labels: String,
+    /// Not finished: the page refreshes itself.
+    pub active: bool,
+    pub self_url: String,
+    pub steps: Vec<StepView>,
+    /// `None` until a runner took the job.
+    pub raw_url: Option<String>,
+    pub rerun_url: Option<String>,
+}
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/step_log.html")]
+pub struct StepLogPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub job_name: String,
+    pub job_url: String,
+    pub step: StepView,
+    pub raw_url: String,
+    pub active: bool,
+    pub self_url: String,
+}
+
 #[cfg(test)]
 mod tests {
     use rbit_core::{
@@ -400,6 +586,39 @@ mod tests {
         assert_eq!(short_ref("refs/tags/v1.0"), "v1.0");
         assert_eq!(workflow_file(".rbit/workflows/ci.yml"), "ci.yml");
         assert_eq!(ActionsUrls::new("/a/b").workflow(".github/workflows/release.yaml"), "/a/b/actions/workflows/release.yaml");
+    }
+
+    #[test]
+    fn logs_are_text_with_their_markers_shown() {
+        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[0m and \u{1b}]8;;https://x\u{7}link\u{1b}]8;;\u{1b}\\ done"), "red and link done");
+        assert_eq!(strip_ansi("plain \u{1b}"), "plain ");
+        assert_eq!(log_line_html("<b>\u{1b}[32mok</b>"), "&lt;b&gt;ok&lt;/b&gt;");
+        assert_eq!(log_line_html("##[error]it <broke>"), r#"<span class="text-danger">Error: it &lt;broke&gt;</span>"#);
+        assert_eq!(log_line_html("##[group]Install"), r#"<span class="font-semibold text-ink">Install</span>"#);
+        assert_eq!(log_line_html("not ##[error] a marker"), "not ##[error] a marker");
+    }
+
+    #[test]
+    fn the_running_step_or_else_the_first_failure_is_open() {
+        let step = |number: i64, status: Status| {
+            let step = Step {
+                task_id: rbit_core::actions::TaskId(1),
+                number,
+                name: format!("s{number}"),
+                status,
+                started_at: None,
+                stopped_at: None,
+                log_index: 0,
+                log_length: 0,
+            };
+            StepView::new(&step, None, String::new())
+        };
+        let mut steps = vec![step(0, Status::Success), step(1, Status::Failure), step(2, Status::Failure)];
+        open_one(&mut steps);
+        assert_eq!(steps.iter().map(|step| step.open).collect::<Vec<_>>(), [false, true, false]);
+        let mut steps = vec![step(0, Status::Failure), step(1, Status::Running)];
+        open_one(&mut steps);
+        assert_eq!(steps.iter().map(|step| step.open).collect::<Vec<_>>(), [false, true]);
     }
 
     #[test]

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<p class="mb-3 truncate text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ job_url }}">{{ job_name }}</a></p>
+
+<section id="step" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#step" hx-target="this" hx-swap="outerHTML"{% endif %}>
+  <div class="flex flex-wrap items-center gap-3">
+    {% let look = step.look %}
+    {% include "actions/state.html" %}
+    <h1 class="min-w-0 flex-1 break-words text-xl font-semibold tracking-tight">{{ step.name }}</h1>
+    <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}Raw log</a>
+  </div>
+  <div class="box mt-6 overflow-hidden">
+    {% include "actions/step_body.html" %}
+  </div>
+</section>
+{% endblock %}

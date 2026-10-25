@@ -1,0 +1,24 @@
+{#- A step's log as file-viewer lines; expects `step: StepView` (views::actions). -#}
+{% if let Some(log) = step.log %}
+  {% if log.expired %}
+  <p class="px-4 py-3 text-[13px] text-ink-muted">This log was removed by the log retention.</p>
+  {% else if log.lines.is_empty() %}
+  <p class="px-4 py-3 text-[13px] text-ink-muted">No output.</p>
+  {% else %}
+  {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">Earlier lines are left out.{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">Show more of this step</a>, or{% endif %} download the raw log for all of it.</p>{% endif %}
+  <div class="overflow-x-auto">
+    <div class="code-lines {{ log.columns() }}">
+      {%- for block in log.blocks() %}
+      <div class="vblock" data-rows="{{ block.len() }}">
+        {%- for line in block.rows() %}
+        <div class="code-line"><span class="line-number" data-line="{{ line.number }}"></span><span class="line-code">{{ line.html|safe }}</span></div>
+        {%- endfor %}
+      </div>
+      {%- endfor %}
+    </div>
+  </div>
+  {% if log.truncated %}<p class="border-t border-line px-4 py-2 text-xs text-warning">The job wrote more than the instance keeps; later lines were dropped.</p>{% endif %}
+  {% endif %}
+{% else %}
+  <p class="px-4 py-3 text-[13px] text-ink-muted">This step has not started.</p>
+{% endif %}

@@ -10,6 +10,7 @@
 //! The Actions foundation (workstream F) owns the route list; workstream U (interface and
 //! secrets) owns the handlers.
 
+mod jobs;
 mod runs;
 mod settings;
 
@@ -61,6 +62,9 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
         .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}", get(jobs::show))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", get(jobs::logs))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", get(jobs::raw))
         .route("/{owner}/{repo}/settings/actions", get(settings::repository).post(settings::save_repository))
         .route("/{owner}/{repo}/settings/actions/secrets", get(settings::to_repository).post(settings::repository_secret))
         .route("/{owner}/{repo}/settings/actions/variables", get(settings::to_repository).post(settings::repository_variable))
