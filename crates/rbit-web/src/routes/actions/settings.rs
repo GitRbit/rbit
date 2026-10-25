@@ -208,6 +208,7 @@ async fn repo_page(state: &AppState, loaded: &RepoPage, page: Page, notice: Opti
         variables,
         trusted: settings.trusted.iter().map(TrustedRow::from).collect(),
         trusted_url: format!("{action_url}/trusted"),
+        runners_url: format!("{action_url}/runners"),
         action_url,
     })
 }
@@ -350,6 +351,7 @@ async fn org_page(state: &AppState, ctx: &OrgContext, page: Page, notice: Option
         notice,
         secrets,
         variables,
+        runners_url: format!("/{}/settings/actions/runners", ctx.org.name()),
     })
 }
 
@@ -402,7 +404,14 @@ const PERSONAL_URL: &str = SettingsSection::Actions.url();
 async fn user_page(state: &AppState, user: &User, page: Page, notice: Option<Notice>) -> WebResult<UserActionsSettingsPage> {
     let (secrets, variables) =
         sections(actions(state)?, ActionsTarget::User(user), PERSONAL_URL.to_owned(), PERSONAL_URL.to_owned()).await?;
-    Ok(UserActionsSettingsPage { page: page.titled("Actions"), settings_nav: SettingsSection::Actions.nav(), notice, secrets, variables })
+    Ok(UserActionsSettingsPage {
+        page: page.titled("Actions"),
+        settings_nav: SettingsSection::Actions.nav(),
+        notice,
+        secrets,
+        variables,
+        runners_url: "/settings/actions/runners".to_owned(),
+    })
 }
 
 /// `GET /settings/actions`: the signed-in user's own secrets and variables.

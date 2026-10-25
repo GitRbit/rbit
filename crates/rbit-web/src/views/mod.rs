@@ -7,6 +7,7 @@
 pub mod account;
 // Actions: interface and secrets (U).
 pub mod actions;
+pub mod actions_runners;
 pub mod actions_settings;
 pub mod admin;
 pub mod auth;

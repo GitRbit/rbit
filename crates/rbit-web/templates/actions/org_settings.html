@@ -11,8 +11,11 @@
 
   {% include "actions/notice.html" %}
 
-  {#- Owner runners and their registration tokens go here, with the server side of the
-      runner protocol. -#}
+  <a class="box mt-8 flex min-h-11 items-center gap-3 px-4 py-3 hover:bg-subtle" href="{{ runners_url }}">
+    {% call ui::icon("server", "size-4 text-ink-muted") %}{% endcall %}
+    <span class="min-w-0 flex-1"><span class="block font-medium">Runners</span><span class="block text-[13px] text-ink-muted">Runners for every repository of the organization, and registration tokens.</span></span>
+    {% call ui::icon("chevron-right", "size-4 text-ink-muted") %}{% endcall %}
+  </a>
 
   {% include "actions/secrets.html" %}
 

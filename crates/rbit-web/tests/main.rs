@@ -13,6 +13,7 @@ mod actions_pages;
 mod actions_settings;
 // Actions: S.
 mod actions_runner;
+mod actions_runner_pages;
 mod actions_runner_tasks;
 mod actions_tokens;
 mod admin_configuration;

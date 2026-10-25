@@ -27,11 +27,22 @@ pub enum AdminSection {
     Settings,
     AuditLog,
     Configuration,
+    // Actions: interface and secrets (U).
+    /// Only on an instance with Actions: see [`AdminLink::needs_actions`].
+    Runners,
 }
 
 impl AdminSection {
-    const ALL: [Self; 7] =
-        [Self::Dashboard, Self::Users, Self::Organizations, Self::Repositories, Self::Settings, Self::Configuration, Self::AuditLog];
+    const ALL: [Self; 8] = [
+        Self::Dashboard,
+        Self::Users,
+        Self::Organizations,
+        Self::Repositories,
+        Self::Settings,
+        Self::Configuration,
+        Self::AuditLog,
+        Self::Runners,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -42,6 +53,7 @@ impl AdminSection {
             Self::Settings => "Settings",
             Self::AuditLog => "Audit log",
             Self::Configuration => "Configuration",
+            Self::Runners => "Runners",
         }
     }
 
@@ -54,12 +66,21 @@ impl AdminSection {
             Self::Settings => "/admin/settings",
             Self::AuditLog => "/admin/audit",
             Self::Configuration => "/admin/configuration",
+            Self::Runners => "/admin/runners",
         }
     }
 
     /// The navigation with `self` marked as the current page.
     pub fn nav(self) -> Vec<AdminLink> {
-        Self::ALL.iter().map(|&section| AdminLink { label: section.label(), url: section.url(), is_active: section == self }).collect()
+        Self::ALL
+            .iter()
+            .map(|&section| AdminLink {
+                label: section.label(),
+                url: section.url(),
+                is_active: section == self,
+                needs_actions: section == Self::Runners,
+            })
+            .collect()
     }
 }
 
@@ -68,6 +89,10 @@ pub struct AdminLink {
     pub label: &'static str,
     pub url: &'static str,
     pub is_active: bool,
+    // Actions: interface and secrets (U).
+    /// Shown only on an instance with Actions ([`Page::has_actions`]); `admin/layout.html`
+    /// leaves the link out otherwise.
+    pub needs_actions: bool,
 }
 
 /// `base?q=…&page=…`, omitting defaults.

@@ -1,0 +1,10 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+{% call admin::heading("Runners", "Instance runners take jobs from the owners an administrator allows, or from every owner with instance_runners_for_all.") %}{% endcall %}
+{#- hx-history="false": a registration token is shown here once and must not be cached. -#}
+<div hx-history="false">
+  {% include "actions/runners_section.html" %}
+</div>
+{% endblock %}

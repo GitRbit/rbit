@@ -6,9 +6,9 @@
   <aside class="min-w-0">
     <h1 class="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-ink-muted">{% call ui::icon("shield", "size-3.5") %}{% endcall %}Site administration</h1>
     <nav class="-mx-4 flex gap-1 scroll-tabs border-b border-line px-4 pb-3 md:mx-0 md:flex-col md:border-b-0 md:px-0 md:pb-0" aria-label="Administration">
-      {% for link in admin_nav %}
+      {% for link in admin_nav %}{% if !link.needs_actions || page.has_actions() %}
       <a class="menu-item w-auto shrink-0 md:w-full {% if link.is_active %}bg-hover font-medium{% else %}text-ink-muted hover:text-ink{% endif %}" href="{{ link.url }}" {% if link.is_active %}aria-current="page"{% endif %}>{{ link.label }}</a>
-      {% endfor %}
+      {% endif %}{% endfor %}
     </nav>
   </aside>
 

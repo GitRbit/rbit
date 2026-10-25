@@ -326,6 +326,8 @@ pub struct RepoActionsSettingsPage {
     pub variables: VariablesSection,
     pub trusted: Vec<TrustedRow>,
     pub trusted_url: String,
+    /// The runners page of this repository.
+    pub runners_url: String,
 }
 
 /// `/{org}/settings/actions`.
@@ -337,6 +339,8 @@ pub struct OrgActionsSettingsPage {
     pub notice: Option<Notice>,
     pub secrets: SecretsSection,
     pub variables: VariablesSection,
+    /// The organisation's runners page.
+    pub runners_url: String,
 }
 
 /// `/settings/actions`: the signed-in user's own secrets and variables.
@@ -348,6 +352,8 @@ pub struct UserActionsSettingsPage {
     pub notice: Option<Notice>,
     pub secrets: SecretsSection,
     pub variables: VariablesSection,
+    /// The user's runners page.
+    pub runners_url: String,
 }
 
 #[cfg(test)]

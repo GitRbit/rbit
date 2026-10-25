@@ -11,6 +11,7 @@
 //! secrets) owns the handlers.
 
 mod jobs;
+mod runners;
 mod runs;
 mod settings;
 
@@ -44,7 +45,11 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/settings/actions/variables", &[Method::GET, Method::POST]),
     ("/{owner}/{repo}/settings/actions/trusted", &[Method::POST]),
     ("/{owner}/settings/actions", &[Method::GET, Method::POST]),
+    ("/{owner}/settings/actions/runners", &[Method::GET, Method::POST]),
+    ("/{owner}/settings/actions/runners/{runner}", &[Method::POST]),
     ("/settings/actions", &[Method::GET, Method::POST]),
+    ("/settings/actions/runners", &[Method::GET, Method::POST]),
+    ("/settings/actions/runners/{runner}", &[Method::POST]),
     ("/admin/runners", &[Method::GET, Method::POST]),
     ("/admin/runners/{runner}", &[Method::POST]),
 ];
@@ -62,6 +67,14 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
         .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
+        .route("/{owner}/{repo}/settings/actions/runners", get(runners::repository).post(runners::repository_tokens))
+        .route("/{owner}/{repo}/settings/actions/runners/{runner}", post(runners::repository_runner))
+        .route("/{owner}/settings/actions/runners", get(runners::organization).post(runners::organization_tokens))
+        .route("/{owner}/settings/actions/runners/{runner}", post(runners::organization_runner))
+        .route("/settings/actions/runners", get(runners::personal).post(runners::personal_tokens))
+        .route("/settings/actions/runners/{runner}", post(runners::personal_runner))
+        .route("/admin/runners", get(runners::instance).post(runners::instance_tokens))
+        .route("/admin/runners/{runner}", post(runners::instance_runner))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}", get(jobs::show))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", get(jobs::logs))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", get(jobs::raw))
