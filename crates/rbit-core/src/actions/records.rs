@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     AccountId, RepoId, Timestamp,
     actions::{
@@ -195,6 +197,47 @@ pub struct Runner {
     pub disabled: bool,
     pub last_online: Option<Timestamp>,
     pub created_at: Timestamp,
+    // Actions: S.
+    /// What it declared it can do at its last start.
+    pub capabilities: RunnerCapabilities,
+    /// The runner protocol version it speaks.
+    pub protocol: u32,
+}
+
+// Actions: S.
+/// How a runner runs the jobs of a label (`rbit_workflow::protocol::Backend`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunnerBackend {
+    /// Docker or Podman.
+    Container,
+    /// Child processes of the runner's user: no isolation.
+    Host,
+}
+
+/// What a runner declared about itself, stored as JSON (`actions_runners.capabilities`).
+/// Unknown keys are ignored and missing ones default, so a newer runner's declaration and
+/// a runner that has not declared yet both read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunnerCapabilities {
+    /// The backends that work on its host.
+    pub backends: Vec<RunnerBackend>,
+    /// `linux`, `macos`, `windows`.
+    pub os: String,
+    /// `x86_64`, `aarch64`.
+    pub arch: String,
+    /// Tasks it runs at once.
+    pub capacity: u32,
+    /// The labels it runs on the host backend: jobs there have no isolation.
+    pub host_labels: Vec<RunnerLabel>,
+}
+
+impl RunnerCapabilities {
+    /// Whether any of its labels runs jobs on the host backend ("host — no isolation").
+    pub fn runs_on_host(&self) -> bool {
+        !self.host_labels.is_empty()
+    }
 }
 
 /// A runner registration token. Its value is shown once and stored as a digest.

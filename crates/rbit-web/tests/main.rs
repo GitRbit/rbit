@@ -10,6 +10,8 @@ mod actions_disabled;
 // Actions: interface and secrets (U).
 mod actions_pages;
 mod actions_settings;
+// Actions: S.
+mod actions_runner;
 mod admin_configuration;
 mod contributions;
 mod listings;

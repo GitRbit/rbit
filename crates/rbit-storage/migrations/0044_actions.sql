@@ -1,4 +1,4 @@
--- rbit Actions: workflow runs on external Forgejo or Gitea runners (docs/design/actions.md).
+-- rbit Actions: workflow runs on rbit-runner (docs/design/actions.md).
 --
 -- The tables always exist, but with `[actions] enabled = false` nothing writes to them.
 -- Statuses are rbit_core::actions::Status codes: 1 success, 2 failure, 3 cancelled,
@@ -42,6 +42,10 @@ CREATE TABLE actions_runners (
     disabled       INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
     last_online    INTEGER,
     created_at     INTEGER NOT NULL,
+    -- What it declared at its last start (JSON object: backends, os, arch, capacity,
+    -- host_labels) and the runner protocol version it speaks.
+    capabilities   TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(capabilities) AND json_type(capabilities) = 'object'),
+    protocol       INTEGER NOT NULL DEFAULT 1 CHECK (protocol >= 1),
     CHECK (scope_kind = 'instance' AND owner_id IS NULL AND repo_id IS NULL
         OR scope_kind = 'owner' AND owner_id IS NOT NULL AND repo_id IS NULL
         OR scope_kind = 'repository' AND owner_id IS NULL AND repo_id IS NOT NULL)
@@ -183,8 +187,9 @@ CREATE TABLE actions_tasks (
     runner_id      INTEGER REFERENCES actions_runners (id) ON DELETE SET NULL,
     -- SHA-256 of the task token; cleared as soon as the task stops or is cancelled.
     token_digest   BLOB    UNIQUE CHECK (token_digest IS NULL OR length(token_digest) = 32),
-    -- Forgejo's x-runner-request-key, for retried FetchTask calls.
-    request_key    TEXT    CHECK (request_key IS NULL OR length(request_key) BETWEEN 1 AND 255),
+    -- The runner's Idempotency-Key of the poll that claimed it: a retried poll gets the
+    -- same task (with a fresh token).
+    idempotency_key TEXT    CHECK (idempotency_key IS NULL OR length(idempotency_key) BETWEEN 1 AND 64),
     status         INTEGER NOT NULL CHECK (status BETWEEN 1 AND 8),
     started_at     INTEGER NOT NULL,
     stopped_at     INTEGER,
@@ -193,7 +198,7 @@ CREATE TABLE actions_tasks (
     log_bytes      INTEGER NOT NULL DEFAULT 0 CHECK (log_bytes >= 0),
     log_state      TEXT    NOT NULL DEFAULT 'live' CHECK (log_state IN ('live', 'final', 'expired')),
     log_truncated  INTEGER NOT NULL DEFAULT 0 CHECK (log_truncated IN (0, 1)),
-    UNIQUE (runner_id, request_key)
+    UNIQUE (runner_id, idempotency_key)
 ) STRICT;
 
 CREATE INDEX actions_tasks_by_job ON actions_tasks (job_id);

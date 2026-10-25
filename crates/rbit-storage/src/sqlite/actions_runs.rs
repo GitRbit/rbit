@@ -360,8 +360,8 @@ pub struct ClaimRequest<'a> {
     pub instance_runners_for_all: bool,
     /// The digest of the task token minted for the task.
     pub token_digest: &'a [u8; 32],
-    /// Forgejo's `x-runner-request-key`.
-    pub request_key: Option<&'a str>,
+    /// The poll's `Idempotency-Key`: a retried poll finds the task by it.
+    pub idempotency_key: Option<&'a str>,
     pub now: Timestamp,
 }
 
@@ -688,18 +688,18 @@ impl ActionsRunStore {
         .fetch_one(&mut *tx)
         .await?;
         let task_id: i64 = sqlx::query_scalar(
-            "INSERT INTO actions_tasks (job_id, attempt, runner_id, token_digest, request_key, status, started_at, heartbeat_at) \
+            "INSERT INTO actions_tasks (job_id, attempt, runner_id, token_digest, idempotency_key, status, started_at, heartbeat_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, 6, ?6, ?6) RETURNING id",
         )
         .bind(job_id)
         .bind(attempt)
         .bind(request.runner.0)
         .bind(&request.token_digest[..])
-        .bind(request.request_key)
+        .bind(request.idempotency_key)
         .bind(request.now.0)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|error| StorageError::from_insert(error, "task request key"))?;
+        .map_err(|error| StorageError::from_insert(error, "task idempotency key"))?;
         sqlx::query("UPDATE actions_jobs SET task_id = ? WHERE id = ?").bind(task_id).bind(job_id).execute(&mut *tx).await?;
         let run_id: i64 = sqlx::query_scalar("SELECT run_id FROM actions_jobs WHERE id = ?").bind(job_id).fetch_one(&mut *tx).await?;
         settle(&mut tx, RunId(run_id), Vec::new(), request.now).await?;
@@ -714,9 +714,9 @@ impl ActionsRunStore {
         row.map(Task::try_from).transpose()
     }
 
-    /// The task a runner was given for request key `key` (a retried `FetchTask`).
-    pub async fn task_by_request_key(&self, runner: RunnerId, key: &str) -> Result<Option<Task>, StorageError> {
-        let row: Option<TaskRow> = sqlx::query_as(select_task!("WHERE runner_id = ? AND request_key = ?"))
+    /// The task a runner was given for idempotency key `key` (a retried poll).
+    pub async fn task_by_idempotency_key(&self, runner: RunnerId, key: &str) -> Result<Option<Task>, StorageError> {
+        let row: Option<TaskRow> = sqlx::query_as(select_task!("WHERE runner_id = ? AND idempotency_key = ?"))
             .bind(runner.0)
             .bind(key)
             .fetch_optional(&self.pool)
@@ -735,7 +735,7 @@ impl ActionsRunStore {
         Ok(self.job(task.job_id).await?.map(|job| (task, job)))
     }
 
-    /// Replaces the token of a running task (a retried `FetchTask` gets a fresh token).
+    /// Replaces the token of a running task (a retried poll gets a fresh token).
     pub async fn replace_task_token(&self, id: TaskId, digest: &[u8; 32]) -> Result<bool, StorageError> {
         let result = sqlx::query("UPDATE actions_tasks SET token_digest = ? WHERE id = ? AND status = 6 AND token_digest IS NOT NULL")
             .bind(&digest[..])
@@ -893,6 +893,16 @@ impl ActionsRunStore {
     pub async fn silent_tasks(&self, before: Timestamp) -> Result<Vec<TaskId>, StorageError> {
         let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM actions_tasks WHERE status = 6 AND heartbeat_at < ? ORDER BY id")
             .bind(before.0)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(ids.into_iter().map(TaskId).collect())
+    }
+
+    // Actions: S.
+    /// The running tasks of `runner` (it is going away).
+    pub async fn running_tasks_of(&self, runner: RunnerId) -> Result<Vec<TaskId>, StorageError> {
+        let ids: Vec<i64> = sqlx::query_scalar("SELECT id FROM actions_tasks WHERE status = 6 AND runner_id = ? ORDER BY id")
+            .bind(runner.0)
             .fetch_all(&self.pool)
             .await?;
         Ok(ids.into_iter().map(TaskId).collect())

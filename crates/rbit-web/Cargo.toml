@@ -44,8 +44,9 @@ time.workspace = true
 tracing.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
-# Actions: S. The runner protocol's wire types.
+# Actions: S. The runner protocol's wire types, and gzip bodies within a decompressed cap.
 rbit-workflow.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

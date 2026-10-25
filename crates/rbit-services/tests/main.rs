@@ -15,6 +15,8 @@ mod actions_runs;
 mod actions_secrets;
 // Actions: interface and secrets (U).
 mod actions_settings;
+// Actions: S.
+mod actions_runners;
 mod actions_statuses;
 mod admin;
 mod audit;

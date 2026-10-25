@@ -5,14 +5,14 @@
 use rbit_core::{
     AccountId, RepoId, Timestamp, Visibility,
     actions::{
-        DefaultTokenPermission, JobStatus, RunEvent, RunnerId, RunnerLabel, RunnerScope, SealedSecret, SecretName, SecretScope,
-        SecretVisibility, Status, VariableName,
+        DefaultTokenPermission, JobStatus, RunEvent, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope, SealedSecret,
+        SecretName, SecretScope, SecretVisibility, Status, VariableName,
     },
 };
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::{
-        actions_runners::{NewRegistrationToken, NewRunner, RegistrationRefusal},
+        actions_runners::{Declaration, NewRegistrationToken, NewRunner, RegistrationRefusal},
         actions_runs::{ClaimRequest, NewJob, NewRun, Rerun, RunFilter, RunStart, StepUpdate},
         actions_schedules::NewSchedule,
     },
@@ -113,6 +113,8 @@ impl Fixture {
                 version: "v12.0.0",
                 labels: &labels,
                 ephemeral: false,
+                capabilities: &RunnerCapabilities::default(),
+                protocol: 1,
                 now: NOW,
             })
             .await
@@ -159,7 +161,7 @@ fn claim<'a>(runner: RunnerId, scope: RunnerScope, labels: &'a [RunnerLabel], di
         ephemeral: false,
         instance_runners_for_all: false,
         token_digest: digest,
-        request_key: None,
+        idempotency_key: None,
         now: Timestamp(NOW.0 + 10),
     }
 }
@@ -245,6 +247,8 @@ async fn registration_tokens_are_single_use_expire_and_pin_labels() {
                     version: "v12",
                     labels: &labels,
                     ephemeral: false,
+                    capabilities: &RunnerCapabilities::default(),
+                    protocol: 1,
                     now,
                 })
                 .await
@@ -308,10 +312,30 @@ async fn runners_are_found_by_token_and_managed_within_their_scope() {
     assert_eq!(store.all().await.unwrap().len(), 4);
 
     let labels: Vec<RunnerLabel> = vec!["linux".parse().unwrap(), "x64".parse().unwrap()];
-    assert!(store.declare(repo_runner, &labels, "v12.1", Timestamp(NOW.0 + 5)).await.unwrap());
+    let capabilities = RunnerCapabilities {
+        backends: vec![RunnerBackend::Container, RunnerBackend::Host],
+        os: "linux".into(),
+        arch: "x86_64".into(),
+        capacity: 2,
+        host_labels: vec![labels[1].clone()],
+    };
+    let declaration = Declaration {
+        name: "builder-2",
+        labels: &labels,
+        version: "v12.1",
+        ephemeral: true,
+        capabilities: &capabilities,
+        protocol: 1,
+        now: Timestamp(NOW.0 + 5),
+    };
+    let declared = store.declare(repo_runner, &declaration).await.unwrap().unwrap();
+    assert_eq!((declared.name.as_str(), declared.ephemeral, &declared.capabilities), ("builder-2", true, &capabilities));
+    assert!(declared.capabilities.runs_on_host());
+    assert_eq!(store.declare(RunnerId(9_999), &declaration).await.unwrap(), None, "a runner that is gone");
     store.touch(&[repo_runner, owner_runner], Timestamp(NOW.0 + 7)).await.unwrap();
     let declared = store.find(repo_runner).await.unwrap().unwrap();
     assert_eq!((declared.labels, declared.version.as_str(), declared.last_online), (labels, "v12.1", Some(Timestamp(NOW.0 + 7))));
+    assert_eq!(store.all_with_digests().await.unwrap()[0].1, [101; 32], "the cache is loaded with credential digests");
 
     assert!(!store.set_disabled(RunnerScope::Repository(fx.probe), repo_runner, true).await.unwrap(), "another repository's runner");
     assert!(store.set_disabled(RunnerScope::Repository(fx.rocket), repo_runner, true).await.unwrap());
@@ -496,9 +520,10 @@ async fn finishing_tasks_unblocks_dependents_and_settles_the_run() {
     let (runner, labels) = fx.runner(RunnerScope::Repository(fx.rocket), &["linux"], 1).await;
     let scope = RunnerScope::Repository(fx.rocket);
 
-    let first = store.claim(&ClaimRequest { request_key: Some("k1"), ..claim(runner, scope, &labels, &[70; 32]) }).await.unwrap().unwrap();
+    let first =
+        store.claim(&ClaimRequest { idempotency_key: Some("k1"), ..claim(runner, scope, &labels, &[70; 32]) }).await.unwrap().unwrap();
     assert_eq!(first.job.key, "build");
-    assert_eq!(store.task_by_request_key(runner, "k1").await.unwrap().map(|task| task.id), Some(first.task.id));
+    assert_eq!(store.task_by_idempotency_key(runner, "k1").await.unwrap().map(|task| task.id), Some(first.task.id));
     assert!(store.replace_task_token(first.task.id, &[71; 32]).await.unwrap());
     assert_eq!(store.running_task_by_token(&[70; 32]).await.unwrap(), None, "the old token is replaced");
     let (task, job) = store.running_task_by_token(&[71; 32]).await.unwrap().unwrap();
@@ -579,7 +604,7 @@ async fn request_keys_are_unique_per_runner() {
     let scope = RunnerScope::Repository(fx.rocket);
     let (one, labels) = fx.runner(scope, &["linux"], 1).await;
     let (two, _) = fx.runner(scope, &["linux"], 2).await;
-    let keyed = |runner, digest| ClaimRequest { request_key: Some("same"), ..claim(runner, scope, &labels, digest) };
+    let keyed = |runner, digest| ClaimRequest { idempotency_key: Some("same"), ..claim(runner, scope, &labels, digest) };
     assert!(store.claim(&keyed(one, &[80; 32])).await.unwrap().is_some());
     assert!(store.claim(&keyed(two, &[81; 32])).await.unwrap().is_some(), "another runner may use the same key");
     assert!(matches!(store.claim(&keyed(one, &[82; 32])).await, Err(StorageError::Conflict(_))));

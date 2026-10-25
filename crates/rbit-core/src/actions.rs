@@ -21,8 +21,8 @@ use crate::{AccountId, RepoAccess, RepoId};
 pub mod records;
 
 pub use records::{
-    Job, LogState, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, ScheduleEntry, SealedSecret, SecretInfo,
-    SecretVisibility, Step, Task, TrustedUser, Variable,
+    Job, LogState, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities, ScheduleEntry,
+    SealedSecret, SecretInfo, SecretVisibility, Step, Task, TrustedUser, Variable,
 };
 
 macro_rules! id {

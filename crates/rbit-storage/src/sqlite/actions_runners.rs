@@ -8,11 +8,11 @@
 
 use rbit_core::{
     AccountId, RepoId, Timestamp,
-    actions::{RegistrationToken, RegistrationTokenId, Runner, RunnerId, RunnerLabel, RunnerScope},
+    actions::{RegistrationToken, RegistrationTokenId, Runner, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope},
 };
 use sqlx::SqlitePool;
 
-use super::actions_rows::{bytes, labels, labels_json, runner_columns, runner_scope, timestamp};
+use super::actions_rows::{bytes, corrupt, labels, labels_json, runner_columns, runner_scope, timestamp};
 use crate::StorageError;
 
 #[derive(Debug, sqlx::FromRow)]
@@ -30,6 +30,9 @@ struct RunnerRow {
     disabled: bool,
     last_online: Option<i64>,
     created_at: i64,
+    // Actions: S.
+    capabilities: String,
+    protocol: i64,
 }
 
 impl TryFrom<RunnerRow> for Runner {
@@ -48,6 +51,8 @@ impl TryFrom<RunnerRow> for Runner {
             disabled: row.disabled,
             last_online: timestamp(row.last_online),
             created_at: Timestamp(row.created_at),
+            capabilities: serde_json::from_str(&row.capabilities).map_err(|error| corrupt("runner capabilities", error))?,
+            protocol: u32::try_from(row.protocol).map_err(|error| corrupt("runner protocol", error))?,
         })
     }
 }
@@ -56,7 +61,7 @@ macro_rules! select_runner {
     ($extra:literal, $clause:literal) => {
         concat!(
             "SELECT id, uuid, name, scope_kind, owner_id, repo_id, labels, pinned_labels, version, ephemeral, disabled, \
-             last_online, created_at",
+             last_online, created_at, capabilities, protocol",
             $extra,
             " FROM actions_runners ",
             $clause
@@ -141,6 +146,23 @@ pub struct NewRunner<'a> {
     pub version: &'a str,
     pub labels: &'a [RunnerLabel],
     pub ephemeral: bool,
+    // Actions: S.
+    pub capabilities: &'a RunnerCapabilities,
+    /// The runner protocol version it speaks.
+    pub protocol: u32,
+    pub now: Timestamp,
+}
+
+// Actions: S.
+/// What a runner declares at every start.
+#[derive(Debug, Clone)]
+pub struct Declaration<'a> {
+    pub name: &'a str,
+    pub labels: &'a [RunnerLabel],
+    pub version: &'a str,
+    pub ephemeral: bool,
+    pub capabilities: &'a RunnerCapabilities,
+    pub protocol: u32,
     pub now: Timestamp,
 }
 
@@ -259,7 +281,8 @@ impl ActionsRunnerStore {
         let pinned = token.labels.as_deref().map(labels_json).transpose()?;
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, owner_id, repo_id, labels, pinned_labels, version, \
-             ephemeral, last_online, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11) RETURNING id",
+             ephemeral, last_online, created_at, capabilities, protocol) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11, ?12, ?13) RETURNING id",
         )
         .bind(new.uuid)
         .bind(&new.token_digest[..])
@@ -272,6 +295,8 @@ impl ActionsRunnerStore {
         .bind(new.version)
         .bind(new.ephemeral)
         .bind(new.now.0)
+        .bind(capabilities_json(new.capabilities)?)
+        .bind(new.protocol)
         .fetch_one(&mut *tx)
         .await
         .map_err(|error| StorageError::from_insert(error, "runner"))?;
@@ -329,16 +354,26 @@ impl ActionsRunnerStore {
         rows.into_iter().map(Runner::try_from).collect()
     }
 
-    /// Records the labels and version a runner declares.
-    pub async fn declare(&self, id: RunnerId, labels: &[RunnerLabel], version: &str, now: Timestamp) -> Result<bool, StorageError> {
-        let result = sqlx::query("UPDATE actions_runners SET labels = ?, version = ?, last_online = ? WHERE id = ?")
-            .bind(labels_json(labels)?)
-            .bind(version)
-            .bind(now.0)
-            .bind(id.0)
-            .execute(&self.pool)
-            .await?;
-        Ok(result.rows_affected() == 1)
+    /// Records what a runner declares at its start; `None` when it is gone.
+    pub async fn declare(&self, id: RunnerId, declared: &Declaration<'_>) -> Result<Option<Runner>, StorageError> {
+        let result = sqlx::query(
+            "UPDATE actions_runners SET name = ?, labels = ?, version = ?, ephemeral = ?, capabilities = ?, protocol = ?, \
+             last_online = ? WHERE id = ?",
+        )
+        .bind(declared.name)
+        .bind(labels_json(declared.labels)?)
+        .bind(declared.version)
+        .bind(declared.ephemeral)
+        .bind(capabilities_json(declared.capabilities)?)
+        .bind(declared.protocol)
+        .bind(declared.now.0)
+        .bind(id.0)
+        .execute(&self.pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+        self.find(id).await
     }
 
     /// Records that runners were seen (callers coalesce these writes).
@@ -388,4 +423,9 @@ impl ActionsRunnerStore {
         let result = sqlx::query("DELETE FROM actions_runners WHERE id = ? AND ephemeral = 1").bind(id.0).execute(&self.pool).await?;
         Ok(result.rows_affected() == 1)
     }
+}
+
+// Actions: S.
+fn capabilities_json(capabilities: &RunnerCapabilities) -> Result<String, StorageError> {
+    serde_json::to_string(capabilities).map_err(|error| corrupt("runner capabilities", error))
 }

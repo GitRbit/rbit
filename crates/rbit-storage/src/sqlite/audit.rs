@@ -126,10 +126,17 @@ pub enum AuditAction {
     ActionsDisabled,
     ActionsTokenPermissionChanged,
     ActionsUserUntrusted,
+    // Actions: S.
+    ActionsRegistrationTokenCreated,
+    ActionsRegistrationTokenRevoked,
+    ActionsRunnerRegistered,
+    ActionsRunnerDisabled,
+    ActionsRunnerEnabled,
+    ActionsRunnerRemoved,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 55] = [
+    pub const ALL: [Self; 61] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -187,6 +194,13 @@ impl AuditAction {
         Self::ActionsDisabled,
         Self::ActionsTokenPermissionChanged,
         Self::ActionsUserUntrusted,
+        // Actions: S.
+        Self::ActionsRegistrationTokenCreated,
+        Self::ActionsRegistrationTokenRevoked,
+        Self::ActionsRunnerRegistered,
+        Self::ActionsRunnerDisabled,
+        Self::ActionsRunnerEnabled,
+        Self::ActionsRunnerRemoved,
     ];
 
     /// Stable identifier stored in the database.
@@ -249,6 +263,13 @@ impl AuditAction {
             Self::ActionsDisabled => "actions_disabled",
             Self::ActionsTokenPermissionChanged => "actions_token_permission_changed",
             Self::ActionsUserUntrusted => "actions_user_untrusted",
+            // Actions: S.
+            Self::ActionsRegistrationTokenCreated => "actions_registration_token_created",
+            Self::ActionsRegistrationTokenRevoked => "actions_registration_token_revoked",
+            Self::ActionsRunnerRegistered => "actions_runner_registered",
+            Self::ActionsRunnerDisabled => "actions_runner_disabled",
+            Self::ActionsRunnerEnabled => "actions_runner_enabled",
+            Self::ActionsRunnerRemoved => "actions_runner_removed",
         }
     }
 
@@ -310,7 +331,14 @@ impl AuditAction {
             | Self::ActionsEnabled
             | Self::ActionsDisabled
             | Self::ActionsTokenPermissionChanged
-            | Self::ActionsUserUntrusted => AuditCategory::RepositoryAccess,
+            | Self::ActionsUserUntrusted
+            // Actions: S.
+            | Self::ActionsRegistrationTokenCreated
+            | Self::ActionsRegistrationTokenRevoked
+            | Self::ActionsRunnerRegistered
+            | Self::ActionsRunnerDisabled
+            | Self::ActionsRunnerEnabled
+            | Self::ActionsRunnerRemoved => AuditCategory::RepositoryAccess,
             Self::IssueDeleted => AuditCategory::RepositoryContent,
         }
     }
@@ -375,6 +403,13 @@ impl AuditAction {
             Self::ActionsDisabled => "Turned Actions off for a repository",
             Self::ActionsTokenPermissionChanged => "Changed the default workflow token permission",
             Self::ActionsUserUntrusted => "Stopped trusting a pull request author's workflow runs",
+            // Actions: S.
+            Self::ActionsRegistrationTokenCreated => "Created a runner registration token",
+            Self::ActionsRegistrationTokenRevoked => "Revoked a runner registration token",
+            Self::ActionsRunnerRegistered => "Registered a runner",
+            Self::ActionsRunnerDisabled => "Disabled a runner",
+            Self::ActionsRunnerEnabled => "Enabled a runner",
+            Self::ActionsRunnerRemoved => "Removed a runner",
         }
     }
 

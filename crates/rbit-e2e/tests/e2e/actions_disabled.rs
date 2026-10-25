@@ -86,9 +86,10 @@ async fn workflows_pushes_pull_requests_and_dispatches_leave_no_trace() {
         .expect("dispatch request");
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     let response = reqwest::Client::new()
-        .post(server.url("/api/actions/runner.v1.RunnerService/Register"))
-        .header("content-type", "application/proto")
-        .body(Vec::new())
+        .post(server.url("/api/actions/runner/v1/register"))
+        .header("content-type", "application/json")
+        .header("rbit-runner-protocol", "1")
+        .body(r#"{"token":"rbrg_x","name":"r","labels":[],"capabilities":{}}"#)
         .send()
         .await
         .expect("register request");

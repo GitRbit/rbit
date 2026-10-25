@@ -1,5 +1,5 @@
 //! With `[actions] enabled = false` (the default), Actions does not exist: none of its pages
-//! or runner RPCs is routed, no page shows a tab, card, nav entry or webhook event of it,
+//! or runner protocol paths is routed, no page shows a tab, card, nav entry or webhook event of it,
 //! the `OpenAPI` document has no Actions path, and a task token is refused before anything is
 //! looked up.
 //!
@@ -105,7 +105,7 @@ fn actions_are_off_by_default() {
 }
 
 #[tokio::test]
-async fn no_actions_page_or_runner_rpc_is_routed() {
+async fn no_actions_page_or_runner_call_is_routed() {
     let fixture = Fixture::new().await;
     assert!(fixture.services.actions.is_none());
     for (template, methods) in actions::PATHS {
@@ -127,11 +127,13 @@ async fn no_actions_page_or_runner_rpc_is_routed() {
     for path in ["/alice/rocket/actions?workflow=ci.yml&status=success", "/acme/settings/actions"] {
         assert_eq!(fixture.send(Method::GET, path, &[]).await.0, StatusCode::NOT_FOUND, "{path}");
     }
-    let proto = [(header::CONTENT_TYPE, "application/proto")];
-    for path in actions_runner::PATHS.iter().chain(&["/api/actions/runner.v1.RunnerService/FetchSingleTask"]) {
+    // Actions: S. The runner protocol, with what a runner sends, and a path it does not have.
+    let runner = [(header::CONTENT_TYPE, "application/json"), (header::HeaderName::from_static("rbit-runner-protocol"), "1")];
+    for template in actions_runner::PATHS.iter().chain(&["/api/actions/runner/v1/tasks/{id}/artifacts"]) {
+        let path = template.replace("{id}", "1");
         for method in METHODS {
-            let (status, _) = fixture.send(method.clone(), path, &proto).await;
-            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: 404, not the Connect 501");
+            let (status, _) = fixture.send(method.clone(), &path, &runner).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}: 404, not a protocol refusal");
         }
     }
 }

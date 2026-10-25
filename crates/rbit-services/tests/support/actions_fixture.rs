@@ -162,6 +162,8 @@ impl Fixture {
             version: "v12.0.0",
             labels: &labels,
             ephemeral: false,
+            capabilities: &rbit_core::actions::RunnerCapabilities::default(),
+            protocol: 1,
             now,
         };
         let runner = runners.register(&runner).await.unwrap().unwrap();
@@ -172,7 +174,7 @@ impl Fixture {
             ephemeral: false,
             instance_runners_for_all: false,
             token_digest: &[seed.wrapping_add(200); 32],
-            request_key: None,
+            idempotency_key: None,
             now,
         };
         self.database.actions_runs().claim(&request).await.unwrap()
