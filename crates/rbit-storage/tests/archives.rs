@@ -69,7 +69,7 @@ async fn archiving_is_recorded_once_and_undone_by_unarchiving() {
 async fn every_repository_query_reads_the_archive() {
     let fixture = Fixture::new().await;
     let archived = fixture.create(fixture.alice.id(), "archived").await;
-    fixture.create(fixture.alice.id(), "active").await;
+    let active = fixture.create(fixture.alice.id(), "active").await;
     fixture.database.repo_settings().archive(archived.id, fixture.alice.id(), Timestamp(100)).await.unwrap();
 
     let by_id = fixture.database.admin().find_repository(archived.id).await.unwrap().unwrap();
@@ -82,6 +82,22 @@ async fn every_repository_query_reads_the_archive() {
     assert_eq!(listed.items.iter().filter(|repo| repo.repo.is_archived()).count(), 1);
     let explore = fixture.database.repositories().list_recent_public(10).await.unwrap();
     assert_eq!(explore.iter().filter(|repo| repo.repo.is_archived()).count(), 1);
+
+    // Page headers and cross-repository dashboards use separate optimized projections.
+    let store = fixture.database.repositories();
+    for (name, expected) in [("archived", Some(Timestamp(100))), ("active", None)] {
+        let page = store.find_page("alice", name, Some(fixture.alice.id()), false).await.unwrap().unwrap();
+        assert_eq!(page.repo.repo.archived_at, expected, "the optimized page keeps {name}'s archive state");
+    }
+    let readable = store.readable_among(&[archived.id, active.id], fixture.alice.id(), false).await.unwrap();
+    assert_eq!(readable[&archived.id].repo.archived_at, Some(Timestamp(100)));
+    assert_eq!(readable[&active.id].repo.archived_at, None);
+
+    fixture.database.repo_settings().unarchive(archived.id).await.unwrap();
+    let page = store.find_page("alice", "archived", Some(fixture.alice.id()), false).await.unwrap().unwrap();
+    assert_eq!(page.repo.repo.archived_at, None, "unarchiving is visible to the optimized page immediately");
+    let readable = store.readable_among(&[archived.id], fixture.alice.id(), false).await.unwrap();
+    assert_eq!(readable[&archived.id].repo.archived_at, None, "unarchiving is visible to dashboards immediately");
 }
 
 #[tokio::test]
