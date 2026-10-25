@@ -49,18 +49,24 @@ pub(crate) fn host_job(steps: Vec<StepTemplate>) -> JobSpec {
 
 /// Runs `spec` as the poller would, and returns the result and the reporter.
 pub(crate) async fn execute(spec: JobSpec) -> (TaskResult, Arc<Reporter>, tempfile::TempDir) {
-    execute_with(spec, |_| {}).await
+    execute_with(spec, |_| {}, |_| {}).await
 }
 
-async fn execute_with(spec: JobSpec, during: impl FnOnce(Arc<Reporter>)) -> (TaskResult, Arc<Reporter>, tempfile::TempDir) {
+async fn execute_with(
+    spec: JobSpec,
+    configure: impl FnOnce(&mut Loaded),
+    during: impl FnOnce(Arc<Reporter>),
+) -> (TaskResult, Arc<Reporter>, tempfile::TempDir) {
     let work = tempfile::tempdir().unwrap();
+    let mut loaded = loaded(work.path());
+    configure(&mut loaded);
     let reporter =
         Arc::new(Reporter::new(spec.task_id, &crate::task::task_dir(work.path(), spec.task_id), spec.template.steps.len()).unwrap());
     for value in spec.secrets.values().chain([&spec.token]) {
         reporter.add_mask(value.expose());
     }
     during(Arc::clone(&reporter));
-    let executor = JobExecutor::new(Arc::new(loaded(work.path())));
+    let executor = JobExecutor::new(Arc::new(loaded));
     let result = tokio::time::timeout(Duration::from_secs(60), executor.execute(spec, Arc::clone(&reporter))).await.unwrap();
     (result, reporter, work)
 }
@@ -190,12 +196,16 @@ async fn a_cancelled_job_stops_its_step_and_runs_only_always_steps() {
         with(sh("echo cleanup ran"), |step| step.condition = Some("always()".into())),
     ];
     let started = tokio::time::Instant::now();
-    let (result, reporter, _work) = execute_with(host_job(steps), |reporter| {
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            reporter.cancellation().cancel();
-        });
-    })
+    let (result, reporter, _work) = execute_with(
+        host_job(steps),
+        |_| {},
+        |reporter| {
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                reporter.cancellation().cancel();
+            });
+        },
+    )
     .await;
     assert!(started.elapsed() < Duration::from_secs(20));
     let text = reporter.lines().join("\n");
@@ -244,4 +254,80 @@ fn the_task_environment_names_the_run_but_not_the_token() {
         assert_eq!(env.get(name).map(String::as_str), Some(value), "{name}");
     }
     assert!(!env.contains_key("GITHUB_EVENT") && !env.contains_key("GITHUB_TOKEN") && !env.values().any(|value| value.contains("rbat_")));
+}
+
+#[tokio::test]
+async fn container_jobs_need_docker_or_podman() {
+    let mut spec = host_job(vec![step("echo hi")]);
+    spec.template.runs_on = vec!["ubuntu-latest".into()];
+    let (result, reporter, _work) =
+        execute_with(spec, |loaded| loaded.config.container.program = "rbit-no-such-engine".into(), |_| {}).await;
+    assert_eq!(result, TaskResult::Failure);
+    assert!(reporter.lines()[0].contains("`rbit-no-such-engine` is not on PATH"), "{:?}", reporter.lines());
+}
+
+/// A stand-in for the container CLI: it records its arguments, answers the probe, and
+/// "runs" each step by printing its environment file's names.
+#[cfg(unix)]
+#[tokio::test]
+async fn container_jobs_drive_the_cli() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let bin = tempfile::tempdir().unwrap();
+    let calls = bin.path().join("calls");
+    let fake = bin.path().join("docker");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$1 $3\" in\n  'exec sh') echo 'PATH=/usr/local/bin:/usr/bin:/bin'; echo sh; echo bash ;;\n  exec*) echo step ran ;;\nesac\nexit 0\n",
+            calls.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let mut spec = host_job(vec![with(step("echo ${{ secrets.MY_SECRET }}"), |step| {
+        step.env.insert("SECRET_ENV".into(), "${{ secrets.MY_SECRET }}".into());
+    })]);
+    spec.template.runs_on = vec!["ubuntu-latest".into()];
+    spec.template.container = Some(Container {
+        image: "docker.io/library/rust:1.94".into(),
+        env: Env::from([("IN_CONTAINER".into(), "${{ secrets.MY_SECRET }}".into())]),
+        credentials: None,
+    });
+    spec.template.services = vec![rbit_workflow::spec::Service {
+        id: "postgres".into(),
+        image: "postgres:17".into(),
+        env: Env::from([("POSTGRES_PASSWORD".into(), "pw".into())]),
+        credentials: None,
+    }];
+    let program = fake.display().to_string();
+    let (result, reporter, _work) = execute_with(spec, |loaded| loaded.config.container.program = program, |_| {}).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(text.contains("step ran"), "{text}");
+
+    let calls = std::fs::read_to_string(&calls).unwrap();
+    let lines: Vec<&str> = calls.lines().collect();
+    let position =
+        |prefix: &str| lines.iter().position(|line| line.starts_with(prefix)).unwrap_or_else(|| panic!("no `{prefix}` in {calls}"));
+    let order = [
+        "network create",
+        "pull postgres:17",
+        "run --detach --name rbit-1-postgres",
+        "pull docker.io/library/rust:1.94",
+        "create --name rbit-1-job",
+        "start rbit-1-job",
+        "exec rbit-1-job sh -c",
+        "exec --env-file",
+        "rm --force rbit-1-postgres rbit-1-job",
+        "network rm rbit-1",
+    ];
+    let positions: Vec<usize> = order.iter().map(|prefix| position(prefix)).collect();
+    assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{calls}");
+    assert!(!calls.contains(SECRET), "no secret in any argument: {calls}");
+    assert!(
+        lines[position("exec --env-file")]
+            .contains("--workdir /__w/app rbit-1-job bash --noprofile --norc -eo pipefail /__w/_temp/step-0-"),
+        "{calls}"
+    );
 }

@@ -61,8 +61,25 @@ pub struct Output {
 
 /// Runs `program` with `args` and no input, for at most `timeout`.
 pub async fn output(program: &Path, args: &[&str], timeout: Duration) -> std::io::Result<Output> {
-    let child =
-        Command::new(program).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).spawn()?;
+    let mut command = Command::new(program);
+    command.args(args);
+    capture(command, None, timeout).await
+}
+
+/// Runs `command` with `input` on its standard input (or none), for at most `timeout`,
+/// and returns what it printed.
+pub async fn capture(mut command: Command, input: Option<&[u8]>, timeout: Duration) -> std::io::Result<Output> {
+    use tokio::io::AsyncWriteExt as _;
+    command
+        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = command.spawn()?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        stdin.write_all(input).await?;
+        drop(stdin);
+    }
     match tokio::time::timeout(timeout, child.wait_with_output()).await {
         Ok(output) => {
             let output = output?;

@@ -22,13 +22,17 @@ use std::{collections::BTreeMap, future::Future, sync::Arc};
 use rbit_workflow::{
     expr::{Condition, ContextMap, Status, Template, Value, to_text},
     protocol::{Backend as BackendKind, MAX_OUTPUT_BYTES, StepStatus, TaskResult},
-    spec::{Env, JobSpec, StepAction, StepTemplate},
+    spec::{Env, JobSpec, RegistryCredentials, StepAction, StepTemplate},
 };
 use serde_json::{Map, json};
 
 use crate::{
-    backend::{self, Backend, Dirs, View, host::Host},
-    config::Loaded,
+    backend::{
+        self, Backend, Dirs, View,
+        container::{Container, Spec as ContainerSpec},
+        host::Host,
+    },
+    config::{Label, Loaded},
     contexts::{self, Eval},
     steps::{self, Outcome},
     task::{Executor, Reporter},
@@ -51,15 +55,23 @@ impl Executor for JobExecutor {
         let loaded = Arc::clone(&self.loaded);
         async move {
             let steps = spec.template.steps.len();
-            match Job::prepare(&loaded, spec, Arc::clone(&reporter)) {
-                Ok(mut job) => job.run().await,
-                Err(message) => {
-                    reporter.log(&format!("##[error]{message}"));
-                    for index in 0..steps {
-                        reporter.finish_step(index, StepStatus::Skipped);
-                    }
-                    TaskResult::Failure
+            let fail = |message: &str| {
+                reporter.log(&format!("##[error]{message}"));
+                for index in 0..steps {
+                    reporter.finish_step(index, StepStatus::Skipped);
                 }
+                TaskResult::Failure
+            };
+            match Job::prepare(&loaded, spec, Arc::clone(&reporter)) {
+                Ok(mut job) => {
+                    let result = match job.start().await {
+                        Ok(()) => job.run().await,
+                        Err(message) => fail(&message),
+                    };
+                    job.finish().await;
+                    result
+                }
+                Err(message) => fail(&message),
             }
         }
     }
@@ -97,6 +109,8 @@ pub struct Job {
     pub spec: JobSpec,
     pub reporter: Arc<Reporter>,
     pub backend: Backend,
+    /// The label that chose the backend.
+    pub label: Label,
     pub dirs: Dirs,
     /// Every context, `env`, `steps` and `job` kept current.
     pub contexts: ContextMap,
@@ -134,7 +148,10 @@ impl Job {
                 }
                 Backend::Host(Host::new(&dirs))
             }
-            BackendKind::Container => return Err("the container backend is not available in this build of rbit-runner yet".to_owned()),
+            BackendKind::Container => {
+                let container = Container::new(&loaded.config, spec.task_id, &spec.checkout.repository, &dirs, reporter.dir())?;
+                Backend::Container(Box::new(container))
+            }
         };
         reporter.log(&format!("Runner `{}`, label `{}` ({} backend)", loaded.config.name, label.name, backend_name(label.backend)));
 
@@ -166,6 +183,7 @@ impl Job {
             spec,
             reporter,
             backend,
+            label,
             dirs,
             contexts,
             task_env,
@@ -182,6 +200,64 @@ impl Job {
             job.sync_contexts();
         }
         Ok(job)
+    }
+
+    /// Starts what the job runs in: for the container backend, the network, the services
+    /// and the job container, with their `env` and `credentials` evaluated now.
+    pub async fn start(&mut self) -> Result<(), String> {
+        if !matches!(self.backend, Backend::Container(_)) {
+            return Ok(());
+        }
+        let template = self.spec.template.clone();
+        let image = match &template.container {
+            Some(container) => container.image.clone(),
+            None => self.label.image.clone().unwrap_or_default(),
+        };
+        let job = ContainerSpec {
+            image,
+            env: match &template.container {
+                Some(container) => self.render_env(&container.env).map_err(|error| format!("`container.env`: {error}"))?,
+                None => BTreeMap::new(),
+            },
+            credentials: self.credentials(template.container.as_ref().and_then(|container| container.credentials.as_ref()), "container")?,
+        };
+        let mut services = Vec::new();
+        for service in &template.services {
+            let field = format!("services.{}", service.id);
+            services.push((
+                service.id.clone(),
+                ContainerSpec {
+                    image: service.image.clone(),
+                    env: self.render_env(&service.env).map_err(|error| format!("`{field}.env`: {error}"))?,
+                    credentials: self.credentials(service.credentials.as_ref(), &field)?,
+                },
+            ));
+        }
+        let reporter = Arc::clone(&self.reporter);
+        if let Backend::Container(container) = &mut self.backend {
+            reporter.log("##[group]Starting the job's containers");
+            let started = container.start(&reporter, &job, &services).await;
+            reporter.log("##[endgroup]");
+            started?;
+        }
+        Ok(())
+    }
+
+    fn credentials(&self, credentials: Option<&RegistryCredentials>, field: &str) -> Result<Option<(String, String)>, String> {
+        credentials
+            .map(|credentials| {
+                let username = self.render(&credentials.username).map_err(|error| format!("`{field}.credentials.username`: {error}"))?;
+                let password = self.render(&credentials.password).map_err(|error| format!("`{field}.credentials.password`: {error}"))?;
+                Ok((username, password))
+            })
+            .transpose()
+    }
+
+    /// Removes what [`Self::start`] created.
+    pub async fn finish(&mut self) {
+        if let Backend::Container(container) = &self.backend {
+            container.stop(&self.reporter).await;
+        }
     }
 
     /// Runs every step, then evaluates the job's outputs.

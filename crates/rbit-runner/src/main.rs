@@ -63,6 +63,9 @@ async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
         tracing::warn!("{warning}");
     }
     let client = Client::new(&config::server_url(&loaded.config.url, loaded.config.insecure_http)?, Some(credential))?;
+    if loaded.config.backends().contains(&rbit_workflow::protocol::Backend::Container) {
+        backend::container::janitor(&loaded.config).await;
+    }
     let shutdown = CancellationToken::new();
     let signal = shutdown.clone();
     tokio::spawn(async move {

@@ -21,7 +21,7 @@ use super::Outcome;
 use crate::{
     backend::StepCommand,
     commands::{Commands, Line},
-    envfiles::EnvFiles,
+    envfiles::{EnvFiles, Written},
     job::{Job, join},
     process::{self, Exit},
 };
@@ -81,6 +81,14 @@ pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str,
     let (args, raw_args) = command_line(shell, &script_view);
     let command = StepCommand { program, args, raw_args, env: job.process_env(step_env, files.variables(&view.files)), cwd };
 
+    let prepared = match job.backend.command(&command) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            let _ = std::fs::remove_file(&script_path);
+            let _ = files.collect();
+            return job.fail(&format!("cannot prepare the step: {error}"));
+        }
+    };
     let exit = {
         let reporter = &job.reporter;
         let mut commands = Commands::default();
@@ -94,13 +102,15 @@ pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str,
             }
             cancel.cancelled().await;
         };
-        process::run_streaming(job.backend.command(&command), MAX_LOG_LINE_BYTES, stopped, |line| match commands.process(&line) {
+        process::run_streaming(prepared.command, MAX_LOG_LINE_BYTES, stopped, |line| match commands.process(&line) {
             Line::Print(text) => reporter.log(&text),
             Line::AddMask(value) => reporter.add_mask(&value),
             Line::Nothing => {}
         })
         .await
     };
+    // The step's env file is deleted as soon as the step has ended.
+    drop(prepared.env_file);
     let _ = std::fs::remove_file(&script_path);
 
     let written = files.collect();
@@ -115,21 +125,24 @@ pub async fn run(job: &mut Job, index: usize, step: &StepTemplate, script: &str,
         Ok(Exit::Code(None)) => job.fail("The process was killed by a signal."),
     };
     match written {
-        Ok(written) => {
-            for name in &written.refused {
-                job.reporter.log(&format!("##[warning]GITHUB_ENV cannot set `{name}`; the entry was ignored"));
-            }
-            for (name, value) in written.env {
-                job.env.insert(name, value);
-            }
-            for entry in written.path {
-                job.path.insert(0, entry);
-            }
-            job.sync_contexts();
-            Outcome { outputs: written.outputs, ..outcome }
-        }
+        Ok(written) => Outcome { outputs: apply(job, written), ..outcome },
         Err(error) => job.fail(&error),
     }
+}
+
+/// Applies what a step wrote to `GITHUB_ENV` and `GITHUB_PATH`, and returns its outputs.
+fn apply(job: &mut Job, written: Written) -> BTreeMap<String, String> {
+    for name in &written.refused {
+        job.reporter.log(&format!("##[warning]GITHUB_ENV cannot set `{name}`; the entry was ignored"));
+    }
+    for (name, value) in written.env {
+        job.env.insert(name, value);
+    }
+    for entry in written.path {
+        job.path.insert(0, entry);
+    }
+    job.sync_contexts();
+    written.outputs
 }
 
 /// The shell to use and the program that runs it.
