@@ -1,5 +1,5 @@
 //! Email digests: notifications waiting for a user's daily or weekly digest, and the
-//! digests claimed for each period (migration `0045_email_digests.sql`).
+//! digests claimed for each period (migration `0047_email_digests.sql`).
 //!
 //! Who receives a digest and what it says is the service's decision; this store queues
 //! items and makes sending idempotent. [`EmailDigestStore::claim`] inserts the one digest

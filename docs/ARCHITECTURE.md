@@ -490,7 +490,7 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 | `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0045` | `email_digests` (delivery settings, digests, queued notifications) |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0047` | `email_digests` (delivery settings, digests, queued notifications) |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
@@ -498,7 +498,7 @@ that every row survives, the new defaults and triggers apply to old rows, and th
 wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
 continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
 reserved for milestone 3's W, still in progress, and `0038`, `0039` hold M's imports and
-push mirrors. `0045` adds email digests after the milestone; its upgrade test starts from
+push mirrors. `0047` adds email digests after the milestone; its upgrade test starts from
 `0043` with a stored preference, which keeps immediate delivery. `0032` was
 taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
 the gaps are harmless).

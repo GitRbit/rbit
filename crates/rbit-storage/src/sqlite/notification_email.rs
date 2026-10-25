@@ -1,6 +1,6 @@
 //! Email notifications: each user's email preference and the outbox that makes sure a
 //! notification is mailed at most once (migration `0034_notification_email.sql`), and how
-//! they are delivered: one by one or in digests (`0045_email_digests.sql`).
+//! they are delivered: one by one or in digests (`0047_email_digests.sql`).
 //!
 //! Milestone 3 workstream N (email notifications) owns this file.
 //!

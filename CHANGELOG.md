@@ -47,7 +47,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
-- Startup applies migration `0045_email_digests.sql`, adding the delivery choice and digest
+- Startup applies migration `0047_email_digests.sql`, adding the delivery choice and digest
   hour to `notification_email_settings` and the `notification_digests` and
   `notification_digest_items` tables. Existing users keep immediate notification emails;
   nothing changes until someone chooses a digest. Back up the database before upgrading
