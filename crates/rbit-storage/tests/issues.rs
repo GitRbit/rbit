@@ -110,6 +110,11 @@ async fn issues_and_pulls_share_one_sequence_per_repository() {
     assert!(store.find_by_number(fixture.repo, number(3)).await.unwrap().is_none());
     assert!(store.find_by_number(other, number(2)).await.unwrap().is_none());
     assert!(store.find(IssueId(999)).await.unwrap().is_none());
+
+    let (found, author) = store.find_by_number_with_author(fixture.repo, number(2)).await.unwrap().unwrap();
+    assert_eq!(found, second);
+    assert_eq!(author.map(|account| account.name), Some(fixture.alice.name().clone()));
+    assert!(store.find_by_number_with_author(other, number(2)).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -179,6 +184,32 @@ async fn comments_are_counted_and_move_updated_at_forward() {
     assert_eq!(store.delete_comment(second.id).await.unwrap().unwrap().body.as_str(), "second");
     assert!(store.delete_comment(second.id).await.unwrap().is_none());
     assert_eq!(store.find(issue.id).await.unwrap().unwrap().comment_count, 1);
+}
+
+/// Editing reads the current text before writing. A deferred transaction would fail at
+/// once with `SQLITE_BUSY` or `SQLITE_BUSY_SNAPSHOT` whenever another writer got in
+/// between; the write lock must be taken first, so concurrent edits queue instead.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_edits_wait_for_the_write_lock() {
+    let fixture = Fixture::new().await;
+    let issue = fixture.store().create(&fixture.new_issue(IssueKind::Issue, "Start", 10)).await.unwrap();
+    let alice = fixture.alice.id();
+    let tasks: Vec<_> = (0..16)
+        .map(|task| {
+            let store = fixture.store();
+            tokio::spawn(async move {
+                for round in 0..10 {
+                    let title = IssueTitle::parse(&format!("Title {task}-{round}")).unwrap();
+                    store.update_text(issue.id, Some(&title), None, alice, Timestamp(20)).await.unwrap().unwrap();
+                }
+            })
+        })
+        .collect();
+    for task in tasks {
+        task.await.unwrap();
+    }
+    let page = fixture.store().timeline(issue.id, None, 500).await.unwrap();
+    assert_eq!(page.items.len(), 160, "every edit renamed the issue once");
 }
 
 #[tokio::test]

@@ -17,7 +17,8 @@
 //! `[issues] notifications = false`.
 //!
 //! Milestone 3 workstream N: the recipients written to the inbox are handed on to
-//! [`NotificationEmailService`], which also mails those who want it.
+//! [`NotificationEmailService`], which also mails those who want it. The background work
+//! here also sends that service's daily and weekly digests.
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -49,6 +50,9 @@ use crate::{DomainEvent, NotificationEmailService, ServiceContext, ServiceError,
 pub const NOTIFICATIONS_PER_PAGE: u32 = 50;
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const PRUNE_INTERVAL: Duration = Duration::from_hours(24);
+/// How often due email digests are looked for; a digest goes out at most this long after
+/// its hour.
+const DIGEST_INTERVAL: Duration = Duration::from_mins(5);
 const SECONDS_PER_DAY: i64 = 24 * 60 * 60;
 
 pub(crate) fn can_read_with_grants(user: &User, repo: &OwnedRepository, stored: Option<&ViewerGrants>) -> bool {
@@ -119,15 +123,18 @@ impl NotificationService {
         Ok(self.ctx.database.notifications().has_unread(user).await?)
     }
 
-    /// Marks `user`'s notification about `issue` read, if any. Failures are logged, never
-    /// returned: it runs as a side effect of viewing a page.
-    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) {
+    /// Marks `user`'s notification about `issue` read, if any, and returns whether one was
+    /// unread until now. Only then can the unread indicator have changed, so a page needs
+    /// to ask [`Self::has_unread`] again only on `true`. Failures are logged, never
+    /// returned (as `false`): it runs as a side effect of viewing a page.
+    pub async fn mark_thread_read(&self, user: AccountId, issue: IssueId) -> bool {
         if !self.enabled() {
-            return;
+            return false;
         }
-        if let Err(error) = self.ctx.database.notifications().mark_issue_read(user, issue).await {
+        self.ctx.database.notifications().mark_issue_read(user, issue).await.unwrap_or_else(|error| {
             tracing::warn!(%error, user = user.0, issue = issue.0, "cannot mark a notification read");
-        }
+            false
+        })
     }
 
     // ------------------------------------------------------------------ subscriptions
@@ -135,6 +142,15 @@ impl NotificationService {
     /// `user`'s subscription to `issue`, if they have one.
     pub async fn subscription(&self, user: AccountId, issue: IssueId) -> Result<Option<Subscription>, ServiceError> {
         Ok(self.ctx.database.notifications().subscription(issue, user).await?)
+    }
+
+    /// `user`'s subscription to `issue` and whether they have an unread notification about
+    /// it, in one statement: a thread's page shows the first and marks the second read
+    /// ([`Self::mark_thread_read`]) only when there is one. While notifications are
+    /// turned off nothing is unread.
+    pub async fn thread_state(&self, user: AccountId, issue: IssueId) -> Result<(Option<Subscription>, bool), ServiceError> {
+        let (subscription, unread) = self.ctx.database.notifications().thread_state(issue, user).await?;
+        Ok((subscription, unread && self.enabled()))
     }
 
     /// Subscribes or unsubscribes `user` by hand (the caller checked they can read it).
@@ -156,21 +172,16 @@ impl NotificationService {
         let per_page = per_page.max(1);
         let offset = u64::from(page.max(1) - 1) * u64::from(per_page);
         let rows = store.list(user.id(), unread_only, per_page, offset).await?;
-        let mut readable: HashMap<RepoId, bool> = HashMap::new();
+        // Whether the user may still read each row's repository: one batch over the
+        // page's distinct repositories (a deleted one is simply not returned).
+        let mut repos: Vec<RepoId> = rows.iter().map(|row| row.repo).collect();
+        repos.sort_unstable_by_key(|id| id.0);
+        repos.dedup();
+        let readable = self.ctx.database.repositories().readable_among(&repos, user.id(), user.is_admin).await?;
         let mut hidden = Vec::new();
         let mut notifications = Vec::with_capacity(rows.len());
         for row in rows {
-            let can_read = if let Some(can_read) = readable.get(&row.repo) {
-                *can_read
-            } else {
-                let can_read = match self.ctx.database.admin().find_repository(row.repo).await? {
-                    Some(repo) => self.can_read(user, &repo).await?,
-                    None => false,
-                };
-                readable.insert(row.repo, can_read);
-                can_read
-            };
-            if can_read {
+            if readable.contains_key(&row.repo) {
                 notifications.push(row);
             } else {
                 hidden.push(row.id);
@@ -379,7 +390,8 @@ impl NotificationService {
 
     // ------------------------------------------------------------------ background work
 
-    /// Starts the notification fan-out subscriber and the daily pruning. Called once from
+    /// Starts the notification fan-out subscriber, the daily pruning and, with email, the
+    /// digest schedule. Called once from
     /// [`crate::Services::spawn_background`]; does nothing when notifications are off.
     pub fn spawn_background(&self) {
         if self.background.started.swap(true, Ordering::SeqCst) || !self.enabled() {
@@ -390,6 +402,10 @@ impl NotificationService {
         self.background.tasks.spawn(async move { service.listen(events).await });
         let service = self.clone();
         self.background.tasks.spawn(async move { service.prune_periodically().await });
+        if let Some(email) = self.email.clone() {
+            let shutdown = self.background.shutdown.clone();
+            self.background.tasks.spawn(async move { send_digests_periodically(email, shutdown).await });
+        }
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from
@@ -431,6 +447,29 @@ impl NotificationService {
                 () = self.background.shutdown.cancelled() => break,
                 () = tokio::time::sleep(PRUNE_INTERVAL) => {}
             }
+        }
+    }
+}
+
+/// Sends due digests on start-up (catching up after downtime) and then every
+/// [`DIGEST_INTERVAL`]. A run interrupted by shutdown is safe: claimed digests are never
+/// sent twice.
+async fn send_digests_periodically(email: NotificationEmailService, shutdown: CancellationToken) {
+    loop {
+        let run = tokio::select! {
+            () = shutdown.cancelled() => break,
+            run = email.send_digests() => run,
+        };
+        match run {
+            Ok(run) if run.sent + run.failed + run.empty > 0 => {
+                tracing::info!(sent = run.sent, failed = run.failed, empty = run.empty, "notification digests processed");
+            }
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "cannot send notification digests"),
+        }
+        tokio::select! {
+            () = shutdown.cancelled() => break,
+            () = tokio::time::sleep(DIGEST_INTERVAL) => {}
         }
     }
 }

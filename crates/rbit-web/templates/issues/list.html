@@ -15,7 +15,7 @@
   <div class="flex shrink-0 gap-2">
     <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
     <a href="{{ milestones_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}Milestones</a>
-    <a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">New issue</a>
+    {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">New issue</a>{% endif %}
   </div>
 </div>
 

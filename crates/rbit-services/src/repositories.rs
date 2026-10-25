@@ -13,12 +13,17 @@ use std::{path::PathBuf, sync::Arc};
 
 use rbit_auth::{Grants, repo_access};
 use rbit_core::{
-    Account, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, repository::OwnedRepository,
+    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility,
+    mirror::Mirror,
+    repository::{ArchivedFilter, OwnedRepository},
 };
 use rbit_git::{RepositoryReader, RepositoryStorage};
-use rbit_storage::{NewRepository, RepositoryStore};
+use rbit_storage::{
+    NewRepository, RepositoryStore,
+    sqlite::{ForkParent, RepositoryPage, collaborators::ViewerGrants},
+};
 
-use crate::{DomainEvent, EventBus, ServiceContext, ServiceError};
+use crate::{DomainEvent, EventBus, ServiceContext, ServiceError, StarSummary, timeline::OpenCounts};
 
 const MAX_DESCRIPTION_LEN: usize = 350;
 /// Upper bound on the dashboard list; it is a jumping-off point, not an archive.
@@ -41,11 +46,38 @@ pub struct CreateRepository {
 pub struct RepoContext {
     pub repo: OwnedRepository,
     pub access: RepoAccess,
+    /// The signed-in user `access` is exactly the access of, so it can be reused for
+    /// them within the request. `None` for anonymous viewers and for contexts whose
+    /// access is not a user's own (system work, deploy keys, capped LFS tokens).
+    pub viewer: Option<AccountId>,
+    /// `viewer`'s collaborator permission on the repository, read with their other grants
+    /// in this request (`None` without one, and for owners and site administrators, whose
+    /// grants are not looked up).
+    pub collaborator: Option<Permission>,
     pub reader: RepositoryReader,
     pub disk_path: PathBuf,
 }
 
 impl RepoContext {
+    /// The archive guard: [`ServiceError::Archived`] when the repository is archived.
+    ///
+    /// Every write to a repository's content asks this, at the same chokepoints branch
+    /// protection uses — the push gate (`ProtectionService::check_push`, for HTTP, SSH and
+    /// browser edits), merges, issues, pull requests, comments, reviews, labels,
+    /// milestones, releases, commit statuses and LFS uploads and locks — after the
+    /// access check, so only people who could otherwise write learn why they may not.
+    /// Reading, cloning, forking and starring never ask; neither do the settings that
+    /// archive, unarchive, transfer or delete the repository.
+    pub fn ensure_writable(&self) -> Result<(), ServiceError> {
+        if self.repo.repo.is_archived() { Err(ServiceError::Archived) } else { Ok(()) }
+    }
+
+    /// Whether the viewer may change the repository's content: write access to a
+    /// repository that is not archived. What pages use to show write controls.
+    pub fn can_write_content(&self) -> bool {
+        self.access.can_write() && !self.repo.repo.is_archived()
+    }
+
     /// Loads repository `id` for system work (background jobs), or `None` if it no
     /// longer exists. See [`Self::for_system`].
     pub(crate) async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {
@@ -61,8 +93,22 @@ impl RepoContext {
     pub(crate) fn for_system(repo: OwnedRepository, storage: &RepositoryStorage) -> Self {
         let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = storage.reader(repo.repo.owner_id, repo.repo.id);
-        Self { repo, access: RepoAccess::Read, reader, disk_path }
+        Self { repo, access: RepoAccess::Read, viewer: None, collaborator: None, reader, disk_path }
     }
+}
+
+/// What every repository page shows in its header besides the repository itself, read
+/// together with it by [`RepositoryService::open_page`] and shown only once the viewer
+/// may read the repository.
+#[derive(Debug, Clone)]
+pub struct RepoHeaderData {
+    pub stars: StarSummary,
+    /// Forks the viewer may read.
+    pub fork_count: u64,
+    /// The repository this one was forked from, when the viewer may read it.
+    pub parent: Option<ForkParent>,
+    pub mirror: Option<Mirror>,
+    pub open_counts: OpenCounts,
 }
 
 /// Explore page input, exactly as requested (`?q=…&sort=…&page=…`).
@@ -70,6 +116,8 @@ impl RepoContext {
 pub struct RepoSearch {
     pub text: String,
     pub sort: RepoSort,
+    /// Archived repositories are listed unless this says otherwise.
+    pub archived: ArchivedFilter,
     /// 1-based; `0` is treated as `1`.
     pub page: u32,
 }
@@ -178,6 +226,36 @@ impl RepositoryService {
         self.open_found(viewer, repo).await
     }
 
+    /// Like [`Self::open`], together with the page header's data ([`RepoHeaderData`]) in
+    /// the same statement. Access is decided from that row exactly as [`Self::open`]
+    /// decides it, before anything is returned: a repository the viewer may not read is
+    /// [`ServiceError::NotFound`]. Only a private parent of a fork needs a second lookup,
+    /// to check that the viewer may read it too.
+    pub async fn open_page(&self, viewer: Option<&User>, owner: &str, name: &str) -> Result<(RepoContext, RepoHeaderData), ServiceError> {
+        let name = name.strip_suffix(".git").unwrap_or(name);
+        let viewer_is_admin = viewer.is_some_and(|user| user.is_admin);
+        let page = self.store.find_page(owner, name, viewer.map(User::id), viewer_is_admin).await?.ok_or(ServiceError::NotFound)?;
+        let RepositoryPage { repo, grants, star_count, starred_by_viewer, readable_forks, parent, mirror, open_issues, open_pulls } = page;
+        let grants = page_grants(viewer, &repo, grants);
+        let ctx = self.context(viewer, repo, grants)?;
+        let parent = match parent {
+            Some(parent) if !parent.visibility.is_public() => match self.open(viewer, &parent.owner, &parent.name).await {
+                Ok(opened) if opened.repo.repo.id == parent.id => Some(parent),
+                Ok(_) | Err(ServiceError::NotFound) => None,
+                Err(error) => return Err(error),
+            },
+            parent => parent,
+        };
+        let header = RepoHeaderData {
+            stars: StarSummary { count: i64::try_from(star_count).unwrap_or(i64::MAX), starred_by_viewer },
+            fork_count: readable_forks,
+            parent,
+            mirror,
+            open_counts: OpenCounts { issues: open_issues, pulls: open_pulls },
+        };
+        Ok((ctx, header))
+    }
+
     /// Like [`Self::open`], but `owner/name` may also be a name the repository had before
     /// it was renamed or transferred, so existing clones keep working over Git. A
     /// repository currently called `owner/name` always wins over an old name.
@@ -203,13 +281,19 @@ impl RepositoryService {
 
     async fn open_found(&self, viewer: Option<&User>, repo: OwnedRepository) -> Result<RepoContext, ServiceError> {
         let grants = viewer_grants(&self.store, viewer, &repo).await?;
+        self.context(viewer, repo, grants)
+    }
+
+    /// The context of `repo` for `viewer` with `grants`, or [`ServiceError::NotFound`]
+    /// when they may not read it.
+    fn context(&self, viewer: Option<&User>, repo: OwnedRepository, grants: Grants) -> Result<RepoContext, ServiceError> {
         let access = repo_access(viewer, &repo, &grants);
         if !access.can_read() {
             return Err(ServiceError::NotFound);
         }
         let disk_path = self.storage.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = self.storage.reader(repo.repo.owner_id, repo.repo.id);
-        Ok(RepoContext { repo, access, reader, disk_path })
+        Ok(RepoContext { repo, access, viewer: viewer.map(User::id), collaborator: grants.collaborator, reader, disk_path })
     }
 
     /// Repositories of `owner` that `viewer` may see.
@@ -239,12 +323,12 @@ impl RepositoryService {
     /// Pages past the end are clamped to the last page.
     pub async fn explore(&self, search: &RepoSearch) -> Result<RepoSearchResults, ServiceError> {
         let text: String = search.text.trim().chars().take(MAX_SEARCH_LEN).collect();
-        let total = u64::try_from(self.store.count_public(&text).await?).unwrap_or_default();
+        let total = u64::try_from(self.store.count_public(&text, search.archived).await?).unwrap_or_default();
         let mut results = RepoSearchResults { repos: Vec::new(), total, page: search.page.max(1), per_page: EXPLORE_PAGE_SIZE };
         results.page = results.page.min(results.page_count());
 
         let offset = (results.page - 1).saturating_mul(EXPLORE_PAGE_SIZE);
-        results.repos = self.store.search_public(&text, search.sort, EXPLORE_PAGE_SIZE, offset).await?;
+        results.repos = self.store.search_public(&text, search.sort, search.archived, EXPLORE_PAGE_SIZE, offset).await?;
         Ok(results)
     }
 
@@ -272,11 +356,26 @@ pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owne
 /// What `viewer` was granted on `repo`, for [`repo_access`]. Skips the query when the
 /// answer cannot change the outcome (anonymous viewers, site admins, the personal owner).
 pub(crate) async fn viewer_grants(store: &RepositoryStore, viewer: Option<&User>, repo: &OwnedRepository) -> Result<Grants, ServiceError> {
-    let Some(user) = viewer.filter(|user| !user.is_admin && user.id() != repo.repo.owner_id) else {
+    let Some(user) = grant_holder(viewer, repo) else {
         return Ok(Grants::default());
     };
-    let stored = store.grants(repo.repo.id, repo.repo.owner_id, user.id()).await?;
-    Ok(Grants { org_role: stored.org_role, org_base: stored.org_base.permission(), team: stored.team, collaborator: stored.collaborator })
+    Ok(policy_grants(store.grants(repo.repo.id, repo.repo.owner_id, user.id()).await?))
+}
+
+/// The viewer whose grants on `repo` matter: signed in, neither a site administrator nor
+/// the owner (who have full access whatever they were granted).
+fn grant_holder<'u>(viewer: Option<&'u User>, repo: &OwnedRepository) -> Option<&'u User> {
+    viewer.filter(|user| !user.is_admin && user.id() != repo.repo.owner_id)
+}
+
+/// `stored` grants of `viewer` read together with `repo` (already for this viewer),
+/// as [`viewer_grants`] would have looked them up.
+fn page_grants(viewer: Option<&User>, repo: &OwnedRepository, stored: ViewerGrants) -> Grants {
+    grant_holder(viewer, repo).map_or_else(Grants::default, |_| policy_grants(stored))
+}
+
+fn policy_grants(stored: ViewerGrants) -> Grants {
+    Grants { org_role: stored.org_role, org_base: stored.org_base.permission(), team: stored.team, collaborator: stored.collaborator }
 }
 
 #[cfg(test)]

@@ -29,6 +29,11 @@ pub enum ServiceError {
     #[error("you do not have permission to do that")]
     Forbidden,
 
+    /// The repository is archived, so nothing in it may change (see
+    /// [`crate::RepoContext::ensure_writable`]).
+    #[error("{}", rbit_core::repository::ARCHIVED_READ_ONLY)]
+    Archived,
+
     /// Too many attempts from this client or against this account; retry later.
     #[error("too many attempts; try again in {retry_after_seconds} seconds")]
     RateLimited { retry_after_seconds: u64 },

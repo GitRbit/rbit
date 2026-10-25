@@ -16,10 +16,13 @@
 //!   no credential helpers and no prompts; credentials travel in the remote URL.
 //! * [`MailLog`] (milestone 3, N) captures the messages servers configured with
 //!   `[mail] transport = "log"` write to the log, so tests can read and follow emails.
+//! * [`TestServer::with_services`] runs background work a test cannot wait for (a digest
+//!   due tomorrow) on the server's own runtime, with its services.
 //!
 //! Milestone 1 workstream T owns this crate.
 
 use std::{
+    future::Future,
     net::SocketAddr,
     path::{Path, PathBuf},
     process::{Command, Output},
@@ -67,6 +70,9 @@ pub struct TestServer {
     base_url: String,
     stop: Option<watch::Sender<bool>>,
     thread: Option<thread::JoinHandle<()>>,
+    /// The server's services and runtime, for [`TestServer::with_services`]; released
+    /// before the server thread is joined.
+    services: Option<(Services, tokio::runtime::Handle)>,
     /// Dropped last, once the server thread (and every open file) is gone.
     data_dir: Option<TempDir>,
 }
@@ -102,12 +108,23 @@ impl TestServer {
             .spawn(move || serve(config, listener, &ready_tx, stop_rx))
             .expect("spawn the server thread");
 
-        match ready_rx.recv() {
-            Ok(Ok(())) => {}
+        let services = match ready_rx.recv() {
+            Ok(Ok(services)) => services,
             Ok(Err(error)) => panic!("the test server failed to start: {error}"),
             Err(mpsc::RecvError) => panic!("the test server thread exited during start-up"),
-        }
-        Self { addr, base_url, stop: Some(stop_tx), thread: Some(thread), data_dir: Some(data_dir) }
+        };
+        Self { addr, base_url, stop: Some(stop_tx), thread: Some(thread), services: Some(services), data_dir: Some(data_dir) }
+    }
+
+    /// Runs `work` with the server's services on the server's runtime and returns its
+    /// result: for background work a test cannot wait for, such as a digest due tomorrow.
+    pub async fn with_services<F, T>(&self, work: impl FnOnce(Services) -> F) -> T
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let (services, runtime) = self.services.as_ref().expect("the server is running");
+        runtime.spawn(work(services.clone())).await.expect("the work on the server panicked")
     }
 
     /// The bound socket address.
@@ -164,6 +181,7 @@ impl TestServer {
 
 impl Drop for TestServer {
     fn drop(&mut self) {
+        self.services = None;
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(true);
         }
@@ -179,7 +197,10 @@ impl Drop for TestServer {
 
 /// The server thread: one Tokio runtime per instance, torn down completely on exit so
 /// that every file in the data directory is closed before it is removed.
-fn serve(config: Config, listener: std::net::TcpListener, ready: &mpsc::Sender<Result<(), String>>, stop: watch::Receiver<bool>) {
+/// What a started server hands back: its services and its runtime.
+type Ready = Result<(Services, tokio::runtime::Handle), String>;
+
+fn serve(config: Config, listener: std::net::TcpListener, ready: &mpsc::Sender<Ready>, stop: watch::Receiver<bool>) {
     let runtime = match tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build() {
         Ok(runtime) => runtime,
         Err(error) => {
@@ -188,7 +209,7 @@ fn serve(config: Config, listener: std::net::TcpListener, ready: &mpsc::Sender<R
         }
     };
     runtime.block_on(async move {
-        let (app, database) = match boot(config).await {
+        let (app, database, services) = match boot(config).await {
             Ok(booted) => booted,
             Err(error) => {
                 let _ = ready.send(Err(error));
@@ -202,7 +223,7 @@ fn serve(config: Config, listener: std::net::TcpListener, ready: &mpsc::Sender<R
                 return;
             }
         };
-        let _ = ready.send(Ok(()));
+        let _ = ready.send(Ok((services, tokio::runtime::Handle::current())));
 
         let mut graceful = stop.clone();
         let server = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(async move {
@@ -226,7 +247,7 @@ fn serve(config: Config, listener: std::net::TcpListener, ready: &mpsc::Sender<R
 }
 
 /// The same wiring as `rbit_server::serve::run`.
-async fn boot(config: Config) -> Result<(axum::Router, Database), String> {
+async fn boot(config: Config) -> Result<(axum::Router, Database, Services), String> {
     let config = Arc::new(config);
     let storage = &config.storage;
     tokio::fs::create_dir_all(storage.repositories_dir()).await.map_err(|e| format!("cannot create the data directory: {e}"))?;
@@ -234,8 +255,8 @@ async fn boot(config: Config) -> Result<(axum::Router, Database), String> {
     let kv = KvStore::open(&storage.kv_path()).map_err(|e| format!("cannot open redb: {e}"))?;
     let services = Services::new(Arc::clone(&config), &database, &kv).await.map_err(|e| format!("cannot build services: {e}"))?;
     services.spawn_background();
-    let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
-    Ok((app, database))
+    let app = rbit_web::router(AppState::new(Arc::clone(&config), services.clone()));
+    Ok((app, database, services))
 }
 
 // ------------------------------------------------------------------ HTTP client

@@ -2,18 +2,18 @@
 //!
 //! Frontend workstream T owns this file.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
 #[derive(Debug, Clone)]
 pub struct PreferenceStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl PreferenceStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

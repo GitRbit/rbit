@@ -5,11 +5,11 @@
 
 use std::collections::HashMap;
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     lfs::{LfsLock, LfsLockId, LfsOid, LockOwner},
 };
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -87,7 +87,7 @@ pub struct LockFilter<'a> {
 
 #[derive(Debug, Clone)]
 pub struct LfsStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 fn size_param(size: u64) -> Result<i64, StorageError> {
@@ -95,7 +95,7 @@ fn size_param(size: u64) -> Result<i64, StorageError> {
 }
 
 impl LfsStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

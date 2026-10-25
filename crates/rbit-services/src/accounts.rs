@@ -24,6 +24,7 @@ use std::{
 
 use rbit_auth::{Passwords, SessionToken, TokenDigest};
 use rbit_core::{Account, AccountId, AccountName, Config, Email, RegistrationMode, Timestamp, User};
+pub use rbit_storage::SessionUser;
 use rbit_storage::{AccountStore, NewUser, SessionRecord, SessionStore, kv::StoredSession};
 use subtle::ConstantTimeEq;
 use tokio::sync::broadcast::{self, error::TryRecvError};
@@ -243,10 +244,14 @@ impl AccountService {
         Ok(token)
     }
 
-    /// Resolves a cookie token to its user, sliding the expiry forward on use (never past
-    /// the maximum session age). Sessions of deleted or suspended users, and sessions past
-    /// the maximum age, are discarded.
-    pub async fn resume_session(&self, token: &SessionToken) -> Result<Option<User>, ServiceError> {
+    /// Resolves a cookie token to its user, sliding expiry forward up to the maximum
+    /// session age. Deleted or suspended users and sessions past that age are discarded.
+    ///
+    /// The user comes with what every page of the request needs to know about them —
+    /// whether they must replace their password first and whether they have unread
+    /// notifications (always `false` with `[issues] notifications = false`) — read in the
+    /// same single query.
+    pub async fn resume_session(&self, token: &SessionToken) -> Result<Option<SessionUser>, ServiceError> {
         let digest = token.digest();
         let Some(record) = self.sessions.get(digest).await? else {
             return Ok(None);
@@ -256,7 +261,7 @@ impl AccountService {
             self.sessions.delete(digest).await?;
             return Ok(None);
         }
-        let Some(user) = self.accounts.find_active_user(record.account_id).await? else {
+        let Some(user) = self.accounts.find_session_user(record.account_id, self.config.issues.notifications).await? else {
             self.sessions.delete(digest).await?;
             return Ok(None);
         };

@@ -4,6 +4,10 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', ti
 const dateLabel = value => dateFormatter.format(new Date(`${value}T00:00:00Z`));
 const countLabel = count => `${count} commit${count === 1 ? '' : 's'}`;
 
+// The tooltips on show. Hiding runs on every scroll event of every page, so it touches
+// only these instead of searching the document (a full walk of a large diff's DOM).
+const shown = new Set();
+
 function showDayTooltip(day) {
   // Keep the SVG title as the no-script fallback, without a second delayed tooltip.
   day.querySelector('title')?.remove();
@@ -11,13 +15,16 @@ function showDayTooltip(day) {
   const tooltip = calendar.querySelector('[data-contribution-tooltip]');
   tooltip.textContent = `${countLabel(Number(day.dataset.count))} on ${dateLabel(day.dataset.contributionDay)}`;
   tooltip.hidden = false;
+  shown.add(tooltip);
   const box = day.getBoundingClientRect();
   tooltip.style.left = `${Math.max(8, Math.min(innerWidth - tooltip.offsetWidth - 8, box.left + box.width / 2 - tooltip.offsetWidth / 2))}px`;
   tooltip.style.top = `${box.top >= tooltip.offsetHeight + 12 ? box.top - tooltip.offsetHeight - 8 : box.bottom + 8}px`;
 }
 
 function hideTooltips() {
-  for (const tooltip of document.querySelectorAll('[data-contribution-tooltip]')) tooltip.hidden = true;
+  if (!shown.size) return;
+  for (const tooltip of shown) tooltip.hidden = true;
+  shown.clear();
 }
 
 function selectDay(day) {

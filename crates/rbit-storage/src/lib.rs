@@ -13,8 +13,10 @@ pub mod error;
 pub mod kv;
 pub mod sealing;
 pub mod sqlite;
+mod work;
 
 pub use error::StorageError;
 pub use kv::{KvStore, SessionRecord, SessionStore};
 pub use sealing::SealingKey;
-pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore};
+pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};
+pub use work::{Work, count_work};

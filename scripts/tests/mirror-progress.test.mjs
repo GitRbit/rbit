@@ -14,7 +14,7 @@ function browser(fetch) {
   const document = { querySelectorAll: () => [panel], addEventListener: (event, callback) => listeners.set(event, callback) };
   const window = { location: { replace: url => redirects.push(url) }, addEventListener() {} };
   vm.runInNewContext(source, { document, window, fetch, WeakSet, setTimeout: (callback, delay) => timers.push({ callback, delay }) });
-  return { panel, fields, timers, redirects, listeners };
+  return { panel, fields, timers, redirects, listeners, document };
 }
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -59,4 +59,18 @@ test("htmx settle does not create duplicate polling loops", async () => {
   page.listeners.get("htmx:afterSettle")();
   await settle();
   assert.equal(requests, 1);
+});
+
+test("htmx settle looks for new panels within the swapped element only", async () => {
+  const requests = [];
+  const page = browser(async url => { requests.push(url); return response({ phase: "queued", message: "Waiting", complete: false }); });
+  page.document.querySelectorAll = () => { throw new Error("settling must not scan the whole page"); };
+  const swapped = { ...page.panel, dataset: { statusUrl: "/c/d/mirror/status", homeUrl: "/c/d" } };
+  const main = { ...page.panel, dataset: { statusUrl: "/e/f/mirror/status", homeUrl: "/e/f" }, querySelectorAll: () => [], matches: selector => selector === "[data-mirror-progress]" };
+  page.listeners.get("htmx:afterSettle")({ target: main, detail: { elt: { querySelectorAll: () => [swapped], matches: () => false } } });
+  await settle();
+  assert.deepEqual(requests, ["/a/b/mirror/status", "/c/d/mirror/status"]);
+  page.listeners.get("htmx:afterSettle")({ detail: { elt: main } });
+  await settle();
+  assert.equal(requests.length, 3, "a swapped-in panel itself is found too");
 });

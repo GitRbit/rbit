@@ -17,9 +17,25 @@ function close(input) {
   listFor(input).hidden = true;
   input.removeAttribute('aria-activedescendant');
 }
-function enhance() {
-  if (!editor()) return;
-  for (const button of document.querySelectorAll('[data-reply]')) button.hidden = false;
+// The element htmx swapped in (or the content an event names); the document otherwise.
+const rootOf = (event) => {
+  const root = event?.detail?.root ?? event?.detail?.elt ?? event?.target;
+  return typeof root?.querySelectorAll === 'function' ? root : document;
+};
+/** Elements in `root` matching `selector`, `root` included. */
+const within = (root, selector) => {
+  const found = [...root.querySelectorAll(selector)];
+  if (root.matches?.(selector)) found.unshift(root);
+  return found;
+};
+// Reply buttons need the editor. Only the swapped element can hold new buttons, unless
+// it brought the editor, which enables the buttons already on the page too.
+function enhance(event) {
+  const root = rootOf(event);
+  const scope = root === document || within(root, '[data-discussion-editor]').length ? document : root;
+  const buttons = within(scope, '[data-reply]');
+  if (!buttons.length || !editor()) return;
+  for (const button of buttons) button.hidden = false;
 }
 function insert(input, option) {
   const mention = mentionAt(input.value, input.selectionStart);

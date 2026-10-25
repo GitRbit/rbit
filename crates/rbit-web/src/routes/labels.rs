@@ -50,7 +50,7 @@ async fn render(state: &AppState, loaded: &RepoPage, page: Page, form: LabelForm
         page: page.titled(format!("Labels · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(state, "issues"),
         labels: usage.iter().map(|usage| LabelView::new(usage, &home)).collect(),
-        can_write: loaded.ctx.access.can_write(),
+        can_write: loaded.ctx.can_write_content(),
         create_url: format!("{home}/labels"),
         defaults_url: format!("{home}/labels/defaults"),
         issues_url: format!("{home}/issues"),

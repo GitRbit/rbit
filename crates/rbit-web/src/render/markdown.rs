@@ -13,6 +13,11 @@
 //!    targets (from Markdown and from raw HTML alike) to repository URLs, after
 //!    ammonia has already discarded dangerous schemes.
 //!
+//! The sanitiser is configured once per process (a configured `ammonia::Builder` is
+//! hundreds of allocations). Its attribute filter cannot carry per-document state, so the
+//! document being sanitised on a thread is lent to it through a thread-local for the
+//! duration of that one synchronous `clean` call ([`DocumentScope`]).
+//!
 //! Every `id` in the output (heading anchors, footnotes and raw HTML alike) is prefixed
 //! with [`ID_PREFIX`], as GitHub does, so a document cannot claim an id the page itself
 //! uses (such as `issuecomment-12`, which htmx targets); in-document `#fragment` links
@@ -20,12 +25,14 @@
 
 use std::{
     borrow::Cow,
+    cell::RefCell,
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
 
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
+use super::document_cache::DocumentCache;
 use crate::urls::{DocumentBase, LinkKind, ResolvedLink};
 
 /// The prefix of every `id` a rendered document carries.
@@ -36,8 +43,14 @@ pub const ID_PREFIX: &str = "user-content-";
 ///
 /// With a `base`, relative links and images resolve against the document's location in
 /// its repository (see [`DocumentBase::resolve`]); without one they are left as written.
+/// Documents with a base (READMEs, Markdown files, release notes) are kept in
+/// [`DocumentCache::shared`], so viewing one again copies the stored HTML instead of
+/// rendering it.
 pub fn render_markdown(source: &str, base: Option<&DocumentBase>) -> String {
-    render(source, base, None)
+    match base {
+        Some(base) => DocumentCache::shared().get_or_render(source, base, || render(source, Some(base), None)),
+        None => render(source, None, None),
+    }
 }
 
 /// What [`render_markdown_rewriting`] puts in place of one run of text.
@@ -77,23 +90,56 @@ fn render(source: &str, base: Option<&DocumentBase>, rewrite: Option<Rewrite<'_>
     }
     let mut unsafe_html = String::with_capacity(source.len() * 3 / 2);
     html::push_html(&mut unsafe_html, events.into_iter());
-    match base {
-        None => sanitizer().clean(&unsafe_html).to_string(),
-        Some(base) => {
-            let mut builder = configured_builder();
-            let base = base.clone();
-            builder.attribute_filter(move |element, attribute, value| {
-                if element == "a" && attribute == "href" && kept.contains(value) {
-                    return Some(Cow::Borrowed(value));
-                }
-                if let Some(fragment) = prefixed_fragment(element, attribute, value) {
-                    return Some(Cow::Owned(fragment));
-                }
-                resolve_attribute(&base, element, attribute, value)
-            });
-            builder.clean(&unsafe_html).to_string()
-        }
+    let _scope = base.map(|base| DocumentScope::enter(Document { base: base.clone(), kept }));
+    sanitizer().clean(&unsafe_html).to_string()
+}
+
+/// What the shared sanitiser resolves links against while it cleans one document.
+struct Document {
+    base: DocumentBase,
+    /// Link targets of rewritten text, kept exactly as written.
+    kept: HashSet<String>,
+}
+
+thread_local! {
+    /// The document being sanitised on this thread, if it has a base.
+    static DOCUMENT: RefCell<Option<Document>> = const { RefCell::new(None) };
+}
+
+/// Lends a document to [`filter_attribute`] until dropped, restoring what was there
+/// before (also when sanitising panics).
+struct DocumentScope {
+    previous: Option<Document>,
+}
+
+impl DocumentScope {
+    fn enter(document: Document) -> Self {
+        Self { previous: DOCUMENT.replace(Some(document)) }
     }
+}
+
+impl Drop for DocumentScope {
+    fn drop(&mut self) {
+        DOCUMENT.set(self.previous.take());
+    }
+}
+
+/// The shared sanitiser's attribute filter: with a document on this thread, relative
+/// targets resolve against its base; without one, only `srcset` is checked.
+fn filter_attribute<'u>(element: &str, attribute: &str, value: &'u str) -> Option<Cow<'u, str>> {
+    DOCUMENT.with_borrow(|document| {
+        if document.as_ref().is_some_and(|document| element == "a" && attribute == "href" && document.kept.contains(value)) {
+            return Some(Cow::Borrowed(value));
+        }
+        if let Some(fragment) = prefixed_fragment(element, attribute, value) {
+            return Some(Cow::Owned(fragment));
+        }
+        match document {
+            Some(document) => resolve_attribute(&document.base, element, attribute, value),
+            None if matches!(element, "source" | "img") && attribute == "srcset" => Some(Cow::Owned(resolve_srcset(None, value))),
+            None => Some(Cow::Borrowed(value)),
+        }
+    })
 }
 
 /// Joins adjacent text events outside code, links and images and replaces each run with
@@ -260,7 +306,13 @@ fn unique_slug(seen: &mut HashMap<String, usize>, text: &str) -> String {
     unique
 }
 
+/// How many sanitisers were configured, for tests: one per process.
+#[cfg(test)]
+static CONFIGURED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn configured_builder() -> ammonia::Builder<'static> {
+    #[cfg(test)]
+    CONFIGURED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut builder = ammonia::Builder::default();
     builder
         .add_tags(["input", "details", "summary", "picture", "source"])
@@ -277,20 +329,13 @@ fn configured_builder() -> ammonia::Builder<'static> {
     builder
 }
 
-/// The shared sanitiser for documents without a base (no per-document filter).
+/// The one sanitiser, for every document; per-document state reaches its attribute filter
+/// through [`DOCUMENT`].
 fn sanitizer() -> &'static ammonia::Builder<'static> {
     static SANITIZER: OnceLock<ammonia::Builder<'static>> = OnceLock::new();
     SANITIZER.get_or_init(|| {
         let mut builder = configured_builder();
-        builder.attribute_filter(|element, attribute, value| {
-            if matches!(element, "source" | "img") && attribute == "srcset" {
-                Some(Cow::Owned(resolve_srcset(None, value)))
-            } else if let Some(fragment) = prefixed_fragment(element, attribute, value) {
-                Some(Cow::Owned(fragment))
-            } else {
-                Some(Cow::Borrowed(value))
-            }
-        });
+        builder.attribute_filter(filter_attribute);
         builder
     })
 }
@@ -302,6 +347,43 @@ mod tests {
 
     fn in_docs() -> DocumentBase {
         DocumentBase::new(RepoUrls::new("alice", "proj"), "main", "docs")
+    }
+
+    #[test]
+    fn one_sanitiser_serves_every_document_and_forgets_each_base() {
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    for _ in 0..10 {
+                        let html = render_markdown("[guide](guide.md) <img srcset=\"javascript:x 1x, a.png 2x\">", Some(&in_docs()));
+                        assert!(html.contains(r#"href="/alice/proj/blob/main/docs/guide.md""#), "{html}");
+                        assert!(!html.contains("javascript"), "{html}");
+                        // The next document on this thread has no base: nothing of the last one's remains.
+                        let html = render_markdown("[guide](guide.md)", None);
+                        assert!(html.contains(r#"href="guide.md""#), "{html}");
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(CONFIGURED.load(std::sync::atomic::Ordering::Relaxed), 1, "configured once, not per document");
+        DOCUMENT.with_borrow(|document| assert!(document.is_none()));
+    }
+
+    #[test]
+    fn documents_with_a_base_are_rendered_once() {
+        // Unique to this test, so other tests sharing the process cache cannot hit it.
+        let source = format!("# Cached once\n\n{}", "A [relative link](guide.md) in a long README. ".repeat(30));
+        let first = render_markdown(&source, Some(&in_docs()));
+        let hits = DocumentCache::shared().stats().hits;
+        assert_eq!(render_markdown(&source, Some(&in_docs())), first);
+        assert!(DocumentCache::shared().stats().hits > hits, "the second view is a hit");
+        assert!(first.contains(r#"href="/alice/proj/blob/main/docs/guide.md""#));
+        // Another base resolves the same links elsewhere.
+        let root = render_markdown(&source, Some(&DocumentBase::new(RepoUrls::new("alice", "proj"), "main", "")));
+        assert!(root.contains(r#"href="/alice/proj/blob/main/guide.md""#));
     }
 
     #[test]
@@ -427,6 +509,18 @@ mod tests {
             .contains("<a id"),
             "no empty anchors"
         );
+    }
+
+    #[test]
+    fn cached_documents_keep_prefixed_ids_and_fragment_links() {
+        let source = format!("<div id=\"issuecomment-1\">text</div>\n\n[comment](#issuecomment-1)\n\n{}", "Some text. ".repeat(100));
+        let base = in_docs();
+        let first = render_markdown(&source, Some(&base));
+        let cached = render_markdown(&source, Some(&base));
+        assert_eq!(first, cached);
+        assert!(cached.contains(r#"id="user-content-issuecomment-1""#), "{cached}");
+        assert!(cached.contains(r##"href="#user-content-issuecomment-1""##), "{cached}");
+        assert!(!cached.contains(r#"id="issuecomment-1""#), "{cached}");
     }
 
     #[test]

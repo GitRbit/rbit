@@ -12,6 +12,7 @@
 //!
 //! Milestone 2 workstream W (API & webhooks) owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     webhook::{
@@ -19,7 +20,6 @@ use rbit_core::{
         format_header_block, parse_header_block,
     },
 };
-use sqlx::SqlitePool;
 
 use crate::{StorageError, sealing::SealingKey};
 
@@ -275,12 +275,12 @@ fn to_i64(value: impl TryInto<i64>) -> i64 {
 
 #[derive(Debug, Clone)]
 pub struct WebhookStore {
-    pool: SqlitePool,
+    pool: Pool,
     key: SealingKey,
 }
 
 impl WebhookStore {
-    pub(crate) fn new(pool: SqlitePool, key: SealingKey) -> Self {
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
         Self { pool, key }
     }
 

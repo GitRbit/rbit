@@ -250,20 +250,23 @@
     @apply bg-inverted text-inverted-ink;
   }
 
-  /* Scrollbars: a thin thumb in the line colour on a clear track, darkening while
-     hovered, so they recolour with every theme. `scrollbar-color` is inherited; the
+  /* Scrollbars: a thin thumb in the line colour on a clear track, darkening while the
+     pointer is over the page, so they recolour with every theme. `scrollbar-color` is
+     inherited, so the root's hover state sets it for every scrolling box: whenever any
+     element is hovered, so is <html>. Matching `:hover` on <html> alone (not `*:hover`)
+     keeps pointer moves from restyling every element they enter and leave. The
      `::-webkit-scrollbar` rules serve browsers without the standard properties (Safari)
      and are ignored by those that have them. */
   html {
     scrollbar-color: var(--line-strong) transparent;
   }
 
-  * {
-    scrollbar-width: thin;
+  html:hover {
+    scrollbar-color: var(--ink-faint) transparent;
   }
 
-  *:hover {
-    scrollbar-color: var(--ink-faint) transparent;
+  * {
+    scrollbar-width: thin;
   }
 
   ::-webkit-scrollbar {
@@ -942,10 +945,15 @@
 .diff-tree-row:not([data-depth="0"], [data-depth="1"], [data-depth="2"], [data-depth="3"], [data-depth="4"],
   [data-depth="5"], [data-depth="6"], [data-depth="7"], [data-depth="8"], [data-depth="9"]) { --depth: 10; }
 
-/* One row per folder or file. Indent guides run down from each ancestor folder's chevron. */
+/* One row per folder or file. Indent guides run down from each ancestor folder's chevron.
+   Colours fade only into a hover: diff.js moves the current-file marker (below) while the
+   page scrolls, and a transition there would restyle and repaint the whole sticky tree
+   on every frame of the fade, twice per file passed (about half the main thread's paint
+   time scrolling a 152-file pull request, see docs/performance-followups.md). File rows
+   are links, so `transition-none` also overrides the base layer's fade on every `a`. */
 .diff-tree-item {
-  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-colors
-    hover:bg-hover hover:text-ink;
+  @apply flex h-7 w-full items-center gap-1.5 rounded pr-1.5 text-left text-[13px] text-ink-muted transition-none
+    hover:bg-hover hover:text-ink hover:transition-colors;
   padding-left: calc(0.375rem + var(--depth, 0) * var(--diff-tree-indent));
   background-image: repeating-linear-gradient(
     to right,
@@ -1129,13 +1137,28 @@
   @apply pr-3;
 }
 
-.diff-view a.num:hover {
+/* Lines of a pull request file the viewer may comment on (`data-comment`, diff.js):
+   either number opens the comment form; one number per file is a tab stop that the
+   arrow keys move. Without scripts, each hunk header links to the form instead. */
+[data-comment] .diff-view .num {
+  cursor: pointer;
+}
+
+[data-comment] .diff-view .num:hover {
   @apply text-ink;
 }
 
 /* Inside the row, so neighbouring rows never cover it. */
-.diff-view a.num:focus-visible {
+.diff-view .num:focus-visible {
   outline-offset: -2px;
+}
+
+.diff-hunk-comment {
+  @apply ml-6 text-ink-muted underline underline-offset-4;
+}
+
+[data-ready] .diff-hunk-comment {
+  display: none;
 }
 
 .diff-view .diff-add {

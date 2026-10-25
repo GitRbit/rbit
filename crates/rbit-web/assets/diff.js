@@ -8,6 +8,7 @@
 // * File tree: folders collapse, the filter narrows it by path (every word must match),
 //   the file being read is marked, and following a link opens a collapsed file.
 // * The tree can be hidden; that choice is remembered per browser.
+// * Line comments (pull request files the viewer may comment on): see below.
 //
 // Listeners are delegated on `document`, so the module works across htmx swaps.
 
@@ -333,10 +334,127 @@ document.addEventListener(
   true,
 );
 
+// ---------------------------------------------------------------- line comments
+//
+// A pull request file the viewer may comment on carries its Files changed URL
+// (`data-comment` on its `.diff-file`); its rows are the plain rows of every other diff, so a
+// long diff adds no links, listeners or attributes per line. Clicking either number of a
+// line opens the inline form there (`?comment=<row id>`), swapping just the file as the
+// server's own links do. One number per file is focusable at a time (a roving tab stop):
+// the arrow keys move it between lines, Enter or Space opens the form. Without scripts,
+// each hunk header links to the form at its first line.
+
+const LINE_ROW = /-[LR](\d+)$/;
+const COMMENT_ROWS = ".diff-add[id], .diff-del[id], .diff-ctx[id]";
+
+/** The line row of a commentable diff that `cell`, one of its numbers, belongs to. */
+function commentRow(cell) {
+  if (!(cell instanceof Element) || !cell.classList.contains("num")) return null;
+  const row = cell.parentElement;
+  return row && LINE_ROW.test(row.id) && row.closest("[data-comment]") ? row : null;
+}
+
+function openComment(row) {
+  const file = row.closest("[data-comment]");
+  if (!file) return;
+  const url = `${file.dataset.comment}?comment=${encodeURIComponent(row.id)}#${row.id}`;
+  const htmx = globalThis.htmx;
+  if (!htmx) {
+    location.assign(url);
+    return;
+  }
+  const target = `#${file.id}`;
+  htmx.ajax("GET", url, { source: row, target, select: target, swap: "outerHTML" });
+}
+
+/** The next (or previous) line row of the same diff, across blocks, threads and hunks. */
+function adjacentRow(row, forward) {
+  const step = (node) => (forward ? node.nextElementSibling : node.previousElementSibling);
+  let node = row;
+  for (;;) {
+    let next = step(node);
+    if (!next) {
+      // The end of a block: continue after it; the end of the diff: stop.
+      const parent = node.parentElement;
+      if (!parent || !parent.classList.contains("vblock")) return null;
+      node = parent;
+      continue;
+    }
+    if (next.classList.contains("vblock")) {
+      const edge = forward ? next.firstElementChild : next.lastElementChild;
+      if (!edge) {
+        node = next;
+        continue;
+      }
+      next = edge;
+    }
+    if (LINE_ROW.test(next.id)) return next;
+    node = next;
+  }
+}
+
+/** Makes `row`'s first number its file's one tab stop, releasing `previous`. */
+function makeCurrent(row, previous = null) {
+  const cell = row.firstElementChild;
+  if (previous && previous !== cell) {
+    for (const name of ["tabindex", "role", "aria-label"]) previous.removeAttribute(name);
+  }
+  cell.setAttribute("tabindex", "0");
+  cell.setAttribute("role", "button");
+  cell.setAttribute("aria-label", `Comment on line ${LINE_ROW.exec(row.id)[1]}`);
+  return cell;
+}
+
+/** Gives each new commentable file of the mounted diffs its first tab stop. */
+function initComments() {
+  for (const layout of layouts) {
+    for (const file of indexOf(layout).files) {
+      if (!("comment" in file.dataset) || "commentReady" in file.dataset) continue;
+      file.dataset.commentReady = "";
+      // The first match ends the search: the rest of a long diff is not visited.
+      const first = file.querySelector(COMMENT_ROWS);
+      if (first) makeCurrent(first);
+    }
+  }
+}
+
+document.addEventListener("click", (event) => {
+  const row = commentRow(event.target);
+  if (!row) return;
+  event.preventDefault();
+  openComment(row);
+});
+
+document.addEventListener("keydown", (event) => {
+  const row = commentRow(event.target);
+  if (!row || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    openComment(row);
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const next = adjacentRow(row, event.key === "ArrowDown");
+  if (!next) return;
+  event.preventDefault();
+  makeCurrent(next, event.target).focus();
+});
+
 // ---------------------------------------------------------------- set-up
 
-function init() {
-  layouts = [...document.querySelectorAll("[data-diff-layout]")];
+/**
+ * Mounts the diffs in `root` and refreshes every mounted one. A page load or restore
+ * searches the document; a swap searches only what it swapped in, so a small fragment
+ * elsewhere on the page costs no document-wide query.
+ */
+function mount(root) {
+  const found = root instanceof Element && root.matches("[data-diff-layout]") ? [root] : root.querySelectorAll("[data-diff-layout]");
+  if (root === document) {
+    layouts = [...found];
+  } else {
+    layouts = layouts.filter((layout) => layout.isConnected);
+    for (const layout of found) if (!layouts.includes(layout)) layouts.push(layout);
+  }
   const hidden = readSidebarPreference() === "hidden";
   for (const layout of layouts) {
     indexOf(layout);
@@ -353,10 +471,11 @@ function init() {
     const linked = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
     if (linked instanceof HTMLDetailsElement && layout.contains(linked)) linked.open = true;
   }
+  initComments();
   scheduleMark();
 }
 
-init();
+mount(document);
 // A fragment can replace files inside an existing layout. Refresh mounted indexes at
 // the next settle, regardless of which element initiated the request.
 document.addEventListener("htmx:afterSwap", () => {
@@ -376,5 +495,5 @@ document.addEventListener("htmx:beforeCleanupElement", (event) => {
     frame = 0;
   }
 });
-document.addEventListener("htmx:afterSettle", init);
-document.addEventListener("htmx:historyRestore", init);
+document.addEventListener("htmx:afterSettle", (event) => mount(event.detail?.elt ?? document));
+document.addEventListener("htmx:historyRestore", () => mount(document));

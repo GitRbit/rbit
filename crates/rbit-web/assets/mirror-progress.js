@@ -1,8 +1,20 @@
 // Poll stages reported by the worker; completion always loads fresh repository data.
 const polling = new WeakSet();
 
-function initializeMirrorProgress() {
-  for (const panel of document.querySelectorAll("[data-mirror-progress]")) {
+// The element htmx swapped in (or the content an event names); the document otherwise.
+const rootOf = (event) => {
+  const root = event?.detail?.root ?? event?.detail?.elt ?? event?.target;
+  return typeof root?.querySelectorAll === "function" ? root : document;
+};
+/** Elements in `root` matching `selector`, `root` included. */
+const within = (root, selector) => {
+  const found = [...root.querySelectorAll(selector)];
+  if (root.matches?.(selector)) found.unshift(root);
+  return found;
+};
+
+function initializeMirrorProgress(event) {
+  for (const panel of within(rootOf(event), "[data-mirror-progress]")) {
     if (polling.has(panel)) continue;
     polling.add(panel);
     let delay = 1500;

@@ -8,7 +8,7 @@
 //
 // Set PERF_BROWSER to use another Chromium build.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -186,6 +186,31 @@ export async function launch({ width = 1280, height = 1000, throttle = 1 } = {})
   await send("Page.enable");
   if (throttle > 1) await send("Emulation.setCPUThrottlingRate", { rate: throttle });
   return { send, on, evaluate, goto, close };
+}
+
+/**
+ * Signs the browser in at every origin of `pages` with the `login:password` in
+ * `credentialsFile` (seed.mjs writes one), so pages render as the seeded account sees
+ * them. The session cookie goes straight from the server's answer into the browser over
+ * the protocol; neither it nor the password is printed or put in a URL.
+ */
+export async function signIn(browser, pages, credentialsFile) {
+  const [login, password] = readFileSync(credentialsFile, "utf8").trim().split(":");
+  for (const origin of new Set(pages.map((page) => new URL(page.url).origin))) {
+    const response = await fetch(`${origin}/login`, {
+      method: "POST",
+      redirect: "manual",
+      // The server checks Origin on form posts, as browsers send it.
+      headers: { Origin: origin, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ login, password }),
+    });
+    const cookies = response.headers.getSetCookie().map((line) => line.split(";")[0]);
+    if (response.status !== 303 || !cookies.length) throw new Error(`could not sign in at ${origin} (HTTP ${response.status})`);
+    for (const cookie of cookies) {
+      const at = cookie.indexOf("=");
+      await browser.send("Network.setCookie", { url: origin, name: cookie.slice(0, at), value: cookie.slice(at + 1), httpOnly: true, sameSite: "Lax" });
+    }
+  }
 }
 
 /** The `p` quantile (0–1) of `values`, nearest rank. */

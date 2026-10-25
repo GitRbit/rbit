@@ -3,8 +3,8 @@
 //! Suspension is enforced here: [`AccountStore::find_login`] reports it so sign-in can be
 //! refused, and [`AccountStore::find_active_user`] never resolves a suspended user.
 
+use super::pool::Pool;
 use rbit_core::{Account, AccountId, AccountKind, AccountName, Email, Timestamp, User};
-use sqlx::SqlitePool;
 
 use super::rows::{AccountRow, UserRow};
 use crate::StorageError;
@@ -22,6 +22,33 @@ macro_rules! select_user {
             $clause
         )
     };
+}
+
+/// `?1` account, `?2` whether notifications are on. The stored password hash is not read;
+/// the unread check is a `CASE` so it is not even evaluated with notifications off.
+const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, \
+     '' AS password_hash, l.password_change_required, \
+     CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
+     AS has_unread_notifications \
+     FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
+
+/// An active (not suspended) user as a signed-in request sees them, from
+/// [`AccountStore::find_session_user`].
+#[derive(Debug, Clone)]
+pub struct SessionUser {
+    pub user: User,
+    /// An administrator provided the password; everything but replacing it is refused.
+    pub password_change_required: bool,
+    /// Something in the inbox is unread (always `false` when notifications are off).
+    pub has_unread_notifications: bool,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct SessionUserRow {
+    #[sqlx(flatten)]
+    user: UserRow,
+    password_change_required: bool,
+    has_unread_notifications: bool,
 }
 
 /// A login candidate: the user, their stored password hash and whether they are suspended.
@@ -51,11 +78,11 @@ pub struct NewUser {
 
 #[derive(Debug, Clone)]
 pub struct AccountStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AccountStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -128,6 +155,23 @@ impl AccountStore {
         let row: Option<UserRow> =
             sqlx::query_as(select_user!("WHERE a.id = ? AND l.suspended_at IS NULL")).bind(id.0).fetch_optional(&self.pool).await?;
         Ok(row.map(UserRow::into_user_and_hash).transpose()?.map(|(user, _)| user))
+    }
+
+    /// Like [`Self::find_active_user`], together with what every page of a signed-in
+    /// request needs, in one query: whether the user must replace an administrator-provided
+    /// password, and — only when `with_notifications` — whether they have anything unread.
+    pub async fn find_session_user(&self, id: AccountId, with_notifications: bool) -> Result<Option<SessionUser>, StorageError> {
+        let row: Option<SessionUserRow> =
+            sqlx::query_as(SESSION_USER).bind(id.0).bind(with_notifications).fetch_optional(&self.pool).await?;
+        row.map(|row| {
+            let (user, _) = row.user.into_user_and_hash()?;
+            Ok(SessionUser {
+                user,
+                password_change_required: row.password_change_required,
+                has_unread_notifications: row.has_unread_notifications,
+            })
+        })
+        .transpose()
     }
 
     /// Users among `ids`, including suspended users, as in [`Self::find_user`].
@@ -248,7 +292,7 @@ impl AccountStore {
 /// across both paths. The first INSERT acquires `SQLite`'s write lock before we inspect
 /// the logins. No password hashing or other slow work runs while holding the lock.
 pub(super) async fn insert_user(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut super::pool::WriteTransaction,
     mut new: NewUser,
     registration_open: Option<bool>,
     email_verified: bool,

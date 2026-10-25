@@ -100,9 +100,10 @@ bind = "0.0.0.0:2222"
 # /metrics at the reverse proxy and scrape the loopback address directly.
 metrics = false
 # metrics_token = "replace-with-a-long-random-string"
-# Warm language and last-commit caches right after each push.
+# Update the commit-graph and warm language and last-commit caches right after each push.
 warm_caches_on_push = true
-# `git gc --auto` for repositories pushed to since the last run, then cache pruning.
+# `git gc --auto` and a commit-graph write for repositories pushed to since the last run,
+# then cache pruning.
 # 0 disables periodic maintenance.
 maintenance_interval_minutes = 360
 # Background jobs (cache warming, git gc) running at the same time.
@@ -217,6 +218,10 @@ noreply_domain = ""
 email = true
 # What users who never chose get: "off", "participating" or "all".
 default_email = "participating"
+# Users can collect their notification emails into a daily or a weekly (Monday) digest.
+# This is the hour (0-23, UTC) digests are sent at unless a user picks another one;
+# administrators can change it at runtime under Site administration -> Settings.
+digest_hour = 8
 
 [editor]
 # Editing and uploading files in the browser. Text edits are limited by

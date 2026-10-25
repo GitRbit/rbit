@@ -6,19 +6,19 @@
 //! under its own name. Values are raw key material: never log them or send them anywhere.
 //! They are stored [sealed](crate::sealing).
 
+use super::pool::Pool;
 use rbit_core::Timestamp;
-use sqlx::SqlitePool;
 
 use crate::{StorageError, sealing::SealingKey};
 
 #[derive(Debug, Clone)]
 pub struct ServerSecretStore {
-    pool: SqlitePool,
+    pool: Pool,
     key: SealingKey,
 }
 
 impl ServerSecretStore {
-    pub(crate) fn new(pool: SqlitePool, key: SealingKey) -> Self {
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
         Self { pool, key }
     }
 

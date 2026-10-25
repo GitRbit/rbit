@@ -50,6 +50,7 @@ credentials.
 | `trace.mjs` | Headless Edge: a DevTools trace of a scroll sweep per page, main-thread time per phase (style, layout, pre-paint, paint, `content-visibility` intersection checks, …). |
 | `sweep.mjs` | Headless Edge: scroll smoothness (fps, long frames), height changes and scroll corrections during a sweep, scrollbar-drag cost, and a check that every `content-visibility: auto` placeholder is exact. |
 | `edge.mjs` | What both share: launching headless Edge with its own profile, the DevTools protocol, the sweep, killing the browser's whole process tree on exit. |
+| `contention.mjs` | Concurrent mixed reads, comments, pushes and webhook deliveries at several concurrency levels, with the SQLite pool's lock metrics ([below](#sqlite-contention-workload)). |
 | `BASELINE.md` | The recorded baseline. |
 
 ## Reproduce
@@ -105,7 +106,14 @@ node scripts/perf/sweep.mjs --rounds 5 --throttle 6 old=… new=…
 Options (both): `--rounds 5`, `--ms 6000` (sweep length cap; it also stops at the bottom),
 `--vps 5` (viewports per second), `--throttle 6` (CPU slowdown; 1 for none, where a
 healthy page holds 60 fps), `--width 1280 --height 1000`, `--json file` (every run). Set
-`PERF_BROWSER` to use another Chromium.
+`PERF_BROWSER` to use another Chromium. `--credentials target/perf/credentials.txt` signs
+the browser in first, as `seed.mjs`'s account, at every page's origin, so signed-in pages
+(the pull request Files tab with its line comments) are measured as their viewers see
+them; the session cookie goes from the server's answer straight into the browser and is
+never printed. Cookies ignore the port, so give each signed-in server its own host
+(`127.0.0.1:3021` and `localhost:3022`). `sweep.mjs` also takes `--no-backdrop a,b`: the
+named pages are swept with `backdrop-filter` off on the sticky bars, so one URL under two
+names (`blur=URL plain=URL --no-backdrop plain`) measures what the blur costs.
 
 - `trace.mjs` sums complete trace events on the renderer's main thread. `RunTask` is the
   total; the phases nest inside it and partly in each other, so compare a phase with the
@@ -233,6 +241,45 @@ an intentional decline, and `contains` to override the default `id="main"` HTML 
 These modes provide server response evidence only: request counts from actual preload
 behavior come from the dedicated preloader tests or a visible browser network capture.
 Never present a fast `204` as faster rendering of the corresponding `200` page.
+
+## SQLite contention workload
+
+`contention.mjs` drives concurrent mixed traffic at one server and reads the SQLite pool's
+metrics (`rbit_sqlite_*`, see the deployment guide) before and after each concurrency
+level. Each virtual user loops over a seeded random mix: 50% anonymous page reads, 35%
+signed-in page reads (including the notification inbox and the `/issues` dashboard; issue
+views mark notifications read), 10% issue comments and 5% pull request comments. Every
+account participates in every thread, so each comment notifies all the others. One extra
+lane pushes an empty commit to an open pull request's branch every second over HTTP.
+A webhook subscribed to pushes, issues, comments and pull requests delivers to a listener
+the script runs, so every write also queues deliveries.
+
+```bash
+# release build, seeded fixture (see "Reproduce"); then, with the server's environment:
+RBIT_OPERATIONS__METRICS=true RBIT_SECURITY__RATE_LIMIT=false \
+RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true node scripts/perf/serve.mjs --port 3031 --data-dir target/perf/contention/data
+node scripts/perf/seed.mjs http://127.0.0.1:3031
+node scripts/perf/contention.mjs setup http://127.0.0.1:3031
+node scripts/perf/contention.mjs run http://127.0.0.1:3031 --levels 4,16,64 --seconds 20 --output target/perf/contention/run-01.json
+```
+
+`setup` (once per data directory, rerunnable) signs up `load1`…`load8` with the seeded
+account's password from `target/perf/credentials.txt` (never printed), opens issues #2–#5
+and a `load-push` pull request, adds the webhook (listener port `--hook-port`, default
+3032) and makes every account participate. Stop the server after it and copy its data
+directory for each run, so every variant starts from the same rows. `--perf-dir` points
+at another `target/perf` (credentials) and `--work` at the directory holding the push
+clone and `setup.json`.
+
+For each level the report gives operation counts, throughput, failures (status 0 or
+≥ 400) and client-side p50/p95 latency per operation, the webhook deliveries received,
+and from the server: connection acquisition waits (`query`, `transaction`), `BEGIN
+IMMEDIATE` write lock waits and write transaction durations (mean and histogram
+p50/p95/p99, interpolated within buckets), busy errors by `store/phase/code`, acquisition
+timeouts and 5xx responses. Any failure sets a failing exit status. The client runs in
+one Node process on the same machine as the server, so at high levels its latencies
+include client scheduling; compare variants at the same levels, alternately, on an idle
+machine.
 
 ## Server-side caps the fixture meets
 

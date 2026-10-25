@@ -6,6 +6,7 @@
 //! when OpenSSH is not installed.
 
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::Arc,
@@ -31,20 +32,23 @@ struct Harness {
 }
 
 impl Harness {
-    async fn start() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
-        let mut config = Config::default();
-        config.storage.data_dir = dir.path().join("data");
-        config.ssh.enabled = true;
-        config.ssh.bind = "127.0.0.1:0".parse().unwrap();
-        let config = Arc::new(config);
-        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-        let server = rbit_ssh::start(config, services.clone()).await.unwrap();
-        let port = server.local_addr().port();
-        Self { dir, database, services, port, _server: server }
+    fn start() -> impl Future<Output = Self> {
+        // Keep setup off callers' future stacks as the combined service configuration grows.
+        Box::pin(async move {
+            let dir = tempfile::tempdir().unwrap();
+            let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+            let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+            let mut config = Config::default();
+            config.storage.data_dir = dir.path().join("data");
+            config.ssh.enabled = true;
+            config.ssh.bind = "127.0.0.1:0".parse().unwrap();
+            let config = Arc::new(config);
+            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+            let server = rbit_ssh::start(config, services.clone()).await.unwrap();
+            let port = server.local_addr().port();
+            Self { dir, database, services, port, _server: server }
+        })
     }
 
     async fn user(&self, name: &str) -> User {

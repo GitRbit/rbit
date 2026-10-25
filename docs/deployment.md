@@ -264,7 +264,17 @@ git.example.com {
 
 ### nginx
 
+nginx opens a new connection to its upstream for every request unless the upstream keeps
+idle connections and requests use HTTP/1.1 without `Connection: close`; the `upstream`
+block and the two `proxy_*` lines below do that, so page loads do not pay for a TCP
+handshake to rbit on each asset.
+
 ```nginx
+upstream rbit {
+    server 127.0.0.1:3000;
+    keepalive 16;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -288,8 +298,9 @@ server {
     client_max_body_size 0;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
         proxy_http_version 1.1;
+        proxy_set_header Connection        "";
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -305,7 +316,9 @@ server {
     location = /metrics {
         allow 10.0.0.5;
         deny all;
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
     }
 }
 ```
@@ -332,6 +345,15 @@ Notifications) and are rate limited per address. Each carries `List-Unsubscribe`
 `List-Unsubscribe-Post` headers (RFC 8058) whose link is built from `server.public_url`, so
 set it before mail goes out; the one-click `POST /email/unsubscribe/…` must reach rbit
 from outside (mail providers send it). Set `[notifications] email = false` to send none.
+
+Users can also choose a daily or weekly digest instead of one email per notification.
+Digests go out at the user's chosen hour or at `[notifications] digest_hour` (UTC, default
+8; administrators can change it under Site administration → Settings), weekly ones on
+Mondays, grouped by repository and without threads already read in the app. They are
+checked for every five minutes, so a digest leaves at most about five minutes after its hour
+(later if the server was down: it catches up with one digest per user). Each period is
+claimed in the database before its digest is sent, so a restart never sends one twice; a
+digest the mail server refuses is not retried.
 
 ## External sign-in
 
@@ -391,6 +413,12 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
 | `rbit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
 | `rbit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
+| `rbit_sqlite_acquire_wait_seconds` | histogram | `mode` (`query` = one statement, `transaction`) — waiting for a pooled database connection |
+| `rbit_sqlite_acquire_timeouts_total` | counter | `mode` — connection waits that gave up (30 s) |
+| `rbit_sqlite_write_lock_wait_seconds` | histogram | `store` — `BEGIN IMMEDIATE`, waiting for the database's single write lock |
+| `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
+| `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
+| `rbit_notification_digests_total` | counter | `outcome` (`sent`, `failed`) — one per email digest handed to the mail transport |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.
@@ -410,11 +438,13 @@ scrape_configs:
 
 rbit runs its own maintenance; no cron jobs are needed.
 
-- **After every push**, the language breakdown and the root directory's last-commit list
-  of the default branch are computed and cached (`warm_caches_on_push`).
+- **After every push**, the new commits are added to the repository's commit-graph, then
+  the language breakdown and the root directory's last-commit list of the default branch
+  are computed and cached (`warm_caches_on_push`).
 - **Every `maintenance_interval_minutes`** (default 6 h, ± 10 % jitter): `git gc --auto`
-  for every repository on the first run after start-up, afterwards only for repositories
-  pushed to since the previous run; then the insights cache is pruned to
+  and `git commit-graph write --reachable --split` for every repository on the first run
+  after start-up, afterwards only for repositories pushed to since the previous run; then
+  the insights cache is pruned to
   `insights_cache_max_age_days` and `insights_cache_max_entries`. An idle instance does
   nothing else.
 - At most `job_concurrency` jobs run at once. Expired sessions are purged hourly.

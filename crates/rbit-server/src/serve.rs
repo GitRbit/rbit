@@ -3,11 +3,12 @@
 use std::{io::BufRead, sync::Arc, time::Duration};
 
 use anyhow::Context;
+use axum::serve::{ListenerExt, TapIo};
 use rbit_core::Config;
 use rbit_services::{Services, SignUp, accounts};
 use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 
 /// How often expired sessions are purged from the key/value store.
 const SESSION_PURGE_INTERVAL: Duration = Duration::from_hours(1);
@@ -45,7 +46,8 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
     let background = services.clone();
     let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
-    let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
+    let listener =
+        http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
     log_setup_token(&config, &background);
 
@@ -101,6 +103,19 @@ pub async fn create_user(config: Config, username: String, email: String, admin:
     Ok(())
 }
 
+/// Accepted connections with Nagle's algorithm off. Responses are written in several
+/// small pieces (headers, then body frames); with Nagle on, a piece that follows an
+/// unacknowledged one waits for the peer's delayed ACK before it is sent.
+fn http_listener(listener: TcpListener) -> TapIo<TcpListener, fn(&mut TcpStream)> {
+    listener.tap_io(disable_nagle as fn(&mut TcpStream))
+}
+
+fn disable_nagle(stream: &mut TcpStream) {
+    if let Err(error) = stream.set_nodelay(true) {
+        tracing::debug!(%error, "cannot set TCP_NODELAY on an accepted connection");
+    }
+}
+
 fn spawn_session_purger(kv: KvStore) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(SESSION_PURGE_INTERVAL);
@@ -133,5 +148,21 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::serve::Listener as _;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn accepted_connections_disable_nagle() {
+        let mut listener = http_listener(TcpListener::bind("127.0.0.1:0").await.unwrap());
+        let address = listener.local_addr().unwrap();
+        let _client = tokio::net::TcpStream::connect(address).await.unwrap();
+        let (stream, _) = listener.accept().await;
+        assert!(stream.nodelay().unwrap());
     }
 }

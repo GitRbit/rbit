@@ -17,7 +17,7 @@
 //! * Each property is then inherited from the innermost scope that sets it (bold and
 //!   italic are never reset, so any scope setting them applies).
 //! * The result is one flat span per run of equally styled text, with one short class per
-//!   styled category (see [`Color::class`]); unstyled text is bare. Text is HTML-escaped
+//!   styled category (see [`CLASSES`]); unstyled text is bare. Text is HTML-escaped
 //!   with the same table syntect uses.
 //!
 //! app.css's **Syntax highlighting** section styles the short classes; the tests resolve
@@ -35,7 +35,7 @@ use syntect::{
     util::LinesWithEndings,
 };
 
-use super::highlight_cache::HighlightCache;
+use super::highlight_cache::{HighlightCache, HighlightedFile};
 use crate::error::WebResult;
 
 /// Files above these limits are shown as plain text: highlighting cost grows with size
@@ -60,7 +60,9 @@ enum Color {
 }
 
 impl Color {
-    /// The class app.css styles this category with.
+    /// The class app.css styles this category with (the first column of [`CLASSES`]),
+    /// to check the table against.
+    #[cfg(test)]
     const fn class(self) -> &'static str {
         match self {
             Self::Comment => "c",
@@ -146,21 +148,32 @@ impl Style {
     }
 
     /// The classes of a span with this style; `None` for unstyled text. A heading's
-    /// class carries its weight, so `b` is left out under it.
-    fn classes(self) -> Option<String> {
-        let mut classes: Vec<&str> = Vec::with_capacity(3);
-        if let Some(color) = self.color {
-            classes.push(color.class());
-        }
-        if self.bold && self.color != Some(Color::Heading) {
-            classes.push("b");
-        }
-        if self.italic {
-            classes.push("i");
-        }
-        (!classes.is_empty()).then(|| classes.join(" "))
+    /// class carries its weight, so `b` is left out under it. Looked up in [`CLASSES`],
+    /// so opening a span allocates nothing.
+    fn classes(self) -> Option<&'static str> {
+        let color = self.color.map_or(0, |color| color as usize + 1);
+        let class = CLASSES[color][usize::from(self.bold) * 2 + usize::from(self.italic)];
+        (!class.is_empty()).then_some(class)
     }
 }
+
+/// The class attribute of every style: one row per colour (none first, then [`Color`] in
+/// declaration order), one column per weight and slant (plain, italic, bold, bold
+/// italic). Classes come in a fixed order: the colour's, `b`, `i`.
+const CLASSES: [[&str; 4]; 11] = [
+    ["", "i", "b", "b i"],
+    ["c", "c i", "c b", "c b i"],
+    ["s", "s i", "s b", "s b i"],
+    ["n", "n i", "n b", "n b i"],
+    ["k", "k i", "k b", "k b i"],
+    ["f", "f i", "f b", "f b i"],
+    ["t", "t i", "t b", "t b i"],
+    ["g", "g i", "g b", "g b i"],
+    ["a", "a i", "a b", "a b i"],
+    // A heading's class carries its weight: no `b`.
+    ["h", "h i", "h", "h i"],
+    ["x", "x i", "x b", "x b i"],
+];
 
 /// Resolves scope stacks to styles, remembering what each scope declares.
 #[derive(Debug, Default)]
@@ -197,9 +210,16 @@ impl Resolver {
 struct LineWriter {
     html: String,
     run: Option<Style>,
+    /// Whether the current run opened a span (it is styled), for [`Self::close`].
+    open: bool,
 }
 
 impl LineWriter {
+    /// A writer for a line of `len` bytes of source; its markup is at least as long.
+    fn with_capacity(len: usize) -> Self {
+        Self { html: String::with_capacity(len), ..Self::default() }
+    }
+
     /// Appends `text`, which holds no line terminator (the caller cuts it off).
     fn push(&mut self, style: Style, text: &str) {
         if text.is_empty() {
@@ -209,8 +229,9 @@ impl LineWriter {
             self.close();
             if let Some(classes) = style.classes() {
                 self.html.push_str("<span class=\"");
-                self.html.push_str(&classes);
+                self.html.push_str(classes);
                 self.html.push_str("\">");
+                self.open = true;
             }
             self.run = Some(style);
         }
@@ -220,8 +241,9 @@ impl LineWriter {
     }
 
     fn close(&mut self) {
-        if self.run.is_some_and(|style| style.classes().is_some()) {
+        if self.open {
             self.html.push_str("</span>");
+            self.open = false;
         }
         self.run = None;
     }
@@ -267,7 +289,7 @@ impl Highlighter {
     /// a Git blob id, or a Git LFS object id.
     /// The source is owned by a cold blocking job; cache hits and shared flights do
     /// not copy its text or the highlighted strings.
-    pub async fn highlight_lines_cached<T>(&self, content_id: &str, file_name: &str, text: T) -> WebResult<Arc<[String]>>
+    pub async fn highlight_lines_cached<T>(&self, content_id: &str, file_name: &str, text: T) -> WebResult<Arc<HighlightedFile>>
     where
         T: AsRef<str> + Send + 'static,
     {
@@ -293,7 +315,7 @@ impl Highlighter {
         let mut parser = ParseState::new(syntax);
         let mut stack = ScopeStack::new();
         let mut resolver = Resolver::default();
-        let mut lines = Vec::new();
+        let mut lines = Vec::with_capacity(line_count(text));
 
         for line in LinesWithEndings::from(text) {
             if line.len() > MAX_LINE_LEN {
@@ -305,7 +327,7 @@ impl Highlighter {
             // Each line is rendered in its own row, so its terminator is cut off (a line
             // comment's scope includes it); anything else that breaks lines is shown.
             let end = content_len(line);
-            let mut writer = LineWriter::default();
+            let mut writer = LineWriter::with_capacity(end);
             for (range, op) in ScopeRangeIterator::new(&ops, line) {
                 if stack.apply(op).is_err() {
                     return plain_lines(text);
@@ -328,8 +350,16 @@ fn content_len(line: &str) -> usize {
     line.strip_suffix('\n').map_or(line.len(), |line| line.strip_suffix('\r').unwrap_or(line).len())
 }
 
+/// How many lines [`str::lines`] and [`LinesWithEndings`] yield for `text`, to size the
+/// output once.
+fn line_count(text: &str) -> usize {
+    text.bytes().filter(|&byte| byte == b'\n').count() + usize::from(!text.is_empty() && !text.ends_with('\n'))
+}
+
 fn plain_lines(text: &str) -> Vec<String> {
-    text.lines().map(escape_html).collect()
+    let mut lines = Vec::with_capacity(line_count(text));
+    lines.extend(text.lines().map(escape_html));
+    lines
 }
 
 /// The escaping syntect applies to highlighted text, so plain and highlighted lines agree.
@@ -659,9 +689,9 @@ fn main() { println!("hi"); }
         let first = highlighter.highlight_lines_cached("blob1", "a.rs", text).await.unwrap();
         let again = highlighter.highlight_lines_cached("blob1", "a.rs", "ignored: the id names the text").await.unwrap();
         assert!(Arc::ptr_eq(&first, &again));
-        assert_eq!(first.as_ref(), highlighter.highlight_lines("a.rs", text));
+        assert_eq!(first.lines(), highlighter.highlight_lines("a.rs", text));
         let as_text = highlighter.highlight_lines_cached("blob1", "a.txt", text).await.unwrap();
-        assert_eq!(as_text.as_ref(), ["fn main() {}"], "another name may pick another syntax");
+        assert_eq!(as_text.lines(), ["fn main() {}"], "another name may pick another syntax");
         let stats = highlighter.cache_stats();
         assert_eq!((stats.hits, stats.misses, stats.entries), (1, 2, 2));
     }
@@ -675,6 +705,48 @@ fn main() { println!("hi"); }
         assert_eq!(rust.len(), 2);
         assert!(rust[0].contains("foo\u{240D}bar") && !rust[0].contains(['\r', '\n']), "{}", rust[0]);
         assert!(rust[1].contains('\u{240C}') && !rust[1].contains('\u{0C}'), "{}", rust[1]);
+    }
+
+    #[test]
+    fn the_class_table_spells_every_style_as_classes_joined_in_order() {
+        let colors = [
+            None,
+            Some(Color::Comment),
+            Some(Color::String),
+            Some(Color::Number),
+            Some(Color::Keyword),
+            Some(Color::Function),
+            Some(Color::Type),
+            Some(Color::Tag),
+            Some(Color::Attribute),
+            Some(Color::Heading),
+            Some(Color::Invalid),
+        ];
+        for color in colors {
+            for (bold, italic) in [(false, false), (false, true), (true, false), (true, true)] {
+                // How spans were spelled before the table: a vector joined per span.
+                let mut expected: Vec<&str> = color.map(Color::class).into_iter().collect();
+                if bold && color != Some(Color::Heading) {
+                    expected.push("b");
+                }
+                if italic {
+                    expected.push("i");
+                }
+                let expected = (!expected.is_empty()).then(|| expected.join(" "));
+                assert_eq!(Style { color, bold, italic }.classes().map(str::to_owned), expected, "{color:?} {bold} {italic}");
+            }
+        }
+    }
+
+    #[test]
+    fn line_counts_size_the_output_exactly() {
+        for text in ["", "a", "a\n", "a\nb", "a\r\nb\r\n", "\n\n", "x\ny\n\n"] {
+            assert_eq!(line_count(text), text.lines().count(), "{text:?}");
+            assert_eq!(plain_lines(text).capacity(), text.lines().count(), "{text:?}: one allocation, no spare");
+        }
+        let text = "fn a() {}\nfn b() {}\n";
+        let lines = Highlighter::new().highlight_lines("a.rs", text);
+        assert_eq!(lines.capacity(), lines.len());
     }
 
     #[test]

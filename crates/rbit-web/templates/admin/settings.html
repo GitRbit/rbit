@@ -113,6 +113,15 @@
       </div>
       <p class="hint">Preselected on the new repository form.</p>
     </fieldset>
+
+    <label class="label mt-6" for="digest-hour">Email digest time</label>
+    <div class="relative w-full sm:w-48">
+      <select class="input cursor-pointer appearance-none pr-9" id="digest-hour" name="digest_hour" aria-describedby="digest-hour-hint">
+        {% for (hour, label, selected) in form.digest_hours() %}<option value="{{ hour }}"{% if selected %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+    </div>
+    <p class="hint" id="digest-hour-hint">When daily and weekly notification digests are sent to users who have not chosen a time. Weekly digests go out on Mondays.</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
     <button class="btn btn-primary w-full sm:w-auto" type="submit">Save settings</button>

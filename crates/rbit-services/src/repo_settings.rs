@@ -1,13 +1,22 @@
-//! Repository settings: description, visibility, default branch, rename, delete.
+//! Repository settings: description, visibility, default branch, rename, archive, delete.
 //!
 //! Workstream D owns this file. Every method takes a [`RepoContext`] obtained from
 //! [`crate::RepositoryService::open`] for the acting user, and requires admin access.
+//!
+//! Archiving makes a repository read-only ([`RepoContext::ensure_writable`] refuses every
+//! change to its content) until it is unarchived; both are audited ("Repository
+//! content") and publish [`DomainEvent::RepositoryArchived`], which `repository` webhooks
+//! report as `archived` / `unarchived`. The settings on this page keep working, so an
+//! archived repository can still be renamed, transferred, unarchived or deleted.
 
-use rbit_core::{RepoName, User, Visibility};
+use rbit_core::{RepoName, Timestamp, User, Visibility};
 use rbit_git::RefKind;
 use rbit_storage::sqlite::repo_settings::{RepoGeneralSettings, RepoSettingsStore};
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError};
+use crate::{
+    AuditService, DomainEvent, RepoContext, ServiceContext, ServiceError,
+    audit::{AuditAction, AuditEntry},
+};
 
 const MAX_DESCRIPTION_LEN: usize = 350;
 
@@ -23,11 +32,12 @@ pub struct UpdateRepository {
 #[derive(Debug, Clone)]
 pub struct RepoSettingsService {
     ctx: ServiceContext,
+    audit: AuditService,
 }
 
 impl RepoSettingsService {
     pub(crate) fn new(ctx: ServiceContext) -> Self {
-        Self { ctx }
+        Self { audit: AuditService::new(ctx.clone()), ctx }
     }
 
     fn store(&self) -> RepoSettingsStore {
@@ -101,6 +111,24 @@ impl RepoSettingsService {
         Ok(name)
     }
 
+    /// Archives the repository (`archived`) or unarchives it, as `actor`. `false` when it
+    /// already was in that state: nothing is recorded or published then.
+    pub async fn set_archived(&self, actor: &User, repo: &RepoContext, archived: bool) -> Result<bool, ServiceError> {
+        require_admin(repo)?;
+        let id = repo.repo.repo.id;
+        let changed =
+            if archived { self.store().archive(id, actor.id(), Timestamp::now()).await? } else { self.store().unarchive(id).await? };
+        if !changed {
+            return Ok(false);
+        }
+        let full_name = repo.repo.full_name();
+        let action = if archived { AuditAction::RepositoryArchived } else { AuditAction::RepositoryUnarchived };
+        tracing::info!(repo = %full_name, archived, by = %actor.name(), "repository archive state changed");
+        self.audit.record(AuditEntry::new(action).by(actor).on(full_name)).await;
+        self.ctx.events.publish(DomainEvent::RepositoryArchived { repo: id, archived, actor: actor.id() });
+        Ok(true)
+    }
+
     /// Permanently deletes the repository: its bare repository on disk, then its metadata
     /// (stars cascade). `confirmation` must be the full `owner/name`; `actor` is the
     /// administrator doing it (the access check itself is `repo`'s).
@@ -115,6 +143,9 @@ impl RepoSettingsService {
             return Err(ServiceError::Invalid(format!("type \"{full_name}\" to confirm")));
         }
         let current = &repo.repo.repo;
+        // The settings page may have pinned this repository while loading its refs.
+        // Close our own handle before deletion waits for other requests and jobs.
+        repo.reader.close();
         self.ctx.repositories.delete(current.owner_id, current.id).await?;
         self.store().delete(current.id).await?;
         tracing::info!(repo = %full_name, "repository deleted");

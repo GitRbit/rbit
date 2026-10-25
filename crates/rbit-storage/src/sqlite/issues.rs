@@ -13,11 +13,14 @@
 //! * a title change records a [`TimelineEvent::Renamed`], a state or lock change the
 //!   event that explains it.
 
+use super::{
+    pool::{Conn, Pool},
+    rows::AccountRow,
+};
 use rbit_core::{
     Account, AccountId, AccountKind, Comment, CommentId, EventId, Issue, IssueId, IssueKind, IssueNumber, IssueState, IssueText,
     IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp,
 };
-use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::StorageError;
 
@@ -66,6 +69,12 @@ fn count(value: i64) -> u64 {
     u64::try_from(value).unwrap_or_default()
 }
 
+/// Open threads of a repository per kind. Naming both kinds makes `kind` an equality on
+/// `issues_by_repo (repo_id, kind, state, …)`, so only open entries are read; filtering on
+/// `repo_id` and `state` alone would read every thread the repository ever had.
+const OPEN_COUNTS: &str =
+    "SELECT kind, COUNT(*) FROM issues WHERE repo_id = ? AND kind IN ('issue', 'pull') AND state = 'open' GROUP BY kind";
+
 // ------------------------------------------------------------------ rows
 
 #[derive(Debug, sqlx::FromRow)]
@@ -113,6 +122,32 @@ impl TryFrom<IssueRow> for Issue {
         })
     }
 }
+
+/// A thread with its author's account joined (`author_*`, all `NULL` without one).
+#[derive(Debug, sqlx::FromRow)]
+struct IssueWithAuthorRow {
+    #[sqlx(flatten)]
+    issue: IssueRow,
+    author_kind: Option<String>,
+    author_name: Option<String>,
+    author_display_name: Option<String>,
+    author_bio: Option<String>,
+    author_created_at: Option<i64>,
+}
+
+/// Thread `?2` of repository `?1` with its author: [`IssueWithAuthorRow`].
+///
+/// The author's columns are scalar subqueries by primary key rather than a join, so
+/// both tables are read by key under any planner statistics (as `REPOSITORY_PAGE`
+/// explains); as a join, one-row statistics made `SQLite` scan both.
+const ISSUE_WITH_AUTHOR: &str = "SELECT i.id, i.repo_id, i.number, i.kind, i.title, i.body, i.author_id, i.state, i.state_reason, \
+     i.closed_at, i.closed_by, i.locked, i.comment_count, i.created_at, i.updated_at, \
+     (SELECT kind FROM accounts WHERE id = i.author_id) AS author_kind, \
+     (SELECT name FROM accounts WHERE id = i.author_id) AS author_name, \
+     (SELECT display_name FROM accounts WHERE id = i.author_id) AS author_display_name, \
+     (SELECT bio FROM accounts WHERE id = i.author_id) AS author_bio, \
+     (SELECT created_at FROM accounts WHERE id = i.author_id) AS author_created_at \
+     FROM issues i WHERE i.repo_id = ?1 AND i.number = ?2";
 
 #[derive(Debug, sqlx::FromRow)]
 struct CommentRow {
@@ -378,11 +413,11 @@ pub struct TimelinePage {
 
 #[derive(Debug, Clone)]
 pub struct IssueStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl IssueStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -397,7 +432,7 @@ impl IssueStore {
     /// [`Self::create`] inside a caller's transaction, so a pull request's own row can be
     /// inserted atomically with its thread. The number is taken by the transaction's
     /// first write, which serialises concurrent creations.
-    pub(crate) async fn insert_in(conn: &mut SqliteConnection, new: &NewIssue) -> Result<Issue, StorageError> {
+    pub(crate) async fn insert_in(conn: &mut Conn, new: &NewIssue) -> Result<Issue, StorageError> {
         let number: i64 = sqlx::query_scalar(
             "INSERT INTO issue_counters (repo_id, last_number) VALUES (?, 1) \
              ON CONFLICT (repo_id) DO UPDATE SET last_number = last_number + 1 RETURNING last_number",
@@ -438,6 +473,30 @@ impl IssueStore {
             .fetch_optional(&self.pool)
             .await?;
         row.map(Issue::try_from).transpose()
+    }
+
+    /// Like [`Self::find_by_number`], with the author's account (`None` when there is no
+    /// author, or the account is gone) in the same statement.
+    pub async fn find_by_number_with_author(
+        &self,
+        repo: RepoId,
+        number: IssueNumber,
+    ) -> Result<Option<(Issue, Option<Account>)>, StorageError> {
+        let row: Option<IssueWithAuthorRow> =
+            sqlx::query_as(ISSUE_WITH_AUTHOR).bind(repo.0).bind(number.get()).fetch_optional(&self.pool).await?;
+        let Some(row) = row else { return Ok(None) };
+        let author = match (row.issue.author_id, row.author_kind, row.author_name, row.author_created_at) {
+            (Some(id), Some(kind), Some(name), Some(created_at)) => Some(Account::try_from(AccountRow {
+                id,
+                kind,
+                name,
+                display_name: row.author_display_name,
+                bio: row.author_bio,
+                created_at,
+            })?),
+            _ => None,
+        };
+        Ok(Some((Issue::try_from(row.issue)?, author)))
     }
 
     /// The threads of `repo` among `numbers` (missing numbers are left out), ordered by
@@ -497,7 +556,8 @@ impl IssueStore {
         actor: AccountId,
         at: Timestamp,
     ) -> Result<Option<Issue>, StorageError> {
-        let mut tx = self.pool.begin().await?;
+        // Reads before it writes: take the write lock first (see `Pool::begin`).
+        let mut tx = self.pool.begin_immediate().await?;
         let current: Option<(String, String)> =
             sqlx::query_as("SELECT title, body FROM issues WHERE id = ?").bind(id.0).fetch_optional(&mut *tx).await?;
         let Some((old_title, old_body)) = current else {
@@ -585,7 +645,7 @@ impl IssueStore {
 
     /// Moves `updated_at` forward to `at` (for changes stored elsewhere, such as labels).
     pub async fn touch(&self, id: IssueId, at: Timestamp) -> Result<(), StorageError> {
-        touch_in(&mut *self.pool.acquire().await?, id, at).await
+        touch_in(&mut self.pool.acquire().await?, id, at).await
     }
 
     /// Deletes an issue with its comments and events and returns what it was. Pull
@@ -599,15 +659,19 @@ impl IssueStore {
         row.map(Issue::try_from).transpose()
     }
 
-    /// Open `(issues, pull requests)` of `repo`, in one indexed query.
+    /// Open `(issues, pull requests)` of `repo`, in one indexed query that reads only the
+    /// open entries of `issues_by_repo`.
     pub async fn open_counts(&self, repo: RepoId) -> Result<(u64, u64), StorageError> {
-        let (issues, pulls): (i64, i64) = sqlx::query_as(
-            "SELECT COALESCE(SUM(kind = 'issue'), 0), COALESCE(SUM(kind = 'pull'), 0) FROM issues WHERE repo_id = ? AND state = 'open'",
-        )
-        .bind(repo.0)
-        .fetch_one(&self.pool)
-        .await?;
-        Ok((count(issues), count(pulls)))
+        let rows: Vec<(String, i64)> = sqlx::query_as(OPEN_COUNTS).bind(repo.0).fetch_all(&self.pool).await?;
+        let mut counts = (0, 0);
+        for (kind, n) in rows {
+            match kind.as_str() {
+                "issue" => counts.0 = count(n),
+                "pull" => counts.1 = count(n),
+                _ => {}
+            }
+        }
+        Ok(counts)
     }
 
     // ------------------------------------------------------------------ comments
@@ -741,7 +805,7 @@ impl IssueStore {
     }
 }
 
-async fn find_in(conn: &mut SqliteConnection, id: IssueId) -> Result<Option<Issue>, StorageError> {
+async fn find_in(conn: &mut Conn, id: IssueId) -> Result<Option<Issue>, StorageError> {
     let row: Option<IssueRow> =
         sqlx::query_as(concat!("SELECT ", issue_columns!(), " FROM issues WHERE id = ?")).bind(id.0).fetch_optional(&mut *conn).await?;
     row.map(Issue::try_from).transpose()
@@ -749,7 +813,7 @@ async fn find_in(conn: &mut SqliteConnection, id: IssueId) -> Result<Option<Issu
 
 /// Inserts an event and moves the thread's `updated_at` forward.
 pub(super) async fn insert_event(
-    conn: &mut SqliteConnection,
+    conn: &mut Conn,
     issue: IssueId,
     actor: Option<AccountId>,
     event: &TimelineEvent,
@@ -769,7 +833,7 @@ pub(super) async fn insert_event(
     Ok(EventId(id))
 }
 
-async fn touch_in(conn: &mut SqliteConnection, issue: IssueId, at: Timestamp) -> Result<(), StorageError> {
+async fn touch_in(conn: &mut Conn, issue: IssueId, at: Timestamp) -> Result<(), StorageError> {
     sqlx::query("UPDATE issues SET updated_at = MAX(updated_at, ?) WHERE id = ?").bind(at.0).bind(issue.0).execute(&mut *conn).await?;
     Ok(())
 }
@@ -825,7 +889,7 @@ impl IssueStore {
     /// Makes sure numbers handed out from now on are above `highest`, so threads created
     /// here while an import runs never take a number the import still has to write.
     pub async fn reserve_numbers(&self, repo: RepoId, highest: IssueNumber) -> Result<(), StorageError> {
-        reserve_in(&mut *self.pool.acquire().await?, repo, highest).await
+        reserve_in(&mut self.pool.acquire().await?, repo, highest).await
     }
 
     /// Inserts an imported thread with its number, state, comments and events in one
@@ -839,7 +903,7 @@ impl IssueStore {
 
     /// [`Self::insert_imported`] inside a caller's transaction (an imported pull request
     /// adds its own row in the same transaction).
-    pub(crate) async fn insert_imported_in(conn: &mut SqliteConnection, thread: &ImportedThread) -> Result<Issue, StorageError> {
+    pub(crate) async fn insert_imported_in(conn: &mut Conn, thread: &ImportedThread) -> Result<Issue, StorageError> {
         reserve_in(conn, thread.repo, thread.number).await?;
         let closed = thread.closed.as_ref();
         let id: i64 = sqlx::query_scalar(
@@ -887,7 +951,7 @@ impl IssueStore {
     }
 }
 
-async fn reserve_in(conn: &mut SqliteConnection, repo: RepoId, highest: IssueNumber) -> Result<(), StorageError> {
+async fn reserve_in(conn: &mut Conn, repo: RepoId, highest: IssueNumber) -> Result<(), StorageError> {
     sqlx::query(
         "INSERT INTO issue_counters (repo_id, last_number) VALUES (?1, ?2) \
          ON CONFLICT (repo_id) DO UPDATE SET last_number = MAX(last_number, ?2)",
@@ -902,6 +966,27 @@ async fn reserve_in(conn: &mut SqliteConnection, repo: RepoId, highest: IssueNum
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sqlite::plans;
+
+    #[tokio::test]
+    async fn a_thread_and_its_author_are_found_by_key() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, ISSUE_WITH_AUTHOR).await;
+        assert!(plan[0].starts_with("SEARCH i USING INDEX ") && plan[0].ends_with(" (repo_id=? AND number=?)"), "{plan:?}");
+        let author = plan.iter().filter(|line| *line == "SEARCH accounts USING INTEGER PRIMARY KEY (rowid=?)").count();
+        assert_eq!(author, 5, "each author column by key: {plan:?}");
+        plans::assert_no_scans(&database, ISSUE_WITH_AUTHOR, &[]).await;
+    }
+
+    #[tokio::test]
+    async fn open_counts_read_only_open_index_entries() {
+        let (_dir, database) = plans::database().await;
+        let plan = plans::query_plan(&database, OPEN_COUNTS).await;
+        // Before: `SEARCH issues USING COVERING INDEX issues_by_repo (repo_id=?)`.
+        assert_eq!(plan.len(), 1, "{plan:?}");
+        assert!(plan[0].starts_with("SEARCH issues USING COVERING INDEX "), "{plan:?}");
+        assert!(plan[0].ends_with(" (repo_id=? AND kind=? AND state=?)"), "{plan:?}");
+    }
 
     #[test]
     fn cursors_round_trip_through_urls() {

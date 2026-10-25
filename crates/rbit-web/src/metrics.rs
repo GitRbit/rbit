@@ -15,6 +15,10 @@
 //! * `rbit_git_operations_total{service, stage, status}` — smart-HTTP Git traffic:
 //!   `service` is `upload-pack` (clone/fetch) or `receive-pack` (push), `stage` is
 //!   `advertise` (`info/refs`) or `exchange` (the pack negotiation itself).
+//!
+//! The `SQLite` pool records `rbit_sqlite_*` metrics (connection waits, write lock waits,
+//! write transaction durations and busy errors; see `rbit_storage::sqlite`), with buckets
+//! fine enough for microsecond timings.
 
 use std::{
     sync::OnceLock,
@@ -33,6 +37,11 @@ use metrics_exporter_prometheus::{Matcher, PrometheusBuilder, PrometheusHandle};
 /// long `git gc` runs.
 const DURATION_BUCKETS: [f64; 14] = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 120.0, 600.0];
 
+/// Buckets (seconds) for the `SQLite` pool's `rbit_sqlite_*` timings
+/// (`rbit_storage::sqlite`): an uncontended acquisition or transaction takes
+/// microseconds, and the busy timeout ends a lock wait at 5 s.
+const SQLITE_BUCKETS: [f64; 14] = [0.000_05, 0.000_1, 0.000_25, 0.000_5, 0.001, 0.002_5, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5, 1.0, 5.0];
+
 /// How often histogram samples are folded into their buckets when nobody scrapes.
 const UPKEEP_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -42,8 +51,11 @@ const UPKEEP_INTERVAL: Duration = Duration::from_secs(5);
 pub fn install() -> &'static PrometheusHandle {
     static HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
     HANDLE.get_or_init(|| {
-        let builder = PrometheusBuilder::new();
-        let builder = match builder.set_buckets_for_metric(Matcher::Suffix("_seconds".to_owned()), &DURATION_BUCKETS) {
+        // A prefix matcher takes precedence over a suffix matcher.
+        let builder = PrometheusBuilder::new()
+            .set_buckets_for_metric(Matcher::Prefix("rbit_sqlite_".to_owned()), &SQLITE_BUCKETS)
+            .and_then(|builder| builder.set_buckets_for_metric(Matcher::Suffix("_seconds".to_owned()), &DURATION_BUCKETS));
+        let builder = match builder {
             Ok(builder) => builder,
             Err(error) => {
                 tracing::warn!(%error, "invalid histogram buckets; using summaries");
@@ -177,5 +189,16 @@ mod tests {
         assert!(text.contains(r#"rbit_http_requests_total{method="GET",route="/items/{id}",status="2xx"}"#), "{text}");
         assert!(text.contains("rbit_http_request_duration_seconds_bucket"), "{text}");
         assert!(!text.contains("unique-item"), "raw paths must never become labels");
+    }
+
+    #[test]
+    fn sqlite_timings_get_fine_buckets() {
+        install();
+        metrics::histogram!("rbit_sqlite_acquire_wait_seconds", "mode" => "bucket-test").record(0.000_07);
+        metrics::histogram!("rbit_http_request_duration_seconds", "method" => "GET", "route" => "/bucket-test").record(0.002);
+        let text = render();
+        assert!(text.contains(r#"rbit_sqlite_acquire_wait_seconds_bucket{mode="bucket-test",le="0.0001"} 1"#), "{text}");
+        assert!(text.contains(r#"rbit_http_request_duration_seconds_bucket{method="GET",route="/bucket-test",le="0.005"} 1"#), "{text}");
+        assert!(!text.contains(r#"route="/bucket-test",le="0.0001""#), "{text}");
     }
 }

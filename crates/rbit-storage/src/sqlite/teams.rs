@@ -7,12 +7,12 @@
 //! them from its teams when they leave it), and teams are only granted repositories of
 //! their own organisation.
 
+use super::pool::Pool;
 use rbit_core::{
     Account, AccountId, RepoId, Timestamp,
     membership::{Permission, Team, TeamGrant, TeamId, TeamName, TeamSummary},
     repository::OwnedRepository,
 };
-use sqlx::SqlitePool;
 
 use super::{
     collaborators::parse_permission,
@@ -77,11 +77,11 @@ pub enum TeamChange {
 
 #[derive(Debug, Clone)]
 pub struct TeamStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl TeamStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -226,7 +226,8 @@ impl TeamStore {
     ) -> Result<Vec<(OwnedRepository, Permission)>, StorageError> {
         let rows: Vec<TeamRepositoryRow> = sqlx::query_as(concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at, g.permission \
              FROM team_repositories g JOIN repositories r ON r.id = g.repo_id JOIN accounts o ON o.id = r.owner_id \
              WHERE g.team_id = ?1 AND ",

@@ -107,7 +107,7 @@ impl MergeBoxView {
                 })
                 .collect(),
             draft_url: urls.draft.clone(),
-            can_mark_ready: ctx.pull.is_draft && (is_author || ctx.repo().access.can_write()),
+            can_mark_ready: ctx.pull.is_draft && !ctx.repo().repo.repo.is_archived() && (is_author || ctx.repo().access.can_write()),
         }
     }
 }

@@ -12,12 +12,12 @@
 //! Lists join the issue rows read-only; the issue row conversion is repeated here because
 //! the core's row type is private to its store.
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoId, ReviewId, StateReason, Timestamp,
     issue::MergeStrategy,
     pull::{MAX_CONFLICT_PATHS, Mergeability, PullRequest},
 };
-use sqlx::SqlitePool;
 
 use super::issues::{IssueStore, NewIssue};
 use crate::StorageError;
@@ -239,11 +239,11 @@ pub struct MergeRecord<'a> {
 
 #[derive(Debug, Clone)]
 pub struct PullStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl PullStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

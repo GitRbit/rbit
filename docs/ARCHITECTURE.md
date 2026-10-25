@@ -175,7 +175,7 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `TimelineService` (`timeline`) | The core shared by issues and pull requests: opening a thread for a viewer (404 when it does not exist or the repository is unreadable), comments, title/body edits, close/reopen, lock, and the merged timeline of comments and events. Permissions are recomputed for the actor on every change. `close_as_system` closes by commit or merge. |
 | `IssueService` (`issues`) | Creating issues with labels, assignees and a milestone; labels (≤ 200 per repository, 25 per issue, default set), milestones, assignees (writers only, ≤ 10), deletion (admins), search; the metadata hook P uses; the background subscriber that turns references into timeline entries and closes issues from commits on the default branch and from pull requests merged into it. |
 | `ReferenceService` (`references`) | Resolves `#N` and `@name` in a batch of texts for rendering; records `CrossReferenced` on targets the mention's author can read. |
-| `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` for the header bell, retention pruning. |
+| `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` (the header bell itself comes with the session user, §7), retention pruning. |
 | `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review-thread resolution, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
@@ -184,7 +184,7 @@ Milestone 3 added:
 | Service | Responsibility |
 |---|---|
 | `StatusService` (`statuses`) | Commit statuses: `create` (write access, a full id that exists in the repository — for fork pull requests the head is found in the base repository as `refs/pull/{n}/head`), lists, the combined status per commit and for many commits, and the `status` webhook payload (`statuses::hooks`). `PullService::handle_status` re-evaluates open pull requests whose head received a status. |
-| `NotificationEmailService` (`notification_email`) | Mails what the inbox fan-out writes (§5.1): preferences, the outbox/dedup claim, the per-address budget, threading headers and signed unsubscribe links. |
+| `NotificationEmailService` (`notification_email`) | Mails what the inbox fan-out writes (§5.1): preferences, the outbox/dedup claim, the per-address budget, threading headers and signed unsubscribe links; daily and weekly digests (`notification_email/digests.rs`). |
 | `EditService` (`edits`) | Editing files in the browser (§3.8): authorisation, read-only repositories, the push gate, the author identity, line endings, uploads, and the `PushService` wrapping. |
 | `LfsService` (`lfs`) | Git LFS: objects stored once under `<data_dir>/lfs` and linked per repository (fork networks share where readable), the batch decisions, signed transfer tokens (`lfs::tokens`), locks (`lfs::locks`), `store` for anything that brings objects into a repository, link copies for new forks and orphan clean-up. |
 | `ExternalAuthService` (`external_auth`) | Sign-in with OpenID Connect providers and GitHub (§5.2): the flow cookie, the code exchange and ID token checks (HTTP in `external_auth/client.rs`), linking, unlinking and the register step; `Services::complete_external_sign_in` applies the linking rules. |
@@ -214,6 +214,7 @@ newest webhook id reserved at publish time (`Published`), for the webhook subscr
 | `RepositoryCreated` | `repo`, `actor` | `RepositoryService::create_in` (not forks) |
 | `RepositoryDeleted` | `repo`, `owner`, `full_name` (as it was), `actor` | repository settings, site administration |
 | `RepositoryTransferred` | `repo`, `from`, `to`, `actor` | `TransferService` |
+| `RepositoryArchived` | `repo`, `archived` (`false`: unarchived), `actor` | `RepoSettingsService::set_archived` (only when the state changed) |
 | `RepositoryForked` | `repo`, `parent`, `actor` | `ForkService` |
 | `ReleasePublished` | `repo`, `release`, `actor` | `ReleaseService` (created as non-draft, or a draft published) |
 | `UserSignedUp`, `PasswordChanged`, `EmailChanged` | `user` (`previous` address for email) | `AccountService`, `AdminService`, `ProfileService`, `RecoveryService` |
@@ -373,6 +374,8 @@ repo_forks         repo_id → repositories PK, parent_id → repositories SET N
 repo_mirrors       repo_id → repositories PK, url, interval_minutes, next_sync_at, last_sync_at,
                    last_error, created_at
 repo_redirects     (owner_id → accounts, name NOCASE) PK, repo_id → repositories, created_at
+repo_archives      repo_id → repositories PK, archived_by → accounts SET NULL, archived_at
+                   (a row while the repository is archived; every repository query selects it)
 
 -- milestone 2 wave B: the shared issue core (T0; only sqlite/issues.rs writes these)
 issue_counters     repo_id → repositories PK, last_number            (numbers are never reused)
@@ -438,10 +441,19 @@ commit_statuses    id, repo_id → repositories, sha (40 or 64 lower-case hex), 
 branch_protection_required_checks (rule_id → branch_protections, context) PK       (≤ 50 per rule)
 
 -- milestone 3: email notifications (N)
-notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at
+notification_email_settings account_id → accounts PK, email(off|participating|all), updated_at,
+                   delivery(immediate|daily|weekly, default immediate), digest_hour (0–23, NULL = default)
 notification_emails id, account_id → accounts, issue_id → issues, dedup_key, created_at,
                    UNIQUE(account_id, issue_id, dedup_key); index on created_at (pruned with the inbox)
 server_secrets     name PK, secret BLOB, created_at        (server-generated keys, sealed — §5)
+
+-- email digests
+notification_digests id, account_id → accounts, period (Unix second the period starts),
+                   state(claimed|sent|failed|empty), items, created_at, finished_at,
+                   UNIQUE(account_id, period)  (the claim that makes sending idempotent)
+notification_digest_items id, account_id → accounts, repo_id → repositories, issue_id → issues,
+                   reason, headline, excerpt, anchor, created_at, digest_id → notification_digests
+                   (NULL = waiting for the next digest); indexes on pending rows and on age
 
 -- milestone 3: Git LFS (L)
 lfs_objects        oid PK (64 hex), size, created_at, unlinked_at (stamped when a link is deleted)
@@ -483,7 +495,8 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 | `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | | |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0046` | `repo_archives` (archived repositories) |
+| | | | | | | `0047` | `email_digests` (delivery settings, digests, queued notifications) |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
@@ -491,7 +504,10 @@ that every row survives, the new defaults and triggers apply to old rows, and th
 wave B and milestone 3 exist and start empty. `0026`–`0031` (reserved for the API
 continuation, which needed none) and `0035` (spare) are unused; `0023` and `0025` are
 reserved for milestone 3's W, still in progress, and `0038`, `0039` hold M's imports and
-push mirrors. `0032` was
+push mirrors. `0040` adds the initial-password flag, `0041`–`0043` review-thread
+resolution, account redirects and dashboard mentions, and `0045` (`issue_list_order`) the
+`issues_by_repo_created` index for list pages in creation order. `0047` adds email digests; its upgrade test
+starts from `0043` with a stored preference, which keeps immediate delivery. `0032` was
 taken by passkeys before wave B landed (sqlx applies missing lower versions in order, so
 the gaps are harmless).
 
@@ -529,7 +545,8 @@ Users and organisations share one namespace (`accounts`), exactly like GitHub UR
 The TOML/env configuration supplies *defaults*. Site administrators override the site
 name, registration (open/closed), who may create organisations and the default repository
 visibility at runtime from `/admin/settings`. Overrides are stored in `instance_settings`
-and served from memory by `InstanceService` (a synchronous snapshot per request).
+and served from memory by `InstanceService` (a synchronous snapshot per request). The
+default email digest hour (`[notifications] digest_hour`) is one of these settings too.
 
 ### 3.6 Backups
 
@@ -787,6 +804,7 @@ Pushes that get past these checks then pass the push gate (§4.4).
 | Collaborators | `/{owner}/{repo}/settings/collaborators` (list, add), `…/{user}/permission`, `…/{user}/remove`; a collaborator can leave from the repository sidebar |
 | Teams | `/{org}/teams`, `/{org}/teams/new`, `/{org}/teams/{team}` (members, repositories), `/{org}/teams/{team}/settings`, `…/settings/delete`; base permission at `/{org}/settings/permission` |
 | Transfer | `/{owner}/{repo}/settings/transfer` (danger zone; confirm by typing `owner/name`) |
+| Archive | `POST /{owner}/{repo}/settings/archive` (danger zone; `archived=true` archives, `archived=false` unarchives, then shows the repository) |
 | Webhooks | `/{owner}/{repo}/settings/hooks` and `/{org}/settings/hooks`: list, `new`, `{id}` (edit), `{id}/ping`, `{id}/delete`, `{id}/deliveries/{delivery}` and `…/redeliver` |
 | Releases | `/{owner}/{repo}/releases`, `…/releases/tag/{tag}`, `…/releases/new`, `…/releases/{id}/edit`, `…/{id}/delete`, `…/{id}/assets` (upload), `…/{id}/assets/{asset}/delete`, `…/releases/download/{tag}/{name}` |
 | Code | `/{owner}/{repo}/blame/{rev}/{path}`, `/{owner}/{repo}/compare` and `/compare/{base}...{head}`, `/{owner}/{repo}/archive/{rev}.zip` / `.tar.gz` |
@@ -825,7 +843,8 @@ no-store`. Every handler goes through the same services as the pages.
 - **Endpoints (wave A)** — `GET /version`, `GET /openapi.json`; `GET /user`,
   `GET|POST /user/repos`, `GET /user/starred`, `PUT|DELETE /user/starred/{owner}/{repo}`;
   `GET /users/{name}`, `GET /users/{name}/repos`; `GET /orgs/{org}`, `GET /orgs/{org}/members`,
-  `GET|POST /orgs/{org}/repos`; `GET|PATCH|DELETE /repos/{owner}/{repo}`,
+  `GET|POST /orgs/{org}/repos`; `GET|PATCH|DELETE /repos/{owner}/{repo}` (`PATCH` also takes
+  `archived`, applied after the other changes),
   `…/branches`, `…/branches/{branch}` (may contain `/`), `…/tags`, `…/commits?sha=&page=`,
   `…/commits/{ref}`; webhooks under `/repos/{owner}/{repo}/hooks` and `/orgs/{org}/hooks`:
   `GET|POST`, `GET|PATCH|DELETE /{id}`, `POST /{id}/pings`, `GET /{id}/deliveries`,
@@ -912,7 +931,8 @@ organisation; changes are audited.
 - **Payloads** follow GitHub's shapes so existing receivers work: `push` (one delivery per
   changed ref: `ref`, `before`/`after` with 40 zeros for creation and deletion, `created`,
   `deleted`, up to 20 `commits` plus `total_commits`, `head_commit`, `pusher`, `compare`),
-  `repository` (`created`, `deleted`, `transferred`), `release` (`published`), `fork`,
+  `repository` (`created`, `deleted`, `transferred`, `archived`, `unarchived`; the
+  `repository` object carries `archived`), `release` (`published`), `fork`,
   `ping` (`zen`, `hook_id`, `hook`); all with `sender`, and with `repository` (and
   `organization` for organisation-owned repositories) where one applies. Wave B:
   - `issues` — `opened`, `edited` (`changes.title.from`, `changes.body.from`), `closed`,
@@ -1037,6 +1057,22 @@ deletion-only push never sends EOF, so the reader stops after the commands.
 Merges made by rbit move the base branch with `update-ref`, not `receive-pack`; they are
 checked by `check_merge` instead (§3.7).
 
+**Archived repositories.** `check_push` refuses every ref of a push to an archived
+repository (the reason is `rbit_core::repository::ARCHIVED_READ_ONLY`) before any rule is
+read, in the same all-or-nothing report, so HTTP, SSH and browser edits refuse alike. The
+rest of the content is guarded by the same check, `RepoContext::ensure_writable`
+(`ServiceError::Archived`), called by every service that changes a repository after its
+access check: merges and head-branch deletion, issues, pull requests, comments, reviews,
+labels, milestones, releases, commit statuses, LFS uploads and locks, and "sync now" of
+mirrors. Reads, clones, forks (which start unarchived) and stars never ask, nor do the
+settings that rename, transfer, unarchive or delete the repository. Pages ask
+`RepoContext::can_write_content`, and threads of an archived repository offer no
+permissions, so write controls are hidden. Pull mirrors stop fetching and push mirrors stop
+pushing while archived: the schedulers' due queries skip archived repositories, and once
+unarchived an overdue mirror runs at once. A pull mirror is frozen rather than kept in
+sync because archiving means "nothing here changes"; stop mirroring first to keep a
+read-only copy current.
+
 ### 4.5 Page routes added in milestone 2 wave B
 
 | Area | Routes |
@@ -1060,7 +1096,7 @@ repositories, unknown numbers and malformed ids are 404.
 |---|---|
 | Editing files | `/{owner}/{repo}/new/{branch}/{dir…}`, `…/edit/{branch}/{path…}`, `…/delete/{branch}/{path…}` (page router, body limit `6 × max_render_bytes + 256 KiB`), `…/upload/{branch}/{dir…}` (outside the page router, streaming); pencil and trash buttons on the blob page, "Add file" and "Upload files" on tree pages, for writers on branches of non-mirrors |
 | Commit statuses | the merge box lists the head's checks (state, context, description, "Required", "Expected" for required contexts without a report, "Details" with `rel="nofollow noopener noreferrer"`); `/{owner}/{repo}/commit/{revision}` shows a combined mark and the checks (`#checks`); commit lists show the mark per commit; the branch protection form gains "Require status checks to pass" and the required contexts |
-| Email notifications | `GET\|POST /settings/notifications` (off / participating / all, the address and why mail may not arrive), `GET\|POST /email/unsubscribe/{token}` (confirmation page; the POST turns emails off) |
+| Email notifications | `GET\|POST /settings/notifications` (off / participating / all; immediately, daily or weekly digest, and the digest hour; the address and why mail may not arrive), `GET\|POST /email/unsubscribe/{token}` (confirmation page; the POST turns emails off) |
 | External sign-in | `GET /login/{id}` (start), `GET /login/{id}/callback`, `GET\|POST /login/{id}/register` (choose a username), `GET /settings/security/linked/{id}?token=…` (link start, token bound to the session), `POST /settings/security/linked/{id}/unlink`; buttons on the sign-in page, "Sign-in methods" under Settings → Security |
 | Git LFS | the blob page shows the object a pointer names (with a "Stored with Git LFS" badge, LFS images inline) and `raw` streams it |
 
@@ -1141,6 +1177,7 @@ links the object.
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
 | Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by rbit are checked against the same rules (`check_merge`). |
+| Archived repositories | Read-only through one guard (`RepoContext::ensure_writable`) at every chokepoint that writes, including both receive paths (§4.4); the API answers 403 "Repository was archived so is read-only." only to callers who could otherwise write. Archiving and unarchiving are audited ("Repository content"). |
 | Web edits | Never check files out (scratch repository, scratch index, `commit-tree`); paths are validated `FilePath`s (no `..`, `.git` in any spelling, control characters or backslashes) and reach git only on stdin; uploads stream to disk under `[editor]` limits; the push gate decides exactly as for a push; the branch moves only through the merge's lease-protected `update-ref`; commits carry the noreply address. Mirrors are read-only. |
 | Commit statuses | Write access and a full commit id that exists in the repository; `target_url` follows the webhook URL rules (absolute `http`/`https`, no credentials) and is linked with `rel="nofollow noopener noreferrer"`; ≤ 1000 statuses per (repository, commit, context); required checks only block merges, never pushes. |
 | Git LFS | Object ids are validated SHA-256 hex before they name a path; uploads are checked against size and digest before they are placed; an object stored for another repository is never linked without a fresh upload (or read access through the fork network). Transfer headers are HMAC-signed, short-lived, scoped to one repository (and one object), verified in constant time, and re-check the holder's current access; failures are throttled like Git credentials. Objects are served as `application/octet-stream` with `nosniff`; the raw view keeps its sandbox CSP. |
@@ -1194,6 +1231,30 @@ pointing at `/email/unsubscribe/{account id}.{HMAC-SHA256}` (key `notification_u
 in `server_secrets`, verified in constant time); `GET` confirms (link scanners must not
 unsubscribe), `POST` sets the preference to `off` — the one CSRF exemption (§5). Outbox rows
 are pruned with the inbox (`notification_retention_days`).
+
+**Digests.** A user's `delivery` is `immediate` (the default, the behaviour above), `daily`
+or `weekly`. For digest users `deliver` makes the same checks and the same dedup claim, but
+instead of mailing it queues what the email would have said (`notification_digest_items`:
+headline, a one-line excerpt of at most 200 characters, the anchor and the reason; names and
+titles are read at send time) and spends no throttle budget. A task next to the inbox's
+pruning (`NotificationService::spawn_background`) calls `send_digests` on start-up and every
+five minutes. For each user with queued rows it computes the start of the current period
+(`period_start`: the latest day, or Monday, at the user's `digest_hour` UTC, else the
+instance's) and claims it in one transaction: insert `(account, period)` into
+`notification_digests` (unique, so a second sender or a restarted server gets nothing), delete
+queued rows whose thread has no unread inbox row any more (read in the app), and attach the
+rows queued **before** the period started. Later rows wait for the next period; with nothing
+attached no digest is recorded. The claimed digest is then checked again (active, verified,
+emails not `off`, the preference still wants each reason, read access per repository with
+current grants), grouped by repository and thread, rendered (`DigestNotification`: text and
+HTML) with the same `List-Unsubscribe` headers and a stable `Message-ID`
+(`<digest/{account}/{period}@host>`), and delivered with `MailService::deliver` (awaited, not
+the fire-and-forget queue). Its state becomes `sent`, `failed` or `empty`, and
+`rbit_notification_digests_total{outcome}` counts sent and failed ones. Sending is at most
+once: a failed digest, or one interrupted between claim and delivery, is not retried; its
+notifications stay in the inbox. Rows queued before a switch back to `immediate` go out in
+one last daily digest. Nothing is claimed while notification email is unavailable. Digests
+and claimed rows are pruned with the inbox; unclaimed rows are kept at least two weeks.
 
 ### 5.2 External sign-in
 
@@ -1302,7 +1363,19 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   `Cache-Control: immutable` + content hashes.
 - `mimalloc` global allocator; `lto = "fat"`, `codegen-units = 1`, `panic = "abort"` in release.
 - gitoxide with `max-performance-safe` (parallel pack decoding, fast SHA-1, zlib-rs).
+- Every repository keeps a split commit-graph (`git commit-graph write --reachable
+  --split`, under the repository lease): written after each push by the cache warm-up and
+  by periodic maintenance, since `git gc --auto` writes none below its thresholds. History
+  walks read parents from it, and last-commit walks read root tree ids from it instead of
+  decoding commit objects; commits newer than the graph fall back to the object database.
 - SQLite tuned: WAL, `synchronous = NORMAL`, memory-mapped I/O, prepared statement cache.
+  Every store shares one pool through `sqlite::pool::Pool`, which labels it with the
+  store's name and records connection waits, `BEGIN IMMEDIATE` write lock waits, write
+  transaction durations and busy errors (`rbit_sqlite_*`). A transaction that reads
+  before it writes begins with `BEGIN IMMEDIATE`: in WAL mode a deferred one cannot
+  upgrade its read to a write through the busy handler, so it fails at once with
+  `SQLITE_BUSY` while another writer holds the lock, or `SQLITE_BUSY_SNAPSHOT` if one
+  committed after its first read.
 - Streaming Git transport: pack data is never buffered in memory.
 - One pinned repository handle per page request (`RepositoryReader::pinned()`): a page's
   Git reads share opened config, refs and pack indexes instead of reopening them.
@@ -1321,6 +1394,50 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   at most 256 IDs. Notification fan-out uses 100-recipient batches for permission reads,
   inbox transactions and email deduplication claims; email refreshes active, verified
   accounts, preferences and permissions after the inbox is written.
+- SQL on the request path is written for its index, and the stores' unit tests assert its
+  `EXPLAIN QUERY PLAN` (`sqlite::plans`): every indexed column a query constrains is an
+  equality (open counts name both thread kinds). Issue and pull request lists build their
+  `WHERE` clause per request with only the filters in use; the default page (one kind and
+  state, newest first) walks `issues_by_repo_created` and stops at its `LIMIT`.
+  Permission-shaped lists start from the few candidates an index finds (assignees: the
+  owner, writers and organisation members) instead of checking every account. `COLLATE
+  NOCASE` columns are compared directly, never through `lower()`, so their indexes apply. A
+  signed-in request costs one query for the user, the password-change restriction and the
+  header's unread indicator together. `PRAGMA optimize` refreshes planner statistics after
+  migrations and on the maintenance schedule.
+- Every statement on the pool is one connection acquisition, and under load the pool is
+  the limit, so pages keep their statement counts small and fixed:
+  - A repository page opens the repository with its whole header in one statement
+    (`RepositoryStore::find_page`: the viewer's grants, stars, readable forks, parent,
+    mirror and open counts as subqueries and one-row joins). Access is decided from that
+    row in Rust, on every request, before anything is shown; only a private fork parent
+    is opened again for the viewer.
+  - The request's `RepoContext` carries the viewer's access and collaborator grant, so a
+    same-repository head branch and the "Leave" box reuse them.
+  - A thread is read with its author; one thread's labels, assignees and milestone are
+    one statement (`json_group_array`); the pull request list reads only labels.
+  - A viewed thread is marked read only when the sidebar's subscription query says it
+    has an unread notification, and the header's dot is re-read only when that changed
+    a row.
+  - Rows from many repositories (dashboards, the inbox) are access-checked in one
+    `readable_by!` statement over the page's repository ids, never per row.
+  - Cached comparison counts are written only on a miss.
+
+  `rbit-web/tests/work_counts.rs` pins the counts below with `rbit_storage::count_work`
+  (acquisitions, statements and insights cache writes counted on the request's task); the
+  signed-in viewer is neither owner nor collaborator. A change that adds a statement to
+  these pages must update them here.
+
+  | Page | Anonymous | Signed in |
+  |---|---|---|
+  | `/` | 3 | 5 |
+  | Repository home | 2 | 3 |
+  | Issue | 4 | 8 (6 with nothing unread there) |
+  | Pull request conversation | 9 | 11 |
+  | Pull request list (two rows) | 10 | 11 |
+  | Pull request Files changed | 6 | 7 |
+  | `/issues` (two rows, two repositories) | — | 9 |
+  | `/notifications` (two repositories) | — | 4 |
 - Session expiry scans use a read snapshot. Write transactions recheck and remove at
   most 256 candidates at a time, so a scan does not monopolize the writer or remove a
   session renewed since the snapshot.
@@ -1333,7 +1450,9 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   so the click is answered from the browser cache. Within a repository only `<main>`
   swaps and the tabs update out of band, and the request says so (`Rbit-Partial`):
   `partial::partial_responses` then sends only the title, `<main>` and the tabs, cut at
-  markers the layout emits. `middleware::preload_guard` answers preloads of
+  markers the layout emits. Any htmx request (boosted navigation, preload, history
+  restore) gets pages without the inlined stylesheets and their CSP hashes: htmx drops
+  the response's `<head>` and the page keeps its own. `middleware::preload_guard` answers preloads of
   side-effecting or heavy paths with `204`; `middleware::html_caching` makes HTML
   `private, no-cache` with a weak `ETag` (revisits cost a `304`), preloads fresh for the
   window, varying on `HX-Request`, `Rbit-Partial` and a per-page-load navigation epoch so
@@ -1347,21 +1466,38 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
   signs drawn by CSS. Each open changed file is contained as a whole the same way
   (`.diff-file[data-rows]`: header, bars and placeholders are whole rows; blocks.js adds
   the diff's scrollbar where it takes space), and only diffs of more than
-  `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
+  `BLOCKED_ABOVE_ROWS` (512) rows also use blocks inside it. Pull request rows are the
+  same plain rows: a commentable file carries its comment URL (`data-comment`) and
+  `assets/diff.js` opens the form from a line number with one delegated handler, so
+  comments add markup per file and hunk, never per line. See [design/frontend-virtualization.md](design/frontend-virtualization.md).
 - Syntax highlighting resolves syntect's scopes to one short class per token in Rust
   (flat spans, styled categories only) and caches highlighted files by blob id
-  (`render::highlight_cache`, 32 MiB). File and blame views share the cached allocation;
+  (`render::highlight_cache`, 32 MiB), with their widest line's width so a warm view never
+  rescans the file to size the code column. File and blame views share the cached allocation;
   concurrent misses for one key share a calculation. At most four distinct jobs are
   admitted, and cancellation does not release a slot before its CPU work finishes.
   Preload bookkeeping retains at most 128 records, six queued requests and two active
   requests; navigation and epoch changes discard obsolete work, and Save-Data disables
   all speculative requests. See [performance-followups.md](performance-followups.md)
-  for measurements and their limits. Pull request counts are cached by base and head
-  commit ids in redb (`comparison_counts`).
+  for measurements and their limits. Pull request counts (commits ahead, changed files,
+  added and removed lines) are cached by base and head commit ids in redb
+  (`comparison_counts`) and shared by the tabs, the REST API's pull request objects and
+  webhook payloads; pull requests never count the commits behind their base.
+- Markdown: one sanitiser per process; documents with a base (READMEs, Markdown files,
+  release notes, milestone descriptions) are cached by a SHA-256 of their source and the
+  base their links resolve against (`render::document_cache`, 8 MiB, sources of 512 bytes
+  or more). Comments, which link references per viewer, are rendered every time.
 - JavaScript modules: relative imports are rewritten to content-hashed URLs when served,
-  so every module can be `immutable` and still update on deploy.
+  so every module can be `immutable` and still update on deploy. Embedded HTML documents
+  (the sandboxed Mermaid frame) get the same treatment for their `src="/assets/…"`
+  attributes. Scripts that cannot know a file's hash (the theme picker) version it with
+  the asset build hash, which `assets::serve` also treats as current. Revalidations whose
+  `If-None-Match` names the current content get a `304`.
 - redb caches for last-commit-per-path and language statistics, keyed by commit id (never
-  stale) and warmed after pushes.
+  stale) and warmed after pushes. Any directory's last-commit map is persisted once a
+  complete walk covers all of its entries (a listing shown on one page); walks of a
+  filtered or paged subset, and walks cut short by the deadline, are only reused briefly
+  in memory.
 - Archives and release downloads stream; uploads are hashed while they stream to disk.
 
 ---
@@ -1456,6 +1592,6 @@ normal retention removes them.
 | **M2 wave A — A real forge** ✓ | Collaborators, teams and organisation base permission, repository transfer with old-name redirects, REST API `/api/v1` with token scopes and OpenAPI, signed webhooks with a persistent delivery queue, README relative links, archives, blame, compare, releases with attached files, forks, pull mirrors, the theme gallery. |
 | **M2 wave B — Workflow** ✓ | Issues with labels, milestones, assignees, references and search; in-app notifications; pull requests across forks with line comments, reviews, mergeability and merge/squash/rebase; branch protection enforced over HTTP and SSH; REST endpoints and `issues`/`issue_comment`/`pull_request`/`pull_request_review` webhooks ([design/milestone-2b.md](design/milestone-2b.md)). |
 | **M3 — Ready to open-source** (in progress) | Done: MIT OR Apache-2.0, community files and release packaging, `rbit_` tokens; commit statuses and required checks; REST API for collaborators, teams, releases and forks, `member` and `status` webhooks; email notifications; editing files in the browser; Git LFS; external sign-in with OpenID Connect and GitHub; importing from GitHub and Gitea/Forgejo, and push mirrors ([design/milestone-3.md](design/milestone-3.md)). In progress: wave B stretch items (W). |
-| Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses, email digests. |
+| Next | A gitoxide transport behind a switch, a runner protocol on top of commit statuses. Email digests have landed. |
 | Later — Platform | Actions/CI runner protocol, package registry, full-text code search (tantivy). |
 | 5 — Scale | Read replicas for repos, object storage for LFS, horizontal web tier. |

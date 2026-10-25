@@ -94,7 +94,7 @@ pub use recovery::RecoveryService;
 pub use references::ReferenceService;
 pub use releases::ReleaseService;
 pub use repo_settings::RepoSettingsService;
-pub use repositories::{CreateRepository, RepoContext, RepoSearch, RepoSearchResults, RepositoryService};
+pub use repositories::{CreateRepository, RepoContext, RepoHeaderData, RepoSearch, RepoSearchResults, RepositoryService};
 pub use ssh_keys::SshKeyService;
 pub use stars::{StarService, StarSummary};
 pub use statuses::StatusService;

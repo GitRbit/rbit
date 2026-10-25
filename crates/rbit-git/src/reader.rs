@@ -351,6 +351,18 @@ pub(crate) fn resolve_commit(repo: &gix::Repository, revision: &str) -> Result<O
     if revision.is_empty() || revision.contains("..") || revision.contains(['@', '^', '~', ':', '{']) {
         return Err(GitError::NotFound("revision"));
     }
+    // The full id of an existing object names that object, as in `git rev-parse`.
+    // Looking it up directly skips gix's abbreviated-id lookup, which re-reads the object
+    // database's directory state (pack indexes, alternates, `realpath`) on every call:
+    // pages pass the commit they resolved once to each later read, so that was several
+    // file system scans a page. A name that only looks like an id (a branch named with
+    // 40 hex digits) is no object and is resolved below.
+    if revision.len() == repo.object_hash().len_in_hex()
+        && let Ok(id) = ObjectId::from_hex(revision.as_bytes())
+        && let Ok(object) = repo.find_object(id)
+    {
+        return Ok(object.peel_to_commit().map_err(|_| GitError::NotFound("commit"))?.id);
+    }
     let id = repo.rev_parse_single(revision).map_err(|_| GitError::NotFound("revision"))?;
     let object = id.object().map_err(GitError::backend)?.peel_to_commit().map_err(|_| GitError::NotFound("commit"))?;
     Ok(object.id)
