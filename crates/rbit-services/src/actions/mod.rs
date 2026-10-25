@@ -85,6 +85,9 @@ struct Inner {
     groups: tokio::sync::Mutex<()>,
     /// Domain events the subscriber missed because it fell behind.
     missed_events: AtomicU64,
+    // Actions: interface and secrets (U).
+    /// The secrets key, looked at once (see [`secrets`]).
+    secrets_key: tokio::sync::OnceCell<secrets::KeyState>,
 }
 
 impl ActionsService {
@@ -105,6 +108,8 @@ impl ActionsService {
                 // Actions: triggers (T).
                 groups: tokio::sync::Mutex::new(()),
                 missed_events: AtomicU64::new(0),
+                // Actions: interface and secrets (U).
+                secrets_key: tokio::sync::OnceCell::new(),
             }),
         })
     }
@@ -120,6 +125,12 @@ impl ActionsService {
         let events = self.inner.ctx.events.subscribe();
         self.inner.tasks.spawn(self.clone().follow_events(events));
         self.inner.tasks.spawn(self.clone().run_schedules());
+        // Actions: interface and secrets (U). The key is created, or its problem logged, at
+        // start-up rather than when a secret is first needed.
+        let this = self.clone();
+        self.inner.tasks.spawn(async move {
+            let _ = this.secrets_key().await;
+        });
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from

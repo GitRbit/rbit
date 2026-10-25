@@ -118,6 +118,9 @@ serde-saphyr = { version = "2.0", default-features = false, features = ["deseria
 # Secrets in job specifications and runner messages are zeroed on drop; zeroize is already
 # in the tree through argon2.
 zeroize = "1.9"
+# Actions secrets are sealed with AES-256-GCM under a key kept outside SQLite; aes-gcm is
+# already in the tree (through pkcs5), so sealing adds no crate.
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc", "zeroize"] }
 
 # Testing
 tempfile = "3"

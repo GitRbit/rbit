@@ -380,7 +380,7 @@ impl ActionsService {
         Ok(database.accounts().find_accounts(&[author]).await?.pop())
     }
 
-    fn audit(&self) -> AuditService {
+    pub(super) fn audit(&self) -> AuditService {
         AuditService::from_store(self.ctx().database.audit())
     }
 }

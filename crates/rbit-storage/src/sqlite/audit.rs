@@ -117,10 +117,15 @@ pub enum AuditAction {
     // Actions: triggers (T).
     ActionsRunApproved,
     ActionsUserTrusted,
+    // Actions: interface and secrets (U).
+    ActionsSecretSet,
+    ActionsSecretDeleted,
+    ActionsVariableSet,
+    ActionsVariableDeleted,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 47] = [
+    pub const ALL: [Self; 51] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -169,6 +174,11 @@ impl AuditAction {
         // Actions: triggers (T).
         Self::ActionsRunApproved,
         Self::ActionsUserTrusted,
+        // Actions: interface and secrets (U).
+        Self::ActionsSecretSet,
+        Self::ActionsSecretDeleted,
+        Self::ActionsVariableSet,
+        Self::ActionsVariableDeleted,
     ];
 
     /// Stable identifier stored in the database.
@@ -222,6 +232,11 @@ impl AuditAction {
             // Actions: triggers (T).
             Self::ActionsRunApproved => "actions_run_approved",
             Self::ActionsUserTrusted => "actions_user_trusted",
+            // Actions: interface and secrets (U).
+            Self::ActionsSecretSet => "actions_secret_set",
+            Self::ActionsSecretDeleted => "actions_secret_deleted",
+            Self::ActionsVariableSet => "actions_variable_set",
+            Self::ActionsVariableDeleted => "actions_variable_deleted",
         }
     }
 
@@ -274,7 +289,12 @@ impl AuditAction {
             | Self::BranchProtectionBypassed
             // Actions: triggers (T).
             | Self::ActionsRunApproved
-            | Self::ActionsUserTrusted => AuditCategory::RepositoryAccess,
+            | Self::ActionsUserTrusted
+            // Actions: interface and secrets (U).
+            | Self::ActionsSecretSet
+            | Self::ActionsSecretDeleted
+            | Self::ActionsVariableSet
+            | Self::ActionsVariableDeleted => AuditCategory::RepositoryAccess,
             Self::IssueDeleted => AuditCategory::RepositoryContent,
         }
     }
@@ -330,6 +350,11 @@ impl AuditAction {
             // Actions: triggers (T).
             Self::ActionsRunApproved => "Approved a workflow run",
             Self::ActionsUserTrusted => "Trusted a pull request author's workflow runs",
+            // Actions: interface and secrets (U).
+            Self::ActionsSecretSet => "Set an Actions secret",
+            Self::ActionsSecretDeleted => "Deleted an Actions secret",
+            Self::ActionsVariableSet => "Set an Actions variable",
+            Self::ActionsVariableDeleted => "Deleted an Actions variable",
         }
     }
 
