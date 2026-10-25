@@ -8,7 +8,8 @@ name: Release
 #      own cross toolchain — no emulation, no Docker-based cross compilers;
 #   3. creates the GitHub release with the archives and their SHA-256 sums;
 #   4. pushes a multi-architecture image (linux/amd64, linux/arm64) of the same Linux
-#      binaries to ghcr.io/gitrbit/rbit.
+#      binaries to ghcr.io/gitrbit/rbit, and one of rbit-runner to
+#      ghcr.io/gitrbit/rbit-runner. Every archive holds both rbit and rbit-runner.
 #
 # A tag with a pre-release suffix (`v0.2.0-rc.1`) makes a pre-release; it may use the
 # `## [Unreleased]` section when the version has none yet, and never moves `latest`.
@@ -31,6 +32,7 @@ env:
   CARGO_BUILD_JOBS: "1"
   NODE_VERSION: "24"
   IMAGE: ghcr.io/gitrbit/rbit
+  RUNNER_IMAGE: ghcr.io/gitrbit/rbit-runner
 
 jobs:
   prepare:
@@ -162,18 +164,23 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --locked --package rbit-server --target ${{ matrix.target }}
+        run: cargo build --release --locked --package rbit-server --package rbit-runner --target ${{ matrix.target }}
       - name: Smoke test
         if: ${{ !matrix.cross }}
         shell: bash
-        run: ./target/${{ matrix.target }}/release/rbit --version
+        run: |
+          ./target/${{ matrix.target }}/release/rbit --version
+          ./target/${{ matrix.target }}/release/rbit-runner --version
       - name: Package
         shell: bash
         run: |
-          exe=rbit
-          [[ "${{ matrix.target }}" == *windows* ]] && exe=rbit.exe
+          suffix=""
+          [[ "${{ matrix.target }}" == *windows* ]] && suffix=.exe
           mkdir -p "dist/$NAME"
-          cp "target/${{ matrix.target }}/release/$exe" "dist/$NAME/"
+          # rbit-runner ships next to rbit: the forge and the runner that builds for it.
+          for exe in rbit rbit-runner; do
+            cp "target/${{ matrix.target }}/release/$exe$suffix" "dist/$NAME/"
+          done
           cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE THIRD-PARTY.md "dist/$NAME/"
           cp deploy/rbit.example.toml deploy/rbit.service "dist/$NAME/"
           cd dist
@@ -278,6 +285,65 @@ jobs:
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: BINARY=prebuilt
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+
+  runner-image:
+    name: Publish the runner image
+    needs: [prepare, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: dist-*-linux-gnu
+          path: archives
+          merge-multiple: true
+      # Dockerfile.runner's `prebuilt` stage takes dist/linux-<arch>/rbit-runner.
+      - name: Unpack the Linux runners
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          for pair in amd64:x86_64-unknown-linux-gnu arm64:aarch64-unknown-linux-gnu; do
+            arch="${pair%%:*}" target="${pair#*:}"
+            mkdir -p "dist/linux-$arch"
+            tar -xzf "archives/rbit-$VERSION-$target.tar.gz" --strip-components=1               -C "dist/linux-$arch" "rbit-$VERSION-$target/rbit-runner"
+          done
+          ls -lR dist
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.RUNNER_IMAGE }}
+          # The same tags as the rbit image: a runner and a forge of one release go together.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref_name, 'v0.') }}
+          flavor: |
+            latest=${{ needs.prepare.outputs.prerelease == 'false' }}
+          labels: |
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+            org.opencontainers.image.title=rbit-runner
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Dockerfile.runner
           platforms: linux/amd64,linux/arm64
           build-args: BINARY=prebuilt
           push: true

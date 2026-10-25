@@ -1,0 +1,83 @@
+# syntax=docker/dockerfile:1.7
+#
+# rbit-runner container image: the runner, `git` for the built-in checkout, and the Docker
+# CLI for the container backend, running as an unprivileged user.
+#
+#   docker build -f Dockerfile.runner -t rbit-runner .
+#   docker run --rm -it -v rbit-runner:/var/lib/rbit-runner rbit-runner \
+#     register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04
+#   docker run -d --name rbit-runner -v rbit-runner:/var/lib/rbit-runner \
+#     -v /var/run/docker.sock:/var/run/docker.sock --group-add "$(stat -c %g /var/run/docker.sock)" rbit-runner
+#
+# The registration token comes from RBIT_RUNNER_TOKEN (`-e RBIT_RUNNER_TOKEN=…`) so it stays
+# out of the process list. runner.toml, the credential and the work directory live in the
+# /var/lib/rbit-runner volume.
+#
+# The Docker socket gives the *runner* control of the daemon; jobs never get it: each job
+# runs in its own container without the socket, without privileges and on its own network
+# (docs/deployment.md, "Runners"). Prefer a dedicated host or VM, or rootless Podman via
+# DOCKER_HOST, for runners that build untrusted code.
+#
+# Released images (ghcr.io/gitrbit/rbit-runner) are built by .github/workflows/release.yml
+# with BINARY=prebuilt from the release binaries; the default compiles from source.
+
+ARG RUST_VERSION=1
+ARG DEBIAN_RELEASE=trixie
+# `source` (compile in stage 1) or `prebuilt` (take dist/linux-<arch>/rbit-runner, stage 1b).
+ARG BINARY=source
+
+# ---------------------------------------------------------------- 1. release build
+# The runner depends on no server crate and embeds no web assets, so no stylesheet stage.
+FROM rust:${RUST_VERSION}-${DEBIAN_RELEASE} AS build
+WORKDIR /src
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    cargo build --release --locked --package rbit-runner \
+    && install -D -m 0755 target/release/rbit-runner /out/rbit-runner
+
+FROM build AS binary-source
+
+# ---------------------------------------------------------------- 1b. prebuilt binary
+FROM scratch AS binary-prebuilt
+ARG TARGETARCH
+COPY --chmod=0755 dist/linux-${TARGETARCH}/rbit-runner /out/rbit-runner
+
+FROM binary-${BINARY} AS binary
+
+# ---------------------------------------------------------------- 2. runtime
+FROM debian:${DEBIAN_RELEASE}-slim AS runtime
+
+LABEL org.opencontainers.image.title="rbit-runner" \
+      org.opencontainers.image.description="Runs rbit Actions jobs in containers or a host shell" \
+      org.opencontainers.image.url="https://github.com/GitRbit/rbit" \
+      org.opencontainers.image.source="https://github.com/GitRbit/rbit" \
+      org.opencontainers.image.documentation="https://github.com/GitRbit/rbit/blob/main/docs/actions.md" \
+      org.opencontainers.image.licenses="MIT OR Apache-2.0" \
+      org.opencontainers.image.vendor="The rbit contributors"
+
+# git, git-lfs: the built-in checkout runs on the runner, so job images need no git.
+# docker-cli: the container backend drives Docker (or Podman's Docker API) through the CLI.
+# tini: PID 1 that forwards signals, so a stop gives running jobs their grace period.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git git-lfs docker-cli tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system --gid 10002 rbit-runner \
+    && useradd --system --uid 10002 --gid rbit-runner --home-dir /var/lib/rbit-runner --shell /usr/sbin/nologin rbit-runner \
+    && install -d -o rbit-runner -g rbit-runner -m 0700 /var/lib/rbit-runner
+
+COPY --from=binary /out/rbit-runner /usr/local/bin/rbit-runner
+
+ENV RBIT_RUNNER_CONFIG=/var/lib/rbit-runner/runner.toml \
+    RUST_LOG=info \
+    NO_COLOR=1
+
+USER rbit-runner:rbit-runner
+WORKDIR /var/lib/rbit-runner
+VOLUME ["/var/lib/rbit-runner"]
+
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/rbit-runner"]
+CMD ["run"]
