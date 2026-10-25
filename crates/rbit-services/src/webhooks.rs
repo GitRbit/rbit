@@ -409,6 +409,16 @@ impl WebhookService {
                 let payload = payloads::transferred(&owned, self.is_fork(*repo).await?, &previous, sender.as_ref(), &base);
                 self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
             }
+            DomainEvent::RepositoryArchived { repo, archived, actor } => {
+                let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
+                let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
+                let sender = self.account(*actor).await?;
+                let repository = payloads::repository(&owned, &base, self.is_fork(*repo).await?);
+                let action = if *archived { "archived" } else { "unarchived" };
+                let payload =
+                    payloads::with_organization(payloads::repository_event(action, &repository, sender.as_ref(), &base), &owned, &base);
+                self.queue(hooks, WebhookEvent::Repository, &payload).await?.len()
+            }
             DomainEvent::RepositoryForked { repo, parent, actor } => {
                 let (Some(forkee), Some(origin)) = (self.repository(*repo).await?, self.repository(*parent).await?) else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*parent), &org_of(&origin.owner), WebhookEvent::Fork).await?;

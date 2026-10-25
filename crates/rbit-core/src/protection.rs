@@ -86,6 +86,13 @@ impl PushVerdict {
         Self::default()
     }
 
+    /// Every update refused for the same `reason`, whatever the rules say (a push to an
+    /// archived repository).
+    pub fn refuse_all(updates: &[RefUpdate], reason: &str) -> Self {
+        let refusals = updates.iter().map(|update| Refusal { name: update.name.clone(), reason: reason.to_owned() }).collect();
+        Self { refusals, deny_non_fast_forwards: false }
+    }
+
     pub fn is_refused(&self) -> bool {
         !self.refusals.is_empty()
     }

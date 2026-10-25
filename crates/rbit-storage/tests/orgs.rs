@@ -1,6 +1,6 @@
 //! Organisation and membership persistence against a real, migrated `SQLite` database.
 
-use rbit_core::{AccountId, OrgRole, RepoSort, User, Visibility};
+use rbit_core::{AccountId, OrgRole, RepoSort, User, Visibility, repository::ArchivedFilter};
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::orgs::{MembershipChange, NewOrganization, OrgProfileUpdate},
@@ -182,13 +182,19 @@ async fn explore_search_sorts_pages_and_escapes_wildcards() {
     let repos = database.repositories();
     let names = |list: Vec<rbit_core::OwnedRepository>| list.into_iter().map(|r| r.repo.name.to_string()).collect::<Vec<_>>();
 
-    assert_eq!(repos.count_public("").await.unwrap(), 3);
-    assert_eq!(names(repos.search_public("", RepoSort::Name, 10, 0).await.unwrap()), ["alpha", "beta", "Web-site"]);
-    assert_eq!(names(repos.search_public("", RepoSort::Newest, 10, 0).await.unwrap()), ["Web-site", "alpha", "beta"]);
-    assert_eq!(names(repos.search_public("", RepoSort::Name, 2, 2).await.unwrap()), ["Web-site"]);
+    assert_eq!(repos.count_public("", ArchivedFilter::Include).await.unwrap(), 3);
+    assert_eq!(
+        names(repos.search_public("", RepoSort::Name, ArchivedFilter::Include, 10, 0).await.unwrap()),
+        ["alpha", "beta", "Web-site"]
+    );
+    assert_eq!(
+        names(repos.search_public("", RepoSort::Newest, ArchivedFilter::Include, 10, 0).await.unwrap()),
+        ["Web-site", "alpha", "beta"]
+    );
+    assert_eq!(names(repos.search_public("", RepoSort::Name, ArchivedFilter::Include, 2, 2).await.unwrap()), ["Web-site"]);
 
-    assert_eq!(repos.count_public("WEB").await.unwrap(), 2, "name or description, case-insensitive, public only");
-    assert_eq!(names(repos.search_public("web", RepoSort::Name, 10, 0).await.unwrap()), ["beta", "Web-site"]);
-    assert_eq!(names(repos.search_public("0%", RepoSort::Name, 10, 0).await.unwrap()), ["Web-site"]);
-    assert_eq!(repos.count_public("_").await.unwrap(), 0, "underscore is literal");
+    assert_eq!(repos.count_public("WEB", ArchivedFilter::Include).await.unwrap(), 2, "name or description, case-insensitive, public only");
+    assert_eq!(names(repos.search_public("web", RepoSort::Name, ArchivedFilter::Include, 10, 0).await.unwrap()), ["beta", "Web-site"]);
+    assert_eq!(names(repos.search_public("0%", RepoSort::Name, ArchivedFilter::Include, 10, 0).await.unwrap()), ["Web-site"]);
+    assert_eq!(repos.count_public("_", ArchivedFilter::Include).await.unwrap(), 0, "underscore is literal");
 }

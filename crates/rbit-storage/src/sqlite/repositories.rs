@@ -12,7 +12,7 @@ use rbit_core::{
     Account, AccountId, OrgRole, RepoId, RepoName, RepoSort, Repository, Timestamp, Visibility,
     membership::{BasePermission, Permission},
     mirror::Mirror,
-    repository::OwnedRepository,
+    repository::{ArchivedFilter, OwnedRepository},
 };
 
 use super::{
@@ -59,7 +59,8 @@ macro_rules! select_owned_repo {
     ($($clause:expr),+) => {
         concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM repositories r JOIN accounts o ON o.id = r.owner_id ",
             $($clause),+
@@ -111,17 +112,25 @@ macro_rules! member_repositories {
 }
 
 /// Explore filter: public repositories whose name or description matches the `LIKE`
-/// pattern `?1` (escape character `\`).
+/// pattern `?1` (escape character `\`) and whose archive state passes the filter bound
+/// at `$archived` ([`archived_code`]).
 macro_rules! public_matching {
-    () => {
-        r"WHERE r.visibility = 'public' AND (r.name LIKE ?1 ESCAPE '\' OR IFNULL(r.description, '') LIKE ?1 ESCAPE '\') "
+    ($archived:literal) => {
+        concat!(
+            r"WHERE r.visibility = 'public' AND (r.name LIKE ?1 ESCAPE '\' OR IFNULL(r.description, '') LIKE ?1 ESCAPE '\') ",
+            "AND CASE ",
+            $archived,
+            " WHEN 1 THEN NOT EXISTS (SELECT 1 FROM repo_archives a WHERE a.repo_id = r.id) \
+             WHEN 2 THEN EXISTS (SELECT 1 FROM repo_archives a WHERE a.repo_id = r.id) ELSE 1 END "
+        )
     };
 }
 
-/// Explore query for one sort order; `?2` is the limit and `?3` the offset.
+/// Explore query for one sort order; `?2` is the limit, `?3` the offset and `?4` the
+/// archive filter.
 macro_rules! search_public {
     ($order:literal) => {
-        select_owned_repo!(public_matching!(), $order, " LIMIT ?2 OFFSET ?3")
+        select_owned_repo!(public_matching!("?4"), $order, " LIMIT ?2 OFFSET ?3")
     };
 }
 
@@ -172,7 +181,7 @@ macro_rules! page_mirror {
 /// table had grown tenfold.
 pub(crate) const REPOSITORY_PAGE: &str = concat!(
     "SELECT page.id, page.owner_id, page.name, page.description, page.visibility, page.default_branch, page.created_at, page.updated_at, \
-     page.pushed_at, ",
+     page.pushed_at, (SELECT archived_at FROM repo_archives WHERE repo_id = page.id) AS archived_at, ",
     page_owner!("kind", "owner_kind"),
     page_owner!("name", "owner_name"),
     page_owner!("display_name", "owner_display_name"),
@@ -327,15 +336,39 @@ const READABLE_AMONG: &str = concat!(
     "SELECT (SELECT CASE WHEN ",
     readable_by!("?2", "?3"),
     " THEN json_array(r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-     r.pushed_at, (SELECT kind FROM accounts WHERE id = r.owner_id), (SELECT name FROM accounts WHERE id = r.owner_id), \
+     r.pushed_at, (SELECT archived_at FROM repo_archives WHERE repo_id = r.id), (SELECT kind FROM accounts WHERE id = r.owner_id), (SELECT name FROM accounts WHERE id = r.owner_id), \
      (SELECT display_name FROM accounts WHERE id = r.owner_id), (SELECT bio FROM accounts WHERE id = r.owner_id), \
      (SELECT created_at FROM accounts WHERE id = r.owner_id)) END \
      FROM repositories r WHERE r.id = ids.value) FROM json_each(?1) ids"
 );
 
 /// A row of [`READABLE_AMONG`]: [`OwnedRepositoryRow`]'s columns in order.
-type ReadableRepository =
-    (i64, i64, String, Option<String>, String, String, i64, i64, Option<i64>, String, String, Option<String>, Option<String>, i64);
+type ReadableRepository = (
+    i64,
+    i64,
+    String,
+    Option<String>,
+    String,
+    String,
+    i64,
+    i64,
+    Option<i64>,
+    Option<i64>,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    i64,
+);
+
+/// How [`public_matching!`] receives an [`ArchivedFilter`].
+const fn archived_code(filter: ArchivedFilter) -> i64 {
+    match filter {
+        ArchivedFilter::Include => 0,
+        ArchivedFilter::Exclude => 1,
+        ArchivedFilter::Only => 2,
+    }
+}
 
 /// Turns free text into a `LIKE` pattern matching it anywhere, with wildcards escaped.
 fn contains_pattern(text: &str) -> String {
@@ -375,7 +408,8 @@ impl RepositoryStore {
         let row: RepositoryRow = sqlx::query_as(
             "INSERT INTO repositories (owner_id, name, description, visibility, default_branch, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?) \
-             RETURNING id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at",
+             RETURNING id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at, \
+             NULL AS archived_at",
         )
         .bind(new.owner_id.0)
         .bind(new.name.as_str())
@@ -501,6 +535,7 @@ impl RepositoryStore {
                     created_at,
                     updated_at,
                     pushed_at,
+                    archived_at,
                     kind,
                     owner,
                     display,
@@ -508,7 +543,18 @@ impl RepositoryStore {
                     since,
                 ) = row;
                 let repo = OwnedRepository::try_from(OwnedRepositoryRow {
-                    repo: RepositoryRow { id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at },
+                    repo: RepositoryRow {
+                        id,
+                        owner_id,
+                        name,
+                        description,
+                        visibility,
+                        default_branch,
+                        created_at,
+                        updated_at,
+                        pushed_at,
+                        archived_at,
+                    },
                     owner_kind: kind,
                     owner_name: owner,
                     owner_display_name: display,
@@ -632,22 +678,36 @@ impl RepositoryStore {
     }
 
     /// One page of public repositories whose name or description contains `text`
-    /// (case-insensitively; empty matches everything), in `sort` order.
-    pub async fn search_public(&self, text: &str, sort: RepoSort, limit: u32, offset: u32) -> Result<Vec<OwnedRepository>, StorageError> {
+    /// (case-insensitively; empty matches everything) and that `archived` lets through,
+    /// in `sort` order.
+    pub async fn search_public(
+        &self,
+        text: &str,
+        sort: RepoSort,
+        archived: ArchivedFilter,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<OwnedRepository>, StorageError> {
         let sql = match sort {
             RepoSort::RecentlyUpdated => search_public!("ORDER BY r.updated_at DESC, r.id DESC"),
             RepoSort::Name => search_public!("ORDER BY r.name COLLATE NOCASE, o.name COLLATE NOCASE, r.id"),
             RepoSort::Newest => search_public!("ORDER BY r.created_at DESC, r.id DESC"),
         };
-        let rows: Vec<OwnedRepositoryRow> =
-            sqlx::query_as(sql).bind(contains_pattern(text)).bind(limit).bind(offset).fetch_all(&self.pool).await?;
+        let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(sql)
+            .bind(contains_pattern(text))
+            .bind(limit)
+            .bind(offset)
+            .bind(archived_code(archived))
+            .fetch_all(&self.pool)
+            .await?;
         rows.into_iter().map(OwnedRepository::try_from).collect()
     }
 
     /// How many repositories [`Self::search_public`] can page through for `text`.
-    pub async fn count_public(&self, text: &str) -> Result<i64, StorageError> {
-        Ok(sqlx::query_scalar(concat!("SELECT COUNT(*) FROM repositories r ", public_matching!()))
+    pub async fn count_public(&self, text: &str, archived: ArchivedFilter) -> Result<i64, StorageError> {
+        Ok(sqlx::query_scalar(concat!("SELECT COUNT(*) FROM repositories r ", public_matching!("?2")))
             .bind(contains_pattern(text))
+            .bind(archived_code(archived))
             .fetch_one(&self.pool)
             .await?)
     }

@@ -13,8 +13,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use rbit_auth::{Grants, repo_access};
 use rbit_core::{
-    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility, mirror::Mirror,
-    repository::OwnedRepository,
+    Account, AccountId, Config, OrgRole, Permission, RepoAccess, RepoId, RepoName, RepoSort, User, Visibility,
+    mirror::Mirror,
+    repository::{ArchivedFilter, OwnedRepository},
 };
 use rbit_git::{RepositoryReader, RepositoryStorage};
 use rbit_storage::{
@@ -58,6 +59,25 @@ pub struct RepoContext {
 }
 
 impl RepoContext {
+    /// The archive guard: [`ServiceError::Archived`] when the repository is archived.
+    ///
+    /// Every write to a repository's content asks this, at the same chokepoints branch
+    /// protection uses — the push gate (`ProtectionService::check_push`, for HTTP, SSH and
+    /// browser edits), merges, issues, pull requests, comments, reviews, labels,
+    /// milestones, releases, commit statuses and LFS uploads and locks — after the
+    /// access check, so only people who could otherwise write learn why they may not.
+    /// Reading, cloning, forking and starring never ask; neither do the settings that
+    /// archive, unarchive, transfer or delete the repository.
+    pub fn ensure_writable(&self) -> Result<(), ServiceError> {
+        if self.repo.repo.is_archived() { Err(ServiceError::Archived) } else { Ok(()) }
+    }
+
+    /// Whether the viewer may change the repository's content: write access to a
+    /// repository that is not archived. What pages use to show write controls.
+    pub fn can_write_content(&self) -> bool {
+        self.access.can_write() && !self.repo.repo.is_archived()
+    }
+
     /// Loads repository `id` for system work (background jobs), or `None` if it no
     /// longer exists. See [`Self::for_system`].
     pub(crate) async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {
@@ -96,6 +116,8 @@ pub struct RepoHeaderData {
 pub struct RepoSearch {
     pub text: String,
     pub sort: RepoSort,
+    /// Archived repositories are listed unless this says otherwise.
+    pub archived: ArchivedFilter,
     /// 1-based; `0` is treated as `1`.
     pub page: u32,
 }
@@ -301,12 +323,12 @@ impl RepositoryService {
     /// Pages past the end are clamped to the last page.
     pub async fn explore(&self, search: &RepoSearch) -> Result<RepoSearchResults, ServiceError> {
         let text: String = search.text.trim().chars().take(MAX_SEARCH_LEN).collect();
-        let total = u64::try_from(self.store.count_public(&text).await?).unwrap_or_default();
+        let total = u64::try_from(self.store.count_public(&text, search.archived).await?).unwrap_or_default();
         let mut results = RepoSearchResults { repos: Vec::new(), total, page: search.page.max(1), per_page: EXPLORE_PAGE_SIZE };
         results.page = results.page.min(results.page_count());
 
         let offset = (results.page - 1).saturating_mul(EXPLORE_PAGE_SIZE);
-        results.repos = self.store.search_public(&text, search.sort, EXPLORE_PAGE_SIZE, offset).await?;
+        results.repos = self.store.search_public(&text, search.sort, search.archived, EXPLORE_PAGE_SIZE, offset).await?;
         Ok(results)
     }
 

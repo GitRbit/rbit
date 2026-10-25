@@ -4,7 +4,7 @@ use axum::{
     extract::{Query, State},
     response::{IntoResponse, Response},
 };
-use rbit_core::RepoSort;
+use rbit_core::{RepoSort, repository::ArchivedFilter};
 use rbit_services::repositories::RepoSearch;
 use serde::Deserialize;
 
@@ -44,32 +44,39 @@ pub async fn index(State(state): State<AppState>, viewer: Viewer, page: Page) ->
     Ok(DashboardPage { page: page.titled("Dashboard"), repos, recent, orgs, can_create_org }.into_response())
 }
 
-/// `?q=…&sort=…&page=…`. Everything is optional and parsed leniently: a bad value falls
-/// back to its default instead of failing the request.
+/// `?q=…&sort=…&archived=…&page=…`. Everything is optional and parsed leniently: a bad
+/// value falls back to its default instead of failing the request.
 #[derive(Debug, Deserialize)]
 pub struct ExploreQuery {
     q: Option<String>,
     sort: Option<String>,
+    /// `false` hides archived repositories, `true` lists only them.
+    archived: Option<String>,
     page: Option<String>,
 }
 
 pub async fn explore(State(state): State<AppState>, page: Page, Query(params): Query<ExploreQuery>) -> WebResult<ExplorePage> {
     let query = params.q.unwrap_or_default().trim().to_owned();
     let sort = params.sort.as_deref().and_then(RepoSort::parse).unwrap_or_default();
+    let archived = params.archived.as_deref().and_then(ArchivedFilter::parse).unwrap_or_default();
     let requested = params.page.as_deref().and_then(|p| p.parse().ok()).unwrap_or(1);
 
-    let search = RepoSearch { text: query.clone(), sort, page: requested };
+    let search = RepoSearch { text: query.clone(), sort, archived, page: requested };
     let results = state.services.repositories.explore(&search).await?;
 
     let pagination = Pagination {
         page: results.page,
         page_count: results.page_count(),
-        previous_url: results.has_previous().then(|| explore_url(&query, sort, results.page - 1)),
-        next_url: results.has_next().then(|| explore_url(&query, sort, results.page + 1)),
+        previous_url: results.has_previous().then(|| explore_url(&query, sort, archived, results.page - 1)),
+        next_url: results.has_next().then(|| explore_url(&query, sort, archived, results.page + 1)),
     };
     let sorts = RepoSort::ALL
         .iter()
-        .map(|&option| SortLink { label: sort_label(option), url: explore_url(&query, option, 1), is_active: option == sort })
+        .map(|&option| SortLink { label: sort_label(option), url: explore_url(&query, option, archived, 1), is_active: option == sort })
+        .collect();
+    let archived_filters = ArchivedFilter::ALL
+        .iter()
+        .map(|&option| SortLink { label: option.label(), url: explore_url(&query, sort, option, 1), is_active: option == archived })
         .collect();
     let title = if query.is_empty() { "Explore".to_owned() } else { format!("{query} · Explore") };
 
@@ -79,6 +86,8 @@ pub async fn explore(State(state): State<AppState>, page: Page, Query(params): Q
         query,
         sort: sort.as_str(),
         sorts,
+        archived: archived.query_value(),
+        archived_filters,
         total: results.total,
         pagination,
     })

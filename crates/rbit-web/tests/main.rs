@@ -2,6 +2,7 @@
 //! costs far more than compiling the tests themselves.
 
 mod admin_configuration;
+mod archives;
 mod contributions;
 mod listings;
 mod markdown_preview;

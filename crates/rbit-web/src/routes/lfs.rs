@@ -130,7 +130,7 @@ impl From<ServiceError> for LfsError {
     fn from(error: ServiceError) -> Self {
         match error {
             ServiceError::NotFound => Self::not_found(),
-            ServiceError::Forbidden => Self::new(StatusCode::FORBIDDEN, error.to_string()),
+            ServiceError::Forbidden | ServiceError::Archived => Self::new(StatusCode::FORBIDDEN, error.to_string()),
             ServiceError::Invalid(message) => Self::new(StatusCode::UNPROCESSABLE_ENTITY, message),
             ServiceError::Conflict(_) => Self::new(StatusCode::CONFLICT, error.to_string()),
             ServiceError::RateLimited { retry_after_seconds } => Self::RateLimited { retry_after_seconds },

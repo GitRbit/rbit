@@ -3,6 +3,9 @@
 {% if let Some(parent) = header.forked_from %}
 <p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
 {% endif %}
+{% if header.archived %}
+<div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>This repository has been archived. It is read-only: you can clone, fork and star it, but not change it.</span></p></div>
+{% endif %}
 {% if let Some(upstream) = header.mirror_url %}
 <p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
 {% endif %}

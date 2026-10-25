@@ -3,6 +3,7 @@
 
 mod access;
 mod admin;
+mod archives;
 mod audit;
 mod edits;
 mod external_auth;

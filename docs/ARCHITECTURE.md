@@ -214,6 +214,7 @@ newest webhook id reserved at publish time (`Published`), for the webhook subscr
 | `RepositoryCreated` | `repo`, `actor` | `RepositoryService::create_in` (not forks) |
 | `RepositoryDeleted` | `repo`, `owner`, `full_name` (as it was), `actor` | repository settings, site administration |
 | `RepositoryTransferred` | `repo`, `from`, `to`, `actor` | `TransferService` |
+| `RepositoryArchived` | `repo`, `archived` (`false`: unarchived), `actor` | `RepoSettingsService::set_archived` (only when the state changed) |
 | `RepositoryForked` | `repo`, `parent`, `actor` | `ForkService` |
 | `ReleasePublished` | `repo`, `release`, `actor` | `ReleaseService` (created as non-draft, or a draft published) |
 | `UserSignedUp`, `PasswordChanged`, `EmailChanged` | `user` (`previous` address for email) | `AccountService`, `AdminService`, `ProfileService`, `RecoveryService` |
@@ -373,6 +374,8 @@ repo_forks         repo_id → repositories PK, parent_id → repositories SET N
 repo_mirrors       repo_id → repositories PK, url, interval_minutes, next_sync_at, last_sync_at,
                    last_error, created_at
 repo_redirects     (owner_id → accounts, name NOCASE) PK, repo_id → repositories, created_at
+repo_archives      repo_id → repositories PK, archived_by → accounts SET NULL, archived_at
+                   (a row while the repository is archived; every repository query selects it)
 
 -- milestone 2 wave B: the shared issue core (T0; only sqlite/issues.rs writes these)
 issue_counters     repo_id → repositories PK, last_number            (numbers are never reused)
@@ -483,7 +486,7 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 | `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | | |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0046` | `repo_archives` (archived repositories) |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting
@@ -789,6 +792,7 @@ Pushes that get past these checks then pass the push gate (§4.4).
 | Collaborators | `/{owner}/{repo}/settings/collaborators` (list, add), `…/{user}/permission`, `…/{user}/remove`; a collaborator can leave from the repository sidebar |
 | Teams | `/{org}/teams`, `/{org}/teams/new`, `/{org}/teams/{team}` (members, repositories), `/{org}/teams/{team}/settings`, `…/settings/delete`; base permission at `/{org}/settings/permission` |
 | Transfer | `/{owner}/{repo}/settings/transfer` (danger zone; confirm by typing `owner/name`) |
+| Archive | `POST /{owner}/{repo}/settings/archive` (danger zone; `archived=true` archives, `archived=false` unarchives, then shows the repository) |
 | Webhooks | `/{owner}/{repo}/settings/hooks` and `/{org}/settings/hooks`: list, `new`, `{id}` (edit), `{id}/ping`, `{id}/delete`, `{id}/deliveries/{delivery}` and `…/redeliver` |
 | Releases | `/{owner}/{repo}/releases`, `…/releases/tag/{tag}`, `…/releases/new`, `…/releases/{id}/edit`, `…/{id}/delete`, `…/{id}/assets` (upload), `…/{id}/assets/{asset}/delete`, `…/releases/download/{tag}/{name}` |
 | Code | `/{owner}/{repo}/blame/{rev}/{path}`, `/{owner}/{repo}/compare` and `/compare/{base}...{head}`, `/{owner}/{repo}/archive/{rev}.zip` / `.tar.gz` |
@@ -827,7 +831,8 @@ no-store`. Every handler goes through the same services as the pages.
 - **Endpoints (wave A)** — `GET /version`, `GET /openapi.json`; `GET /user`,
   `GET|POST /user/repos`, `GET /user/starred`, `PUT|DELETE /user/starred/{owner}/{repo}`;
   `GET /users/{name}`, `GET /users/{name}/repos`; `GET /orgs/{org}`, `GET /orgs/{org}/members`,
-  `GET|POST /orgs/{org}/repos`; `GET|PATCH|DELETE /repos/{owner}/{repo}`,
+  `GET|POST /orgs/{org}/repos`; `GET|PATCH|DELETE /repos/{owner}/{repo}` (`PATCH` also takes
+  `archived`, applied after the other changes),
   `…/branches`, `…/branches/{branch}` (may contain `/`), `…/tags`, `…/commits?sha=&page=`,
   `…/commits/{ref}`; webhooks under `/repos/{owner}/{repo}/hooks` and `/orgs/{org}/hooks`:
   `GET|POST`, `GET|PATCH|DELETE /{id}`, `POST /{id}/pings`, `GET /{id}/deliveries`,
@@ -914,7 +919,8 @@ organisation; changes are audited.
 - **Payloads** follow GitHub's shapes so existing receivers work: `push` (one delivery per
   changed ref: `ref`, `before`/`after` with 40 zeros for creation and deletion, `created`,
   `deleted`, up to 20 `commits` plus `total_commits`, `head_commit`, `pusher`, `compare`),
-  `repository` (`created`, `deleted`, `transferred`), `release` (`published`), `fork`,
+  `repository` (`created`, `deleted`, `transferred`, `archived`, `unarchived`; the
+  `repository` object carries `archived`), `release` (`published`), `fork`,
   `ping` (`zen`, `hook_id`, `hook`); all with `sender`, and with `repository` (and
   `organization` for organisation-owned repositories) where one applies. Wave B:
   - `issues` — `opened`, `edited` (`changes.title.from`, `changes.body.from`), `closed`,
@@ -1039,6 +1045,22 @@ deletion-only push never sends EOF, so the reader stops after the commands.
 Merges made by rbit move the base branch with `update-ref`, not `receive-pack`; they are
 checked by `check_merge` instead (§3.7).
 
+**Archived repositories.** `check_push` refuses every ref of a push to an archived
+repository (the reason is `rbit_core::repository::ARCHIVED_READ_ONLY`) before any rule is
+read, in the same all-or-nothing report, so HTTP, SSH and browser edits refuse alike. The
+rest of the content is guarded by the same check, `RepoContext::ensure_writable`
+(`ServiceError::Archived`), called by every service that changes a repository after its
+access check: merges and head-branch deletion, issues, pull requests, comments, reviews,
+labels, milestones, releases, commit statuses, LFS uploads and locks, and "sync now" of
+mirrors. Reads, clones, forks (which start unarchived) and stars never ask, nor do the
+settings that rename, transfer, unarchive or delete the repository. Pages ask
+`RepoContext::can_write_content`, and threads of an archived repository offer no
+permissions, so write controls are hidden. Pull mirrors stop fetching and push mirrors stop
+pushing while archived: the schedulers' due queries skip archived repositories, and once
+unarchived an overdue mirror runs at once. A pull mirror is frozen rather than kept in
+sync because archiving means "nothing here changes"; stop mirroring first to keep a
+read-only copy current.
+
 ### 4.5 Page routes added in milestone 2 wave B
 
 | Area | Routes |
@@ -1143,6 +1165,7 @@ links the object.
 | Recovery | Reset and verification links are single-use, expire (1 h / 2 days), stored as digests, invalidated by address changes; reset requests never reveal whether an account exists. |
 | SSH | Public keys only; strictly parsed exec commands; no shell, PTY, agent or port forwarding; deploy keys scoped to one repository and read-only unless allowed. |
 | Branch protection | Enforced in-process in both receive paths before git starts (§4.4), all or nothing; `refs/pull/*` can never be pushed by clients; rules apply to administrators unless `allow_admin_bypass`, and every bypass that mattered is audited; deploy keys are never allowed pushers; refusals never name who may push. Merges by rbit are checked against the same rules (`check_merge`). |
+| Archived repositories | Read-only through one guard (`RepoContext::ensure_writable`) at every chokepoint that writes, including both receive paths (§4.4); the API answers 403 "Repository was archived so is read-only." only to callers who could otherwise write. Archiving and unarchiving are audited ("Repository content"). |
 | Web edits | Never check files out (scratch repository, scratch index, `commit-tree`); paths are validated `FilePath`s (no `..`, `.git` in any spelling, control characters or backslashes) and reach git only on stdin; uploads stream to disk under `[editor]` limits; the push gate decides exactly as for a push; the branch moves only through the merge's lease-protected `update-ref`; commits carry the noreply address. Mirrors are read-only. |
 | Commit statuses | Write access and a full commit id that exists in the repository; `target_url` follows the webhook URL rules (absolute `http`/`https`, no credentials) and is linked with `rel="nofollow noopener noreferrer"`; ≤ 1000 statuses per (repository, commit, context); required checks only block merges, never pushes. |
 | Git LFS | Object ids are validated SHA-256 hex before they name a path; uploads are checked against size and digest before they are placed; an object stored for another repository is never linked without a fresh upload (or read access through the fork network). Transfer headers are HMAC-signed, short-lived, scoped to one repository (and one object), verified in constant time, and re-check the holder's current access; failures are throttled like Git credentials. Objects are served as `application/octet-stream` with `nosniff`; the raw view keeps its sandbox CSP. |

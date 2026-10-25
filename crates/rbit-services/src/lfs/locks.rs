@@ -100,6 +100,7 @@ impl LfsService {
     /// Locks `path` for `user`.
     pub async fn create_lock(&self, repo: &RepoContext, user: Option<&User>, path: &str) -> Result<LockCreated, ServiceError> {
         let user = locker(repo, user)?;
+        repo.ensure_writable()?;
         validate_lock_path(path).map_err(ServiceError::Invalid)?;
         let repo_id = repo.repo.repo.id;
         match self.db().create_lock(repo_id, path, user.id()).await {
@@ -137,6 +138,7 @@ impl LfsService {
     /// Removes lock `id`: the owner's own, or anyone's with `force` for administrators.
     pub async fn unlock(&self, repo: &RepoContext, user: Option<&User>, id: &str, force: bool) -> Result<LfsLock, ServiceError> {
         let user = locker(repo, user)?;
+        repo.ensure_writable()?;
         let id = id.parse().map(LfsLockId).map_err(|_| ServiceError::NotFound)?;
         let repo_id = repo.repo.repo.id;
         let lock = self.db().find_lock(repo_id, id).await?.ok_or(ServiceError::NotFound)?;

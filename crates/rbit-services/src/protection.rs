@@ -18,6 +18,8 @@
 //!   are not kept.
 //! * `require_status_checks` (milestone 3, S) needs 1 to [`MAX_REQUIRED_CONTEXTS`]
 //!   distinct contexts; without the flag they are not kept.
+//! * Archived repositories refuse every push before any rule is consulted
+//!   ([`RepoContext::ensure_writable`]).
 //! * The decisions themselves are pure ([`rbit_core::protection`]); this service only
 //!   loads the rules and the pusher's teams. Bypasses by administrators that changed a
 //!   push's outcome are audited as `BranchProtectionBypassed`.
@@ -233,8 +235,13 @@ impl ProtectionService {
     }
 
     /// Decides the ref updates a client asked for, before any object arrives. `repo` is the
-    /// resolved repository (never a mirror) and `actor` already has write access.
+    /// resolved repository (never a mirror) and `actor` already has write access. An
+    /// archived repository refuses every update ([`RepoContext::ensure_writable`]).
     pub async fn check_push(&self, repo: &RepoContext, actor: &PushActor<'_>, updates: &[RefUpdate]) -> Result<PushVerdict, ServiceError> {
+        if let Err(archived) = repo.ensure_writable() {
+            tracing::info!(repo = %repo.repo.full_name(), "push to an archived repository refused");
+            return Ok(PushVerdict::refuse_all(updates, &archived.to_string()));
+        }
         let rules = self.rules(repo).await?;
         let pusher = match actor.user {
             Some(user) if !actor.deploy_key => self.pusher(repo, &rules, user, actor.access).await?,
@@ -278,6 +285,9 @@ impl ProtectionService {
     /// editor uses it to offer committing to a new branch instead; the commit itself goes
     /// through [`Self::check_push`]). `repo` is opened for the actor.
     pub async fn branch_update_refusal(&self, repo: &RepoContext, actor: &User, branch: &str) -> Result<Option<String>, ServiceError> {
+        if let Err(archived) = repo.ensure_writable() {
+            return Ok(Some(archived.to_string()));
+        }
         let rules = self.rules(repo).await?;
         let pusher = self.pusher(repo, &rules, actor, repo.access).await?;
         let update = RefUpdate { name: format!("refs/heads/{branch}"), before: Some(String::new()), after: Some(String::new()) };

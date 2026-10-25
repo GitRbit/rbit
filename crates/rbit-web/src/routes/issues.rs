@@ -167,7 +167,8 @@ struct Draft {
 
 async fn new_page(state: &AppState, loaded: &RepoPage, page: Page, draft: Draft, error: FormError) -> WebResult<NewIssuePage> {
     let ctx = &loaded.ctx;
-    let can_triage = ctx.access.can_write();
+    ctx.ensure_writable()?;
+    let can_triage = ctx.can_write_content();
     let (labels, people, milestones) = if can_triage {
         let issues = &state.services.issues;
         tokio::try_join!(issues.labels(ctx), issues.assignable(ctx, ""), issues.milestones(ctx, Some(rbit_core::IssueState::Open)))?
