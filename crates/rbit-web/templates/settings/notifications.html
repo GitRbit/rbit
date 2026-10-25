@@ -40,7 +40,28 @@
         {% endfor %}
       </div>
     </fieldset>
-    <p class="hint">Every email has a link that turns them off in one click.</p>
+    <fieldset class="mt-6">
+      <legend class="label">When</legend>
+      <div class="box overflow-hidden">
+        {% for option in deliveries %}
+        <label class="flex cursor-pointer items-start gap-3 {% if !loop.last %}border-b border-line {% endif %}px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
+          <input type="radio" name="delivery" value="{{ option.value }}" class="mt-1 accent-(--ink)" {% if option.checked %}checked{% endif %}>
+          <span>
+            <span class="block font-medium">{{ option.label }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ option.description }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <label class="label mt-6" for="digest-hour">Digest time</label>
+    <div class="relative w-full sm:w-48">
+      <select class="input cursor-pointer appearance-none pr-9" id="digest-hour" name="digest_hour" aria-describedby="digest-hour-hint">
+        {% for hour in hours %}<option value="{{ hour.value }}"{% if hour.selected %} selected{% endif %}>{{ hour.label }}</option>{% endfor %}
+      </select>
+      {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+    </div>
+    <p class="hint" id="digest-hour-hint">Digests leave out threads you have already read here. Every email has a link that turns them off in one click.</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
     <button class="btn btn-primary w-full sm:w-auto" type="submit">Save preferences</button>

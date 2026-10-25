@@ -346,6 +346,15 @@ Notifications) and are rate limited per address. Each carries `List-Unsubscribe`
 set it before mail goes out; the one-click `POST /email/unsubscribe/…` must reach rbit
 from outside (mail providers send it). Set `[notifications] email = false` to send none.
 
+Users can also choose a daily or weekly digest instead of one email per notification.
+Digests go out at the user's chosen hour or at `[notifications] digest_hour` (UTC, default
+8; administrators can change it under Site administration → Settings), weekly ones on
+Mondays, grouped by repository and without threads already read in the app. They are
+checked for every five minutes, so a digest leaves at most about five minutes after its hour
+(later if the server was down: it catches up with one digest per user). Each period is
+claimed in the database before its digest is sent, so a restart never sends one twice; a
+digest the mail server refuses is not retried.
+
 ## External sign-in
 
 Each `[[auth.providers]]` entry adds a "Sign in with …" button (see
@@ -409,6 +418,7 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_sqlite_write_lock_wait_seconds` | histogram | `store` — `BEGIN IMMEDIATE`, waiting for the database's single write lock |
 | `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
 | `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
+| `rbit_notification_digests_total` | counter | `outcome` (`sent`, `failed`) — one per email digest handed to the mail transport |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.

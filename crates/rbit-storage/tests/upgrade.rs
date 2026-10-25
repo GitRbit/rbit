@@ -559,6 +559,65 @@ async fn notification_email_tables_start_empty() {
     assert_eq!(db.count("SELECT COUNT(*) FROM notification_email_settings").await, 0, "deleting the account removes its preference");
 }
 
+// Email digests.
+#[tokio::test]
+async fn email_digest_tables_start_empty_and_existing_preferences_stay_immediate() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit.db");
+    let raw = pool(&path).await;
+    // The last migration before digests.
+    sqlx::migrate!("./migrations").run_to(43, &raw).await.unwrap();
+    sqlx::raw_sql(MILESTONE_1_ROWS).execute(&raw).await.unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO notification_email_settings (account_id, email, updated_at) VALUES (2, 'all', 10); \
+         INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) \
+         VALUES (1, 6, 1, 'issue', 'Crash', 1, 10, 10);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let database = Database::open(&path).await.unwrap();
+    for table in ["notification_digests", "notification_digest_items"] {
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}"))).fetch_one(&raw).await.unwrap();
+        assert_eq!(count, 0, "{table}");
+    }
+    let store = database.notification_email();
+    assert_eq!(store.preference(BOB).await.unwrap(), Some(rbit_core::config::EmailPreference::All), "the choice survives");
+    let delivery = store.delivery(BOB).await.unwrap();
+    assert_eq!(delivery.delivery, rbit_core::config::EmailDelivery::Immediate, "existing users keep immediate emails");
+    assert_eq!(delivery.digest_hour, None, "and follow the default digest hour");
+    for (delivery, hour, valid) in [("daily", "7", true), ("hourly", "7", false), ("weekly", "24", false), ("weekly", "NULL", true)] {
+        let update = format!("UPDATE notification_email_settings SET delivery = '{delivery}', digest_hour = {hour} WHERE account_id = 2");
+        let result = sqlx::query(sqlx::AssertSqlSafe(update)).execute(&raw).await;
+        assert_eq!(result.is_ok(), valid, "{delivery} at {hour}");
+    }
+
+    sqlx::raw_sql(
+        "INSERT INTO notification_digests (id, account_id, period, created_at) VALUES (1, 2, 100, 100); \
+         INSERT INTO notification_digest_items (account_id, repo_id, issue_id, reason, headline, excerpt, created_at, digest_id) \
+         VALUES (2, 6, 1, 'mention', 'alice mentioned you.', '', 90, 1), (2, 6, 1, 'comment', 'alice commented.', '', 110, NULL);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let state: String = sqlx::query_scalar("SELECT state FROM notification_digests").fetch_one(&raw).await.unwrap();
+    assert_eq!(state, "claimed", "a new digest starts claimed");
+    assert!(
+        sqlx::query("INSERT INTO notification_digests (account_id, period, created_at) VALUES (2, 100, 101)").execute(&raw).await.is_err(),
+        "one digest per period"
+    );
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&raw).await.unwrap();
+    let left: i64 =
+        sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM notification_digests) + (SELECT COUNT(*) FROM notification_digest_items)")
+            .fetch_one(&raw)
+            .await
+            .unwrap();
+    assert_eq!(left, 0, "deleting the account removes its digests and queued notifications");
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&raw).await.unwrap().is_empty());
+    database.close().await;
+    raw.close().await;
+}
+
 // Milestone 3: external sign-in (O).
 #[tokio::test]
 async fn external_identity_table_starts_empty() {

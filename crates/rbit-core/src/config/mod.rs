@@ -38,7 +38,7 @@ pub use issues::IssueConfig;
 pub use lfs::LfsConfig;
 pub use mail::{MailConfig, MailTransport, SmtpSecurity};
 pub use mirrors::MirrorConfig;
-pub use notifications::{EmailPreference, NotificationConfig};
+pub use notifications::{EmailDelivery, EmailPreference, MAX_DIGEST_HOUR, NotificationConfig};
 pub use operations::OperationsConfig;
 pub use pulls::PullConfig;
 pub use releases::ReleaseConfig;

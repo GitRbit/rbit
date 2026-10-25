@@ -6,6 +6,7 @@ mod admin;
 mod archives;
 mod audit;
 mod edits;
+mod email_digests;
 mod external_auth;
 mod forks;
 mod imports;
