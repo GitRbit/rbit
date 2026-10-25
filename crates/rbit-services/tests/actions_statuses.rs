@@ -10,7 +10,7 @@ use rbit_services::DomainEvent;
 
 use crate::actions_fixture::Fixture;
 
-const CHAIN: &str = "name: CI\non: push\njobs:\n  a:\n    runs-on: x\n  b:\n    needs: a\n    runs-on: x\n  c:\n    runs-on: y\n";
+const CHAIN: &str = "name: CI\non: push\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n  b:\n    needs: a\n    runs-on: x\n    steps: [{run: x}]\n  c:\n    runs-on: y\n    steps: [{run: x}]\n";
 
 async fn latest(fixture: &Fixture, sha: &str) -> Vec<(String, StatusState, String)> {
     let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
@@ -79,7 +79,7 @@ async fn jobs_report_their_state_as_rbit_actions() {
 #[tokio::test]
 async fn awaiting_runs_say_so_and_scheduled_runs_report_nothing() {
     let fixture = Fixture::new().await;
-    let nightly = "name: Nightly\non:\n  schedule:\n    - cron: '0 3 * * *'\njobs:\n  a:\n    runs-on: x\n";
+    let nightly = "name: Nightly\non:\n  schedule:\n    - cron: '0 3 * * *'\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/nightly.yml", nightly)], "Nightly");
     fixture.push_ref("refs/heads/main").await;
     let owned = fixture.repo(&fixture.alice).await.repo;
@@ -91,7 +91,7 @@ async fn awaiting_runs_say_so_and_scheduled_runs_report_nothing() {
     assert!(latest(&fixture, &head).await.is_empty(), "no commit is being judged");
 
     // A reader's pull request waits for approval and says so on its head.
-    let pr = "name: PR\non: pull_request\njobs:\n  a:\n    runs-on: x\n";
+    let pr = "name: PR\non: pull_request\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/pr.yml", pr)], "PR");
     fixture.push_ref("refs/heads/feature").await;
     let base = fixture.repo(&fixture.rita).await;

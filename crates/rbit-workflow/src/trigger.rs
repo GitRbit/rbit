@@ -217,7 +217,7 @@ mod tests {
     use crate::{Deadline, Limits, parse};
 
     fn workflow(on: &str) -> Workflow {
-        let source = format!("on:\n{on}\njobs:\n  a:\n    runs-on: x\n");
+        let source = format!("on:\n{on}\njobs:\n  a:\n    runs-on: x\n    steps: [{{run: x}}]\n");
         parse(source.as_bytes(), &Limits::default(), &Deadline::NONE).unwrap_or_else(|error| panic!("{error}\n{source}"))
     }
 

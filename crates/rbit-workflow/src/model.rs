@@ -1,11 +1,18 @@
-//! The typed model of a workflow file — the parts rbit itself acts on. Everything else
-//! (steps, `env`, `container`, `services`, unknown keys) stays in the raw YAML and goes to
-//! the runner as written.
+//! The typed model of a workflow file: every key of the subset in §12.2 of
+//! `docs/design/actions.md`, at every level.
 //!
-//! A [`Workflow`] only exists once [`crate::parse`] has validated it: job ids are well
-//! formed, `needs` name existing jobs and form no cycle, filter patterns compile, and the
-//! file is within its [`crate::Limits`].
+//! A [`Workflow`] only exists once [`crate::parse`] has validated it: no key is unknown,
+//! job ids are well formed, `needs` name existing jobs and form no cycle, filter patterns
+//! compile, every `${{ }}` parses and uses only the contexts its field is evaluated with,
+//! each step has exactly one of `run` and `uses`, and the file is within its
+//! [`crate::Limits`].
+//!
+//! Values that hold expressions are kept as written (template strings); planning
+//! evaluates the ones the server decides (§12.4) and the runner evaluates the rest.
 
+use std::collections::BTreeMap;
+
+pub use crate::spec::{Env, RegistryCredentials, RunDefaults};
 use crate::{
     cron::Cron,
     error::Location,
@@ -21,6 +28,10 @@ pub struct Workflow {
     /// `run-name`, as written (it may contain expressions).
     pub run_name: Option<String>,
     pub on: On,
+    /// Top-level `env`, as templates.
+    pub env: Env,
+    /// Top-level `defaults.run`.
+    pub defaults: RunDefaults,
     /// Top-level `permissions`.
     pub permissions: Option<Permissions>,
     /// Workflow-level `concurrency`.
@@ -224,7 +235,7 @@ impl Permissions {
     }
 }
 
-/// Workflow-level `concurrency`.
+/// Workflow-level or job-level `concurrency`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Concurrency {
     /// The group, as written (it may contain expressions).
@@ -240,13 +251,33 @@ pub struct Job {
     pub id: String,
     /// `name`, as written (it may contain expressions).
     pub name: Option<String>,
-    /// The jobs this one waits for; each exists in the workflow.
+    /// The jobs this one waits for; each exists in the workflow, none twice.
     pub needs: Vec<String>,
-    /// `runs-on` labels, as written (they may contain `${{ matrix.* }}`).
+    /// `if`, as written; `None` means `success()`.
+    pub condition: Option<String>,
+    /// `runs-on` labels, as written (they may contain expressions).
     pub runs_on: Vec<String>,
-    pub matrix: Option<Matrix>,
     /// Job-level `permissions`; they replace the workflow's.
     pub permissions: Option<Permissions>,
+    /// `env`, as templates.
+    pub env: Env,
+    /// `defaults.run`, as written; the workflow's apply where this sets nothing.
+    pub defaults: RunDefaults,
+    /// `outputs`, as templates the runner evaluates after the last step.
+    pub outputs: BTreeMap<String, String>,
+    /// `timeout-minutes` as written (a number or an expression); `None` means
+    /// [`crate::spec::DEFAULT_TIMEOUT_MINUTES`].
+    pub timeout_minutes: Option<String>,
+    /// `continue-on-error` as written (`true`, `false` or an expression).
+    pub continue_on_error: Option<String>,
+    /// Job-level `concurrency`.
+    pub concurrency: Option<Concurrency>,
+    pub strategy: Strategy,
+    pub container: Option<Container>,
+    /// `services`, in file order.
+    pub services: Vec<Service>,
+    /// At least one, at most [`crate::spec::MAX_STEPS`].
+    pub steps: Vec<Step>,
     pub at: Location,
     /// The job as written, for its payload.
     pub(crate) node: Mapping,
@@ -256,6 +287,123 @@ impl Job {
     /// The job as written.
     pub fn raw(&self) -> &Mapping {
         &self.node
+    }
+}
+
+/// A job's `strategy`.
+#[derive(Debug, Clone, Default)]
+pub struct Strategy {
+    pub matrix: Option<Matrix>,
+    /// `fail-fast` as written (`true`, `false` or an expression); `None` means `true`.
+    pub fail_fast: Option<String>,
+    /// `max-parallel` as written (a number or an expression); `None` means no limit.
+    pub max_parallel: Option<String>,
+}
+
+/// The job `container`: `container: image` or the mapping form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Container {
+    /// The image, as written (it may contain expressions).
+    pub image: String,
+    pub env: Env,
+    /// `credentials`, as templates.
+    pub credentials: Option<RegistryCredentials>,
+    pub at: Location,
+}
+
+/// One `services.<id>` container.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Service {
+    /// The key under `services`: also its host name on the job's network.
+    pub id: String,
+    /// The image, as written (it may contain expressions).
+    pub image: String,
+    pub env: Env,
+    pub credentials: Option<RegistryCredentials>,
+    pub at: Location,
+}
+
+/// One step of a job. Everything but `id` may contain expressions for the runner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Step {
+    /// `id`, unique within the job: `[A-Za-z_][A-Za-z0-9_-]*`.
+    pub id: Option<String>,
+    pub name: Option<String>,
+    /// `if`, as written; `None` means `success()`.
+    pub condition: Option<String>,
+    pub action: StepAction,
+    /// `shell` (`run` steps only): one of [`Shell`]'s names, or an expression.
+    pub shell: Option<String>,
+    /// `working-directory` (`run` steps only).
+    pub working_directory: Option<String>,
+    pub env: Env,
+    /// `continue-on-error` as written (`true`, `false` or an expression).
+    pub continue_on_error: Option<String>,
+    /// `timeout-minutes` as written (a number or an expression).
+    pub timeout_minutes: Option<String>,
+    pub at: Location,
+}
+
+/// What a step does: exactly one of `run` and `uses`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StepAction {
+    /// A `run:` script.
+    Run(String),
+    /// `uses:` and its `with:` values, as templates.
+    Uses { uses: String, with: BTreeMap<String, String> },
+}
+
+/// The shells a `run` step may name (§12.2). Custom `{0}` command templates are a later
+/// feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Shell {
+    Bash,
+    Sh,
+    Pwsh,
+    Powershell,
+    Cmd,
+    Python,
+}
+
+impl Shell {
+    pub const ALL: [Self; 6] = [Self::Bash, Self::Sh, Self::Pwsh, Self::Powershell, Self::Cmd, Self::Python];
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|shell| shell.name() == name)
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Bash => "bash",
+            Self::Sh => "sh",
+            Self::Pwsh => "pwsh",
+            Self::Powershell => "powershell",
+            Self::Cmd => "cmd",
+            Self::Python => "python",
+        }
+    }
+
+    /// The command line that runs a script, `{0}` standing for the script's path. These
+    /// are GitHub's, so scripts behave as they do there.
+    pub const fn command(self) -> &'static str {
+        match self {
+            Self::Bash => "bash --noprofile --norc -eo pipefail {0}",
+            Self::Sh => "sh -e {0}",
+            Self::Pwsh => "pwsh -command \". '{0}'\"",
+            Self::Powershell => "powershell -command \". '{0}'\"",
+            Self::Cmd => "cmd /D /E:ON /V:OFF /S /C \"CALL \"{0}\"\"",
+            Self::Python => "python {0}",
+        }
+    }
+
+    /// The extension the script file needs for the shell to run it.
+    pub const fn extension(self) -> &'static str {
+        match self {
+            Self::Bash | Self::Sh => ".sh",
+            Self::Pwsh | Self::Powershell => ".ps1",
+            Self::Cmd => ".cmd",
+            Self::Python => ".py",
+        }
     }
 }
 

@@ -29,6 +29,7 @@ on:
 jobs:
   a:
     runs-on: x
+    steps: [{run: x}]
 ";
 
 fn request(workflow: &str, reference: &str, inputs: &[(&str, &str)]) -> DispatchRequest {
@@ -128,7 +129,9 @@ async fn dispatch_needs_write_access_and_an_own_branch_or_tag() {
 const T0: i64 = 1_767_225_600; // 2026-01-01T00:00:00Z
 
 fn scheduled(cron: &str) -> String {
-    format!("name: Nightly\non:\n  schedule:\n    - cron: '{cron}'\n    - cron: '{cron}'\njobs:\n  a:\n    runs-on: x\n")
+    format!(
+        "name: Nightly\non:\n  schedule:\n    - cron: '{cron}'\n    - cron: '{cron}'\njobs:\n  a:\n    runs-on: x\n    steps: [{{run: x}}]\n"
+    )
 }
 
 #[tokio::test]
@@ -172,8 +175,7 @@ async fn schedules_follow_the_default_branch_and_their_caps() {
     let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
     let schedules = fixture.database.actions_schedules();
     let source = PushSource::User(fixture.alice.id());
-    let three =
-        "on:\n  schedule:\n    - cron: '0 1 * * *'\n    - cron: '0 2 * * *'\n    - cron: '0 3 * * *'\njobs:\n  a:\n    runs-on: x\n";
+    let three = "on:\n  schedule:\n    - cron: '0 1 * * *'\n    - cron: '0 2 * * *'\n    - cron: '0 3 * * *'\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/nightly.yml", three)], "Schedule [skip ci]");
     let update = fixture.push_ref("refs/heads/feature").await;
     fixture.actions().handle_push(repo, source, &[update]).await.unwrap();
@@ -195,7 +197,8 @@ async fn schedules_follow_the_default_branch_and_their_caps() {
 async fn schedules_that_fail_to_plan_pause_and_removed_ones_are_dropped() {
     let fixture = Fixture::new().await;
     // `github.sha` is not among the values a concurrency group may use: a planning error.
-    let broken = "on:\n  schedule:\n    - cron: '0 * * * *'\nconcurrency: ${{ github.sha }}\njobs:\n  a:\n    runs-on: x\n";
+    let broken =
+        "on:\n  schedule:\n    - cron: '0 * * * *'\nconcurrency: ${{ github.sha }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/hourly.yml", broken)], "Broken");
     fixture.push_ref("refs/heads/main").await;
     let owned = fixture.repo(&fixture.alice).await.repo;

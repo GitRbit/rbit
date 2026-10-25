@@ -86,7 +86,7 @@ mod tests {
     /// Each case runs a workflow through planning and compares the payloads, joined by
     /// `---`, with the expected file. The inputs are Gitea's job parser test data (MIT,
     /// see `THIRD-PARTY.md`), the outputs rbit's.
-    const GOLDEN: [(&str, &str, &str); 8] = [
+    const GOLDEN: [(&str, &str, &str); 7] = [
         ("multiple_jobs", include_str!("../tests/golden/multiple_jobs.in.yaml"), include_str!("../tests/golden/multiple_jobs.out.yaml")),
         (
             "multiple_matrix",
@@ -99,7 +99,6 @@ mod tests {
             include_str!("../tests/golden/job_name_with_matrix.out.yaml"),
         ),
         ("has_needs", include_str!("../tests/golden/has_needs.in.yaml"), include_str!("../tests/golden/has_needs.out.yaml")),
-        ("empty_step", include_str!("../tests/golden/empty_step.in.yaml"), include_str!("../tests/golden/empty_step.out.yaml")),
         (
             "prefixed_newline",
             include_str!("../tests/golden/prefixed_newline.in.yaml"),

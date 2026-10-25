@@ -18,7 +18,7 @@ use crate::actions_fixture::{Fixture, git, workflow};
 /// `topic`; `bob/rocket` is bob's fork with branches `fix` and `fix2`.
 async fn fixture() -> Fixture {
     let fixture = Fixture::new().await;
-    let types = "name: Activity\non:\n  pull_request:\n    types: [closed, edited, ready_for_review]\njobs:\n  a:\n    runs-on: x\n";
+    let types = "name: Activity\non:\n  pull_request:\n    types: [closed, edited, ready_for_review]\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/pr.yml", &workflow("PR", "pull_request")), (".forgejo/workflows/types.yml", types)], "CI");
     fixture.push_ref("refs/heads/main").await;
     fixture.commit(&[("feature.txt", "one\n")], "Feature");

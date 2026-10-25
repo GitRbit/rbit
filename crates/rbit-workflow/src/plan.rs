@@ -62,7 +62,7 @@ impl PlannedJob {
 pub fn plan(workflow: &Workflow, limits: &Limits, deadline: &Deadline) -> Result<Vec<PlannedJob>, WorkflowError> {
     let mut planned = Vec::new();
     for job in &workflow.jobs {
-        let combinations = match &job.matrix {
+        let combinations = match &job.strategy.matrix {
             Some(matrix) => combinations(matrix, limits, deadline)?,
             None => vec![Vec::new()],
         };
@@ -306,9 +306,9 @@ mod tests {
     }
 
     fn matrix_of(matrix: &str) -> Vec<String> {
-        let source = format!("on: push\njobs:\n  j:\n    runs-on: x\n    strategy:\n      matrix:\n{matrix}\n");
+        let source = format!("on: push\njobs:\n  j:\n    steps: [{{run: x}}]\n    runs-on: x\n    strategy:\n      matrix:\n{matrix}\n");
         let workflow = workflow(&source);
-        combinations(workflow.jobs[0].matrix.as_ref().unwrap(), &Limits::default(), &Deadline::NONE)
+        combinations(workflow.jobs[0].strategy.matrix.as_ref().unwrap(), &Limits::default(), &Deadline::NONE)
             .unwrap()
             .iter()
             .map(|combination| combination.iter().map(|(key, value)| format!("{key}={}", go_format(value))).collect::<Vec<_>>().join(","))
@@ -359,16 +359,15 @@ mod tests {
     #[test]
     fn matrix_limits() {
         let limits = Limits { max_combinations: 4, ..Limits::default() };
-        let source = "on: push\njobs:\n  j:\n    runs-on: x\n    strategy:\n      matrix:\n        a: [1, 2, 3]\n        b: [1, 2]\n";
+        let source = "on: push\njobs:\n  j:\n    steps: [{run: x}]\n    runs-on: x\n    strategy:\n      matrix:\n        a: [1, 2, 3]\n        b: [1, 2]\n";
         let workflow = workflow(source);
-        let error = combinations(workflow.jobs[0].matrix.as_ref().unwrap(), &limits, &Deadline::NONE).unwrap_err();
+        let error = combinations(workflow.jobs[0].strategy.matrix.as_ref().unwrap(), &limits, &Deadline::NONE).unwrap_err();
         assert_eq!(error.kind, crate::ErrorKind::Limit);
-        let source =
-            "on: push\njobs:\n  j:\n    runs-on: x\n    strategy:\n      matrix:\n        a: [1, 2, 3, 4]\n        include: [{a: 5}]\n";
+        let source = "on: push\njobs:\n  j:\n    steps: [{run: x}]\n    runs-on: x\n    strategy:\n      matrix:\n        a: [1, 2, 3, 4]\n        include: [{a: 5}]\n";
         let workflow = self::workflow(source);
-        assert!(combinations(workflow.jobs[0].matrix.as_ref().unwrap(), &limits, &Deadline::NONE).is_err(), "includes count too");
+        assert!(combinations(workflow.jobs[0].strategy.matrix.as_ref().unwrap(), &limits, &Deadline::NONE).is_err(), "includes count too");
         let run_limits = Limits { max_run_jobs: 5, ..Limits::default() };
-        let source = "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: {v: [1, 2, 3]}}\n  b:\n    runs-on: x\n    strategy: {matrix: {v: [1, 2, 3]}}\n";
+        let source = "on: push\njobs:\n  a:\n    steps: [{run: x}]\n    runs-on: x\n    strategy: {matrix: {v: [1, 2, 3]}}\n  b:\n    steps: [{run: x}]\n    runs-on: x\n    strategy: {matrix: {v: [1, 2, 3]}}\n";
         assert_eq!(plan(&self::workflow(source), &run_limits, &Deadline::NONE).unwrap_err().kind, crate::ErrorKind::Limit);
         let expired = Deadline::at(std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).unwrap());
         assert_eq!(plan(&self::workflow(source), &Limits::default(), &expired).unwrap_err().kind, crate::ErrorKind::Timeout);
@@ -389,14 +388,17 @@ mod tests {
 jobs:
   plain:
     runs-on: linux
+    steps: [{run: x}]
   named:
     name: Build ${{ matrix.os }} for ${{ inputs.target }}
     runs-on: [self-hosted, '${{ matrix.os }}-${{ matrix.arch || ''x64'' }}']
+    steps: [{run: x}]
     strategy:
       matrix:
         os: [debian]
   listed:
     runs-on: ${{ matrix.labels }}
+    steps: [{run: x}]
     strategy:
       matrix:
         labels: [[self-hosted, arm64]]
@@ -419,9 +421,10 @@ jobs:
 
     #[test]
     fn runs_on_refusals() {
-        for runs_on in ["${{ github.ref }}", "${{ matrix.missing }}", "${{ format( }}", "${{ matrix.empty }}", "${{ matrix.nested }}"] {
+        for runs_on in ["${{ github.ref }}", "${{ matrix.missing }}", "${{ inputs.target }}", "${{ matrix.empty }}", "${{ matrix.nested }}"]
+        {
             let source = format!(
-                "on: push\njobs:\n  j:\n    runs-on: \"{runs_on}\"\n    strategy: {{matrix: {{empty: [''], nested: [[{{a: 1}}]]}}}}\n"
+                "on: push\njobs:\n  j:\n    steps: [{{run: x}}]\n    runs-on: \"{runs_on}\"\n    strategy: {{matrix: {{empty: [''], nested: [[{{a: 1}}]]}}}}\n"
             );
             let error = plan(&workflow(&source), &Limits::default(), &Deadline::NONE).unwrap_err();
             assert_eq!(error.kind, crate::ErrorKind::Plan, "{runs_on}");
@@ -442,7 +445,7 @@ jobs:
             pull_request_number: Some(7),
         };
         let group = |concurrency: &str| {
-            let source = format!("on: push\nconcurrency: {concurrency}\njobs: {{a: {{runs-on: x}}}}\n");
+            let source = format!("on: push\nconcurrency: {concurrency}\njobs: {{a: {{runs-on: x, steps: [{{run: x}}]}}}}\n");
             concurrency_group(&workflow(&source), &context)
         };
         assert_eq!(group("ci").unwrap(), Some(("ci".into(), false)));
@@ -460,8 +463,8 @@ jobs:
         assert!(group("'${{ github.sha }}'").is_err());
         assert!(group("'${{ github.base_ref && null }}'").is_err(), "an empty group is refused");
         let push = GroupContext { pull_request_number: None, head_ref: String::new(), ..context };
-        let source = "on: push\nconcurrency: '${{ github.event.pull_request.number || github.run_id }}'\njobs: {a: {runs-on: x}}\n";
+        let source = "on: push\nconcurrency: '${{ github.event.pull_request.number || github.run_id }}'\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n";
         assert_eq!(concurrency_group(&workflow(source), &push).unwrap(), Some(("31".into(), false)));
-        assert_eq!(concurrency_group(&workflow("on: push\njobs: {a: {runs-on: x}}\n"), &push).unwrap(), None);
+        assert_eq!(concurrency_group(&workflow("on: push\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n"), &push).unwrap(), None);
     }
 }

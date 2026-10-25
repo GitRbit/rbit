@@ -13,8 +13,7 @@ use rbit_storage::sqlite::actions_runs::Rerun;
 
 use crate::actions_fixture::{Fixture, git};
 
-const CHAIN: &str =
-    "name: CI\non: [push, pull_request]\njobs:\n  a:\n    runs-on: x\n  b:\n    needs: a\n    runs-on: x\n  c:\n    runs-on: y\n";
+const CHAIN: &str = "name: CI\non: [push, pull_request]\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n  b:\n    needs: a\n    runs-on: x\n    steps: [{run: x}]\n  c:\n    runs-on: y\n    steps: [{run: x}]\n";
 
 async fn pushed(fixture: &Fixture, files: &[(&str, &str)], message: &str) -> Run {
     fixture.commit(files, message);
@@ -147,7 +146,7 @@ async fn writers_approve_untrusted_runs_and_may_trust_their_author() {
 #[tokio::test]
 async fn untrusted_runs_meet_their_concurrency_group_only_when_approved() {
     let fixture = Fixture::new().await;
-    let grouped = "name: CI\non: pull_request\nconcurrency:\n  group: ci-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\njobs:\n  a:\n    runs-on: x\n";
+    let grouped = "name: CI\non: pull_request\nconcurrency:\n  group: ci-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let (issue, first) = fork_pull(&fixture, grouped).await;
     assert_eq!(first.concurrency_group.as_deref(), Some("pr-1/ci-1"), "namespaced under the pull request");
     let second = opened(&fixture, issue, &fixture.bob).await;
@@ -179,7 +178,7 @@ async fn untrusted_runs_meet_their_concurrency_group_only_when_approved() {
 #[tokio::test]
 async fn an_approved_run_waits_while_its_group_is_busy() {
     let fixture = Fixture::new().await;
-    let queued = "name: CI\non: pull_request\nconcurrency: one-at-a-time\njobs:\n  a:\n    runs-on: x\n";
+    let queued = "name: CI\non: pull_request\nconcurrency: one-at-a-time\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let (issue, first) = fork_pull(&fixture, queued).await;
     let second = opened(&fixture, issue, &fixture.bob).await;
     let writer = fixture.repo(&fixture.carol).await;

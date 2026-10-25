@@ -195,8 +195,11 @@ async fn broken_workflows_are_shown_as_workflow_errors() {
     let fixture = Fixture::new().await;
     let files = [
         (".forgejo/workflows/a-broken.yml", "on: push\njobs: [not, a, mapping]\n"),
-        (".forgejo/workflows/b-cycle.yml", "on: push\njobs:\n  a:\n    needs: b\n    runs-on: x\n  b:\n    needs: a\n    runs-on: x\n"),
-        (".forgejo/workflows/c-good.yml", "on: push\njobs:\n  ok:\n    runs-on: x\n"),
+        (
+            ".forgejo/workflows/b-cycle.yml",
+            "on: push\njobs:\n  a:\n    needs: b\n    runs-on: x\n    steps: [{run: x}]\n  b:\n    needs: a\n    runs-on: x\n    steps: [{run: x}]\n",
+        ),
+        (".forgejo/workflows/c-good.yml", "on: push\njobs:\n  ok:\n    runs-on: x\n    steps: [{run: x}]\n"),
         (".forgejo/workflows/readme.md", "not a workflow"),
     ];
     let runs = push(&fixture, &files, "Workflows", "refs/heads/main", user_push(&fixture)).await;
@@ -214,7 +217,7 @@ async fn broken_workflows_are_shown_as_workflow_errors() {
     assert!(fixture.database.actions_runs().jobs(runs[0].id).await.unwrap().is_empty(), "a workflow error has no jobs");
     assert_eq!(runs[2].workflow_name, ".forgejo/workflows/c-good.yml", "a workflow without a name is called by its path");
 
-    let large = format!("on: push\njobs:\n  ok:\n    runs-on: x\n# {}\n", "x".repeat(300 * 1024));
+    let large = format!("on: push\njobs:\n  ok:\n    runs-on: x\n    steps: [{{run: x}}]\n# {}\n", "x".repeat(300 * 1024));
     let runs = push(&fixture, &[(".forgejo/workflows/c-good.yml", &large)], "Large", "refs/heads/main", user_push(&fixture)).await;
     let errors: Vec<_> = runs.iter().filter_map(|run| run.error.as_deref()).collect();
     assert!(errors.iter().any(|error| error.contains("larger than 262144 bytes")), "{errors:?}");
@@ -227,7 +230,7 @@ async fn an_event_starts_at_most_its_share_of_runs_and_jobs() {
         config.actions.max_jobs_per_event = 3;
     })
     .await;
-    let two_jobs = "on: push\njobs:\n  a:\n    runs-on: x\n  b:\n    runs-on: x\n";
+    let two_jobs = "on: push\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n  b:\n    runs-on: x\n    steps: [{run: x}]\n";
     let files = [(".forgejo/workflows/1.yml", two_jobs), (".forgejo/workflows/2.yml", two_jobs), (".forgejo/workflows/3.yml", two_jobs)];
     let runs = push(&fixture, &files, "Many", "refs/heads/main", user_push(&fixture)).await;
     assert_eq!(runs.len(), 2, "at most two runs");
@@ -239,7 +242,7 @@ async fn an_event_starts_at_most_its_share_of_runs_and_jobs() {
 #[tokio::test]
 async fn a_repository_may_have_only_so_many_jobs_waiting() {
     let fixture = Fixture::with(|config| config.actions.max_waiting_jobs_per_repository = 3).await;
-    let two_jobs = "on: push\njobs:\n  a:\n    runs-on: x\n  b:\n    runs-on: x\n  c:\n    needs: a\n    runs-on: x\n";
+    let two_jobs = "on: push\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n  b:\n    runs-on: x\n    steps: [{run: x}]\n  c:\n    needs: a\n    runs-on: x\n    steps: [{run: x}]\n";
     let source = user_push(&fixture);
     let first = push(&fixture, &[(CI, two_jobs)], "One", "refs/heads/main", source).await;
     assert_eq!(first[0].status, Status::Waiting);
@@ -252,7 +255,7 @@ async fn a_repository_may_have_only_so_many_jobs_waiting() {
 async fn concurrency_groups_cancel_or_hold_earlier_runs() {
     let fixture = Fixture::new().await;
     let source = user_push(&fixture);
-    let cancelling = "name: Deploy\non: push\nconcurrency:\n  group: deploy-${{ github.ref }}\n  cancel-in-progress: true\njobs:\n  a:\n    runs-on: x\n";
+    let cancelling = "name: Deploy\non: push\nconcurrency:\n  group: deploy-${{ github.ref }}\n  cancel-in-progress: true\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let first = push(&fixture, &[(CI, cancelling)], "One", "refs/heads/main", source).await.remove(0);
     assert_eq!(first.concurrency_group.as_deref(), Some("deploy-refs/heads/main"));
     let second = push(&fixture, &[], "Two", "refs/heads/main", source).await.remove(0);
@@ -263,7 +266,7 @@ async fn concurrency_groups_cancel_or_hold_earlier_runs() {
     let other_branch = push(&fixture, &[], "Three", "refs/heads/other", source).await.remove(0);
     assert_eq!((other_branch.status, store.find_run(repo, second.id).await.unwrap().unwrap().status), (Status::Waiting, Status::Waiting));
 
-    let queueing = "name: Queue\non: push\nconcurrency: queue\njobs:\n  a:\n    runs-on: x\n";
+    let queueing = "name: Queue\non: push\nconcurrency: queue\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let path = ".forgejo/workflows/queue.yml";
     let active = push(&fixture, &[(CI, ""), (path, queueing)], "Queue one", "refs/heads/main", source).await.remove(0);
     let held = push(&fixture, &[], "Queue two", "refs/heads/main", source).await.remove(0);
@@ -277,7 +280,7 @@ async fn concurrency_groups_cancel_or_hold_earlier_runs() {
     fixture.actions().settled(&settled).await.unwrap();
     assert_eq!(store.find_run(repo, newer.id).await.unwrap().unwrap().status, Status::Waiting);
 
-    let unique = "on: push\nconcurrency: ci-${{ github.run_id }}\njobs:\n  a:\n    runs-on: x\n";
+    let unique = "on: push\nconcurrency: ci-${{ github.run_id }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let run = push(&fixture, &[(path, ""), (CI, unique)], "Unique", "refs/heads/main", source).await.remove(0);
     assert_eq!(run.concurrency_group, None, "a group naming the run id holds nothing");
 }
