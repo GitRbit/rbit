@@ -25,7 +25,7 @@ flate2.workspace = true
 getrandom.workspace = true
 # The protocol client: JSON over HTTPS with rustls and the `ring` provider (as the server's
 # webhook client), so Windows builds need neither CMake nor NASM.
-reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
+reqwest = { workspace = true, features = ["json", "rustls-no-provider", "stream"] }
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true

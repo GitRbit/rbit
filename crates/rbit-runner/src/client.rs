@@ -15,9 +15,9 @@ use std::{fmt::Write as _, sync::Once, time::Duration};
 
 use rbit_workflow::{
     protocol::{
-        BASE_PATH, DeclareRequest, DeclareResponse, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsResponse, PROTOCOL_HEADER,
-        PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, TaskId, TaskStateRequest, TaskStateResponse, USER_AGENT_PREFIX,
-        UnregisterRequest,
+        ArtifactInfo, ArtifactList, ArtifactQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest, DeclareResponse, ErrorBody, ErrorCode,
+        IDEMPOTENCY_KEY_HEADER, LogsResponse, PROTOCOL_HEADER, PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, TaskId,
+        TaskStateRequest, TaskStateResponse, USER_AGENT_PREFIX, UnregisterRequest,
     },
     secret::Secret,
     spec::JobSpec,
@@ -27,6 +27,8 @@ use serde::de::DeserializeOwned;
 
 /// How long a call other than a poll may take.
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Artifact uploads and downloads (the server allows them an hour).
+const ARTIFACT_TIMEOUT: Duration = Duration::from_hours(1);
 /// The longest `Retry-After` honoured; a larger one is clamped.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(600);
 /// The largest error body read.
@@ -329,6 +331,54 @@ impl Client {
             .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
             .body(body);
         self.json(request).await
+    }
+
+    // Actions: artifacts (A).
+    /// `PUT tasks/{id}/artifacts/{name}`: uploads the tar.gz at `archive`, whose SHA-256 is
+    /// `sha256` (hex). Artifacts may be large, so the call may take up to an hour.
+    pub async fn upload_artifact(
+        &self,
+        task: TaskId,
+        name: &str,
+        query: &ArtifactQuery,
+        sha256: &str,
+        archive: &std::path::Path,
+    ) -> Result<ArtifactInfo, CallError> {
+        let file =
+            tokio::fs::File::open(archive).await.map_err(|error| CallError::Unreachable(format!("cannot read the archive: {error}")))?;
+        let length = file.metadata().await.map(|metadata| metadata.len()).unwrap_or_default();
+        let path = match query.retention_days {
+            Some(days) => format!("tasks/{task}/artifacts/{name}?overwrite={}&retention_days={days}", query.overwrite),
+            None => format!("tasks/{task}/artifacts/{name}?overwrite={}", query.overwrite),
+        };
+        let request = self
+            .request(Method::PUT, &path)
+            .header(CONTENT_SHA256_HEADER, sha256)
+            .header(header::CONTENT_TYPE, "application/gzip")
+            .header(header::CONTENT_LENGTH, length)
+            .timeout(ARTIFACT_TIMEOUT)
+            .body(reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(file)));
+        self.json(request).await
+    }
+
+    /// `GET tasks/{id}/artifacts`: the run's artifacts so far.
+    pub async fn artifacts(&self, task: TaskId) -> Result<ArtifactList, CallError> {
+        self.json(self.request(Method::GET, &format!("tasks/{task}/artifacts"))).await
+    }
+
+    /// `GET tasks/{id}/artifacts/{name}` into a new file at `out`; the SHA-256 (hex) the
+    /// server sent with it.
+    pub async fn download_artifact(&self, task: TaskId, name: &str, out: &std::path::Path) -> Result<String, CallError> {
+        let request = self.request(Method::GET, &format!("tasks/{task}/artifacts/{name}")).timeout(ARTIFACT_TIMEOUT);
+        let mut response = self.send(request).await?;
+        let digest = response.headers().get(CONTENT_SHA256_HEADER).and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
+        let local = |error: std::io::Error| CallError::Unreachable(format!("cannot write the artifact: {error}"));
+        let mut file = tokio::fs::File::create(out).await.map_err(local)?;
+        while let Some(chunk) = response.chunk().await.map_err(|error| CallError::Unreachable(transport_message(&error)))? {
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await.map_err(local)?;
+        }
+        tokio::io::AsyncWriteExt::flush(&mut file).await.map_err(local)?;
+        Ok(digest)
     }
 
     /// `POST unregister`.

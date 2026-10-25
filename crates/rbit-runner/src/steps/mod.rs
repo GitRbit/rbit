@@ -4,6 +4,7 @@
 //! defaults and checked against what the input takes (`rbit_workflow::builtins`), so an
 //! expression that evaluates to `maybe` for a boolean fails the step with a message.
 
+pub mod artifact;
 pub mod cache;
 pub mod checkout;
 pub mod run;
@@ -87,9 +88,8 @@ pub async fn builtin(job: &mut Job, builtin: &Builtin, timeout: Option<Duration>
     };
     match builtin.kind {
         BuiltinKind::Checkout => checkout::checkout(job, &inputs, timeout).await,
-        BuiltinKind::UploadArtifact | BuiltinKind::DownloadArtifact => {
-            job.fail(&format!("`{}`: artifacts are not available in rbit Actions yet", builtin.uses))
-        }
+        BuiltinKind::UploadArtifact => artifact::upload(job, &inputs).await,
+        BuiltinKind::DownloadArtifact => artifact::download(job, &inputs).await,
         BuiltinKind::Cache | BuiltinKind::CacheRestore | BuiltinKind::CacheSave => cache::cache(job, builtin.kind, &inputs).await,
     }
 }

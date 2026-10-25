@@ -41,6 +41,7 @@ use crate::{
         container::{Container, Spec as ContainerSpec},
         host::Host,
     },
+    client::Client,
     config::{Label, Loaded},
     contexts::{self, Eval},
     steps::{
@@ -54,17 +55,27 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct JobExecutor {
     loaded: Arc<Loaded>,
+    /// The server the artifact built-ins talk to; `None` for `rbit-runner exec`.
+    server: Option<Client>,
 }
 
 impl JobExecutor {
     pub fn new(loaded: Arc<Loaded>) -> Self {
-        Self { loaded }
+        Self { loaded, server: None }
+    }
+
+    /// With the server's protocol client, for the artifact built-ins.
+    #[must_use]
+    pub fn with_server(mut self, client: Client) -> Self {
+        self.server = Some(client);
+        self
     }
 }
 
 impl Executor for JobExecutor {
     fn execute(&self, spec: JobSpec, reporter: Arc<Reporter>) -> impl Future<Output = TaskResult> + Send {
         let loaded = Arc::clone(&self.loaded);
+        let server = self.server.clone();
         async move {
             let steps = spec.template.steps.len();
             let fail = |message: &str| {
@@ -76,6 +87,7 @@ impl Executor for JobExecutor {
             };
             match Job::prepare(&loaded, spec, Arc::clone(&reporter)) {
                 Ok(mut job) => {
+                    job.server = server;
                     let result = match job.start().await {
                         Ok(()) => job.run().await,
                         Err(message) => fail(&message),
@@ -145,6 +157,8 @@ pub struct Job {
     pub cache: Store,
     /// `rbit/cache` saves to make after the last step.
     pub post_saves: Vec<PendingSave>,
+    /// The server, for the artifact built-ins; `None` without one (`rbit-runner exec`).
+    pub server: Option<Client>,
 }
 
 /// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
@@ -269,6 +283,7 @@ impl Job {
             interrupted_at: None,
             cache: Store { root: loaded.work_dir.join("cache"), max_bytes: loaded.config.cache.max_bytes },
             post_saves: Vec::new(),
+            server: None,
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());

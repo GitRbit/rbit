@@ -68,7 +68,7 @@ async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
         backend::container::janitor(&loaded.config).await;
     }
     let shutdown = shutdown::Shutdown::listen(std::time::Duration::from_secs(loaded.config.shutdown_grace_seconds));
-    let executor = JobExecutor::new(Arc::new(loaded.clone()));
+    let executor = JobExecutor::new(Arc::new(loaded.clone())).with_server(client.clone());
     poller::Poller::new(client, loaded, Arc::new(executor), once).cancel_tasks_with(shutdown.cancel_tasks).run(shutdown.stop_polling).await
 }
 

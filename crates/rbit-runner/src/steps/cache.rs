@@ -261,7 +261,7 @@ fn crosses_link(root: &Path, relative: &Path) -> bool {
 
 /// Writes the tar.gz of `resolved` to `out`; its size. Paths that do not exist are
 /// skipped; links are stored as links.
-fn write_archive(out: &Path, resolved: &[(Area, PathBuf)], roots: &Roots) -> io::Result<u64> {
+pub(super) fn write_archive(out: &Path, resolved: &[(Area, PathBuf)], roots: &Roots) -> io::Result<u64> {
     let file = File::create(out)?;
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
     let mut builder = tar::Builder::new(encoder);
@@ -285,7 +285,7 @@ fn write_archive(out: &Path, resolved: &[(Area, PathBuf)], roots: &Roots) -> io:
 
 /// Restores an archive. Every entry must name a path inside its root; nothing is written
 /// through a symbolic link, and links are only created on Unix.
-fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
+pub(super) fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
     let decoder = flate2::read::GzDecoder::new(File::open(archive)?);
     let mut tar = tar::Archive::new(decoder);
     let mut restored = 0;
@@ -354,7 +354,7 @@ pub struct PendingSave {
     pub paths: Vec<String>,
 }
 
-fn lines(text: &str) -> Vec<String> {
+pub(super) fn lines(text: &str) -> Vec<String> {
     text.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect()
 }
 
