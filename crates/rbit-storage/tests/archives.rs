@@ -1,4 +1,4 @@
-//! Archived repositories (migration `0044`) against a real, migrated `SQLite` database: the
+//! Archived repositories (migration `0046`) against a real, migrated `SQLite` database: the
 //! archive row is read back with every repository query and goes with its repository.
 
 use rbit_core::{AccountId, Repository, Timestamp, User, Visibility};

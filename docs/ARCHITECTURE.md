@@ -484,7 +484,7 @@ the former organisation's teams no longer let anyone push. `lfs_repo_objects_unl
 | `0005` | `profiles_and_stars` | `0013` | `releases` (releases, assets) | `0021` | `pull_requests` | | |
 | `0006` | `security` (2FA, recovery codes, audit) | `0014` | `forks` | `0022` | `reviews` (reviews, line comments, review requests) | | |
 | `0007` | `email` (email tokens, verified address) | `0015` | `mirrors` | `0024` | `branch_protection` (rules, allowed users and teams, owner trigger) | | |
-| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0044` | `repo_archives` (archived repositories) |
+| `0008` | `ssh_keys` (user and deploy keys) | `0016` | `repo_redirects` (table and triggers) | `0032` | `passkeys` (WebAuthn credentials as a second factor) | `0046` | `repo_archives` (archived repositories) |
 
 `crates/rbit-storage/tests/upgrade.rs` builds a database at the milestone 1 schema
 (`0001`–`0008`) with representative rows and migrates it to the current schema, asserting

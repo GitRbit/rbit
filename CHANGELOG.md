@@ -49,7 +49,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
-- Startup applies migration `0044_repo_archives.sql`, adding the `repo_archives` table.
+- Startup applies migration `0046_repo_archives.sql`, adding the `repo_archives` table.
   Existing repositories stay unarchived and their rows are unchanged; back up the database
   before upgrading as usual.
 
