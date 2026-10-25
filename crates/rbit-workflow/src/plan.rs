@@ -491,13 +491,18 @@ pub fn run_name(workflow: &Workflow, context: &RunContext) -> Result<Option<Stri
     Ok(Some(name.trim().to_owned()).filter(|name| !name.is_empty()))
 }
 
-/// The `github.*` values workflow-level `concurrency.group` used before runs were planned
-/// with the whole `github` context (§11.6). [`GroupContext::run_context`] turns them into
-/// a [`RunContext`] in which every other `github` property is `null`.
+/// What the server knows of a run before it exists, as the triggers fill it in.
+/// [`GroupContext::run_context`] turns it into the [`RunContext`] a run is planned with: the
+/// `github` context a task gets later (§12.4), less what only the run has. `run_id` is a
+/// placeholder (planning tells a group naming it apart by planning twice), `run_number` and
+/// `run_attempt` are absent, and `github.event` carries the pull request number, the
+/// dispatch inputs or the schedule — the task's context has the whole event payload.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GroupContext {
     /// The workflow's name, or its path when it has none.
     pub workflow: String,
+    /// The workflow file's path (`.rbit/workflows/ci.yml`), for `github.workflow_ref`.
+    pub workflow_path: String,
     /// The full ref (`refs/heads/main`, `refs/pull/7/head`).
     pub reference: String,
     /// Pull requests only: the head branch.
@@ -509,27 +514,68 @@ pub struct GroupContext {
     pub repository: String,
     pub run_id: i64,
     pub pull_request_number: Option<u64>,
+    /// The commit the run is for.
+    pub sha: String,
+    /// Logins of the account that caused the run and of the one that triggered it; empty
+    /// when nobody did (schedules).
+    pub actor: String,
+    pub triggering_actor: String,
+    pub repository_owner: String,
+    pub repository_id: i64,
+    /// The instance's public URL, without a trailing slash.
+    pub server_url: String,
+    /// `schedule` runs only: the cron expression that fired.
+    pub schedule: String,
+    /// `workflow_dispatch` only: the checked inputs, typed.
+    pub inputs: Map<String, Value>,
+    /// Repository then owner variables; empty for untrusted runs.
+    pub vars: BTreeMap<String, String>,
 }
 
 impl GroupContext {
-    /// The values as a `github` context.
+    /// The values as a `github` context. Ids are strings, as the task's context has them.
     pub fn github(&self) -> Map<String, Value> {
+        let reference = self.reference.as_str();
+        let ref_name =
+            ["refs/heads/", "refs/tags/", "refs/pull/"].iter().find_map(|prefix| reference.strip_prefix(prefix)).unwrap_or(reference);
+        let mut event = Map::new();
+        if let Some(number) = self.pull_request_number {
+            event.insert("number".to_owned(), json!(number));
+            event.insert("pull_request".to_owned(), json!({ "number": number }));
+        }
+        if !self.inputs.is_empty() {
+            let as_text = self.inputs.iter().map(|(name, value)| (name.clone(), Value::String(crate::expr::to_text(value)))).collect();
+            event.insert("inputs".to_owned(), Value::Object(as_text));
+        }
+        if !self.schedule.is_empty() {
+            event.insert("schedule".to_owned(), json!(self.schedule));
+        }
         let github = json!({
             "workflow": self.workflow,
+            "workflow_ref": format!("{}/{}@{}", self.repository, self.workflow_path, self.reference),
             "ref": self.reference,
+            "ref_name": ref_name,
+            "ref_type": if reference.starts_with("refs/tags/") { "tag" } else { "branch" },
             "head_ref": self.head_ref,
             "base_ref": self.base_ref,
+            "sha": self.sha,
             "event_name": self.event_name,
+            "event": event,
             "repository": self.repository,
-            "run_id": self.run_id,
-            "event": {"pull_request": {"number": self.pull_request_number}},
+            "repository_owner": self.repository_owner,
+            "repository_id": self.repository_id.to_string(),
+            "actor": self.actor,
+            "triggering_actor": self.triggering_actor,
+            "run_id": self.run_id.to_string(),
+            "server_url": self.server_url,
+            "api_url": format!("{}/api/v1", self.server_url),
         });
         github.as_object().cloned().unwrap_or_default()
     }
 
-    /// A [`RunContext`] with [`Self::github`] and no inputs or variables.
+    /// The [`RunContext`] a run is planned with: [`Self::github`], the inputs and variables.
     pub fn run_context(&self) -> RunContext {
-        RunContext { github: self.github(), ..RunContext::default() }
+        RunContext { github: self.github(), inputs: self.inputs.clone(), vars: self.vars.clone() }
     }
 }
 
@@ -906,6 +952,7 @@ jobs:
     fn concurrency_groups() {
         let context = GroupContext {
             workflow: "CI".into(),
+            workflow_path: ".rbit/workflows/ci.yml".into(),
             reference: "refs/pull/7/head".into(),
             head_ref: "feature".into(),
             base_ref: "main".into(),
@@ -913,6 +960,13 @@ jobs:
             repository: "alice/rocket".into(),
             run_id: 31,
             pull_request_number: Some(7),
+            sha: "0123456789abcdef0123456789abcdef01234567".into(),
+            actor: "bob".into(),
+            triggering_actor: "bob".into(),
+            repository_owner: "alice".into(),
+            repository_id: 4,
+            server_url: "https://git.example.com".into(),
+            ..GroupContext::default()
         };
         let group = |concurrency: &str| {
             let source = format!("on: push\nconcurrency: {concurrency}\njobs: {{a: {{runs-on: x, steps: [{{run: x}}]}}}}\n");
@@ -930,7 +984,9 @@ jobs:
             group("'${{ github.repository }}/${{ github.event_name }}/${{ github.base_ref }}'").unwrap().unwrap().0,
             "alice/rocket/pull_request/main"
         );
-        assert!(group("'${{ github.sha }}'").is_err(), "an unknown property is empty, and so is the group");
+        assert_eq!(group("'${{ github.actor }}-${{ github.sha }}'").unwrap().unwrap().0, "bob-0123456789abcdef0123456789abcdef01234567");
+        assert_eq!(group("'${{ github.ref_name }}@${{ github.server_url }}'").unwrap().unwrap().0, "7/head@https://git.example.com");
+        assert!(group("'${{ github.run_number }}'").is_err(), "unknown before the run exists, so the group is empty");
         assert!(group("'${{ github.base_ref && null }}'").is_err(), "an empty group is refused");
         let push = GroupContext { pull_request_number: None, head_ref: String::new(), ..context };
         let source = "on: push\nconcurrency: '${{ github.event.pull_request.number || github.run_id }}'\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n";

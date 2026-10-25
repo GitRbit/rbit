@@ -9,6 +9,7 @@ mod actions_dispatch;
 #[path = "support/actions_fixture.rs"]
 mod actions_fixture;
 mod actions_hooks;
+mod actions_planning;
 mod actions_pulls;
 mod actions_pushes;
 mod actions_runs;

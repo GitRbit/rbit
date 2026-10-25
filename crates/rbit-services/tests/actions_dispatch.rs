@@ -196,9 +196,9 @@ async fn schedules_follow_the_default_branch_and_their_caps() {
 #[tokio::test]
 async fn schedules_that_fail_to_plan_pause_and_removed_ones_are_dropped() {
     let fixture = Fixture::new().await;
-    // `github.sha` is not among the values a concurrency group may use: a planning error.
-    let broken =
-        "on:\n  schedule:\n    - cron: '0 * * * *'\nconcurrency: ${{ github.sha }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
+    // `github.run_number` does not exist before the run does, so the group is empty: a
+    // planning error.
+    let broken = "on:\n  schedule:\n    - cron: '0 * * * *'\nconcurrency: ${{ github.run_number }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     fixture.commit(&[(".forgejo/workflows/hourly.yml", broken)], "Broken");
     fixture.push_ref("refs/heads/main").await;
     let owned = fixture.repo(&fixture.alice).await.repo;

@@ -20,7 +20,7 @@ use rbit_core::{
     repository::OwnedRepository,
 };
 use rbit_git::{CommitSummary, RefUpdate};
-use rbit_workflow::trigger::InputValue;
+use rbit_workflow::{GroupContext, trigger::InputValue};
 use serde_json::{Map, Value, json};
 
 use super::ActionsService;
@@ -181,6 +181,47 @@ pub fn github_context(input: &ContextInput<'_>) -> Value {
 }
 
 impl ActionsService {
+    // Actions: join (J).
+    /// What planning a run of `repo` knows before the run exists (see
+    /// [`rbit_workflow::GroupContext`]): the repository, the event, the ref and commit, the
+    /// logins of who caused and who triggered it (`actors`), and — for a trusted run only — the
+    /// repository's then the owner's variables. Callers add what only their event has.
+    pub(super) async fn planning(
+        &self,
+        repo: &OwnedRepository,
+        event: RunEvent,
+        reference: &str,
+        sha: &str,
+        (actor, triggering_actor): (Option<AccountId>, Option<AccountId>),
+        trusted: bool,
+    ) -> Result<GroupContext, ServiceError> {
+        let database = &self.ctx().database;
+        let ids: Vec<AccountId> = actor.into_iter().chain(triggering_actor).collect();
+        let accounts = database.accounts().find_accounts(&ids).await?;
+        let login = |id: Option<AccountId>| {
+            id.and_then(|id| accounts.iter().find(|account| account.id == id)).map(|account| account.name.to_string()).unwrap_or_default()
+        };
+        let mut vars = BTreeMap::new();
+        if trusted {
+            for variable in database.actions_secrets().variables_for_task(repo.repo.id, repo.owner.id).await? {
+                vars.entry(variable.name.to_string()).or_insert(variable.value);
+            }
+        }
+        Ok(GroupContext {
+            reference: reference.to_owned(),
+            sha: sha.to_owned(),
+            event_name: event.as_str().to_owned(),
+            repository: repo.full_name(),
+            repository_owner: repo.owner.name.to_string(),
+            repository_id: repo.repo.id.0,
+            actor: login(actor),
+            triggering_actor: login(triggering_actor.or(actor)),
+            server_url: self.ctx().config.server.base_url().to_owned(),
+            vars,
+            ..GroupContext::default()
+        })
+    }
+
     /// The `github` context of a task of `job` in `run`, without the `token` the scheduler
     /// adds. Logins are read now: an actor whose account is gone is an empty string.
     pub async fn task_context(&self, run: &Run, job: &Job) -> Result<Value, ServiceError> {

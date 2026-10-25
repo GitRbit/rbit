@@ -172,12 +172,9 @@ impl ActionsService {
         let Ok(sha) = reader.commit_id(reference.clone()).await else { return Ok(Fired::Skipped) };
 
         let (limits, at, path, cron) = (self.limits(), sha.clone(), entry.workflow_path.clone(), entry.cron.clone());
-        let group = GroupContext {
-            reference: reference.clone(),
-            event_name: RunEvent::Schedule.as_str().to_owned(),
-            repository: owned.full_name(),
-            ..GroupContext::default()
-        };
+        // Nobody causes a scheduled run; it runs the default branch, so it is trusted.
+        let planning = self.planning(&owned, RunEvent::Schedule, &reference, &sha, (None, None), true).await?;
+        let group = GroupContext { schedule: entry.cron.clone(), ..planning };
         let candidate = self
             .evaluate(move |handle, deadline| {
                 let files = discover(handle, &reader, &at, &limits, deadline).ok()?;
@@ -185,7 +182,8 @@ impl ActionsService {
                 let outcome = match &file.parsed {
                     Err(error) => Err(describe(&file.path, error)),
                     Ok(workflow) if rbit_workflow::matches(workflow, &Event::Schedule { cron: &cron }, &mut None::<Vec<String>>) => {
-                        plan_workflow(workflow, &file.name(), &group, &limits, deadline).map_err(|error| describe(&file.path, &error))
+                        plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline)
+                            .map_err(|error| describe(&file.path, &error))
                     }
                     Ok(_) => return None,
                 };

@@ -185,9 +185,12 @@ impl ActionsService {
             tracing::warn!(%error, repo = %owned.full_name(), "cannot refresh the repository's schedule");
         }
         let reader = self.reader(&owned);
-        let (limits, default_branch, full_name) = (self.limits(), owned.repo.default_branch.clone(), owned.full_name());
+        // A push is trusted (§11.1): its pusher could write the workflow files anyway. The
+        // ref and commit are filled in per updated ref.
+        let group = self.planning(&owned, RunEvent::Push, "", "", (source.pusher(), source.pusher()), true).await?;
+        let (limits, default_branch) = (self.limits(), owned.repo.default_branch.clone());
         let outcomes = self
-            .evaluate(move |handle, deadline| evaluate_push(handle, &reader, &updates, &default_branch, &full_name, &limits, deadline))
+            .evaluate(move |handle, deadline| evaluate_push(handle, &reader, &updates, &default_branch, &group, &limits, deadline))
             .await?;
         let mut started = Vec::new();
         if outcomes.is_empty() {
@@ -267,14 +270,12 @@ impl ActionsService {
 
         let reader = self.reader(&owned);
         let reference = format!("refs/pull/{number}/head");
+        let planning = self.planning(&owned, RunEvent::PullRequest, &reference, &pull.head_sha, (cause, actor), trust.is_trusted()).await?;
         let group = GroupContext {
-            reference: reference.clone(),
             head_ref: pull.head_branch.clone(),
             base_ref: pull.base_branch.clone(),
-            event_name: RunEvent::PullRequest.as_str().to_owned(),
-            repository: owned.full_name(),
             pull_request_number: u64::try_from(number).ok(),
-            ..GroupContext::default()
+            ..planning
         };
         let (limits, head, base_branch) = (self.limits(), pull.head_sha.clone(), pull.base_branch.clone());
         let candidates = self
@@ -377,7 +378,7 @@ fn evaluate_push(
     reader: &RepositoryReader,
     updates: &[RefUpdate],
     default_branch: &str,
-    repository: &str,
+    planning: &GroupContext,
     limits: &Limits,
     deadline: &Deadline,
 ) -> Vec<PushOutcome> {
@@ -422,12 +423,7 @@ fn evaluate_push(
         };
         let mut changed = LazyPaths::new(|| changed_paths(handle, reader, base.as_deref(), after));
         let event = Event::Push { reference: &update.name, deleted: false };
-        let group = GroupContext {
-            reference: update.name.clone(),
-            event_name: RunEvent::Push.as_str().to_owned(),
-            repository: repository.to_owned(),
-            ..GroupContext::default()
-        };
+        let group = GroupContext { reference: update.name.clone(), sha: after.clone(), ..planning.clone() };
         let candidates = candidates(files, &event, &mut changed, &group, limits, deadline);
         if !candidates.is_empty() {
             outcomes.push(PushOutcome { update: update.clone(), head, candidates });
@@ -535,7 +531,7 @@ pub(super) fn candidates(
         let outcome = match &file.parsed {
             Err(error) => Err(describe(&file.path, error)),
             Ok(workflow) if rbit_workflow::matches(workflow, event, changed) => {
-                plan_workflow(workflow, &file.name(), group, limits, deadline).map_err(|error| describe(&file.path, &error))
+                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline).map_err(|error| describe(&file.path, &error))
             }
             Ok(_) => continue,
         };
@@ -549,15 +545,16 @@ pub(super) fn describe(path: &str, error: &WorkflowError) -> String {
     format!("{path}: {error}")
 }
 
-/// Plans `workflow` (named `name`) for an event described by `group`.
+/// Plans `workflow` (named `name`, at `path`) for an event described by `group`.
 pub(super) fn plan_workflow(
     workflow: &Workflow,
     name: &str,
+    path: &str,
     group: &GroupContext,
     limits: &Limits,
     deadline: &Deadline,
 ) -> Result<Plan, WorkflowError> {
-    let context = GroupContext { workflow: name.to_owned(), run_id: 0, ..group.clone() };
+    let context = GroupContext { workflow: name.to_owned(), workflow_path: path.to_owned(), run_id: 0, ..group.clone() };
     let jobs = rbit_workflow::plan(workflow, &context.run_context(), limits, deadline)?;
     let concurrency = match rbit_workflow::concurrency_group(workflow, &context.run_context())? {
         // A group naming `github.run_id` is unique to its run: it never waits for or

@@ -58,12 +58,8 @@ impl ActionsService {
 
         let reader = repo.reader.clone();
         let (limits, given) = (self.limits(), request.inputs.clone());
-        let group = GroupContext {
-            reference: reference.clone(),
-            event_name: RunEvent::WorkflowDispatch.as_str().to_owned(),
-            repository: owned.full_name(),
-            ..GroupContext::default()
-        };
+        // Dispatching needs write access, so the run is trusted.
+        let group = self.planning(owned, RunEvent::WorkflowDispatch, &reference, &sha, (Some(actor.id()), Some(actor.id())), true).await?;
         let evaluated_sha = sha.clone();
         let evaluated = self
             .evaluate(move |handle, deadline| {
@@ -79,8 +75,13 @@ impl ActionsService {
                     return Err(format!("{} does not run on workflow_dispatch", found.path));
                 }
                 let inputs = resolve_inputs(workflow, &given)?;
-                let plan =
-                    plan_workflow(workflow, &found.name(), &group, &limits, deadline).map_err(|error| describe(&found.path, &error))?;
+                let typed = match context::typed_inputs(&inputs) {
+                    serde_json::Value::Object(typed) => typed,
+                    _ => serde_json::Map::new(),
+                };
+                let group = GroupContext { inputs: typed, ..group };
+                let plan = plan_workflow(workflow, &found.name(), &found.path, &group, &limits, deadline)
+                    .map_err(|error| describe(&found.path, &error))?;
                 Ok((Candidate { path: found.path.clone(), name: found.name(), outcome: Ok(plan) }, inputs))
             })
             .await?;
