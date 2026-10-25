@@ -94,6 +94,15 @@ impl TaskLog {
         self.lock().acked
     }
 
+    /// Every spooled line, for tests.
+    #[cfg(test)]
+    pub fn lines(&self) -> Vec<String> {
+        let mut spool = self.lock();
+        spool.flush_writer().unwrap();
+        let text = fs::read_to_string(&spool.path).unwrap();
+        text.lines().map(str::to_owned).collect()
+    }
+
     /// Whether the server has every line.
     pub fn is_flushed(&self) -> bool {
         let spool = self.lock();

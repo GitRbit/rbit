@@ -124,6 +124,9 @@ aes-gcm = { version = "0.11", default-features = false, features = ["aes", "allo
 # rbit-runner's runner.toml is read and written as a document of its own; toml 0.8 is
 # already in the tree through figment, so writing it adds no crate.
 toml = "0.8"
+# rbit-runner masks every secret with one Aho-Corasick automaton per task; aho-corasick is
+# already in the tree (through regex), so masking adds no crate.
+aho-corasick = "1.1"
 
 # Testing
 tempfile = "3"

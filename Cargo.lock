@@ -4268,8 +4268,10 @@ dependencies = [
 name = "rbit-runner"
 version = "0.1.3"
 dependencies = [
+ "aho-corasick",
  "anyhow",
  "axum",
+ "base64 0.23.1",
  "clap",
  "getrandom 0.4.3",
  "rbit-workflow",
@@ -4277,6 +4279,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "tokio",
  "tokio-util",

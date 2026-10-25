@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     client::{Backoff, Client, Disposition},
     logs::TaskLog,
+    mask::Masker,
 };
 
 /// How long the end of a task is retried while the server is unreachable. The server's
@@ -52,7 +53,10 @@ pub fn task_dir(work_dir: &Path, task: TaskId) -> PathBuf {
 #[derive(Debug)]
 pub struct Reporter {
     task_id: TaskId,
+    dir: PathBuf,
     log: TaskLog,
+    /// Everything logged or reported as an output passes through it.
+    masker: Masker,
     progress: Mutex<Progress>,
     changed: Notify,
     cancel: CancellationToken,
@@ -85,11 +89,43 @@ impl Reporter {
             .collect();
         Ok(Self {
             task_id,
+            dir: dir.to_path_buf(),
             log,
+            masker: Masker::default(),
             progress: Mutex::new(Progress { steps, current: None, outputs: BTreeMap::new(), gone: false }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
         })
+    }
+
+    /// The task log so far, for tests.
+    #[cfg(test)]
+    pub fn lines(&self) -> Vec<String> {
+        self.log.lines()
+    }
+
+    /// The step states and outputs so far, for tests.
+    #[cfg(test)]
+    pub fn state(&self) -> TaskStateRequest {
+        self.snapshot(None)
+    }
+
+    /// The task's directory, `<work_dir>/tasks/<id>`.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Masks `value` in every later log line and output (secrets, the task token,
+    /// `::add-mask::`).
+    pub fn add_mask(&self, value: &str) {
+        if !self.masker.add(value) {
+            self.log.push("##[warning]this task masks too many values; `::add-mask::` was refused");
+        }
+    }
+
+    /// `text` as it may leave the runner.
+    pub fn mask(&self, text: &str) -> String {
+        self.masker.mask(text).into_owned()
     }
 
     /// Cancelled when the server cancels the task or forgets it.
@@ -100,7 +136,7 @@ impl Reporter {
     /// Appends a line (or several, at newlines) to the task log, counted to the current
     /// step.
     pub fn log(&self, text: &str) {
-        let kept = self.log.push(text);
+        let kept = self.log.push(&self.masker.mask(text));
         let mut progress = self.lock();
         if let Some(index) = progress.current {
             progress.steps[index].log_length += kept;
@@ -142,8 +178,9 @@ impl Reporter {
         self.changed.notify_one();
     }
 
-    /// Records the job's outputs (already masked).
+    /// Records the job's outputs, masked.
     pub fn set_outputs(&self, outputs: BTreeMap<String, String>) {
+        let outputs = outputs.into_iter().map(|(name, value)| (name, self.mask(&value))).collect();
         self.lock().outputs = outputs;
         self.changed.notify_one();
     }
@@ -259,7 +296,13 @@ pub async fn run<E: Executor>(client: Client, work_dir: &Path, spec: JobSpec, ex
     let task = spec.task_id;
     let dir = task_dir(work_dir, task);
     let reporter = match Reporter::new(task, &dir, spec.template.steps.len()) {
-        Ok(reporter) => Arc::new(reporter),
+        Ok(reporter) => {
+            // Before anything is logged: every secret, and the token.
+            for value in spec.secrets.values().chain([&spec.token]) {
+                reporter.add_mask(value.expose());
+            }
+            Arc::new(reporter)
+        }
         Err(error) => {
             tracing::error!(task = %task, %error, dir = %dir.display(), "cannot create the task directory");
             return;

@@ -14,7 +14,10 @@ path = "src/main.rs"
 # The wire contract, shared with the server; the runner depends on no server crate.
 rbit-workflow.workspace = true
 
+# Masking: one automaton per task over every secret and its encodings.
+aho-corasick.workspace = true
 anyhow.workspace = true
+base64.workspace = true
 clap.workspace = true
 # Idempotency keys and backoff jitter.
 getrandom.workspace = true
@@ -24,6 +27,8 @@ reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# hashFiles.
+sha2.workspace = true
 tokio.workspace = true
 # Cancellation that tasks, heartbeats and the poll loop share.
 tokio-util.workspace = true

@@ -11,14 +11,21 @@
 //! wire contract is `rbit-workflow::{protocol, spec}`. Jobs run in Docker or Podman
 //! containers, or, for labels configured so, directly on the host.
 
+mod backend;
 mod check;
 mod cli;
 mod client;
+mod commands;
 mod config;
+mod contexts;
+mod envfiles;
+mod job;
 mod logs;
+mod mask;
 mod poller;
 mod process;
 mod register;
+mod steps;
 mod task;
 #[cfg(test)]
 mod testing;
@@ -26,17 +33,13 @@ mod testing;
 use std::{io::IsTerminal as _, path::Path, sync::Arc};
 
 use clap::Parser as _;
-use rbit_workflow::{
-    protocol::{StepStatus, TaskResult},
-    spec::JobSpec,
-};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use crate::{
     cli::{Cli, Command},
     client::Client,
-    task::{Executor, Reporter},
+    job::JobExecutor,
 };
 
 #[tokio::main]
@@ -67,29 +70,8 @@ async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
         tracing::info!("stopping: no new tasks are taken");
         signal.cancel();
     });
-    poller::Poller::new(client, loaded, Arc::new(NoSteps), once).run(shutdown).await
-}
-
-/// The executor of this build, which cannot run steps yet: every task fails, saying so.
-#[derive(Debug)]
-struct NoSteps;
-
-impl Executor for NoSteps {
-    fn execute(&self, spec: JobSpec, reporter: Arc<Reporter>) -> impl Future<Output = TaskResult> + Send {
-        let result = if reporter.cancellation().is_cancelled() {
-            TaskResult::Cancelled
-        } else {
-            reporter.start_step(0);
-            reporter.log("this build of rbit-runner cannot run steps yet");
-            reporter.finish_step(0, StepStatus::Failure);
-            for index in 1..spec.template.steps.len() {
-                reporter.finish_step(index, StepStatus::Skipped);
-            }
-            reporter.set_outputs(std::collections::BTreeMap::new());
-            TaskResult::Failure
-        };
-        std::future::ready(result)
-    }
+    let executor = JobExecutor::new(Arc::new(loaded.clone()));
+    poller::Poller::new(client, loaded, Arc::new(executor), once).run(shutdown).await
 }
 
 /// Logs to standard error; `RUST_LOG` overrides the level.

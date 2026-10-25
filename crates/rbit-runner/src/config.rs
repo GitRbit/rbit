@@ -198,6 +198,11 @@ impl RunnerConfig {
     pub fn host_labels(&self) -> impl Iterator<Item = &str> {
         self.labels.iter().filter(|label| label.backend == Backend::Host).map(|label| label.name.as_str())
     }
+
+    /// The label a task's `runs-on` selected: the first of its labels this runner serves.
+    pub fn label_for<'a>(&self, runs_on: impl IntoIterator<Item = &'a String>) -> Option<&Label> {
+        runs_on.into_iter().find_map(|wanted| self.labels.iter().find(|label| &label.name == wanted))
+    }
 }
 
 /// `4g`, `512m`, `1024k` or plain bytes, as `docker run --memory` takes them.
@@ -485,6 +490,14 @@ max_bytes = 10737418240
         fs::write(&loaded.credential_path, "rbrn_short").unwrap();
         assert!(read_credential(&loaded.credential_path).is_err());
         assert!(load(&dir.path().join("missing.toml")).unwrap_err().to_string().contains("register the runner first"));
+    }
+
+    #[test]
+    fn labels_are_matched_in_runs_on_order() {
+        let config = config();
+        let runs_on = vec!["self-hosted".to_owned(), "ubuntu-latest".to_owned()];
+        assert_eq!(config.label_for(&runs_on).unwrap().name, "self-hosted");
+        assert!(config.label_for(&vec!["windows-latest".to_owned()]).is_none());
     }
 
     #[test]
