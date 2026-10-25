@@ -5,14 +5,24 @@
 //! wrong URL says so instead of resending its credential elsewhere. Answers are read
 //! within a cap, error bodies become a [`CallError`] whose [`CallError::disposition`] tells
 //! the caller whether to retry, give the task up, or stop.
+//!
+//! Retrying is the caller's loop, paced by a [`Backoff`] (1 s doubling to 60 s, with
+//! jitter) or the server's `Retry-After`. A poll carries an [`idempotency_key`] that the
+//! caller keeps across retries of the same poll, so a task whose answer was lost comes
+//! back on the retry instead of waiting for the sweeper.
 
-use std::{sync::Once, time::Duration};
+use std::{fmt::Write as _, sync::Once, time::Duration};
 
 use rbit_workflow::{
-    protocol::{BASE_PATH, ErrorBody, ErrorCode, PROTOCOL_HEADER, PROTOCOL_VERSION, RegisterRequest, RegisterResponse, USER_AGENT_PREFIX},
+    protocol::{
+        BASE_PATH, DeclareRequest, DeclareResponse, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsResponse, PROTOCOL_HEADER,
+        PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, TaskId, TaskStateRequest, TaskStateResponse, USER_AGENT_PREFIX,
+        UnregisterRequest,
+    },
     secret::Secret,
+    spec::JobSpec,
 };
-use reqwest::{RequestBuilder, Response, StatusCode, Url, header};
+use reqwest::{Method, RequestBuilder, Response, StatusCode, Url, header};
 use serde::de::DeserializeOwned;
 
 /// How long a call other than a poll may take.
@@ -49,6 +59,21 @@ pub struct Client {
     credential: Option<Secret>,
 }
 
+/// What to do about a failed call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Disposition {
+    /// The server is unreachable, busy or failing: try again after a backoff (or the
+    /// server's `Retry-After`).
+    Retry,
+    /// The task or runner no longer exists on the server (`404`).
+    Gone,
+    /// Retrying cannot help: the credential was refused or the protocol is not served.
+    Fatal,
+    /// The server refused this one call (`400`, `403`, `409`, `413`); a different call may
+    /// succeed.
+    Refused,
+}
+
 /// A failed call.
 #[derive(Debug, Clone)]
 pub enum CallError {
@@ -58,6 +83,109 @@ pub enum CallError {
     Status { status: u16, body: ErrorBody, retry_after: Option<Duration> },
     /// A success answer that is not the message it should be.
     Malformed(String),
+}
+
+impl CallError {
+    pub fn disposition(&self) -> Disposition {
+        match self {
+            Self::Unreachable(_) => Disposition::Retry,
+            Self::Malformed(_) => Disposition::Refused,
+            Self::Status { status, body, .. } => match body.code {
+                ErrorCode::NotFound => Disposition::Gone,
+                ErrorCode::Unauthenticated | ErrorCode::UnsupportedProtocol => Disposition::Fatal,
+                ErrorCode::BadRequest | ErrorCode::Forbidden | ErrorCode::Conflict | ErrorCode::TooLarge => Disposition::Refused,
+                // A code from a newer server: its status class decides.
+                ErrorCode::Unknown if (400..500).contains(status) && *status != 408 => Disposition::Refused,
+                ErrorCode::Throttled | ErrorCode::Unavailable | ErrorCode::Unknown => Disposition::Retry,
+            },
+        }
+    }
+
+    pub fn code(&self) -> Option<ErrorCode> {
+        match self {
+            Self::Status { body, .. } => Some(body.code),
+            _ => None,
+        }
+    }
+
+    /// The server's `Retry-After`, when it sent one.
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Status { retry_after, .. } => *retry_after,
+            _ => None,
+        }
+    }
+
+    /// The line to resend logs from, on a `409` log gap.
+    pub fn next_line(&self) -> Option<u64> {
+        match self {
+            Self::Status { body, .. } if body.code == ErrorCode::Conflict => body.next_line,
+            _ => None,
+        }
+    }
+}
+
+/// Exponential backoff with jitter: each delay is between half and all of a ceiling that
+/// starts at `first` and doubles up to `max`. Jitter keeps runners that lost the server at
+/// the same moment from coming back in lockstep.
+#[derive(Debug, Clone, Copy)]
+pub struct Backoff {
+    first: Duration,
+    max: Duration,
+    ceiling: Duration,
+}
+
+impl Backoff {
+    /// The reconnect backoff of §12.5.4: 1 s to 60 s.
+    pub const RECONNECT: Self = Self::new(Duration::from_secs(1), Duration::from_secs(60));
+
+    pub const fn new(first: Duration, max: Duration) -> Self {
+        Self { first, max, ceiling: first }
+    }
+
+    /// The next delay; the ceiling then doubles.
+    pub fn next_delay(&mut self) -> Duration {
+        let ceiling = self.ceiling;
+        self.ceiling = (ceiling * 2).min(self.max);
+        let half = ceiling / 2;
+        let random = getrandom::u64().unwrap_or(u64::MAX / 2);
+        // `random / u64::MAX` of the other half, in nanoseconds; a ceiling fits u64 nanoseconds.
+        let spread = u64::try_from(half.as_nanos()).unwrap_or(u64::MAX);
+        let jitter = u64::try_from(u128::from(spread) * u128::from(random) / u128::from(u64::MAX)).unwrap_or(spread);
+        half + Duration::from_nanos(jitter)
+    }
+
+    /// The delay after `error`: the server's `Retry-After` when it sent one.
+    pub fn after(&mut self, error: &CallError) -> Duration {
+        error.retry_after().unwrap_or_else(|| self.next_delay())
+    }
+
+    /// Back to the first delay, after a call succeeded.
+    pub fn reset(&mut self) {
+        self.ceiling = self.first;
+    }
+}
+
+/// A fresh [`IDEMPOTENCY_KEY_HEADER`] value: 128 random bits in hex.
+pub fn idempotency_key() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).expect("the operating system's random number generator is unavailable");
+    bytes.iter().fold(String::with_capacity(32), |mut key, byte| {
+        let _ = write!(key, "{byte:02x}");
+        key
+    })
+}
+
+/// What a poll brought.
+#[derive(Debug)]
+pub enum Claimed {
+    Task(Box<JobSpec>),
+    /// A task this runner cannot read, with its id when that much could be read, so it
+    /// can still be failed instead of left to the sweeper.
+    Unreadable {
+        task_id: Option<TaskId>,
+        error: String,
+    },
 }
 
 impl std::fmt::Display for CallError {
@@ -161,9 +289,69 @@ impl Client {
 
     /// `POST register`.
     pub async fn register(&self, request: &RegisterRequest) -> Result<RegisterResponse, CallError> {
-        let response: RegisterResponse = self.json(self.request(reqwest::Method::POST, "register").json(request)).await?;
+        let response: RegisterResponse = self.json(self.request(Method::POST, "register").json(request)).await?;
         response.validate().map_err(|error| CallError::Malformed(error.message))?;
         Ok(response)
+    }
+
+    /// `POST declare`, at every start.
+    pub async fn declare(&self, request: &DeclareRequest) -> Result<DeclareResponse, CallError> {
+        let response: DeclareResponse = self.json(self.request(Method::POST, "declare").json(request)).await?;
+        response.intervals.validate().map_err(|error| CallError::Malformed(error.message))?;
+        Ok(response)
+    }
+
+    /// `POST poll`: a task, or `None` when the poll ended empty. The server holds the call
+    /// for up to `long_poll`, so the timeout allows for that.
+    pub async fn poll(&self, free_slots: u32, key: &str, long_poll: Duration) -> Result<Option<Claimed>, CallError> {
+        let request = self
+            .request(Method::POST, "poll")
+            .header(IDEMPOTENCY_KEY_HEADER, key)
+            .timeout(long_poll + CALL_TIMEOUT)
+            .json(&PollRequest { free_slots });
+        let response = self.send(request).await?;
+        if response.status() == StatusCode::NO_CONTENT {
+            return Ok(None);
+        }
+        let bytes = read_capped(response, MAX_ANSWER_BODY).await?;
+        Ok(Some(claimed(&bytes)))
+    }
+
+    /// `POST tasks/{id}/state`.
+    pub async fn task_state(&self, task: TaskId, request: &TaskStateRequest) -> Result<TaskStateResponse, CallError> {
+        self.json(self.request(Method::POST, &format!("tasks/{task}/state")).json(request)).await
+    }
+
+    /// `POST tasks/{id}/logs?from=<line>`: `body` is whole lines, each ending in `\n`.
+    pub async fn task_logs(&self, task: TaskId, from: u64, body: Vec<u8>) -> Result<LogsResponse, CallError> {
+        let request = self
+            .request(Method::POST, &format!("tasks/{task}/logs?from={from}"))
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(body);
+        self.json(request).await
+    }
+
+    /// `POST unregister`.
+    pub async fn unregister(&self) -> Result<(), CallError> {
+        self.send(self.request(Method::POST, "unregister").json(&UnregisterRequest {})).await.map(drop)
+    }
+}
+
+/// Reads a poll's `{task: JobSpec}`, validated. When it does not parse, the task id is
+/// looked for on its own.
+fn claimed(bytes: &[u8]) -> Claimed {
+    match serde_json::from_slice::<rbit_workflow::protocol::PollResponse>(bytes) {
+        Ok(response) => match response.task.validate() {
+            Ok(()) => Claimed::Task(Box::new(response.task)),
+            Err(error) => Claimed::Unreadable { task_id: Some(response.task.task_id), error: error.message },
+        },
+        Err(error) => {
+            let task_id = serde_json::from_slice::<serde_json::Value>(bytes)
+                .ok()
+                .and_then(|value| value.pointer("/task/task_id").and_then(serde_json::Value::as_i64))
+                .map(TaskId);
+            Claimed::Unreadable { task_id, error: error.to_string() }
+        }
     }
 }
 
@@ -225,6 +413,75 @@ mod tests {
         assert_eq!(code_for_status(StatusCode::BAD_GATEWAY), ErrorCode::Unknown);
         let hostile = CallError::Status { status: 400, body: ErrorBody::new(ErrorCode::BadRequest, "a\x1b[2Jb"), retry_after: None };
         assert!(!hostile.to_string().contains('\x1b'));
+    }
+
+    fn status(status: u16, code: ErrorCode) -> CallError {
+        CallError::Status { status, body: ErrorBody::new(code, "m"), retry_after: None }
+    }
+
+    #[test]
+    fn errors_are_sorted_by_what_to_do_next() {
+        let cases = [
+            (status(404, ErrorCode::NotFound), Disposition::Gone),
+            (status(401, ErrorCode::Unauthenticated), Disposition::Fatal),
+            (status(426, ErrorCode::UnsupportedProtocol), Disposition::Fatal),
+            (status(400, ErrorCode::BadRequest), Disposition::Refused),
+            (status(403, ErrorCode::Forbidden), Disposition::Refused),
+            (status(409, ErrorCode::Conflict), Disposition::Refused),
+            (status(413, ErrorCode::TooLarge), Disposition::Refused),
+            (status(429, ErrorCode::Throttled), Disposition::Retry),
+            (status(503, ErrorCode::Unavailable), Disposition::Retry),
+            (status(502, ErrorCode::Unknown), Disposition::Retry),
+            (status(408, ErrorCode::Unknown), Disposition::Retry),
+            (status(418, ErrorCode::Unknown), Disposition::Refused),
+            (CallError::Unreachable("refused".into()), Disposition::Retry),
+            (CallError::Malformed("x".into()), Disposition::Refused),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.disposition(), expected, "{error}");
+        }
+        let gap = CallError::Status { status: 409, body: ErrorBody::log_gap(7), retry_after: None };
+        assert_eq!(gap.next_line(), Some(7));
+        assert_eq!(status(409, ErrorCode::Conflict).next_line(), None);
+    }
+
+    #[test]
+    fn backoff_doubles_to_its_cap_with_jitter() {
+        let mut backoff = Backoff::RECONNECT;
+        let ceilings = [1, 2, 4, 8, 16, 32, 60, 60, 60];
+        for ceiling in ceilings {
+            let ceiling = Duration::from_secs(ceiling);
+            let delay = backoff.next_delay();
+            assert!(delay >= ceiling / 2 && delay <= ceiling, "{delay:?} outside {ceiling:?}");
+        }
+        backoff.reset();
+        assert!(backoff.next_delay() <= Duration::from_secs(1));
+        let throttled =
+            CallError::Status { status: 429, body: ErrorBody::new(ErrorCode::Throttled, "m"), retry_after: Some(Duration::from_secs(42)) };
+        assert_eq!(backoff.after(&throttled), Duration::from_secs(42));
+    }
+
+    #[test]
+    fn idempotency_keys_are_fresh_and_well_formed() {
+        let (first, second) = (idempotency_key(), idempotency_key());
+        assert_ne!(first, second);
+        assert!(rbit_workflow::protocol::valid_idempotency_key(&first) && first.len() == 32, "{first}");
+    }
+
+    #[test]
+    fn unreadable_tasks_keep_their_id() {
+        match claimed(br#"{"task":{"task_id":12,"version":99}}"#) {
+            Claimed::Unreadable { task_id, error } => assert_eq!((task_id, error.is_empty()), (Some(TaskId(12)), false)),
+            Claimed::Task(_) => panic!("an invalid spec was accepted"),
+        }
+        assert!(matches!(claimed(b"not json"), Claimed::Unreadable { task_id: None, .. }));
+        let spec = crate::testing::job_spec(5, 1);
+        let body = serde_json::to_vec(&rbit_workflow::protocol::PollResponse { task: spec.clone() }).unwrap();
+        assert!(matches!(claimed(&body), Claimed::Task(task) if *task == spec));
+        let mut invalid = spec;
+        invalid.token = Secret::new("rbat_short");
+        let body = serde_json::to_vec(&rbit_workflow::protocol::PollResponse { task: invalid }).unwrap();
+        assert!(matches!(claimed(&body), Claimed::Unreadable { task_id: Some(TaskId(5)), .. }));
     }
 
     #[test]

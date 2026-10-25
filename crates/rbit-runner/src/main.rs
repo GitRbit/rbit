@@ -15,15 +15,29 @@ mod check;
 mod cli;
 mod client;
 mod config;
+mod logs;
+mod poller;
 mod process;
 mod register;
+mod task;
+#[cfg(test)]
+mod testing;
 
-use std::io::IsTerminal as _;
+use std::{io::IsTerminal as _, path::Path, sync::Arc};
 
 use clap::Parser as _;
+use rbit_workflow::{
+    protocol::{StepStatus, TaskResult},
+    spec::JobSpec,
+};
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use crate::cli::{Cli, Command};
+use crate::{
+    cli::{Cli, Command},
+    client::Client,
+    task::{Executor, Reporter},
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,15 +47,48 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Register(args) => register::run(&cli.config, args).await,
         Command::Check => check::run(&cli.config).await,
-        Command::Run { .. } => {
-            let loaded = config::load(&cli.config)?;
-            config::read_credential(&loaded.credential_path)?;
-            if let Some(warning) = config::host_warning(&loaded.config) {
-                tracing::warn!("{warning}");
-            }
-            anyhow::bail!("`rbit-runner run` cannot run tasks in this build yet (work directory {})", loaded.work_dir.display())
-        }
+        Command::Run { once } => run(&cli.config, once).await,
         Command::Exec(_) => anyhow::bail!("`rbit-runner exec` is not available in this build yet"),
+    }
+}
+
+/// `rbit-runner run`: polls until Ctrl-C or SIGTERM, then lets running tasks finish.
+async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
+    let loaded = config::load(config_path)?;
+    let credential = config::read_credential(&loaded.credential_path)?;
+    if let Some(warning) = config::host_warning(&loaded.config) {
+        tracing::warn!("{warning}");
+    }
+    let client = Client::new(&config::server_url(&loaded.config.url, loaded.config.insecure_http)?, Some(credential))?;
+    let shutdown = CancellationToken::new();
+    let signal = shutdown.clone();
+    tokio::spawn(async move {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("stopping: no new tasks are taken");
+        signal.cancel();
+    });
+    poller::Poller::new(client, loaded, Arc::new(NoSteps), once).run(shutdown).await
+}
+
+/// The executor of this build, which cannot run steps yet: every task fails, saying so.
+#[derive(Debug)]
+struct NoSteps;
+
+impl Executor for NoSteps {
+    fn execute(&self, spec: JobSpec, reporter: Arc<Reporter>) -> impl Future<Output = TaskResult> + Send {
+        let result = if reporter.cancellation().is_cancelled() {
+            TaskResult::Cancelled
+        } else {
+            reporter.start_step(0);
+            reporter.log("this build of rbit-runner cannot run steps yet");
+            reporter.finish_step(0, StepStatus::Failure);
+            for index in 1..spec.template.steps.len() {
+                reporter.finish_step(index, StepStatus::Skipped);
+            }
+            reporter.set_outputs(std::collections::BTreeMap::new());
+            TaskResult::Failure
+        };
+        std::future::ready(result)
     }
 }
 
