@@ -140,7 +140,15 @@ impl Fixture {
     }
 
     fn merge_input(strategy: MergeStrategy) -> MergeInput {
-        MergeInput { strategy, title: String::new(), message: String::new(), expected_head: None, delete_head_branch: false, bypass: false }
+        MergeInput {
+            strategy,
+            title: String::new(),
+            message: String::new(),
+            expected_head: None,
+            expected_base: None,
+            delete_head_branch: false,
+            bypass: false,
+        }
     }
 }
 
@@ -653,6 +661,81 @@ async fn branch_protection_gates_merges_and_head_branch_deletion() {
     assert!(merged.pull.is_merged());
     assert!(pulls.merged_into_default_branch(merged.issue().id).await.unwrap(), "main is the default branch");
     assert!(matches!(pulls.delete_head(&fixture.alice, &merged).await, Err(ServiceError::Invalid(_))));
+}
+
+#[tokio::test]
+async fn changing_the_base_dismisses_approvals_and_refuses_stale_merges() {
+    use rbit_core::protection::RuleSettings;
+    use rbit_services::protection::ProtectionInput;
+
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let repo = fixture.repo(&fixture.alice, "alice").await;
+    git(&fixture.work, &["push", "-q", repo.disk_path.to_str().unwrap(), "main:release"]);
+    let settings = RuleSettings { require_pull_request: true, required_approvals: 1, ..RuleSettings::default() };
+    let rule = ProtectionInput { pattern: "*".into(), settings, users: Vec::new(), teams: Vec::new(), contexts: Vec::new() };
+    fixture.services.protection.create(&fixture.alice, &repo, &rule).await.unwrap();
+
+    let number = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    pulls.check_unknown().await.unwrap();
+    pulls.submit_review(&fixture.carol, &fixture.open_pull(&fixture.carol, number).await, ReviewVerdict::Approve, "").await.unwrap();
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    assert!(pulls.merge_box(Some(&fixture.alice), &ctx).await.unwrap().evaluation.can_merge(), "approved for main");
+
+    // An approval for main does not carry over to release.
+    pulls.set_base(&fixture.alice, &ctx, "release").await.unwrap();
+    pulls.check_unknown().await.unwrap();
+    let moved = fixture.open_pull(&fixture.alice, number).await;
+    assert_eq!(moved.pull.base_branch, "release");
+    let merge_box = pulls.merge_box(Some(&fixture.alice), &moved).await.unwrap();
+    assert!(merge_box.tally.approvals.is_empty() && !merge_box.evaluation.can_merge());
+    let reviews = pulls.reviews(Some(&fixture.alice), &moved).await.unwrap().reviews;
+    assert!(!reviews.is_empty());
+    assert!(
+        reviews.iter().all(|entry| entry.review.state == ReviewState::Dismissed && entry.review.dismissed_by == Some(fixture.alice.id()))
+    );
+    let events = fixture.events(&fixture.alice, number).await;
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, TimelineEvent::ReviewDismissed { reviewer, .. } if *reviewer == Some(fixture.carol.id())))
+    );
+    assert!(events.iter().any(|event| matches!(event, TimelineEvent::BaseChanged { to, .. } if to == "release")));
+
+    // A merger who saw the old base is refused, even once approved again.
+    pulls.submit_review(&fixture.carol, &fixture.open_pull(&fixture.carol, number).await, ReviewVerdict::Approve, "").await.unwrap();
+    let stale = MergeInput { expected_base: Some("main".into()), ..Fixture::merge_input(MergeStrategy::Merge) };
+    assert!(matches!(pulls.merge(&fixture.alice, &moved, stale).await, Err(MergeFailure::BaseChanged)));
+    let current = MergeInput { expected_base: Some("release".into()), ..Fixture::merge_input(MergeStrategy::Merge) };
+    pulls.merge(&fixture.alice, &moved, current).await.unwrap();
+    assert!(fixture.open_pull(&fixture.alice, number).await.pull.is_merged());
+}
+
+#[tokio::test]
+async fn changing_the_base_spends_the_content_budget_only_on_a_change() {
+    let fixture = Fixture::new().await;
+    let pulls = &fixture.services.pulls;
+    let repo = fixture.repo(&fixture.alice, "alice").await;
+    git(&fixture.work, &["push", "-q", repo.disk_path.to_str().unwrap(), "main:release"]);
+    let number = fixture.create(&fixture.alice, "alice", "feature").await.unwrap();
+    let mut limited = false;
+    for round in 0..64 {
+        let ctx = fixture.open_pull(&fixture.alice, number).await;
+        let same = ctx.pull.base_branch.clone();
+        pulls.set_base(&fixture.alice, &ctx, &same).await.unwrap();
+        match pulls.set_base(&fixture.alice, &ctx, if round % 2 == 0 { "release" } else { "main" }).await {
+            Ok(()) => {}
+            Err(ServiceError::RateLimited { .. }) => {
+                limited = true;
+                break;
+            }
+            Err(error) => panic!("{error}"),
+        }
+    }
+    assert!(limited, "base changes are throttled");
+    let ctx = fixture.open_pull(&fixture.alice, number).await;
+    let same = ctx.pull.base_branch.clone();
+    pulls.set_base(&fixture.alice, &ctx, &same).await.expect("no change spends nothing");
 }
 
 // Milestone 3: required status checks (S).

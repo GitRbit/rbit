@@ -1,5 +1,7 @@
 //! Restart-required configuration, with redacted secrets in the administrator editor.
+//! Secret fields are stored [sealed](rbit_storage::sealing); the rest stays readable.
 use rbit_core::{Config, User};
+use rbit_storage::{SealingKey, sealing::is_secret_field};
 use serde_json::{Value, json};
 
 use super::{AdminService, require_admin};
@@ -8,7 +10,7 @@ use crate::{
     audit::{AuditAction, AuditEntry},
 };
 
-pub const CONFIGURATION_KEY: &str = "deployment_config";
+pub const CONFIGURATION_KEY: &str = rbit_storage::sqlite::instance::DEPLOYMENT_CONFIG_KEY;
 const REDACTED: &str = "<unchanged>";
 
 impl AdminService {
@@ -23,7 +25,8 @@ impl AdminService {
     async fn pending_configuration(&self) -> Result<Config, ServiceError> {
         for (key, value) in self.ctx.database.instance_settings().load().await? {
             if key == CONFIGURATION_KEY {
-                let mut config: Config = serde_json::from_str(&value).map_err(ServiceError::internal)?;
+                let mut config =
+                    open_stored(&value, self.ctx.database.sealing_key()).map_err(|error| ServiceError::Internal(error.into()))?;
                 // Storage is deployment-owned. After an offline move, a saved snapshot
                 // may still contain the old path; it must not block subsequent edits.
                 config.storage.clone_from(&self.ctx.config.storage);
@@ -54,7 +57,9 @@ impl AdminService {
         if config.storage.data_dir != self.ctx.config.storage.data_dir {
             return Err(ServiceError::Invalid("move storage offline and update the deployment file or environment".into()));
         }
-        let document = serde_json::to_string(&config).map_err(ServiceError::internal)?;
+        let mut document = serde_json::to_value(&config).map_err(ServiceError::internal)?;
+        self.ctx.database.sealing_key().seal_secret_fields(&mut document).map_err(ServiceError::internal)?;
+        let document = document.to_string();
         self.ctx.database.instance_settings().save(&[(CONFIGURATION_KEY, document.as_str())]).await?;
         self.audit
             .record(
@@ -108,8 +113,16 @@ pub fn validate_configuration(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
+/// Parses a saved configuration document, opening its sealed secret fields. Shared with
+/// the startup loader.
+pub fn open_stored(document: &str, key: &SealingKey) -> Result<Config, String> {
+    let mut value: Value = serde_json::from_str(document).map_err(|error| error.to_string())?;
+    key.open_secret_fields(&mut value).map_err(|error| error.to_string())?;
+    serde_json::from_value(value).map_err(|error| error.to_string())
+}
+
 fn is_secret(key: &str) -> bool {
-    key.ends_with("password") || key.ends_with("secret") || key.ends_with("token")
+    is_secret_field(key)
 }
 
 fn redact(value: &mut Value) {

@@ -25,7 +25,8 @@
 //! 3. unknown, the provider has `trust_email`, its address is verified and equals the
 //!    verified address of an account: link it to that account and sign in;
 //! 4. unknown, and the provider may register accounts (`allow_registration`: `true`
-//!    follows the site's registration setting, `"always"` ignores it, `false` never):
+//!    follows the site's registration setting, `"always"` ignores it, `false` never; and
+//!    never before the instance has its first, administrator account):
 //!    continue at a "choose a username" step ([`Services::register_external`]), whose
 //!    address is marked verified only if it is the provider's verified one;
 //! 5. otherwise refuse, explaining how to link from settings.
@@ -761,7 +762,7 @@ impl Services {
             }
         }
 
-        if ExternalAuthService::may_register(&config, self.accounts.registration_open().await?) {
+        if self.external_registration_allowed(&config).await? {
             return Ok(ExternalSignIn::Register(external.start_registration(identity, next)));
         }
         let entry = AuditEntry::new(AuditAction::SignInFailed).from_ip(client.ip).detail(format!("{}: no linked account", config.name));
@@ -771,6 +772,16 @@ impl Services {
              sign in with your password and link {name} under Settings → Security",
             name = config.name
         )))
+    }
+
+    /// Whether a first sign-in with the provider may create an account now. Never on an
+    /// instance without users: its first account becomes the administrator, which takes
+    /// the setup token (see [`crate::AccountService::sign_up`]).
+    async fn external_registration_allowed(&self, config: &ProviderConfig) -> Result<bool, ServiceError> {
+        if self.accounts.setup_required().await? {
+            return Ok(false);
+        }
+        Ok(ExternalAuthService::may_register(config, self.accounts.registration_open().await?))
     }
 
     /// Signs in as the account `linked` belongs to: refused while suspended, continued at
@@ -820,7 +831,7 @@ impl Services {
             .filter(|pending| pending.identity.provider_id == provider_id)
             .ok_or(ServiceError::NotFound)?;
         let config = external.provider(provider_id).ok_or(ServiceError::NotFound)?.config.clone();
-        if !ExternalAuthService::may_register(&config, self.accounts.registration_open().await?) {
+        if !self.external_registration_allowed(&config).await? {
             return Err(ServiceError::RegistrationClosed);
         }
         let name: AccountName = username.trim().parse()?;

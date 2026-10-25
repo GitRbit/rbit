@@ -141,12 +141,23 @@ impl ProfileService {
     }
 
     /// [`ServiceError::InvalidCredentials`] unless `password` is the user's current password.
+    /// Throttled per account ([`ThrottleScope::PasswordCheck`]), so a stolen session cannot
+    /// be used to guess the password.
     async fn verify_password(&self, user: &User, password: String) -> Result<String, ServiceError> {
-        if password.len() > MAX_PASSWORD_LEN * 4 {
+        let key = user.id().0.to_string();
+        self.throttle.check(ThrottleScope::PasswordCheck, &key)?;
+        let verified = if password.len() > MAX_PASSWORD_LEN * 4 {
+            None
+        } else {
+            let hash = self.store().password_hash(user.id()).await?.ok_or(ServiceError::NotFound)?;
+            Passwords::verify(password, hash.clone()).await?.then_some(hash)
+        };
+        let Some(hash) = verified else {
+            self.throttle.record_failure(ThrottleScope::PasswordCheck, &key);
             return Err(ServiceError::InvalidCredentials);
-        }
-        let hash = self.store().password_hash(user.id()).await?.ok_or(ServiceError::NotFound)?;
-        if Passwords::verify(password, hash.clone()).await? { Ok(hash) } else { Err(ServiceError::InvalidCredentials) }
+        };
+        self.throttle.reset(ThrottleScope::PasswordCheck, &key);
+        Ok(hash)
     }
 }
 

@@ -14,7 +14,7 @@
 
 use super::pool::Pool;
 use rbit_core::{
-    AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoId, StateReason, Timestamp,
+    AccountId, Issue, IssueId, IssueKind, IssueNumber, IssueState, IssueText, IssueTitle, RepoId, ReviewId, StateReason, Timestamp,
     issue::MergeStrategy,
     pull::{MAX_CONFLICT_PATHS, Mergeability, PullRequest},
 };
@@ -529,19 +529,44 @@ impl PullStore {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Points the pull request at another base branch. `true` when it changed.
-    pub async fn set_base(&self, issue: IssueId, branch: &str, at: Timestamp) -> Result<bool, StorageError> {
+    /// Points the open pull request at another base branch and dismisses its approvals (as
+    /// `by`, with `message`) in the same transaction: an approval was given for the old base.
+    /// `None` when nothing changed; otherwise the dismissed approvals and their reviewers.
+    pub async fn set_base(
+        &self,
+        issue: IssueId,
+        branch: &str,
+        by: AccountId,
+        message: &str,
+        at: Timestamp,
+    ) -> Result<Option<Vec<(ReviewId, Option<AccountId>)>>, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
-            "UPDATE pull_requests SET base_branch = ?, mergeable = 'unknown', mergeable_base_sha = NULL, mergeable_head_sha = NULL, \
-             conflict_paths = '[]', updated_at = MAX(updated_at, ?) WHERE issue_id = ? AND base_branch <> ? AND merged_at IS NULL",
+            "UPDATE pull_requests SET base_branch = ?, mergeable = 'unknown', mergeable_base_sha = NULL, mergeable_head_sha = NULL,              conflict_paths = '[]', updated_at = MAX(updated_at, ?) WHERE issue_id = ? AND base_branch <> ? AND merged_at IS NULL              AND EXISTS (SELECT 1 FROM issues i WHERE i.id = pull_requests.issue_id AND i.state = 'open')",
         )
         .bind(branch)
         .bind(at.0)
         .bind(issue.0)
         .bind(branch)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
-        Ok(result.rows_affected() > 0)
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Ok(None);
+        }
+        let dismissed: Vec<(i64, Option<i64>)> = sqlx::query_as(
+            "UPDATE pull_reviews SET state = 'dismissed', dismissed_by = ?, dismissed_at = ?, dismissal_message = ?              WHERE pull_id = ? AND state = 'approved' RETURNING id, reviewer_id",
+        )
+        .bind(by.0)
+        .bind(at.0)
+        .bind(message)
+        .bind(issue.0)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        let mut dismissed: Vec<_> = dismissed.into_iter().map(|(id, reviewer)| (ReviewId(id), reviewer.map(AccountId))).collect();
+        dismissed.sort_by_key(|(id, _)| id.0);
+        Ok(Some(dismissed))
     }
 
     /// Records the merge, once. `false` if it was already merged.

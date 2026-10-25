@@ -66,6 +66,8 @@ pub struct MergeInput {
     pub message: String,
     /// The head the merger saw; a different current head refuses the merge.
     pub expected_head: Option<String>,
+    /// The base branch the merger saw; a different current base refuses the merge.
+    pub expected_base: Option<String>,
     pub delete_head_branch: bool,
     /// Merge despite unmet protection rules (only for mergers allowed to bypass).
     pub bypass: bool,
@@ -77,6 +79,9 @@ pub enum MergeFailure {
     /// The head is not the one the merger reviewed (`409`).
     #[error("the head branch was modified; review the new changes and try again")]
     HeadChanged,
+    /// The base branch is not the one the merger saw (`409`).
+    #[error("the base branch was changed; review the pull request and try again")]
+    BaseChanged,
     /// A requirement is unmet (`405`); the message says which.
     #[error("{0}")]
     Blocked(String),
@@ -237,6 +242,11 @@ impl PullService {
             && expected != ctx.pull.head_sha
         {
             return Err(MergeFailure::HeadChanged);
+        }
+        if let Some(expected) = input.expected_base.as_deref().filter(|expected| !expected.is_empty())
+            && expected != ctx.pull.base_branch
+        {
+            return Err(MergeFailure::BaseChanged);
         }
         if ctx.pull.is_merged() || !ctx.issue().is_open() {
             return Err(MergeFailure::Blocked("the pull request is closed".to_owned()));

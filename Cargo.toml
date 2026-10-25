@@ -60,6 +60,9 @@ sha2 = "0.11"
 getrandom = { version = "0.4", features = ["std"] }
 base64 = "0.23"
 subtle = "2.6"
+# At-rest encryption of stored credentials (rbit-storage `sealing`). Already in the tree
+# through ssh-cipher; only AES itself and the allocating API are needed.
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc", "zeroize"] }
 
 # Serialisation, config, CLI
 serde = { version = "1.0", features = ["derive"] }

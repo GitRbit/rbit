@@ -5,7 +5,8 @@
 //! here rather than in `rows.rs`.
 //!
 //! The secret is read only by [`PushMirrorStore::target`], for the push itself; every
-//! other query leaves it out and reports only whether one is set.
+//! other query leaves it out and reports only whether one is set. It is stored
+//! [sealed](crate::sealing).
 
 use super::pool::Pool;
 use rbit_core::{
@@ -13,7 +14,7 @@ use rbit_core::{
     push_mirror::{PushMirror, PushMirrorId},
 };
 
-use crate::StorageError;
+use crate::{StorageError, sealing::SealingKey};
 
 #[derive(Debug, sqlx::FromRow)]
 struct PushMirrorRow {
@@ -94,11 +95,16 @@ pub struct PushTarget {
 #[derive(Debug, Clone)]
 pub struct PushMirrorStore {
     pool: Pool,
+    key: SealingKey,
 }
 
 impl PushMirrorStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
+        Self { pool, key }
+    }
+
+    fn seal(&self, secret: Option<&str>) -> Result<Option<String>, StorageError> {
+        Ok(secret.map(|secret| self.key.seal(secret.as_bytes())).transpose()?)
     }
 
     /// Adds a mirror, due for its first push immediately. [`StorageError::Conflict`] when
@@ -112,7 +118,7 @@ impl PushMirrorStore {
         .bind(new.repo.0)
         .bind(new.url)
         .bind(new.username)
-        .bind(new.secret)
+        .bind(self.seal(new.secret)?)
         .bind(new.sync_on_push)
         .bind(now)
         .bind(new.created_by.0)
@@ -148,6 +154,7 @@ impl PushMirrorStore {
         let Some(row) = row else { return Ok(None) };
         let secret: Option<String> =
             sqlx::query_scalar("SELECT secret FROM repo_push_mirrors WHERE id = ?").bind(id.0).fetch_one(&self.pool).await?;
+        let secret = secret.as_deref().map(|secret| self.key.open_str(secret)).transpose()?;
         Ok(Some(PushTarget { mirror: row.into(), secret }))
     }
 
@@ -160,7 +167,7 @@ impl PushMirrorStore {
         )
         .bind(changes.url)
         .bind(changes.username)
-        .bind(changes.secret)
+        .bind(self.seal(changes.secret)?)
         .bind(changes.enabled)
         .bind(changes.sync_on_push)
         .bind(Timestamp::now().seconds())

@@ -4278,6 +4278,7 @@ dependencies = [
  "sha2 0.11.1",
  "sqlx",
  "ssh-key",
+ "subtle",
  "tempfile",
  "thiserror",
  "tokio",
@@ -4306,7 +4307,10 @@ dependencies = [
 name = "rbit-storage"
 version = "0.1.4"
 dependencies = [
+ "aes-gcm",
+ "base64 0.23.1",
  "futures-util",
+ "getrandom 0.4.3",
  "metrics",
  "metrics-exporter-prometheus",
  "postcard",

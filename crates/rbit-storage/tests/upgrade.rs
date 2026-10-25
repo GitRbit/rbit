@@ -6,8 +6,15 @@
 
 use std::{path::Path, str::FromStr};
 
-use rbit_core::{AccessTokenId, AccountId, BasePermission, OrgRole, Permission, RepoId, Timestamp, TokenScope};
-use rbit_storage::{Database, NewAccessToken, sqlite::ssh_keys::KeyHolder};
+use rbit_core::{
+    AccessTokenId, AccountId, BasePermission, OrgRole, Permission, RepoId, Timestamp, TokenScope,
+    push_mirror::PushMirrorId,
+    webhook::{WebhookEvent, WebhookId},
+};
+use rbit_storage::{
+    Database, NewAccessToken,
+    sqlite::{ssh_keys::KeyHolder, webhooks::NewDelivery},
+};
 use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -164,8 +171,11 @@ async fn milestone_1_rows_survive() {
     assert_eq!(rocket.repo.default_branch, "trunk");
 
     let row = sqlx::query("SELECT secret, last_used_step FROM two_factor WHERE account_id = 1").fetch_one(&db.raw).await.unwrap();
-    assert_eq!(row.get::<Vec<u8>, _>("secret").len(), 20);
+    assert!(row.get::<Vec<u8>, _>("secret").starts_with(b"enc:v1:"), "the TOTP seed is sealed on upgrade");
     assert_eq!(row.get::<i64, _>("last_used_step"), 56_666_700);
+    let totp = db.database.two_factor().find(ALICE).await.unwrap().unwrap();
+    let seed = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33];
+    assert_eq!(totp.secret, seed, "and still read as it was");
     assert_eq!(db.count("SELECT COUNT(*) FROM recovery_codes WHERE used_at IS NULL").await, 1);
     assert_eq!(db.count("SELECT COUNT(*) FROM audit_events WHERE action = 'user_suspended' AND detail = 'spam'").await, 1);
 
@@ -192,6 +202,67 @@ async fn milestone_1_rows_survive() {
     .execute(&db.raw)
     .await;
     assert!(clash.is_err(), "a deploy key's fingerprint cannot become a user key");
+}
+
+/// Every stored credential, as raw bytes.
+async fn stored_secrets(raw: &SqlitePool) -> Vec<Vec<u8>> {
+    sqlx::query_scalar(
+        "SELECT secret FROM two_factor UNION ALL SELECT secret FROM server_secrets \
+         UNION ALL SELECT CAST(secret AS BLOB) FROM webhooks UNION ALL SELECT CAST(secret AS BLOB) FROM repo_push_mirrors \
+         UNION ALL SELECT CAST(value AS BLOB) FROM instance_settings WHERE key = 'deployment_config'",
+    )
+    .fetch_all(raw)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn plaintext_secrets_are_sealed_at_start_up_and_still_read() {
+    let db = upgraded().await;
+    // Rows as versions before sealing stored them.
+    for statement in [
+        "INSERT INTO webhooks (id, repo_id, url, secret, events, created_at, updated_at) \
+         VALUES (1, 6, 'https://hooks.example.com/', 'hook-secret', '[\"push\"]', 1, 1)",
+        "INSERT INTO repo_push_mirrors (id, repo_id, url, secret, next_sync_at, created_at, updated_at) \
+         VALUES (1, 6, 'https://mirror.example.com/rocket', 'mirror-secret', 1, 1, 1)",
+        "INSERT INTO server_secrets (name, secret, created_at) VALUES ('links', X'0102', 1)",
+        "INSERT INTO instance_settings (key, value, updated_at) \
+         VALUES ('deployment_config', '{\"mail\":{\"smtp_host\":\"mail.example.com\",\"smtp_password\":\"smtp-secret\"}}', 1)",
+    ] {
+        sqlx::query(statement).execute(&db.raw).await.unwrap();
+    }
+    db.database.close().await;
+
+    let path = db.dir.path().join("rbit.db");
+    let database = Database::open(&path).await.unwrap();
+    let sealed = stored_secrets(&db.raw).await;
+    assert_eq!(sealed.len(), 5);
+    for value in &sealed {
+        let text = String::from_utf8_lossy(value);
+        assert!(!["hook-secret", "mirror-secret", "smtp-secret"].iter().any(|secret| text.contains(secret)), "{text}");
+    }
+    assert_eq!(sealed.iter().filter(|value| value.starts_with(b"enc:v1:")).count(), 4, "column values are sealed whole");
+
+    // Every store reads the plaintext back.
+    let target = database.push_mirrors().target(PushMirrorId(1)).await.unwrap().unwrap();
+    assert_eq!(target.secret.as_deref(), Some("mirror-secret"));
+    assert_eq!(database.server_secrets().get_or_insert("links", &[9]).await.unwrap(), [1, 2]);
+    let delivery = NewDelivery { hook_id: WebhookId(1), guid: "g-1".into(), event: WebhookEvent::Push, action: None, payload: "{}".into() };
+    database.webhooks().enqueue(vec![delivery]).await.unwrap();
+    let claimed = database.webhooks().claim_due(Timestamp::now(), 10).await.unwrap();
+    assert_eq!(claimed[0].secret.as_deref(), Some("hook-secret"));
+    let document: String =
+        sqlx::query_scalar("SELECT value FROM instance_settings WHERE key = 'deployment_config'").fetch_one(&db.raw).await.unwrap();
+    let mut document: serde_json::Value = serde_json::from_str(&document).unwrap();
+    assert_eq!(document["mail"]["smtp_host"], "mail.example.com", "only secret fields are sealed");
+    database.sealing_key().open_secret_fields(&mut document).unwrap();
+    assert_eq!(document["mail"]["smtp_password"], "smtp-secret");
+    database.close().await;
+
+    // Sealing is idempotent: a second start changes nothing.
+    let database = Database::open(&path).await.unwrap();
+    assert_eq!(stored_secrets(&db.raw).await, sealed);
+    database.close().await;
 }
 
 #[tokio::test]

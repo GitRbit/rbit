@@ -12,6 +12,7 @@
 //! * [`themes`] — the colour theme catalog and the theme cookie.
 //! * [`timing`] — the footer's per-request render time.
 //! * [`partial`] — partial responses for navigation inside a repository.
+//! * `supervise` — idle and time limits for Git exchanges and archive downloads.
 
 pub mod assets;
 pub mod client_ip;
@@ -23,6 +24,7 @@ pub mod partial;
 pub mod render;
 pub mod routes;
 pub mod state;
+mod supervise;
 pub mod themes;
 pub mod timing;
 pub mod updates;

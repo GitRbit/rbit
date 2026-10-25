@@ -118,10 +118,21 @@ impl ContributionService {
         } else {
             store.contribution_repositories(viewer.map(User::id), viewer.is_some_and(|u| u.is_admin)).await?
         };
-        let email = if account.is_organization() {
+        // A user's commits are those authored with their noreply address, which is public.
+        // Their account email is private: matching it for anyone else would let a viewer
+        // confirm a guessed address by committing with it to a repository they can read,
+        // so it counts only when the user (or a site administrator) is looking.
+        let emails = if account.is_organization() {
             None
         } else {
-            Some(self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?.email.to_string())
+            let user = self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
+            let config = &self.ctx.config;
+            let domain = rbit_core::pull::noreply_domain(&config.pulls.noreply_domain, &config.server.public_url);
+            let mut emails = vec![rbit_core::pull::noreply_email(user.name().as_str(), &domain)];
+            if viewer.is_some_and(|viewer| viewer.id() == account.id || viewer.is_admin) {
+                emails.push(user.email.to_string());
+            }
+            Some(emails)
         };
         let mut result = Contributions::default();
         let mut seen = HashSet::new();
@@ -145,7 +156,7 @@ impl ContributionService {
                 if !(start..end).contains(seconds) {
                     continue;
                 }
-                if email.as_ref().is_some_and(|email| !author.eq_ignore_ascii_case(email)) {
+                if emails.as_ref().is_some_and(|emails| !emails.iter().any(|email| author.eq_ignore_ascii_case(email))) {
                     continue;
                 }
                 contributed = true;

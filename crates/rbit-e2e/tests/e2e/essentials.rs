@@ -132,7 +132,7 @@ async fn readme_links_resolve_into_the_repository() {
     home.expect_status(StatusCode::OK).expect_contains(&[
         &format!(r#"href="/alice/docs/blob/{head}/docs/guide.txt""#),
         &format!(r#"src="/alice/docs/raw/{head}/logo.png""#),
-        r#"<a id="docs""#,
+        r#"<a id="user-content-docs""#,
         "<h1>Docs</h1>",
     ]);
     assert!(!home.contains("../../x"), "links escaping the repository are dropped");

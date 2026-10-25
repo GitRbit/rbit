@@ -30,6 +30,7 @@ pub mod recovery;
 pub mod releases;
 pub mod repo_settings;
 mod repositories;
+mod reseal;
 pub mod reviews;
 mod rows;
 pub mod server_secrets;
@@ -49,17 +50,31 @@ pub use access_tokens::{AccessTokenStore, NewAccessToken};
 pub use accounts::{AccountStore, LoginRecord, NewUser, SessionUser};
 pub use repositories::{ForkParent, NewRepository, RepositoryPage, RepositoryStore};
 
-use crate::StorageError;
+use crate::{
+    StorageError,
+    sealing::{KEY_FILE_NAME, SealingKey},
+};
 
 /// A pooled `SQLite` database tuned for a write-light, read-heavy web workload.
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: SqlitePool,
+    /// Seals the credentials stores keep (see [`crate::sealing`]).
+    key: SealingKey,
 }
 
 impl Database {
     /// Opens (creating if necessary) the database file and applies pending migrations.
+    /// Secrets are sealed with the key file next to it ([`KEY_FILE_NAME`]).
     pub async fn open(path: &Path) -> Result<Self, StorageError> {
+        Self::open_with_key_file(path, &path.with_file_name(KEY_FILE_NAME)).await
+    }
+
+    /// [`Self::open`] with the secret key file at `key_file`. A missing key file is
+    /// created, unless the database already holds values sealed with a key: then the key
+    /// was lost or misplaced, and a new one would make them unreadable. Secrets stored in
+    /// plaintext (before sealing existed) are sealed before this returns.
+    pub async fn open_with_key_file(path: &Path, key_file: &Path) -> Result<Self, StorageError> {
         let options = SqliteConnectOptions::from_str("sqlite:")?
             .filename(path)
             .create_if_missing(true)
@@ -74,9 +89,18 @@ impl Database {
             .max_connections(std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4))
             .connect_with(options)
             .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
 
-        let database = Self { pool };
-        database.migrate().await?;
+        let key = match SealingKey::load(key_file)? {
+            Some(key) => key,
+            None if reseal::sample(&pool).await?.is_some() => {
+                return Err(StorageError::MissingKey(key_file.display().to_string()));
+            }
+            None => SealingKey::create(key_file)?,
+        };
+        reseal::check_key(&pool, &key, key_file).await?;
+        reseal::seal_plaintext(&pool, &key).await?;
+        let database = Self { pool, key };
         database.optimize().await?;
         Ok(database)
     }
@@ -101,6 +125,12 @@ impl Database {
     /// The shared pool, labelled with `store` for the contention metrics (`pool`).
     fn store(&self, store: &'static str) -> pool::Pool {
         pool::Pool::new(self.pool.clone(), store)
+    }
+
+    /// The key that seals stored credentials, for values kept outside a dedicated store
+    /// (the secret fields of the saved configuration).
+    pub fn sealing_key(&self) -> &SealingKey {
+        &self.key
     }
 
     pub fn accounts(&self) -> AccountStore {
@@ -128,7 +158,7 @@ impl Database {
     }
 
     pub fn two_factor(&self) -> two_factor::TwoFactorStore {
-        two_factor::TwoFactorStore::new(self.store("two_factor"))
+        two_factor::TwoFactorStore::new(self.store("two_factor"), self.key.clone())
     }
 
     pub fn admin(&self) -> admin::AdminStore {
@@ -166,7 +196,7 @@ impl Database {
     }
 
     pub fn webhooks(&self) -> webhooks::WebhookStore {
-        webhooks::WebhookStore::new(self.store("webhooks"))
+        webhooks::WebhookStore::new(self.store("webhooks"), self.key.clone())
     }
 
     pub fn releases(&self) -> releases::ReleaseStore {
@@ -230,7 +260,7 @@ impl Database {
     }
 
     pub fn server_secrets(&self) -> server_secrets::ServerSecretStore {
-        server_secrets::ServerSecretStore::new(self.store("server_secrets"))
+        server_secrets::ServerSecretStore::new(self.store("server_secrets"), self.key.clone())
     }
 
     // Milestone 3: Git LFS (L).
@@ -252,7 +282,7 @@ impl Database {
     }
 
     pub fn push_mirrors(&self) -> push_mirrors::PushMirrorStore {
-        push_mirrors::PushMirrorStore::new(self.store("push_mirrors"))
+        push_mirrors::PushMirrorStore::new(self.store("push_mirrors"), self.key.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

@@ -25,7 +25,7 @@ use sha2::{Digest, Sha256};
 use crate::urls::DocumentBase;
 
 /// Part of every key: bump it whenever rendering changes its output.
-pub const RENDERER_VERSION: u32 = 1;
+pub const RENDERER_VERSION: u32 = 2;
 
 /// 8 MiB: rendered documents are about their source's size, so hundreds of READMEs fit.
 pub const DEFAULT_MAX_BYTES: usize = 8 * 1024 * 1024;
