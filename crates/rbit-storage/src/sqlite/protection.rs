@@ -11,13 +11,13 @@
 
 use std::collections::HashMap;
 
+use super::pool::{Pool, WriteTransaction};
 use rbit_core::{
     Account, AccountId, RepoId, Timestamp,
     membership::{Team, TeamId},
     protection::{BranchPattern, BranchProtection, MAX_RULES, ProtectionId, ProtectionRule, RuleSettings},
     status::StatusContext,
 };
-use sqlx::{Sqlite, SqlitePool, Transaction};
 
 use super::rows::AccountRow;
 use crate::StorageError;
@@ -93,11 +93,11 @@ pub enum RuleChange {
 
 #[derive(Debug, Clone)]
 pub struct BranchProtectionStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl BranchProtectionStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -271,7 +271,7 @@ impl BranchProtectionStore {
 /// Writes the allowed users and teams and the required contexts of rule `id`. `false` (and nothing more written) if
 /// a team does not belong to the organisation owning `repo`; the caller then drops the
 /// transaction.
-async fn insert_grants(tx: &mut Transaction<'_, Sqlite>, repo: RepoId, id: i64, input: &RuleInput) -> Result<bool, StorageError> {
+async fn insert_grants(tx: &mut WriteTransaction, repo: RepoId, id: i64, input: &RuleInput) -> Result<bool, StorageError> {
     for context in &input.contexts {
         sqlx::query("INSERT OR IGNORE INTO branch_protection_required_checks (rule_id, context) VALUES (?, ?)")
             .bind(id)

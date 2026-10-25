@@ -10,12 +10,12 @@
 
 use std::collections::HashMap;
 
+use super::pool::{Conn, Pool};
 use rbit_core::{
     AccountId, IssueId, ReviewId, TimelineEvent, Timestamp,
     issue::ReviewState,
     pull::{Review, ReviewComment, ReviewCommentId, ReviewSide},
 };
-use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::StorageError;
 
@@ -145,11 +145,11 @@ pub struct NewReview<'a> {
 
 #[derive(Debug, Clone)]
 pub struct ReviewStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ReviewStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -476,7 +476,7 @@ impl ReviewStore {
 }
 
 async fn insert_comment(
-    conn: &mut SqliteConnection,
+    conn: &mut Conn,
     review: ReviewId,
     pull: IssueId,
     author: AccountId,
@@ -505,7 +505,7 @@ async fn insert_comment(
     row.try_into()
 }
 
-async fn clear_request(conn: &mut SqliteConnection, pull: IssueId, user: AccountId) -> Result<(), StorageError> {
+async fn clear_request(conn: &mut Conn, pull: IssueId, user: AccountId) -> Result<(), StorageError> {
     sqlx::query("DELETE FROM pull_review_requests WHERE pull_id = ? AND user_id = ?").bind(pull.0).bind(user.0).execute(&mut *conn).await?;
     Ok(())
 }

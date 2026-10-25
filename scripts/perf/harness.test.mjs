@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import vm from "node:vm";
+import { signIn } from "./edge.mjs";
 import { requestSample, validateConfig } from "./measure.mjs";
 import { serveOptions } from "./serve.mjs";
 import { fingerprint, orderForRound, summarize } from "./support.mjs";
@@ -147,4 +148,30 @@ test("diff selector follows rendered row kinds independently of virtual blocks",
   assert.match(selector, /:not\(\.diff-comment, \.diff-comment \*\)/u, "comment rows and descendants, including Markdown tables, are excluded");
   assert.doesNotMatch(selector, /vblock|>/u, "short diff rows do not depend on a wrapper");
   assert.match(probe, /diffRows: document\.querySelectorAll\(DIFF_ROW\)/u, "counts and hit sampling use the same selector");
+});
+
+test("signing in hands the session cookie to the browser and refuses a failed login", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "rbit-signin-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const credentials = join(dir, "credentials.txt");
+  await writeFile(credentials, "perf:secret\n");
+  const posted = [];
+  const base = await server(t, (request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      posted.push({ url: request.url, origin: request.headers.origin, body });
+      const ok = new URLSearchParams(body).get("password") === "secret";
+      response.writeHead(ok ? 303 : 200, ok ? { Location: "/", "Set-Cookie": "rbit_session=token; HttpOnly; Path=/" } : {});
+      response.end();
+    });
+  });
+  const sent = [];
+  const browser = { send: async (method, params) => { sent.push({ method, params }); } };
+  await signIn(browser, [{ url: `${base}/a` }, { url: `${base}/b` }], credentials);
+  assert.equal(posted.length, 1, "one login per origin");
+  assert.deepEqual(posted[0], { url: "/login", origin: base, body: "login=perf&password=secret" });
+  assert.deepEqual(sent, [{ method: "Network.setCookie", params: { url: base, name: "rbit_session", value: "token", httpOnly: true, sameSite: "Lax" } }]);
+  await writeFile(credentials, "perf:wrong\n");
+  await assert.rejects(signIn(browser, [{ url: `${base}/a` }], credentials), /could not sign in at http:\/\/127\.0\.0\.1:\d+ \(HTTP 200\)$/);
 });

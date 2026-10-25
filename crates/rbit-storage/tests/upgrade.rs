@@ -6,8 +6,15 @@
 
 use std::{path::Path, str::FromStr};
 
-use rbit_core::{AccessTokenId, AccountId, BasePermission, OrgRole, Permission, RepoId, Timestamp, TokenScope};
-use rbit_storage::{Database, NewAccessToken, sqlite::ssh_keys::KeyHolder};
+use rbit_core::{
+    AccessTokenId, AccountId, BasePermission, OrgRole, Permission, RepoId, Timestamp, TokenScope,
+    push_mirror::PushMirrorId,
+    webhook::{WebhookEvent, WebhookId},
+};
+use rbit_storage::{
+    Database, NewAccessToken,
+    sqlite::{ssh_keys::KeyHolder, webhooks::NewDelivery},
+};
 use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -164,8 +171,11 @@ async fn milestone_1_rows_survive() {
     assert_eq!(rocket.repo.default_branch, "trunk");
 
     let row = sqlx::query("SELECT secret, last_used_step FROM two_factor WHERE account_id = 1").fetch_one(&db.raw).await.unwrap();
-    assert_eq!(row.get::<Vec<u8>, _>("secret").len(), 20);
+    assert!(row.get::<Vec<u8>, _>("secret").starts_with(b"enc:v1:"), "the TOTP seed is sealed on upgrade");
     assert_eq!(row.get::<i64, _>("last_used_step"), 56_666_700);
+    let totp = db.database.two_factor().find(ALICE).await.unwrap().unwrap();
+    let seed = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33];
+    assert_eq!(totp.secret, seed, "and still read as it was");
     assert_eq!(db.count("SELECT COUNT(*) FROM recovery_codes WHERE used_at IS NULL").await, 1);
     assert_eq!(db.count("SELECT COUNT(*) FROM audit_events WHERE action = 'user_suspended' AND detail = 'spam'").await, 1);
 
@@ -192,6 +202,67 @@ async fn milestone_1_rows_survive() {
     .execute(&db.raw)
     .await;
     assert!(clash.is_err(), "a deploy key's fingerprint cannot become a user key");
+}
+
+/// Every stored credential, as raw bytes.
+async fn stored_secrets(raw: &SqlitePool) -> Vec<Vec<u8>> {
+    sqlx::query_scalar(
+        "SELECT secret FROM two_factor UNION ALL SELECT secret FROM server_secrets \
+         UNION ALL SELECT CAST(secret AS BLOB) FROM webhooks UNION ALL SELECT CAST(secret AS BLOB) FROM repo_push_mirrors \
+         UNION ALL SELECT CAST(value AS BLOB) FROM instance_settings WHERE key = 'deployment_config'",
+    )
+    .fetch_all(raw)
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn plaintext_secrets_are_sealed_at_start_up_and_still_read() {
+    let db = upgraded().await;
+    // Rows as versions before sealing stored them.
+    for statement in [
+        "INSERT INTO webhooks (id, repo_id, url, secret, events, created_at, updated_at) \
+         VALUES (1, 6, 'https://hooks.example.com/', 'hook-secret', '[\"push\"]', 1, 1)",
+        "INSERT INTO repo_push_mirrors (id, repo_id, url, secret, next_sync_at, created_at, updated_at) \
+         VALUES (1, 6, 'https://mirror.example.com/rocket', 'mirror-secret', 1, 1, 1)",
+        "INSERT INTO server_secrets (name, secret, created_at) VALUES ('links', X'0102', 1)",
+        "INSERT INTO instance_settings (key, value, updated_at) \
+         VALUES ('deployment_config', '{\"mail\":{\"smtp_host\":\"mail.example.com\",\"smtp_password\":\"smtp-secret\"}}', 1)",
+    ] {
+        sqlx::query(statement).execute(&db.raw).await.unwrap();
+    }
+    db.database.close().await;
+
+    let path = db.dir.path().join("rbit.db");
+    let database = Database::open(&path).await.unwrap();
+    let sealed = stored_secrets(&db.raw).await;
+    assert_eq!(sealed.len(), 5);
+    for value in &sealed {
+        let text = String::from_utf8_lossy(value);
+        assert!(!["hook-secret", "mirror-secret", "smtp-secret"].iter().any(|secret| text.contains(secret)), "{text}");
+    }
+    assert_eq!(sealed.iter().filter(|value| value.starts_with(b"enc:v1:")).count(), 4, "column values are sealed whole");
+
+    // Every store reads the plaintext back.
+    let target = database.push_mirrors().target(PushMirrorId(1)).await.unwrap().unwrap();
+    assert_eq!(target.secret.as_deref(), Some("mirror-secret"));
+    assert_eq!(database.server_secrets().get_or_insert("links", &[9]).await.unwrap(), [1, 2]);
+    let delivery = NewDelivery { hook_id: WebhookId(1), guid: "g-1".into(), event: WebhookEvent::Push, action: None, payload: "{}".into() };
+    database.webhooks().enqueue(vec![delivery]).await.unwrap();
+    let claimed = database.webhooks().claim_due(Timestamp::now(), 10).await.unwrap();
+    assert_eq!(claimed[0].secret.as_deref(), Some("hook-secret"));
+    let document: String =
+        sqlx::query_scalar("SELECT value FROM instance_settings WHERE key = 'deployment_config'").fetch_one(&db.raw).await.unwrap();
+    let mut document: serde_json::Value = serde_json::from_str(&document).unwrap();
+    assert_eq!(document["mail"]["smtp_host"], "mail.example.com", "only secret fields are sealed");
+    database.sealing_key().open_secret_fields(&mut document).unwrap();
+    assert_eq!(document["mail"]["smtp_password"], "smtp-secret");
+    database.close().await;
+
+    // Sealing is idempotent: a second start changes nothing.
+    let database = Database::open(&path).await.unwrap();
+    assert_eq!(stored_secrets(&db.raw).await, sealed);
+    database.close().await;
 }
 
 #[tokio::test]
@@ -488,6 +559,65 @@ async fn notification_email_tables_start_empty() {
     assert_eq!(db.count("SELECT COUNT(*) FROM notification_email_settings").await, 0, "deleting the account removes its preference");
 }
 
+// Email digests.
+#[tokio::test]
+async fn email_digest_tables_start_empty_and_existing_preferences_stay_immediate() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit.db");
+    let raw = pool(&path).await;
+    // The last migration before digests, including sealing, query indexes and archives.
+    sqlx::migrate!("./migrations").run_to(46, &raw).await.unwrap();
+    sqlx::raw_sql(MILESTONE_1_ROWS).execute(&raw).await.unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO notification_email_settings (account_id, email, updated_at) VALUES (2, 'all', 10); \
+         INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) \
+         VALUES (1, 6, 1, 'issue', 'Crash', 1, 10, 10);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let database = Database::open(&path).await.unwrap();
+    for table in ["notification_digests", "notification_digest_items"] {
+        let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}"))).fetch_one(&raw).await.unwrap();
+        assert_eq!(count, 0, "{table}");
+    }
+    let store = database.notification_email();
+    assert_eq!(store.preference(BOB).await.unwrap(), Some(rbit_core::config::EmailPreference::All), "the choice survives");
+    let delivery = store.delivery(BOB).await.unwrap();
+    assert_eq!(delivery.delivery, rbit_core::config::EmailDelivery::Immediate, "existing users keep immediate emails");
+    assert_eq!(delivery.digest_hour, None, "and follow the default digest hour");
+    for (delivery, hour, valid) in [("daily", "7", true), ("hourly", "7", false), ("weekly", "24", false), ("weekly", "NULL", true)] {
+        let update = format!("UPDATE notification_email_settings SET delivery = '{delivery}', digest_hour = {hour} WHERE account_id = 2");
+        let result = sqlx::query(sqlx::AssertSqlSafe(update)).execute(&raw).await;
+        assert_eq!(result.is_ok(), valid, "{delivery} at {hour}");
+    }
+
+    sqlx::raw_sql(
+        "INSERT INTO notification_digests (id, account_id, period, created_at) VALUES (1, 2, 100, 100); \
+         INSERT INTO notification_digest_items (account_id, repo_id, issue_id, reason, headline, excerpt, created_at, digest_id) \
+         VALUES (2, 6, 1, 'mention', 'alice mentioned you.', '', 90, 1), (2, 6, 1, 'comment', 'alice commented.', '', 110, NULL);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let state: String = sqlx::query_scalar("SELECT state FROM notification_digests").fetch_one(&raw).await.unwrap();
+    assert_eq!(state, "claimed", "a new digest starts claimed");
+    assert!(
+        sqlx::query("INSERT INTO notification_digests (account_id, period, created_at) VALUES (2, 100, 101)").execute(&raw).await.is_err(),
+        "one digest per period"
+    );
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&raw).await.unwrap();
+    let left: i64 =
+        sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM notification_digests) + (SELECT COUNT(*) FROM notification_digest_items)")
+            .fetch_one(&raw)
+            .await
+            .unwrap();
+    assert_eq!(left, 0, "deleting the account removes its digests and queued notifications");
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&raw).await.unwrap().is_empty());
+    database.close().await;
+    raw.close().await;
+}
+
 // Milestone 3: external sign-in (O).
 #[tokio::test]
 async fn external_identity_table_starts_empty() {
@@ -559,4 +689,19 @@ async fn dashboard_mentions_start_empty_and_index_completion_persists() {
     assert!(!db.database.issue_search().mentions_indexed().await.unwrap());
     db.database.issue_search().finish_mentions_index().await.unwrap();
     assert!(db.database.issue_search().mentions_indexed().await.unwrap());
+}
+
+#[tokio::test]
+async fn existing_repositories_upgrade_unarchived_and_can_be_archived() {
+    let db = upgraded().await;
+    assert!(db.exists("table", "repo_archives").await);
+    assert_eq!(db.count("SELECT COUNT(*) FROM repo_archives").await, 0);
+    let repositories = db.database.repositories();
+    let rocket = repositories.find_by_path("ACME", "Rocket").await.unwrap().unwrap();
+    assert!(!rocket.repo.is_archived(), "repositories from before the migration accept changes");
+
+    assert!(db.database.repo_settings().archive(ROCKET, ALICE, Timestamp(1_800_000_000)).await.unwrap());
+    let rocket = repositories.find_by_path("ACME", "Rocket").await.unwrap().unwrap();
+    assert_eq!(rocket.repo.archived_at, Some(Timestamp(1_800_000_000)));
+    assert_eq!(rocket.repo.default_branch, "trunk", "the repository row is untouched");
 }

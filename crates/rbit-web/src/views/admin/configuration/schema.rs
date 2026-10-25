@@ -48,20 +48,38 @@ const SERVER: &[Spec] = &[
     },
 ];
 
-const STORAGE: &[Spec] = &[Spec {
-    key: "data_dir",
-    label: "Data directory",
-    help: "Read-only here. Stop the server, move the data and update the deployment file or environment.",
-    kind: Kind::Text,
-    optional: false,
-    max: "",
-}];
+const STORAGE: &[Spec] = &[
+    Spec {
+        key: "data_dir",
+        label: "Data directory",
+        help: "Read-only here. Stop the server, move the data and update the deployment file or environment.",
+        kind: Kind::Text,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "secret_key_file",
+        label: "Secret key file",
+        help: "Read-only here. The key that encrypts stored credentials; empty means secret.key in the data directory. Back it up with the database.",
+        kind: Kind::Text,
+        optional: true,
+        max: "",
+    },
+];
 
 const SECURITY: &[Spec] = &[
     Spec {
         key: "session_lifetime_days",
         label: "Session lifetime (days)",
         help: "How long a session stays valid without activity, in days.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
+    Spec {
+        key: "session_max_age_days",
+        label: "Maximum session age (days)",
+        help: "How long a session stays valid at most, however active, in days. 0 means no limit.",
         kind: Kind::Number,
         optional: false,
         max: "4294967295",
@@ -90,6 +108,30 @@ const SECURITY: &[Spec] = &[
         optional: false,
         max: "",
     },
+    Spec {
+        key: "hsts",
+        label: "Send HSTS",
+        help: "Send Strict-Transport-Security (one year) when the public URL is https://, so browsers refuse plain HTTP to this host. Turn off only while moving away from HTTPS.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "hsts_include_subdomains",
+        label: "HSTS includes subdomains",
+        help: "Add includeSubDomains to that header, binding every subdomain of the host to HTTPS as well.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "external_images",
+        label: "Allow external images",
+        help: "Let pages show images from other sites, which also tells those sites who viewed the page. Off limits images to this instance and inline data: images.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
 ];
 
 const REPOSITORY: &[Spec] = &[
@@ -113,6 +155,70 @@ const REPOSITORY: &[Spec] = &[
         key: "max_render_bytes",
         label: "Max render (bytes)",
         help: "Files larger than this are not rendered inline in the browser.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_git_processes",
+        label: "Max Git processes",
+        help: "Git transport processes (clones, fetches and pushes over HTTP and SSH) running at once; further requests are refused (503 over HTTP).",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_git_requests_per_ip",
+        label: "Max Git requests per ip",
+        help: "Concurrent smart-HTTP Git requests from one IP address (429 beyond). Behind a reverse proxy this needs trusted proxy networks.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "git_idle_timeout_seconds",
+        label: "Git idle timeout (seconds)",
+        help: "Seconds a smart-HTTP Git exchange may go without traffic in either direction.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "git_max_seconds",
+        label: "Git max duration (seconds)",
+        help: "Upper bound, in seconds, on a single smart-HTTP Git exchange (a very large clone or push).",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_push_bytes",
+        label: "Max push (bytes)",
+        help: "Largest pack one push may send, over HTTP and SSH. 0 means unlimited.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "max_archives_per_ip",
+        label: "Max archives per ip",
+        help: "Source archive downloads one IP address may have running at once.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "archive_idle_timeout_seconds",
+        label: "Archive idle timeout (seconds)",
+        help: "Seconds an archive download may stall (the client not reading, or git not writing).",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "archive_max_seconds",
+        label: "Archive max duration (seconds)",
+        help: "Upper bound, in seconds, on one archive download.",
         kind: Kind::Number,
         optional: false,
         max: "18446744073709551615",
@@ -414,6 +520,14 @@ const NOTIFICATIONS: &[Spec] = &[
         kind: Kind::Choice(EMAIL_PREFERENCE),
         optional: false,
         max: "",
+    },
+    Spec {
+        key: "digest_hour",
+        label: "Default digest hour (UTC)",
+        help: "The hour, 0 to 23 in UTC, daily and weekly email digests are sent at for users who did not choose one. Site administration → Settings overrides it at runtime.",
+        kind: Kind::Number,
+        optional: false,
+        max: "23",
     },
 ];
 

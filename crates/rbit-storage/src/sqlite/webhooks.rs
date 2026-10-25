@@ -4,6 +4,7 @@
 //! lookup that starts from a request is scoped to that owner, so an id from one
 //! repository can never reach another's hook. Secrets are write-only: rows come back with
 //! `has_secret` only, and the raw value is read solely when claiming a delivery to sign.
+//! They are stored [sealed](crate::sealing).
 //!
 //! The queue is the `webhook_deliveries` table. Producers insert `pending` rows; the
 //! worker claims due rows atomically (one `UPDATE … RETURNING`, so two workers never
@@ -11,6 +12,7 @@
 //!
 //! Milestone 2 workstream W (API & webhooks) owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     webhook::{
@@ -18,9 +20,8 @@ use rbit_core::{
         format_header_block, parse_header_block,
     },
 };
-use sqlx::SqlitePool;
 
-use crate::StorageError;
+use crate::{StorageError, sealing::SealingKey};
 
 /// Builds a static `SELECT` over hooks (with their latest delivery) and a trailing clause.
 macro_rules! select_hook {
@@ -274,12 +275,13 @@ fn to_i64(value: impl TryInto<i64>) -> i64 {
 
 #[derive(Debug, Clone)]
 pub struct WebhookStore {
-    pool: SqlitePool,
+    pool: Pool,
+    key: SealingKey,
 }
 
 impl WebhookStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
+        Self { pool, key }
     }
 
     // ------------------------------------------------------------------ hooks
@@ -287,6 +289,7 @@ impl WebhookStore {
     pub async fn create(&self, new: NewWebhook) -> Result<Webhook, StorageError> {
         let now = Timestamp::now().seconds();
         let (repo_id, org_id) = owner_columns(new.owner);
+        let secret = new.secret.as_deref().map(|secret| self.key.seal(secret.as_bytes())).transpose()?;
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO webhooks (id, repo_id, org_id, url, secret, events, active, created_by, created_at, updated_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -295,7 +298,7 @@ impl WebhookStore {
         .bind(repo_id)
         .bind(org_id)
         .bind(new.url.as_str())
-        .bind(new.secret.as_deref())
+        .bind(secret)
         .bind(encode_events(&new.events))
         .bind(new.active)
         .bind(new.created_by.map(|id| id.0))
@@ -350,7 +353,7 @@ impl WebhookStore {
         let (replace_secret, secret) = match update.secret {
             SecretUpdate::Keep => (false, None),
             SecretUpdate::Clear => (true, None),
-            SecretUpdate::Set(secret) => (true, Some(secret)),
+            SecretUpdate::Set(secret) => (true, Some(self.key.seal(secret.as_bytes())?)),
         };
         let result = sqlx::query(
             "UPDATE webhooks SET url = ?, events = ?, active = ?, updated_at = ?, \
@@ -446,10 +449,14 @@ impl WebhookStore {
             return Ok(Vec::new());
         }
         let hook_ids = format!("[{}]", claimed.iter().map(|row| row.hook_id.to_string()).collect::<Vec<_>>().join(","));
-        let targets: Vec<TargetRow> = sqlx::query_as("SELECT id, url, secret FROM webhooks WHERE id IN (SELECT value FROM json_each(?))")
-            .bind(hook_ids)
-            .fetch_all(&self.pool)
-            .await?;
+        let mut targets: Vec<TargetRow> =
+            sqlx::query_as("SELECT id, url, secret FROM webhooks WHERE id IN (SELECT value FROM json_each(?))")
+                .bind(hook_ids)
+                .fetch_all(&self.pool)
+                .await?;
+        for target in &mut targets {
+            target.secret = target.secret.as_deref().map(|secret| self.key.open_str(secret)).transpose()?;
+        }
 
         let mut deliveries = Vec::with_capacity(claimed.len());
         for row in claimed {

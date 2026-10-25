@@ -2,8 +2,8 @@
 //!
 //! Workstream D owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Email, Timestamp};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -21,11 +21,11 @@ pub struct AccountProfile {
 
 #[derive(Debug, Clone)]
 pub struct ProfileStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ProfileStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

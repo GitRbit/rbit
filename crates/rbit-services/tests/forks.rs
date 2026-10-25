@@ -123,6 +123,33 @@ async fn forks_of_private_repositories_stay_private() {
     assert!(matches!(fixture.services.repositories.open(Some(&bob), "alice", "mine").await, Err(ServiceError::NotFound)));
     assert_eq!(fixture.services.forks.count(Some(&bob), &parent).await.unwrap(), 0, "hidden forks are not counted");
     assert_eq!(fixture.services.forks.count(Some(&alice), &parent).await.unwrap(), 1);
+
+    // Neither the fork nor a fork of the fork can be made public; a private fork of a
+    // public repository can.
+    let public = |description: &str| rbit_services::repo_settings::UpdateRepository {
+        description: description.to_owned(),
+        visibility: Visibility::Public,
+        default_branch: None,
+    };
+    let mine = fixture.services.repositories.open(Some(&alice), "alice", "mine").await.unwrap();
+    let result = fixture.services.repo_settings.update(&mine, public("")).await;
+    assert!(matches!(result, Err(ServiceError::Invalid(_))), "{result:?}");
+    let nested = fixture.services.forks.fork(&alice, &mine, ForkInput { owner: String::new(), name: "nested".into() }).await.unwrap();
+    assert_eq!(nested.repo.visibility, Visibility::Private);
+    let nested = fixture.services.repositories.open(Some(&alice), "alice", "nested").await.unwrap();
+    let result = fixture.services.repo_settings.update(&nested, public("")).await;
+    assert!(matches!(result, Err(ServiceError::Invalid(_))), "the whole network is checked: {result:?}");
+    let private = rbit_services::repo_settings::UpdateRepository {
+        description: "still private".into(),
+        visibility: Visibility::Private,
+        default_branch: None,
+    };
+    fixture.services.repo_settings.update(&nested, private).await.unwrap();
+
+    fixture.services.repo_settings.update(&parent, public("now public")).await.unwrap();
+    fixture.services.repo_settings.update(&mine, public("")).await.unwrap();
+    let nested = fixture.services.repositories.open(Some(&alice), "alice", "nested").await.unwrap();
+    fixture.services.repo_settings.update(&nested, public("")).await.unwrap();
 }
 
 #[tokio::test]

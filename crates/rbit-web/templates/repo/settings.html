@@ -83,6 +83,27 @@
   <section class="mt-10" aria-labelledby="danger-zone-title">
     <h2 id="danger-zone-title" class="mb-3 text-[13px] font-medium text-danger">Danger zone</h2>
     {% for card in danger_cards %}<div class="mb-3">{% call ui::settings_card(card) %}{% endcall %}</div>{% endfor %}
+    <form method="post" action="{{ archive_url }}" class="box mb-3 border-danger/40" hx-boost="false" novalidate>
+      {%- if header.archived %}
+      <input type="hidden" name="archived" value="false">
+      <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <div class="min-w-0 flex-1">
+          <p class="font-medium">Unarchive this repository</p>
+          <p class="mt-1 text-[13px] text-ink-muted">It accepts pushes, issues, pull requests, comments and releases again, and its mirrors resume.</p>
+        </div>
+        <button class="btn w-full sm:w-auto" type="submit">Unarchive repository</button>
+      </div>
+      {%- else %}
+      <input type="hidden" name="archived" value="true">
+      <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <div class="min-w-0 flex-1">
+          <p class="font-medium">Archive this repository</p>
+          <p class="mt-1 text-[13px] text-ink-muted">It becomes read-only: people can still clone, fork and star it, but nobody can push, merge or change its issues, pull requests or releases, and its mirrors pause. You can unarchive it at any time.</p>
+        </div>
+        <button class="btn btn-danger w-full sm:w-auto" type="submit">Archive repository</button>
+      </div>
+      {%- endif %}
+    </form>
     <form method="post" action="{{ delete_url }}" class="box border-danger/40" novalidate>
       <div class="p-4">
         {% call ui::form_error(delete_error) %}{% endcall %}

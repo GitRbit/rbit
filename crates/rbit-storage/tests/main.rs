@@ -7,7 +7,9 @@ mod query_count;
 
 mod access_tokens;
 mod accounts;
+mod archives;
 mod collaborators;
+mod email_digests;
 mod external_identities;
 mod imports;
 mod issue_meta;
@@ -25,6 +27,7 @@ mod push_mirrors;
 mod recovery;
 mod redirects;
 mod releases;
+mod sealing;
 mod statuses;
 mod teams;
 mod two_factor;

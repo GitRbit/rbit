@@ -301,3 +301,19 @@ test('navigation stops a visibility warm loop even if its section remains connec
   await flush();
   assert.equal(page.requests.length, 1, 'the old warm loop must not continue into new requests');
 });
+
+test('settling swapped content updates its document links without scanning the page', () => {
+  const page = mount();
+  const nav = page.sidebar.cloneNode(true);
+  for (const link of nav.children) link.removeAttribute('aria-current');
+  page.document.body.append(nav);
+  const { querySelector, querySelectorAll } = page.document;
+  page.document.querySelector = page.document.querySelectorAll = () => { throw new Error('settling must not scan the whole page'); };
+  page.fire('htmx:afterSettle', { target: nav, detail: { elt: nav } });
+  Object.assign(page.document, { querySelector, querySelectorAll });
+  assert.deepEqual(nav.children.map(link => link.getAttribute('aria-current')), ['true', null, null]);
+  const next = page.section(page.keys[1]);
+  page.first.replaceWith(next);
+  page.fire('htmx:afterSettle', { target: next, detail: { elt: next } });
+  assert.deepEqual(nav.children.map(link => link.getAttribute('aria-current')), [null, 'true', null], 'a new section updates links elsewhere on the page');
+});

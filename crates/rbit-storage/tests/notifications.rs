@@ -111,6 +111,44 @@ impl Fixture {
     }
 }
 
+/// A signed-in request learns who the user is, whether they must replace their password
+/// and whether the header shows unread notifications from one statement.
+#[tokio::test]
+async fn a_session_user_and_their_flags_come_from_one_query() {
+    let fixture = Fixture::new().await;
+    let accounts = fixture.database.accounts();
+    let bob = fixture.bob.id();
+    let issue = fixture.issue("Crash").await;
+    fixture.database.notifications().notify(bob, issue, fixture.repo, Reason::Mention, None, Timestamp(1)).await.unwrap();
+
+    let counter = query_count::QueryCounter::new();
+    let signed_in = counter.measure(accounts.find_session_user(bob, true)).await.unwrap().unwrap();
+    assert_eq!(counter.queries().len(), 1, "{:?}", counter.queries());
+    assert_eq!(signed_in.user.id(), bob);
+    assert_eq!(signed_in.user.email, fixture.bob.email);
+    assert!(signed_in.has_unread_notifications);
+    assert!(!signed_in.password_change_required);
+    assert!(!accounts.find_session_user(bob, false).await.unwrap().unwrap().has_unread_notifications, "notifications off");
+    assert!(!accounts.find_session_user(fixture.alice.id(), true).await.unwrap().unwrap().has_unread_notifications);
+    fixture.database.notifications().mark_issue_read(bob, issue).await.unwrap();
+    assert!(!accounts.find_session_user(bob, true).await.unwrap().unwrap().has_unread_notifications);
+
+    let provisioned = accounts
+        .create_user_with_initial_password(NewUser {
+            name: "carol".parse().unwrap(),
+            email: "carol@example.com".parse().unwrap(),
+            display_name: None,
+            password_hash: "not-a-real-hash".to_owned(),
+            is_admin: false,
+        })
+        .await
+        .unwrap();
+    assert!(accounts.find_session_user(provisioned.id(), true).await.unwrap().unwrap().password_change_required);
+    fixture.database.admin().set_suspended(bob, true).await.unwrap();
+    assert!(accounts.find_session_user(bob, true).await.unwrap().is_none(), "suspended users have no session");
+    assert!(accounts.find_session_user(rbit_core::AccountId(999), true).await.unwrap().is_none());
+}
+
 #[tokio::test]
 async fn participation_strengthens_and_unsubscribing_sticks() {
     let fixture = Fixture::new().await;

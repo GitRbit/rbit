@@ -10,8 +10,8 @@
 
 use std::collections::HashSet;
 
+use super::pool::Pool;
 use rbit_core::{AccountId, AccountName, Email, Timestamp};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -125,11 +125,11 @@ macro_rules! honoured {
 
 #[derive(Debug, Clone)]
 pub struct RecoveryStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl RecoveryStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

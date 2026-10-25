@@ -79,16 +79,25 @@ impl AsyncRead for ServiceOutput {
 #[derive(Debug, Clone)]
 pub struct ProcessTransport {
     git_binary: PathBuf,
+    max_push_bytes: Option<u64>,
 }
 
 impl ProcessTransport {
     pub fn new(git_binary: impl Into<PathBuf>) -> Self {
-        Self { git_binary: git_binary.into() }
+        Self { git_binary: git_binary.into(), max_push_bytes: None }
+    }
+
+    /// Caps the pack a push may send (`receive.maxInputSize`); `None` leaves it unlimited.
+    #[must_use]
+    pub fn with_max_push_bytes(mut self, max_push_bytes: Option<u64>) -> Self {
+        self.max_push_bytes = max_push_bytes;
+        self
     }
 
     /// Builds `git <service>` ignoring system/global configuration and inheriting only the
-    /// environment variables Git needs to run. The process is killed if its handle is
-    /// dropped, so an abandoned exchange never leaves git running.
+    /// environment variables Git needs to run. Repository hooks never run
+    /// (`core.hooksPath=<null device>`). The process is killed if its handle is dropped,
+    /// so an abandoned exchange never leaves git running.
     ///
     /// Arguments are passed directly to the executable; no shell is ever involved.
     fn service_command(&self, service: Service, protocol: Option<&str>, options: ReceiveOptions) -> Command {
@@ -103,8 +112,16 @@ impl ProcessTransport {
         if let Some(protocol) = protocol.filter(|p| is_safe_protocol_header(p)) {
             command.env("GIT_PROTOCOL", protocol);
         }
-        if service == Service::ReceivePack && options.deny_non_fast_forwards {
-            command.args(["-c", "receive.denyNonFastForwards=true"]);
+        let mut hooks = OsString::from("core.hooksPath=");
+        hooks.push(null_device());
+        command.arg("-c").arg(hooks);
+        if service == Service::ReceivePack {
+            if options.deny_non_fast_forwards {
+                command.args(["-c", "receive.denyNonFastForwards=true"]);
+            }
+            if let Some(max) = self.max_push_bytes {
+                command.arg("-c").arg(format!("receive.maxInputSize={max}"));
+            }
         }
         command.arg(service.subcommand()).kill_on_drop(true);
         command
@@ -359,6 +376,26 @@ mod tests {
         assert!(is_safe_protocol_header("version=2"));
         assert!(!is_safe_protocol_header("version=2\nGIT_DIR=/etc"));
         assert!(!is_safe_protocol_header("$(rm -rf /)"));
+    }
+
+    fn args(transport: &ProcessTransport, service: Service, options: ReceiveOptions) -> Vec<String> {
+        transport.service_command(service, None, options).as_std().get_args().map(|arg| arg.to_string_lossy().into_owned()).collect()
+    }
+
+    #[test]
+    fn hooks_never_run_and_pushes_are_capped() {
+        let hooks = format!("core.hooksPath={}", null_device().to_string_lossy());
+        let unlimited = ProcessTransport::new("git");
+        let fetch = args(&unlimited, Service::UploadPack, ReceiveOptions::default());
+        assert_eq!(fetch, ["-c", hooks.as_str(), "upload-pack"]);
+        let push = args(&unlimited, Service::ReceivePack, ReceiveOptions { deny_non_fast_forwards: true });
+        assert_eq!(push, ["-c", hooks.as_str(), "-c", "receive.denyNonFastForwards=true", "receive-pack"]);
+
+        let capped = ProcessTransport::new("git").with_max_push_bytes(Some(1024));
+        let push = args(&capped, Service::ReceivePack, ReceiveOptions::default());
+        assert_eq!(push, ["-c", hooks.as_str(), "-c", "receive.maxInputSize=1024", "receive-pack"]);
+        let fetch = args(&capped, Service::UploadPack, ReceiveOptions::default());
+        assert!(!fetch.iter().any(|arg| arg.contains("maxInputSize")), "{fetch:?}");
     }
 
     fn bare_repository() -> tempfile::TempDir {

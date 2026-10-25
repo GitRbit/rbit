@@ -1,5 +1,7 @@
 //! TOTP secrets, passkeys and hashed recovery codes.
 //!
+//! TOTP secrets are stored [sealed](crate::sealing); callers see only the plaintext.
+//!
 //! Milestone 1 workstream S owns this file. Keep row types here rather than in `rows.rs`.
 //!
 //! Every state change that must not race (confirming enrolment, accepting a time step,
@@ -10,10 +12,10 @@
 //! or at least one passkey. Recovery codes belong to the account and are removed with its
 //! last factor.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
-use crate::StorageError;
+use crate::{StorageError, sealing::SealingKey};
 
 /// A user's two-factor row: pending until `confirmed_at` is set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,12 +134,13 @@ macro_rules! has_factor {
 
 #[derive(Debug, Clone)]
 pub struct TwoFactorStore {
-    pool: SqlitePool,
+    pool: Pool,
+    key: SealingKey,
 }
 
 impl TwoFactorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
+        Self { pool, key }
     }
 
     pub async fn find(&self, account: AccountId) -> Result<Option<TwoFactorRecord>, StorageError> {
@@ -146,7 +149,34 @@ impl TwoFactorStore {
                 .bind(account.0)
                 .fetch_optional(&self.pool)
                 .await?;
-        Ok(row.map(TwoFactorRecord::from))
+        let Some(mut row) = row else { return Ok(None) };
+        row.secret = self.key.open(&row.secret)?;
+        Ok(Some(row.into()))
+    }
+
+    /// The stored (sealed) form of the account's secret, if it is the one `secret` was
+    /// read from: guarded updates compare against it, since sealing the same secret twice
+    /// never gives the same bytes.
+    async fn stored_secret<'c, E>(
+        &self,
+        executor: E,
+        account: AccountId,
+        secret: &[u8],
+        confirmed: bool,
+    ) -> Result<Option<Vec<u8>>, StorageError>
+    where
+        E: sqlx::SqliteExecutor<'c>,
+    {
+        let stored: Option<Vec<u8>> =
+            sqlx::query_scalar("SELECT secret FROM two_factor WHERE account_id = ? AND (confirmed_at IS NOT NULL) = ?")
+                .bind(account.0)
+                .bind(confirmed)
+                .fetch_optional(executor)
+                .await?;
+        match stored {
+            Some(stored) if self.key.open(&stored)? == secret => Ok(Some(stored)),
+            _ => Ok(None),
+        }
     }
 
     /// Whether the account has two-factor authentication: a confirmed authenticator app or
@@ -164,7 +194,7 @@ impl TwoFactorStore {
              WHERE two_factor.confirmed_at IS NULL",
         )
         .bind(account.0)
-        .bind(secret)
+        .bind(self.key.seal(secret)?.into_bytes())
         .bind(Timestamp::now().seconds())
         .execute(&self.pool)
         .await?;
@@ -182,8 +212,11 @@ impl TwoFactorStore {
         step: u64,
         recovery_digests: &[[u8; 32]],
     ) -> Result<Option<bool>, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
+        let Some(stored) = self.stored_secret(&mut *tx, account, secret, false).await? else {
+            return Ok(None);
+        };
         let confirmed = sqlx::query(
             "UPDATE two_factor SET confirmed_at = ?, last_used_step = ? \
              WHERE account_id = ? AND secret = ? AND confirmed_at IS NULL",
@@ -191,7 +224,7 @@ impl TwoFactorStore {
         .bind(Timestamp::now().seconds())
         .bind(step_value(step))
         .bind(account.0)
-        .bind(secret)
+        .bind(stored)
         .execute(&mut *tx)
         .await?
         .rows_affected()
@@ -209,13 +242,16 @@ impl TwoFactorStore {
     /// Accepts time step `step` for an enabled account, unless it (or a later one) was
     /// already accepted. `true` means the code may be honoured.
     pub async fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> Result<bool, StorageError> {
+        let Some(stored) = self.stored_secret(&self.pool, account, secret, true).await? else {
+            return Ok(false);
+        };
         let result = sqlx::query(
             "UPDATE two_factor SET last_used_step = ?1 WHERE account_id = ?2 AND secret = ?3 AND confirmed_at IS NOT NULL \
              AND (last_used_step IS NULL OR last_used_step < ?1)",
         )
         .bind(step_value(step))
         .bind(account.0)
-        .bind(secret)
+        .bind(stored)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() == 1)
@@ -241,7 +277,7 @@ impl TwoFactorStore {
 
     /// Replaces every recovery code of an enabled account. `false` if 2FA is not enabled.
     pub async fn replace_recovery_codes(&self, account: AccountId, digests: &[[u8; 32]]) -> Result<bool, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         if !has_factor(&mut tx, account).await? {
             return Ok(false);
         }
@@ -298,7 +334,7 @@ impl TwoFactorStore {
         passkey: &NewPasskey<'_>,
         recovery_digests: &[[u8; 32]],
     ) -> Result<PasskeyAdded, StorageError> {
-        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let inserted = sqlx::query(
             "INSERT INTO passkeys (account_id, credential_id, public_key, algorithm, sign_count, transports, name, created_at) \
@@ -362,11 +398,11 @@ fn step_value(step: u64) -> i64 {
     i64::try_from(step).unwrap_or(i64::MAX)
 }
 
-async fn has_factor(tx: &mut sqlx::SqliteConnection, account: AccountId) -> Result<bool, StorageError> {
+async fn has_factor(tx: &mut super::pool::Conn, account: AccountId) -> Result<bool, StorageError> {
     Ok(sqlx::query_scalar(concat!("SELECT ", has_factor!())).bind(account.0).fetch_one(&mut *tx).await?)
 }
 
-async fn drop_codes_without_factor(tx: &mut sqlx::SqliteConnection, account: AccountId) -> Result<(), StorageError> {
+async fn drop_codes_without_factor(tx: &mut super::pool::Conn, account: AccountId) -> Result<(), StorageError> {
     sqlx::query(concat!("DELETE FROM recovery_codes WHERE account_id = ?1 AND NOT ", has_factor!()))
         .bind(account.0)
         .execute(&mut *tx)
@@ -374,7 +410,7 @@ async fn drop_codes_without_factor(tx: &mut sqlx::SqliteConnection, account: Acc
     Ok(())
 }
 
-async fn replace_codes(tx: &mut sqlx::SqliteConnection, account: AccountId, digests: &[[u8; 32]]) -> Result<(), StorageError> {
+async fn replace_codes(tx: &mut super::pool::Conn, account: AccountId, digests: &[[u8; 32]]) -> Result<(), StorageError> {
     sqlx::query("DELETE FROM recovery_codes WHERE account_id = ?").bind(account.0).execute(&mut *tx).await?;
     for digest in digests {
         sqlx::query("INSERT INTO recovery_codes (account_id, code_digest) VALUES (?, ?)")

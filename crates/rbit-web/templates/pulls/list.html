@@ -19,7 +19,7 @@
     <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.closed }}</span> Closed</a>
   </nav>
   {% if let Some(author) = author_filter %}<span class="badge">author: {{ author }}</span>{% endif %}
-  <a href="{{ new_url }}" class="btn btn-primary ml-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}New<span class="hidden sm:inline">&nbsp;pull request</span></a>
+  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ml-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}New<span class="hidden sm:inline">&nbsp;pull request</span></a>{% endif %}
 </div>
 
 <div class="box">

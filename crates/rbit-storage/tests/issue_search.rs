@@ -256,3 +256,60 @@ async fn dashboard_review_requests_follow_current_requests_and_ignore_pending_me
     assert_eq!(sources[0].2, "@bob");
     raw.close().await;
 }
+
+/// Only the filters in use reach the SQL, so every combination must still mean "all of them".
+#[tokio::test]
+async fn filter_combinations_all_apply() {
+    let fixture = Fixture::new().await;
+    let (alice, bob) = (fixture.alice.id(), fixture.bob.id());
+    let one = fixture.issue(IssueKind::Issue, "Crash on boot", "", alice, 10).await;
+    let two = fixture.issue(IssueKind::Issue, "Crash in the parser", "", bob, 10).await;
+    let three = fixture.issue(IssueKind::Issue, "Docs", "", alice, 20).await;
+    let pull = fixture.issue(IssueKind::Pull, "Fix the crash", "", bob, 30).await;
+    let five = fixture.issue(IssueKind::Issue, "Crash again", "", alice, 40).await;
+
+    let meta = fixture.database.issue_meta();
+    let label = |name: &str| LabelFields { name: name.to_owned(), color: "#aabbcc".to_owned(), description: String::new() };
+    let bug = meta.create_label(fixture.repo, &label("bug"), Timestamp(1)).await.unwrap();
+    let ui = meta.create_label(fixture.repo, &label("ui"), Timestamp(1)).await.unwrap();
+    for issue in [one, two, pull, five] {
+        meta.add_label(issue, bug.id, Timestamp(1)).await.unwrap();
+    }
+    meta.add_label(one, ui.id, Timestamp(1)).await.unwrap();
+    meta.add_assignee(one, bob, alice, Timestamp(1)).await.unwrap();
+    meta.add_assignee(five, bob, alice, Timestamp(1)).await.unwrap();
+    let fields = MilestoneFields { title: "v1".to_owned(), description: String::new(), due_on: None };
+    let milestone = meta.create_milestone(fixture.repo, &fields, Timestamp(1)).await.unwrap();
+    meta.set_milestone(one, Some(milestone.id)).await.unwrap();
+    let issues = fixture.database.issues();
+    let closed = TimelineEvent::Closed { reason: StateReason::Completed, commit: None, pull: None };
+    for issue in [three, five] {
+        issues.set_state(issue, IssueState::Closed, Some(StateReason::Completed), Some(alice), &closed, Timestamp(50)).await.unwrap();
+    }
+
+    let names = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+    let issues_only = || SearchFilter { kind: Some(IssueKind::Issue), ..SearchFilter::new(fixture.repo) };
+    let crash_bugs = || SearchFilter { labels: names(&["bug"]), text: names(&["crash"]), ..issues_only() };
+    assert_eq!(fixture.numbers(&crash_bugs()).await, [5, 2, 1]);
+    assert_eq!(fixture.numbers(&SearchFilter { state: Some(IssueState::Open), ..crash_bugs() }).await, [2, 1], "ties by number");
+    let store = fixture.database.issue_search();
+    assert_eq!(store.state_counts(&SearchFilter { state: Some(IssueState::Open), ..crash_bugs() }).await.unwrap(), (2, 1));
+    assert_eq!(fixture.numbers(&SearchFilter { state: Some(IssueState::Open), sort: IssueSort::CreatedAsc, ..crash_bugs() }).await, [1, 2]);
+    assert_eq!(fixture.numbers(&SearchFilter { not_labels: names(&["UI"]), ..crash_bugs() }).await, [5, 2]);
+    assert_eq!(fixture.numbers(&SearchFilter { labels: names(&["bug", "Bug"]), ..issues_only() }).await, [5, 2, 1], "repeated labels");
+    assert_eq!(fixture.numbers(&SearchFilter { assignee: Some(bob), labels: names(&["BUG", "ui"]), ..issues_only() }).await, [1]);
+    assert_eq!(fixture.numbers(&SearchFilter { author: Some(alice), no_milestone: true, ..issues_only() }).await, [5, 3]);
+    assert_eq!(fixture.numbers(&SearchFilter { author: Some(alice), milestone: Some("V1".to_owned()), ..issues_only() }).await, [1]);
+    let closed_crashes = SearchFilter { any_assignee: true, state: Some(IssueState::Closed), text: names(&["crash"]), ..issues_only() };
+    assert_eq!(fixture.numbers(&closed_crashes).await, [5]);
+    assert_eq!(fixture.numbers(&SearchFilter { no_assignee: true, no_label: true, ..issues_only() }).await, [3]);
+    let bob_bugs = SearchFilter { author: Some(bob), labels: names(&["bug"]), ..SearchFilter::new(fixture.repo) };
+    assert_eq!(fixture.numbers(&bob_bugs).await, [4, 2], "both kinds");
+    let crash = SearchFilter { text: names(&["crash"]), ..SearchFilter::new(fixture.repo) };
+    assert_eq!(store.state_counts(&crash).await.unwrap(), (3, 1));
+    assert_eq!(store.count(&SearchFilter { state: Some(IssueState::Closed), ..crash }).await.unwrap(), 1);
+
+    let open = SearchFilter { state: Some(IssueState::Open), ..issues_only() };
+    let page: Vec<u32> = store.search(&open, 1, 1).await.unwrap().iter().map(|issue| issue.number.get()).collect();
+    assert_eq!(page, [1], "LIMIT and OFFSET are bound after the filters");
+}

@@ -92,6 +92,8 @@ impl ApiError {
             ServiceError::Conflict(what) => Self::new(StatusCode::CONFLICT, format!("{what} is already taken")),
             ServiceError::NotFound => Self::not_found(),
             ServiceError::Forbidden => Self::forbidden("You do not have permission to do that"),
+            // GitHub's wording, which clients may match on.
+            ServiceError::Archived => Self::forbidden("Repository was archived so is read-only."),
             ServiceError::RegistrationClosed => Self::forbidden(error.to_string()),
             ServiceError::InvalidCredentials => Self::unauthorized("Bad credentials"),
             ServiceError::RateLimited { retry_after_seconds } => Self::rate_limited(retry_after_seconds),
@@ -198,5 +200,7 @@ mod tests {
         assert_eq!((status, json["message"].as_str()), (StatusCode::CONFLICT, Some("repository name is already taken")));
         let (status, _, _) = body(ServiceError::Forbidden.into()).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, json, _) = body(ServiceError::Archived.into()).await;
+        assert_eq!((status, json["message"].as_str()), (StatusCode::FORBIDDEN, Some("Repository was archived so is read-only.")));
     }
 }

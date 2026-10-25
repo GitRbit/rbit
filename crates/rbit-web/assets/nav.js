@@ -172,9 +172,10 @@ function formatDuration(ms) {
 }
 
 let renderTime = null;
-const showRenderTime = () => {
+/** Shows the last render time in `root` (by default the whole page). */
+const showRenderTime = (root = document) => {
   if (renderTime === null) return;
-  for (const element of document.querySelectorAll("[data-render-time]")) element.textContent = renderTime;
+  for (const element of root.querySelectorAll("[data-render-time]")) element.textContent = renderTime;
 };
 
 document.addEventListener("htmx:afterRequest", (event) => {
@@ -185,8 +186,12 @@ document.addEventListener("htmx:afterRequest", (event) => {
   renderTime = formatDuration(Number(match[1]));
   showRenderTime();
 });
-// A full-page swap brings a new footer; it shows the same figure as the header.
-document.addEventListener("htmx:afterSettle", showRenderTime);
+// A full-page swap brings a new footer; it shows the same figure as the header. Only
+// the element swapped in can hold a new one.
+document.addEventListener("htmx:afterSettle", (event) => {
+  const root = event.detail.elt;
+  if (root?.querySelectorAll) showRenderTime(root);
+});
 
 // ---------------------------------------------------------------- partial swaps
 
@@ -250,7 +255,9 @@ const LARGE_PAGE_ELEMENTS = 4000;
 const HEAVY_CONTENT = ".code-lines, .diff-view";
 const NO_SNAPSHOT_ID = "nav-no-snapshot";
 
-const isLargePage = () => document.getElementsByTagName("*").length >= LARGE_PAGE_ELEMENTS;
+// Asking the live collection for one late element walks the page only that far; its
+// `length` would count every element, which on the pages this is for is the slow part.
+const isLargePage = () => document.getElementsByTagName("*")[LARGE_PAGE_ELEMENTS - 1] !== undefined;
 
 function skipSnapshot() {
   if (document.getElementById(NO_SNAPSHOT_ID)) return;
@@ -293,10 +300,11 @@ document.addEventListener("htmx:historyRestore", removeMarker);
 
 // ---------------------------------------------------------------- history cache
 
-// htmx re-serialises its whole sessionStorage cache on every navigation, so one large
-// snapshot slows every later navigation. Any that still get through are dropped (htmx
-// stores an unreachable placeholder instead).
-const MAX_SNAPSHOT_CHARS = 200_000;
+// htmx re-parses and re-serialises its whole sessionStorage cache on every navigation,
+// so one large snapshot slows every later navigation. Any over this size are dropped
+// (htmx stores an unreachable placeholder instead); going back to such a page refetches
+// it, usually answered with a 304.
+const MAX_SNAPSHOT_CHARS = 64_000;
 
 document.addEventListener("htmx:historyItemCreated", (event) => {
   const item = event.detail.item;

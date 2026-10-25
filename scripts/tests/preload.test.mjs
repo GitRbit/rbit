@@ -12,12 +12,13 @@ const updateNotice = (await readFile(new URL("update-notice.js", assets), "utf8"
 const navigationBar = (await readFile(new URL("repo-navigation-bar.js", assets), "utf8")).replace(/^export /gm, "");
 const origin = "https://git.example.com";
 
-function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false } = {}) {
+function page({ saveData = false, effectiveType = "4g", idleCallback = true, signedIn = false, visiblePaths = [] } = {}) {
   const listeners = new Map();
   const timers = new Map();
   const idle = new Map();
   const requests = [];
   const visible = [];
+  const observed = new Set();
   let clock = 0;
   let nextHandle = 0;
   let intersection;
@@ -60,6 +61,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     }
     matches() { return Object.keys(this.attributes).some((name) => /^(data-)?hx-(get|post|put|patch|delete)$/.test(name)); }
   }
+  visible.push(...visiblePaths.map((path) => new Anchor(path, { "data-preload": "visible" })));
   const connection = {
     saveData, effectiveType,
     addEventListener(name, callback) { document.addEventListener(`connection:${name}`, callback); },
@@ -76,9 +78,9 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     clearTimeout(handle) { timers.delete(handle); },
     IntersectionObserver: class {
       constructor(callback) { intersection = callback; }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
+      observe(target) { observed.add(target); }
+      unobserve(target) { observed.delete(target); }
+      disconnect() { observed.clear(); }
     },
     fetch(url, options) {
       let resolve;
@@ -139,7 +141,7 @@ function page({ saveData = false, effectiveType = "4g", idleCallback = true, sig
     for (const callback of listeners.get(name) ?? []) callback({ detail: {}, ...event });
   };
   return {
-    requests, connection, idle, document,
+    requests, connection, idle, document, visible, observed,
     navigationHeaders: path => context.navigationHeaders(path),
     link: (path, attributes) => new Anchor(path, attributes),
     dispatch,
@@ -534,4 +536,73 @@ test("discussions are preloaded only for anonymous viewers, who have no read sta
   signedIn.press(signedIn.link("/alice/repo/pull/12/files"));
   signedIn.press(signedIn.link("/alice/repo/issues"));
   assert.deepEqual(signedIn.requests.map((request) => new URL(request.url).pathname), ["/alice/repo/issues"]);
+});
+
+test("render time reaches a swapped-in footer without scanning the page again", () => {
+  const app = page();
+  const pageScans = [];
+  const scan = app.document.querySelectorAll;
+  app.document.querySelectorAll = (selector) => { pageScans.push(selector); return scan(selector); };
+  const xhr = { getResponseHeader: (name) => name === "Server-Timing" ? "render;dur=3.14" : null };
+  app.dispatch("htmx:afterRequest", { detail: { successful: true, xhr } });
+  assert.deepEqual(pageScans, ["[data-render-time]"], "the response's figure updates the page once");
+  const figure = { textContent: "" };
+  const footer = { querySelectorAll: (selector) => selector === "[data-render-time]" ? [figure] : [] };
+  app.dispatch("htmx:afterSettle", { target: footer, detail: { elt: footer } });
+  assert.equal(figure.textContent, "3.1 ms");
+  assert.deepEqual(pageScans, ["[data-render-time]"]);
+});
+
+test("leaving a page checks its size without counting every element", () => {
+  for (const elements of [3999, 4000, 400_000]) {
+    const app = page();
+    const appended = [];
+    Object.assign(app.document, {
+      createElement: () => ({ setAttribute() {} }),
+      getElementsByTagName: (name) => {
+        assert.equal(name, "*");
+        // A live collection: indexing walks the page up to that element only.
+        return new Proxy({}, {
+          get(_, key) {
+            if (key === "length") throw new Error("counting every element is the slow part");
+            return /^\d+$/.test(key) && Number(key) < elements ? {} : undefined;
+          },
+        });
+      },
+    });
+    app.document.body.append = (node) => appended.push(node);
+    const xhr = { getResponseHeader: () => null };
+    app.dispatch("htmx:beforeSwap", { detail: { requestConfig: { boosted: true, verb: "get" }, shouldSwap: true, xhr, serverResponse: "" } });
+    assert.equal(appended.length, elements >= 4000 ? 1 : 0, `${elements} elements`);
+  }
+});
+
+test("visible links come from swapped content instead of a page search after navigating", () => {
+  const app = page({ visiblePaths: ["/alice/repo/issues", "/alice/repo/pulls"] });
+  const [kept, left] = app.visible;
+  assert.deepEqual([...app.observed], [kept, left]);
+  const scan = app.document.querySelectorAll;
+  app.document.querySelectorAll = (selector) => {
+    if (selector.includes("data-preload")) throw new Error("navigating must not search the page for visible links");
+    return scan(selector);
+  };
+  app.dispatch("htmx:load", { detail: { elt: app.document.body } });
+  app.navigate("/alice/repo/tree/main");
+  left.isConnected = false;
+  const next = app.link("/alice/repo/tree/main?page=2", { "data-preload": "visible" });
+  const main = { querySelectorAll: (selector) => selector === 'a[data-preload="visible"]' ? [next] : [], matches: () => false };
+  app.dispatch("htmx:load", { detail: { elt: main } });
+  app.settle();
+  assert.deepEqual([...app.observed], [kept, next], "links still on the page stay watched; departed ones are dropped");
+});
+
+test("history snapshots over 64k characters are dropped before htmx stores them", () => {
+  const app = page();
+  const kept = { url: "/alice/repo/issues", content: "x".repeat(64_000) };
+  const dropped = { url: "/alice/repo/blob/main/big.rs", content: "x".repeat(64_001) };
+  for (const item of [kept, dropped]) app.dispatch("htmx:historyItemCreated", { detail: { item } });
+  assert.equal(kept.url, "/alice/repo/issues");
+  assert.equal(kept.content.length, 64_000);
+  assert.equal(dropped.content, "");
+  assert.equal(dropped.url, "\u0000too-large", "the placeholder can never match a real path");
 });

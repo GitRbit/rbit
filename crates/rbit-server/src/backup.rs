@@ -9,6 +9,7 @@
 //! ├── repositories/<owner>/<id>.git  # bare mirrors made with `git clone --mirror`
 //! ├── attachments/<repo>/<asset>     # files attached to releases
 //! ├── lfs/<aa>/<bb>/<oid>            # Git LFS objects
+//! ├── secret.key                     # the key that seals stored credentials (see below)
 //! └── manifest.json                  # written last: its presence marks a complete backup
 //! ```
 //!
@@ -25,7 +26,15 @@
 //! 4. The Git LFS objects listed in the snapshot are copied the same way: content-addressed
 //!    and renamed into place only when complete, so a plain copy is consistent; uploads in
 //!    progress (`<data_dir>/tmp`) are never included.
-//! 5. `manifest.json` records the format, version, time and counts.
+//! 5. The secret key file is copied, when it lives in the data directory (the default).
+//!    Without it the credentials sealed in the database (TOTP seeds, webhook and push
+//!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
+//!    kept elsewhere (`[storage] secret_key_file`) is left out on purpose, so database and
+//!    key can be stored apart; it must then be backed up separately.
+//! 6. `manifest.json` records the format, version, time and counts.
+//!
+//! The backup directory is created private to its owner (0700) and the database, key and
+//! manifest are written 0600 on Unix: they hold password hashes and the sealing key.
 //!
 //! The redb key/value store is **not** backed up: it holds only login sessions and
 //! rebuildable caches. After a restore, users sign in again and caches refill on demand.
@@ -42,11 +51,13 @@ use rbit_core::{AccountId, Config, RepoId, lfs::LfsOid};
 use rbit_git::RepositoryStorage;
 use serde::Serialize;
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
-use tokio::{process::Command, sync::Semaphore, task::JoinSet};
+use tokio::{io::AsyncWriteExt, process::Command, sync::Semaphore, task::JoinSet};
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
-/// 3: Git LFS objects).
-const FORMAT_VERSION: u32 = 3;
+/// 3: Git LFS objects, 4: the secret key file).
+const FORMAT_VERSION: u32 = 4;
+/// The secret key file's name inside the backup, as in the data directory.
+const SECRET_KEY_FILE: &str = "secret.key";
 /// Repositories copied at the same time.
 const COPY_CONCURRENCY: usize = 4;
 /// Environment variables passed through to Git; everything else is cleared.
@@ -73,6 +84,8 @@ pub struct Manifest {
     pub lfs_objects: u64,
     /// Git LFS objects (ids) recorded in the database whose file did not exist.
     pub missing_lfs_objects: Vec<String>,
+    /// [`SECRET_KEY_FILE`] when included, otherwise where the key must be backed up from.
+    pub secret_key: String,
     pub kv_store: &'static str,
 }
 
@@ -99,9 +112,11 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     if tokio::fs::try_exists(output).await? {
         bail!("{} already exists; choose a new directory", output.display());
     }
-    tokio::fs::create_dir_all(output).await.with_context(|| format!("cannot create {}", output.display()))?;
+    create_private_dir(output).await.with_context(|| format!("cannot create {}", output.display()))?;
 
     let snapshot = output.join("rbit.db");
+    // `VACUUM INTO` accepts an empty file, so the snapshot is private from the start.
+    drop(create_private_file(&snapshot).await?);
     snapshot_database(&source, &snapshot).await?;
     let Inventory { accounts, repositories, assets, lfs_objects } = read_inventory(&snapshot).await?;
     tracing::info!(
@@ -117,6 +132,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let copied = copy_repositories(&config.repository.git_binary, &storage, &target, &repositories).await?;
     let attachments = copy_attachments(&config.storage.attachments_dir(), &output.join("attachments"), &assets).await?;
     let lfs = copy_lfs_objects(&config.storage.lfs_dir(), &output.join("lfs"), &lfs_objects).await?;
+    let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
 
     let manifest = Manifest {
         format: FORMAT_VERSION,
@@ -130,10 +146,14 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         missing_attachments: attachments.missing,
         lfs_objects: lfs.copied,
         missing_lfs_objects: lfs.missing,
+        secret_key,
         kv_store: "not included: it holds only sessions and caches, which are rebuilt",
     };
     let staging = output.join("manifest.json.tmp");
-    tokio::fs::write(&staging, serde_json::to_vec_pretty(&manifest)?).await?;
+    let mut file = create_private_file(&staging).await?;
+    file.write_all(&serde_json::to_vec_pretty(&manifest)?).await?;
+    file.sync_all().await?;
+    drop(file);
     tokio::fs::rename(&staging, output.join("manifest.json")).await?;
     Ok(manifest)
 }
@@ -152,6 +172,50 @@ async fn snapshot_database(source: &Path, snapshot: &Path) -> anyhow::Result<()>
     sqlx::query("VACUUM INTO ?").bind(target).execute(&mut connection).await.context("VACUUM INTO failed")?;
     connection.close().await?;
     Ok(())
+}
+
+/// Copies the secret key file into the backup if it lives in the data directory; returns
+/// what the manifest records about it.
+async fn copy_secret_key(config: &Config, target: &Path) -> anyhow::Result<String> {
+    let source = config.storage.secret_key_path();
+    if config.storage.secret_key_file.is_some() {
+        tracing::warn!(
+            path = %source.display(),
+            "the secret key file is kept outside the data directory and not included; back it up separately"
+        );
+        return Ok(format!("not included: kept at {}; back it up separately", source.display()));
+    }
+    let key = match tokio::fs::read(&source).await {
+        Ok(key) => key,
+        // Created on the first start of a version that seals secrets; nothing is sealed yet.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!(path = %source.display(), "no secret key file found; nothing in the database is sealed with one yet");
+            return Ok("not included: none existed yet".to_owned());
+        }
+        Err(error) => return Err(error).with_context(|| format!("cannot read {}", source.display())),
+    };
+    let mut file = create_private_file(target).await?;
+    file.write_all(&key).await?;
+    file.sync_all().await?;
+    Ok(SECRET_KEY_FILE.to_owned())
+}
+
+/// Creates `dir` (and missing parents), accessible only to its owner on Unix.
+async fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = tokio::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder.create(dir).await
+}
+
+/// Creates the new file `path`, readable only by its owner on Unix.
+async fn create_private_file(path: &Path) -> anyhow::Result<tokio::fs::File> {
+    let mut options = tokio::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    options.open(path).await.with_context(|| format!("cannot create {}", path.display()))
 }
 
 /// What the snapshot says should be copied.

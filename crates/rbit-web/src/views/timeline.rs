@@ -698,6 +698,7 @@ mod tests {
             created_at: Timestamp(0),
             updated_at: Timestamp(0),
             pushed_at: None,
+            archived_at: None,
         };
         let storage = RepositoryStorage::new(PathBuf::from("unused"));
         let repo = RepoContext {
@@ -705,6 +706,8 @@ mod tests {
             disk_path: storage.path_for(owner.id, repo.id),
             repo: OwnedRepository { owner: owner.clone(), repo },
             access: RepoAccess::Write,
+            viewer: None,
+            collaborator: None,
         };
         let issue = Issue {
             id: IssueId(5),

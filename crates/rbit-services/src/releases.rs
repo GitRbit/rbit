@@ -225,7 +225,10 @@ impl ReleaseService {
     // ------------------------------------------------------------------ writing
 
     fn require_writer(repo: &RepoContext) -> Result<(), ServiceError> {
-        if repo.access.can_write() { Ok(()) } else { Err(ServiceError::Forbidden) }
+        if !repo.access.can_write() {
+            return Err(ServiceError::Forbidden);
+        }
+        repo.ensure_writable()
     }
 
     /// Checks the text fields of `input`. Returns the trimmed tag and the title (the tag

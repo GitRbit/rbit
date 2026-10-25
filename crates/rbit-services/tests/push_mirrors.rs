@@ -194,6 +194,14 @@ async fn only_administrators_manage_push_mirrors_and_remotes_are_checked() {
     let edited = PushMirrorInput { secret: String::new(), enabled: false, ..input(&url) };
     let updated = fx.services.push_mirrors.update(&repo, mirror.id, &edited).await.unwrap();
     assert!(updated.has_secret && !updated.enabled);
+    // The kept secret never follows the mirror to another host; with a new one it may.
+    let moved = PushMirrorInput { secret: String::new(), ..input("https://93.184.215.14/a.git") };
+    let result = fx.services.push_mirrors.update(&repo, mirror.id, &moved).await;
+    assert!(matches!(&result, Err(ServiceError::Invalid(message)) if message.contains("again")), "{result:?}");
+    let moved_local = PushMirrorInput { secret: String::new(), ..input(&format!("{url}.moved")) };
+    assert!(matches!(fx.services.push_mirrors.update(&repo, mirror.id, &moved_local).await, Err(ServiceError::Invalid(_))));
+    let renamed = PushMirrorInput { secret: String::new(), username: "other".into(), ..input(&url) };
+    fx.services.push_mirrors.update(&repo, mirror.id, &renamed).await.unwrap();
     let other = fx.services.repositories.open(Some(&alice), "alice", "x").await.unwrap();
     assert!(matches!(fx.services.push_mirrors.update(&other, mirror.id, &edited).await, Err(ServiceError::NotFound)));
     assert!(matches!(fx.services.push_mirrors.sync_now(&other, mirror.id).await, Err(ServiceError::NotFound)));

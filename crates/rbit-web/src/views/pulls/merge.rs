@@ -28,6 +28,7 @@ pub struct MergeBoxView {
     pub can_delete_head: bool,
     pub action_url: String,
     pub expected_head: String,
+    pub expected_base: String,
     pub default_title: String,
     pub default_message: String,
     pub default_squash_title: String,
@@ -89,6 +90,7 @@ impl MergeBoxView {
             can_delete_head: merge_box.can_delete_head,
             action_url: urls.merge.clone(),
             expected_head: ctx.pull.head_sha.clone(),
+            expected_base: ctx.pull.base_branch.clone(),
             default_title: merge_box.default_title.clone(),
             default_message: merge_box.default_message.clone(),
             default_squash_title: merge_box.default_squash_title.clone(),
@@ -105,7 +107,7 @@ impl MergeBoxView {
                 })
                 .collect(),
             draft_url: urls.draft.clone(),
-            can_mark_ready: ctx.pull.is_draft && (is_author || ctx.repo().access.can_write()),
+            can_mark_ready: ctx.pull.is_draft && !ctx.repo().repo.repo.is_archived() && (is_author || ctx.repo().access.can_write()),
         }
     }
 }

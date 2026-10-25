@@ -173,7 +173,7 @@ async fn progress(
     Path((owner, repo)): Path<(String, String)>,
 ) -> WebResult<Response> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let Some(mirror) = state.services.mirrors.find(&loaded.ctx).await? else {
+    let Some(mirror) = loaded.mirror().cloned() else {
         return Ok(Redirect::to(&loaded.urls.home()).into_response());
     };
     let status = progress_status(&mirror, state.services.mirrors.active_phase(mirror.repo_id), loaded.ctx.access.can_admin());
@@ -211,7 +211,7 @@ async fn load_mirror(state: &AppState, viewer: &Viewer, owner: &str, repo: &str)
     if !loaded.ctx.access.can_admin() {
         return Err(WebError::NotFound);
     }
-    let mirror = state.services.mirrors.find(&loaded.ctx).await?.ok_or(WebError::NotFound)?;
+    let mirror = loaded.mirror().cloned().ok_or(WebError::NotFound)?;
     Ok((loaded, mirror))
 }
 

@@ -149,11 +149,12 @@ async fn a_first_sign_in_registers_an_account_without_a_password() {
 #[tokio::test]
 async fn registration_keeps_an_edited_address_unverified() {
     let fx = Fixture::new().await;
+    fx.user("root").await;
     let ExternalSignIn::Register(token) = fx.complete(identity("corp", "s", Some("a@corp.example"), true), None).await.unwrap() else {
         panic!("expected registration");
     };
     let (user, _) = fx.services.register_external("corp", &token, "first", "other@example.com", &client()).await.unwrap();
-    assert!(user.is_admin, "the first account of an instance administers it, however it was created");
+    assert!(!user.is_admin);
     assert_eq!(fx.database.recovery().verified_among(&[user.id()]).await.unwrap().len(), 0);
 
     // An address the provider didn't verify isn't marked verified either.
@@ -234,6 +235,7 @@ async fn signed_in_users_link_from_settings() {
 #[tokio::test]
 async fn the_last_way_to_sign_in_stays() {
     let fx = Fixture::new().await;
+    fx.user("root").await;
     let carol = fx.register(identity("corp", "c", None, false), "carol").await;
     let external = &fx.services.external_auth;
     let error = external.unlink(&carol, "corp", &client()).await.unwrap_err();
@@ -244,6 +246,18 @@ async fn the_last_way_to_sign_in_stays() {
     assert!(!external.methods(&carol).await.unwrap().is_last_method("corp"));
     external.unlink(&carol, "corp", &client()).await.unwrap();
     assert!(external.unlink(&carol, "github", &client()).await.is_err(), "now GitHub is the last one");
+}
+
+#[tokio::test]
+async fn the_first_account_cannot_be_registered_through_a_provider() {
+    // It becomes the administrator, which takes the setup token, whatever the provider allows.
+    let fx = Fixture::with(|config| config.auth.providers[1].allow_registration = ProviderRegistration::Always).await;
+    for provider in ["corp", "github"] {
+        let error = fx.complete(identity(provider, "x", None, false), None).await.unwrap_err();
+        assert!(error.to_string().contains("can't be created with it"), "{provider}: {error}");
+    }
+    fx.user("root").await;
+    assert!(matches!(fx.complete(identity("github", "x", None, false), None).await.unwrap(), ExternalSignIn::Register(_)));
 }
 
 #[tokio::test]

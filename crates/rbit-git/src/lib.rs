@@ -6,7 +6,8 @@
 //! * [`RepositoryReader`] — a read model (refs, trees, blobs, history) over one repository.
 //! * Insights derived from history: [`languages`] (language breakdown) and
 //!   [`last_commit`] (the last commit that changed each directory entry).
-//! * [`Maintenance`] — housekeeping (`git gc --auto`) delegated to the `git` executable.
+//! * [`Maintenance`] — housekeeping (`git gc --auto`, commit-graph writes) delegated to the
+//!   `git` executable.
 //! * [`push`] — what a push changed: [`RefSnapshot`]s, [`RefUpdate`]s and the commits
 //!   an update introduced.
 //!

@@ -2,7 +2,7 @@
 
 use std::{path::Path, process::Command};
 
-use rbit_git::{ChangeStatus, DiffLimits, RepositoryReader};
+use rbit_git::{ChangeStatus, DiffLimits, RepositoryReader, compare::Comparison};
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -57,6 +57,37 @@ async fn compares_from_the_merge_base() {
     assert_eq!((comparison.files[0].path.as_str(), comparison.files[0].status), ("feature.txt", ChangeStatus::Added));
     assert_eq!((comparison.additions(), comparison.deletions()), (2, 0));
     assert_eq!(comparison.head.summary, "feature-2");
+}
+
+#[tokio::test]
+async fn ahead_only_comparisons_skip_the_behind_walk_and_agree_otherwise() {
+    let (_dir, reader, _) = fixture();
+    for (base, head) in [("main", "feature"), ("main", "orphan"), ("feature", "main")] {
+        let full = reader.compare(base.into(), head.into(), DiffLimits::default(), 50).await.unwrap();
+        let ahead = reader.compare_ahead(base.into(), head.into(), DiffLimits::default(), 50).await.unwrap();
+        assert!(full.behind > 0, "{base}..{head} is behind, so the full comparison walks it");
+        assert_eq!(ahead.behind, 0, "{base}..{head}: not counted");
+        assert_eq!(format!("{:?}", Comparison { behind: 0, ..full }), format!("{ahead:?}"), "{base}..{head}");
+    }
+}
+
+#[tokio::test]
+async fn path_ids_for_several_revisions_match_one_lookup_each() {
+    let (_dir, reader, base) = fixture();
+    let paths = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
+    let requests = vec![
+        ("feature".to_owned(), paths(&["feature.txt", "shared.txt", "main.txt"])),
+        (base.clone(), paths(&["feature.txt", "shared.txt"])),
+        ("0000000000000000000000000000000000000000".to_owned(), paths(&["shared.txt"])),
+        ("main".to_owned(), Vec::new()),
+    ];
+    let answers = reader.path_ids_at(requests.clone()).await.unwrap();
+    assert_eq!(answers.len(), 4);
+    for ((revision, names), answer) in requests.into_iter().zip(&answers) {
+        assert_eq!(answer.as_ref(), reader.path_ids(revision, names).await.ok().as_ref());
+    }
+    assert_eq!(answers[2], None, "an unknown commit answers nothing, without failing the others");
+    assert_eq!(answers[1].as_ref().unwrap()[0], None, "feature.txt did not exist at the base");
 }
 
 #[tokio::test]

@@ -1,0 +1,11 @@
+[env]
+# Compile-time options for the bundled SQLite (libsqlite3-sys reads LIBSQLITE3_FLAGS).
+#
+# SQLITE_ENABLE_QPSG turns on the query planner stability guarantee: plans never depend
+# on the values bound to parameters. Without it, a statement whose plan read a bound
+# value (any `column = ?` on an index with `sqlite_stat4` samples, any `LIKE ?`) is
+# expired on every rebind and re-parsed and re-planned on its next step, so every
+# execution of it paid a full prepare, all of it through SQLite's global allocator lock.
+# Under 16 concurrent requests that made repository pages several times slower; see
+# "SQLite statement re-preparation" in docs/performance-followups.md.
+LIBSQLITE3_FLAGS = "-DSQLITE_ENABLE_QPSG"

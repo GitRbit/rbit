@@ -4,18 +4,22 @@
 //! parsing (and falling back to configured defaults) to the instance service, so adding a
 //! setting never needs a migration.
 
+use super::pool::Pool;
 use rbit_core::Timestamp;
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
+/// The administrator-saved deployment configuration (a JSON document). Its credential
+/// fields are [sealed](crate::sealing::SealingKey::seal_secret_fields) by the caller.
+pub const DEPLOYMENT_CONFIG_KEY: &str = "deployment_config";
+
 #[derive(Debug, Clone)]
 pub struct InstanceSettingsStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl InstanceSettingsStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

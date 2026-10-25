@@ -110,8 +110,8 @@ they do not install or download an update automatically.
 **Collaboration**
 
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
-  GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
-  one-click unsubscribe.
+  GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue or
+  collected into a daily or weekly digest, with one-click unsubscribe.
 - **Pull requests**: within a repository or across forks, line comments with resolvable conversations,
   reviews and review requests, mergeability checks, a base-branch picker for existing pull requests,
   and merging by merge commit, squash or rebase.
@@ -119,6 +119,11 @@ they do not install or download an update automatically.
   restricted pushers — enforced over HTTPS and SSH and for merges.
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
+- **Archived repositories**: administrators archive a finished project from its settings (or the API's
+  `archived` field) to make it read-only. It can still be read, cloned, forked and starred, but pushes over
+  HTTPS and SSH, merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused, and its pull and push mirrors pause.
+  Lists mark archived repositories and Explore can hide or show only them; unarchiving restores everything.
 
 Change your username in **Settings → Account** using your current password. Your profile
 links, repository URLs and Git HTTP/SSH remotes continue to work under old account names
@@ -202,7 +207,9 @@ image from source.
 
 ## First steps
 
-The first account you create becomes the site administrator.
+The first account you create becomes the site administrator. While there is no account,
+the server logs a one-time setup token at start-up that the sign-up form asks for (or create
+the administrator with `rbit user create <name> <email> --admin`).
 
 Clone and push over HTTPS with your username and password:
 
@@ -267,8 +274,8 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 |---|---|---|
 | `[server]` | HTTP listener and identity | `bind`, `public_url`, `site_name`, `open_registration` (default for the runtime setting) |
 | `[storage]` | Data location | `data_dir` (SQLite, redb, repositories, release files, LFS objects) |
-| `[security]` | Sessions and abuse protection | `session_lifetime_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit` |
-| `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes` |
+| `[security]` | Sessions and abuse protection | `session_lifetime_days`, `session_max_age_days`, `min_password_length`, `trusted_proxies` (CIDRs allowed to set `X-Forwarded-*`), `rate_limit`, `setup_token`, `hsts` / `hsts_include_subdomains` (with an `https://` public URL), `external_images` (false keeps viewers from loading images on other sites) |
+| `[repository]` | Git behaviour | `default_branch`, `git_binary`, `max_render_bytes`, Git transport limits (`max_git_processes`, `max_git_requests_per_ip`, `git_idle_timeout_seconds`, `git_max_seconds`, `max_push_bytes`), archive download limits (`max_archives_per_ip`, `archive_idle_timeout_seconds`, `archive_max_seconds`) |
 | `[mail]` | Outgoing email | `transport` = `disabled` \| `log` \| `smtp`; `from_address`, `from_name`, `smtp_host`, `smtp_port`, `smtp_security` (`starttls` \| `tls` \| `none`), `smtp_username`, `smtp_password`, `timeout_seconds` |
 | `[ssh]` | Built-in SSH server | `enabled`, `bind`, `public_host`, `public_port`, `host_key_path`, connection limits and timeouts |
 | `[operations]` | Maintenance and metrics | `metrics`, `metrics_token`, `warm_caches_on_push`, `maintenance_interval_minutes`, `job_concurrency`, insights cache limits |
@@ -280,14 +287,14 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[imports]` | Importing from GitHub and Gitea/Forgejo | `enabled`, `max_concurrent`, `git_timeout_seconds`, `api_timeout_seconds`, `rate_limit_max_wait_seconds`, `author_mapping` (`none` \| `email` \| `email_or_username`), `allow_private_addresses` |
 | `[issues]` | Issues and notifications | `scan_commit_limit`, `notifications`, `notification_retention_days` |
 | `[pulls]` | Pull requests | `merge_timeout_seconds`, `max_concurrent_merges`, `mergeability_concurrency`, `max_commits`, `noreply_domain` |
-| `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`) |
+| `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`), `digest_hour` (0–23 UTC, when daily and weekly digests are sent) |
 | `[editor]` | Editing and uploading files in the browser | `max_upload_bytes`, `max_upload_files`, `upload_timeout_seconds` |
 | `[lfs]` | Git Large File Storage | `enabled`, `max_object_bytes`, `token_lifetime_seconds` |
 | `[auth]` | External sign-in; register `{public_url}/login/{id}/callback` at the provider | `timeout_seconds`, `allow_private_addresses`, `[[auth.providers]]` (`kind` = `oidc` \| `github`, `id`, `name`, `issuer` / `base_url`, `client_id`, `client_secret`, `scopes`, `allow_registration`, `trust_email`, `trust_mfa`) |
 
-Site name, registration, who may create organisations and the default repository
-visibility can also be changed at runtime by administrators under **Site administration →
-Settings**.
+Site name, registration, who may create organisations, the default repository
+visibility and the default email digest hour can also be changed at runtime by
+administrators under **Site administration → Settings**.
 
 ## Command line
 
@@ -317,8 +324,8 @@ The end-to-end suite (`crates/rbit-e2e`) boots real servers on ephemeral ports a
 them with an HTTP client and the `git` CLI; the SSH tests also need the OpenSSH client.
 
 The orange frog is rbit's logo and mascot. The original artwork lives in
-[`crates/rbit-web/assets/logo.png`](crates/rbit-web/assets/logo.png) and is shared by
-the README and landing page. After replacing it, run `npm run icons` to regenerate
+[`scripts/icons/logo.png`](scripts/icons/logo.png), outside the embedded assets so the
+binary does not carry it. After replacing it, run `npm run icons` to regenerate
 the browser, home-screen, and installable-app icons, and commit the generated PNGs.
 
 ## Workspace

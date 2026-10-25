@@ -2,20 +2,20 @@
 //!
 //! Milestone 2 workstream R (repository essentials) owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{RepoId, Timestamp, mirror::Mirror};
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
 #[derive(Debug, sqlx::FromRow)]
-struct MirrorRow {
-    repo_id: i64,
-    url: String,
-    interval_minutes: i64,
-    next_sync_at: i64,
-    last_sync_at: Option<i64>,
-    last_error: Option<String>,
-    created_at: i64,
+pub(crate) struct MirrorRow {
+    pub(crate) repo_id: i64,
+    pub(crate) url: String,
+    pub(crate) interval_minutes: i64,
+    pub(crate) next_sync_at: i64,
+    pub(crate) last_sync_at: Option<i64>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) created_at: i64,
 }
 
 impl TryFrom<MirrorRow> for Mirror {
@@ -47,11 +47,11 @@ fn minutes(value: u64) -> Result<i64, StorageError> {
 
 #[derive(Debug, Clone)]
 pub struct MirrorStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl MirrorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -113,13 +113,16 @@ impl MirrorStore {
         Ok(())
     }
 
-    /// Mirrors whose next fetch is due at `now`, longest overdue first.
+    /// Mirrors whose next fetch is due at `now`, longest overdue first. Archived
+    /// repositories are never due: their mirrors pause until they are unarchived.
     pub async fn due(&self, now: Timestamp, limit: u32) -> Result<Vec<Mirror>, StorageError> {
-        let rows: Vec<MirrorRow> = sqlx::query_as(select_mirror!("WHERE next_sync_at <= ? ORDER BY next_sync_at, repo_id LIMIT ?"))
-            .bind(now.seconds())
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await?;
+        let rows: Vec<MirrorRow> = sqlx::query_as(select_mirror!(
+            "WHERE next_sync_at <= ? AND repo_id NOT IN (SELECT repo_id FROM repo_archives) ORDER BY next_sync_at, repo_id LIMIT ?"
+        ))
+        .bind(now.seconds())
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
         rows.into_iter().map(Mirror::try_from).collect()
     }
 

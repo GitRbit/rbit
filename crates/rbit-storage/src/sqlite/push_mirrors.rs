@@ -5,15 +5,16 @@
 //! here rather than in `rows.rs`.
 //!
 //! The secret is read only by [`PushMirrorStore::target`], for the push itself; every
-//! other query leaves it out and reports only whether one is set.
+//! other query leaves it out and reports only whether one is set. It is stored
+//! [sealed](crate::sealing).
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     push_mirror::{PushMirror, PushMirrorId},
 };
-use sqlx::SqlitePool;
 
-use crate::StorageError;
+use crate::{StorageError, sealing::SealingKey};
 
 #[derive(Debug, sqlx::FromRow)]
 struct PushMirrorRow {
@@ -93,12 +94,17 @@ pub struct PushTarget {
 
 #[derive(Debug, Clone)]
 pub struct PushMirrorStore {
-    pool: SqlitePool,
+    pool: Pool,
+    key: SealingKey,
 }
 
 impl PushMirrorStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
+        Self { pool, key }
+    }
+
+    fn seal(&self, secret: Option<&str>) -> Result<Option<String>, StorageError> {
+        Ok(secret.map(|secret| self.key.seal(secret.as_bytes())).transpose()?)
     }
 
     /// Adds a mirror, due for its first push immediately. [`StorageError::Conflict`] when
@@ -112,7 +118,7 @@ impl PushMirrorStore {
         .bind(new.repo.0)
         .bind(new.url)
         .bind(new.username)
-        .bind(new.secret)
+        .bind(self.seal(new.secret)?)
         .bind(new.sync_on_push)
         .bind(now)
         .bind(new.created_by.0)
@@ -148,6 +154,7 @@ impl PushMirrorStore {
         let Some(row) = row else { return Ok(None) };
         let secret: Option<String> =
             sqlx::query_scalar("SELECT secret FROM repo_push_mirrors WHERE id = ?").bind(id.0).fetch_one(&self.pool).await?;
+        let secret = secret.as_deref().map(|secret| self.key.open_str(secret)).transpose()?;
         Ok(Some(PushTarget { mirror: row.into(), secret }))
     }
 
@@ -160,7 +167,7 @@ impl PushMirrorStore {
         )
         .bind(changes.url)
         .bind(changes.username)
-        .bind(changes.secret)
+        .bind(self.seal(changes.secret)?)
         .bind(changes.enabled)
         .bind(changes.sync_on_push)
         .bind(Timestamp::now().seconds())
@@ -204,10 +211,12 @@ impl PushMirrorStore {
         Ok(result.rows_affected())
     }
 
-    /// Enabled mirrors due at `now`, longest overdue first.
+    /// Enabled mirrors due at `now`, longest overdue first. Mirrors of archived
+    /// repositories are never due: they pause until the repository is unarchived.
     pub async fn due(&self, now: Timestamp, limit: u32) -> Result<Vec<PushMirror>, StorageError> {
-        let rows: Vec<PushMirrorRow> =
-            sqlx::query_as(select_push_mirror!("WHERE enabled = 1 AND next_sync_at <= ? ORDER BY next_sync_at, id LIMIT ?"))
+        let rows: Vec<PushMirrorRow> = sqlx::query_as(select_push_mirror!(
+            "WHERE enabled = 1 AND next_sync_at <= ? AND repo_id NOT IN (SELECT repo_id FROM repo_archives) ORDER BY next_sync_at, id LIMIT ?"
+        ))
                 .bind(now.seconds())
                 .bind(limit)
                 .fetch_all(&self.pool)
@@ -215,10 +224,14 @@ impl PushMirrorStore {
         Ok(rows.into_iter().map(PushMirror::from).collect())
     }
 
-    /// The earliest time an enabled mirror is due, if any.
+    /// The earliest time an enabled mirror of a repository that is not archived is due,
+    /// if any.
     pub async fn next_due(&self) -> Result<Option<Timestamp>, StorageError> {
-        let next: Option<i64> =
-            sqlx::query_scalar("SELECT MIN(next_sync_at) FROM repo_push_mirrors WHERE enabled = 1").fetch_one(&self.pool).await?;
+        let next: Option<i64> = sqlx::query_scalar(
+            "SELECT MIN(next_sync_at) FROM repo_push_mirrors WHERE enabled = 1 AND repo_id NOT IN (SELECT repo_id FROM repo_archives)",
+        )
+        .fetch_one(&self.pool)
+        .await?;
         Ok(next.map(Timestamp))
     }
 

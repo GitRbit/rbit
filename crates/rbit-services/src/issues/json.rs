@@ -177,6 +177,7 @@ mod tests {
                 created_at: Timestamp(0),
                 updated_at: Timestamp(0),
                 pushed_at: None,
+                archived_at: None,
             },
         }
     }

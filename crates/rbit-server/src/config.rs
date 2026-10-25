@@ -32,11 +32,15 @@ pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
         .extract()
         .context("invalid storage configuration")?;
     if locator.storage.sqlite_path().exists() && std::env::var_os("RBIT_IGNORE_ADMIN_CONFIG").is_none() {
-        let database = rbit_storage::Database::open(&locator.storage.sqlite_path()).await.context("cannot read admin configuration")?;
+        let database = rbit_storage::Database::open_with_key_file(&locator.storage.sqlite_path(), &locator.storage.secret_key_path())
+            .await
+            .context("cannot read admin configuration")?;
         let entries = database.instance_settings().load().await?;
+        let key = database.sealing_key().clone();
         database.close().await;
         if let Some((_, document)) = entries.into_iter().find(|(key, _)| key == rbit_services::admin::configuration::CONFIGURATION_KEY) {
-            let config: Config = serde_json::from_str(&document)
+            let config = rbit_services::admin::configuration::open_stored(&document, &key)
+                .map_err(anyhow::Error::msg)
                 .context("invalid administrator configuration; set RBIT_IGNORE_ADMIN_CONFIG=1 to recover")?;
             let mut value = serde_json::to_value(config)?;
             value.as_object_mut().expect("config is an object").remove("storage");
@@ -98,8 +102,14 @@ mod tests {
         base.server.site_name = "Acme Forge".into();
         // A stale storage location in saved data must never redirect startup to a new instance.
         base.storage.data_dir = directory.path().join("must-not-open");
-        database.instance_settings().save(&[("deployment_config", &serde_json::to_string(&base).unwrap())]).await.unwrap();
+        base.mail.smtp_password = "smtp-value".into();
+        // Saved secrets are sealed with the key file in the data directory.
+        let mut document = serde_json::to_value(&base).unwrap();
+        database.sealing_key().seal_secret_fields(&mut document).unwrap();
+        assert!(!document.to_string().contains("smtp-value"));
+        database.instance_settings().save(&[("deployment_config", &document.to_string())]).await.unwrap();
         let effective = load(Some(&file)).await.unwrap();
+        assert_eq!(effective.mail.smtp_password, "smtp-value");
         assert_eq!(effective.repository.default_branch, "develop");
         assert_eq!(effective.server.site_name, "Acme Forge");
         assert_eq!(effective.storage.data_dir, directory.path().join("data"));

@@ -5,8 +5,8 @@
 //! Entries never change once written and never reference other rows: actor and target
 //! names are copied in, so the log stays readable after accounts are renamed or deleted.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
 use super::admin::{ListFilter, Listing};
 use crate::StorageError;
@@ -20,7 +20,8 @@ pub enum AuditCategory {
     Tokens,
     /// Collaborators, teams, transfers, webhooks and branch protection (milestone 2).
     RepositoryAccess,
-    /// Issues and pull requests deleted (milestone 2 wave B).
+    /// Issues and pull requests deleted (milestone 2 wave B), repositories archived and
+    /// unarchived.
     RepositoryContent,
     Administration,
 }
@@ -114,10 +115,12 @@ pub enum AuditAction {
     // Milestone 3: external sign-in (O).
     ExternalIdentityLinked,
     ExternalIdentityUnlinked,
+    RepositoryArchived,
+    RepositoryUnarchived,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 45] = [
+    pub const ALL: [Self; 47] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -163,6 +166,8 @@ impl AuditAction {
         Self::IssueDeleted,
         Self::ExternalIdentityLinked,
         Self::ExternalIdentityUnlinked,
+        Self::RepositoryArchived,
+        Self::RepositoryUnarchived,
     ];
 
     /// Stable identifier stored in the database.
@@ -213,6 +218,8 @@ impl AuditAction {
             Self::IssueDeleted => "issue_deleted",
             Self::ExternalIdentityLinked => "external_identity_linked",
             Self::ExternalIdentityUnlinked => "external_identity_unlinked",
+            Self::RepositoryArchived => "repository_archived",
+            Self::RepositoryUnarchived => "repository_unarchived",
         }
     }
 
@@ -263,7 +270,7 @@ impl AuditAction {
             | Self::BranchProtectionChanged
             | Self::BranchProtectionDeleted
             | Self::BranchProtectionBypassed => AuditCategory::RepositoryAccess,
-            Self::IssueDeleted => AuditCategory::RepositoryContent,
+            Self::IssueDeleted | Self::RepositoryArchived | Self::RepositoryUnarchived => AuditCategory::RepositoryContent,
         }
     }
 
@@ -315,6 +322,8 @@ impl AuditAction {
             Self::IssueDeleted => "Deleted an issue",
             Self::ExternalIdentityLinked => "Linked a sign-in provider",
             Self::ExternalIdentityUnlinked => "Unlinked a sign-in provider",
+            Self::RepositoryArchived => "Archived a repository",
+            Self::RepositoryUnarchived => "Unarchived a repository",
         }
     }
 
@@ -391,11 +400,11 @@ macro_rules! audit_filter {
 
 #[derive(Debug, Clone)]
 pub struct AuditStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AuditStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

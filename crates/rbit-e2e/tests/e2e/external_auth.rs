@@ -407,6 +407,8 @@ async fn oidc_register_sign_in_link_and_unlink() {
 async fn callbacks_need_the_browser_that_started_them() {
     let fake = Fake::oidc().await;
     let server = server_with(vec![provider(ProviderKind::Oidc, "corp", "Corp SSO", &fake)]);
+    // Providers never register an instance's first (administrator) account.
+    server.sign_up("root").await;
     fake.sign_in_as(FakeUser::new("sub-x", "x@corp.example", "x"));
 
     // No flow cookie at all.

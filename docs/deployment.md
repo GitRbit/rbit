@@ -5,6 +5,7 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | Path (under `data_dir`) | Contents | Back up? |
 |---|---|---|
 | `rbit.db` (+ `-wal`, `-shm`) | SQLite: accounts, repositories, tokens, settings, audit log | **Yes** |
+| `secret.key` | The key that seals credentials stored in `rbit.db` (see [Secret key](#secret-key)) | **Yes**, with the database |
 | `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
 | `attachments/<repo-id>/<asset-id>` | Files attached to releases | **Yes** (not `attachments/tmp`) |
 | `lfs/<aa>/<bb>/<oid>` | Git LFS objects, stored once however many repositories use them | **Yes** |
@@ -29,7 +30,33 @@ production-minded values. The ones that matter most:
   submissions are checked against. A mismatch breaks sign-in.
 - `server.bind` — keep it on loopback (`127.0.0.1:3000`) behind a proxy.
 - `storage.data_dir` — the directory above.
+- `storage.secret_key_file` — where the [secret key](#secret-key) lives, if not in
+  `data_dir`.
 - `repository.git_binary` — the `git` used for smart HTTP, `git gc` and backups.
+
+### Secret key
+
+Credentials rbit must be able to read back — TOTP seeds, webhook and push mirror secrets,
+the server's own signing keys, and the SMTP password, OIDC client secrets and metrics token
+saved from the administrator configuration page — are stored in `rbit.db` encrypted
+(AES-256-GCM) with a 256-bit key that is **not** in the database. A copy of `rbit.db` on
+its own therefore reveals none of them.
+
+The key is `<data_dir>/secret.key`, generated on first start (mode `0600`; rbit warns if
+other users can read it). To keep it apart from the data, for example as a container
+secret, point `storage.secret_key_file` (`RBIT_STORAGE__SECRET_KEY_FILE`) at another
+file; a missing file there is generated too. The file holds the key in base64, so
+`head -c 32 /dev/urandom | base64 > secret.key` makes one in advance.
+
+**Back the key up together with the database.** Without it the encrypted values cannot be
+read: users lose their authenticator-app sign-in, webhooks and push mirrors their secrets.
+rbit refuses to start, rather than generate a new key, if the database holds encrypted
+values and the key file is missing, and also if the key file does not match them.
+
+Upgrading from a version without the key: on the first start rbit creates the key and
+encrypts the existing plaintext values in place. Backups taken before the upgrade still
+hold them in plaintext; delete or re-encrypt those old backups (restoring one and starting
+rbit encrypts it again).
 
 ## Docker
 
@@ -237,7 +264,17 @@ git.example.com {
 
 ### nginx
 
+nginx opens a new connection to its upstream for every request unless the upstream keeps
+idle connections and requests use HTTP/1.1 without `Connection: close`; the `upstream`
+block and the two `proxy_*` lines below do that, so page loads do not pay for a TCP
+handshake to rbit on each asset.
+
 ```nginx
+upstream rbit {
+    server 127.0.0.1:3000;
+    keepalive 16;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -261,8 +298,9 @@ server {
     client_max_body_size 0;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
         proxy_http_version 1.1;
+        proxy_set_header Connection        "";
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -278,7 +316,9 @@ server {
     location = /metrics {
         allow 10.0.0.5;
         deny all;
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://rbit;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
     }
 }
 ```
@@ -305,6 +345,15 @@ Notifications) and are rate limited per address. Each carries `List-Unsubscribe`
 `List-Unsubscribe-Post` headers (RFC 8058) whose link is built from `server.public_url`, so
 set it before mail goes out; the one-click `POST /email/unsubscribe/…` must reach rbit
 from outside (mail providers send it). Set `[notifications] email = false` to send none.
+
+Users can also choose a daily or weekly digest instead of one email per notification.
+Digests go out at the user's chosen hour or at `[notifications] digest_hour` (UTC, default
+8; administrators can change it under Site administration → Settings), weekly ones on
+Mondays, grouped by repository and without threads already read in the app. They are
+checked for every five minutes, so a digest leaves at most about five minutes after its hour
+(later if the server was down: it catches up with one digest per user). Each period is
+claimed in the database before its digest is sent, so a restart never sends one twice; a
+digest the mail server refuses is not retried.
 
 ## External sign-in
 
@@ -364,6 +413,12 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_webhook_attempts_total` | counter | `outcome` (`succeeded`, `retrying`, `failed`) — one per delivery attempt |
 | `rbit_mirror_fetches_total` | counter | `outcome` (`ok`, `error`) |
 | `rbit_archives_total` | counter | `format` (`.zip`, `.tar.gz`) |
+| `rbit_sqlite_acquire_wait_seconds` | histogram | `mode` (`query` = one statement, `transaction`) — waiting for a pooled database connection |
+| `rbit_sqlite_acquire_timeouts_total` | counter | `mode` — connection waits that gave up (30 s) |
+| `rbit_sqlite_write_lock_wait_seconds` | histogram | `store` — `BEGIN IMMEDIATE`, waiting for the database's single write lock |
+| `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
+| `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
+| `rbit_notification_digests_total` | counter | `outcome` (`sent`, `failed`) — one per email digest handed to the mail transport |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.
@@ -383,11 +438,13 @@ scrape_configs:
 
 rbit runs its own maintenance; no cron jobs are needed.
 
-- **After every push**, the language breakdown and the root directory's last-commit list
-  of the default branch are computed and cached (`warm_caches_on_push`).
+- **After every push**, the new commits are added to the repository's commit-graph, then
+  the language breakdown and the root directory's last-commit list of the default branch
+  are computed and cached (`warm_caches_on_push`).
 - **Every `maintenance_interval_minutes`** (default 6 h, ± 10 % jitter): `git gc --auto`
-  for every repository on the first run after start-up, afterwards only for repositories
-  pushed to since the previous run; then the insights cache is pruned to
+  and `git commit-graph write --reachable --split` for every repository on the first run
+  after start-up, afterwards only for repositories pushed to since the previous run; then
+  the insights cache is pruned to
   `insights_cache_max_age_days` and `insights_cache_max_entries`. An idle instance does
   nothing else.
 - At most `job_concurrency` jobs run at once. Expired sessions are purged hourly.
@@ -422,8 +479,15 @@ DIR/
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
 ├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 ├── lfs/<aa>/<bb>/<oid>                every Git LFS object listed in that snapshot
-└── manifest.json                      format (3), version, time, counts; written last
+├── secret.key                         the secret key, when it lives in the data directory
+└── manifest.json                      format (4), version, time, counts; written last
 ```
+
+The backup directory is created `0700` and the database, key and manifest `0600`: the
+backup holds password hashes and the key to every stored credential. Keep it as private as
+the data directory. With `storage.secret_key_file` set, the key is deliberately **not**
+copied (the manifest says where it is): back it up separately, ideally not next to the
+database backups.
 
 The repositories are mirrored through Git's pack protocol, which copies each repository's
 refs and every object they reach consistently even during a push or `git gc`. A
@@ -461,13 +525,14 @@ The backup directory mirrors the data directory, so restoring is a copy:
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
    sudo mkdir -m 0750 /var/lib/rbit
-   sudo cp -a DIR/rbit.db DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
+   sudo cp -a DIR/rbit.db DIR/secret.key DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
    sudo chown -R rbit:rbit /var/lib/rbit
    ```
    For Docker, copy into the volume, e.g.
-   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
-   Backups in format 2 have no `lfs/` (and format 1 no `attachments/`): leave out what is
-   not there.
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/secret.key /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
+   Backups in format 3 have no `secret.key`, format 2 no `lfs/` (and format 1 no
+   `attachments/`): leave out what is not there. With `storage.secret_key_file` set,
+   restore the key from where you keep it instead.
 4. Start rbit. Pending migrations (if the backup came from an older version) run on
    start-up; a fresh `rbit.redb` is created.
 5. Check `/healthz`, sign in, browse and clone a repository, then delete the old directory.

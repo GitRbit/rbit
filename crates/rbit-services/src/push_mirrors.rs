@@ -10,7 +10,10 @@
 //! * A remote is an `http(s)` URL without credentials; the user name and secret are
 //!   separate fields. The secret is stored as given (git must send it), like webhook
 //!   secrets, and is **write-only**: never shown, returned or logged; leaving it blank when
-//!   editing keeps it. `file://` remotes exist only behind `[push_mirrors]
+//!   editing keeps it, unless the remote's origin (scheme, host and port) changes: the
+//!   stored secret only ever goes where it was entered for, so moving a mirror to another
+//!   host needs the secret again (an administrator who did not set it cannot redirect it
+//!   to a host of theirs). `file://` remotes exist only behind `[push_mirrors]
 //!   allow_local_urls`, a test switch.
 //! * Before every push the remote's host is resolved and each address must be public
 //!   (not [`is_internal_address`]) unless `allow_private_addresses`, as for pull mirrors;
@@ -25,6 +28,9 @@
 //!   once. Every enabled mirror is also pushed every `interval_minutes`, and an
 //!   administrator can ask for a push now. The time, outcome and error of the last attempt
 //!   are kept for the settings page.
+//! * Archived repositories are not pushed: nothing changes in them, so their mirrors
+//!   pause (the scheduler skips them and "push now" is refused) until they are
+//!   unarchived.
 //!
 //! The scheduler ([`PushMirrorService::spawn_background`]) wakes every
 //! [`SCHEDULER_TICK`], after a debounce, or when a push is requested; it runs at most
@@ -180,12 +186,16 @@ impl PushMirrorService {
         Ok(mirror)
     }
 
-    /// Changes a mirror's settings; a blank secret keeps the stored one.
+    /// Changes a mirror's settings; a blank secret keeps the stored one, as long as the
+    /// remote stays on the same origin.
     pub async fn update(&self, repo: &RepoContext, id: PushMirrorId, input: &PushMirrorInput) -> Result<PushMirror, ServiceError> {
         self.require_admin(repo)?;
         let repo_id = repo.repo.repo.id;
-        self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
+        let current = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
         let url = self.validated(input).await?;
+        if current.has_secret && input.secret.is_empty() && !same_origin(&current.url, &url, self.config().allow_local_urls) {
+            return Err(ServiceError::Invalid("the remote moved to another host; enter the password or token again for it".to_owned()));
+        }
         let changes = PushMirrorChanges {
             url: url.as_str(),
             username: input.username.trim(),
@@ -212,6 +222,7 @@ impl PushMirrorService {
     /// Schedules a push now (it runs in the background).
     pub async fn sync_now(&self, repo: &RepoContext, id: PushMirrorId) -> Result<(), ServiceError> {
         self.require_admin(repo)?;
+        repo.ensure_writable()?;
         if !self.store().schedule_now(repo.repo.repo.id, id).await? {
             return Err(ServiceError::NotFound);
         }
@@ -228,6 +239,10 @@ impl PushMirrorService {
         let next = Timestamp(Timestamp::now().seconds().saturating_add(i64::try_from(self.interval_minutes() * 60).unwrap_or(i64::MAX)));
         self.store().claim(id, next).await?;
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, target.mirror.repo_id).await? else { return Ok(()) };
+        if context.repo.repo.is_archived() {
+            // Archived since it was picked: it resumes once the repository is unarchived.
+            return Ok(());
+        }
         let outcome = self.attempt(&context, &target).await;
         let error = outcome.err();
         match &error {
@@ -368,6 +383,21 @@ impl PushMirrorService {
             });
         }
         Ok(())
+    }
+}
+
+/// Whether the stored URL `stored` and `url` share a scheme, host and port: the stored
+/// secret may follow an edit only within one origin. Local (`file://`) URLs are their own
+/// origin, so any change to one counts.
+fn same_origin(stored: &str, url: &PushMirrorUrl, allow_local: bool) -> bool {
+    let Ok(stored) = PushMirrorUrl::parse(stored, allow_local) else { return false };
+    match (stored.remote(), url.remote()) {
+        (Some(old), Some(new)) => {
+            let scheme = |url: &str| url.get(..8).is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"));
+            scheme(old.as_str()) == scheme(new.as_str()) && old.host().eq_ignore_ascii_case(new.host()) && old.port() == new.port()
+        }
+        (None, None) => stored.as_str() == url.as_str(),
+        _ => false,
     }
 }
 

@@ -2,7 +2,8 @@
 //!
 //! Milestone 2 workstream P (pull requests) owns this file.
 //!
-//! Merging needs `Write` on the base repository and every requirement of
+//! Merging needs `Write` on the base repository, which must not be archived
+//! ([`RepoContext::ensure_writable`]), and every requirement of
 //! [`rbit_core::pull::evaluate`]; protection rules come from
 //! [`crate::ProtectionService::check_merge`]. A merger whose rules allow a bypass may merge
 //! anyway after confirming (`MergeInput::bypass`), which is audited as
@@ -16,21 +17,23 @@
 //! `success` (a protection requirement, so an allowed bypass skips it). Other statuses
 //! are shown but never block.
 
+use std::collections::HashSet;
+
 use rbit_auth::policy::{Grants, repo_access};
 use rbit_core::{
-    StateReason, TimelineEvent, Timestamp, User,
+    AccountId, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
-        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, ReviewTally, commit_message, default_merge_title, default_squash_body,
-        default_squash_title, evaluate, noreply_domain, tally,
+        CommitIdentity, MergeEvaluation, MergeFacts, Mergeability, Review, ReviewTally, commit_message, default_merge_title,
+        default_squash_body, default_squash_title, evaluate, noreply_domain, tally,
     },
     status::{CommitStatus, checks_status, required_checks},
 };
 use rbit_git::merge::{MergeError, MergeSpec, merge};
 use rbit_storage::sqlite::{audit::AuditAction, pulls::MergeRecord};
 
-use super::{PullContext, PullService, merge_lock};
+use super::{PullContext, PullService, ReviewData, merge_lock};
 use crate::{RepoContext, ServiceError, audit::AuditEntry, audit::AuditService};
 
 /// The merge box as one viewer sees it.
@@ -64,6 +67,8 @@ pub struct MergeInput {
     pub message: String,
     /// The head the merger saw; a different current head refuses the merge.
     pub expected_head: Option<String>,
+    /// The base branch the merger saw; a different current base refuses the merge.
+    pub expected_base: Option<String>,
     pub delete_head_branch: bool,
     /// Merge despite unmet protection rules (only for mergers allowed to bypass).
     pub bypass: bool,
@@ -75,6 +80,9 @@ pub enum MergeFailure {
     /// The head is not the one the merger reviewed (`409`).
     #[error("the head branch was modified; review the new changes and try again")]
     HeadChanged,
+    /// The base branch is not the one the merger saw (`409`).
+    #[error("the base branch was changed; review the pull request and try again")]
+    BaseChanged,
     /// A requirement is unmet (`405`); the message says which.
     #[error("{0}")]
     Blocked(String),
@@ -91,16 +99,56 @@ impl From<rbit_storage::StorageError> for MergeFailure {
 impl PullService {
     /// The merge box of `ctx` for `viewer`.
     pub async fn merge_box(&self, viewer: Option<&User>, ctx: &PullContext) -> Result<MergeBox, ServiceError> {
-        let base_tip = self.base_tip(ctx).await?;
-        let rules = match viewer {
-            Some(user) if ctx.repo().access.can_write() => {
-                self.inner.protection.check_merge(ctx.repo(), user, &ctx.pull.base_branch).await?
+        self.merge_box_with(viewer, ctx, None).await
+    }
+
+    /// [`Self::merge_box`] for a page that already loaded the pull request's reviews
+    /// ([`Self::reviews`]): the tally counts those instead of reading them again.
+    pub async fn merge_box_from(&self, viewer: Option<&User>, ctx: &PullContext, reviews: &ReviewData) -> Result<MergeBox, ServiceError> {
+        // Submitted reviews: the tally never counts pending ones.
+        let reviews: Vec<Review> = reviews.reviews.iter().map(|entry| entry.review.clone()).collect();
+        self.merge_box_with(viewer, ctx, Some(reviews)).await
+    }
+
+    /// The independent reads (the base tip, protection rules, the reviewers' access,
+    /// statuses, the head branch, the viewer's rights, the commits for the squash
+    /// message) run concurrently; their errors are reported in the order they used to be
+    /// read in.
+    async fn merge_box_with(
+        &self,
+        viewer: Option<&User>,
+        ctx: &PullContext,
+        reviews: Option<Vec<Review>>,
+    ) -> Result<MergeBox, ServiceError> {
+        let rules = async {
+            match viewer {
+                Some(user) if ctx.repo().access.can_write() => {
+                    self.inner.protection.check_merge(ctx.repo(), user, &ctx.pull.base_branch).await
+                }
+                Some(_) | None => Ok(MergeRules::unprotected()),
             }
-            Some(_) | None => MergeRules::unprotected(),
         };
-        let tally = self.tally(ctx, &rules).await?;
-        let head_branch_exists = self.head_branch_exists(ctx).await;
-        let statuses = self.ctx().database.commit_statuses().latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha).await?;
+        let can_delete_head = async {
+            match viewer {
+                Some(user) => self.may_delete_head(user, ctx).await,
+                None => Ok(false),
+            }
+        };
+        let statuses = self.ctx().database.commit_statuses();
+        let (base_tip, rules, voters, head_branch_exists, statuses, can_delete_head, (default_squash_title, default_squash_message)) = tokio::join!(
+            self.base_tip(ctx),
+            rules,
+            self.voters(ctx, reviews),
+            self.head_branch_exists(ctx),
+            statuses.latest(ctx.repo().repo.repo.id, &ctx.pull.head_sha),
+            can_delete_head,
+            self.default_squash_message(ctx),
+        );
+        let base_tip = base_tip?;
+        let rules = rules?;
+        let (reviews, writers) = voters?;
+        let tally = tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id));
+        let statuses = statuses?;
         let stale = base_tip.is_none()
             || ctx.pull.mergeable_base_sha != base_tip
             || ctx.pull.mergeable_head_sha.as_deref() != Some(&ctx.pull.head_sha);
@@ -121,12 +169,8 @@ impl PullService {
             required_checks: required_checks(&rules.required_contexts, &statuses),
         };
         let evaluation = evaluate(&facts, &rules);
-        let can_delete_head = match viewer {
-            Some(user) => self.may_delete_head(user, ctx).await?,
-            None => false,
-        };
+        let can_delete_head = can_delete_head?;
         let (default_title, default_message) = Self::default_merge_message(ctx);
-        let (default_squash_title, default_squash_message) = self.default_squash_message(ctx).await;
         Ok(MergeBox {
             evaluation,
             rules,
@@ -135,7 +179,7 @@ impl PullService {
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
             statuses,
             head_branch_exists,
-            can_merge: viewer.is_some() && ctx.repo().access.can_write(),
+            can_merge: viewer.is_some() && ctx.repo().can_write_content(),
             can_delete_head,
             default_title,
             default_message,
@@ -144,15 +188,19 @@ impl PullService {
         })
     }
 
-    /// Reviews counted for `rules`: latest decisive review per current writer.
-    pub(super) async fn tally(&self, ctx: &PullContext, rules: &MergeRules) -> Result<ReviewTally, ServiceError> {
-        let reviews = self.ctx().database.reviews().reviews(ctx.issue().id).await?;
+    /// The pull request's reviews (`reviews`, or read here) and which of their reviewers
+    /// currently have write access: what [`tally`] counts.
+    async fn voters(&self, ctx: &PullContext, reviews: Option<Vec<Review>>) -> Result<(Vec<Review>, HashSet<AccountId>), ServiceError> {
+        let reviews = match reviews {
+            Some(reviews) => reviews,
+            None => self.ctx().database.reviews().reviews(ctx.issue().id).await?,
+        };
         let reviewers: Vec<_> = reviews.iter().filter_map(|review| review.reviewer).collect();
         let users = self.ctx().database.accounts().find_users(&reviewers).await?;
         let repo = &ctx.repo().repo;
         let need_grants: Vec<_> = users.iter().filter(|user| !user.is_admin && user.id() != repo.repo.owner_id).map(User::id).collect();
         let grants = self.ctx().database.repositories().grants_for(repo.repo.id, repo.repo.owner_id, &need_grants).await?;
-        let mut writers = std::collections::HashSet::new();
+        let mut writers = HashSet::new();
         for user in users {
             let stored = grants.get(&user.id()).copied().unwrap_or_default();
             let grants = Grants {
@@ -165,7 +213,7 @@ impl PullService {
                 writers.insert(user.id());
             }
         }
-        Ok(tally(&reviews, ctx.issue().author, &ctx.pull.head_sha, rules.dismiss_stale_approvals, |id| writers.contains(&id)))
+        Ok((reviews, writers))
     }
 
     fn default_merge_message(ctx: &PullContext) -> (String, String) {
@@ -184,6 +232,7 @@ impl PullService {
         if !ctx.repo().access.can_write() {
             return Err(ServiceError::Forbidden.into());
         }
+        ctx.repo().ensure_writable()?;
         let lock = merge_lock(&self.inner.merge_locks, ctx.repo().repo.repo.id);
         let _serialised = lock.lock().await;
         let _slot = self.inner.merge_slots.acquire().await.map_err(ServiceError::internal)?;
@@ -195,6 +244,11 @@ impl PullService {
             && expected != ctx.pull.head_sha
         {
             return Err(MergeFailure::HeadChanged);
+        }
+        if let Some(expected) = input.expected_base.as_deref().filter(|expected| !expected.is_empty())
+            && expected != ctx.pull.base_branch
+        {
+            return Err(MergeFailure::BaseChanged);
         }
         if ctx.pull.is_merged() || !ctx.issue().is_open() {
             return Err(MergeFailure::Blocked("the pull request is closed".to_owned()));
@@ -313,7 +367,7 @@ impl PullService {
         let Some(head) = &ctx.head_repo else { return };
         let result = async {
             let head_ctx = self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await?;
-            if !head_ctx.access.can_write() || !self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await? {
+            if !head_ctx.can_write_content() || !self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await? {
                 return Ok(false);
             }
             let pending = self.inner.pushes.begin(&head_ctx, Some(actor.id())).await;
@@ -334,16 +388,25 @@ impl PullService {
         }
     }
 
-    /// Whether `actor` may delete the head branch: write access to the head repository and
+    /// Whether `actor` may delete the head branch: write access to the unarchived head repository and
     /// no protection rule against deleting it (`ProtectionService::may_delete_branch`).
+    ///
+    /// A head branch in the base repository uses the access this request already computed
+    /// for `actor` there; a fork's head opens the fork for them.
     pub async fn may_delete_head(&self, actor: &User, ctx: &PullContext) -> Result<bool, ServiceError> {
         let Some(head) = &ctx.head_repo else { return Ok(false) };
-        let head_ctx = match self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await {
-            Ok(head_ctx) => head_ctx,
-            Err(ServiceError::NotFound) => return Ok(false),
-            Err(error) => return Err(error),
+        let opened;
+        let head_ctx = if head.repo.id == ctx.repo().repo.repo.id && ctx.repo().viewer == Some(actor.id()) {
+            ctx.repo()
+        } else {
+            opened = match self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await {
+                Ok(head_ctx) => head_ctx,
+                Err(ServiceError::NotFound) => return Ok(false),
+                Err(error) => return Err(error),
+            };
+            &opened
         };
-        Ok(head_ctx.access.can_write() && self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await?)
+        Ok(head_ctx.can_write_content() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
     }
 
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete
@@ -355,6 +418,9 @@ impl PullService {
         let Some(head) = &ctx.head_repo else { return Ok(false) };
         if !self.access_of(actor.id(), head).await?.can_write() {
             return Err(ServiceError::Forbidden);
+        }
+        if head.repo.is_archived() {
+            return Err(ServiceError::Archived);
         }
         if !self.may_delete_head(actor, ctx).await? {
             return Err(ServiceError::Invalid("the head branch is protected".to_owned()));
