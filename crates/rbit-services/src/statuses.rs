@@ -89,6 +89,7 @@ impl StatusService {
         if !repo.access.can_write() {
             return Err(ServiceError::Forbidden);
         }
+        repo.ensure_writable()?;
         let invalid = |error: rbit_core::status::StatusError| ServiceError::Invalid(error.to_string());
         let sha = parse_sha(sha).map_err(invalid)?;
         let report = StatusReport::parse(&input.state, input.context.as_deref(), input.description.as_deref(), input.target_url.as_deref())

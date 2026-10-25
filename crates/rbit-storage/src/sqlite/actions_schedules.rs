@@ -1,5 +1,5 @@
 //! `schedule` entries of default-branch workflows and their next fire times (migration
-//! `0044_actions.sql`). A repository's entries are replaced as a whole whenever its default
+//! `0048_actions.sql`). A repository's entries are replaced as a whole whenever its default
 //! branch moves; the ticker reads what is due through a partial index.
 //!
 //! The Actions foundation (workstream F) owns this file.

@@ -400,6 +400,7 @@ impl RecoveryService {
             | DomainEvent::RepositoryCreated { .. }
             | DomainEvent::RepositoryDeleted { .. }
             | DomainEvent::RepositoryTransferred { .. }
+            | DomainEvent::RepositoryArchived { .. }
             | DomainEvent::RepositoryForked { .. }
             | DomainEvent::ReleasePublished { .. }
             | DomainEvent::PasswordChanged { .. }

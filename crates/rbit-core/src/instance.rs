@@ -64,6 +64,8 @@ pub struct InstanceSettings {
     pub registration: RegistrationMode,
     pub org_creation: OrgCreationPolicy,
     pub default_visibility: Visibility,
+    /// The hour (0–23, UTC) email digests are sent at for users who did not choose one.
+    pub digest_hour: u8,
 }
 
 impl InstanceSettings {
@@ -75,6 +77,7 @@ impl InstanceSettings {
             registration: if config.server.open_registration { RegistrationMode::Open } else { RegistrationMode::Closed },
             org_creation: OrgCreationPolicy::AnyUser,
             default_visibility: Visibility::Public,
+            digest_hour: config.notifications.digest_hour,
         }
     }
 }

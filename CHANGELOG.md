@@ -7,11 +7,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Security
-
-- Update `ctutils` to 0.4.4 to fix constant-time comparisons
-  ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
-
 ### Added
 
 - **rbit Actions**, rbit's own CI/CD, off unless `[actions] enabled = true`
@@ -33,56 +28,341 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   secrets or variables, after a writer approves them.
 - `workflow_run` and `workflow_job` webhooks, and `/api/v1/repos/{owner}/{repo}/actions/…`
   endpoints for runs, jobs, workflows, dispatch, secrets and variables.
-- Resolve and reopen pull request review conversations as a repository writer or the
-  conversation's author. Resolved conversations collapse with their replies in the
-  conversation and Files changed tabs; state changes appear in the timeline.
-- Migration `0041` adds review conversation resolution metadata. Existing conversations
-  remain unresolved; back up the database before upgrading as usual.
-- Change an open pull request's base branch from its Conversation tab, with searchable
-  branch choices for the author and repository writers.
-- Change your username from account settings with current-password confirmation. Old
-  profile links, repository URLs, and Git HTTP/SSH remotes follow the account's current
-  name until another account claims the old name. Private repository redirects are only
-  visible to authorized readers.
-
-- Preview Markdown before submitting issue and pull request descriptions, comments,
-  reviews and browser file edits, with repository links and sanitized HTML.
-- Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
-  visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
-  Markdown mentions once at startup in bounded batches.
-- Notify in the footer and administrator dashboard when a newer stable rbit release
-  is available, using a bounded daily background check of the upstream GitHub release
-  feed. Release checks never send the running version or instance identity.
-- Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
-  reporting hides public version output and omits version numbers from outgoing
-  integration User-Agents; administrator-only diagnostics remain available.
 
 ### Upgrade notes
 
-- Migrations `0044` and `0045` add the Actions tables and a `source` column on commit
+- Migrations `0048` and `0049` add the Actions tables and a `source` column on commit
   statuses. Nothing changes until an administrator enables Actions; with it off no Actions
   table is written and `<data_dir>/actions` is not created.
 - With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
   copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
   backed up.
-- Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
-  and their maintenance triggers. Existing account names and IDs are unchanged; names
-  abandoned before this upgrade cannot be reconstructed.
 
-- Automatic release checks are enabled by default. Set
-  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
-  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
-  Configuration changes take effect after restart; release checks add no database migration.
+## [0.1.5] - 2026-10-25
+
+### Security
+
+- Update `crypto-bigint` to 0.7.9, replacing the yanked 0.7.6 release while retaining
+  its constant-time arithmetic fixes and incorporating the subsequent upstream corrections.
+- Dismiss approvals when a pull request's base branch changes, refuse merges whose
+  expected base no longer matches (`base` on the API merge endpoint), rate-limit base
+  changes and refuse them on pull requests closed concurrently.
+- Throttle current-password checks in settings per account, stop successful sign-ins from
+  refilling a client's failure budget, and share the sign-in budget between an account's
+  username and email.
+- Require a one-time setup token, logged at start-up or set with `security.setup_token`,
+  to sign up the first account of a fresh instance. Cap sessions at
+  `security.session_max_age_days` (default 90) however active they stay.
+- Limit Git over HTTP and SSH with a shared process cap, per-client request limits, idle
+  and total timeouts and `repository.max_push_bytes` (default 2 GiB); never run
+  repository hooks; limit archive downloads per client with idle and total timeouts.
+- Encrypt TOTP seeds, webhook and push mirror secrets, server signing keys and secret
+  configuration fields at rest with a key file (`<data_dir>/secret.key`, or
+  `storage.secret_key_file`). Existing values are encrypted on the first start; back up
+  the key file with the database. Retire obsolete plaintext backups after the rollback
+  window is complete.
+- Migration `0044` widens push mirror secrets to fit their encrypted form.
+- Create backups owner-only (0700 directory, 0600 files) and include the key file.
+- Ask for a push mirror's credential again when its URL moves to another host.
+- Count commits by a user's private account email on their contribution calendar only
+  for that user and site administrators.
+- Prefix ids in rendered Markdown with `user-content-` so they cannot collide with page
+  anchors; in-document links are rewritten to match.
+- Send `Strict-Transport-Security` with an `https://` public URL (`security.hsts`,
+  `security.hsts_include_subdomains`), and add `security.external_images` to keep pages
+  from loading images on other sites.
+- Refuse to make a fork public while a repository it was forked from is private.
+- Look up single API comments directly instead of loading their whole timeline.
+- Keep local data, databases and keys out of the Docker build context.
+
+### Added
+
+- Collect notification emails into a daily or weekly email digest under Settings →
+  Notifications, at a chosen hour (UTC). Digests are grouped by repository, leave out
+  threads already read in the app, keep the one-click unsubscribe headers and are never
+  sent twice, also after a restart. Immediate emails stay the default. Administrators set
+  the default digest hour under Site administration → Settings (`[notifications]
+  digest_hour`, default 8), and `rbit_notification_digests_total{outcome}` counts sent and
+  failed digests.
+- Archive repositories from the settings danger zone or with `PATCH /api/v1/repos/{owner}/{repo}`
+  (`"archived": true`). Archived repositories are read-only: pushes over HTTP and SSH,
+  merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused (the API answers 403
+  "Repository was archived so is read-only."), while reading, cloning, forking and starring
+  keep working. Pull and push mirrors pause until the repository is unarchived. Pages show
+  a banner and hide write controls, lists mark archived repositories, and Explore filters
+  them (`?archived=true|false`). Archiving and unarchiving are audited and send a
+  `repository` webhook (`archived` / `unarchived`); repository objects gain `archived`.
+- Export SQLite contention metrics: connection pool waits, write lock waits, write
+  transaction durations and `SQLITE_BUSY`/`SQLITE_BUSY_SNAPSHOT` errors by store
+  (`rbit_sqlite_*`, see the deployment guide's metrics table).
 
 ### Fixed
 
-- Clarify private security reporting, remove the broken conduct-reporting contact,
-  and add automated checks for GitHub repository configuration and submission paths.
+- Wait for repository readers and background jobs to release their files before deletion,
+  preventing intermittent failures on Windows after a push or while viewing settings.
+- Editing an issue or pull request's title or description no longer fails with "database
+  is locked" when another write happens at the same moment: the edit now waits for the
+  write lock instead of reading first and failing to upgrade.
+- Setting an issue's milestone no longer fails with "database is locked" under
+  concurrent writes, for the same reason.
+
+### Performance
+
+- Build the bundled SQLite with the query planner stability guarantee
+  (`SQLITE_ENABLE_QPSG`, set in `.cargo/config.toml`), so a statement is no longer
+  re-parsed and re-planned on every execution once `PRAGMA optimize` has recorded
+  `sqlite_stat4` samples or when it has a `LIKE ?`. With 16 concurrent requests this
+  more than doubles issue list and issue page throughput. Mention completion seeks its
+  name range explicitly, as the planner no longer derives it from the bound pattern.
+- Resolve a full commit id without gix's abbreviated-id lookup, which re-read the object
+  database's directory state on every call. Repository pages pass the commit they
+  resolved to each later read, so this was several file system scans per page.
+- Read the repository page lookup, the dashboards' and inbox's repository check, a
+  thread's author and a thread's metadata through scalar subqueries by key instead of
+  joins, so their plans no longer turn into scans of `repositories`, `accounts` or
+  `issues` when the planner's statistics describe tiny tables, as on a new instance.
+- Count the stars of both repository lists on a signed-in home page in one statement.
+- Remember a pull request's comparison counts from its Files changed tab only when the
+  cache does not hold them yet, instead of committing a redb write on every view.
+- Recheck access to the repositories of the `/issues` and `/pulls` dashboards' rows and of
+  the notification inbox in one statement per page, instead of up to three per row.
+- Show a collaborator's "Leave" box on the repository home from the grants read when the
+  repository was opened, instead of reading the collaborator row again.
+- Read only the labels of the pull request list's rows, the only metadata it shows.
+- Decide whether the viewer may delete a pull request's head branch from the access
+  already computed for the request when the branch is in the base repository, instead
+  of opening that repository again.
+- Mark a viewed issue or pull request's notification read only when that thread has an
+  unread one (read with the sidebar's subscription), and refresh the header's unread dot
+  only when something was marked, instead of whenever the viewer had anything unread.
+- Read one issue or pull request's labels, assignees and milestone in one statement
+  instead of three, for its page, the API and single-row lists.
+- Read an issue or pull request's author together with the thread, in one statement.
+- Load a repository page's header (the viewer's grants, stars, readable forks, parent,
+  mirror and open issue and pull request counts) in the same statement as the repository:
+  one statement instead of six anonymous, seven signed in. Access is still decided from
+  that row, on every request, before anything is shown.
+- Count the SQLite acquisitions, statements and insights cache writes each request makes
+  in tests (`rbit_storage::count_work`), and pin the counts of the busiest pages, so a
+  change cannot add a query to them unnoticed.
+- Spell highlighted spans' classes from a static table and size highlighted output once,
+  so highlighting allocates nothing per span.
+- Keep the widest line's width with each cached highlighted file, so file and blame views
+  served from the cache no longer rescan every line to size the code column.
+- Build diff rows with numeric line numbers and text moved out of the computed diff, so
+  large commit, compare and pull request diffs no longer allocate three strings per row.
+- Render pull request Files changed rows like any other diff: the file carries where
+  comments go and one delegated handler opens the form from a line number (one tab stop
+  per file, moved with the arrow keys), instead of two htmx links per line. Without
+  scripts, each hunk header links to the form at its first line.
+- Mount diff pages from the content an htmx swap brings in, instead of searching the whole
+  document after every swap.
+- Configure the Markdown sanitiser once per process instead of once per document with
+  repository links.
+- Cache rendered READMEs, Markdown files and release notes by content and location (8 MiB,
+  least recently used first), so viewing a document again skips rendering it. Comments are
+  never cached.
+- Mark a viewed issue or pull request's notification read only when the viewer has unread
+  notifications, so other signed-in views no longer take the database's write lock.
+- Load a pull request conversation's sidebar, merge box parts and closed head branch
+  concurrently, and count merge box reviews from the ones the page already loaded.
+
+- Skip htmx's scan of every attribute for `hx-on` handlers at startup and after each
+  swap; rbit uses none, and its Content Security Policy would block them.
+
+- Correct the performance notes: page JavaScript ships bundled and minified as
+  `app.bundle.js`.
+
+- Darken scrollbars through the root's hover state instead of a universal `:hover`
+  rule, so moving the pointer no longer restyles each element it crosses.
+
+- Keep htmx history snapshots of at most 64,000 characters (was 200,000); larger
+  pages are refetched on back and forward instead of slowing every navigation.
+
+- Size long file and diff placeholders once per page load and history restore instead
+  of twice.
+
+- Move the diff file tree's current-file marker without a colour fade, so scrolling a
+  large commit, compare or pull request no longer repaints the whole tree for every frame
+  of the fade; hovering a row still fades in.
+
+- Hide the activity calendar's tooltip on scroll by remembering which one is shown,
+  instead of searching the whole document on every scroll event of every page.
+
+- Let the headless scroll measurements (`scripts/perf/sweep.mjs`, `trace.mjs`) sign in
+  as the fixture's account with `--credentials`, to measure signed-in pages.
+
+- Look for diagrams, reply buttons, mirror progress, language listings, repository
+  documents and the render time only within newly swapped content, not the whole page.
+
+- Check whether a page is large enough to skip its history snapshot by looking for its
+  4,000th element instead of counting all of them.
+
+- Collect links preloaded once visible as htmx swaps them in, instead of searching the
+  whole page for them after every navigation.
+
+- Answer asset revalidations carrying a current `ETag` with `304 Not Modified`, and send
+  embedded and pre-compressed asset bytes without copying them for each response.
+
+- Keep the 650 KB source artwork of the logo out of the binary: it moved to
+  `scripts/icons/logo.png`, where `npm run icons` reads it; nothing served it.
+
+- Disable Nagle's algorithm on accepted HTTP connections, and show an nginx upstream with
+  keep-alive connections to rbit in the deployment guide.
+
+- Load the Mermaid renderer from a content-hashed, immutable URL instead of revalidating
+  it for every diagram, and cache theme stylesheets linked by the theme picker.
+
+- Leave the inlined stylesheets out of pages fetched by htmx (boosted navigation, preloads,
+  history restores), which discards `<head>` anyway, and render them without copying.
+
+- Put the deferred page scripts before the inlined stylesheets so browsers start fetching
+  them sooner.
+
+- Keep three htmx history snapshots instead of ten, since htmx rewrites the whole cache on
+  every navigation.
+
+- Serve `/assets/branding.css` with the static assets and cache it for good at the URL
+  pages link, which names the current branding colours.
+
+- Stop counting commits behind the base for pull request tabs, creation, header counts and
+  API statistics; only the compare page shows that number.
+
+- Build pull request webhook payloads only when a webhook subscribes to the event; each
+  one diffed the pull request.
+
+- Cache pull request line and file statistics with the header counts, so API pull
+  request lists and pull request webhooks reuse them instead of diffing each pull request.
+  Counts cached by earlier versions are recomputed once.
+
+- Check review comments for outdated files with one repository read per push instead of
+  one per comment.
+
+- Resolve only the default branch of each repository for profile and organization
+  contribution calendars instead of every branch.
+
+- Persist the last commit of every entry of any directory listed in full, not only of
+  the default branch's root, so revisiting a directory or branch does not walk history
+  again once the short in-memory reuse expires.
+
+- Write each repository's commit-graph after pushes and during periodic maintenance, and
+  read root trees from it in last-commit walks. Existing repositories get one at the
+  first maintenance run after upgrading.
+
+- Count a repository's open issues and pull requests from the open index entries only,
+  instead of every thread the repository ever had.
+
+- Build issue and pull request list queries from the filters in use only, and read the
+  default newest-first page in index order up to its limit. Upgrade note: migration
+  `0045` adds the index `issues_by_repo_created`.
+
+- Search assignees among a repository's possible writers instead of checking every account.
+
+- Resolve `@mentions` through the account name index instead of reading every account.
+
+- Read a signed-in request's user, password-change restriction and unread notification
+  indicator in one database query instead of three.
+
+- Report whether opening a thread marked its notification read, so pages only check the
+  unread indicator again when it may have changed.
+
+- Load the dashboard's repositories, recent repositories and organizations concurrently.
+
+- Refresh SQLite's query planner statistics (`PRAGMA optimize`) after migrations and on
+  the maintenance schedule.
+
+### Upgrade notes
+
+- Back up the database, repositories and attachments before upgrading from 0.1.4.
+  Startup applies migrations `0044`–`0047` automatically; migrations only move forward.
+  To roll back, restore the complete pre-upgrade backup before starting the older binary.
+- Migration `0044` widens push mirror secrets for encryption. On first startup, existing
+  TOTP seeds, webhook and push mirror secrets, server signing keys and secret configuration
+  fields are encrypted with `<data_dir>/secret.key` (or `storage.secret_key_file`). Keep
+  that key with every post-upgrade backup; a database containing sealed values cannot be
+  opened without its original key. The backup command includes it as `secret.key`; restore
+  it to the configured key-file location together with the matching database. Replace
+  obsolete plaintext backups after the upgrade and rollback window are complete.
+- Migration `0045` adds the issue-list ordering index. Existing repositories receive a
+  commit-graph at the first maintenance run, and SQLite planner statistics refresh after
+  migrations and during scheduled maintenance.
+- Migration `0046` adds `repo_archives`. Existing repositories remain unarchived.
+- Migration `0047` adds email delivery preferences and digest tables. Existing users keep
+  immediate notification emails until they choose a daily or weekly digest. Digest hours
+  use UTC; the administrator default is `[notifications] digest_hour = 8`.
+- Fresh instances require the one-time setup token from startup logs (or
+  `security.setup_token`) to register the first administrator. Existing instances need no
+  setup token. Active sessions now have a maximum age of 90 days by default
+  (`security.session_max_age_days`); older sessions require a new sign-in.
+- Restart with the new binary or container image to apply the Git transfer limits,
+  security headers and refreshed web assets. Review the documented configuration defaults
+  in [deploy/rbit.example.toml](deploy/rbit.example.toml) before changing limits.
+
+## [0.1.4] - 2026-10-24
+
+### Security
+
+- Update `gix` to 0.90.0 to prevent untrusted repository configuration from disabling
+  filesystem path protections
+  ([GHSA-q54r-jf2p-rfr2](https://github.com/advisories/GHSA-q54r-jf2p-rfr2)).
+- Update `crypto-bigint` to 0.7.6 and `ctutils` to 0.4.5 to address constant-time
+  arithmetic issues ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)).
+- Include the `ctutils` constant-time comparison fixes
+  ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
+
+### Added
+
+- Resolve and reopen pull request review conversations as a repository writer or the
+  conversation's author. Resolved conversations collapse with their replies in the
+  conversation and Files changed tabs; state changes appear in the timeline.
+- Change an open pull request's base branch from its Conversation tab, with searchable
+  branch choices for the author and repository writers.
+- Change your username from account settings with current-password confirmation. Old
+  profile links, repository URLs and Git HTTP/SSH remotes follow the current account
+  until another account claims the old name; private redirects require repository access.
+- Preview Markdown before submitting issue and pull request descriptions, comments,
+  reviews and browser file edits, with repository links and sanitized HTML.
+- Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
+  visibility-aware counts and global pagination.
+- Notify in the footer and administrator dashboard when a newer stable rbit release is
+  available, using a bounded daily background check of the upstream GitHub release feed.
+  Release checks never send the running version, instance identity or repository data.
+- Add independent `[updates] check_for_updates` and `report_version` controls. Disabling
+  reporting hides public version output and omits version numbers from outgoing
+  integration User-Agents; administrator-only diagnostics remain available.
 
 ### Changed
 
+- Update `async-compression` to 0.4.51 and its compression codec dependencies.
 - Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
   commit history focused on the selected branch and its paginated commits.
+
+### Fixed
+
+- Clarify the README introduction to describe rbit as Git hosting and a Git forge.
+- Clarify private security reporting, remove the broken conduct-reporting contact,
+  and add automated checks for GitHub repository configuration and submission paths.
+
+### Upgrade notes
+
+- Back up the database before upgrading. Startup applies migrations `0041`–`0043`;
+  migrations only move forward. To roll back, restore the pre-upgrade backup before
+  starting the previous binary.
+- Migration `0041` adds review conversation resolution metadata. Existing conversations
+  remain unresolved.
+- Migration `0042` adds account-name redirects and their maintenance triggers. Existing
+  account names and IDs are unchanged; names abandoned before the upgrade cannot be
+  reconstructed.
+- Migration `0043` stores dashboard mention membership. First startup indexes existing
+  Markdown bodies, comments and submitted reviews in batches of 100, so large databases
+  can take longer to start. The backfill is restart-safe and runs once. Live mention
+  updates use the existing eventual event subscriber; no replay guarantee is introduced.
+- Automatic release checks are enabled by default. Set
+  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
+  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
+  Configuration changes take effect after restart. These controls need no additional
+  database migration and do not install updates.
 
 ## [0.1.3] - 2026-10-21
 

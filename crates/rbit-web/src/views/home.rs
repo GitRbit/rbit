@@ -3,7 +3,7 @@
 use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use rbit_core::RepoSort;
+use rbit_core::{RepoSort, repository::ArchivedFilter};
 use rbit_services::instance::PublicCounts;
 
 use crate::views::{
@@ -86,13 +86,16 @@ impl DashboardPage {
         self.repos.iter().filter(|repo| repo.is_private).count()
     }
 
-    /// The text the dashboard's instant filter matches against: `owner/name` and the
-    /// description, lower-cased.
+    /// The text the dashboard's instant filter matches against: `owner/name`, the
+    /// description and, for archived repositories, "archived", lower-cased.
     pub fn filter_text(repo: &RepoCard) -> String {
         let mut text = format!("{}/{}", repo.owner, repo.name);
         if let Some(description) = &repo.description {
             text.push(' ');
             text.push_str(description);
+        }
+        if repo.is_archived {
+            text.push_str(" archived");
         }
         text.to_lowercase()
     }
@@ -118,6 +121,10 @@ pub struct ExplorePage {
     /// The active sort's query-string value, kept when searching again.
     pub sort: &'static str,
     pub sorts: Vec<SortLink>,
+    /// The archive filter's query-string value, kept when searching again (`None`: all).
+    pub archived: Option<&'static str>,
+    /// All, active or archived repositories only.
+    pub archived_filters: Vec<SortLink>,
     pub total: u64,
     pub pagination: Pagination,
 }
@@ -130,14 +137,17 @@ impl ExplorePage {
     }
 }
 
-/// `/explore?q=…&sort=…&page=…`, omitting defaults so canonical URLs stay short.
-pub fn explore_url(query: &str, sort: RepoSort, page: u32) -> String {
+/// `/explore?q=…&sort=…&archived=…&page=…`, omitting defaults so canonical URLs stay short.
+pub fn explore_url(query: &str, sort: RepoSort, archived: ArchivedFilter, page: u32) -> String {
     let mut params = Vec::new();
     if !query.is_empty() {
         params.push(format!("q={}", utf8_percent_encode(query, NON_ALPHANUMERIC)));
     }
     if sort != RepoSort::default() {
         params.push(format!("sort={}", sort.as_str()));
+    }
+    if let Some(value) = archived.query_value() {
+        params.push(format!("archived={value}"));
     }
     if page > 1 {
         params.push(format!("page={page}"));
@@ -212,6 +222,7 @@ mod tests {
             url: format!("/{owner}/{name}"),
             description: description.map(str::to_owned),
             is_private,
+            is_archived: false,
             updated: "now".to_owned(),
             updated_iso: "2026-01-01T00:00:00Z".to_owned(),
             owner_avatar: Avatar { initials: "A".to_owned(), palette: 0 },
@@ -291,8 +302,10 @@ mod tests {
 
     #[test]
     fn explore_urls_omit_defaults_and_encode_queries() {
-        assert_eq!(explore_url("", RepoSort::RecentlyUpdated, 1), "/explore");
-        assert_eq!(explore_url("a&b c", RepoSort::Name, 2), "/explore?q=a%26b%20c&sort=name&page=2");
-        assert_eq!(explore_url("", RepoSort::Newest, 0), "/explore?sort=newest");
+        assert_eq!(explore_url("", RepoSort::RecentlyUpdated, ArchivedFilter::Include, 1), "/explore");
+        assert_eq!(explore_url("a&b c", RepoSort::Name, ArchivedFilter::Include, 2), "/explore?q=a%26b%20c&sort=name&page=2");
+        assert_eq!(explore_url("", RepoSort::Newest, ArchivedFilter::Include, 0), "/explore?sort=newest");
+        assert_eq!(explore_url("x", RepoSort::RecentlyUpdated, ArchivedFilter::Exclude, 3), "/explore?q=x&archived=false&page=3");
+        assert_eq!(explore_url("", RepoSort::Name, ArchivedFilter::Only, 1), "/explore?sort=name&archived=true");
     }
 }

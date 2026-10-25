@@ -12,6 +12,18 @@ let activeSection = null;
 let warmingSection = null;
 let generation = 0;
 
+// The element htmx swapped in (or the content an event names); the document otherwise.
+const rootOf = (event) => {
+  const root = event?.detail?.root ?? event?.detail?.elt ?? event?.target;
+  return typeof root?.querySelectorAll === 'function' ? root : document;
+};
+/** Elements in `root` matching `selector`, `root` included. */
+const within = (root, selector) => {
+  const found = [...root.querySelectorAll(selector)];
+  if (root.matches?.(selector)) found.unshift(root);
+  return found;
+};
+
 function documentURL(link) {
   const url = new URL(link.href, location.href);
   url.hash = '';
@@ -54,8 +66,9 @@ function cancelDocumentRequest() {
   pendingDocument = null;
 }
 
-function updateDocumentLinks(section) {
-  for (const link of document.querySelectorAll('[data-repo-document]')) {
+/** Marks the links to `section`'s documents in `root` (the whole page by default). */
+function updateDocumentLinks(section, root = document) {
+  for (const link of within(root, '[data-repo-document]')) {
     const active = link.dataset.repoDocument === section.dataset.documentKey;
     if (link.getAttribute('role') === 'tab') {
       link.setAttribute('aria-selected', String(active));
@@ -115,12 +128,17 @@ function refreshHeadingLinks(section) {
   }
 }
 
-function initializeDocuments() {
-  if (!document.querySelector('[data-repo-documents]')) {
+/**
+ * Sets up the documents sections in `root` (the whole page by default): new content
+ * from a swap or an inserted panel. Sections elsewhere on the page are unchanged.
+ */
+function initializeDocuments(root = document) {
+  if (activeSection && !activeSection.isConnected) {
     clearDocuments();
     activeSection = null;
   }
-  for (const section of document.querySelectorAll('[data-repo-documents]')) {
+  const sections = within(root, '[data-repo-documents]');
+  for (const section of sections) {
     if (activeSection !== section) {
       clearDocuments();
       activeSection = section;
@@ -139,6 +157,8 @@ function initializeDocuments() {
       if (status) status.hidden = true;
     }
   }
+  // Links to the documents may also arrive on their own (outside any section).
+  if (activeSection && !sections.includes(activeSection)) updateDocumentLinks(activeSection, root);
 }
 
 function loadDocument(link, section, speculative = false) {
@@ -268,7 +288,7 @@ async function switchDocument(link, { restore = false, focus = false } = {}) {
     pendingDocument = null;
     section.removeAttribute('aria-busy');
     if (!restore) history.replaceState(history.state, '', url.href);
-    initializeDocuments();
+    initializeDocuments(section);
     document.dispatchEvent(new CustomEvent('rbit:content-loaded', { detail: { root: panel } }));
     const selected = section.querySelector('[role="tab"][aria-selected="true"]');
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -351,8 +371,8 @@ document.addEventListener('htmx:beforeRequest', (event) => {
 addEventListener('popstate', clearDocuments);
 addEventListener('pagehide', clearDocuments);
 document.addEventListener('htmx:historyCacheMiss', clearDocuments);
-document.addEventListener('htmx:afterSettle', initializeDocuments);
-document.addEventListener('rbit:content-loaded', initializeDocuments);
+document.addEventListener('htmx:afterSettle', (event) => initializeDocuments(rootOf(event)));
+document.addEventListener('rbit:content-loaded', (event) => initializeDocuments(rootOf(event)));
 document.addEventListener('htmx:historyRestore', () => {
   clearDocuments();
   initializeDocuments();

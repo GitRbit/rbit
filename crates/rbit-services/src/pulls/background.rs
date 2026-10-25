@@ -7,7 +7,7 @@
 //! Every handler reads current state (events carry ids only) and is idempotent, so a
 //! push reported twice (two racing pushes see each other's updates) does no harm.
 
-use std::{sync::Arc, sync::atomic::Ordering, time::Duration};
+use std::{collections::HashMap, sync::Arc, sync::atomic::Ordering, time::Duration};
 
 use rbit_core::{
     AccountId, Issue, PushSource, RefUpdate, RepoId, StateReason, TimelineEvent, Timestamp,
@@ -185,20 +185,23 @@ impl PullService {
         if comments.is_empty() {
             return Ok(());
         }
-        let paths: Vec<String> = comments.iter().map(|comment| comment.path.clone()).collect();
-        let now = base.reader.path_ids(head.to_owned(), paths.clone()).await?;
-        let mut outdated = Vec::new();
-        for (index, comment) in comments.iter().enumerate() {
-            let then = base
-                .reader
-                .path_ids(comment.commit_sha.clone(), vec![paths[index].clone()])
-                .await
-                .ok()
-                .and_then(|mut ids| ids.pop().flatten());
-            if then != now[index] {
-                outdated.push(comment.id);
-            }
-        }
+        let lookups: Vec<(&str, &str)> = comments.iter().map(|comment| (comment.commit_sha.as_str(), comment.path.as_str())).collect();
+        let (requests, then_at) = outdated_requests(&lookups, head);
+        // One opening of the repository for the head and every commented commit.
+        let mut answers = base.reader.path_ids_at(requests).await?.into_iter();
+        let now = answers.next().flatten().ok_or(ServiceError::NotFound)?;
+        let then: Vec<_> = answers.collect();
+        let outdated: Vec<_> = comments
+            .iter()
+            .zip(then_at)
+            .enumerate()
+            .filter(|(index, (_, (request, position)))| {
+                // A commit that cannot be read any more knows no file: outdated unless gone now too.
+                let was = then[*request].as_ref().and_then(|ids| ids[*position].as_ref());
+                was != now[*index].as_ref()
+            })
+            .map(|(_, (comment, _))| comment.id)
+            .collect();
         store.mark_outdated(&outdated).await?;
         Ok(())
     }
@@ -318,10 +321,49 @@ impl PullService {
     }
 }
 
+/// A revision and the paths to look up in it.
+type PathRequest = (String, Vec<String>);
+
+/// The path lookups [`PullService::mark_outdated`] needs for comments given as
+/// `(commit, path)`: first every comment's path at `head`, then one request per distinct
+/// commented commit with the paths commented there. Also returns, per comment, where its
+/// own lookup is: `(request after the head's, position in its paths)`.
+fn outdated_requests(comments: &[(&str, &str)], head: &str) -> (Vec<PathRequest>, Vec<(usize, usize)>) {
+    let mut requests = vec![(head.to_owned(), comments.iter().map(|(_, path)| (*path).to_owned()).collect())];
+    let mut by_commit: HashMap<&str, usize> = HashMap::new();
+    let mut then_at = Vec::with_capacity(comments.len());
+    for &(commit, path) in comments {
+        let request = *by_commit.entry(commit).or_insert_with(|| {
+            requests.push((commit.to_owned(), Vec::new()));
+            requests.len() - 2
+        });
+        let paths = &mut requests[request + 1].1;
+        let position = paths.iter().position(|known| known == path).unwrap_or_else(|| {
+            paths.push(path.to_owned());
+            paths.len() - 1
+        });
+        then_at.push((request, position));
+    }
+    (requests, then_at)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn the_worker_wakes_up_regularly() {
         assert!(super::MERGEABILITY_TICK.as_secs() >= 10);
+    }
+
+    #[test]
+    fn outdated_lookups_are_grouped_by_commit() {
+        let comments = [("c1", "a"), ("c2", "a"), ("c1", "b"), ("c1", "a")];
+        let (requests, then_at) = outdated_requests(&comments, "head");
+        let expected = [("head", vec!["a", "a", "b", "a"]), ("c1", vec!["a", "b"]), ("c2", vec!["a"])];
+        let requests: Vec<_> =
+            requests.iter().map(|(rev, paths)| (rev.as_str(), paths.iter().map(String::as_str).collect::<Vec<_>>())).collect();
+        assert_eq!(requests, expected, "two commits: three lookups for four comments, each path once per commit");
+        assert_eq!(then_at, [(0, 0), (1, 0), (0, 1), (0, 0)]);
     }
 }

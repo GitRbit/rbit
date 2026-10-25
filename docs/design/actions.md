@@ -1330,7 +1330,14 @@ and what is known to be missing. Where they disagree, this section and the code 
   Unix-only runner code (process groups, file modes) outside CI, and the new pages at 375 px
   and in the dark theme (the stylesheet was not built where they were written).
 
-### 13.3 Commits
+### 13.3 Migrations
+
+`main` released its own migrations `0044`–`0047` (v0.1.4 and v0.1.5) while this branch was
+open, so merging it renumbered the Actions migrations: `0044_actions.sql` is now
+**`0048_actions.sql`** and `0045_commit_status_source.sql` is **`0049_commit_status_source.sql`**.
+The plan text above keeps the old numbers.
+
+### 13.4 Commits
 
 Commits carry the contributor's configured Git identity, which is not the one §12.11 names,
 and no AI co-author trailers, as `CONTRIBUTING.md` requires.

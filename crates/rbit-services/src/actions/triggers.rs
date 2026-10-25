@@ -297,7 +297,7 @@ impl ActionsService {
         }
         let event = DomainEvent::Issue { repo, issue, number: thread.number, kind: IssueKind::Pull, actor, action: action.clone() };
         let base_url = self.ctx().config.server.base_url();
-        let Some(payload) = crate::pulls::hooks::payload(self.ctx(), &event, base_url).await? else { return Ok(Vec::new()) };
+        let Some(payload) = crate::pulls::hooks::build(self.ctx(), &event, base_url).await? else { return Ok(Vec::new()) };
         let payload = context::fit_payload(payload.body);
         let trigger = Trigger {
             repo: &owned,

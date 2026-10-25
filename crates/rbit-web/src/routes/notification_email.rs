@@ -18,7 +18,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
-use rbit_core::config::EmailPreference;
+use rbit_core::config::{EmailDelivery, EmailPreference, MAX_DIGEST_HOUR};
 use rbit_services::{
     ServiceError,
     notification_email::{SETTINGS_PATH, UNSUBSCRIBE_PATH},
@@ -56,6 +56,22 @@ pub struct SavedQuery {
 pub struct PreferenceForm {
     #[serde(default)]
     email: String,
+    /// `immediate`, `daily` or `weekly`; missing keeps the current choice.
+    delivery: Option<String>,
+    /// An hour (0–23, UTC), or empty for the instance default.
+    #[serde(default)]
+    digest_hour: String,
+}
+
+impl PreferenceForm {
+    /// The digest hour, `Ok(None)` for the default.
+    fn digest_hour(&self) -> Result<Option<u8>, ()> {
+        let hour = self.digest_hour.trim();
+        if hour.is_empty() {
+            return Ok(None);
+        }
+        hour.parse::<u8>().ok().filter(|hour| *hour <= MAX_DIGEST_HOUR).map(Some).ok_or(())
+    }
 }
 
 /// `GET /settings/notifications`
@@ -77,13 +93,19 @@ async fn save_settings(
     Form(form): Form<PreferenceForm>,
 ) -> WebResult<Response> {
     let email = &state.services.notification_email;
-    let Some(preference) = EmailPreference::parse(&form.email) else {
-        let settings = email.settings(&user).await?;
-        let page = NotificationSettingsPage::new(page, &settings).with_error(FormError::new("Choose which notifications to email."));
-        return Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response());
+    let settings = email.settings(&user).await?;
+    let delivery = form.delivery.as_deref().map_or(Some(settings.delivery), EmailDelivery::parse);
+    let problem = match (EmailPreference::parse(&form.email), delivery, form.digest_hour()) {
+        (Some(preference), Some(delivery), Ok(digest_hour)) => {
+            email.set_preferences(&user, preference, delivery, digest_hour).await?;
+            return Ok(Redirect::to(&format!("{SETTINGS_PATH}?saved=1")).into_response());
+        }
+        (None, _, _) => "Choose which notifications to email.",
+        (_, None, _) => "Choose when to send them.",
+        (_, _, Err(())) => "Choose a digest time from the list.",
     };
-    email.set_preference(&user, preference).await?;
-    Ok(Redirect::to(&format!("{SETTINGS_PATH}?saved=1")).into_response())
+    let page = NotificationSettingsPage::new(page, &settings).with_error(FormError::new(problem));
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
 }
 
 // ------------------------------------------------------------------ one-click unsubscribe

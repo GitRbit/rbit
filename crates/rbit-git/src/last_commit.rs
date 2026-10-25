@@ -56,40 +56,47 @@ impl RepositoryReader {
         entry_names: Vec<String>,
         limits: LastCommitLimits,
     ) -> Result<LastCommits, GitError> {
-        self.with_repo(move |repo| {
-            let started = Instant::now();
-            let tip = resolve_commit(repo, &revision)?;
-            let mut walk =
-                HistoryWalk { repo, directory: &directory, directory_trees: HashMap::new(), entry_trees: VecDeque::new(), entry_bytes: 0 };
-            let mut unresolved: HashSet<String> = entry_names.into_iter().collect();
-            let mut result = LastCommits::default();
-
-            let commits =
-                repo.rev_walk([tip]).sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst)).all().map_err(GitError::backend)?;
-            for (visited, info) in commits.enumerate() {
-                if unresolved.is_empty() || visited == limits.max_commits {
-                    break;
-                }
-                if started.elapsed() >= limits.deadline {
-                    result.timed_out = true;
-                    break;
-                }
-                let info = info.map_err(GitError::backend)?;
-                let parents: Vec<ObjectId> = info.parent_ids().map(gix::Id::detach).collect();
-                let changed = walk.changed_entries(info.id, &parents, &unresolved)?;
-                if changed.is_empty() {
-                    continue;
-                }
-                let summary = summarize(&repo.find_commit(info.id).map_err(GitError::backend)?)?;
-                for name in changed {
-                    unresolved.remove(&name);
-                    result.commits.insert(name, summary.clone());
-                }
-            }
-            Ok(result)
-        })
-        .await
+        self.with_repo(move |repo| Ok(walk_last_commits(repo, &revision, &directory, entry_names, limits)?.0)).await
     }
+}
+
+/// The walk behind [`RepositoryReader::last_commits`]; also returns how many commit
+/// objects were decoded just to find a root tree.
+fn walk_last_commits(
+    repo: &gix::Repository,
+    revision: &str,
+    directory: &str,
+    entry_names: Vec<String>,
+    limits: LastCommitLimits,
+) -> Result<(LastCommits, usize), GitError> {
+    let started = Instant::now();
+    let tip = resolve_commit(repo, revision)?;
+    let mut walk = HistoryWalk::new(repo, directory);
+    let mut unresolved: HashSet<String> = entry_names.into_iter().collect();
+    let mut result = LastCommits::default();
+
+    let commits = repo.rev_walk([tip]).sorting(Sorting::ByCommitTime(CommitTimeOrder::NewestFirst)).all().map_err(GitError::backend)?;
+    for (visited, info) in commits.enumerate() {
+        if unresolved.is_empty() || visited == limits.max_commits {
+            break;
+        }
+        if started.elapsed() >= limits.deadline {
+            result.timed_out = true;
+            break;
+        }
+        let info = info.map_err(GitError::backend)?;
+        let parents: Vec<ObjectId> = info.parent_ids().map(gix::Id::detach).collect();
+        let changed = walk.changed_entries(info.id, &parents, &unresolved)?;
+        if changed.is_empty() {
+            continue;
+        }
+        let summary = summarize(&repo.find_commit(info.id).map_err(GitError::backend)?)?;
+        for name in changed {
+            unresolved.remove(&name);
+            result.commits.insert(name, summary.clone());
+        }
+    }
+    Ok((result, walk.commits_decoded))
 }
 
 type TreeEntries = Arc<HashMap<String, ObjectId>>;
@@ -98,6 +105,12 @@ const TREE_CACHE_BYTES: usize = 4 * 1024 * 1024;
 struct HistoryWalk<'a> {
     repo: &'a gix::Repository,
     directory: &'a str,
+    /// The repository's commit-graph, when it has one: root tree ids of the commits it
+    /// covers are read from it instead of decoding each commit object. Commits newer than
+    /// the graph fall back to the object database.
+    graph: Option<gix::commitgraph::Graph>,
+    /// Commit objects decoded to find a root tree (those the graph did not answer).
+    commits_decoded: usize,
     /// Commit → the directory's tree id in it (`None` when absent). Children are visited
     /// before parents, so each parent's lookup is reused when the walk reaches it.
     directory_trees: HashMap<ObjectId, Option<ObjectId>>,
@@ -105,7 +118,22 @@ struct HistoryWalk<'a> {
     entry_bytes: usize,
 }
 
-impl HistoryWalk<'_> {
+impl<'a> HistoryWalk<'a> {
+    fn new(repo: &'a gix::Repository, directory: &'a str) -> Self {
+        // A missing, disabled or unreadable graph only costs speed.
+        let graph = repo.commit_graph_if_enabled().ok().flatten();
+        Self { repo, directory, graph, commits_decoded: 0, directory_trees: HashMap::new(), entry_trees: VecDeque::new(), entry_bytes: 0 }
+    }
+
+    /// The root tree of `commit`, from the commit-graph when it covers the commit.
+    fn root_tree(&mut self, commit: ObjectId) -> Result<ObjectId, GitError> {
+        if let Some(tree) = self.graph.as_ref().and_then(|graph| graph.commit_by_id(commit)).map(|entry| entry.root_tree_id().to_owned()) {
+            return Ok(tree);
+        }
+        self.commits_decoded += 1;
+        Ok(self.repo.find_commit(commit).map_err(GitError::backend)?.tree_id().map_err(GitError::backend)?.detach())
+    }
+
     /// The unresolved entries whose object id in `commit` differs from every parent's.
     fn changed_entries(&mut self, commit: ObjectId, parents: &[ObjectId], unresolved: &HashSet<String>) -> Result<Vec<String>, GitError> {
         let Some(tree) = self.directory_tree(commit)? else {
@@ -134,7 +162,7 @@ impl HistoryWalk<'_> {
         if let Some(cached) = self.directory_trees.get(&commit) {
             return Ok(*cached);
         }
-        let root = self.repo.find_commit(commit).map_err(GitError::backend)?.tree_id().map_err(GitError::backend)?.detach();
+        let root = self.root_tree(commit)?;
         let tree = if self.directory.is_empty() {
             Some(root)
         } else {
@@ -179,5 +207,70 @@ impl HistoryWalk<'_> {
             self.entry_trees.push_back((id, Arc::clone(&entries), bytes));
         }
         Ok(entries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn git(dir: &std::path::Path, args: &[&str], date: i64) {
+        let date = format!("{date} +0000");
+        let status = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false"])
+            .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_DATE", &date)
+            .env("GIT_COMMITTER_DATE", &date)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    }
+
+    type Walked = (Vec<(String, String)>, usize);
+
+    fn walk(root: &std::path::Path, directory: &str, names: &[&str]) -> Walked {
+        let repo = gix::open_opts(root.join(".git"), gix::open::Options::isolated()).unwrap();
+        let names = names.iter().map(|name| (*name).to_owned()).collect();
+        let limits = LastCommitLimits { max_commits: 100, deadline: Duration::from_mins(1) };
+        let (result, decoded) = walk_last_commits(&repo, "main", directory, names, limits).unwrap();
+        let mut summaries: Vec<_> = result.commits.into_iter().map(|(name, commit)| (name, commit.summary)).collect();
+        summaries.sort();
+        (summaries, decoded)
+    }
+
+    #[test]
+    fn a_commit_graph_answers_root_trees_without_changing_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let mut clock = 1_700_000_000;
+        let mut run = |args: &[&str]| {
+            clock += 60;
+            git(root, args, clock);
+        };
+        run(&["init", "-q"]);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        for (file, message) in [("src/a.rs", "add a"), ("src/b.rs", "add b"), ("README.md", "readme"), ("src/a.rs", "edit a")] {
+            std::fs::write(root.join(file), message).unwrap();
+            run(&["add", "-A"]);
+            run(&["commit", "-q", "-m", message]);
+        }
+
+        let (root_before, root_decoded) = walk(root, "", &["src", "README.md"]);
+        let (src_before, src_decoded) = walk(root, "src", &["a.rs", "b.rs"]);
+        assert!(root_decoded > 0 && src_decoded > 0, "without a graph every visited commit is decoded");
+
+        run(&["commit-graph", "write", "--reachable", "--split"]);
+        assert_eq!(walk(root, "", &["src", "README.md"]), (root_before, 0), "same answer, no commit decoded for its tree");
+        assert_eq!(walk(root, "src", &["a.rs", "b.rs"]), (src_before.clone(), 0));
+
+        // A commit made after the graph was written falls back to its object, and only it.
+        std::fs::write(root.join("src/b.rs"), "edit b").unwrap();
+        run(&["commit", "-q", "-am", "edit b"]);
+        let (src_after, decoded) = walk(root, "src", &["a.rs", "b.rs"]);
+        assert_eq!(decoded, 1);
+        assert_eq!(src_after, [("a.rs".to_owned(), "edit a".to_owned()), ("b.rs".to_owned(), "edit b".to_owned())]);
+        assert_eq!(src_before[0], src_after[0]);
     }
 }

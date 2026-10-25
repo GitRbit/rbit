@@ -3,11 +3,12 @@
 use std::{io::BufRead, sync::Arc, time::Duration};
 
 use anyhow::Context;
+use axum::serve::{ListenerExt, TapIo};
 use rbit_core::Config;
 use rbit_services::{Services, SignUp, accounts};
 use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 
 /// How often expired sessions are purged from the key/value store.
 const SESSION_PURGE_INTERVAL: Duration = Duration::from_hours(1);
@@ -31,7 +32,7 @@ async fn open_database(config: &Config) -> anyhow::Result<Database> {
     tokio::fs::create_dir_all(storage.repositories_dir())
         .await
         .with_context(|| format!("cannot create data directory {}", storage.data_dir.display()))?;
-    Database::open(&storage.sqlite_path()).await.context("cannot open SQLite database")
+    Database::open_with_key_file(&storage.sqlite_path(), &storage.secret_key_path()).await.context("cannot open SQLite database")
 }
 
 pub async fn run(config: Config) -> anyhow::Result<()> {
@@ -45,8 +46,10 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
     let background = services.clone();
     let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
-    let listener = TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?;
+    let listener =
+        http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
+    log_setup_token(&config, &background);
 
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
@@ -58,6 +61,24 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     background.shutdown().await;
     storage.database.close().await;
     Ok(())
+}
+
+/// On an instance without users, prints what the first (administrator) sign-up needs.
+fn log_setup_token(config: &Config, services: &Services) {
+    let Some(token) = services.accounts.setup_token() else { return };
+    let url = format!("{}/signup", config.server.public_url.trim_end_matches('/'));
+    // A configured token is already known to whoever deploys the server.
+    let token = if config.security.setup_token.as_deref().is_some_and(|configured| configured.trim() == token) {
+        "(security.setup_token)"
+    } else {
+        token
+    };
+    tracing::warn!(
+        setup_url = %url,
+        setup_token = %token,
+        "no account exists yet: sign up at the setup URL with this setup token to create the administrator \
+         (or run `rbit user create <name> <email> --admin`)"
+    );
 }
 
 pub async fn migrate(config: Config) -> anyhow::Result<()> {
@@ -80,6 +101,19 @@ pub async fn create_user(config: Config, username: String, email: String, admin:
     tracing::info!(user = %user.name(), admin, "user created");
     database.close().await;
     Ok(())
+}
+
+/// Accepted connections with Nagle's algorithm off. Responses are written in several
+/// small pieces (headers, then body frames); with Nagle on, a piece that follows an
+/// unacknowledged one waits for the peer's delayed ACK before it is sent.
+fn http_listener(listener: TcpListener) -> TapIo<TcpListener, fn(&mut TcpStream)> {
+    listener.tap_io(disable_nagle as fn(&mut TcpStream))
+}
+
+fn disable_nagle(stream: &mut TcpStream) {
+    if let Err(error) = stream.set_nodelay(true) {
+        tracing::debug!(%error, "cannot set TCP_NODELAY on an accepted connection");
+    }
 }
 
 fn spawn_session_purger(kv: KvStore) {
@@ -114,5 +148,21 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::serve::Listener as _;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn accepted_connections_disable_nagle() {
+        let mut listener = http_listener(TcpListener::bind("127.0.0.1:0").await.unwrap());
+        let address = listener.local_addr().unwrap();
+        let _client = tokio::net::TcpStream::connect(address).await.unwrap();
+        let (stream, _) = listener.accept().await;
+        assert!(stream.nodelay().unwrap());
     }
 }

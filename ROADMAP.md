@@ -42,8 +42,8 @@ for release history.
 - **Themes:** light, dark and about 500 tinted-theming schemes.
 - **Distribution:** community contribution files, release binaries for
   Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/gitrbit/rbit`.
-- **Email notifications** on top of the in-app inbox, with per-user preferences and
-  one-click unsubscribe.
+- **Email notifications** on top of the in-app inbox, with per-user preferences, daily or
+  weekly digests and one-click unsubscribe.
 - **Editing files in the browser:** create, edit, rename, delete and upload files, committing
   to the branch or to a new branch with a pull request.
 - **Git LFS:** the batch API, uploads and downloads, and file locking.
@@ -55,6 +55,8 @@ for release history.
 - **Administration:** instance branding and deployment configuration forms.
 - **Personal dashboards:** cross-repository `/issues` and `/pulls` with created, assigned,
   mentioned and review-requested views.
+- **Archived repositories:** read-only repositories that can still be cloned, forked and
+  starred, with a banner, list badges and an Explore filter.
 
 Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
 reviews and repository Markdown files, using the same sanitized rendering as saved text.
@@ -69,8 +71,6 @@ Ideas with no schedule yet:
 
 - A native gitoxide transport for `receive-pack`, behind a configuration switch, so pushes
   no longer need the `git` binary.
-- Email digests.
-- Archived (read-only) repositories.
 - Git LFS over pure SSH (`git-lfs-transfer`); today SSH clients use
   `git-lfs-authenticate` and HTTP.
 

@@ -651,6 +651,8 @@ mod tests {
         assert_eq!(edited["body"], "Same here too");
         let (_, fetched) = send("GET", format!("{api}/issues/comments/{id}"), None).await;
         assert_eq!(fetched["body"], "Same here too");
+        let (_, comments) = send("GET", format!("{api}/issues/1/comments"), None).await;
+        assert_eq!(fetched, comments[0], "a comment looks the same fetched alone and in its thread");
         let (response, _) = send("GET", "/api/v1/repos/alice/demo/issues/comments/999".to_owned(), None).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
 

@@ -7,8 +7,8 @@
 //!
 //! Milestone 1 workstream H owns this file. Keep row types here rather than in `rows.rs`.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, RepoId, Timestamp, User, repository::OwnedRepository};
-use sqlx::SqlitePool;
 
 use super::rows::{OwnedRepositoryRow, UserRow};
 use crate::StorageError;
@@ -189,11 +189,11 @@ fn insert_error(error: sqlx::Error) -> StorageError {
 
 #[derive(Debug, Clone)]
 pub struct SshKeyStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl SshKeyStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
@@ -333,7 +333,8 @@ impl SshKeyStore {
 
         let deploy: Option<DeployKeyRepoRow> = sqlx::query_as(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at, \
              k.id AS key_id, k.title AS key_title, k.public_key AS key_public_key, k.algorithm AS key_algorithm, \
              k.fingerprint AS key_fingerprint, k.read_only AS key_read_only, k.created_at AS key_created_at, \

@@ -1,5 +1,5 @@
 //! Workflow runs, their jobs, the tasks runners execute and their steps (migration
-//! `0044_actions.sql`) — and the run state machine, each transition in one transaction:
+//! `0048_actions.sql`) — and the run state machine, each transition in one transaction:
 //!
 //! * [`ActionsRunStore::create_run`] numbers the run and creates its jobs: with
 //!   [`RunStart::Runnable`] jobs without `needs` are waiting and the others blocked; a run

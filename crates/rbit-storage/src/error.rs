@@ -25,6 +25,18 @@ pub enum StorageError {
 
     #[error("background task failed: {0}")]
     Join(#[from] tokio::task::JoinError),
+
+    /// The secret key file is unusable, or a sealed value cannot be opened with it.
+    #[error(transparent)]
+    Sealing(#[from] crate::sealing::SealError),
+
+    /// The database holds sealed secrets but their key file is missing.
+    #[error("the secret key file {0} is missing, but the database holds values sealed with it; restore the key file from your backup")]
+    MissingKey(String),
+
+    /// The secret key file does not open the values sealed in the database.
+    #[error("the secret key file {0} does not match the values sealed in the database; restore the key file that belongs to it")]
+    WrongKey(String),
 }
 
 impl StorageError {

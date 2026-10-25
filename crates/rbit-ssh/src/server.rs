@@ -119,7 +119,7 @@ pub async fn start(config: Arc<Config>, services: Services) -> Result<RunningSsh
     );
 
     let russh_config = Arc::new(russh_config(&config, host_key));
-    let transport = ProcessTransport::new(config.repository.git_binary.clone());
+    let transport = ProcessTransport::new(config.repository.git_binary.clone()).with_max_push_bytes(config.repository.max_push_bytes());
     let connections = Arc::new(Semaphore::new(config.ssh.max_connections.max(1)));
     let shared = Arc::new(Shared { config, services, transport, connections, per_ip: Mutex::new(HashMap::new()) });
 

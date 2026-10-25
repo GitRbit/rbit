@@ -59,6 +59,9 @@ pub struct SignupForm {
     username: String,
     email: String,
     password: String,
+    /// Only asked for (and only checked) while the instance has no user.
+    #[serde(default)]
+    setup_token: String,
 }
 
 pub async fn login_form(State(state): State<AppState>, viewer: Viewer, page: Page, Query(query): Query<NextQuery>) -> WebResult<Response> {
@@ -97,7 +100,7 @@ pub async fn signup_form(State(state): State<AppState>, viewer: Viewer, page: Pa
     if viewer.user().is_some() {
         return Ok(Redirect::to("/").into_response());
     }
-    Ok(signup_page(&state, page, FormError::default(), String::new(), String::new()).await?.into_response())
+    Ok(signup_page(&state, page, FormError::default(), String::new(), String::new(), String::new()).await?.into_response())
 }
 
 pub async fn signup(
@@ -108,17 +111,19 @@ pub async fn signup(
     page: Page,
     Form(form): Form<SignupForm>,
 ) -> WebResult<Response> {
+    let SignupForm { username, email, password, setup_token } = form;
     let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
     if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check(ThrottleScope::SignUp, &ip) {
         let error = FormError::new(slow_down("sign-up", retry_after_seconds));
-        let page = signup_page(&state, page, error, form.username, form.email).await?;
+        let page = signup_page(&state, page, error, username, email, setup_token).await?;
         return Ok(too_many_requests(page, retry_after_seconds));
     }
-    let input = SignUp { username: form.username.clone(), email: form.email.clone(), password: form.password };
-    match state.services.accounts.sign_up(input).await {
+    let input = SignUp { username: username.clone(), email: email.clone(), password };
+    match state.services.accounts.sign_up(input, &setup_token).await {
         Ok(user) => start_session(&state, jar, https, &client, &user, "/").await,
         Err(error @ (ServiceError::Invalid(_) | ServiceError::Conflict(_) | ServiceError::RegistrationClosed)) => {
-            let page = signup_page(&state, page, FormError::from_message(&error.to_string()), form.username, form.email).await?;
+            let error = FormError::from_message(&error.to_string());
+            let page = signup_page(&state, page, error, username, email, setup_token).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
         }
         Err(other) => Err(other.into()),
@@ -153,14 +158,24 @@ pub(crate) fn second_factor_redirect(jar: CookieJar, https: Https, pending: &Ses
     (jar.add(cookie), Redirect::to(&target)).into_response()
 }
 
-async fn signup_page(state: &AppState, page: Page, error: FormError, username: String, email: String) -> Result<SignupPage, WebError> {
+async fn signup_page(
+    state: &AppState,
+    page: Page,
+    error: FormError,
+    username: String,
+    email: String,
+    setup_token: String,
+) -> Result<SignupPage, WebError> {
+    let accounts = &state.services.accounts;
     Ok(SignupPage {
         page: page.titled("Sign up"),
         error,
         username,
         email,
+        setup_token,
         min_password_length: state.config.security.min_password_length,
-        registration_open: state.services.accounts.registration_open().await?,
+        registration_open: accounts.registration_open().await?,
+        setup_required: accounts.setup_required().await?,
     })
 }
 

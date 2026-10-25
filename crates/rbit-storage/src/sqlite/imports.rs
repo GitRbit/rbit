@@ -9,12 +9,12 @@
 //! the same transaction ([`ImportStore::insert_pull`]). Releases are created by
 //! [`super::releases::ReleaseStore`] and only back-dated here.
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, Issue, RepoId, Timestamp,
     import::{ImportCounts, ImportOptions, ImportPhase, ImportStatus, RepoImport, SourceKind},
     release::ReleaseId,
 };
-use sqlx::SqlitePool;
 
 use super::issues::{ImportedThread, IssueStore};
 use crate::StorageError;
@@ -92,11 +92,11 @@ pub struct ImportedPull {
 
 #[derive(Debug, Clone)]
 pub struct ImportStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl ImportStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

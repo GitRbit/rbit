@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn key_file_defaults_into_the_actions_directory() {
-        let storage = StorageConfig { data_dir: PathBuf::from("data") };
+        let storage = StorageConfig { data_dir: PathBuf::from("data"), ..StorageConfig::default() };
         assert_eq!(storage.actions_dir(), PathBuf::from("data").join("actions"));
         let config = ActionsConfig::default();
         assert_eq!(config.secrets_key_path(&storage), PathBuf::from("data").join("actions").join("secrets.key"));

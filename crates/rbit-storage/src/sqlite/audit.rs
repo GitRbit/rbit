@@ -5,8 +5,8 @@
 //! Entries never change once written and never reference other rows: actor and target
 //! names are copied in, so the log stays readable after accounts are renamed or deleted.
 
+use super::pool::Pool;
 use rbit_core::{AccountId, Timestamp};
-use sqlx::SqlitePool;
 
 use super::admin::{ListFilter, Listing};
 use crate::StorageError;
@@ -20,7 +20,8 @@ pub enum AuditCategory {
     Tokens,
     /// Collaborators, teams, transfers, webhooks and branch protection (milestone 2).
     RepositoryAccess,
-    /// Issues and pull requests deleted (milestone 2 wave B).
+    /// Issues and pull requests deleted (milestone 2 wave B), repositories archived and
+    /// unarchived.
     RepositoryContent,
     Administration,
 }
@@ -133,10 +134,12 @@ pub enum AuditAction {
     ActionsRunnerDisabled,
     ActionsRunnerEnabled,
     ActionsRunnerRemoved,
+    RepositoryArchived,
+    RepositoryUnarchived,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 61] = [
+    pub const ALL: [Self; 63] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -201,6 +204,8 @@ impl AuditAction {
         Self::ActionsRunnerDisabled,
         Self::ActionsRunnerEnabled,
         Self::ActionsRunnerRemoved,
+        Self::RepositoryArchived,
+        Self::RepositoryUnarchived,
     ];
 
     /// Stable identifier stored in the database.
@@ -270,6 +275,8 @@ impl AuditAction {
             Self::ActionsRunnerDisabled => "actions_runner_disabled",
             Self::ActionsRunnerEnabled => "actions_runner_enabled",
             Self::ActionsRunnerRemoved => "actions_runner_removed",
+            Self::RepositoryArchived => "repository_archived",
+            Self::RepositoryUnarchived => "repository_unarchived",
         }
     }
 
@@ -339,7 +346,7 @@ impl AuditAction {
             | Self::ActionsRunnerDisabled
             | Self::ActionsRunnerEnabled
             | Self::ActionsRunnerRemoved => AuditCategory::RepositoryAccess,
-            Self::IssueDeleted => AuditCategory::RepositoryContent,
+            Self::IssueDeleted | Self::RepositoryArchived | Self::RepositoryUnarchived => AuditCategory::RepositoryContent,
         }
     }
 
@@ -410,6 +417,8 @@ impl AuditAction {
             Self::ActionsRunnerDisabled => "Disabled a runner",
             Self::ActionsRunnerEnabled => "Enabled a runner",
             Self::ActionsRunnerRemoved => "Removed a runner",
+            Self::RepositoryArchived => "Archived a repository",
+            Self::RepositoryUnarchived => "Unarchived a repository",
         }
     }
 
@@ -486,11 +495,11 @@ macro_rules! audit_filter {
 
 #[derive(Debug, Clone)]
 pub struct AuditStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AuditStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

@@ -88,7 +88,10 @@ impl Fixture {
     async fn saved(&self) -> serde_json::Value {
         let document =
             self.database.instance_settings().load().await.unwrap().into_iter().find(|(key, _)| key == "deployment_config").unwrap().1;
-        serde_json::from_str(&document).unwrap()
+        let mut value = serde_json::from_str(&document).unwrap();
+        // Secret fields are stored sealed; compare them as the server reads them.
+        self.database.sealing_key().open_secret_fields(&mut value).unwrap();
+        value
     }
 }
 

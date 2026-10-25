@@ -28,6 +28,7 @@ use rbit_core::{
 use rbit_git::DiffLimits;
 use rbit_services::{
     RepoContext, ServiceError,
+    issues::MetadataNeeds,
     pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict},
     timeline::{IssueContext, TimelineCursor},
 };
@@ -127,7 +128,7 @@ async fn review_views(
     let refs = state.services.references.resolve(ctx.repo(), &texts).await?;
     let refs = ref_context(ctx, refs);
     let urls = PullUrls::for_context(ctx);
-    let can_dismiss = viewer.is_some() && ctx.repo().access.can_write();
+    let can_dismiss = viewer.is_some() && ctx.repo().can_write_content();
     let sources: std::collections::HashMap<_, _> = data.visible_comments().map(|(comment, _)| (comment.id.0, comment)).collect();
     let mut comments: Vec<ReviewCommentView> = Vec::new();
     for entry in &data.reviews {
@@ -250,7 +251,8 @@ async fn list(
     let issues = &state.services.issues;
     let ctx = &loaded.ctx;
     let (results, labels, milestones, people) = tokio::try_join!(
-        issues.search(viewer.user(), ctx, &query, params.page.unwrap_or(1)),
+        // Rows show labels, not assignees or milestones.
+        issues.search_with(viewer.user(), ctx, &query, params.page.unwrap_or(1), MetadataNeeds::Labels),
         issues.labels(ctx),
         issues.milestones(ctx, None),
         issues.assignable(ctx, ""),
@@ -403,13 +405,17 @@ async fn new_page(
             view.additions = comparison.additions();
             view.deletions = comparison.deletions();
             view.truncated = comparison.truncated;
-            view.files = tokio::task::spawn_blocking(move || FileDiffView::list(&comparison.files, &comparison.head.id, &head_urls))
+            view.files = tokio::task::spawn_blocking(move || FileDiffView::list_owned(comparison.files, &comparison.head.id, &head_urls))
                 .await
                 .map_err(WebError::internal)?;
             view.can_create = viewer.user().is_some();
         }
         Err(ServiceError::Internal(source)) => return Err(WebError::Internal(source)),
         Err(_) => view.problem = Some("Choose two existing branches to compare.".to_owned()),
+    }
+    if loaded.ctx.repo.repo.is_archived() {
+        view.problem = Some(rbit_core::repository::ARCHIVED_READ_ONLY.to_owned());
+        view.can_create = false;
     }
     Ok(view.into_response())
 }
@@ -485,24 +491,48 @@ async fn conversation(
     let options =
         TimelineOptions { edit: query.edit.as_deref(), head_branch: Some(&ctx.pull.head_branch), base_branch: Some(&ctx.pull.base_branch) };
     let pulls = &state.services.pulls;
-    let (thread, data, pull_header) = tokio::join!(
+    let is_open = ctx.issue().state == IssueState::Open;
+    // Independent reads run together: the timeline, the reviews, the header, the sidebar
+    // and a closed pull request's head branch. Errors surface in the order the reads used
+    // to run in.
+    let closed_head = async {
+        if is_open {
+            return Ok((false, false));
+        }
+        let can_write_head = async {
+            match user {
+                Some(user) => pulls.may_delete_head(user, &ctx).await,
+                None => Ok(false),
+            }
+        };
+        let (head_exists, can_write_head) = tokio::join!(pulls.head_branch_exists(&ctx), can_write_head);
+        can_write_head.map(|can_write_head| (head_exists, can_write_head))
+    };
+    let (thread, data, pull_header, sidebar, closed_head) = tokio::join!(
         thread(&state, &ctx.thread, user, after, options),
         pulls.reviews(user, &ctx),
         header_without_diff(&state, &ctx, "conversation", None),
+        crate::views::issues::sidebar(&state, &ctx.thread, user),
+        closed_head,
     );
     let (thread, data) = (thread?, data?);
-    let (reviews, _) = review_views(&state, &ctx, &data, user).await?;
+    // Then what needs the reviews, with the viewer's read mark: the merge box counts the
+    // reviews just loaded instead of reading them again.
+    let merge_box = async { if is_open { pulls.merge_box_from(user, &ctx, &data).await.map(Some) } else { Ok(None) } };
+    let thread_unread = sidebar.as_ref().is_ok_and(|sidebar| sidebar.thread_unread);
+    let mark_viewed = async {
+        if let Some(user) = user {
+            super::issues::mark_viewed(&state, &mut page, user, ctx.issue().id, thread_unread).await;
+        }
+    };
+    let (review_views, merge_box, ()) = tokio::join!(review_views(&state, &ctx, &data, user), merge_box, mark_viewed);
+    let (reviews, _) = review_views?;
     let urls = PullUrls::for_context(&ctx);
-    let is_open = ctx.issue().state == IssueState::Open;
-    let merge_box = if is_open { Some(MergeBoxView::new(&pulls.merge_box(user, &ctx).await?, &ctx, &urls, user)) } else { None };
+    let merge_box = merge_box?.map(|merge_box| MergeBoxView::new(&merge_box, &ctx, &urls, user));
     let closed_box = if is_open {
         None
     } else {
-        let head_exists = pulls.head_branch_exists(&ctx).await;
-        let can_write_head = match user {
-            Some(user) => pulls.may_delete_head(user, &ctx).await?,
-            None => false,
-        };
+        let (head_exists, can_write_head) = closed_head?;
         let repo_urls = RepoUrls::new(&owner, &repo);
         Some(ClosedBoxView {
             merged: ctx.pull.is_merged(),
@@ -517,15 +547,11 @@ async fn conversation(
         user.is_some() && (permissions.can_triage || user.is_some_and(|user| ctx.issue().is_author(user) && permissions.can_comment));
     let reviewers = ReviewersView::new(&data, can_request && is_open, &urls);
     let review_form = review_form(&ctx, &data, user);
-    let can_change_base = is_open && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_change_base = is_open
+        && !ctx.repo().repo.repo.is_archived()
+        && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
     let can_convert_to_draft = can_change_base && !ctx.pull.is_draft;
-    if let Some(user) = user {
-        state.services.notifications.mark_thread_read(user.id(), ctx.issue().id).await;
-        if page.has_unread_notifications {
-            page.has_unread_notifications = state.services.notifications.has_unread(user.id()).await.unwrap_or(false);
-        }
-    }
-    let sidebar = crate::views::issues::sidebar(&state, &ctx.thread, user).await?;
+    let sidebar = sidebar?;
     let entries = interleave(thread.items.clone(), reviews);
     let view = PullPage {
         page: page.titled(title(&ctx, "")),
@@ -603,13 +629,18 @@ async fn files(
     let counts = changes.as_ref().map_or_else(|| PullCountsView::known(0, 0), |c| PullCountsView::known(c.ahead, c.files.len()));
     let urls = PullUrls::for_context(&ctx);
     let can_comment = user.is_some() && ctx.thread.permissions.can_comment;
-    let (files, additions, deletions, truncated) = match &changes {
-        Some(changes) => (
-            PullFileView::list(&changes.files, &changes.head.id, &loaded.urls, &urls, &comments, query.comment.as_deref(), can_comment),
-            changes.additions(),
-            changes.deletions(),
-            changes.truncated,
-        ),
+    // The views take the diff's lines instead of copying them.
+    let (files, additions, deletions, truncated) = match changes {
+        Some(changes) => {
+            let (additions, deletions, truncated) = (changes.additions(), changes.deletions(), changes.truncated);
+            let form_at = query.comment.as_deref();
+            (
+                PullFileView::list(changes.files, &changes.head.id, &loaded.urls, &comments, form_at, can_comment),
+                additions,
+                deletions,
+                truncated,
+            )
+        }
         None => (Vec::new(), 0, 0, false),
     };
     let view = PullFilesPage {
@@ -675,6 +706,8 @@ pub struct MergeForm {
     #[serde(default)]
     expected_head: String,
     #[serde(default)]
+    expected_base: String,
+    #[serde(default)]
     delete_branch: Option<String>,
     #[serde(default)]
     bypass: Option<String>,
@@ -694,6 +727,7 @@ async fn merge(
         title: form.title,
         message: form.message,
         expected_head: Some(form.expected_head).filter(|head| !head.is_empty()),
+        expected_base: Some(form.expected_base).filter(|base| !base.is_empty()),
         delete_head_branch: form.delete_branch.is_some(),
         bypass: form.bypass.is_some(),
     };

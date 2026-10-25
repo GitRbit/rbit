@@ -46,9 +46,30 @@ pub fn pull_request_action(action: &IssueAction) -> Option<&'static str> {
     })
 }
 
-/// The payload for `event`, or `None` when the event produces no delivery (or the pull
-/// request or repository is already gone).
+/// The payload for `event`, or `None` when the event produces no delivery: no active hook
+/// of the repository or its organisation subscribes to it, or the pull request or
+/// repository is already gone.
+///
+/// Checking for subscribers first matters: the `pull_request` object diffs the pull
+/// request (or reads its cached statistics), which would otherwise run for every pull
+/// request event of every repository only to be thrown away.
 pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
+    let (repo, hook_event) = match event {
+        DomainEvent::Issue { repo, kind: IssueKind::Pull, .. } => (*repo, WebhookEvent::PullRequest),
+        DomainEvent::PullRequestReview { repo, .. } => (*repo, WebhookEvent::PullRequestReview),
+        _ => return Ok(None),
+    };
+    let Some(owned) = ctx.database.admin().find_repository(repo).await? else { return Ok(None) };
+    let orgs = if owned.owner.is_organization() { vec![owned.owner.id] } else { Vec::new() };
+    if ctx.database.webhooks().subscribed(Some(repo), &orgs, hook_event).await?.is_empty() {
+        return Ok(None);
+    }
+    build(ctx, event, base_url).await
+}
+
+/// The payload for `event` whether or not any hook subscribes to it (see [`payload`]).
+/// rbit Actions stores it as a pull request run's event (Actions: triggers (T)).
+pub(crate) async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
     match event {
         DomainEvent::Issue { repo, issue, kind: IssueKind::Pull, actor, action, .. } => {
             let Some(name) = pull_request_action(action) else { return Ok(None) };

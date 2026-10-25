@@ -274,6 +274,7 @@ async fn administrators_manage_collaborators() {
     assert!(matches!(collaborators.list(&as_bob).await, Err(ServiceError::Forbidden)));
     assert!(matches!(collaborators.add(&bob, &as_bob, "carol", Permission::Admin).await, Err(ServiceError::Forbidden)));
     assert_eq!(collaborators.permission_of(&bob, &as_bob).await.unwrap(), Some(Permission::Write));
+    assert_eq!(as_bob.collaborator, Some(Permission::Write), "read with the grants that decided access");
 
     // Promoted to admin, he may.
     collaborators.change(&alice, &as_alice, "bob", Permission::Admin).await.unwrap();
@@ -423,11 +424,13 @@ async fn personal_dashboards_drop_private_threads_after_membership_revocation() 
         .unwrap();
     let query = rbit_core::issue_query::IssueQuery::parse("is:open");
     let relation = rbit_services::issues::DashboardRelation::Created;
-    assert_eq!(fixture.services.issues.dashboard(&bob, rbit_core::IssueKind::Issue, relation, &query, 1).await.unwrap().total, 1);
+    let results = fixture.services.issues.dashboard(&bob, rbit_core::IssueKind::Issue, relation, &query, 1).await.unwrap();
+    assert_eq!(results.total, 1);
+    assert_eq!(results.repositories[&repo].full_name(), "closed/vault", "each row's repository comes with it");
     fixture.database.orgs().remove_member(org.id, bob.id()).await.unwrap();
     let results = fixture.services.issues.dashboard(&bob, rbit_core::IssueKind::Issue, relation, &query, 1).await.unwrap();
     assert_eq!(results.total, 0);
     assert_eq!(results.open, 0);
     assert_eq!(results.issues.len(), 0);
-    assert!(fixture.services.issues.dashboard_repository(&bob, repo).await.unwrap().is_none());
+    assert!(!results.repositories.contains_key(&repo));
 }

@@ -1,5 +1,5 @@
 //! Encrypted secrets and plain variables at owner and repository scope (migration
-//! `0044_actions.sql`).
+//! `0048_actions.sql`).
 //!
 //! The store never sees a secret's value: callers seal it (rbit-services' `actions::secrets`)
 //! with associated data that binds the secret's scope and id, so the id must exist before

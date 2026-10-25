@@ -1,6 +1,6 @@
 //! The single-commit page: message, metadata and file diffs.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap, fmt};
 
 use askama::Template;
 use askama_web::WebTemplate;
@@ -27,6 +27,26 @@ pub struct ParentLink {
     pub url: String,
 }
 
+/// A line number in a diff row, or none: hunk headers, end-of-file notes and the side a
+/// line is not on. Renders as its digits or as nothing, so a row holds no number strings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LineNumber(pub Option<u32>);
+
+impl LineNumber {
+    fn of(number: Option<usize>) -> Self {
+        Self(number.and_then(|number| u32::try_from(number).ok()))
+    }
+}
+
+impl fmt::Display for LineNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(number) => write!(f, "{number}"),
+            None => Ok(()),
+        }
+    }
+}
+
 /// One fixed-height row of a unified diff: a hunk header, a changed or context line, or
 /// Git's "No newline at end of file" note. Every row is exactly one `--row-h` tall, so a
 /// block of rows has an exact height (see [`crate::views::blocks`]).
@@ -35,13 +55,14 @@ pub struct DiffLineView {
     /// CSS modifier: `hunk`, `add`, `del`, `ctx` or `eof`. The sign (`+`, `-`) is drawn by
     /// app.css from it, so it is never copied with the code.
     pub kind: &'static str,
-    /// Empty for hunk headers and end-of-file notes, and on the side a line is not on.
-    pub old_number: String,
-    pub new_number: String,
+    /// None for hunk headers and end-of-file notes, and on the side a line is not on.
+    pub old_number: LineNumber,
+    pub new_number: LineNumber,
     /// The line (anything in it that would break it shown as a symbol, see
     /// [`crate::render::row_char`]), the hunk header (`@@ -a,b +c,d @@`) or the
-    /// end-of-file note.
-    pub text: String,
+    /// end-of-file note. Moved out of an owned diff ([`Self::owned_line`]), and borrowed
+    /// for the end-of-file note.
+    pub text: Cow<'static, str>,
 }
 
 /// What an end-of-file row says.
@@ -55,29 +76,37 @@ impl DiffLineView {
         matches!(self.kind, "add" | "del" | "ctx")
     }
 
-    /// The hunk header row.
+    /// The hunk header row, taking the header.
     #[must_use]
-    pub fn hunk(header: &str) -> Self {
-        Self { kind: "hunk", old_number: String::new(), new_number: String::new(), text: header.to_owned() }
+    pub fn hunk(header: String) -> Self {
+        Self { kind: "hunk", old_number: LineNumber(None), new_number: LineNumber(None), text: Cow::Owned(header) }
     }
 
     /// The "No newline at end of file" row shown after a line that lacks one.
     #[must_use]
     pub fn eof() -> Self {
-        Self { kind: "eof", old_number: String::new(), new_number: String::new(), text: NO_NEWLINE.to_owned() }
+        Self { kind: "eof", old_number: LineNumber(None), new_number: LineNumber(None), text: Cow::Borrowed(NO_NEWLINE) }
     }
 
-    /// The row of one line of a hunk.
+    /// The row of one line of a hunk, taking its text: it is copied only when a character
+    /// in it must be shown as a symbol ([`crate::render::row_text`]).
     #[must_use]
-    pub fn line(line: &DiffLine) -> Self {
-        let number = |n: Option<usize>| n.map(|n| n.to_string()).unwrap_or_default();
+    pub fn owned_line(line: DiffLine) -> Self {
         let kind = match line.kind {
             LineKind::Added => "add",
             LineKind::Removed => "del",
             LineKind::Context => "ctx",
         };
-        let text = crate::render::row_text(&line.text).into_owned();
-        Self { kind, old_number: number(line.old_number), new_number: number(line.new_number), text }
+        let shown = match crate::render::row_text(&line.text) {
+            Cow::Borrowed(_) => None,
+            Cow::Owned(shown) => Some(shown),
+        };
+        Self {
+            kind,
+            old_number: LineNumber::of(line.old_number),
+            new_number: LineNumber::of(line.new_number),
+            text: Cow::Owned(shown.unwrap_or(line.text)),
+        }
     }
 }
 
@@ -134,18 +163,19 @@ pub struct DiffTextView {
 }
 
 impl DiffTextView {
+    /// The rows of `hunks`, which they are moved out of.
     #[must_use]
-    pub fn new(hunks: &[Hunk]) -> Self {
-        let rows = hunks.iter().flat_map(|hunk| {
-            std::iter::once(DiffLineView::hunk(&hunk.header)).chain(
-                hunk.lines
-                    .iter()
-                    .flat_map(|line| std::iter::once(DiffLineView::line(line)).chain(line.missing_newline.then(DiffLineView::eof))),
-            )
+    pub fn new(hunks: Vec<Hunk>) -> Self {
+        let width_classes = width_classes(&hunks);
+        let rows = hunks.into_iter().flat_map(|hunk| {
+            std::iter::once(DiffLineView::hunk(hunk.header)).chain(hunk.lines.into_iter().flat_map(|line| {
+                let eof = line.missing_newline.then(DiffLineView::eof);
+                std::iter::once(DiffLineView::owned_line(line)).chain(eof)
+            }))
         });
         let blocks = blocks(rows);
         let rows = blocks.iter().map(Block::len).sum();
-        Self { blocks, rows, blocked: rows > BLOCKED_ABOVE_ROWS, width_classes: width_classes(hunks) }
+        Self { blocks, rows, blocked: rows > BLOCKED_ABOVE_ROWS, width_classes }
     }
 }
 
@@ -230,12 +260,18 @@ impl FileDiffView {
 }
 
 impl FileDiffView {
-    /// Views for `files`, linking each to its version at `commit_id`.
+    /// Views for `files`, linking each to its version at `commit_id`. Copies the diffs;
+    /// [`Self::list_owned`] moves them instead.
     pub fn list(files: &[FileDiff], commit_id: &str, urls: &RepoUrls) -> Vec<Self> {
-        files.iter().enumerate().map(|(i, f)| Self::new(i, f, commit_id, urls)).collect()
+        Self::list_owned(files.to_vec(), commit_id, urls)
     }
 
-    fn new(index: usize, file: &FileDiff, commit_id: &str, urls: &RepoUrls) -> Self {
+    /// Views for `files`, moving their paths and lines into the rows.
+    pub fn list_owned(files: Vec<FileDiff>, commit_id: &str, urls: &RepoUrls) -> Vec<Self> {
+        files.into_iter().enumerate().map(|(i, f)| Self::new(i, f, commit_id, urls)).collect()
+    }
+
+    fn new(index: usize, file: FileDiff, commit_id: &str, urls: &RepoUrls) -> Self {
         let (status, status_key) = match file.status {
             ChangeStatus::Added => ("Added", "added"),
             ChangeStatus::Deleted => ("Deleted", "deleted"),
@@ -244,28 +280,28 @@ impl FileDiffView {
             ChangeStatus::Copied => ("Copied", "copied"),
         };
         let split = file.path.rfind('/').map_or(0, |i| i + 1);
-        let body = match &file.body {
+        let body = match file.body {
             FileDiffBody::Text(hunks) => DiffBodyView::Text(DiffTextView::new(hunks)),
             FileDiffBody::Binary => DiffBodyView::Binary,
             FileDiffBody::TooLarge => DiffBodyView::TooLarge,
             FileDiffBody::ModeOnly => DiffBodyView::NoContentChanges,
             FileDiffBody::Submodule { old, new } => {
                 let short = |id: &Option<String>| id.as_deref().map_or_else(|| "none".to_owned(), |id| id[..7.min(id.len())].to_owned());
-                DiffBodyView::Submodule { old: short(old), new: short(new) }
+                DiffBodyView::Submodule { old: short(&old), new: short(&new) }
             }
         };
         Self {
             anchor: format!("diff-{index}"),
-            path: file.path.clone(),
             directory: file.path[..split].to_owned(),
             name: file.path[split..].to_owned(),
-            old_path: file.old_path.clone(),
+            view_url: (file.status != ChangeStatus::Deleted).then(|| urls.blob(commit_id, &file.path)),
+            path: file.path,
+            old_path: file.old_path,
             status,
             status_key,
             additions: file.additions,
             deletions: file.deletions,
             stats_known: file.stats_known,
-            view_url: (file.status != ChangeStatus::Deleted).then(|| urls.blob(commit_id, &file.path)),
             body,
         }
     }
@@ -462,13 +498,14 @@ pub(crate) mod tests {
     #[test]
     fn diff_rows_are_hunk_headers_lines_and_eof_notes_in_order() {
         let changes = rbit_git::diff::diff_bytes(b"a\nb", b"a\nc");
-        let text = DiffTextView::new(&changes.hunks);
+        let text = DiffTextView::new(changes.hunks.clone());
         assert_eq!(kinds(&text), ["hunk", "ctx", "del", "eof", "add", "eof"]);
         let rows: Vec<&DiffLineView> = text.blocks.iter().flat_map(Block::rows).collect();
         assert_eq!(rows[0].text, changes.hunks[0].header);
-        assert!(rows[0].old_number.is_empty() && !rows[0].is_line());
-        assert_eq!((rows[2].old_number.as_str(), rows[2].new_number.as_str(), rows[2].text.as_str()), ("2", "", "b"));
-        assert_eq!((rows[4].old_number.as_str(), rows[4].new_number.as_str(), rows[4].text.as_str()), ("", "2", "c"));
+        assert!(rows[0].old_number.0.is_none() && !rows[0].is_line());
+        let cells = |row: &DiffLineView| (row.old_number.to_string(), row.new_number.to_string(), row.text.to_string());
+        assert_eq!(cells(rows[2]), ("2".into(), String::new(), "b".into()));
+        assert_eq!(cells(rows[4]), (String::new(), "2".into(), "c".into()));
         assert_eq!(rows[3].text, NO_NEWLINE);
         assert_eq!(text.width_classes, "diff-w1 cols-16");
     }
@@ -476,8 +513,8 @@ pub(crate) mod tests {
     #[test]
     fn a_lone_carriage_return_stays_inside_its_row() {
         let changes = rbit_git::diff::diff_bytes(b"foo\rbar\r\n", b"foo\rbaz\r\n");
-        let text = DiffTextView::new(&changes.hunks);
-        let lines: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| row.text.as_str()).collect();
+        let text = DiffTextView::new(changes.hunks);
+        let lines: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| &*row.text).collect();
         assert_eq!(lines, ["foo\u{240D}bar", "foo\u{240D}baz"], "shown, not a second line over the next row");
     }
 
@@ -486,19 +523,41 @@ pub(crate) mod tests {
         let old = numbered("", 300);
         let new = numbered("x", 300);
         let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
-        let text = DiffTextView::new(&changes.hunks);
+        let text = DiffTextView::new(changes.hunks.clone());
         let lengths: Vec<usize> = text.blocks.iter().map(Block::len).collect();
         let expected_rows = changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
         assert_eq!(lengths.iter().sum::<usize>(), expected_rows);
         assert!(lengths.iter().rev().skip(1).all(|&len| len == crate::views::blocks::BLOCK_ROWS));
-        let texts: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| row.text.as_str()).collect();
+        let texts: Vec<&str> = text.blocks.iter().flat_map(Block::rows).filter(|row| row.is_line()).map(|row| &*row.text).collect();
         let source: Vec<&str> = changes.hunks.iter().flat_map(|hunk| &hunk.lines).map(|line| line.text.as_str()).collect();
         assert_eq!(texts, source);
         assert_eq!(text.width_classes, "diff-w3 cols-24");
         assert_eq!(text.rows, expected_rows);
         assert!(text.blocked, "{expected_rows} rows is more than BLOCKED_ABOVE_ROWS");
-        let short = DiffTextView::new(&rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks);
+        let short = DiffTextView::new(rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks);
         assert_eq!((short.rows, short.blocked), (3, false));
+    }
+
+    #[test]
+    fn rows_take_their_text_from_the_diff_and_hold_no_number_strings() {
+        let line = |text: &str| DiffLine {
+            kind: LineKind::Added,
+            old_number: None,
+            new_number: Some(12),
+            text: text.to_owned(),
+            missing_newline: true,
+        };
+        let plain = line("let x = 1;");
+        let source = plain.text.as_ptr();
+        let row = DiffLineView::owned_line(plain);
+        assert_eq!(row.text.as_ptr(), source, "the line's text is moved, not copied");
+        assert_eq!((row.old_number, row.new_number), (LineNumber(None), LineNumber(Some(12))));
+        assert_eq!((row.old_number.to_string(), row.new_number.to_string()), (String::new(), "12".to_owned()));
+        // Only text that must change is copied.
+        assert_eq!(DiffLineView::owned_line(line("a\rb")).text, "a\u{240D}b");
+        assert!(matches!(DiffLineView::eof().text, Cow::Borrowed(NO_NEWLINE)), "the end-of-file note is never allocated");
+        // Two numbers and a kind take no more room than one `String` used to.
+        assert!(std::mem::size_of::<LineNumber>() * 2 <= std::mem::size_of::<String>());
     }
 
     #[test]
@@ -572,7 +631,7 @@ pub(crate) mod tests {
         let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
         let rows = changes.hunks.len() + changes.hunks.iter().map(|hunk| hunk.lines.len()).sum::<usize>();
         let mut view = file(0, "src/a.rs", changes.additions, changes.deletions);
-        view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
+        view.body = DiffBodyView::Text(DiffTextView::new(changes.hunks));
         let mut binary = file(1, "logo.png", 0, 0);
         binary.body = DiffBodyView::Binary;
         let html = Diffs { files: vec![view, binary], additions: 2, deletions: 1, truncated: false }.render().unwrap();
@@ -592,7 +651,7 @@ pub(crate) mod tests {
         let long = numbered("", 600);
         let changes = rbit_git::diff::diff_bytes(b"", long.as_bytes());
         let mut view = file(0, "src/long.rs", 600, 0);
-        view.body = DiffBodyView::Text(DiffTextView::new(&changes.hunks));
+        view.body = DiffBodyView::Text(DiffTextView::new(changes.hunks));
         let html = Diffs { files: vec![view], additions: 600, deletions: 0, truncated: false }.render().unwrap();
         assert_eq!(block_rows(&html), [128, 128, 128, 128, 89]);
         assert!(html.contains(&format!(r#"data-rows="{}" open>"#, FILE_HEADER_ROWS + 601)));

@@ -1,17 +1,17 @@
 //! Session listing, revocation and the password-change rule against real, temporary
-//! `SQLite` and redb stores.
+//! `SQLite` and redb stores, and the maximum session age.
 
 use std::{sync::Arc, time::Duration};
 
 use rbit_auth::SessionToken;
-use rbit_core::{Config, User};
+use rbit_core::{Config, Timestamp, User};
 use rbit_services::{
     ServiceError, Services, SignUp,
     accounts::ClientInfo,
     admin::ListQuery,
     audit::{AuditAction, AuditCategory},
 };
-use rbit_storage::{Database, KvStore};
+use rbit_storage::{Database, KvStore, SessionRecord};
 
 const PASSWORD: &str = "correct horse battery";
 const NEW_PASSWORD: &str = "a whole new password";
@@ -156,4 +156,70 @@ async fn an_abandoned_request_does_not_shield_its_session() {
     drop(guard);
 
     assert!(fixture.eventually_dead(&current).await);
+}
+
+/// Services whose sessions end `max_age_days` after sign-in, with their store and a user.
+async fn with_max_age(dir: &tempfile::TempDir, max_age_days: u32) -> (Services, KvStore, User) {
+    let mut config = Config::default();
+    config.storage.data_dir = dir.path().to_path_buf();
+    config.security.session_max_age_days = max_age_days;
+    let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
+    let input = SignUp { username: "alice".to_owned(), email: "alice@example.com".to_owned(), password: PASSWORD.to_owned() };
+    let alice = services.accounts.create_user(input, None).await.unwrap();
+    (services, kv, alice)
+}
+
+#[tokio::test]
+async fn sessions_end_at_their_maximum_age_however_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let (services, kv, alice) = with_max_age(&dir, 90).await;
+    let day = 24 * 60 * 60;
+    let now = Timestamp::now().seconds();
+    // Created `age` days ago and used just now, so the idle expiry is still ahead.
+    let session = |age: i64| {
+        let mut record = SessionRecord::new(alice.id(), Timestamp(now + day), None, "test");
+        record.created_at = Timestamp(now - age * day);
+        record
+    };
+    let old = SessionToken::generate();
+    kv.sessions().put(old.digest(), session(91)).await.unwrap();
+    let recent = SessionToken::generate();
+    kv.sessions().put(recent.digest(), session(89)).await.unwrap();
+
+    assert!(services.accounts.resume_session(&old).await.unwrap().is_none());
+    assert!(kv.sessions().get(old.digest()).await.unwrap().is_none(), "discarded");
+    assert!(services.accounts.resume_session(&recent).await.unwrap().is_some());
+
+    // Renewals never reach past the maximum age.
+    let mut stale = session(80);
+    stale.expires_at = Timestamp(now + 60);
+    stale.last_seen_at = Timestamp(now - day);
+    let renewed = SessionToken::generate();
+    kv.sessions().put(renewed.digest(), stale).await.unwrap();
+    assert!(services.accounts.resume_session(&renewed).await.unwrap().is_some());
+    let record = kv.sessions().get(renewed.digest()).await.unwrap().unwrap();
+    assert_eq!(record.expires_at.seconds(), now + 10 * day, "capped at 90 days after creation");
+    assert!(record.last_seen_at.seconds() >= now, "the visit was recorded");
+}
+
+#[tokio::test]
+async fn new_sessions_expire_by_the_maximum_age_or_never_without_one() {
+    for max_age_days in [0, 7] {
+        let dir = tempfile::tempdir().unwrap();
+        let (services, kv, alice) = with_max_age(&dir, max_age_days).await;
+
+        let token = services.accounts.start_session(&alice).await.unwrap();
+        let record = kv.sessions().get(token.digest()).await.unwrap().unwrap();
+        let lifetime = record.expires_at.seconds() - record.created_at.seconds();
+        let expected = if max_age_days == 0 { services.accounts.session_lifetime_seconds() } else { 7 * 24 * 60 * 60 };
+        assert!((lifetime - expected).abs() <= 2, "{max_age_days}: {lifetime} vs {expected}");
+
+        let mut ancient = SessionRecord::new(alice.id(), Timestamp(Timestamp::now().seconds() + 60), None, "test");
+        ancient.created_at = Timestamp(0);
+        let token = SessionToken::generate();
+        kv.sessions().put(token.digest(), ancient).await.unwrap();
+        assert_eq!(services.accounts.resume_session(&token).await.unwrap().is_some(), max_age_days == 0);
+    }
 }

@@ -124,7 +124,7 @@ impl WebhookEvent {
     pub const fn description(self) -> &'static str {
         match self {
             Self::Push => "Branches and tags pushed, created or deleted.",
-            Self::Repository => "Repositories created, deleted or transferred.",
+            Self::Repository => "Repositories created, deleted, transferred, archived or unarchived.",
             Self::Release => "Releases published.",
             Self::Fork => "Repositories forked.",
             Self::Issues => "Issues opened, edited, closed, reopened, labeled, assigned, locked or deleted.",

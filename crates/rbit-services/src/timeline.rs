@@ -126,12 +126,9 @@ impl TimelineService {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
-        let issue = self.ctx.database.issues().find_by_number(repo.repo.repo.id, number).await?.ok_or(ServiceError::NotFound)?;
-        let author = match issue.author {
-            Some(id) => self.ctx.database.accounts().find_accounts(&[id]).await?.pop(),
-            None => None,
-        };
-        let permissions = issue_permissions(viewer, repo.access, &issue);
+        let (issue, author) =
+            self.ctx.database.issues().find_by_number_with_author(repo.repo.repo.id, number).await?.ok_or(ServiceError::NotFound)?;
+        let permissions = thread_permissions(viewer, &repo, &issue);
         Ok(IssueContext { repo, issue, author, permissions })
     }
 
@@ -155,6 +152,7 @@ impl TimelineService {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
+        repo.ensure_writable()?;
         let title = IssueTitle::parse(title)?;
         let body = IssueText::body(body)?;
         self.spend(actor)?;
@@ -168,6 +166,7 @@ impl TimelineService {
         if !permissions(actor, ctx).can_edit {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         let title = title.map(IssueTitle::parse).transpose()?;
         let body = body.map(IssueText::body).transpose()?;
         self.spend(actor)?;
@@ -194,6 +193,7 @@ impl TimelineService {
         if !permissions(actor, ctx).can_set_state {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         let (state, reason, event, action) = match change {
             StateChange::Close(StateReason::Merged) => {
                 return Err(ServiceError::Invalid("only merging a pull request closes it as merged".to_owned()));
@@ -245,6 +245,7 @@ impl TimelineService {
         if !permissions(actor, ctx).can_lock {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         if self.ctx.database.issues().set_locked(ctx.issue.id, locked, actor.id(), Timestamp::now()).await? {
             let action = if locked { IssueAction::Locked } else { IssueAction::Unlocked };
             self.publish_issue(&ctx.issue, Some(actor.id()), action);
@@ -257,6 +258,7 @@ impl TimelineService {
         if !permissions(actor, ctx).can_comment {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         let body = IssueText::comment(body)?;
         self.spend(actor)?;
         let comment = self
@@ -277,6 +279,7 @@ impl TimelineService {
         if !comment_permissions(Some(actor), permissions(actor, ctx), &comment).can_edit {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         let body = IssueText::comment(body)?;
         if body == comment.body {
             return Ok(comment);
@@ -294,10 +297,22 @@ impl TimelineService {
         if !comment_permissions(Some(actor), permissions(actor, ctx), &comment).can_delete {
             return Err(ServiceError::Forbidden);
         }
+        ctx.repo.ensure_writable()?;
         if let Some(snapshot) = store.delete_comment(id).await? {
             self.publish_comment(ctx, id, actor, CommentAction::Deleted { snapshot });
         }
         Ok(())
+    }
+
+    /// Comment `id` on this thread and its author (`None` once the account is deleted),
+    /// as [`Self::timeline`] shows it. `ctx` must have been opened for the viewer.
+    pub async fn find_comment(&self, ctx: &IssueContext, id: CommentId) -> Result<(Comment, Option<Account>), ServiceError> {
+        let comment = self.ctx.database.issues().find_comment(ctx.issue.id, id).await?.ok_or(ServiceError::NotFound)?;
+        let author = match comment.author {
+            Some(author) => self.ctx.database.accounts().find_accounts(&[author]).await?.into_iter().next(),
+            None => None,
+        };
+        Ok((comment, author))
     }
 
     /// At most `limit` (1..=[`MAX_TIMELINE_PAGE`]) entries after `cursor`, with what
@@ -347,7 +362,7 @@ impl TimelineService {
             })
             .collect();
 
-        let permissions = issue_permissions(viewer, ctx.repo.access, &ctx.issue);
+        let permissions = thread_permissions(viewer, &ctx.repo, &ctx.issue);
         let entries = page
             .items
             .into_iter()
@@ -404,9 +419,17 @@ impl TimelineService {
 }
 
 /// What `actor` may do with the thread, decided afresh from the context's access and
-/// row, so a context opened for another viewer never lends its permissions.
+/// row, so a context opened for another viewer never lends its permissions. Changes
+/// then pass the archive guard, so writers of an archived repository learn why they may
+/// not ([`RepoContext::ensure_writable`]).
 fn permissions(actor: &User, ctx: &IssueContext) -> IssuePermissions {
     issue_permissions(Some(actor), ctx.repo.access, &ctx.issue)
+}
+
+/// What `viewer` is offered on a thread of `repo`: [`issue_permissions`], or nothing at
+/// all while the repository is archived (it is read-only).
+pub(crate) fn thread_permissions(viewer: Option<&User>, repo: &RepoContext, issue: &Issue) -> IssuePermissions {
+    if repo.repo.repo.is_archived() { IssuePermissions::default() } else { issue_permissions(viewer, repo.access, issue) }
 }
 
 #[cfg(test)]

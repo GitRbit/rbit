@@ -68,7 +68,7 @@ pub fn file_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn_with_state(state.clone(), crate::middleware::session))
         .layer(from_fn_with_state(state.clone(), crate::middleware::rate_limit))
         .layer(from_fn(crate::middleware::csrf_origin_check))
-        .layer(from_fn(crate::middleware::security_headers))
+        .layer(from_fn_with_state(crate::middleware::SecurityHeaders::new(&state.config), crate::middleware::security_headers))
 }
 
 /// The Actions pages. Merged only when Actions is enabled (see `routes::page_routes`).

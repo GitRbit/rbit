@@ -57,9 +57,12 @@ pub struct RepositoryChanges {
     private: Option<bool>,
     visibility: Option<String>,
     default_branch: Option<String>,
+    /// `true` archives the repository, `false` unarchives it.
+    archived: Option<bool>,
 }
 
-/// `PATCH /repos/{owner}/{repo}`: administrators with the `admin` scope.
+/// `PATCH /repos/{owner}/{repo}`: administrators with the `admin` scope. `archived` is
+/// applied after the other changes, so one request can describe and archive a repository.
 pub async fn update(
     State(state): State<AppState>,
     caller: Caller,
@@ -93,7 +96,13 @@ pub async fn update(
     if let Some(new_name) = changes.name.filter(|new_name| new_name.trim() != current.name.as_str()) {
         final_name = settings.rename(&ctx, &new_name).await.map_err(|error| ApiError::service(error, "name"))?.to_string();
     }
-    let ctx = caller.open_repo(&state, ctx.repo.owner.name.as_str(), &final_name).await?;
+    let mut ctx = caller.open_repo(&state, ctx.repo.owner.name.as_str(), &final_name).await?;
+    if let Some(archived) = changes.archived {
+        let user = caller.require_user()?;
+        if settings.set_archived(user, &ctx, archived).await? {
+            ctx = caller.open_repo(&state, ctx.repo.owner.name.as_str(), &final_name).await?;
+        }
+    }
     Ok(Json(detail(&state, &caller, &ctx).await?))
 }
 
@@ -194,4 +203,42 @@ pub async fn commit(
     })?;
     let (api, html) = urls(&state, &ctx);
     history.first().map(|commit| Json(json::commit(commit, &api, &html))).ok_or_else(not_found)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use rbit_core::{TokenScope, Visibility};
+    use serde_json::json;
+
+    use super::super::test_support::Fixture;
+
+    #[tokio::test]
+    async fn administrators_archive_and_unarchive_through_patch() {
+        let fixture = Fixture::new(|_| {}).await;
+        let alice = fixture.user("alice").await;
+        fixture.repo(&alice, "demo", Visibility::Public).await;
+        let admin = fixture.token(&alice, TokenScope::Admin).await;
+        let write = fixture.token(&alice, TokenScope::Write).await;
+        let repo = "/api/v1/repos/alice/demo";
+
+        let (_, shown) = fixture.send("GET", repo, None, None).await;
+        assert_eq!(shown["archived"], false);
+        let (response, _) = fixture.send("PATCH", repo, Some(&write), Some(json!({ "archived": true }))).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "archiving needs the admin scope");
+
+        let (response, archived) = fixture.send("PATCH", repo, Some(&admin), Some(json!({ "archived": true }))).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(archived["archived"], true);
+        let (response, refused) = fixture.send("POST", &format!("{repo}/issues"), Some(&write), Some(json!({ "title": "Bug" }))).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(refused["message"], "Repository was archived so is read-only.");
+        let (response, _) = fixture.send("GET", &format!("{repo}/issues"), None, None).await;
+        assert_eq!(response.status(), StatusCode::OK, "reading still works");
+
+        let (_, unarchived) = fixture.send("PATCH", repo, Some(&admin), Some(json!({ "archived": false, "description": "Back" }))).await;
+        assert_eq!((unarchived["archived"].as_bool(), unarchived["description"].as_str()), (Some(false), Some("Back")));
+        let (response, _) = fixture.send("POST", &format!("{repo}/issues"), Some(&write), Some(json!({ "title": "Bug" }))).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
 }

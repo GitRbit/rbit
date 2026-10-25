@@ -8,9 +8,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
+#[expect(clippy::struct_excessive_bools, reason = "independent configuration switches")]
 pub struct SecurityConfig {
     /// How long a session stays valid without activity, in days.
     pub session_lifetime_days: u32,
+    /// How long a session stays valid at most, however active, in days. `0` means no limit.
+    pub session_max_age_days: u32,
     /// Minimum password length accepted at sign-up.
     pub min_password_length: usize,
     /// Reverse proxies (CIDR networks, e.g. `127.0.0.1/32`, `10.0.0.0/8`, `::1/128`) whose
@@ -20,11 +23,37 @@ pub struct SecurityConfig {
     /// Throttle sign-in, sign-up, two-factor codes, Git credentials and form posts per
     /// client. Only worth turning off for load tests.
     pub rate_limit: bool,
+    /// The token that the first account's sign-up form asks for. Unset (the default), a
+    /// random one is generated and logged when the server starts without any user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_token: Option<String>,
+    /// Send `Strict-Transport-Security: max-age=31536000` when `server.public_url` is
+    /// `https://`, so browsers refuse plain HTTP to this host for a year. Turn off only
+    /// while moving the instance away from HTTPS.
+    pub hsts: bool,
+    /// Add `includeSubDomains` to that header. Off by default: it binds every subdomain
+    /// of the host to HTTPS as well.
+    pub hsts_include_subdomains: bool,
+    /// Let pages show images from other sites (Markdown `![](https://...)`), which also
+    /// tells those sites who viewed the page and when. Off restricts images to this
+    /// instance and inline `data:` images; external ones (including a branding logo on
+    /// another host) then do not load.
+    pub external_images: bool,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
-        Self { session_lifetime_days: 30, min_password_length: 10, trusted_proxies: Vec::new(), rate_limit: true }
+        Self {
+            session_lifetime_days: 30,
+            session_max_age_days: 90,
+            min_password_length: 10,
+            trusted_proxies: Vec::new(),
+            rate_limit: true,
+            hsts: true,
+            hsts_include_subdomains: false,
+            external_images: true,
+            setup_token: None,
+        }
     }
 }
 
@@ -171,6 +200,10 @@ mod tests {
         assert!(config.security.is_trusted_proxy(ip("10.1.2.3")));
         assert!(!config.security.is_trusted_proxy(ip("11.0.0.1")));
         assert!(config.security.rate_limit);
+        assert!(config.security.hsts && !config.security.hsts_include_subdomains && config.security.external_images);
+        let json = r#"{"security": {"hsts": false, "external_images": false}}"#;
+        let config: Wrapper = serde_json::from_str(json).unwrap();
+        assert!(!config.security.hsts && !config.security.external_images);
         assert!(serde_json::from_str::<Wrapper>(r#"{"security": {"trusted_proxies": ["nope"]}}"#).is_err());
         assert!(!SecurityConfig::default().is_trusted_proxy(ip("127.0.0.1")));
     }

@@ -2,14 +2,15 @@
 //! real, migrated `SQLite` database.
 
 use rbit_core::{
-    IssueId, IssueKind, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, RepoId, Timestamp, User, Visibility,
-    membership::Permission,
+    IssueId, IssueKind, IssueState, IssueText, IssueTitle, LabelId, MilestoneId, OrgRole, RepoId, Timestamp, User, Visibility,
+    membership::{BasePermission, Permission},
 };
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::{
         issue_meta::{LabelFields, MilestoneFields},
         issues::NewIssue,
+        orgs::NewOrganization,
     },
 };
 
@@ -133,6 +134,36 @@ async fn labels_attach_to_threads_and_vanish_with_their_deletion() {
     assert!(store.delete_label(fixture.repo, LabelId(999)).await.unwrap().is_none());
 }
 
+/// Setting a milestone reads the previous one before writing; concurrent changes must
+/// queue for the write lock, not fail with `SQLITE_BUSY` on the upgrade.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_milestone_changes_wait_for_the_write_lock() {
+    let fixture = Fixture::new().await;
+    let fields = |title: &str| MilestoneFields { title: title.to_owned(), description: String::new(), due_on: None };
+    let store = fixture.database.issue_meta();
+    let one = store.create_milestone(fixture.repo, &fields("one"), Timestamp(1)).await.unwrap().id;
+    let two = store.create_milestone(fixture.repo, &fields("two"), Timestamp(1)).await.unwrap().id;
+    let mut issues = Vec::new();
+    for i in 0..4 {
+        issues.push(fixture.issue(IssueKind::Issue, &format!("Issue {i}")).await);
+    }
+    let tasks: Vec<_> = (0..16)
+        .map(|task| {
+            let store = fixture.database.issue_meta();
+            let issue = issues[task % issues.len()];
+            tokio::spawn(async move {
+                for round in 0..10 {
+                    let milestone = if (task + round) % 2 == 0 { one } else { two };
+                    store.set_milestone(issue, Some(milestone)).await.unwrap();
+                }
+            })
+        })
+        .collect();
+    for task in tasks {
+        task.await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn milestones_track_progress_and_one_per_thread() {
     let fixture = Fixture::new().await;
@@ -208,6 +239,63 @@ async fn assignees_and_who_may_be_assigned() {
     assert!(!store.remove_assignee(issue, bob.id()).await.unwrap());
 }
 
+/// Assignee search starts from the repository's possible writers; every way of getting
+/// push access to an organisation's repository must still be found, and nothing else.
+#[tokio::test]
+async fn organisation_repositories_list_owners_writers_and_team_grants() {
+    let fixture = Fixture::new().await;
+    let database = &fixture.database;
+    let store = database.issue_meta();
+    let [bob, carol, dave, erin, frank, _stranger] = {
+        let mut users = Vec::new();
+        for name in ["bob", "carol", "dave", "erin", "frank", "stranger"] {
+            users.push(user(database, name).await);
+        }
+        <[User; 6]>::try_from(users).unwrap()
+    };
+    let org =
+        |name: &str| NewOrganization { name: name.parse().unwrap(), display_name: None, description: None, creator: fixture.alice.id() };
+    let acme = database.orgs().create(org("acme")).await.unwrap().account.id;
+    let other = database.orgs().create(org("other")).await.unwrap().account.id;
+    let rocket = repo_owned_by(database, acme, "rocket").await;
+    database.orgs().set_base_permission(acme, BasePermission::Read).await.unwrap();
+    for member in [&bob, &carol, &dave, &erin] {
+        database.orgs().add_member(acme, member.id(), OrgRole::Member).await.unwrap();
+    }
+    database.orgs().add_member(other, erin.id(), OrgRole::Member).await.unwrap();
+    let core = database.teams().create(acme, &"core".parse().unwrap(), None).await.unwrap();
+    for member in [&carol, &dave] {
+        database.teams().add_member(core.id, member.id()).await.unwrap();
+    }
+    database.teams().set_repository(core.id, rocket, Permission::Write).await.unwrap();
+    // A team of another organisation never grants anything here.
+    let foreign = database.teams().create(other, &"core".parse().unwrap(), None).await.unwrap();
+    database.teams().add_member(foreign.id, erin.id()).await.unwrap();
+    database.teams().set_repository(foreign.id, rocket, Permission::Write).await.unwrap();
+    database.collaborators().add(rocket, frank.id(), Permission::Write, fixture.alice.id()).await.unwrap();
+    database.admin().set_suspended(dave.id(), true).await.unwrap();
+
+    let names = |accounts: Vec<rbit_core::Account>| accounts.into_iter().map(|a| a.name.to_string()).collect::<Vec<_>>();
+    assert_eq!(names(store.assignable(rocket, "", 100).await.unwrap()), ["alice", "carol", "frank"], "owner, team writer, collaborator");
+    assert_eq!(names(store.assignable(rocket, "C", 100).await.unwrap()), ["carol"]);
+    assert_eq!(names(store.assignable(rocket, "", 2).await.unwrap()), ["alice", "carol"], "limit after ordering by name");
+    database.orgs().set_base_permission(acme, BasePermission::Write).await.unwrap();
+    assert_eq!(names(store.assignable(rocket, "", 100).await.unwrap()), ["alice", "bob", "carol", "erin", "frank"], "every member writes");
+    assert_eq!(names(store.assignable(RepoId(999), "", 100).await.unwrap()), Vec::<String>::new());
+    let _ = (bob, erin);
+}
+
+async fn repo_owned_by(database: &Database, owner: rbit_core::AccountId, name: &str) -> RepoId {
+    let new = NewRepository {
+        owner_id: owner,
+        name: name.parse().unwrap(),
+        description: None,
+        visibility: Visibility::Private,
+        default_branch: "main".to_owned(),
+    };
+    database.repositories().create(new).await.unwrap().id
+}
+
 #[tokio::test]
 async fn references_are_recorded_once() {
     let fixture = Fixture::new().await;
@@ -249,4 +337,39 @@ async fn new_threads_get_their_metadata_at_once_and_mentions_resolve() {
 
     let found = store.accounts_named(&["BOB".to_owned(), "nobody".to_owned(), "alice".to_owned()]).await.unwrap();
     assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"]);
+    let names = ["bob", "Bob", "ALICE"].map(str::to_owned);
+    let found = store.accounts_named(&names).await.unwrap();
+    assert_eq!(found.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["alice", "bob"], "each account once, whatever the case");
+}
+
+/// One thread's metadata in one statement is exactly what the three batch reads return.
+#[tokio::test]
+async fn one_threads_metadata_matches_the_batch_reads() {
+    let fixture = Fixture::new().await;
+    let store = fixture.database.issue_meta();
+    let issue = fixture.issue(IssueKind::Issue, "Crash").await;
+    let empty = store.metadata_of(issue).await.unwrap();
+    assert!(empty.labels.is_empty() && empty.assignees.is_empty() && empty.milestone.is_none());
+
+    let bob = user(&fixture.database, "bob").await;
+    for (name, color) in [("ui", "#123456"), ("bug", "#d73a4a"), ("Docs \"quoted\"", "#000000")] {
+        let created = store.create_label(fixture.repo, &label(name, color), Timestamp(1)).await.unwrap();
+        store.add_label(issue, created.id, Timestamp(2)).await.unwrap();
+    }
+    store.add_assignee(issue, bob.id(), fixture.alice.id(), Timestamp(1)).await.unwrap();
+    store.add_assignee(issue, fixture.alice.id(), fixture.alice.id(), Timestamp(1)).await.unwrap();
+    let fields = MilestoneFields { title: "v1 \\ next".to_owned(), description: String::new(), due_on: None };
+    let milestone = store.create_milestone(fixture.repo, &fields, Timestamp(1)).await.unwrap();
+    store.set_milestone(issue, Some(milestone.id)).await.unwrap();
+
+    let one = store.metadata_of(issue).await.unwrap();
+    let labels: Vec<_> = store.labels_of(&[issue]).await.unwrap().into_iter().map(|(_, label)| label).collect();
+    assert_eq!(one.labels, labels);
+    assert_eq!(one.labels.len(), 3);
+    let names = |accounts: &[rbit_core::Account]| accounts.iter().map(|a| (a.id, a.name.to_string(), a.created_at)).collect::<Vec<_>>();
+    let assignees: Vec<_> = store.assignees_of(&[issue]).await.unwrap().into_iter().map(|(_, account)| account).collect();
+    assert_eq!(names(&one.assignees), names(&assignees));
+    assert_eq!(one.assignees.len(), 2);
+    assert_eq!(one.milestone, store.milestones_of(&[issue]).await.unwrap().pop());
+    assert!(one.milestone.is_some());
 }

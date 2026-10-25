@@ -69,11 +69,16 @@ pub fn file_anchor(path: &str) -> String {
 
 /// `diff-{hash}-L{line}` or `-R{line}`: one line's anchor.
 pub fn line_anchor(path: &str, side: ReviewSide, line: u32) -> String {
+    line_anchor_in(&file_anchor(path), side, line)
+}
+
+/// [`line_anchor`] from the file's [`file_anchor`], computed once for all its lines.
+pub fn line_anchor_in(file_anchor: &str, side: ReviewSide, line: u32) -> String {
     let letter = match side {
         ReviewSide::Left => 'L',
         ReviewSide::Right => 'R',
     };
-    format!("{}-{letter}{line}", file_anchor(path))
+    format!("{file_anchor}-{letter}{line}")
 }
 
 /// `pullrequestreview-{id}`.
@@ -546,7 +551,7 @@ mod tests {
         comments.insert(left.clone(), vec![comment_on(&urls, &left, 1)]);
         comments.insert(context.clone(), vec![comment_on(&urls, &context, 2)]);
         let form_at = line_anchor("f", ReviewSide::Right, 3);
-        let text = diff_text(&changes.hunks, "f", &urls, &mut comments, Some(&form_at), true);
+        let text = diff_text(changes.hunks.clone(), "f", &mut comments, Some(&form_at), true);
         assert_eq!(
             outline(&text),
             [
@@ -565,31 +570,30 @@ mod tests {
             .filter_map(|part| if let DiffPart::Rows(block) = part { Some(block.rows()) } else { None })
             .flatten()
             .collect();
-        assert_eq!(
-            rows.iter().filter(|row| row.line.is_line()).map(|row| row.line.text.as_str()).collect::<Vec<_>>(),
-            ["a", "b", "B", "c"]
-        );
+        assert_eq!(rows.iter().filter(|row| row.line.is_line()).map(|row| &*row.line.text).collect::<Vec<_>>(), ["a", "b", "B", "c"]);
         assert_eq!(rows[2].anchor, left);
         assert_eq!(rows[2].number, 2);
-        assert!(rows[0].anchor.is_empty() && rows[5].anchor.is_empty(), "hunk headers and eof notes have no anchor");
-        assert_eq!(rows[3].comment_url, format!("{}?comment={}#{}", urls.files, rows[3].anchor, rows[3].anchor));
-        // Without the right to comment, the form never opens.
-        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), Some(&form_at), false);
+        // The hunk header names its first line, for the link that works without scripts.
+        assert_eq!((rows[0].anchor.as_str(), rows[0].number), (context.as_str(), 1));
+        assert!(rows[5].anchor.is_empty(), "end-of-file notes have no anchor");
+        // Without the right to comment, the form never opens and hunk headers link nowhere.
+        let text = diff_text(changes.hunks, "f", &mut HashMap::new(), Some(&form_at), false);
         assert_eq!(outline(&text), ["rows:hunk,ctx,del,add,ctx,eof"]);
+        let DiffPart::Rows(block) = &text.parts[0] else { panic!("one run of rows") };
+        assert!(block.rows()[0].anchor.is_empty(), "no link without the right to comment");
     }
 
     #[test]
     fn a_lone_carriage_return_stays_inside_its_row() {
         let changes = rbit_git::diff::diff_bytes(b"foo\rbar\n", b"foo\rbaz\n");
-        let urls = PullUrls::new("alice", "demo", 3);
-        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), None, true);
+        let text = diff_text(changes.hunks, "f", &mut HashMap::new(), None, true);
         let lines: Vec<&str> = text
             .parts
             .iter()
             .filter_map(|part| if let DiffPart::Rows(block) = part { Some(block.rows()) } else { None })
             .flatten()
             .filter(|row| row.line.is_line())
-            .map(|row| row.line.text.as_str())
+            .map(|row| &*row.line.text)
             .collect();
         assert_eq!(lines, ["foo\u{240D}bar", "foo\u{240D}baz"]);
     }
@@ -602,7 +606,7 @@ mod tests {
         let urls = PullUrls::new("alice", "demo", 3);
         let anchor = line_anchor("f", ReviewSide::Right, 300);
         let mut comments = HashMap::from([(anchor.clone(), vec![comment_on(&urls, &anchor, 1)])]);
-        let text = diff_text(&changes.hunks, "f", &urls, &mut comments, None, true);
+        let text = diff_text(changes.hunks.clone(), "f", &mut comments, None, true);
         let mut sizes = Vec::new();
         for part in &text.parts {
             match part {
@@ -616,10 +620,56 @@ mod tests {
         assert_eq!(text.rows, 801);
         assert!(text.has_threads && text.blocked, "a thread's height is unknown, so its file keeps exact blocks");
         // Without the thread, the same rows are blocked only for being more than BLOCKED_ABOVE_ROWS.
-        let text = diff_text(&changes.hunks, "f", &urls, &mut HashMap::new(), None, true);
+        let text = diff_text(changes.hunks.clone(), "f", &mut HashMap::new(), None, true);
         assert!(!text.has_threads && text.blocked);
-        let short = diff_text(&rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks, "f", &urls, &mut HashMap::new(), None, true);
+        let short = diff_text(rbit_git::diff::diff_bytes(b"a\n", b"b\n").hunks, "f", &mut HashMap::new(), None, true);
         assert_eq!((short.rows, short.has_threads, short.blocked), (3, false, false));
+    }
+
+    #[test]
+    fn commenting_adds_markup_per_file_and_hunk_never_per_line() {
+        let old = crate::views::commit::tests::numbered("", 2000);
+        let new = crate::views::commit::tests::numbered("changed ", 2000);
+        let changes = rbit_git::diff::diff_bytes(old.as_bytes(), new.as_bytes());
+        let hunks = changes.hunks.len();
+        let file = FileDiff {
+            path: "src/big.rs".to_owned(),
+            old_path: None,
+            status: ChangeStatus::Modified,
+            additions: changes.additions,
+            deletions: changes.deletions,
+            stats_known: true,
+            body: FileDiffBody::Text(changes.hunks),
+        };
+        let render = |can_comment: bool| {
+            let files = PullFileView::list(vec![file.clone()], &"a".repeat(40), &RepoUrls::new("alice", "demo"), &[], None, can_comment);
+            PullFilesPage {
+                page: page(),
+                header: RepoHeader::default(),
+                pull: header_view(),
+                files,
+                additions: 2000,
+                deletions: 2000,
+                truncated: false,
+                can_comment,
+                signed_in: true,
+                sign_in_url: "/login".to_owned(),
+                review_form: None,
+                outdated_count: 0,
+            }
+            .render()
+            .unwrap()
+        };
+        let (read_only, commentable) = (render(false), render(true));
+        let rows = commentable.matches("<span class=\"num\">").count() / 2;
+        assert_eq!(rows, 4000, "every line is a plain row");
+        // Per file: `data-comment`; per hunk: one no-script link. Nothing per line (the
+        // links this replaced were about 520 bytes and two htmx elements per row).
+        let links = |html: &str| html.matches("<a ").count();
+        assert_eq!(links(&commentable), links(&read_only) + hunks);
+        assert_eq!(commentable.matches("hx-").count(), read_only.matches("hx-").count());
+        let extra = commentable.len() - read_only.len();
+        assert!(extra < 200 + 150 * hunks, "{extra} more bytes for {rows} commentable lines in {hunks} hunks");
     }
 
     #[test]
@@ -655,10 +705,9 @@ mod tests {
             replies: Vec::new(),
         };
         // Without threads a file's height is known: header, "View file" bar and rows.
-        let plain =
-            PullFileView::list(std::slice::from_ref(&file), &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[], None, true);
+        let plain = PullFileView::list(vec![file.clone()], &"a".repeat(40), &RepoUrls::new("alice", "demo"), &[], None, true);
         assert_eq!(plain[0].rows(), Some(FILE_HEADER_ROWS + FILE_BAR_ROWS + 4));
-        let files = PullFileView::list(&[file], &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[comment], Some(&anchor), true);
+        let files = PullFileView::list(vec![file], &"a".repeat(40), &RepoUrls::new("alice", "demo"), &[comment], Some(&anchor), true);
         assert_eq!(files[0].rows(), None, "a thread makes the height unknown");
         let html = PullFilesPage {
             page: page(),
@@ -681,22 +730,23 @@ mod tests {
         }
         .render()
         .unwrap();
-        assert!(html.contains(&format!("id=\"{anchor}\"")));
-        assert!(html.contains(&format!("?comment={anchor}#{anchor}")));
-        let link = format!(
-            r##"<a href="/alice/demo/pull/3/files?comment={anchor}#{anchor}" class="num" hx-get="/alice/demo/pull/3/files?comment={anchor}#{anchor}" hx-select="#{file}" hx-target="#{file}" hx-swap="outerHTML""##,
-            file = file_anchor("src/lib.rs"),
+        // A commentable line is the plain row of any diff; the file says where comments go.
+        assert!(
+            html.contains(&format!(r#"<div id="{anchor}" class="diff-add"><span class="num"></span><span class="num">2</span>B</div>"#)),
+            "{html}"
         );
-        assert!(html.contains(&format!(r#"<div id="{anchor}" class="diff-add">{link} aria-label="Comment on line 2">"#)), "{html}");
-        assert!(html.contains(&format!(r#"{link} tabindex="-1">2</a>B</div>"#)));
+        assert!(html.contains(&format!(
+            r#"<details id="{}" class="diff-file box group" data-path="src/lib.rs" data-comment="/alice/demo/pull/3/files" open>"#,
+            file_anchor("src/lib.rs")
+        )));
+        // Without scripts, the hunk header links to the form at its first line.
+        let first = line_anchor("src/lib.rs", ReviewSide::Right, 1);
+        assert!(html.contains(&format!(
+            r#"<div class="diff-hunk">@@ -1,2 +1,2 @@<a href="/alice/demo/pull/3/files?comment={first}#{first}" class="diff-hunk-comment">Comment on line 1</a></div>"#
+        )));
+        assert!(!html.contains("hx-get=\"/alice/demo/pull/3/files?comment="), "no htmx link per line");
         // The thread and the form end the block: they sit between blocks, outside any.
         assert!(html.contains("</div>\n      <div class=\"diff-comment\">"));
-        assert!(
-            html.contains(&format!(
-                r#"<details id="{}" class="diff-file box group" data-path="src/lib.rs" open>"#,
-                file_anchor("src/lib.rs")
-            ))
-        );
         assert!(html.contains(r#"<div class="vblock" data-rows="4">"#));
         assert!(!html.contains("<table"));
         assert_eq!(html.matches("Add single comment").count(), 1, "the form opens only at the requested line");
@@ -708,7 +758,6 @@ mod tests {
 
     #[test]
     fn files_tree_keeps_review_targets_statuses_and_fallback_links() {
-        let urls = PullUrls::new("alice", "demo", 3);
         let changed = |path: &str, status, old: Option<&str>| FileDiff {
             path: path.to_owned(),
             old_path: old.map(str::to_owned),
@@ -723,7 +772,7 @@ mod tests {
             changed("old/<&>.txt", ChangeStatus::Deleted, None),
             changed("README.md", ChangeStatus::Added, None),
         ];
-        let files = PullFileView::list(&diffs, &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[], None, false);
+        let files = PullFileView::list(diffs.to_vec(), &"a".repeat(40), &RepoUrls::new("alice", "demo"), &[], None, false);
         let tree = PullFileView::tree(&files);
         let leaves: Vec<_> = tree.iter().filter_map(|row| row.file.as_ref()).collect();
         assert_eq!(leaves.iter().map(|leaf| leaf.index).collect::<Vec<_>>(), [1, 0, 2]);

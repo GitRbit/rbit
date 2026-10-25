@@ -63,6 +63,8 @@ pub struct RepoSettingsPage {
     pub full_name: String,
     pub general_url: String,
     pub rename_url: String,
+    /// Archives or unarchives (`archived=true|false`); the state is `header.archived`.
+    pub archive_url: String,
     pub delete_url: String,
     pub general_error: FormError,
     pub rename_error: FormError,
@@ -105,6 +107,7 @@ impl RepoSettingsPage {
             full_name: format!("{}/{}", header.owner, header.name),
             general_url: settings_url.clone(),
             rename_url: format!("{settings_url}/rename"),
+            archive_url: format!("{settings_url}/archive"),
             delete_url: format!("{settings_url}/delete"),
             header,
             general,

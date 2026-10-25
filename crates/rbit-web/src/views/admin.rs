@@ -4,6 +4,7 @@ pub mod configuration;
 
 use std::{collections::HashSet, time::Duration};
 
+use crate::views::notification_email::hour_label;
 use askama::Template;
 use askama_web::WebTemplate;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -260,6 +261,7 @@ fn settings_summary(settings: &InstanceSettings) -> Vec<InfoRow> {
                 Visibility::Private => "Private by default",
             },
         ),
+        InfoRow::text("Email digests", format!("Sent at {} unless users choose", hour_label(settings.digest_hour))),
     ]
 }
 
@@ -532,6 +534,7 @@ pub struct RepoRow {
     pub owner_url: String,
     pub description: Option<String>,
     pub is_private: bool,
+    pub is_archived: bool,
     pub updated: String,
     pub updated_iso: String,
     pub delete_url: String,
@@ -547,6 +550,7 @@ impl From<&OwnedRepository> for RepoRow {
             owner_url: format!("/{}", item.owner.name),
             description: item.repo.description.clone().filter(|d| !d.is_empty()),
             is_private: !item.repo.visibility.is_public(),
+            is_archived: item.repo.is_archived(),
             updated: item.repo.updated_at.relative(),
             updated_iso: item.repo.updated_at.iso8601(),
             delete_url: format!("/admin/repositories/{}/delete", item.repo.id.0),
@@ -605,6 +609,15 @@ pub struct SettingsForm {
     pub registration_open: bool,
     pub admins_only_orgs: bool,
     pub private_by_default: bool,
+    /// `None` when the submitted value was not an hour (nothing is preselected).
+    pub digest_hour: Option<u8>,
+}
+
+impl SettingsForm {
+    /// The digest time menu: every hour, the current one selected.
+    pub fn digest_hours(&self) -> Vec<(u8, String, bool)> {
+        (0..=rbit_core::config::MAX_DIGEST_HOUR).map(|hour| (hour, hour_label(hour), self.digest_hour == Some(hour))).collect()
+    }
 }
 
 impl From<&InstanceSettings> for SettingsForm {
@@ -615,6 +628,7 @@ impl From<&InstanceSettings> for SettingsForm {
             registration_open: settings.registration == RegistrationMode::Open,
             admins_only_orgs: settings.org_creation == OrgCreationPolicy::AdminsOnly,
             private_by_default: settings.default_visibility == Visibility::Private,
+            digest_hour: Some(settings.digest_hour),
         }
     }
 }
@@ -854,6 +868,16 @@ mod tests {
 
         let html = SetPasswordPage::new(page(), &admin, &record(user(2, "alice", false), false), 12, false).render().unwrap();
         assert!(!html.contains("send a password reset"));
+    }
+
+    #[test]
+    fn settings_page_preselects_the_digest_hour() {
+        let settings = InstanceSettings { digest_hour: 6, ..InstanceSettings::defaults(&rbit_core::Config::default()) };
+        let html = SettingsPage::new(page(), SettingsForm::from(&settings), FormError::default(), false).render().unwrap();
+        assert!(html.contains(r#"name="digest_hour""#));
+        assert!(html.contains(r#"<option value="6" selected>06:00 UTC</option>"#), "{html}");
+        assert_eq!(html.matches(" selected>").count(), 1);
+        assert!(settings_summary(&settings).iter().any(|row| row.value.contains("06:00 UTC")));
     }
 
     #[test]

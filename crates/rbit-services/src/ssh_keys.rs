@@ -257,7 +257,7 @@ impl SshKeyService {
         let access = if *read_only { RepoAccess::Read } else { RepoAccess::Write };
         let disk_path = self.ctx.repositories.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
-        Ok(RepoContext { repo, access, reader, disk_path })
+        Ok(RepoContext { repo, access, viewer: None, collaborator: None, reader, disk_path })
     }
 
     /// The repository a deploy key belongs to.

@@ -262,7 +262,8 @@ impl LfsService {
         let storage = &self.inner.ctx.repositories;
         let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = storage.reader(repo.repo.owner_id, repo.repo.id);
-        RepoContext { repo, access, reader, disk_path }
+        // The access is capped by the token, so it is not the user's own.
+        RepoContext { repo, access, viewer: None, collaborator: None, reader, disk_path }
     }
 
     // ------------------------------------------------------------------ batch
@@ -279,8 +280,11 @@ impl LfsService {
         operation: LfsOperation,
         objects: &[BatchRequestObject],
     ) -> Result<Vec<BatchObject>, ServiceError> {
-        if operation.is_write() && !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
+        if operation.is_write() {
+            if !repo.access.can_write() {
+                return Err(ServiceError::Forbidden);
+            }
+            repo.ensure_writable()?;
         }
         if objects.len() > MAX_BATCH_OBJECTS {
             return Err(ServiceError::Invalid(format!("a batch can name at most {MAX_BATCH_OBJECTS} objects")));
@@ -375,6 +379,7 @@ impl LfsService {
         if !repo.access.can_write() {
             return Err(ServiceError::Forbidden);
         }
+        repo.ensure_writable()?;
         let max = self.max_object_bytes();
         if size > max {
             return Err(ServiceError::Invalid(format!("objects can be at most {}", human_bytes(max))));

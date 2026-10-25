@@ -1,4 +1,4 @@
-//! Actions settings (migration `0044_actions.sql`): the per-repository switch and default
+//! Actions settings (migration `0048_actions.sql`): the per-repository switch and default
 //! token permission, which owners instance runners serve, and the pull request authors a
 //! repository trusts.
 //!

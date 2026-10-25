@@ -1,7 +1,7 @@
 //! Personal access tokens. Only the SHA-256 digest of each secret is stored.
 
+use super::pool::Pool;
 use rbit_core::{AccessToken, AccessTokenId, AccountId, Timestamp, TokenScope, User};
-use sqlx::SqlitePool;
 
 use super::rows::{AccessTokenOwnerRow, AccessTokenRow};
 use crate::StorageError;
@@ -30,11 +30,11 @@ pub struct NewAccessToken {
 
 #[derive(Debug, Clone)]
 pub struct AccessTokenStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl AccessTokenStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 

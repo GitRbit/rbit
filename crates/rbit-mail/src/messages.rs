@@ -293,6 +293,102 @@ struct ThreadNotificationHtml<'a> {
 
 templates!(ThreadNotification, text = ThreadNotificationText, html = ThreadNotificationHtml);
 
+// ------------------------------------------------------------------ notification digest
+
+/// Notifications collected into one email a day or a week, grouped by repository and
+/// thread: what happened, a short excerpt and a link for each, plus the same settings and
+/// unsubscribe links as a [`ThreadNotification`].
+#[derive(Debug, Clone)]
+pub struct DigestNotification {
+    pub site_name: String,
+    pub base_url: String,
+    /// A weekly digest (otherwise daily).
+    pub weekly: bool,
+    /// The repositories, each with its threads, in the order they are shown.
+    pub repositories: Vec<DigestRepository>,
+    pub settings_link: String,
+    /// The page that turns notification emails off (the link in `List-Unsubscribe`).
+    pub unsubscribe_link: String,
+}
+
+/// One repository of a digest.
+#[derive(Debug, Clone)]
+pub struct DigestRepository {
+    /// `owner/repo`.
+    pub name: String,
+    pub link: String,
+    pub threads: Vec<DigestThread>,
+}
+
+/// One issue or pull request of a digest.
+#[derive(Debug, Clone)]
+pub struct DigestThread {
+    pub number: u64,
+    pub title: String,
+    pub is_pull: bool,
+    pub link: String,
+    pub entries: Vec<DigestEntry>,
+}
+
+/// One notification of a digest.
+#[derive(Debug, Clone)]
+pub struct DigestEntry {
+    /// One sentence, e.g. `bob commented on issue #3.`
+    pub headline: String,
+    /// A one-line excerpt, or empty.
+    pub excerpt: String,
+    /// The thread, anchored at the activity.
+    pub link: String,
+}
+
+impl DigestNotification {
+    fn subject(&self) -> String {
+        format!("Your {} digest: {}", self.period(), self.summary())
+    }
+
+    /// `daily` or `weekly`.
+    pub fn period(&self) -> &'static str {
+        if self.weekly { "weekly" } else { "daily" }
+    }
+
+    /// The number of notifications.
+    pub fn count(&self) -> usize {
+        self.repositories.iter().flat_map(|repo| &repo.threads).map(|thread| thread.entries.len()).sum()
+    }
+
+    /// e.g. `3 notifications in 2 repositories`.
+    pub fn summary(&self) -> String {
+        let count = self.count();
+        let repositories = self.repositories.len();
+        format!(
+            "{count} notification{} in {repositories} repositor{}",
+            if count == 1 { "" } else { "s" },
+            if repositories == 1 { "y" } else { "ies" }
+        )
+    }
+}
+
+impl DigestThread {
+    /// `Issue #3` or `Pull request #3`.
+    pub fn label(&self) -> String {
+        format!("{} #{}", if self.is_pull { "Pull request" } else { "Issue" }, self.number)
+    }
+}
+
+#[derive(Template)]
+#[template(path = "notification_digest.txt")]
+struct DigestNotificationText<'a> {
+    m: &'a DigestNotification,
+}
+
+#[derive(Template)]
+#[template(path = "notification_digest.html")]
+struct DigestNotificationHtml<'a> {
+    m: &'a DigestNotification,
+}
+
+templates!(DigestNotification, text = DigestNotificationText, html = DigestNotificationHtml);
+
 // ------------------------------------------------------------------ helpers
 
 /// `alice@example.com` → `a••••@example.com`: enough for the owner to recognise, without
@@ -436,6 +532,101 @@ mod tests {
         assert_eq!(mail.subject, "[alice/app] Crash on <start> (#3)");
         assert!(mail.text.starts_with("bob commented on issue #3.\n\nView it on"), "no empty excerpt: {:?}", mail.text);
         assert!(mail.html.contains("View pull request"));
+    }
+
+    fn digest() -> DigestNotification {
+        let entry = |headline: &str, excerpt: &str, link: &str| DigestEntry {
+            headline: headline.to_owned(),
+            excerpt: excerpt.to_owned(),
+            link: link.to_owned(),
+        };
+        DigestNotification {
+            site_name: SITE.to_owned(),
+            base_url: "https://git.example.com".to_owned(),
+            weekly: false,
+            repositories: vec![
+                DigestRepository {
+                    name: "alice/app".to_owned(),
+                    link: "https://git.example.com/alice/app".to_owned(),
+                    threads: vec![DigestThread {
+                        number: 3,
+                        title: "Crash on <start>".to_owned(),
+                        is_pull: false,
+                        link: "https://git.example.com/alice/app/issues/3".to_owned(),
+                        entries: vec![
+                            entry(
+                                "bob commented on issue #3.",
+                                "Same here <b>",
+                                "https://git.example.com/alice/app/issues/3#issuecomment-9",
+                            ),
+                            entry("carol closed issue #3 as completed.", "", "https://git.example.com/alice/app/issues/3"),
+                        ],
+                    }],
+                },
+                DigestRepository {
+                    name: "bob/lib".to_owned(),
+                    link: "https://git.example.com/bob/lib".to_owned(),
+                    threads: vec![DigestThread {
+                        number: 7,
+                        title: "Faster parser".to_owned(),
+                        is_pull: true,
+                        link: "https://git.example.com/bob/lib/pulls/7".to_owned(),
+                        entries: vec![entry(
+                            "bob requested your review on pull request #7.",
+                            "",
+                            "https://git.example.com/bob/lib/pulls/7",
+                        )],
+                    }],
+                },
+            ],
+            settings_link: "https://git.example.com/settings/notifications".to_owned(),
+            unsubscribe_link: "https://git.example.com/email/unsubscribe/2.abc".to_owned(),
+        }
+    }
+
+    #[test]
+    fn renders_digests_grouped_by_repository() {
+        let mail = Mail::render(to(), &digest()).unwrap();
+        assert_eq!(mail.subject, "Your daily digest: 3 notifications in 2 repositories");
+        let expected = [
+            "Your daily digest: 3 notifications in 2 repositories.",
+            "",
+            "alice/app",
+            "",
+            "Issue #3: Crash on <start>",
+            "- bob commented on issue #3.",
+            "  Same here <b>",
+            "  https://git.example.com/alice/app/issues/3#issuecomment-9",
+            "- carol closed issue #3 as completed.",
+            "  https://git.example.com/alice/app/issues/3",
+            "",
+            "bob/lib",
+            "",
+            "Pull request #7: Faster parser",
+            "- bob requested your review on pull request #7.",
+            "  https://git.example.com/bob/lib/pulls/7",
+            "",
+            "You are receiving this digest because you chose daily notification emails.",
+            "Notification settings: https://git.example.com/settings/notifications",
+            "Stop notification emails: https://git.example.com/email/unsubscribe/2.abc",
+            "",
+            "--",
+            "Forge <&>",
+            "https://git.example.com",
+        ];
+        assert_eq!(mail.text.trim_end().lines().collect::<Vec<_>>(), expected, "{}", mail.text);
+        assert!(mail.html.contains(r#"href="https://git.example.com/alice/app/issues/3#issuecomment-9""#));
+        assert!(mail.html.contains(r#"href="https://git.example.com/alice/app""#), "repositories link to themselves");
+        assert!(mail.html.contains(r#"href="https://git.example.com/email/unsubscribe/2.abc""#));
+        assert!(mail.html.contains("Pull request #7"));
+        assert!(!mail.html.contains("<b>") && !mail.html.contains("<start>"), "text is escaped");
+        assert!(mail.html.find("alice/app").unwrap() < mail.html.find("bob/lib").unwrap(), "in the given order");
+        assert_well_formed(&mail);
+
+        let weekly = DigestNotification { weekly: true, repositories: digest().repositories[1..].to_vec(), ..digest() };
+        let mail = Mail::render(to(), &weekly).unwrap();
+        assert_eq!(mail.subject, "Your weekly digest: 1 notification in 1 repository");
+        assert!(mail.text.contains("because you chose weekly notification emails"));
     }
 
     #[test]

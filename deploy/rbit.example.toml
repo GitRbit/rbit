@@ -19,21 +19,54 @@ open_registration = false
 # SQLite database, redb store and bare repositories all live here. Back it up with
 # `rbit backup --output DIR` (see docs/deployment.md).
 data_dir = "/var/lib/rbit"
+# The key that encrypts stored credentials (TOTP seeds, webhook and push mirror secrets,
+# saved SMTP/OIDC secrets). Default: <data_dir>/secret.key, created on first start. Back
+# it up with the database; set this to keep it elsewhere (e.g. a container secret).
+# secret_key_file = "/etc/rbit/secret.key"
 
 [security]
 session_lifetime_days = 30
+# Sessions end this long after sign-in even when in constant use (0 = no limit).
+session_max_age_days = 90
 min_password_length = 12
 # Requests from these proxies may set X-Forwarded-For / X-Forwarded-Proto. List exactly
 # the reverse proxy's address; anything broader lets clients spoof their IP address.
 # trusted_proxies = ["127.0.0.1/32", "::1/128"]
 # Throttle sign-in, sign-up, 2FA, Git credentials, email requests and form posts.
 rate_limit = true
+# Signing up the first account needs a setup token, generated and logged at start-up
+# while there is no user. Set one here for automated deployments.
+# setup_token = "a long random string"
+# Strict-Transport-Security (one year) when public_url is https://.
+hsts = true
+hsts_include_subdomains = false
+# Show images hosted on other sites in Markdown. They learn who viewed the page; false
+# limits images to this instance.
+external_images = true
 
 [repository]
 default_branch = "main"
 # The git executable used for smart HTTP, `git gc` and backups.
 git_binary = "/usr/bin/git"
 max_render_bytes = 1048576
+# Git processes (clones, fetches, pushes over HTTP and SSH) running at once; more are
+# refused with 503 + Retry-After over HTTP.
+# max_git_processes = 128
+# Concurrent smart-HTTP Git requests from one address (429 beyond). Behind a reverse proxy
+# this needs [security] trusted_proxies, or every client shares the proxy's address.
+# max_git_requests_per_ip = 16
+# A smart-HTTP Git exchange is stopped after this long without traffic either way…
+# git_idle_timeout_seconds = 300
+# …or after this long in all.
+# git_max_seconds = 21600
+# Largest pack one push may send, in bytes (2 GiB; 0 = unlimited). Raise the reverse
+# proxy's body limit to match.
+# max_push_bytes = 2147483648
+# Source archive (zip, tar.gz) downloads one address may run at once, and when a stalled
+# or overlong download is stopped.
+# max_archives_per_ip = 2
+# archive_idle_timeout_seconds = 60
+# archive_max_seconds = 3600
 
 [mail]
 # "disabled" (password reset and verification explain that email is unavailable),
@@ -67,9 +100,10 @@ bind = "0.0.0.0:2222"
 # /metrics at the reverse proxy and scrape the loopback address directly.
 metrics = false
 # metrics_token = "replace-with-a-long-random-string"
-# Warm language and last-commit caches right after each push.
+# Update the commit-graph and warm language and last-commit caches right after each push.
 warm_caches_on_push = true
-# `git gc --auto` for repositories pushed to since the last run, then cache pruning.
+# `git gc --auto` and a commit-graph write for repositories pushed to since the last run,
+# then cache pruning.
 # 0 disables periodic maintenance.
 maintenance_interval_minutes = 360
 # Background jobs (cache warming, git gc) running at the same time.
@@ -184,6 +218,10 @@ noreply_domain = ""
 email = true
 # What users who never chose get: "off", "participating" or "all".
 default_email = "participating"
+# Users can collect their notification emails into a daily or a weekly (Monday) digest.
+# This is the hour (0-23, UTC) digests are sent at unless a user picks another one;
+# administrators can change it at runtime under Site administration -> Settings.
+digest_hour = 8
 
 [editor]
 # Editing and uploading files in the browser. Text edits are limited by

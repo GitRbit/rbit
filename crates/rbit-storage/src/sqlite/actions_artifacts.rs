@@ -1,4 +1,4 @@
-//! Workflow artifacts: the rows of the files jobs uploaded (migration `0044_actions.sql`,
+//! Workflow artifacts: the rows of the files jobs uploaded (migration `0048_actions.sql`,
 //! §12.7 of `docs/design/actions.md`). The files themselves live under
 //! `<data_dir>/actions/artifacts`, written and removed by rbit-services' `actions::artifacts`,
 //! which also enforces sizes and quotas.

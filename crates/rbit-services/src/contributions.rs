@@ -118,26 +118,45 @@ impl ContributionService {
         } else {
             store.contribution_repositories(viewer.map(User::id), viewer.is_some_and(|u| u.is_admin)).await?
         };
-        let email = if account.is_organization() {
+        // A user's commits are those authored with their noreply address, which is public.
+        // Their account email is private: matching it for anyone else would let a viewer
+        // confirm a guessed address by committing with it to a repository they can read,
+        // so it counts only when the user (or a site administrator) is looking.
+        let emails = if account.is_organization() {
             None
         } else {
-            Some(self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?.email.to_string())
+            let user = self.ctx.database.accounts().find_user(account.id).await?.ok_or(ServiceError::NotFound)?;
+            let config = &self.ctx.config;
+            let domain = rbit_core::pull::noreply_domain(&config.pulls.noreply_domain, &config.server.public_url);
+            let mut emails = vec![rbit_core::pull::noreply_email(user.name().as_str(), &domain)];
+            if viewer.is_some_and(|viewer| viewer.id() == account.id || viewer.is_admin) {
+                emails.push(user.email.to_string());
+            }
+            Some(emails)
         };
         let mut result = Contributions::default();
         let mut seen = HashSet::new();
         for repo in repos {
             let reader = self.ctx.repositories.reader(repo.repo.owner_id, repo.repo.id);
-            // Fresh repositories and repositories without their configured default branch have no contributions.
-            let refs = reader.branch_tips().await?;
-            let Some(tip) = refs.iter().find(|r| r.name == repo.repo.default_branch) else { continue };
-            let history = self.history(&reader, tip.target.clone()).await?;
+            // Fresh repositories and repositories without their configured default branch
+            // have no contributions. Only that one branch is resolved, not every branch.
+            let tip = match reader.commit_id(format!("refs/heads/{}", repo.repo.default_branch)).await {
+                Ok(tip) => tip,
+                Err(rbit_git::GitError::NotFound(_)) => continue,
+                Err(error) => {
+                    // An unreadable branch never hid the rest of the profile; keep it that way.
+                    tracing::warn!(%error, repo = repo.repo.id.0, "default branch unreadable for contributions");
+                    continue;
+                }
+            };
+            let history = self.history(&reader, tip).await?;
             result.partial |= history.1;
             let mut contributed = false;
             for (id, seconds, author) in &history.0 {
                 if !(start..end).contains(seconds) {
                     continue;
                 }
-                if email.as_ref().is_some_and(|email| !author.eq_ignore_ascii_case(email)) {
+                if emails.as_ref().is_some_and(|emails| !emails.iter().any(|email| author.eq_ignore_ascii_case(email))) {
                     continue;
                 }
                 contributed = true;
@@ -264,7 +283,50 @@ mod tests {
             disk_path: path,
             repo: rbit_core::OwnedRepository { owner: owner.account, repo: repository },
             access: rbit_core::RepoAccess::Read,
+            viewer: None,
+            collaborator: None,
         }
+    }
+
+    #[tokio::test]
+    async fn account_calendars_read_only_the_default_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = dir.path().join("data");
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
+        let signup = crate::SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };
+        let ada = services.accounts.create_user(signup, Some(true)).await.unwrap();
+        for name in ["work", "empty"] {
+            let input =
+                crate::CreateRepository { name: name.into(), description: String::new(), visibility: rbit_core::Visibility::Public };
+            services.repositories.create(&ada, input).await.unwrap();
+        }
+        let bare = services.repositories.open(Some(&ada), "ada", "work").await.unwrap().disk_path;
+
+        let work = dir.path().join("clone");
+        std::fs::create_dir(&work).unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .current_dir(&work)
+                .args(["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "init.defaultBranch=main"])
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(status.success(), "git {args:?}");
+        };
+        git(&["init", "-q"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "on main"]);
+        git(&["checkout", "-q", "-b", "side"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "on side"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "more on side"]);
+        git(&["push", "-q", bare.to_str().unwrap(), "main", "side"]);
+
+        let counts = services.contributions.account(Some(&ada), &ada.account, 0, i64::MAX).await.unwrap();
+        assert_eq!(counts.days.values().sum::<usize>(), 1, "side-branch commits are not contributions");
+        assert_eq!(counts.repositories, 1, "the empty repository has no default branch yet");
     }
 
     #[tokio::test]

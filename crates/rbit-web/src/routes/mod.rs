@@ -110,7 +110,6 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .route("/logout", post(auth::logout))
         .route("/new", get(repo_create::new_form).post(repo_create::create))
         .route("/offline", get(pwa::offline))
-        .route("/assets/branding.css", get(pwa::branding_styles))
         .route("/{owner}", get(account::profile))
         .route("/{owner}/{repo}", get(repo::home))
         .route("/{owner}/{repo}/tree/{*rest}", get(repo::tree))
@@ -181,7 +180,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn(middleware::html_caching))
         // Default privacy headers also cover errors and non-HTML responses. Wrap HTML
         // caching so its ETags and explicit preload freshness remain effective.
-        .layer(from_fn(middleware::security_headers))
+        .layer(from_fn_with_state(middleware::SecurityHeaders::new(&state.config), middleware::security_headers))
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, PAGE_TIMEOUT))
         .layer(page_compression())
         // Forms are small; this bounds memory per request for every extractor that buffers.
@@ -200,6 +199,8 @@ fn page_compression() -> CompressionLayer {
 
 fn static_routes() -> Router<AppState> {
     Router::new()
+        // Before the catch-all: generated from the branding settings, not embedded.
+        .route("/assets/branding.css", get(pwa::branding_styles))
         .route("/assets/{*path}", get(assets::serve))
         .route("/manifest.webmanifest", get(pwa::manifest))
         .route("/sw.js", get(pwa::service_worker))
@@ -213,4 +214,75 @@ fn git_routes() -> Router<AppState> {
         .route("/{owner}/{repo}/info/refs", get(git_http::info_refs))
         .route("/{owner}/{repo}/git-upload-pack", post(git_http::upload_pack))
         .route("/{owner}/{repo}/git-receive-pack", post(git_http::receive_pack))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+    };
+    use rbit_core::Config;
+    use rbit_services::{Services, SignUp};
+    use rbit_storage::{Database, KvStore};
+    use tower::ServiceExt as _;
+
+    use super::*;
+
+    async fn app() -> (tempfile::TempDir, Services, Router) {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = directory.path().join("data");
+        config.security.rate_limit = false;
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let config = Arc::new(config);
+        let services = Services::new(config.clone(), &database, &kv).await.unwrap();
+        let router = router(AppState::new(config, services.clone()));
+        (directory, services, router)
+    }
+
+    async fn get(router: &Router, uri: &str, headers: &[(&str, &str)]) -> axum::response::Response {
+        let mut request = Request::builder().uri(uri);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        router.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_branding_sheet_is_immutable_at_the_url_pages_link() {
+        let (_directory, services, router) = app().await;
+        let admin = services
+            .accounts
+            .create_user(
+                SignUp { username: "brand-admin".into(), email: "brand@example.com".into(), password: "correct horse battery".into() },
+                Some(true),
+            )
+            .await
+            .unwrap();
+        let mut settings = services.instance.current();
+        settings.branding.primary_color = "#123456".into();
+        settings.branding.primary_text_color = "#ffffff".into();
+        services.admin.update_settings(&admin, settings).await.unwrap();
+
+        let page = get(&router, "/login", &[]).await;
+        let html = String::from_utf8(axum::body::to_bytes(page.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+        let href = html.split("href=\"/assets/branding.css").nth(1).unwrap().split('"').next().unwrap().replace("&amp;", "&");
+        let linked = get(&router, &format!("/assets/branding.css{href}"), &[]).await;
+        assert_eq!(linked.status(), StatusCode::OK);
+        assert_eq!(linked.headers()[header::CACHE_CONTROL], "public, max-age=31536000, immutable");
+        assert!(!linked.headers().contains_key(header::SET_COOKIE), "served without the session layer");
+        let css = axum::body::to_bytes(linked.into_body(), usize::MAX).await.unwrap();
+        assert!(String::from_utf8_lossy(&css).contains("background-color:#123456"));
+
+        for stale in ["/assets/branding.css", "/assets/branding.css?color=%23000000&text=%23ffffff"] {
+            let response = get(&router, stale, &[]).await;
+            assert_eq!(response.status(), StatusCode::OK, "{stale}");
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-cache", "{stale}");
+        }
+    }
 }

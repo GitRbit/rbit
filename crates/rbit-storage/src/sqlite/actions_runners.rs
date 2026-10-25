@@ -1,4 +1,4 @@
-//! Runners and their registration tokens (migration `0044_actions.sql`).
+//! Runners and their registration tokens (migration `0048_actions.sql`).
 //!
 //! Tokens of both kinds are stored only as SHA-256 digests and looked up by digest through a
 //! unique index. Registration consumes one use of a registration token and creates the

@@ -23,8 +23,10 @@ mod actions_statuses;
 mod actions_sweeper;
 mod actions_tokens;
 mod admin;
+mod archives;
 mod audit;
 mod edits;
+mod email_digests;
 mod external_auth;
 // The fake GitHub that imports and mirrors fetch from.
 #[path = "support/fake_forge.rs"]

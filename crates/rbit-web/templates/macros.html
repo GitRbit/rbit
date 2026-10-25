@@ -208,6 +208,7 @@
       <div class="flex items-center gap-2">
         <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
         {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
+        {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
       </div>
       {% if let Some(description) = repo.description %}
       <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted">{{ description }}</p>

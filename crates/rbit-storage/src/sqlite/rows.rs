@@ -65,6 +65,8 @@ pub(crate) struct RepositoryRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub pushed_at: Option<i64>,
+    /// From `repo_archives`, selected as a subquery next to the repository's own columns.
+    pub archived_at: Option<i64>,
 }
 
 impl TryFrom<RepositoryRow> for Repository {
@@ -81,6 +83,7 @@ impl TryFrom<RepositoryRow> for Repository {
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
             pushed_at: row.pushed_at.map(Timestamp),
+            archived_at: row.archived_at.map(Timestamp),
         })
     }
 }

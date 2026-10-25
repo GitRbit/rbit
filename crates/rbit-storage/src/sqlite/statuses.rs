@@ -9,13 +9,13 @@
 //! (`rbit_core::status::StatusReport`).
 //!
 //! Statuses rbit Actions posts ([`CommitStatusStore::create_as_system`]) have no creator
-//! and `source = 'actions'` (migration `0045_commit_status_source.sql`).
+//! and `source = 'actions'` (migration `0049_commit_status_source.sql`).
 
+use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
     status::{CommitStatus, StatusContext, StatusId, StatusReport, StatusSource, StatusState},
 };
-use sqlx::SqlitePool;
 
 use crate::StorageError;
 
@@ -77,11 +77,11 @@ fn json_strings(values: &[String]) -> String {
 
 #[derive(Debug, Clone)]
 pub struct CommitStatusStore {
-    pool: SqlitePool,
+    pool: Pool,
 }
 
 impl CommitStatusStore {
-    pub(crate) fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
