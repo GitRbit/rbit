@@ -14,6 +14,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **rbit Actions**, rbit's own CI/CD, off unless `[actions] enabled = true`
+  ([docs/actions.md](docs/actions.md)). Workflows in `.rbit/workflows` (or
+  `.forgejo/workflows`, `.github/workflows`) use a GitHub-style subset: `push`,
+  `pull_request`, `workflow_dispatch` and `schedule` triggers, matrices, `needs`, job and step
+  `if:` with GitHub's expressions, `fail-fast`, `max-parallel`, concurrency groups,
+  containers and services, and the built-in `rbit/checkout`, `rbit/cache`,
+  `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases).
+- **rbit-runner**, shipped in every release archive and as `ghcr.io/gitrbit/rbit-runner`:
+  registers with a single-use token, runs jobs in Docker or Podman containers (no privileges,
+  no Docker socket, a network per job) or on the host, masks secrets in logs, and offers
+  `rbit-runner exec` to run a workflow locally.
+- An **Actions** tab with runs, run pages, job pages with live logs and raw downloads, and
+  artifacts; settings for the repository switch, the default token permission, secrets
+  (sealed with AES-256-GCM under a key file kept out of the database), variables, trusted
+  authors and runners at repository, organisation, account and instance level.
+- Pull requests from forks and from people without write access run read-only, without
+  secrets or variables, after a writer approves them.
+- `workflow_run` and `workflow_job` webhooks, and `/api/v1/repos/{owner}/{repo}/actions/…`
+  endpoints for runs, jobs, workflows, dispatch, secrets and variables.
 - Resolve and reopen pull request review conversations as a repository writer or the
   conversation's author. Resolved conversations collapse with their replies in the
   conversation and Files changed tabs; state changes appear in the timeline.
@@ -40,6 +59,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
+- Migrations `0044` and `0045` add the Actions tables and a `source` column on commit
+  statuses. Nothing changes until an administrator enables Actions; with it off no Actions
+  table is written and `<data_dir>/actions` is not created.
+- With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
+  copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
+  backed up.
 - Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
   and their maintenance triggers. Existing account names and IDs are unchanged; names
   abandoned before this upgrade cannot be reconstructed.

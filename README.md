@@ -134,6 +134,10 @@ permissions keep their account identity.
   delivery queue.
 - **Commit statuses**: a GitHub-compatible status API for external CI, with checks shown on pull requests and
   commits.
+- **Actions** (opt-in): GitHub-style workflows under `.rbit/workflows` (`.github/workflows` work too) run on
+  **rbit-runner**, a separate program, in Docker/Podman containers or on the host — with built-in checkout,
+  cache and artifacts, sealed secrets, fork-safe pull request runs, live logs and commit statuses. See
+  [docs/actions.md](docs/actions.md).
 - **External sign-in**: OpenID Connect providers and GitHub, with PKCE and verified ID tokens; link providers to
   existing accounts or let them register new ones.
 
@@ -157,8 +161,9 @@ database migrations.
 
 Every [release](https://github.com/GitRbit/rbit/releases) has archives for Linux (x86_64 and
 aarch64, glibc 2.35 or newer), macOS (Intel and Apple silicon) and Windows (x86_64, `.zip`), plus a
-`SHA256SUMS` file. Each archive holds the `rbit` binary, the licenses, this README, the
-changelog, the third-party notices, the example configuration and the systemd unit.
+`SHA256SUMS` file. Each archive holds the `rbit` binary and the `rbit-runner` binary (the Actions
+runner, which you install on build machines instead), the licenses, this README, the changelog,
+the third-party notices, the example configurations and the systemd units.
 
 ```bash
 version=0.1.0                       # the release you want

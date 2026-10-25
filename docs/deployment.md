@@ -10,12 +10,14 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | `lfs/<aa>/<bb>/<oid>` | Git LFS objects, stored once however many repositories use them | **Yes** |
 | `tmp/` | Scratch space: merges, web edits, cross-fork overlays, LFS uploads in progress | No (swept at start-up) |
 | `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
+| `actions/secrets.key` | The key that seals Actions secrets (only with Actions enabled) | **Separately**: not in `rbit backup` |
+| `actions/logs/`, `actions/artifacts/` | Job logs and workflow artifacts (only with Actions enabled) | No (kept for a retention period) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
 [Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),
 [email](#email), [external sign-in](#external-sign-in), [health checks](#health-checks),
-[metrics](#metrics), [background jobs](#background-jobs), [backups and restore](#backups)
-and [upgrades](#upgrades-and-migrations).
+[metrics](#metrics), [background jobs](#background-jobs), [Actions and runners](#actions-and-runners),
+[backups and restore](#backups) and [upgrades](#upgrades-and-migrations).
 
 ## Configuration
 
@@ -410,6 +412,76 @@ host needs outbound access to wherever users point them and to the configured pr
 Internal addresses are refused unless `allow_private_addresses` is set in `[webhooks]`,
 `[mirrors]`, `[imports]`, `[push_mirrors]` or `[auth]`; set it only on a trusted instance (for example to reach a CI server or an
 identity provider on the same network).
+
+## Actions and runners
+
+rbit Actions is off by default. With `[actions] enabled = true` (a restart is needed) rbit
+plans workflow runs and hands their jobs to **rbit-runner**, a separate program shipped in the
+same release archives and as the image `ghcr.io/gitrbit/rbit-runner`. The server never runs
+builds itself. [docs/actions.md](actions.md) covers workflows and registering runners; this
+section is about running them safely.
+
+```toml
+[actions]
+enabled = true
+enable_for_new_repositories = false
+# The key that seals secrets; empty means <data_dir>/actions/secrets.key.
+secrets_key_file = ""
+log_retention_days = 90
+artifact_retention_days = 90
+max_artifact_bytes = 2147483648          # per artifact
+max_artifact_storage_bytes = 10737418240 # per repository
+instance_runners_for_all = false         # instance runners serve only owners you allow
+```
+
+**The secrets key.** rbit creates `actions/secrets.key` (mode `0600` on Unix) the first time it
+starts with Actions on, and refuses a key group or others can read. It is never created while
+sealed secrets exist, so a lost key cannot be replaced silently: restore it, or delete the
+secrets and set them again. `rbit backup` does not copy it — the point of the key is to keep
+secrets out of the database and its backups — so back it up separately, or point
+`secrets_key_file` at a systemd credential or another secret store. On Windows, restrict the
+data directory's ACLs.
+
+**Runners.** Install `rbit-runner` on dedicated machines or VMs, not on the rbit server:
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/rbit-runner --shell /usr/sbin/nologin rbit-runner
+sudo usermod -aG docker rbit-runner   # container labels with rootful Docker
+sudo install -m 0755 rbit-runner /usr/local/bin/rbit-runner
+sudo -u rbit-runner sh -c 'cd /var/lib/rbit-runner && read -rs RBIT_RUNNER_TOKEN && export RBIT_RUNNER_TOKEN &&   rbit-runner register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04'
+sudo install -m 0644 deploy/rbit-runner.service /etc/systemd/system/rbit-runner.service
+sudo systemctl daemon-reload && sudo systemctl enable --now rbit-runner
+```
+
+`deploy/rbit-runner.example.toml` documents `runner.toml`: capacity, the work directory, labels
+and the container limits (memory, CPUs, pids). The container image keeps `runner.toml`, the
+credential and the work directory in its `/var/lib/rbit-runner` volume.
+
+**Isolation.** Each label runs its jobs one way:
+
+- `container` (Docker or Podman, through their CLI): each job gets its own container and
+  network, `--security-opt no-new-privileges`, pids, memory and CPU limits, and never
+  `--privileged`, the Docker socket or host networking. Secrets reach containers through
+  `--env-file`s that are deleted after each step, never through command lines. Rootless Podman
+  is the strongest setup; a container escape is a kernel or runtime bug, so prefer one runner
+  host or VM per trust level, and ephemeral runners (`rbit-runner run --once`) for public
+  repositories.
+- `host`: jobs run as the runner's user, with no isolation — they can read the runner's
+  credential and anything else that user can. `rbit-runner` warns at registration and at every
+  start, and the runners pages say "host — no isolation". Use it only for repository runners of
+  repositories you trust.
+
+Pull requests from forks and from people without write access get a read-only token, no
+secrets and no variables, and wait for a writer's approval. Instance runners (registered under
+**Administration → Runners**) serve only the owners an administrator allows, unless
+`instance_runners_for_all` is set.
+
+**Network.** Runners connect to rbit over HTTPS (plain HTTP only with `--insecure-http`, for a
+server on the same machine). rbit makes no outbound connections for Actions.
+
+**Storage.** Job logs (gzipped once a job ends) and artifacts live under `actions/` in the data
+directory and are not backed up; the sweeper deletes them after their retention and keeps the
+instance within `max_log_storage_bytes` by expiring the oldest finished runs' logs first.
 
 ## Backups
 

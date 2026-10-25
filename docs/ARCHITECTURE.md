@@ -46,6 +46,8 @@ rbit/
     ├── rbit-ssh/            # Built-in SSH server (russh) for Git over SSH
     ├── rbit-web/            # Axum router, handlers, Askama templates, assets, metrics
     ├── rbit-server/         # The `rbit` binary: CLI, config, wiring, backups, shutdown
+    ├── rbit-workflow/       # Actions: workflow parsing, triggers, expressions, plans, runner protocol types
+    ├── rbit-runner/         # The `rbit-runner` binary (not a default member): runs Actions jobs
     └── rbit-e2e/            # End-to-end and Git compatibility tests (test-only)
 ```
 
@@ -57,11 +59,15 @@ rbit/
               rbit-web          rbit-ssh
                    └────────┬─────────┘
              rbit-services ─────── rbit-transport
-     ┌──────────┬───────┼─────────┬────────────┐
-rbit-storage rbit-auth rbit-git rbit-mail
-     └──────────┴───────┬─────────┴────────────┘
-                    rbit-core
+     ┌──────────┬───────┼─────────┬────────────┬──────────────┐
+rbit-storage rbit-auth rbit-git rbit-mail   rbit-workflow
+     └──────────┴───────┬─────────┴────────────┘     │
+                    rbit-core                 rbit-runner (bin)
 ```
+
+`rbit-workflow` is pure (no I/O, no async, no other rbit crate) and shared by the server and
+`rbit-runner`, which depends on no server crate: the two agree on workflows, expressions and
+the runner protocol by compiling the same types.
 
 Each crate exposes a small, documented public API from `lib.rs`; internals live in
 sub-modules grouped by concept (e.g. `storage::sqlite::repositories::users`).
@@ -1347,6 +1353,38 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 - Archives and release downloads stream; uploads are hashed while they stream to disk.
 
 ---
+
+## 7a. Actions
+
+rbit Actions ([docs/actions.md](actions.md), design contract
+[design/actions.md](design/actions.md)) is CI/CD in which the server is only the control plane:
+
+- **Off is absent.** `Services::actions` is `None` unless `[actions] enabled`: no routes are
+  merged, no subscriber, scheduler or sweeper runs, no page shows a tab, card or entry, task
+  tokens are refused before any lookup, and nothing is written to `actions_*` tables or
+  `<data_dir>/actions`. `rbit-web/tests/actions_disabled.rs` and the e2e suite prove it.
+- **Runs.** A subscriber turns pushes, pull requests, dispatches and schedule ticks into runs:
+  workflows are read from the commit, parsed and planned by `rbit-workflow` on a bounded
+  semaphore with a time budget, and stored as one `JobTemplate` (JSON) per job. Fork and
+  outside pull requests are untrusted: read-only token, no secrets or variables, approval.
+  The server decides job `if:` once needs are done (blocked jobs cannot be claimed), applies
+  fail-fast, and reports every job as a commit status and as `workflow_run`/`workflow_job`
+  webhooks, announced once per change through `announced` columns.
+- **Runners.** `rbit-runner` speaks a JSON protocol under `/api/actions/runner/v1/` with a
+  bearer credential (stored as a digest): register with a single-use token, declare labels,
+  long-poll for a task (an idle poll touches no SQLite: it waits on a version counter), report
+  step states and outputs, append logs by line offset, and upload or download artifacts. The
+  claim query matches labels and scope in SQL, takes the oldest waiting job and respects
+  `max-parallel` and job concurrency groups. A claim mints a short-lived task token that works
+  for Git, LFS and an allowlist of API routes only while the task runs.
+- **Data.** Logs and artifacts live under `<data_dir>/actions` and are not backed up; secrets
+  are sealed with AES-256-GCM under a key file kept out of the database and its backups. The
+  sweeper fails silent and endless tasks, cancels abandoned jobs, decides conditions a
+  restart left undecided and expires logs, artifacts and runs.
+- **Execution.** The runner, never the server, runs steps: in Docker/Podman containers through
+  their CLI (no privileges, no socket, a network per task, env files for secrets) or as host
+  processes with no isolation. It masks secrets with one Aho-Corasick automaton per task and
+  checks out with the task token passed through `GIT_CONFIG_*`, never a URL or argument.
 
 ## 8. Extensibility
 
