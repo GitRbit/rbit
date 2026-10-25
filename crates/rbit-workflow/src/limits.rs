@@ -22,6 +22,9 @@ pub struct Limits {
     pub max_combinations: usize,
     /// Most jobs one run may have after matrix expansion.
     pub max_run_jobs: usize,
+    /// Longest a job may run, in minutes: its `timeout-minutes` is capped to this
+    /// (`[actions] endless_timeout_seconds`).
+    pub max_timeout_minutes: u32,
 }
 
 impl Default for Limits {
@@ -34,6 +37,7 @@ impl Default for Limits {
             max_jobs: 256,
             max_combinations: 256,
             max_run_jobs: 1_024,
+            max_timeout_minutes: crate::spec::DEFAULT_TIMEOUT_MINUTES,
         }
     }
 }

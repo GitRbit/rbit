@@ -66,8 +66,8 @@ use super::{
 };
 use crate::{DomainEvent, ServiceError};
 
-/// Where workflows live, in precedence order: a repository with both uses only the first.
-pub const WORKFLOW_DIRS: [&str; 2] = [".forgejo/workflows", ".github/workflows"];
+/// Where workflows live, in precedence order: only the first that exists is read.
+pub const WORKFLOW_DIRS: [&str; 3] = [".rbit/workflows", ".forgejo/workflows", ".github/workflows"];
 /// Most workflow files read from the directory.
 pub const MAX_WORKFLOW_FILES: usize = 64;
 /// Updated refs of one push that are considered.
@@ -557,13 +557,13 @@ pub(super) fn plan_workflow(
     limits: &Limits,
     deadline: &Deadline,
 ) -> Result<Plan, WorkflowError> {
-    let jobs = rbit_workflow::plan(workflow, limits, deadline)?;
     let context = GroupContext { workflow: name.to_owned(), run_id: 0, ..group.clone() };
-    let concurrency = match rbit_workflow::concurrency_group(workflow, &context)? {
+    let jobs = rbit_workflow::plan(workflow, &context.run_context(), limits, deadline)?;
+    let concurrency = match rbit_workflow::concurrency_group(workflow, &context.run_context())? {
         // A group naming `github.run_id` is unique to its run: it never waits for or
         // cancels another, so it is no group at all. The id is not known before the run
         // exists, so evaluating twice tells.
-        Some((group, cancel)) => match rbit_workflow::concurrency_group(workflow, &GroupContext { run_id: 1, ..context })? {
+        Some((group, cancel)) => match rbit_workflow::concurrency_group(workflow, &GroupContext { run_id: 1, ..context }.run_context())? {
             Some((other, _)) if other == group => Some((group, cancel)),
             _ => None,
         },

@@ -162,7 +162,8 @@ impl ActionsService {
     /// The limits a workflow file of this instance is parsed and planned within.
     pub fn limits(&self) -> rbit_workflow::Limits {
         let max_bytes = usize::try_from(self.config().max_workflow_bytes).unwrap_or(usize::MAX);
-        rbit_workflow::Limits { max_bytes, ..rbit_workflow::Limits::default() }
+        let max_timeout_minutes = u32::try_from(self.config().endless_timeout_seconds / 60).unwrap_or(u32::MAX).max(1);
+        rbit_workflow::Limits { max_bytes, max_timeout_minutes, ..rbit_workflow::Limits::default() }
     }
 
     /// The current `FetchTask` version.

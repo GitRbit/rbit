@@ -1,0 +1,47 @@
+[
+  {
+    "version": 1,
+    "job_id": "test",
+    "name": "test",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-latest"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": "extract_tag",
+        "name": "\nExtract tag for variant",
+        "if": null,
+        "action": {
+          "run": "\necho Test\n"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  }
+]

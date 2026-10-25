@@ -13,12 +13,7 @@
 use std::collections::BTreeMap;
 
 pub use crate::spec::{Builtin, BuiltinKind, Env, RegistryCredentials, RunDefaults, StepAction};
-use crate::{
-    cron::Cron,
-    error::Location,
-    pattern::Patterns,
-    yaml::{Mapping, Node},
-};
+use crate::{cron::Cron, error::Location, pattern::Patterns};
 
 /// A parsed workflow file.
 #[derive(Debug, Clone)]
@@ -38,18 +33,11 @@ pub struct Workflow {
     pub concurrency: Option<Concurrency>,
     /// The jobs in file order.
     pub jobs: Vec<Job>,
-    /// The whole document, for re-emitting single-job payloads.
-    pub(crate) document: Mapping,
 }
 
 impl Workflow {
     pub fn job(&self, id: &str) -> Option<&Job> {
         self.jobs.iter().find(|job| job.id == id)
-    }
-
-    /// The whole document as written.
-    pub fn document(&self) -> &Mapping {
-        &self.document
     }
 }
 
@@ -279,15 +267,6 @@ pub struct Job {
     /// At least one, at most [`crate::spec::MAX_STEPS`].
     pub steps: Vec<Step>,
     pub at: Location,
-    /// The job as written, for its payload.
-    pub(crate) node: Mapping,
-}
-
-impl Job {
-    /// The job as written.
-    pub fn raw(&self) -> &Mapping {
-        &self.node
-    }
 }
 
 /// A job's `strategy`.
@@ -399,12 +378,16 @@ impl Shell {
     }
 }
 
-/// `strategy.matrix`.
-#[derive(Debug, Clone)]
+/// `strategy.matrix`, as data.
+///
+/// Strings may hold `${{ }}` over `github`, `inputs` and `vars`: the whole matrix
+/// (`${{ fromJSON(inputs.matrix) }}`), a dimension's list, `include`, `exclude` or single
+/// values. Planning evaluates them, then checks and expands the result
+/// ([`crate::plan::Axes`]). A matrix without expressions was checked when it was parsed.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Matrix {
-    /// Each dimension and its values, in file order.
-    pub dimensions: Vec<(String, Vec<Node>)>,
-    pub include: Vec<Mapping>,
-    pub exclude: Vec<Mapping>,
+    pub value: serde_json::Value,
+    /// Whether any string in [`Self::value`] holds `${{ }}`.
+    pub has_expressions: bool,
     pub at: Location,
 }

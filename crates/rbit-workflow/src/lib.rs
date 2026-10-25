@@ -15,9 +15,9 @@
 //! * [`cron`] — `schedule` expressions and their next fire time.
 //! * [`expr`] — GitHub's expression language: one evaluator, shared by the server and
 //!   `rbit-runner`, each supplying the contexts it has.
-//! * [`plan()`] — the jobs of a run: matrices expanded, `runs-on` and names interpolated
-//!   ([`expr`]), each with its single-job [`payload`] (emitted by [`emit`]); and the
-//!   run's concurrency group.
+//! * [`plan()`] — the jobs of a run as [`spec::JobTemplate`]s: matrices expanded and the
+//!   fields the server decides at run creation evaluated ([`expr`]) with the run's
+//!   [`RunContext`]; and the run's name and concurrency group.
 //! * [`spec`] — the stored [`spec::JobTemplate`] of a planned job and the [`spec::JobSpec`]
 //!   a runner receives for one task.
 //! * [`protocol`] — the request and response types of runner protocol v1, its version,
@@ -28,14 +28,12 @@
 
 pub mod builtins;
 pub mod cron;
-pub mod emit;
 pub mod error;
 pub mod expr;
 pub mod limits;
 pub mod model;
 pub mod parse;
 pub mod pattern;
-pub mod payload;
 pub mod plan;
 pub mod protocol;
 pub mod secret;
@@ -47,5 +45,5 @@ pub use error::{ErrorKind, Location, WorkflowError};
 pub use limits::{Deadline, Limits};
 pub use model::Workflow;
 pub use parse::parse;
-pub use plan::{GroupContext, PlannedJob, concurrency_group, plan};
+pub use plan::{GroupContext, RunContext, concurrency_group, plan, run_name};
 pub use trigger::{ChangedPaths, Event, LazyPaths, matches};

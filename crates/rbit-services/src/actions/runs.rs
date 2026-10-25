@@ -34,8 +34,8 @@ use rbit_core::{
 pub use rbit_storage::sqlite::actions_runs::Rerun;
 use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart, Settled};
 use rbit_workflow::{
-    PlannedJob,
     model::{Permission, Permissions},
+    spec::JobTemplate,
 };
 
 use super::ActionsService;
@@ -54,7 +54,7 @@ const MAX_JOB_LABEL_CHARS: usize = 255;
 /// A workflow planned for one event: its jobs and its concurrency group.
 #[derive(Debug, Clone)]
 pub struct Plan {
-    pub jobs: Vec<PlannedJob>,
+    pub jobs: Vec<JobTemplate>,
     /// The evaluated `concurrency.group` and `cancel-in-progress`.
     pub concurrency: Option<(String, bool)>,
 }
@@ -440,21 +440,30 @@ struct JobRows {
     names: Vec<String>,
     matrices: Vec<Option<String>>,
     permissions: Vec<Option<String>>,
+    /// Each job's [`JobTemplate`] as JSON, stored as its payload.
+    templates: Vec<Vec<u8>>,
 }
 
 impl JobRows {
-    fn new(jobs: &[PlannedJob]) -> Self {
+    fn new(jobs: &[JobTemplate]) -> Self {
         Self {
             names: jobs
                 .iter()
                 .map(|job| if job.name.trim().is_empty() { job.job_id.clone() } else { truncate_chars(&job.name, MAX_TEXT_CHARS) })
                 .collect(),
-            matrices: jobs.iter().map(PlannedJob::matrix_json).collect(),
-            permissions: jobs.iter().map(|job| job.permissions.map(permissions_json)).collect(),
+            matrices: jobs
+                .iter()
+                .map(|job| (!job.matrix.is_empty()).then(|| serde_json::to_string(&job.matrix).unwrap_or_default()))
+                .collect(),
+            permissions: jobs
+                .iter()
+                .map(|job| job.permissions.map(|permissions| serde_json::to_string(&permissions).unwrap_or_default()))
+                .collect(),
+            templates: jobs.iter().map(|job| serde_json::to_vec(job).unwrap_or_default()).collect(),
         }
     }
 
-    fn jobs<'a>(&'a self, jobs: &'a [PlannedJob]) -> Vec<NewJob<'a>> {
+    fn jobs<'a>(&'a self, jobs: &'a [JobTemplate]) -> Vec<NewJob<'a>> {
         jobs.iter()
             .enumerate()
             .map(|(index, job)| NewJob {
@@ -464,7 +473,7 @@ impl JobRows {
                 needs: &job.needs,
                 runs_on: &job.runs_on,
                 permissions: self.permissions[index].as_deref(),
-                payload: job.payload.as_bytes(),
+                payload: &self.templates[index],
             })
             .collect()
     }

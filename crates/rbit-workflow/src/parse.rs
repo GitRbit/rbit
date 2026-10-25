@@ -152,7 +152,7 @@ pub fn parse(source: &[u8], limits: &Limits, deadline: &Deadline) -> Result<Work
         return Err(WorkflowError::parse("the workflow has no `jobs` section", Location::new(1, 1)));
     };
     let jobs = parse_jobs(jobs_key, jobs_node, limits, deadline)?;
-    Ok(Workflow { name, run_name, on, env, defaults, permissions, concurrency, jobs, document })
+    Ok(Workflow { name, run_name, on, env, defaults, permissions, concurrency, jobs })
 }
 
 fn error(message: impl Into<String>, at: Location) -> WorkflowError {
@@ -204,7 +204,7 @@ impl Scope {
 fn check_exprs<'a>(exprs: impl IntoIterator<Item = &'a Expr>, scope: Scope, path: &str, at: Location) -> Result<(), WorkflowError> {
     for expr in exprs {
         if let Some(name) = expr.contexts().into_iter().find(|name| !scope.contexts().contains(name)) {
-            if name == "needs" && scope != Scope::Run {
+            if name == "needs" {
                 return Err(error(format!("`{path}`: values that depend on `needs` are not supported by rbit"), at));
             }
             let available = scope.contexts().join(", ");
@@ -723,7 +723,6 @@ fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
         services,
         steps,
         at: key.at,
-        node: config.clone(),
     })
 }
 
@@ -950,43 +949,75 @@ fn parse_with(
     Ok(with)
 }
 
+/// `strategy.matrix`: a mapping of lists with `include` and `exclude`, where any part may
+/// be an expression over `github`, `inputs` and `vars`. What is written out is checked
+/// here, with locations; what expressions produce is checked when the job is planned.
 fn parse_matrix(node: &Node, path: &str) -> Result<Matrix, WorkflowError> {
     let Value::Mapping(config) = &node.value else {
-        return Err(error(format!("`{path}` must be a mapping; rbit does not evaluate expressions there"), node.at));
+        let text = node
+            .as_text()
+            .filter(|text| text.contains("${{"))
+            .ok_or_else(|| error(format!("`{path}` must be a mapping of lists, or an expression"), node.at))?;
+        template(&text, Scope::Run, path, node.at)?;
+        return Ok(Matrix { value: serde_json::Value::String(text), has_expressions: true, at: node.at });
     };
+    let has_expressions = matrix_expressions(node, path)?;
+    let is_expression = |node: &Node| node.as_text().is_some_and(|text| text.contains("${{"));
     let mut dimensions = Vec::new();
-    let mut include = Vec::new();
+    let mut include = false;
     let mut exclude = Vec::new();
     for (key, value) in config.iter() {
-        let combinations = |list: &mut Vec<Mapping>| -> Result<(), WorkflowError> {
-            let items = value.as_sequence().ok_or_else(|| error(format!("`{path}.{}` must be a list of mappings", key.name), value.at))?;
-            for item in items {
-                list.push(mapping(item, &format!("{path}.{}[]", key.name))?.clone());
+        if is_expression(value) {
+            include |= key.name == "include";
+            if !matches!(key.name.as_str(), "include" | "exclude") {
+                dimensions.push(key.name.as_str());
             }
-            Ok(())
-        };
+            continue;
+        }
         match key.name.as_str() {
-            "include" => combinations(&mut include)?,
-            "exclude" => combinations(&mut exclude)?,
-            name => {
-                let values = value
+            "include" | "exclude" => {
+                let items = value
                     .as_sequence()
-                    .ok_or_else(|| error(format!("`{path}.{name}` must be a list; rbit does not evaluate expressions there"), value.at))?;
-                dimensions.push((name.to_owned(), values.to_vec()));
+                    .ok_or_else(|| error(format!("`{path}.{}` must be a list of mappings, or an expression", key.name), value.at))?;
+                for item in items {
+                    let entry = mapping(item, &format!("{path}.{}[]", key.name))?;
+                    if key.name == "exclude" {
+                        exclude.push(entry);
+                    }
+                }
+                include |= key.name == "include" && !items.is_empty();
+            }
+            name => {
+                if value.as_sequence().is_none() {
+                    return Err(error(format!("`{path}.{name}` must be a list, or an expression"), value.at));
+                }
+                dimensions.push(name);
             }
         }
     }
     // GitHub refuses an exclude naming a key that is not a dimension (it silently skips
     // such an include key instead).
     for entry in &exclude {
-        if let Some((key, _)) = entry.iter().find(|(key, _)| !dimensions.iter().any(|(name, _)| *name == key.name)) {
+        if let Some((key, _)) = entry.iter().find(|(key, _)| !dimensions.contains(&key.name.as_str())) {
             return Err(error(format!("`{path}.exclude`: `{}` is not a matrix dimension", key.name), key.at));
         }
     }
-    if dimensions.is_empty() && include.is_empty() {
+    if dimensions.is_empty() && !include {
         return Err(error(format!("`{path}` must have a dimension or an `include`"), node.at));
     }
-    Ok(Matrix { dimensions, include, exclude, at: node.at })
+    Ok(Matrix { value: node.to_json(), has_expressions, at: node.at })
+}
+
+/// Checks every `${{ }}` in a matrix against [`Scope::Run`]; whether there is one.
+fn matrix_expressions(node: &Node, path: &str) -> Result<bool, WorkflowError> {
+    match &node.value {
+        Value::Scalar(scalar) => match &scalar.value {
+            ScalarValue::String(text) if text.contains("${{") => template(text, Scope::Run, path, node.at).map(|()| true),
+            _ => Ok(false),
+        },
+        Value::Sequence(items) => items.iter().try_fold(false, |found, item| Ok(matrix_expressions(item, path)? || found)),
+        Value::Mapping(entries) => entries.iter().try_fold(false, |found, (_, value)| Ok(matrix_expressions(value, path)? || found)),
+    }
 }
 
 /// Every `needs` names another job, and the jobs form no cycle.
@@ -1128,9 +1159,17 @@ jobs:
         assert_eq!(build.name.as_deref(), Some("Build ${{ matrix.os }}"));
         assert_eq!(build.runs_on, ["${{ matrix.os }}"]);
         let matrix = build.strategy.matrix.as_ref().unwrap();
-        let dimensions: Vec<_> = matrix.dimensions.iter().map(|(name, values)| (name.as_str(), values.len())).collect();
-        assert_eq!(dimensions, [("os", 2), ("rust", 2)]);
-        assert_eq!((matrix.include.len(), matrix.exclude.len()), (1, 1));
+        assert_eq!(
+            matrix.value,
+            serde_json::json!({
+                "os": ["ubuntu-latest", "debian-12"],
+                "rust": ["stable", 1.94],
+                "include": [{"os": "debian-12", "experimental": true}],
+                "exclude": [{"os": "debian-12", "rust": 1.94}],
+            })
+        );
+        assert!(!matrix.has_expressions);
+        assert_eq!(matrix.at, Location::new(34, 9));
         let deploy = workflow.job("deploy").unwrap();
         assert_eq!(deploy.needs, ["build"]);
         assert_eq!(deploy.runs_on, ["self-hosted", "linux"]);
@@ -1209,7 +1248,21 @@ jobs:
                 "true or false",
                 (2, 45),
             ),
-            ("on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: '${{ fromJSON(x) }}'}\n", "must be a mapping", (5, 24)),
+            (
+                "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: linux}\n",
+                "must be a mapping of lists, or an expression",
+                (5, 24),
+            ),
+            (
+                "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: '${{ fromJSON(needs.b.outputs.m) }}'}\n",
+                "values that depend on `needs` are not supported by rbit",
+                (5, 24),
+            ),
+            (
+                "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: {os: ['${{ matrix.x }}']}}\n",
+                "the `matrix` context is not available here",
+                (5, 30),
+            ),
             ("on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: {os: linux}}\n", "must be a list", (5, 29)),
             (
                 "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: {os: [a], exclude: [{arch: x}]}}\n",
@@ -1349,7 +1402,7 @@ jobs:
         let concurrency = test.concurrency.as_ref().unwrap();
         assert_eq!((concurrency.group.as_str(), concurrency.cancel_in_progress), ("test-${{ github.ref }}-${{ matrix.os }}", true));
         assert_eq!((test.strategy.fail_fast.as_deref(), test.strategy.max_parallel.as_deref()), (Some("false"), Some("2")));
-        assert_eq!(test.strategy.matrix.as_ref().map(|matrix| matrix.dimensions.len()), Some(1));
+        assert_eq!(test.strategy.matrix.as_ref().map(|matrix| matrix.value.clone()), Some(serde_json::json!({"os": ["linux", "windows"]})));
         let container = test.container.as_ref().unwrap();
         assert_eq!(container.image, "docker.io/library/rust:${{ matrix.rust || '1.94' }}");
         assert_eq!(container.env, Env::from([("CARGO_HOME".into(), "/cargo".into())]));

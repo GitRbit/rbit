@@ -5,9 +5,9 @@
 //! the stack. Aliases and merge keys are resolved; the tree holds plain data.
 //!
 //! A scalar keeps both its value, as YAML's core schema resolves it, and — when it was
-//! written plain on one line — its source text. Re-emitting that text verbatim (see
-//! [`crate::payload`]) lets a runner read `3.10`, `yes` or `0x1F` exactly as it would have
-//! read the original file, whatever its own YAML library makes of them.
+//! written plain on one line — its source text. String fields ([`Scalar::text`]: `env`
+//! values, `with:` inputs, step ids) keep that text, so `PYTHON: 3.10` stays `3.10` as on
+//! GitHub, while data such as matrix values keeps the value ([`Node::to_json`]).
 
 use std::fmt;
 
@@ -224,7 +224,7 @@ fn parse_document_here(source: &str, limits: &Limits) -> Result<Node, WorkflowEr
             max_replay_stack_depth: limits.max_depth,
         },
         // Only `true` and `false` are booleans, as in YAML 1.2 and GitHub's parser; `on`
-        // and `yes` stay strings (and are re-emitted as written).
+        // and `yes` stay strings.
         strict_booleans: true,
         non_finite_float_policy: serde_saphyr::options::NonFiniteFloatPolicy::PassThrough,
         with_snippet: false,
