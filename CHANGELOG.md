@@ -24,7 +24,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Encrypt TOTP seeds, webhook and push mirror secrets, server signing keys and secret
   configuration fields at rest with a key file (`<data_dir>/secret.key`, or
   `storage.secret_key_file`). Existing values are encrypted on the first start; back up
-  the key file with the database and discard backups taken before the upgrade.
+  the key file with the database. Retire obsolete plaintext backups after the rollback
+  window is complete.
 - Migration `0044` widens push mirror secrets to fit their encrypted form.
 - Create backups owner-only (0700 directory, 0600 files) and include the key file.
 - Ask for a push mirror's credential again when its URL moves to another host.
@@ -64,6 +65,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Wait for repository readers and background jobs to release their files before deletion,
+  preventing intermittent failures on Windows after a push or while viewing settings.
 - Editing an issue or pull request's title or description no longer fails with "database
   is locked" when another write happens at the same moment: the edit now waits for the
   write lock instead of reading first and failing to upgrade.
