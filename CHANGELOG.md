@@ -66,9 +66,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- Wait for active repository readers and background work before deleting repository files,
-  and release the settings page's own reader first. Deleting and recreating a repository
-  no longer fails on Windows when a cache warm-up still has files open.
+- Wait for repository readers and background jobs to release their files before deletion,
+  preventing intermittent failures on Windows after a push or while viewing settings.
 - Editing an issue or pull request's title or description no longer fails with "database
   is locked" when another write happens at the same moment: the edit now waits for the
   write lock instead of reading first and failing to upgrade.
