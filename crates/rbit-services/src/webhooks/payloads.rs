@@ -384,7 +384,10 @@ pub fn action_of(event: WebhookEvent, payload: &Value) -> Option<String> {
         | WebhookEvent::IssueComment
         | WebhookEvent::PullRequest
         | WebhookEvent::PullRequestReview
-        | WebhookEvent::Member => payload.get("action").and_then(Value::as_str).map(str::to_owned),
+        | WebhookEvent::Member
+        // Actions: integration (I).
+        | WebhookEvent::WorkflowRun
+        | WebhookEvent::WorkflowJob => payload.get("action").and_then(Value::as_str).map(str::to_owned),
     }
 }
 

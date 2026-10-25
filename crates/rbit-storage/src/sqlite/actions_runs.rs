@@ -1028,6 +1028,27 @@ impl ActionsRunStore {
         .await?;
         Ok(rows)
     }
+
+    /// Records `action` as the `workflow_run` action last announced for `run`; `false`
+    /// when it already was, so concurrent callers announce each action once.
+    pub async fn announce_run(&self, run: RunId, action: &str) -> Result<bool, StorageError> {
+        let result = sqlx::query("UPDATE actions_runs SET announced = ?2 WHERE id = ?1 AND announced IS NOT ?2")
+            .bind(run.0)
+            .bind(action)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// [`Self::announce_run`] for the `workflow_job` action of `job`.
+    pub async fn announce_job(&self, job: JobId, action: &str) -> Result<bool, StorageError> {
+        let result = sqlx::query("UPDATE actions_jobs SET announced = ?2 WHERE id = ?1 AND announced IS NOT ?2")
+            .bind(job.0)
+            .bind(action)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() == 1)
+    }
 }
 
 /// The waiting job a runner may take, oldest first: the repository has Actions on, the

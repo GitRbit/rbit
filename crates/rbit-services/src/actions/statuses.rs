@@ -71,6 +71,8 @@ impl ActionsService {
     /// every transition this module makes; the runner protocol calls it when a job starts
     /// (and, through [`ActionsService::settled`], when one finishes).
     pub async fn report_statuses(&self, id: RunId) -> Result<(), ServiceError> {
+        // Actions: integration (I). Every transition ends here, so webhooks follow it too.
+        self.announce(id).await?;
         let database = &self.ctx().database;
         let Some(run) = database.actions_runs().run(id).await? else { return Ok(()) };
         if run.event == RunEvent::Schedule || run.is_workflow_error() {

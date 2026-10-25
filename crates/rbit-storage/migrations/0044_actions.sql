@@ -112,6 +112,8 @@ CREATE TABLE actions_runs (
     finished_at         INTEGER,
     -- When the run's logs were removed (retention or the instance log budget).
     logs_expired_at     INTEGER,
+    -- The `workflow_run` action last announced to webhooks, so each is sent once.
+    announced           TEXT    CHECK (announced IN ('requested', 'in_progress', 'completed')),
     UNIQUE (repo_id, run_number)
 ) STRICT;
 
@@ -147,7 +149,9 @@ CREATE TABLE actions_jobs (
     -- When the job last became waiting: queue order and the abandoned sweep.
     queued_at    INTEGER,
     started_at   INTEGER,
-    finished_at  INTEGER
+    finished_at  INTEGER,
+    -- The `workflow_job` action last announced to webhooks, so each is sent once.
+    announced    TEXT    CHECK (announced IN ('queued', 'in_progress', 'completed', 'waiting'))
 ) STRICT;
 
 CREATE INDEX actions_jobs_by_run ON actions_jobs (run_id);

@@ -199,6 +199,8 @@ impl ActionsService {
             .create_run(&NewRun { error: Some(&error), ..new_run(trigger, &path, &name, &title) })
             .await?;
         tracing::info!(repo = %trigger.repo.full_name(), run = run.id.0, workflow = %run.workflow_path, "workflow error recorded");
+        // Actions: integration (I).
+        self.announce(run.id).await?;
         Ok(run)
     }
 
