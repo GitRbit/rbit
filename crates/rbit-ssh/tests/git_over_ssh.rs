@@ -4,6 +4,7 @@
 //! Skipped (with a message) when OpenSSH is not installed.
 
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::Arc,
@@ -53,21 +54,24 @@ impl Harness {
         Self::start_with(|_| {}).await
     }
 
-    async fn start_with(configure: impl FnOnce(&mut Config)) -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
-        let mut config = Config::default();
-        config.storage.data_dir = dir.path().join("data");
-        config.ssh.enabled = true;
-        config.ssh.bind = "127.0.0.1:0".parse().unwrap();
-        configure(&mut config);
-        let config = Arc::new(config);
-        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
-        let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
-        let server = rbit_ssh::start(config, services.clone()).await.unwrap();
-        let port = server.local_addr().port();
-        Self { dir, database, services, port, server: Some(server) }
+    fn start_with(configure: impl FnOnce(&mut Config)) -> impl Future<Output = Self> {
+        // Keep setup off callers' future stacks as the combined service configuration grows.
+        Box::pin(async move {
+            let dir = tempfile::tempdir().unwrap();
+            let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+            let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+            let mut config = Config::default();
+            config.storage.data_dir = dir.path().join("data");
+            config.ssh.enabled = true;
+            config.ssh.bind = "127.0.0.1:0".parse().unwrap();
+            configure(&mut config);
+            let config = Arc::new(config);
+            std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+            let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
+            let server = rbit_ssh::start(config, services.clone()).await.unwrap();
+            let port = server.local_addr().port();
+            Self { dir, database, services, port, server: Some(server) }
+        })
     }
 
     async fn user(&self, name: &str) -> User {
