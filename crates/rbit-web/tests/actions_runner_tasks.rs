@@ -1,8 +1,9 @@
 //! The runner protocol's task calls over HTTP (`docs/design/actions.md` §12.6): the long
 //! poll — claims, empty answers, wake-ups, one poll per runner, the instance's cap,
 //! idempotent retries, and that an idle poll touches no SQLite — what a claimed job's
-//! specification holds, and task state calls: steps, outputs, results, cancellation and
-//! ephemeral runners. Jobs are seeded through the store with job template payloads.
+//! specification holds, task state calls — steps, outputs, results, cancellation and
+//! ephemeral runners — and log appends by line offset with the reads pages use. Jobs are
+//! seeded through the store with job template payloads.
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
@@ -21,6 +22,8 @@ use rbit_workflow::spec::{
     DEFAULT_TIMEOUT_MINUTES, Env, JOB_TEMPLATE_VERSION, JobSpec, JobTemplate, RunDefaults, StepAction, StepTemplate, Strategy,
 };
 use serde_json::{Value, json};
+
+use rbit_services::actions::logs::LogRange;
 
 use crate::{actions_runner::Fixture, query_count::QueryCounter};
 
@@ -436,4 +439,119 @@ async fn ephemeral_runners_go_away_after_their_task() {
     assert_eq!(state(&fixture, &credential, spec.task_id.0, &done).await.0, StatusCode::OK);
     let gone = fixture.call("declare", Some(&credential), declaration.to_string()).await;
     assert_eq!(gone.status, StatusCode::UNAUTHORIZED, "the runner was deleted with its task");
+}
+
+/// `POST tasks/{task}/logs?from={from}` with `body`.
+pub async fn logs(fixture: &Fixture, credential: &str, task: i64, from: u64, body: &str) -> (StatusCode, Value) {
+    let answer = fixture.call(&format!("tasks/{task}/logs?from={from}"), Some(credential), body.to_owned()).await;
+    (answer.status, answer.json)
+}
+
+#[tokio::test]
+async fn logs_are_appended_by_line_offset_masked_finalised_and_read() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let spec = spec(&poll(&fixture, &credential, Some("l")).await.1);
+    let (task, token) = (spec.task_id.0, spec.token.expose().to_owned());
+
+    assert_eq!(logs(&fixture, &credential, task, 0, "one\ntwo\n").await, (StatusCode::OK, json!({"next_line": 2})));
+    // A resend overlaps harmlessly; only the new line is kept.
+    assert_eq!(logs(&fixture, &credential, task, 1, &format!("two\nthree {token}\r\n")).await, (StatusCode::OK, json!({"next_line": 3})));
+    assert_eq!(logs(&fixture, &credential, task, 0, "one\n").await, (StatusCode::OK, json!({"next_line": 3})));
+    let (status, json) = logs(&fixture, &credential, task, 5, "five\n").await;
+    assert_eq!((status, json["code"].as_str(), &json["next_line"]), (StatusCode::CONFLICT, Some("conflict"), &json!(3)));
+    assert_eq!(logs(&fixture, &credential, task, 3, "").await, (StatusCode::OK, json!({"next_line": 3})));
+    let other = fixture.runner(&["windows"]).await;
+    assert_eq!(logs(&fixture, &other, task, 3, "x\n").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        fixture.call(&format!("tasks/{task}/logs"), Some(&credential), "x").await.status,
+        StatusCode::BAD_REQUEST,
+        "from is required"
+    );
+
+    let mut gzipped = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    std::io::Write::write_all(&mut gzipped, b"four\n").unwrap();
+    let answer = fixture
+        .send(
+            &format!("tasks/{task}/logs?from=3"),
+            &[("rbit-runner-protocol", "1"), ("content-encoding", "gzip")],
+            Some(&credential),
+            gzipped.finish().unwrap().into(),
+        )
+        .await;
+    assert_eq!(answer.json, json!({"next_line": 4}));
+
+    // Reads while it runs: the whole log, and a step's lines as the runner described them.
+    let repo = fixture.repo().await;
+    let actions = fixture.actions();
+    let task_id = rbit_core::actions::TaskId(task);
+    let live = actions.task_log(&repo, task_id, LogRange::From(0), 100, 1 << 20).await.unwrap();
+    assert_eq!(live.lines, ["one", "two", "three ***", "four"], "the token is masked, the CR dropped");
+    assert!(live.live && !live.truncated);
+    let mut first = step(0, "success");
+    first["log_length"] = json!(2);
+    let mut second = step(1, "running");
+    second["log_index"] = json!(2);
+    state(&fixture, &credential, task, &json!({"steps": [first, second], "outputs": {}, "result": null})).await;
+    let running = actions.step_log(&repo, task_id, 1, LogRange::From(0), 100, 1 << 20).await.unwrap();
+    assert_eq!((running.lines.clone(), running.first_line, running.next_line), (vec!["three ***".to_owned(), "four".to_owned()], 2, 4));
+    let tail = actions.step_log(&repo, task_id, 0, LogRange::Tail, 1, 1 << 20).await.unwrap();
+    assert_eq!((tail.lines.clone(), tail.more_before), (vec!["two".to_owned()], true));
+
+    let mut second = step(1, "success");
+    second["log_index"] = json!(2);
+    second["log_length"] = json!(2);
+    let mut first = step(0, "success");
+    first["log_length"] = json!(2);
+    state(&fixture, &credential, task, &json!({"steps": [first, second], "outputs": {}, "result": "success"})).await;
+    let (status, json) = logs(&fixture, &credential, task, 4, "late\n").await;
+    assert_eq!((status, json["code"].as_str()), (StatusCode::CONFLICT, Some("conflict")), "the log is closed");
+    let stored = fixture.database.actions_runs().task(task_id).await.unwrap().unwrap();
+    assert_eq!((stored.log_state, stored.log_lines), (rbit_core::actions::LogState::Final, 4));
+    let finished = actions.step_log(&repo, task_id, 1, LogRange::From(0), 100, 1 << 20).await.unwrap();
+    assert_eq!((finished.lines, finished.live), (vec!["three ***".to_owned(), "four".to_owned()], false));
+    let raw = actions.raw_log(&repo, task_id).await.unwrap().unwrap();
+    assert!(raw.gzip);
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(raw.file.into_std().await), &mut text).unwrap();
+    assert_eq!(text, "one\ntwo\nthree ***\nfour\n");
+}
+
+#[tokio::test]
+async fn logs_are_read_only_by_readers_of_their_repository() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = rbit_core::actions::TaskId(spec(&poll(&fixture, &credential, Some("r")).await.1).task_id.0);
+    let bob = fixture
+        .services
+        .accounts
+        .create_user(
+            rbit_services::SignUp { username: "bob".into(), email: "bob@example.com".into(), password: "correct horse battery".into() },
+            Some(true),
+        )
+        .await
+        .unwrap();
+    let input =
+        rbit_services::CreateRepository { name: "other".into(), description: String::new(), visibility: rbit_core::Visibility::Public };
+    fixture.services.repositories.create(&bob, input).await.unwrap();
+    let other = fixture.services.repositories.open(Some(&bob), "bob", "other").await.unwrap();
+    let error = fixture.actions().task_log(&other, task, LogRange::From(0), 10, 1024).await.unwrap_err();
+    assert!(matches!(error, rbit_services::ServiceError::NotFound), "another repository's task: {error}");
+    assert!(fixture.actions().raw_log(&fixture.repo().await, task).await.unwrap().is_none(), "nothing written yet");
+}
+
+#[tokio::test]
+async fn a_job_that_cannot_run_says_why_in_its_log() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let mut broken = payload(&template("broken", &["linux"], &[]));
+    broken.1 = br#"{"version": 99}"#.to_vec();
+    let run = seed(&fixture, &[broken]).await;
+    assert_eq!(poll(&fixture, &credential, Some("x")).await.0, StatusCode::NO_CONTENT);
+    let job = &fixture.database.actions_runs().jobs(run.id).await.unwrap()[0];
+    let window = fixture.actions().task_log(&fixture.repo().await, job.task_id.unwrap(), LogRange::From(0), 10, 4096).await.unwrap();
+    assert_eq!(window.lines.len(), 1);
+    assert!(window.lines[0].starts_with("rbit: this job's stored template cannot be read"), "{:?}", window.lines);
 }

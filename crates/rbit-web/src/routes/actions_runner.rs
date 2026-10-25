@@ -30,7 +30,7 @@ use std::{io::Read as _, sync::Arc, time::Duration};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRequestParts, Path, Request, State},
+    extract::{FromRequestParts, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts},
     middleware::{Next, from_fn},
     response::{IntoResponse, Response},
@@ -41,8 +41,8 @@ use rbit_services::{
     actions::runners::{CachedRunner, RunnerError},
 };
 use rbit_workflow::protocol::{
-    BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest,
-    PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
+    BASE_PATH, DeclareRequest, Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER,
+    PollRequest, PollResponse, RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -72,6 +72,7 @@ pub fn routes() -> Router<AppState> {
         .route(&path(Endpoint::Declare), post(declare))
         .route(&path(Endpoint::Poll), post(poll))
         .route(&path(Endpoint::TaskState), post(task_state))
+        .route(&path(Endpoint::TaskLogs), post(task_logs))
         .route(&path(Endpoint::Unregister), post(unregister))
         .layer(from_fn(require_protocol))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, CALL_TIMEOUT))
@@ -143,6 +144,25 @@ async fn task_state(
     let task = task_id(&id)?;
     let request: TaskStateRequest = read_json(&headers, body, Endpoint::TaskState).await?;
     let response = actions(&state)?.task_state(&runner, task, &request).await?;
+    Ok(Json(response).into_response())
+}
+
+/// `POST tasks/{id}/logs?from=<line>`: `text/plain` lines from line `from`; answers the
+/// next line, or `409` with it on a gap.
+async fn task_logs(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path(id): Path<String>,
+    query: Result<Query<LogsQuery>, axum::extract::rejection::QueryRejection>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let Ok(Query(query)) = query else {
+        return Err(RunnerError::bad_request("the query must be `from=<line>`").into());
+    };
+    let body = read_body(&headers, body, Endpoint::TaskLogs).await?;
+    let response = actions(&state)?.append_log(&runner, task, query.from, &body).await?;
     Ok(Json(response).into_response())
 }
 

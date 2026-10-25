@@ -253,14 +253,15 @@ impl ActionsService {
         }
     }
 
-    /// Fails a claimed task that cannot run, saying why, and settles its job.
+    /// Fails a claimed task that cannot run, saying why in its log, and settles its job.
     async fn fail_unrunnable(&self, task: &Task, reason: &str) -> Result<(), ServiceError> {
         tracing::warn!(task = task.id.0, job = task.job_id.0, %reason, "claimed job cannot run");
+        self.write_system_line(task.id, reason).await?;
         let store = self.ctx().database.actions_runs();
         if let Some(settled) = store.finish_task(task.id, Status::Failure, Timestamp::now()).await? {
             self.settled(&settled).await?;
         }
-        Ok(())
+        self.finalise_log(task.id).await
     }
 
     /// What a runner is told to run for `task` of `job`: `Err` with a readable reason when

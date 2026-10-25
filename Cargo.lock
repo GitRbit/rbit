@@ -4324,6 +4324,7 @@ dependencies = [
  "aho-corasick",
  "axum",
  "base64 0.23.1",
+ "flate2",
  "getrandom 0.4.3",
  "hmac",
  "metrics",

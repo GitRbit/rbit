@@ -7,8 +7,8 @@
 //! * Each call is a heartbeat. Steps are keyed by index and only the steps the task was
 //!   created with are updated; outputs are kept when first seen (a resent call changes
 //!   nothing), masked ([`super::logs::Masker`]) and capped at 1 MiB per job (§11.10).
-//! * The final call stores the result: the task stops and its token dies with it, its job
-//!   and the jobs that need it settle through
+//! * The final call stores the result: the task stops and its token dies with it, its log
+//!   is finalised, its job and the jobs that need it settle through
 //!   [`ActionsService::settled`] (statuses, the next held run), and an ephemeral runner is
 //!   deleted.
 //! * The answer is `{cancel: true}` from the moment the job is cancelled — by then the
@@ -79,8 +79,8 @@ impl ActionsService {
         Ok(TaskStateResponse { cancel: cancelled })
     }
 
-    /// Stops task `id` of `runner` with `status`: its token dies, its run settles, and an
-    /// ephemeral runner goes away.
+    /// Stops task `id` of `runner` with `status`: its token dies, its log is finalised, its
+    /// run settles, and an ephemeral runner goes away.
     async fn finish(&self, runner: &CachedRunner, id: TaskId, status: Status) -> Result<(), RunnerError> {
         let store = self.ctx().database.actions_runs();
         if let Some(settled) = store.finish_task(id, status, Timestamp::now()).await? {
@@ -88,6 +88,7 @@ impl ActionsService {
             self.settled(&settled).await?;
         }
         self.forget_masks(id);
+        self.finalise_log(id).await?;
         if runner.ephemeral && self.ctx().database.actions_runners().delete_ephemeral(runner.id).await? {
             self.runner_cache().await?.remove(runner.id);
             tracing::info!(runner = runner.id.0, name = %runner.name, "ephemeral runner removed after its task");

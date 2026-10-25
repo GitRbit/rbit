@@ -40,8 +40,9 @@ base64.workspace = true
 # Milestone 3: external sign-in (O): provider documents (discovery, tokens, GitHub's API).
 # M: importing (the source's API objects).
 serde.workspace = true
-# Actions: S. The masking pass over job outputs and log lines.
+# Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
 aho-corasick.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

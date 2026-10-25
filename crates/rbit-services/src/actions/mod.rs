@@ -21,7 +21,7 @@
 //! | [`runners`] | Registration tokens, `register`, `declare`, `unregister`, the runner cache, runners in settings |
 //! | [`scheduler`] | `poll`: the long poll, claims, idempotent retries, job specifications |
 //! | [`tasks`] | `tasks/{id}/state`: heartbeats, steps, outputs, results, cancellation |
-//! | [`logs`] | The masking pass, log files, reads and retention |
+//! | [`logs`] | `tasks/{id}/logs`: appends by line offset, masking, gzip, reads for pages |
 //! | [`tokens`] | Task tokens for Git and the API |
 //! | [`secrets`] | Secrets and variables |
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
@@ -102,6 +102,9 @@ struct Inner {
     polls: scheduler::Polls,
     /// What each running task's outputs and logs are masked with (see [`logs`]).
     masks: std::sync::Mutex<std::collections::HashMap<rbit_core::actions::TaskId, Arc<logs::Masker>>>,
+    /// One lock per task whose log is being appended to, with whether its files were
+    /// checked against the database in this process (see [`logs`]).
+    log_locks: std::sync::Mutex<std::collections::HashMap<rbit_core::actions::TaskId, Arc<tokio::sync::Mutex<bool>>>>,
 }
 
 impl ActionsService {
@@ -129,6 +132,7 @@ impl ActionsService {
                 wake: tokio::sync::Notify::new(),
                 polls: scheduler::Polls::default(),
                 masks: std::sync::Mutex::default(),
+                log_locks: std::sync::Mutex::default(),
             }),
         })
     }
