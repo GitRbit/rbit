@@ -258,3 +258,13 @@ privacy_url = ""
 show_powered_by = true
 show_version = true
 show_features = true
+
+[updates]
+# Check the fixed public GitHub stable-release feed in the background. No running
+# version, instance identity, credentials or user/repository data is sent.
+# One successful check is cached in memory for 24 hours; failures back off.
+check_for_updates = true
+# Independent of checking: hide the public footer version, /api/v1/version,
+# SSH version suffix and version numbers in integration User-Agents when false.
+# Administrators retain local diagnostics; CLI --version and backups stay accurate.
+report_version = true

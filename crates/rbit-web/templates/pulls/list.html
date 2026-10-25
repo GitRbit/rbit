@@ -3,6 +3,16 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
+<form method="get" action="{{ list_url }}" role="search" class="mb-3 flex gap-2">
+  <label for="pull-query" class="sr-only">Search pull requests</label>
+  <input id="pull-query" type="search" class="input min-w-0 flex-1 font-mono text-xs" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…">
+  <button type="submit" class="btn">Search</button>
+</form>
+<p class="hint mb-3">Choose filters below, or type terms such as <code>is:draft</code>, <code>is:merged</code>, <code>author:@me</code> or <code>label:bug</code>. <a class="link" href="{{ list_url }}">Clear search and filters</a></p>
+{% for hint in hints %}<p class="hint mb-2">{{ hint }}</p>{% endfor %}
+<div class="relative mb-3 flex flex-wrap gap-1" aria-label="Pull request filters">
+  {% include "issues/filters.html" %}
+</div>
 <div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
   <nav class="flex items-center gap-1" aria-label="Pull request state">
     <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.open }}</span> Open</a>

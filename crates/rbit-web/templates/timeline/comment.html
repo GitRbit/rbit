@@ -11,6 +11,9 @@
       {% if comment.edited %}<span class="text-xs text-ink-faint">edited</span>{% endif %}
       <span class="ml-auto flex items-center gap-1">
         {% if comment.by_thread_author %}<span class="badge">Author</span>{% endif %}
+        {% if comment.can_reply && !comment.editing %}
+        <button type="button" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" data-reply="{{ comment.anchor }}" data-reply-author="{% if !comment.author.is_ghost %}{{ comment.author.name }}{% endif %}" hidden>Reply</button>
+        {% endif %}
         {% if comment.can_edit && !comment.editing %}
         <a href="{{ comment.edit_url }}" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" hx-get="{{ comment.edit_url }}" hx-select="#{{ comment.anchor }}" hx-target="#{{ comment.anchor }}" hx-swap="outerHTML" hx-push-url="true">Edit</a>
         {% endif %}
@@ -24,7 +27,7 @@
     {% if comment.editing %}
     <form method="post" action="{{ comment.update_url }}" class="p-3 sm:p-4">
       <label class="sr-only" for="{{ comment.anchor }}-text">{% if comment.is_opening_post %}Description{% else %}Comment{% endif %}</label>
-      <textarea id="{{ comment.anchor }}-text" name="body" class="input h-40 resize-y py-2 text-[13px]" rows="8" maxlength="65536" {% if !comment.is_opening_post %}required{% endif %}>{{ comment.source }}</textarea>
+      <textarea id="{{ comment.anchor }}-text" name="body" data-markdown-editor class="input h-40 resize-y py-2 text-[13px]" rows="8" maxlength="65536" {% if !comment.is_opening_post %}required{% endif %}>{{ comment.source }}</textarea>
       <div class="mt-3 flex justify-end gap-2">
         <a href="{{ comment.cancel_url }}" class="btn h-11 sm:h-8" hx-get="{{ comment.cancel_url }}" hx-select="#{{ comment.anchor }}" hx-target="#{{ comment.anchor }}" hx-swap="outerHTML" hx-push-url="true">Cancel</a>
         <button type="submit" class="btn btn-primary h-11 sm:h-8">Save</button>
@@ -35,5 +38,6 @@
     {% else %}
     <div class="prose-rbit px-3 py-4 sm:px-4">{{ comment.body_html|safe }}</div>
     {% endif %}
+    {% if comment.can_reply %}<textarea data-reply-source hidden aria-hidden="true">{{ comment.source }}</textarea>{% endif %}
   </div>
 </article>

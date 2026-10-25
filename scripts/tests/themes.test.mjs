@@ -16,16 +16,17 @@ function picker({ slug = 'system', scheme, dark = false } = {}) {
     matches() { return this.toggle; }
   }
   const toggle = new HTMLButtonElement(slug === 'light' ? 'dark' : slug === 'dark' ? 'light' : 'dna-dark');
+  const manifest = {};
   const document = {
     documentElement: root, body: {}, cookie: '',
-    head: { querySelectorAll: () => [], querySelector: () => null, append() {} },
+    head: { querySelectorAll: () => [], querySelector: selector => selector === 'link[rel="manifest"]' ? manifest : null, append() {} },
     querySelectorAll: (selector) => selector === '[data-theme-toggle]' ? [toggle] : [],
     createElement: () => ({}),
     addEventListener: (type, handler) => { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(handler); },
   };
   vm.runInNewContext(pickerSource, { document, Element, HTMLFormElement, HTMLButtonElement, URLSearchParams, location: { protocol: 'https:' }, matchMedia: () => ({ matches: dark }), getComputedStyle: () => ({ backgroundColor: '#141516' }), clearTimeout() {}, fetch: () => Promise.resolve(), localStorage: { getItem: () => null, setItem() {} } });
   const submit = (button = toggle) => listeners.get('submit')[0]({ target: new HTMLFormElement(), submitter: button, preventDefault() {} });
-  return { root, toggle, document, submit, choose: (slug) => submit(new HTMLButtonElement(slug, false)), settle: () => listeners.get('htmx:afterSettle')[0]() };
+  return { root, toggle, document, manifest, submit, choose: (slug) => submit(new HTMLButtonElement(slug, false)), settle: () => listeners.get('htmx:afterSettle')[0]() };
 }
 
 test('system header toggle pins opposite DNA variant and keeps the DNA pair through navigation', () => {
@@ -39,6 +40,14 @@ test('system header toggle pins opposite DNA variant and keeps the DNA pair thro
     assert.equal(page.root.dataset.theme, dark ? 'dna-dark' : 'dna-day');
     assert.match(page.document.cookie, /rbit-theme=dna-/);
   }
+});
+
+test('app manifest follows applied themes and the device scheme for System', () => {
+  const page = picker({ dark: true });
+  page.choose('dna-day');
+  assert.equal(page.manifest.href, '/manifest.webmanifest?theme=dna-day');
+  page.choose('system');
+  assert.equal(page.manifest.href, '/manifest.webmanifest?theme=dna-dark');
 });
 
 test('explicit Classic choices keep their old pair and choosing System restores DNA toggles', () => {

@@ -10,7 +10,7 @@
 //! headers and error pages automatically.
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{Path, Query, State},
     response::{IntoResponse, Redirect, Response},
     routing::get,
@@ -37,7 +37,39 @@ use crate::{
 const MAX_LISTED_COMMITS: usize = 100;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/{owner}/{repo}/compare", get(picker)).route("/{owner}/{repo}/compare/{*spec}", get(compare))
+    Router::new()
+        .route("/{owner}/{repo}/compare", get(picker))
+        .route("/{owner}/{repo}/compare/refs", get(ref_options))
+        .route("/{owner}/{repo}/compare/{*spec}", get(compare))
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct RefSearch {
+    q: String,
+    branches: bool,
+}
+
+/// Only readable refs leave the server; never render thousands of options in a page.
+async fn ref_options(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<RefSearch>,
+) -> WebResult<Response> {
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
+    let needle: String = query.q.trim().chars().take(100).collect::<String>().to_lowercase();
+    let options: Vec<_> = refs
+        .iter()
+        .filter(|r| (!query.branches || r.kind == RefKind::Branch) && r.name.to_lowercase().contains(&needle))
+        .take(50)
+        .map(|r| {
+            let value = if r.kind == RefKind::Tag { format!("refs/tags/{}", r.name) } else { r.name.clone() };
+            serde_json::json!({ "value": value, "label": r.name, "kind": if r.kind == RefKind::Tag { "Tag" } else { "Branch" } })
+        })
+        .collect();
+    Ok(([(axum::http::header::CACHE_CONTROL, "private, no-store")], Json(options)).into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,5 +212,5 @@ async fn compare(
         summary.create_url = Some(new_pull_url(loaded.ctx.repo.owner.name.as_str(), loaded.ctx.repo.repo.name.as_str(), &base, &head));
     }
     view.summary = Some(summary);
-    Ok(view.with_comparison(&comparison, &head_urls))
+    tokio::task::spawn_blocking(move || view.with_comparison(&comparison, &head_urls)).await.map_err(WebError::internal)
 }

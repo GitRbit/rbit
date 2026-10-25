@@ -48,6 +48,7 @@ pub mod timeline;
 pub mod tokens;
 pub mod transfers;
 pub mod two_factor;
+pub mod updates;
 mod uploads;
 pub mod webhooks;
 // Milestone 3: editing files in the browser (E).
@@ -121,6 +122,7 @@ pub struct ServiceContext {
 /// All services, constructed once at start-up and shared by reference.
 #[derive(Debug, Clone)]
 pub struct Services {
+    pub updates: updates::UpdateService,
     pub contributions: contributions::ContributionService,
     pub accounts: AccountService,
     pub admin: AdminService,
@@ -211,7 +213,11 @@ impl Services {
         let lfs = LfsService::new(ctx.clone());
         let accounts = AccountService::new(Arc::clone(&config), database.accounts(), kv.sessions(), instance.clone(), ctx.events.clone());
 
+        let issues = IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone());
+        issues.index_existing_mentions().await?;
+
         Ok(Self {
+            updates: updates::UpdateService::new(&config.updates),
             accounts: accounts.clone(),
             contributions: contributions::ContributionService::new(ctx.clone()),
             audit: AuditService::new(ctx.clone()),
@@ -230,7 +236,7 @@ impl Services {
             admin: AdminService::new(ctx.clone(), instance.clone()),
             insights: InsightsService::new(ctx.clone()),
             orgs: OrgService::new(ctx.clone(), instance.clone()),
-            profiles: ProfileService::new(ctx.clone(), accounts),
+            profiles: ProfileService::new(ctx.clone(), accounts, throttle.clone()),
             pushes: PushService::new(ctx.clone()),
             repo_settings: RepoSettingsService::new(ctx.clone()),
             collaborators: CollaboratorService::new(ctx.clone()),
@@ -242,7 +248,7 @@ impl Services {
             mirrors: MirrorService::new(ctx.clone()),
             releases: releases.clone(),
             preferences: PreferenceService::new(ctx.clone()),
-            issues: IssueService::new(ctx.clone(), timeline.clone(), references.clone(), throttle.clone()),
+            issues,
             references,
             pulls: PullService::with_shared(ctx.clone(), timeline.clone(), throttle.clone()),
             timeline,
@@ -269,6 +275,7 @@ impl Services {
 
     /// Starts background subscribers and periodic work. Call once, after start-up.
     pub fn spawn_background(&self) {
+        self.updates.spawn_background();
         self.jobs.spawn_background();
         self.recovery.spawn_background();
         self.webhooks.spawn_background();
@@ -288,6 +295,7 @@ impl Services {
     /// Call during graceful shutdown, before closing the stores.
     pub async fn shutdown(&self) {
         tokio::join!(
+            self.updates.shutdown(),
             self.jobs.shutdown(),
             self.webhooks.shutdown(),
             self.releases.shutdown(),

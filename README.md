@@ -8,31 +8,21 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-informational)](#license)
 [![Latest release](https://img.shields.io/github/v/release/GitRbit/rbit?include_prereleases&sort=semver)](https://github.com/GitRbit/rbit/releases)
 
-**Blazing fast, self-hosted Git — written in Rust, shipped as one binary, with no external services.**
+**Blazing fast, self-hosted Git hosting — written in Rust, shipped as one binary, with no external services.**
 
-rbit gives you repositories, issues, pull requests, reviews and CI checks on your own server, and it is
-built around three things: **speed**, **security** and **performance**. No Postgres, no Redis, no
-JavaScript runtime — download it, run it, push.
+rbit is a Git forge that gives you repositories, issues, pull requests, reviews and CI checks on your
+own server. It is built around three things: **speed**, **security** and **performance**. No Postgres,
+no Redis, no JavaScript runtime — download it, run it, push.
 
 **[Quick start](#quick-start)** · [Why rbit](#why-rbit) · [Features](#features) · [Install](#install) ·
 [First steps](#first-steps) · [Configuration](#configuration) · [Command line](#command-line) ·
 [Development](#development) · [Community](#community)
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-repo-dark.avif">
-    <img src="docs/screenshot-repo-light.avif" width="880" alt="The rbit repository hosted in rbit: the file list with each entry's latest commit, and a sidebar with the description, language breakdown and branch count">
-  </picture>
+  <img src="docs/rbit_preview1.avif" width="880" alt="rbit preview 1">
 </p>
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-pr-dark.avif">
-    <img src="docs/screenshot-pr-light.avif" width="640" alt="A pull request's Files changed tab in rbit, with a reviewer's line comment and the author's reply under the changed code">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-mobile-dark.avif">
-    <img src="docs/screenshot-mobile-light.avif" width="200" alt="The same repository page on a phone">
-  </picture>
+  <img src="docs/rbit_preview2.avif" width="880" alt="rbit preview 2">
 </p>
 
 ## Quick start
@@ -83,6 +73,17 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 
 ## Features
 
+The footer and administrator dashboard show a notice when a newer stable rbit release
+is available. A background check contacts the public GitHub release feed without sending
+your running version, instance address, users or repository data. Successful results are
+cached in memory for 24 hours; failures retry with backoff and never delay page requests.
+Disable checks with `RBIT_UPDATES__CHECK_FOR_UPDATES=false`. Independently, set
+`RBIT_UPDATES__REPORT_VERSION=false` to hide the public version API/footer/SSH version and
+omit running-version numbers from outgoing integration User-Agents. Administrators retain
+local version diagnostics. Both options are also in `[updates]` and the administrator
+configuration editor; changes require a restart. Update notices link to release notes;
+they do not install or download an update automatically.
+
 **Git and code**
 
 - **Git over HTTPS and SSH**: smart HTTP (protocol v2) and a built-in SSH server with user and deploy keys.
@@ -100,7 +101,7 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 - **Edit in the browser**: create, edit, rename, delete and upload files as one commit, directly or on a new
   branch with a pull request; branch protection applies.
 - **Organisations, stars, language statistics, commit diffs**, an administration panel with runtime settings.
-- **Contribution heatmaps** on user and organisation profiles and repository Commits tabs, with year
+- **Contribution heatmaps** on user and organisation profiles and repository Activity tabs, with year
   selection, daily counts, monthly activity and streaks. Phone layouts show quarters without sideways
   scrolling. Counts use default-branch commits and UTC author dates, and include only repositories the
   viewer can access. User graphs match the account email; identical commits across repositories count
@@ -111,12 +112,19 @@ No Docker? Download a [release binary](#release-binaries) and run `./rbit serve`
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
   GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
   one-click unsubscribe.
-- **Pull requests**: within a repository or across forks, line comments, reviews and review requests,
-  mergeability checks, and merging by merge commit, squash or rebase.
+- **Pull requests**: within a repository or across forks, line comments with resolvable conversations,
+  reviews and review requests, mergeability checks, a base-branch picker for existing pull requests,
+  and merging by merge commit, squash or rebase.
 - **Branch protection**: no force pushes or deletion, required pull requests, approvals and status checks,
   restricted pushers — enforced over HTTPS and SSH and for merges.
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
+
+Change your username in **Settings → Account** using your current password. Your profile
+links, repository URLs and Git HTTP/SSH remotes continue to work under old account names
+until someone claims a name again. Update shared links and Git remotes after renaming;
+use your new username or unchanged email to sign in. Sessions, tokens, keys and repository
+permissions keep their account identity.
 
 **Automation and integrations**
 

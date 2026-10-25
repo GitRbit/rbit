@@ -175,7 +175,7 @@ On top of the in-app inbox (`NotificationService`) and `MailService`:
   mentioned, review requested; filters reuse the issue query syntax; only visible repositories.
 - Markdown preview tab for issue/PR bodies and comments: a `POST /markdown/preview` endpoint
   (same renderer and sanitiser as everywhere else; Origin-checked; throttled), htmx tab, no inline JS.
-- Redirects for renamed **accounts** (migration `0025`, SQLite triggers like `repo_redirects`):
+- Redirects for renamed **accounts** (implemented in migration `0042`, SQLite triggers like `repo_redirects`):
   `/{old}` and `/{old}/{repo}` (web, Git HTTP and SSH) redirect or resolve to the new name until
   the old name is taken.
 

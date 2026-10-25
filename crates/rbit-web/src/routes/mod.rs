@@ -9,6 +9,7 @@ mod auth;
 mod blame;
 mod collaborators;
 mod compare;
+mod dashboards;
 mod edits;
 // Milestone 3: external sign-in (O).
 mod external_auth;
@@ -21,6 +22,7 @@ mod issues;
 mod labels;
 mod lfs;
 mod listing;
+mod markdown_preview;
 mod milestones;
 mod mirrors;
 mod notification_email;
@@ -95,6 +97,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
     Router::new()
         .route("/", get(home::index))
         .route("/explore", get(home::explore))
+        .merge(markdown_preview::routes(state))
         .route("/login", get(auth::login_form).post(auth::login))
         .route("/signup", get(auth::signup_form).post(auth::signup))
         .route("/logout", post(auth::logout))
@@ -141,6 +144,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         // Milestone 2 wave B: the shared timeline forms (T0), then the workstreams.
         .merge(timeline::routes())
         .merge(issues::routes())
+        .merge(dashboards::routes())
         .merge(labels::routes())
         .merge(milestones::routes())
         .merge(notifications::routes())
@@ -162,6 +166,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(from_fn(middleware::csrf_origin_check))
         // Inside html_caching, so the ETag covers the partial page actually sent.
         .layer(from_fn(crate::partial::partial_responses))
+        // Fresh notice metadata survives partial bodies and conditional 304 responses.
+        .layer(from_fn_with_state(state.clone(), crate::updates::report))
         // Inside compression, so ETags are computed over the uncompressed page.
         .layer(from_fn(middleware::html_caching))
         // Default privacy headers also cover errors and non-HTML responses. Wrap HTML

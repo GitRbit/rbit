@@ -292,6 +292,8 @@ pub struct PullPage {
     pub sidebar: IssueSidebar,
     /// "Convert to draft" for open, ready pull requests (author or writers).
     pub can_convert_to_draft: bool,
+    /// Authors and repository writers may retarget an open pull request.
+    pub can_change_base: bool,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -395,6 +397,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
@@ -488,6 +491,10 @@ mod tests {
             pagination: Pagination { page: 1, page_count: 1, previous_url: None, next_url: None },
             new_url: "/alice/demo/compare".to_owned(),
             author_filter: None,
+            query: "is:open is:pr".into(),
+            hints: Vec::new(),
+            list_url: "/alice/demo/pulls".into(),
+            menus: Vec::new(),
         }
         .render()
         .unwrap();
@@ -513,6 +520,8 @@ mod tests {
             is_reply: false,
             line_url: format!("{}#{anchor}", urls.files),
             reply_to: id,
+            resolution: reviews::ThreadResolutionView::default(),
+            replies: Vec::new(),
         }
     }
 
@@ -642,6 +651,8 @@ mod tests {
             is_reply: false,
             line_url: format!("{}#{anchor}", urls.files),
             reply_to: 9,
+            resolution: reviews::ThreadResolutionView::default(),
+            replies: Vec::new(),
         };
         // Without threads a file's height is known: header, "View file" bar and rows.
         let plain =
@@ -680,7 +691,12 @@ mod tests {
         assert!(html.contains(&format!(r#"{link} tabindex="-1">2</a>B</div>"#)));
         // The thread and the form end the block: they sit between blocks, outside any.
         assert!(html.contains("</div>\n      <div class=\"diff-comment\">"));
-        assert!(html.contains(&format!(r#"<details id="{}" class="diff-file box group" open>"#, file_anchor("src/lib.rs"))));
+        assert!(
+            html.contains(&format!(
+                r#"<details id="{}" class="diff-file box group" data-path="src/lib.rs" open>"#,
+                file_anchor("src/lib.rs")
+            ))
+        );
         assert!(html.contains(r#"<div class="vblock" data-rows="4">"#));
         assert!(!html.contains("<table"));
         assert_eq!(html.matches("Add single comment").count(), 1, "the form opens only at the requested line");
@@ -688,5 +704,64 @@ mod tests {
             assert!(html.contains(needle), "{needle} missing");
         }
         assert!(!html.contains("style="));
+    }
+
+    #[test]
+    fn files_tree_keeps_review_targets_statuses_and_fallback_links() {
+        let urls = PullUrls::new("alice", "demo", 3);
+        let changed = |path: &str, status, old: Option<&str>| FileDiff {
+            path: path.to_owned(),
+            old_path: old.map(str::to_owned),
+            status,
+            additions: 0,
+            deletions: 0,
+            stats_known: false,
+            body: FileDiffBody::Binary,
+        };
+        let diffs = [
+            changed("src/z.rs", ChangeStatus::Renamed, Some("src/before.rs")),
+            changed("old/<&>.txt", ChangeStatus::Deleted, None),
+            changed("README.md", ChangeStatus::Added, None),
+        ];
+        let files = PullFileView::list(&diffs, &"a".repeat(40), &RepoUrls::new("alice", "demo"), &urls, &[], None, false);
+        let tree = PullFileView::tree(&files);
+        let leaves: Vec<_> = tree.iter().filter_map(|row| row.file.as_ref()).collect();
+        assert_eq!(leaves.iter().map(|leaf| leaf.index).collect::<Vec<_>>(), [1, 0, 2]);
+        assert_eq!(leaves.iter().map(|leaf| leaf.status_key).collect::<Vec<_>>(), ["deleted", "renamed", "added"]);
+        for leaf in &leaves {
+            assert_eq!(leaf.anchor, file_anchor(&files[leaf.index].path));
+        }
+        let render = |files| {
+            PullFilesPage {
+                page: page(),
+                header: RepoHeader::default(),
+                pull: header_view(),
+                files,
+                additions: 0,
+                deletions: 0,
+                truncated: false,
+                can_comment: false,
+                signed_in: false,
+                sign_in_url: "/login".to_owned(),
+                review_form: None,
+                outdated_count: 0,
+            }
+            .render()
+            .unwrap()
+        };
+        let html = render(files.clone());
+        for file in &files {
+            assert!(html.contains(&format!(r##"href="#{}" hx-boost="false""##, file.anchor)), "plain links work without scripts");
+            assert_eq!(html.matches(&format!(r#"id="{}""#, file.anchor)).count(), 1);
+        }
+        assert!(html.contains("data-diff-layout"));
+        assert!(html.contains("data-diff-filter"));
+        assert!(html.contains(r#"data-path="old/&#60;&#38;&#62;.txt""#), "tree paths are escaped: {html}");
+        assert!(html.contains("src/before.rs →"));
+        assert!(html.find(&format!(r#"id="{}""#, files[1].anchor)) < html.find(&format!(r#"id="{}""#, files[0].anchor)));
+        assert!(!render(files[..1].to_vec()).contains("data-diff-tree"), "one file needs no sidebar");
+        let empty = render(Vec::new());
+        assert!(!empty.contains("data-diff-tree"));
+        assert!(empty.contains("No changes"));
     }
 }

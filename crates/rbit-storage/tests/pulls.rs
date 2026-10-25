@@ -69,6 +69,22 @@ async fn created(database: &Database, new: &NewPull) -> (rbit_core::Issue, rbit_
 }
 
 #[tokio::test]
+async fn batch_pull_lookup_keeps_repository_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+    let alice = user(&database, "alice").await;
+    let demo = repo(&database, &alice, "demo", Visibility::Public).await;
+    let vault = repo(&database, &alice, "vault", Visibility::Private).await;
+    let (first, _) = created(&database, &new_pull(demo, demo, &alice, "one", 1)).await;
+    let (hidden, _) = created(&database, &new_pull(vault, vault, &alice, "secret", 2)).await;
+    let found = database.pulls().find_among(demo, &[hidden.id, first.id]).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].issue_id, first.id);
+    assert_eq!(database.pulls().find_among(demo, &[]).await.unwrap(), []);
+    database.close().await;
+}
+
+#[tokio::test]
 async fn pull_requests_share_numbers_and_refuse_duplicates_while_open() {
     let dir = tempfile::tempdir().unwrap();
     let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
@@ -198,6 +214,61 @@ async fn heads_mergeability_drafts_and_merges() {
     // Deleting the fork keeps the pull request, without a head repository.
     database.repositories().delete(fork).await.unwrap();
     assert_eq!(store.find(one.id).await.unwrap().unwrap().head_repo_id, None);
+    database.close().await;
+}
+
+#[tokio::test]
+async fn thread_resolution_is_atomic_idempotent_and_scoped_to_submitted_roots() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
+    let alice = user(&database, "alice").await;
+    let demo = repo(&database, &alice, "demo", Visibility::Public).await;
+    let (pull, _) = created(&database, &new_pull(demo, demo, &alice, "feature", 10)).await;
+    let (other, _) = created(&database, &new_pull(demo, demo, &alice, "other", 10)).await;
+    let store = database.reviews();
+    let new = NewReviewComment {
+        path: "f".into(),
+        side: ReviewSide::Right,
+        line: 1,
+        commit_sha: "a".repeat(40),
+        diff_hunk: String::new(),
+        in_reply_to: None,
+        body: "Question".into(),
+    };
+    let (_, root) = store.add_pending_comment(pull.id, alice.id(), &new.commit_sha, &new, Timestamp(11)).await.unwrap();
+    assert!(!store.set_thread_resolved(pull.id, root.id, alice.id(), true, Timestamp(12)).await.unwrap());
+    store.submit_pending(pull.id, alice.id(), ReviewState::Commented, "", &new.commit_sha, Timestamp(13)).await.unwrap();
+    assert!(!store.set_thread_resolved(other.id, root.id, alice.id(), true, Timestamp(14)).await.unwrap());
+    // Two concurrent posts produce one state change and one event.
+    let (one, two) = tokio::join!(
+        store.set_thread_resolved(pull.id, root.id, alice.id(), true, Timestamp(15)),
+        store.set_thread_resolved(pull.id, root.id, alice.id(), true, Timestamp(15)),
+    );
+    assert_ne!(one.unwrap(), two.unwrap());
+    let saved = store.find_comment(pull.id, root.id).await.unwrap().unwrap();
+    assert_eq!((saved.resolved_at, saved.resolved_by), (Some(Timestamp(15)), Some(alice.id())));
+    let timeline = database.issues().timeline(pull.id, None, 100).await.unwrap();
+    assert_eq!(
+        timeline
+            .items
+            .iter()
+            .filter(|item| matches!(
+                item,
+                rbit_storage::sqlite::issues::StoredTimelineItem::Event { event: TimelineEvent::ReviewThreadResolved { .. }, .. }
+            ))
+            .count(),
+        1
+    );
+    assert!(store.set_thread_resolved(pull.id, root.id, alice.id(), false, Timestamp(16)).await.unwrap());
+    let saved = store.find_comment(pull.id, root.id).await.unwrap().unwrap();
+    assert_eq!((saved.resolved_at, saved.resolved_by), (None, None));
+    // Failure to write the timeline must roll back the resolution update too.
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(dir.path().join("rbit.db")).foreign_keys(true);
+    let raw = sqlx::SqlitePool::connect_with(options).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_resolution BEFORE INSERT ON issue_events WHEN NEW.kind = 'review_thread_resolved' BEGIN SELECT RAISE(ABORT, 'test failure'); END").execute(&raw).await.unwrap();
+    assert!(store.set_thread_resolved(pull.id, root.id, alice.id(), true, Timestamp(17)).await.is_err());
+    assert!(store.find_comment(pull.id, root.id).await.unwrap().unwrap().resolved_at.is_none());
+    raw.close().await;
     database.close().await;
 }
 

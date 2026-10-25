@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block content %}
+<nav class="mb-4 flex gap-4 text-[13px]" aria-label="Personal dashboards"><a class="link" href="/issues">Issues</a><a class="link" href="/pulls">Pull requests</a></nav>
+<h1 class="mb-4 text-lg font-semibold">{{ title }}</h1>
+<nav class="scroll-tabs mb-4 flex gap-3" aria-label="Your involvement">
+{% for tab in tabs %}<a href="{{ tab.url }}" class="tab"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}</a>{% endfor %}
+</nav>
+<form method="get" action="{{ base }}" class="flex min-w-0 gap-2" role="search">
+<input type="hidden" name="view" value="{{ view }}">
+<label for="dashboard-query" class="sr-only">Search {{ title }}</label>
+<input id="dashboard-query" class="input min-w-0 flex-1 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" aria-describedby="dashboard-help">
+<button class="btn" type="submit">Search</button>
+</form>
+<details id="dashboard-help" class="mt-2 text-xs text-ink-muted"><summary class="cursor-pointer">Search help</summary><p class="mt-2">Use is:open, is:closed, author:@me, assignee:@me, label:bug, milestone:"v1", no:assignee or sort:updated-desc. Text searches titles and descriptions. Results include only repositories you can currently read. Mentioned includes known mentions in bodies, comments and submitted reviews, even after notifications are read.</p></details>
+{% for hint in hints %}<p class="hint mt-2">{{ hint }}</p>{% endfor %}
+<section class="box mt-4" aria-label="Results">
+<div class="box-header gap-4 text-[13px]"><a class="link" href="{{ open_url }}">{{ open }} Open</a><a class="link" href="{{ closed_url }}">{{ closed }} Closed</a></div>
+{% if rows.is_empty() %}{% call ui::empty_state("circle-dot", "No matching threads", "Try another filter or involvement tab.") %}{% endcall %}{% else %}
+<ul>{% for entry in rows %}<li class="row flex items-start gap-3 px-4 py-3">
+<span class="mt-1 shrink-0 {{ entry.row.state.class }}" aria-label="{{ entry.row.state.label }}">{% call ui::icon(entry.row.state.icon, "size-4") %}{% endcall %}</span>
+<div class="min-w-0 flex-1"><p class="break-words text-xs text-ink-muted">{{ entry.repository }} {{ entry.row.number }}</p><a class="break-words font-medium hover:underline" href="{{ entry.row.url }}">{{ entry.row.title }}</a><p class="mt-1 text-xs text-ink-muted">{{ entry.row.author }} · <time datetime="{{ entry.row.when_iso }}">{{ entry.row.when }}</time> · {{ entry.row.comments }} comments</p></div>
+</li>{% endfor %}</ul>{% endif %}
+</section>
+{% call ui::pagination(pagination) %}{% endcall %}
+{% endblock %}

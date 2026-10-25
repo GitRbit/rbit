@@ -174,7 +174,7 @@ worker), and `ArchiveService` (at most 4 archives at once, 503 + `Retry-After` w
 | `IssueService` (`issues`) | Creating issues with labels, assignees and a milestone; labels (≤ 200 per repository, 25 per issue, default set), milestones, assignees (writers only, ≤ 10), deletion (admins), search; the metadata hook P uses; the background subscriber that turns references into timeline entries and closes issues from commits on the default branch and from pull requests merged into it. |
 | `ReferenceService` (`references`) | Resolves `#N` and `@name` in a batch of texts for rendering; records `CrossReferenced` on targets the mention's author can read. |
 | `NotificationService` (`notifications`) | The participation-based inbox (§5.1): subscriptions, fan-out from issue, comment and review events, `has_unread` for the header bell, retention pruning. |
-| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review requests, drafts, the merge box and merging (§3.7). |
+| `PullService` (`pulls`) | The fork network, cross-repository compare through overlays, creating pull requests (`refs/pull/{n}/head`), following head and base pushes (including "merged outside rbit"), the mergeability worker, reviews and line comments, review-thread resolution, review requests, drafts, the merge box and merging (§3.7). |
 | `ProtectionService` (`protection`) | Branch protection rules (admins only, audited), the push gate's verdict (`check_push`), merge requirements (`check_merge`), `may_delete_branch`, and `protected_branches` for the branches page badge. |
 
 Milestone 3 added:
@@ -614,6 +614,14 @@ every minute, so nothing is lost across restarts.
    then reported ("the base branch changed; try again"). Nothing else in the base
    repository changes.
 
+Review conversations keep resolution metadata on their root line comment (migration
+`0041`). Writers and the root author may resolve or reopen submitted conversations via
+`POST /{owner}/{repo}/pull/{n}/comments/{id}/resolution`; pending reviews answer 404.
+The store changes the state and records `review_thread_resolved` or
+`review_thread_reopened` in one transaction, with repeated state requests doing nothing.
+Both PR views group replies with their root and collapse resolved conversations.
+Resolution does not affect merge requirements.
+
 The ref update does not go through `receive-pack`, so no hooks run and the push gate is not
 involved: protection is applied before merging by `ProtectionService::check_merge`
 (approvals from writers' latest reviews, changes requested, allowed pushers, required status
@@ -720,6 +728,20 @@ SSH (separate listener, rbit-ssh): public-key auth → exec git-upload-pack (int
   or git-receive-pack (advertisement → push gate → stateless receive-pack, §4.4)
   or git-lfs-authenticate (prints a signed LFS header, §4.7)
 ```
+
+**Account names redirect.** Migration `0042` adds `account_redirects` keyed by the old
+case-insensitive name and referencing the stable account ID. Rename triggers record old
+names; account creation or renaming into a name removes its former redirect permanently.
+Every alias resolves directly to the current account, so repeated renames and renaming
+back cannot loop. The same invariants apply to organisation accounts. Account settings
+allow a signed-in user to change their own username with a current-password check that
+is atomic against password replacement; attempts share a five-request budget per account,
+refilling once every ten minutes. Names still use the reserved-path validation. Account
+IDs, repository disk paths, permissions, sessions, keys and tokens remain unchanged.
+Sign-in and mentions use current names only. An old profile URL redirects with its query;
+repository lookups compose account aliases with repository aliases and enforce visibility
+before exposing a destination. Git HTTP and SSH serve the permitted repository directly.
+No names from before the migration are inferred or backfilled.
 
 **Old names redirect.** When a page answers 404 and its first two path segments name a
 repository's *old* location (`repo_redirects`) that the viewer may read, the error-page
@@ -1362,6 +1384,49 @@ licenses and advisories with `cargo deny` (`deny.toml`); each ignored advisory c
 reason. rbit is licensed MIT OR Apache-2.0.
 
 ---
+
+### 9.1 Release checks and version privacy
+
+The footer also follows ordinary htmx navigation without polling. HTML responses carry
+versionless `Rbit-Update-Available` metadata from the same cached service snapshot.
+UTC-nanosecond revisions advance only when the background worker observes a result
+(or the service starts), and the initial footer carries its revision too. The browser
+orders snapshots with `BigInt`, including prefetched navigation responses and restored
+history, so an old cached page cannot erase or resurrect a newer notice. A newer clear
+removes it; a newer available snapshot from a preload can reveal it. This adds no upstream
+request to page rendering.
+
+`UpdateService` owns a single cancellable background task. It reads only the fixed
+`https://api.github.com/repos/GitRbit/rbit/releases/latest` endpoint, with a constant
+versionless User-Agent, no credentials, cookies, instance identity or running-version
+parameter. The client honors deployment proxy settings, requires HTTPS, refuses redirects,
+and limits requests to a five-second connect timeout, ten seconds total and a 64 KiB body.
+Tags are validated as SemVer and release links are constructed under the fixed upstream
+repository. Drafts and prereleases are excluded. A stable release supersedes the same
+version's prerelease; an older stable release does not supersede a newer local prerelease.
+Build metadata does not affect precedence.
+
+Successful checks are cached in memory for 24 hours. Failures back off from 15 minutes
+to at most 24 hours, honoring bounded `Retry-After` and GitHub reset hints. The last
+successful notice survives transient failures; restarting forgets the cache and performs
+one new check. Page rendering only reads a mutex-protected snapshot and never contacts
+upstream. The footer shows a generic release-notes link; administrators also see check
+status. No release is installed or downloaded automatically. Tests inject local HTTP
+fixtures into the private worker constructor and disable live checks in application
+test harnesses.
+
+`[updates] check_for_updates = false` disables the task and its HTTP client independently
+of `report_version`. Both options default to true and are deployment configuration:
+TOML, `RBIT_UPDATES__CHECK_FOR_UPDATES`, `RBIT_UPDATES__REPORT_VERSION`, or the administrator
+configuration editor. Saved changes require restart. With reporting disabled, the
+global policy overrides the live footer branding flag, `/api/v1/version` answers 404,
+the pre-authentication SSH banner omits its version suffix, and provider, import/API/
+download and webhook User-Agents omit the running version (including webhook delivery
+records). Update checks never send it even when reporting is enabled. Administrator-only
+installed-version diagnostics, local CLI output and backup manifests remain accurate.
+Opaque asset content hashes and API/Prometheus protocol versions are not release versions
+and remain unchanged. Historical delivery records retain their original headers until
+normal retention removes them.
 
 ## 10. Roadmap
 

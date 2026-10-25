@@ -43,7 +43,6 @@ use crate::{
     error::{WebError, WebResult},
     extract::{SignedIn, Viewer},
     middleware,
-    render::is_markdown,
     views::{
         components::FormError,
         edits::{CommitBox, Conflict, DeleteFilePage, EditFilePage, UploadFilesPage},
@@ -300,6 +299,7 @@ async fn new_page(
 ) -> WebResult<EditFilePage> {
     let placeholder = EditAction::Create(if path.trim().is_empty() { "a file" } else { path.trim() }).default_title();
     let commit = commit_box(state, user, target, placeholder, form, retry).await?;
+    let preview_url = markdown_preview_url(target);
     Ok(EditFilePage {
         page: page.titled(format!("New file · {}", target.loaded.ctx.repo.full_name())),
         header: target.header(state),
@@ -307,11 +307,10 @@ async fn new_page(
         original_path: String::new(),
         action_url: target.action_url("new"),
         cancel_url: target.loaded.urls.tree(&target.branch, &target.path),
-        is_markdown: is_markdown(&path),
         path,
         content,
         not_editable: None,
-        preview_url: markdown_preview_url(),
+        preview_url,
         max_size: max_text_size(state),
         commit,
         conflict: retry.and_then(|retry| retry.conflict.clone()),
@@ -319,9 +318,14 @@ async fn new_page(
     })
 }
 
-/// Integration hook (W): `Some("/markdown/preview")` once that endpoint is on `main`.
-fn markdown_preview_url() -> Option<String> {
-    None
+/// Every editor retains context, so typing or changing a Markdown filename enables previews.
+fn markdown_preview_url(target: &Target) -> String {
+    format!(
+        "/issues/markdown-preview?owner={}&repo={}&revision={}",
+        target.loaded.ctx.repo.owner.name,
+        target.loaded.ctx.repo.repo.name,
+        percent_encoding::utf8_percent_encode(&target.branch, percent_encoding::NON_ALPHANUMERIC)
+    )
 }
 
 // ------------------------------------------------------------------ edit
@@ -403,6 +407,7 @@ async fn edit_page(
 ) -> WebResult<EditFilePage> {
     let placeholder = EditAction::Update(&target.path).default_title();
     let commit = commit_box(state, user, target, placeholder, form, retry).await?;
+    let preview_url = markdown_preview_url(target);
     Ok(EditFilePage {
         page: page.titled(format!("Editing {} · {}", target.path, target.loaded.ctx.repo.full_name())),
         header: target.header(state),
@@ -410,11 +415,10 @@ async fn edit_page(
         original_path: target.path.clone(),
         action_url: target.action_url("edit"),
         cancel_url: target.loaded.urls.blob(&target.branch, &target.path),
-        is_markdown: is_markdown(&path),
         path,
         content,
         not_editable,
-        preview_url: markdown_preview_url(),
+        preview_url,
         max_size: max_text_size(state),
         commit,
         conflict: retry.and_then(|retry| retry.conflict.clone()),

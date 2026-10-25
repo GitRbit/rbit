@@ -2,8 +2,7 @@
 
 use rbit_storage::{Database, NewUser, StorageError, sqlite::external_identities::NewExternalIdentity};
 
-#[path = "common/query_count.rs"]
-mod query_count;
+use crate::query_count;
 
 fn user(name: &str) -> NewUser {
     NewUser {

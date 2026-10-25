@@ -43,7 +43,7 @@ use rbit_core::{
 use rbit_storage::sqlite::issue_meta::{LabelFields, MilestoneFields};
 pub use rbit_storage::sqlite::{
     issue_meta::{Label, LabelUsage, Milestone, MilestoneProgress},
-    issue_search::SearchFilter,
+    issue_search::{DashboardRelation, DashboardScope, SearchFilter},
 };
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -400,8 +400,18 @@ impl IssueService {
         if !repo.access.can_read() {
             return Err(ServiceError::NotFound);
         }
+        let (filter, hints) = self.search_filter(viewer, repo.repo.repo.id, query).await?;
+        self.search_results(&filter, hints, page).await
+    }
+
+    async fn search_filter(
+        &self,
+        viewer: Option<&User>,
+        repo: RepoId,
+        query: &IssueQuery,
+    ) -> Result<(SearchFilter, Vec<String>), ServiceError> {
         let mut hints: Vec<String> = query.ignored.iter().map(|term| format!("“{term}” is not understood and was ignored")).collect();
-        let mut filter = SearchFilter::new(repo.repo.repo.id);
+        let mut filter = SearchFilter::new(repo);
         filter.kind = query.kind.map(|kind| match kind {
             KindFilter::Issue => IssueKind::Issue,
             KindFilter::Pull => IssueKind::Pull,
@@ -424,8 +434,35 @@ impl IssueService {
         filter.text.clone_from(&query.text);
         filter.sort = query.sort;
 
+        Ok((filter, hints))
+    }
+
+    /// Personal threads across every repository the current active viewer can read.
+    pub async fn dashboard(
+        &self,
+        viewer: &User,
+        kind: IssueKind,
+        relation: DashboardRelation,
+        query: &IssueQuery,
+        page: u32,
+    ) -> Result<IssueSearchResults, ServiceError> {
+        let viewer = self.ctx.database.accounts().find_active_user(viewer.id()).await?.ok_or(ServiceError::NotFound)?;
+        let (mut filter, hints) = self.search_filter(Some(&viewer), RepoId(0), query).await?;
+        filter.kind = Some(kind);
+        filter.dashboard = Some(DashboardScope { viewer: viewer.id(), is_admin: viewer.is_admin, relation });
+        self.search_results(&filter, hints, page).await
+    }
+
+    /// Current repository metadata for a displayed dashboard thread, rechecking access.
+    pub async fn dashboard_repository(&self, viewer: &User, id: RepoId) -> Result<Option<OwnedRepository>, ServiceError> {
+        let Some(viewer) = self.ctx.database.accounts().find_active_user(viewer.id()).await? else { return Ok(None) };
+        let Some(repo) = self.ctx.database.admin().find_repository(id).await? else { return Ok(None) };
+        if self.access_of(&viewer, &repo).await?.can_read() { Ok(Some(repo)) } else { Ok(None) }
+    }
+
+    async fn search_results(&self, filter: &SearchFilter, hints: Vec<String>, page: u32) -> Result<IssueSearchResults, ServiceError> {
         let store = self.ctx.database.issue_search();
-        let (open, closed) = store.state_counts(&filter).await?;
+        let (open, closed) = store.state_counts(filter).await?;
         let total = match filter.state {
             Some(IssueState::Open) => open,
             Some(IssueState::Closed) => closed,
@@ -444,7 +481,7 @@ impl IssueService {
         };
         results.page = results.page.min(results.page_count());
         let offset = u64::from(results.page - 1) * u64::from(ISSUES_PER_PAGE);
-        results.issues = store.search(&filter, ISSUES_PER_PAGE, offset).await?;
+        results.issues = store.search(filter, ISSUES_PER_PAGE, offset).await?;
         let ids: Vec<IssueId> = results.issues.iter().map(|issue| issue.id).collect();
         let author_ids: Vec<AccountId> = distinct(&results.issues.iter().filter_map(|issue| issue.author).collect::<Vec<_>>());
         let (authors, metadata) = tokio::try_join!(
@@ -469,6 +506,7 @@ impl IssueService {
             return Err(ServiceError::NotFound);
         }
         filter.repo = repo.repo.repo.id;
+        filter.dashboard = None;
         let store = self.ctx.database.issue_search();
         let (open, closed) = store.state_counts(&filter).await?;
         let total = match filter.state {
@@ -868,13 +906,74 @@ impl IssueService {
         }
     }
 
+    async fn record_mentions(&self, issue: IssueId, text: &str) -> Result<(), ServiceError> {
+        let names = references::scan_markdown(text).mentions;
+        if !names.is_empty() {
+            let accounts = self.ctx.database.issue_meta().accounts_named(&names).await?;
+            let ids: Vec<_> = accounts.iter().filter(|account| !account.is_organization()).map(|account| account.id).collect();
+            self.ctx.database.issue_search().record_mentions(issue, &ids).await?;
+        }
+        Ok(())
+    }
+
+    /// One-time Markdown-aware upgrade of existing issue, comment and submitted review bodies.
+    pub(crate) async fn index_existing_mentions(&self) -> Result<(), ServiceError> {
+        let store = self.ctx.database.issue_search();
+        if store.mentions_indexed().await? {
+            return Ok(());
+        }
+        for source in 0..4 {
+            let mut after = 0;
+            loop {
+                let rows = store.mention_sources(source, after).await?;
+                if rows.is_empty() {
+                    break;
+                }
+                for (id, issue, body) in rows {
+                    self.record_mentions(IssueId(issue), &body).await?;
+                    after = id;
+                }
+            }
+        }
+        store.finish_mentions_index().await?;
+        Ok(())
+    }
+
     /// Reacts to one event: what the background subscriber does, callable directly (tests).
     pub async fn handle_event(&self, event: &DomainEvent) -> Result<(), ServiceError> {
+        // Events can be processed after a later edit/deletion. Preserve mentions from
+        // the event's historical content before reading the latest stored body.
         match event {
+            DomainEvent::Issue { issue, action: IssueAction::Edited { previous_body: Some(body), .. }, .. }
+            | DomainEvent::IssueComment { issue, action: rbit_core::issue::CommentAction::Edited { previous_body: body }, .. } => {
+                self.record_mentions(*issue, body).await?;
+            }
+            DomainEvent::IssueComment { issue, action: rbit_core::issue::CommentAction::Deleted { snapshot }, .. } => {
+                self.record_mentions(*issue, snapshot.body.as_str()).await?;
+            }
+            _ => {}
+        }
+        match event {
+            DomainEvent::PullRequestReview { pull, review, action, .. } => {
+                let store = self.ctx.database.reviews();
+                if let Some(row) = store.find(*pull, *review).await?
+                    && row.state != rbit_core::issue::ReviewState::Pending
+                {
+                    if let rbit_core::issue::ReviewAction::Edited { previous_body } = action {
+                        self.record_mentions(*pull, previous_body).await?;
+                    }
+                    self.record_mentions(*pull, row.body.as_str()).await?;
+                    for comment in store.comments(*pull).await?.iter().filter(|comment| comment.review_id == *review) {
+                        self.record_mentions(*pull, comment.body.as_str()).await?;
+                    }
+                }
+                Ok(())
+            }
             DomainEvent::RepositoryPushed { repo, pusher, updates } => self.scan_push(*repo, *pusher, updates).await,
             DomainEvent::Issue { issue, actor, action: IssueAction::Opened | IssueAction::Edited { .. }, .. } => {
                 let Some(source) = self.ctx.database.issues().find(*issue).await? else { return Ok(()) };
                 let body = source.body.to_string();
+                self.record_mentions(*issue, &body).await?;
                 self.references.record_cross_references(&source, *actor, &body).await
             }
             DomainEvent::IssueComment {
@@ -888,6 +987,7 @@ impl IssueService {
                 let (Some(source), Some(comment)) = (store.find(*issue).await?, store.find_comment(*issue, *comment).await?) else {
                     return Ok(());
                 };
+                self.record_mentions(*issue, comment.body.as_str()).await?;
                 self.references.record_cross_references(&source, Some(*actor), comment.body.as_str()).await
             }
             DomainEvent::Issue {

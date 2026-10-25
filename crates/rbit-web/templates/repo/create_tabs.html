@@ -1,0 +1,6 @@
+<nav class="mt-5 flex gap-1 border-b border-line" role="tablist" aria-label="Repository type">
+  <a id="create-new-tab" href="/new" class="tab" role="tab" aria-controls="create-new-panel" aria-selected="{% if creation_kind == "new" %}true{% else %}false{% endif %}" tabindex="{% if creation_kind == "new" %}0{% else %}-1{% endif %}" data-repo-type="new" hx-boost="false">Empty</a>
+  <a id="create-mirror-tab" href="/new/mirror" class="tab" role="tab" aria-controls="create-mirror-panel" aria-selected="{% if creation_kind == "mirror" %}true{% else %}false{% endif %}" tabindex="{% if creation_kind == "mirror" %}0{% else %}-1{% endif %}" data-repo-type="mirror" hx-boost="false">Mirror</a>
+  <a id="create-import-tab" href="/new/import" class="tab" role="tab" aria-controls="create-import-panel" aria-selected="{% if creation_kind == "import" %}true{% else %}false{% endif %}" tabindex="{% if creation_kind == "import" %}0{% else %}-1{% endif %}" data-repo-type="import" hx-boost="false">Import</a>
+</nav>
+<p class="hint mt-2" data-repo-create-status role="status"></p>

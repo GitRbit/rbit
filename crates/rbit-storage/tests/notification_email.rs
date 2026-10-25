@@ -1,8 +1,7 @@
 //! Email preferences and the notification email outbox (workstream N) against a real,
 //! migrated `SQLite` database.
 
-#[path = "common/query_count.rs"]
-mod query_count;
+use crate::query_count;
 
 use rbit_core::{IssueId, IssueKind, IssueText, IssueTitle, Timestamp, User, Visibility, config::EmailPreference};
 use rbit_storage::{

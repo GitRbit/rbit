@@ -7,16 +7,100 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Update `gix` to 0.90.0 to prevent untrusted repository configuration from disabling
+  filesystem path protections
+  ([GHSA-q54r-jf2p-rfr2](https://github.com/advisories/GHSA-q54r-jf2p-rfr2)).
+- Update `crypto-bigint` to 0.7.6 and `ctutils` to 0.4.5 to address constant-time
+  arithmetic issues ([RUSTSEC-2026-0387](https://rustsec.org/advisories/RUSTSEC-2026-0387.html)).
+- Update `ctutils` to 0.4.4 to fix constant-time comparisons
+  ([RUSTSEC-2026-0385](https://rustsec.org/advisories/RUSTSEC-2026-0385.html)).
+
+### Added
+
+- Resolve and reopen pull request review conversations as a repository writer or the
+  conversation's author. Resolved conversations collapse with their replies in the
+  conversation and Files changed tabs; state changes appear in the timeline.
+- Migration `0041` adds review conversation resolution metadata. Existing conversations
+  remain unresolved; back up the database before upgrading as usual.
+- Change an open pull request's base branch from its Conversation tab, with searchable
+  branch choices for the author and repository writers.
+- Change your username from account settings with current-password confirmation. Old
+  profile links, repository URLs, and Git HTTP/SSH remotes follow the account's current
+  name until another account claims the old name. Private repository redirects are only
+  visible to authorized readers.
+
+- Preview Markdown before submitting issue and pull request descriptions, comments,
+  reviews and browser file edits, with repository links and sanitized HTML.
+- Add personal `/issues` and `/pulls` dashboards with involvement tabs, issue-query filters,
+  visibility-aware counts and pagination. Upgrade applies migration `0043` and indexes existing
+  Markdown mentions once at startup in bounded batches.
+- Notify in the footer and administrator dashboard when a newer stable rbit release
+  is available, using a bounded daily background check of the upstream GitHub release
+  feed. Release checks never send the running version or instance identity.
+- Add independent `[updates] check_for_updates` and `report_version` opt-outs. Disabling
+  reporting hides public version output and omits version numbers from outgoing
+  integration User-Agents; administrator-only diagnostics remain available.
+
+### Upgrade notes
+
+- Startup applies migration `0042_account_redirects.sql`, adding account-name redirects
+  and their maintenance triggers. Existing account names and IDs are unchanged; names
+  abandoned before this upgrade cannot be reconstructed.
+
+- Automatic release checks are enabled by default. Set
+  `RBIT_UPDATES__CHECK_FOR_UPDATES=false` to prevent them, independently of
+  `RBIT_UPDATES__REPORT_VERSION=false` to hide public/outbound version reporting.
+  Configuration changes take effect after restart; release checks add no database migration.
+
 ### Fixed
 
-- Patch the TLS certificate checks and root store for the emSign trust advisories.
+- Clarify the README introduction to describe rbit as Git hosting and a Git forge.
+- Clarify private security reporting, remove the broken conduct-reporting contact,
+  and add automated checks for GitHub repository configuration and submission paths.
 
 ### Changed
+
+- Move the repository commit calendar from Commits to a dedicated Activity tab, keeping
+  commit history focused on the selected branch and its paginated commits.
+
+## [0.1.3] - 2026-10-21
+
+### Security
+
+- Update TLS certificate validation dependencies to reject distrusted emSign intermediates
+  (RUSTSEC-2026-0381 and RUSTSEC-2026-0382).
+
+### Changed
+
+- Add a searchable file tree to pull request Files changed tabs, with folder controls and links to each diff.
+
+- Match installed app launch colors to the chosen theme and replace beige app icon backgrounds with rbit Light.
+
+- Switch repository creation, mirrors and imports in place while keeping form drafts.
+
+- Cache daily repository activity by default-branch tip and reduce commit graph ordering work.
+
+- Add quoted replies and user, issue and pull request mention choices to discussions.
+
+- Search branch and tag choices on demand when comparing changes. Keep diff highlighting off the request worker.
+
+- Use the issue search syntax and filter menus for pull requests, with draft and merged filters.
+
+- Add searchable issue filter menus, label reset choices and search help.
 
 - Refresh the roadmap for the public open-source project, separate available features
   from planned work, and remove stale first-release guidance from contributor and handoff docs.
 - Document how to distinguish large HTTPS push failures at proxies from Git's shallow
   update rejections, with regression coverage for normal and shallow pushes over 100 MiB.
+
+### Upgrade notes
+
+- Back up the instance before upgrading. No new database migrations or configuration
+  changes are required when upgrading from 0.1.2.
+- Restart the service with the new binary or container image to apply the TLS
+  certificate validation updates and refreshed web assets.
 
 ## [0.1.2] - 2026-10-19
 

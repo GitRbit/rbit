@@ -270,6 +270,7 @@ pub struct CommentView {
     /// `POST` target that deletes the comment; `None` for the opening post.
     pub delete_url: Option<String>,
     pub is_opening_post: bool,
+    pub can_reply: bool,
 }
 
 /// An event row (`timeline/event.html`): "alice added the bug label 2 days ago".
@@ -316,6 +317,7 @@ pub struct TitleView {
 pub struct CommentFormView {
     pub anchor: &'static str,
     pub action_url: String,
+    pub suggestions_url: String,
     pub signed_in: bool,
     pub sign_in_url: String,
     pub can_comment: bool,
@@ -416,6 +418,7 @@ pub fn build_thread(
         update_url: urls.body.clone(),
         delete_url: None,
         is_opening_post: true,
+        can_reply: permissions.can_comment,
     };
     let title = TitleView {
         anchor: TITLE_ANCHOR,
@@ -430,6 +433,7 @@ pub fn build_thread(
     let form = CommentFormView {
         anchor: NEW_COMMENT_ANCHOR,
         action_url: urls.comments.clone(),
+        suggestions_url: format!("/{}/{}/issues/suggestions", ctx.repo.repo.owner.name, ctx.repo.repo.repo.name),
         signed_in: viewer.is_some(),
         sign_in_url: format!("/login?next={}", urls.page),
         can_comment: permissions.can_comment,
@@ -477,6 +481,7 @@ pub fn items(ctx: &IssueContext, timeline: &Timeline, refs: &RefContext, options
                         update_url: urls.comment(comment.id),
                         delete_url: Some(urls.delete_comment(comment.id)),
                         is_opening_post: false,
+                        can_reply: ctx.permissions.can_comment,
                         anchor,
                     }),
                     event: None,
@@ -637,6 +642,10 @@ fn sentence(
                 None => vec![F::text("dismissed a "), link],
             };
             ("x", parts, None)
+        }
+        TimelineEvent::ReviewThreadResolved { comment } | TimelineEvent::ReviewThreadReopened { comment } => {
+            let verb = if matches!(event, TimelineEvent::ReviewThreadResolved { .. }) { "resolved " } else { "reopened " };
+            ("message-square", vec![F::text(verb), F::link("a review conversation", format!("#r{}", comment.0))], None)
         }
         TimelineEvent::HeadRefDeleted { branch } => {
             ("trash", vec![F::text("deleted the "), F::code(branch.clone()), F::text(" branch")], None)
@@ -966,6 +975,20 @@ mod tests {
                 "dismissed bob’s review",
             ),
             (TimelineEvent::ReviewDismissed { review: ReviewId(4), reviewer: None }, none(), plain, "x", "dismissed a review"),
+            (
+                TimelineEvent::ReviewThreadResolved { comment: rbit_core::pull::ReviewCommentId(9) },
+                none(),
+                plain,
+                "message-square",
+                "resolved a review conversation",
+            ),
+            (
+                TimelineEvent::ReviewThreadReopened { comment: rbit_core::pull::ReviewCommentId(9) },
+                none(),
+                plain,
+                "message-square",
+                "reopened a review conversation",
+            ),
             (TimelineEvent::HeadRefDeleted { branch: "feature".to_owned() }, none(), plain, "trash", "deleted the feature branch"),
             (TimelineEvent::ConvertedToDraft, none(), plain, "git-pull-request-draft", "marked this pull request as draft"),
             (TimelineEvent::ReadyForReview, none(), plain, "eye", "marked this pull request as ready for review"),
@@ -976,7 +999,7 @@ mod tests {
             let (actual_icon, sentence) = sentence_of(&ctx, a, timeline_event, subjects, options);
             assert_eq!((actual_icon.as_str(), sentence.as_str()), (icon, expected));
         }
-        assert_eq!(kinds.len(), 22, "every TimelineEvent kind is covered");
+        assert_eq!(kinds.len(), 24, "every TimelineEvent kind is covered");
     }
 
     #[test]

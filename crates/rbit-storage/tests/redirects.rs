@@ -87,6 +87,38 @@ async fn changing_only_the_letter_case_is_not_a_move() {
 }
 
 #[tokio::test]
+async fn account_redirects_follow_identity_across_moves_and_name_reuse() {
+    let fixture = Fixture::new().await;
+    let accounts = fixture.database.accounts();
+    let repo = fixture.create(fixture.alice.id(), "before").await;
+    accounts.rename(fixture.alice.id(), &"alice".parse().unwrap()).await.unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none(), "unchanged names do not redirect");
+    accounts.rename(fixture.alice.id(), &"Alice".parse().unwrap()).await.unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none());
+    accounts.rename(fixture.alice.id(), &"renamed".parse().unwrap()).await.unwrap();
+    fixture.rename(repo.id, "after").await;
+    accounts.rename(fixture.alice.id(), &"latest".parse().unwrap()).await.unwrap();
+    for old in ["ALICE", "Renamed"] {
+        let account = accounts.find_by_old_name(old).await.unwrap().unwrap();
+        assert_eq!(account.id, fixture.alice.id());
+        assert_eq!(account.name.as_str(), "latest");
+        assert_eq!(fixture.redirect(old, "before").await, Some(repo.id));
+        assert_eq!(fixture.redirect(old, "after").await, Some(repo.id));
+        assert!(accounts.find_login(old).await.unwrap().is_none(), "old names cannot sign in");
+    }
+    accounts.rename(fixture.alice.id(), &"alice".parse().unwrap()).await.unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none(), "renaming back cannot loop");
+    accounts.rename(fixture.alice.id(), &"final".parse().unwrap()).await.unwrap();
+    accounts.rename(fixture.bob.id(), &"alice".parse().unwrap()).await.unwrap();
+    let newcomer = accounts.find_user(fixture.bob.id()).await.unwrap().unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none());
+    assert_eq!(fixture.redirect("alice", "before").await, None, "new account shadows the entire old namespace");
+    accounts.rename(newcomer.id(), &"newcomer".parse().unwrap()).await.unwrap();
+    assert_eq!(accounts.find_by_old_name("alice").await.unwrap().unwrap().id, newcomer.id());
+    assert_eq!(fixture.redirect("alice", "after").await, None, "former owner's redirects never reappear");
+}
+
+#[tokio::test]
 async fn renaming_back_reclaims_the_old_name() {
     let fixture = Fixture::new().await;
     let repo = fixture.create(fixture.alice.id(), "first").await;

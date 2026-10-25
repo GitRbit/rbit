@@ -1,6 +1,6 @@
 {#- One review comment; expects `comment: ReviewCommentView` (views::pulls) and `show_hunk`
     (whether to repeat the stored diff excerpt, as in the conversation). -#}
-<div id="{{ comment.anchor }}" class="scroll-mt-28 {% if comment.is_reply %}border-t border-line{% endif %}">
+<div {% if comment.is_reply %}id="{{ comment.anchor }}"{% endif %} class="scroll-mt-28 {% if comment.is_reply %}border-t border-line{% endif %}">
   {% if show_hunk && !comment.is_reply %}
   <div class="flex flex-wrap items-center gap-2 border-b border-line bg-subtle px-3 py-1.5 text-xs">
     <a href="{{ comment.line_url }}" class="min-w-0 flex-1 truncate font-mono text-ink hover:underline hover:underline-offset-4">{{ comment.path }}</a>

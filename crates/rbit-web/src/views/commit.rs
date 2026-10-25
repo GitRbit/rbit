@@ -188,6 +188,13 @@ pub struct FileDiffView {
 const DIFFSTAT_BLOCKS: usize = 5;
 
 impl FileDiffView {
+    /// Build the shared changed-file navigator without copying or rendering diff bodies.
+    pub fn tree(files: &[Self]) -> Vec<FileTreeRow> {
+        file_tree(files.iter().enumerate().map(|(index, file)| {
+            (&*file.path, FileTreeLeaf { index, anchor: file.anchor.clone(), status: file.status, status_key: file.status_key })
+        }))
+    }
+
     /// The file's height in rows while open, header included: `data-rows` on the file,
     /// its exact placeholder height (see [`crate::views::blocks`]).
     #[must_use]
@@ -289,11 +296,11 @@ pub struct FileTreeLeaf {
 /// The changed files as a folder tree, flattened in display order: folders first, then
 /// files, each sorted by name (case-insensitively). The diffs are listed in the same order,
 /// so reading down the page walks down the tree.
-pub fn file_tree(files: &[FileDiffView]) -> Vec<FileTreeRow> {
+pub(super) fn file_tree<'a>(files: impl IntoIterator<Item = (&'a str, FileTreeLeaf)>) -> Vec<FileTreeRow> {
     #[derive(Default)]
     struct Folder<'a> {
         folders: BTreeMap<&'a str, Folder<'a>>,
-        files: Vec<(usize, &'a FileDiffView)>,
+        files: Vec<(&'a str, FileTreeLeaf)>,
     }
 
     fn sort_key(name: &str) -> (String, &str) {
@@ -317,26 +324,26 @@ pub fn file_tree(files: &[FileDiffView]) -> Vec<FileTreeRow> {
             flatten(child, &format!("{path}/"), depth + 1, rows);
         }
         let mut files = folder.files.clone();
-        files.sort_by(|(_, a), (_, b)| sort_key(&a.name).cmp(&sort_key(&b.name)));
-        for (index, file) in files {
+        files.sort_by(|(a, _), (b, _)| sort_key(a.rsplit('/').next().unwrap_or(a)).cmp(&sort_key(b.rsplit('/').next().unwrap_or(b))));
+        for (path, leaf) in files {
             rows.push(FileTreeRow {
                 depth,
-                name: file.name.clone(),
-                path: file.path.clone(),
-                file: Some(FileTreeLeaf { index, anchor: file.anchor.clone(), status: file.status, status_key: file.status_key }),
+                name: path.rsplit('/').next().unwrap_or(path).to_owned(),
+                path: path.to_owned(),
+                file: Some(leaf),
             });
         }
     }
 
     let mut root = Folder::default();
-    for (index, file) in files.iter().enumerate() {
+    for (path, leaf) in files {
         let mut folder = &mut root;
-        for part in file.directory.split('/').filter(|part| !part.is_empty()) {
+        for part in path.rsplit_once('/').map_or("", |(directory, _)| directory).split('/').filter(|part| !part.is_empty()) {
             folder = folder.folders.entry(part).or_default();
         }
-        folder.files.push((index, file));
+        folder.files.push((path, leaf));
     }
-    let mut rows = Vec::with_capacity(files.len() * 2);
+    let mut rows = Vec::new();
     flatten(&root, "", 0, &mut rows);
     rows
 }
@@ -424,7 +431,7 @@ pub(crate) mod tests {
             file(3, "plugins/computer-use/index.ts", 1, 0),
             file(4, "README.md", 1, 0),
         ];
-        let rows = file_tree(&files);
+        let rows = FileDiffView::tree(&files);
         assert_eq!(
             outline(&rows),
             [

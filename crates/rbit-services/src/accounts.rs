@@ -249,6 +249,11 @@ impl AccountService {
         self.accounts.find_account_by_name(name).await?.ok_or(ServiceError::NotFound)
     }
 
+    /// Current identity behind an old public profile name, if it has not been retaken.
+    pub async fn moved_to(&self, name: &str) -> Result<Option<Account>, ServiceError> {
+        Ok(self.accounts.find_by_old_name(name).await?)
+    }
+
     // ------------------------------------------------------------------ password changes
 
     /// Brackets a request that may change `user`'s own password while signed in with

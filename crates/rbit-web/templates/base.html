@@ -89,6 +89,8 @@
             {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
           </summary>
           <div class="menu right-0 w-60">
+            <a class="menu-item" href="/issues">Issues</a>
+            <a class="menu-item" href="/pulls">Pull requests</a>
             <div class="flex items-center gap-2.5 px-2.5 py-2">
               {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
               <div class="min-w-0">
@@ -148,6 +150,7 @@
         <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>{% endif %}
         <span class="truncate">{{ page.branding.footer_text }}</span>
         {% if page.branding.show_version %}<span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
+        <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">Update available</a>{% endif %}</span>
         {%- if let Some(elapsed) = crate::timing::elapsed() %}
         <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="Server time for the last page or update">· rendered in <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
         {%- endif %}

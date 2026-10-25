@@ -1,0 +1,31 @@
+{# One root and its replies, including replies submitted in later reviews. #}
+<div id="{{ comment.anchor }}" class="scroll-mt-28">
+{% if comment.resolution.resolved %}
+<details class="review-thread-resolved">
+  <summary class="min-h-11 cursor-pointer break-words px-3 py-2.5 text-xs text-ink-muted sm:min-h-0">Resolved conversation · {{ comment.path }} {{ comment.line_label }}</summary>
+{% endif %}
+{% include "pulls/review_comment.html" %}
+{% for reply in comment.replies %}
+  {% let comment = reply %}
+  {% include "pulls/review_comment.html" %}
+{% endfor %}
+{% if can_reply %}
+<form method="post" action="{{ pull.urls.line_comments }}" class="border-t border-line p-3">
+  <input type="hidden" name="in_reply_to" value="{{ comment.reply_to }}">
+  <label class="sr-only" for="{{ comment.anchor }}-reply">Reply</label>
+  <textarea id="{{ comment.anchor }}-reply" name="body" class="input h-16 resize-y py-2 text-[13px]" rows="2" maxlength="65536" placeholder="Reply…" required></textarea>
+  <div class="mt-2 flex justify-end gap-2">
+    <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Add to review</button>
+    <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Reply</button>
+  </div>
+</form>
+{% endif %}
+{% if let Some(action_url) = comment.resolution.action_url %}
+<form method="post" action="{{ action_url }}" class="border-t border-line px-3 py-2">
+  <input type="hidden" name="resolved" value="{% if comment.resolution.resolved %}false{% else %}true{% endif %}">
+  <input type="hidden" name="view" value="{{ thread_view }}">
+  <button type="submit" class="btn h-11 text-xs sm:h-8">{% if comment.resolution.resolved %}Reopen conversation{% else %}Resolve conversation{% endif %}</button>
+</form>
+{% endif %}
+{% if comment.resolution.resolved %}</details>{% endif %}
+</div>

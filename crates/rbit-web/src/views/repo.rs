@@ -38,6 +38,7 @@ pub struct RepoHeader {
     pub ssh_clone_url: Option<String>,
     pub home_url: String,
     pub commits_url: String,
+    pub activity_url: String,
     pub branches_url: String,
     pub tags_url: String,
     pub releases_url: String,
@@ -65,7 +66,7 @@ pub struct RepoHeader {
     pub open_issues: u64,
     pub open_pulls: u64,
     /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
-    /// or `"settings"`; compared in `repo/subnav.html`.
+    /// or `"activity"`, `"settings"`; compared in `repo/subnav.html`.
     pub active_tab: &'static str,
 }
 
@@ -344,7 +345,6 @@ impl CommitDay {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "repo/commits.html")]
 pub struct CommitsPage {
-    pub contributions: super::contributions::ContributionCalendar,
     pub page: Page,
     pub header: RepoHeader,
     pub switcher: RefSwitcher,
@@ -396,6 +396,7 @@ mod tests {
         };
         BlobPage {
             page: Page {
+                updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".to_owned(),
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,

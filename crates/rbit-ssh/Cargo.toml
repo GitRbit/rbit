@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# One integration-test binary (tests/main.rs) instead of one per file.
+autotests = false
 
 [dependencies]
 rbit-core.workspace = true
@@ -24,3 +26,7 @@ tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

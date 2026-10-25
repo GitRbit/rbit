@@ -37,7 +37,7 @@ async function app() {
     abort() { this.nativeAborts++; }
   }
   const response = (text = html(), overrides = {}) => {
-    const values = new Headers({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache', 'Rbit-Partial': 'true', 'Server-Timing': 'render;dur=1.2', ...overrides.headers });
+    const values = new Headers({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache', 'Rbit-Partial': 'true', 'Server-Timing': 'render;dur=1.2', 'Rbit-Update-Available': '100;https://github.com/GitRbit/rbit/releases/tag/v99.0.0', ...overrides.headers });
     return { status: 200, url, text, getHeader: (name) => values.get(name), ...overrides };
   };
   const remember = (text, overrides = {}, destination = url, requestHeaders = headers) => cache.rememberNavigationResponse(destination, requestHeaders, response(text, { url: destination, ...overrides }));
@@ -75,6 +75,7 @@ test('cached transport preserves htmx timing, getters and ordinary XHR events', 
   assert.equal(xhr.statusText, 'OK');
   assert.equal(xhr.getResponseHeader('server-timing'), 'render;dur=1.2');
   assert.equal(xhr.getResponseHeader('rbit-partial'), 'true');
+  assert.equal(xhr.getResponseHeader('rbit-update-available'), '100;https://github.com/GitRbit/rbit/releases/tag/v99.0.0');
   assert.match(xhr.getAllResponseHeaders(), /content-type: text\/html/);
   assert.deepEqual(xhr.events, ['loadstart', 'readystatechange', 'load', 'loadend']);
 });

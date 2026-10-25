@@ -4,6 +4,15 @@
 {% block admin_content %}
 {% call admin::heading("Dashboard", "An overview of this instance.") %}{% endcall %}
 
+<section class="box mb-6 p-4" aria-labelledby="software-updates-title">
+  <h3 id="software-updates-title" class="text-[13px] font-medium">Software updates</h3>
+  <p class="mt-1 text-xs text-ink-muted">{{ page.updates.label() }}</p>
+  {% if let Some(release) = page.updates.release %}
+  <a href="{{ release.url }}" class="link mt-2 inline-block text-[13px]" hx-boost="false" rel="noreferrer">View rbit {{ release.version }} release notes</a>
+  {% endif %}
+  <a href="/admin/configuration" class="link mt-2 block text-xs">Configure update checks and version privacy</a>
+</section>
+
 <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4">
   {% for tile in tiles %}
   <li>

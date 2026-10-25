@@ -8,8 +8,9 @@
     <label class="sr-only" for="issue-query">Search issues</label>
     <span class="relative min-w-0 flex-1">
       {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input id="issue-query" class="input pl-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input id="issue-query" class="input pl-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
     </span>
+    <button type="submit" class="btn ml-2">Search</button>
   </form>
   <div class="flex shrink-0 gap-2">
     <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
@@ -18,6 +19,10 @@
   </div>
 </div>
 
+<details class="mt-2 text-xs text-ink-muted" id="search-help">
+  <summary class="cursor-pointer">Search help</summary>
+  <p class="mt-2">Use the menus to filter results, or type terms such as <code>author:@me</code>, <code>label:"good first issue"</code>, <code>no:assignee</code> or <code>sort:updated-desc</code>. Text searches titles and descriptions. Each menu keeps your other filters.</p>
+</details>
 {% for hint in hints %}<p class="hint mt-2">{{ hint }}</p>{% endfor %}
 {% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}Clear the search, filters and sort</a></p>{% endif %}
 
@@ -29,22 +34,7 @@
       <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> Closed</a>
     </nav>
     <div class="scroll-tabs -mx-4 flex px-2 sm:relative sm:mx-0 sm:ml-auto sm:gap-x-1 sm:overflow-visible sm:px-0 sm:[mask-image:none]">
-      {% for menu in menus %}
-      <details class="sm:relative" data-menu>
-        <summary class="btn btn-ghost h-9 cursor-pointer px-2 text-xs sm:h-7 {% if menu.active %}text-ink{% else %}text-ink-muted{% endif %}">{{ menu.title }}{% call ui::icon("chevron-down", "size-3") %}{% endcall %}</summary>
-        <div class="menu inset-x-2 top-full max-h-80 min-w-0 overflow-y-auto sm:left-auto sm:right-0 sm:top-auto sm:w-56">
-          <p class="menu-label">Filter by {{ menu.title|lower }}</p>
-          {% if menu.items.is_empty() %}<p class="px-2.5 py-2 text-xs text-ink-faint">Nothing to choose from yet.</p>{% endif %}
-          {% for item in menu.items %}
-          <a href="{{ item.url }}" class="menu-item" {% if item.selected %}aria-current="true"{% endif %}>
-            <span class="flex size-3.5 shrink-0 items-center justify-center">{% if item.selected %}{% call ui::icon("check", "size-3.5") %}{% endcall %}{% endif %}</span>
-            {% if let Some(color) = item.color %}<svg class="size-2 shrink-0" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ color }}"/></svg>{% endif %}
-            <span class="truncate">{{ item.label }}</span>
-          </a>
-          {% endfor %}
-        </div>
-      </details>
-      {% endfor %}
+      {% include "issues/filters.html" %}
     </div>
   </div>
   {% if rows.is_empty() %}

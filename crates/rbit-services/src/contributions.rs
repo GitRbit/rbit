@@ -10,6 +10,8 @@ use rbit_core::{Account, User};
 use crate::{RepoContext, ServiceContext, ServiceError};
 
 type Records = rbit_storage::kv::CachedContributions;
+type DailyRecords = VecDeque<(String, Arc<Contributions>)>;
+
 type HotRecords = VecDeque<((String, String), Arc<Records>)>;
 
 #[derive(Debug, Default, Clone)]
@@ -25,6 +27,7 @@ pub struct ContributionService {
     ctx: ServiceContext,
     cache: rbit_storage::kv::InsightsCache,
     hot: Arc<tokio::sync::Mutex<HotRecords>>,
+    daily: Arc<tokio::sync::Mutex<DailyRecords>>,
     scans: Arc<[tokio::sync::Mutex<()>; 16]>,
     workers: Arc<tokio::sync::Semaphore>,
 }
@@ -34,6 +37,7 @@ impl ContributionService {
         Self {
             cache: ctx.kv.insights(),
             hot: Arc::default(),
+            daily: Arc::default(),
             ctx,
             scans: Arc::new(std::array::from_fn(|_| tokio::sync::Mutex::new(()))),
             workers: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -150,21 +154,61 @@ impl ContributionService {
         if !repo.access.can_read() {
             return Err(ServiceError::Forbidden);
         }
-        let mut result = Contributions::default();
-        let refs = repo.reader.branch_tips().await?;
-        if let Some(tip) = refs.iter().find(|r| r.name == repo.repo.repo.default_branch) {
-            let history = self.history(&repo.reader, tip.target.clone()).await?;
-            result.partial = history.1;
-            for (_, seconds, _) in &history.0 {
-                if !(start..end).contains(seconds) {
-                    continue;
-                }
-                *result.days.entry(seconds.div_euclid(86400)).or_default() += 1;
-            }
-            result.repositories = usize::from(!result.days.is_empty());
+        let tip = match repo.reader.commit_id(format!("refs/heads/{}", repo.repo.repo.default_branch)).await {
+            Ok(tip) => tip,
+            Err(rbit_git::GitError::NotFound(_)) => return Ok(Contributions::default()),
+            Err(error) => return Err(error.into()),
+        };
+        // Public callers can request partial days; keep their exact second bounds.
+        if start.rem_euclid(86400) != 0 || end.rem_euclid(86400) != 0 {
+            let history = self.history(&repo.reader, tip).await?;
+            return Ok(count_days(&history, start, end));
         }
-        Ok(result)
+        let cached = {
+            let mut cache = self.daily.lock().await;
+            cache.iter().position(|(id, _)| id == &tip).and_then(|index| cache.remove(index)).map(|entry| {
+                let result = Arc::clone(&entry.1);
+                cache.push_back(entry);
+                result
+            })
+        };
+        let daily = if let Some(daily) = cached {
+            daily
+        } else {
+            let history = self.history(&repo.reader, tip.clone()).await?;
+            let daily = Arc::new(
+                tokio::task::spawn_blocking(move || count_days(&history, i64::MIN, i64::MAX)).await.map_err(ServiceError::internal)?,
+            );
+            let mut cache = self.daily.lock().await;
+            cache.retain(|(id, _)| id != &tip);
+            while cache.len() >= 32 || cache.iter().map(|(_, entry)| entry.days.len()).sum::<usize>() + daily.days.len() > 25_000 {
+                if cache.pop_front().is_none() {
+                    break;
+                }
+            }
+            if daily.days.len() <= 25_000 {
+                cache.push_back((tip, Arc::clone(&daily)));
+            }
+            daily
+        };
+        let days: BTreeMap<_, _> = if start < end {
+            daily.days.range(start.div_euclid(86400)..end.div_euclid(86400)).map(|(&day, &count)| (day, count)).collect()
+        } else {
+            BTreeMap::new()
+        };
+        Ok(Contributions { repositories: usize::from(!days.is_empty()), days, partial: daily.partial })
     }
+}
+
+fn count_days(history: &Records, start: i64, end: i64) -> Contributions {
+    let mut result = Contributions { partial: history.1, ..Contributions::default() };
+    for (_, seconds, _) in &history.0 {
+        if (start..end).contains(seconds) {
+            *result.days.entry(seconds.div_euclid(86400)).or_default() += 1;
+        }
+    }
+    result.repositories = usize::from(!result.days.is_empty());
+    result
 }
 
 #[cfg(test)]
@@ -173,6 +217,55 @@ mod tests {
     use rbit_core::Config;
     use rbit_git::{RepositoryReader, RepositoryStorage};
     use rbit_storage::{Database, KvStore};
+
+    #[test]
+    fn daily_counts_keep_second_bounds_negative_dates_and_partial_status() {
+        let records = (vec![("a".into(), -1, "a@b".into()), ("b".into(), 0, "a@b".into()), ("c".into(), 86400, "a@b".into())], true);
+        let all = count_days(&records, i64::MIN, i64::MAX);
+        assert_eq!(all.days, BTreeMap::from([(-1, 1), (0, 1), (1, 1)]));
+        assert!(all.partial);
+        assert_eq!(count_days(&records, -1, 86400).days, BTreeMap::from([(-1, 1), (0, 1)]));
+        assert_eq!(count_days(&records, 1, 86400).repositories, 0);
+    }
+
+    async fn calendar_context(ctx: &ServiceContext, path: std::path::PathBuf, tip: &str) -> RepoContext {
+        let owner = ctx
+            .database
+            .accounts()
+            .create_user(rbit_storage::NewUser {
+                name: "alice".parse().unwrap(),
+                email: "alice@example.test".parse().unwrap(),
+                display_name: None,
+                password_hash: "unused".into(),
+                is_admin: false,
+            })
+            .await
+            .unwrap();
+        let repository = ctx
+            .database
+            .repositories()
+            .create(rbit_storage::NewRepository {
+                owner_id: owner.id(),
+                name: "activity".parse().unwrap(),
+                description: None,
+                visibility: rbit_core::Visibility::Public,
+                default_branch: "main".into(),
+            })
+            .await
+            .unwrap();
+        // Point the fixture's default branch at the commit we scanned above.
+        assert!(
+            std::process::Command::new("git").current_dir(&path).args(["branch", "-f", "calendar", tip]).output().unwrap().status.success()
+        );
+        let mut repository = repository;
+        repository.default_branch = "calendar".into();
+        RepoContext {
+            reader: RepositoryReader::new(path.clone()),
+            disk_path: path,
+            repo: rbit_core::OwnedRepository { owner: owner.account, repo: repository },
+            access: rbit_core::RepoAccess::Read,
+        }
+    }
 
     #[tokio::test]
     async fn cancelled_scan_populates_cache_and_waiters_reuse_it() {
@@ -224,6 +317,17 @@ mod tests {
         let records = waiter.await.unwrap().unwrap();
         assert_eq!(records.0.len(), 1, "waiter must reuse the original scan even though its own reader cannot open Git");
         assert!(!records.1);
+        let repo = calendar_context(&ctx, dir.path().join("repo"), &tip).await;
+        let counts = service.repository(&repo, 0, 253_402_300_800).await.unwrap();
+        assert_eq!(counts.days.values().sum::<usize>(), 1);
+        service.hot.lock().await.clear();
+        let occupied = service.workers.acquire_many(2).await.unwrap();
+        let warm =
+            tokio::time::timeout(std::time::Duration::from_secs(1), service.repository(&repo, 0, 253_402_300_800)).await.unwrap().unwrap();
+        assert_eq!(warm.days, counts.days, "daily totals must not need history scan admission");
+        let empty = service.repository(&repo, 0, 86400).await.unwrap();
+        assert!(empty.days.is_empty(), "another year reads the daily cache too");
+        drop(occupied);
         let restarted = ContributionService::new(ctx);
         let _busy = restarted.workers.acquire_many(2).await.unwrap();
         let records = tokio::time::timeout(

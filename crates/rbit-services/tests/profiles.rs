@@ -56,6 +56,33 @@ fn update(display_name: &str, bio: &str, website: &str, location: &str) -> Updat
 }
 
 #[tokio::test]
+async fn username_changes_require_current_password_and_keep_identity() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice").await;
+    fixture.user("bob").await;
+    let service = fixture.profiles();
+    assert!(matches!(service.change_username(&alice, "wrong".into(), "newname").await, Err(ServiceError::InvalidCredentials)));
+    assert!(service.change_username(&alice, PASSWORD.into(), "settings").await.is_err());
+    assert!(matches!(service.change_username(&alice, PASSWORD.into(), "BOB").await, Err(ServiceError::Conflict(_))));
+    service.change_username(&alice, PASSWORD.into(), " newname ").await.unwrap();
+    let renamed = fixture.reload(&alice).await;
+    assert_eq!(renamed.id(), alice.id());
+    assert_eq!(renamed.email, alice.email);
+    assert_eq!(renamed.name().as_str(), "newname");
+    let audit = fixture.services.audit.recent_for(&renamed, 10).await.unwrap();
+    assert_eq!(audit.len(), 1);
+    assert_eq!(audit[0].action, rbit_services::audit::AuditAction::UsernameChanged);
+    assert_eq!(audit[0].actor_id, Some(alice.id()));
+    assert_eq!(audit[0].target_name.as_deref(), Some("newname"));
+    assert_eq!(fixture.services.accounts.moved_to("ALICE").await.unwrap().unwrap().id, alice.id());
+    assert!(fixture.database.accounts().find_login("alice").await.unwrap().is_none());
+    assert_eq!(fixture.database.accounts().find_login("newname").await.unwrap().unwrap().user.id(), alice.id());
+    assert!(!fixture.database.accounts().rename_if_password(alice.id(), &"raced".parse().unwrap(), "stale-hash").await.unwrap());
+    service.change_username(&renamed, PASSWORD.into(), "lastone").await.unwrap();
+    assert!(matches!(service.change_username(&renamed, PASSWORD.into(), "limited").await, Err(ServiceError::RateLimited { .. })));
+}
+
+#[tokio::test]
 async fn update_and_read_profile() {
     let fixture = Fixture::new().await;
     let alice = fixture.user("alice").await;

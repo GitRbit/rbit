@@ -30,6 +30,24 @@ struct Harness {
     server: Option<rbit_ssh::RunningSshServer>,
 }
 
+#[tokio::test]
+async fn version_privacy_hides_the_pre_authentication_ssh_version() {
+    use tokio::io::AsyncBufReadExt;
+    let harness = Harness::start_with(|config| {
+        config.updates.report_version = false;
+        config.updates.check_for_updates = false;
+    })
+    .await;
+    let connection = tokio::net::TcpStream::connect(("127.0.0.1", harness.port)).await.unwrap();
+    let mut reader = tokio::io::BufReader::new(connection);
+    let mut banner = String::new();
+    tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_line(&mut banner)).await.unwrap().unwrap();
+    assert_eq!(banner.trim(), "SSH-2.0-rbit");
+    drop(reader);
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}
+
 impl Harness {
     async fn start() -> Self {
         Self::start_with(|_| {}).await
@@ -478,6 +496,40 @@ async fn old_names_of_renamed_repositories_keep_working_over_ssh() {
     // The deploy key belongs to the renamed repository, not the newcomer.
     assert_refused(&harness.git(&deploy_key, &fresh, &["clone", &harness.url("alice/before.git"), "ci"]).await, "not found");
 
+    let mut harness = harness;
+    harness.server.take().unwrap().shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn old_account_names_keep_working_over_ssh_until_reclaimed() {
+    if !openssh_available() {
+        return;
+    }
+    let harness = Harness::start().await;
+    let alice = harness.user("alice").await;
+    let bob = harness.user("bob").await;
+    harness
+        .services
+        .repositories
+        .create(&alice, CreateRepository { name: "project".into(), description: String::new(), visibility: Visibility::Private })
+        .await
+        .unwrap();
+    let (key, public) = harness.key("alice_key");
+    harness.services.ssh_keys.add_user_key(&alice, AddSshKey { title: String::new(), key: public }).await.unwrap();
+    let work = harness.workdir("account-work");
+    assert_ok(&harness.git(&key, &work, &["clone", "-q", &harness.url("alice/project.git"), "project"]).await);
+    let checkout = work.join("project");
+    std::fs::write(checkout.join("README.md"), "same account\n").unwrap();
+    assert_ok(&harness.git(&key, &checkout, &["add", "README.md"]).await);
+    assert_ok(&harness.git(&key, &checkout, &["commit", "-q", "-m", "Initial commit"]).await);
+    harness.database.accounts().rename(alice.id(), &"renamed".parse().unwrap()).await.unwrap();
+    // The public key and old remote still reach the original account identity.
+    assert_ok(&harness.git(&key, &checkout, &["push", "-q", "origin", "HEAD:refs/heads/main"]).await);
+    assert_ok(&harness.git(&key, &work, &["clone", "-q", &harness.url("alice/project.git"), "copy"]).await);
+    assert_eq!(std::fs::read_to_string(work.join("copy/README.md")).unwrap(), "same account\n");
+    harness.database.accounts().rename(bob.id(), &"alice".parse().unwrap()).await.unwrap();
+    assert_refused(&harness.git(&key, &work, &["clone", &harness.url("alice/project.git"), "reclaimed"]).await, "not found");
+    assert_ok(&harness.git(&key, &work, &["clone", "-q", &harness.url("renamed/project.git"), "current"]).await);
     let mut harness = harness;
     harness.server.take().unwrap().shutdown().await;
 }

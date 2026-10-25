@@ -431,6 +431,35 @@ impl PullService {
         Ok(PullList { items, total, open, closed })
     }
 
+    /// Search pull requests through the same query and metadata filters as issues.
+    pub async fn search(&self, repo: &RepoContext, results: &crate::issues::IssueSearchResults) -> Result<Vec<PullListItem>, ServiceError> {
+        if !repo.access.can_read() {
+            return Err(ServiceError::NotFound);
+        }
+        let ids: Vec<_> =
+            results.issues.iter().filter(|issue| issue.repo_id == repo.repo.repo.id && issue.is_pull()).map(|issue| issue.id).collect();
+        let pull_store = self.ctx().database.pulls();
+        let review_store = self.ctx().database.reviews();
+        let (pulls, reviews) = tokio::try_join!(pull_store.find_among(repo.repo.repo.id, &ids), review_store.submitted_among(&ids))?;
+        let pulls: HashMap<_, _> = pulls.into_iter().map(|pull| (pull.issue_id, pull)).collect();
+        let mut items = Vec::with_capacity(ids.len());
+        for issue in &results.issues {
+            let Some(pull) = pulls.get(&issue.id) else { continue };
+            let tally =
+                rbit_core::pull::tally(reviews.get(&issue.id).map_or(&[][..], Vec::as_slice), issue.author, &pull.head_sha, false, |_| {
+                    true
+                });
+            items.push(PullListItem {
+                author: issue.author.and_then(|id| results.authors.get(&id).cloned()),
+                approvals: tally.approvals.len(),
+                changes_requested: tally.changes_requested.len(),
+                issue: issue.clone(),
+                pull: pull.clone(),
+            });
+        }
+        Ok(items)
+    }
+
     /// The tip of the base branch, or `None` when it no longer exists.
     pub async fn base_tip(&self, ctx: &PullContext) -> Result<Option<String>, ServiceError> {
         Ok(ctx.repo().reader.commit_id(format!("refs/heads/{}", ctx.pull.base_branch)).await.ok())

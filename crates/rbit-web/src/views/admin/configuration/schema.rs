@@ -1,6 +1,25 @@
 //! Field definitions for the administrator configuration forms.
 use super::{Kind, Section, Spec};
 
+const UPDATES: &[Spec] = &[
+    Spec {
+        key: "check_for_updates",
+        label: "Check for software updates",
+        help: "Contact the public GitHub release feed at most daily after success. No running version or instance identity is sent. Restart required.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "report_version",
+        label: "Report the running version",
+        help: "Expose the software version in the public footer, version API, SSH banner and outbound integration User-Agents. Disable to hide it; administrators retain local diagnostics. Restart required.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+];
+
 const SERVER: &[Spec] = &[
     Spec { key: "bind", label: "Listen address", help: "Address the HTTP server binds to.", kind: Kind::Text, optional: false, max: "" },
     Spec {
@@ -924,6 +943,12 @@ pub(super) const PROVIDER: &[Spec] = &[
 ];
 
 pub(super) const SECTIONS: &[Section] = &[
+    Section {
+        key: "updates",
+        title: "Software updates and privacy",
+        help: "Independent background release checks and running-version disclosure controls. Changes take effect after restart.",
+        fields: UPDATES,
+    },
     Section { key: "server", title: "Server", help: "Public address, listener and instance defaults.", fields: SERVER },
     Section {
         key: "storage",

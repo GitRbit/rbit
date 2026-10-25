@@ -72,6 +72,7 @@ pub struct PullFileView {
     pub path: String,
     pub old_path: Option<String>,
     pub status: &'static str,
+    pub status_key: &'static str,
     pub additions: usize,
     pub deletions: usize,
     pub stats_known: bool,
@@ -83,6 +84,15 @@ pub struct PullFileView {
 pub const FILE_BAR_ROWS: usize = 2;
 
 impl PullFileView {
+    /// Share the commit navigator while keeping stable review anchors and file indexes.
+    pub fn tree(files: &[Self]) -> Vec<crate::views::commit::FileTreeRow> {
+        use crate::views::commit::{FileTreeLeaf, file_tree};
+
+        file_tree(files.iter().enumerate().map(|(index, file)| {
+            (&*file.path, FileTreeLeaf { index, anchor: file.anchor.clone(), status: file.status, status_key: file.status_key })
+        }))
+    }
+
     /// The open file's exact height in rows, chrome included: `data-rows` on the file, its
     /// placeholder while off screen (see [`crate::views::blocks`]). None when comment
     /// threads or the inline form make its height unknown; its blocks are contained
@@ -116,12 +126,12 @@ impl PullFileView {
         files
             .iter()
             .map(|file| {
-                let status = match file.status {
-                    ChangeStatus::Added => "Added",
-                    ChangeStatus::Deleted => "Deleted",
-                    ChangeStatus::Modified => "Modified",
-                    ChangeStatus::Renamed => "Renamed",
-                    ChangeStatus::Copied => "Copied",
+                let (status, status_key) = match file.status {
+                    ChangeStatus::Added => ("Added", "added"),
+                    ChangeStatus::Deleted => ("Deleted", "deleted"),
+                    ChangeStatus::Modified => ("Modified", "modified"),
+                    ChangeStatus::Renamed => ("Renamed", "renamed"),
+                    ChangeStatus::Copied => ("Copied", "copied"),
                 };
                 let body = match &file.body {
                     FileDiffBody::Text(hunks) => {
@@ -141,6 +151,7 @@ impl PullFileView {
                     path: file.path.clone(),
                     old_path: file.old_path.clone(),
                     status,
+                    status_key,
                     additions: file.additions,
                     deletions: file.deletions,
                     stats_known: file.stats_known,

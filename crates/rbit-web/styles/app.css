@@ -411,7 +411,8 @@
       duration-100 hover:text-ink;
   }
 
-  .tab[aria-current="page"] {
+  .tab[aria-current="page"],
+  .tab[aria-selected="true"] {
     @apply text-ink after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-ink;
   }
 
@@ -426,6 +427,15 @@
   @media (width < 64rem) {
     .scroll-tabs {
       mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+    }
+  }
+
+  /* Wrap filter menus on phones so their dropdowns can leave the bar. */
+  @media (width < 40rem) {
+    .scroll-tabs:has(> details[data-menu]) {
+      flex-wrap: wrap;
+      overflow: visible;
+      mask-image: none;
     }
   }
 
@@ -846,7 +856,7 @@
   overscroll-behavior: auto;
 }
 
-/* repo/file_diffs.html (commit and compare pages). `--diff-top` is where file headers and
+/* Commit, compare and pull request file diffs. `--diff-top` is where file headers and
    the file tree stick: just below the sticky top bar, and its tabs where those stick too. */
 .diff-layout {
   --diff-top: var(--sticky-top);
@@ -988,7 +998,7 @@
 .status-renamed::before { content: "→"; }
 .status-copied::before { content: "⧉"; font-weight: 400; }
 
-/* Each changed file (also pulls/files.html, which has no `--diff-top`). `clip` rather than
+/* Each changed file. `clip` rather than
    `hidden` keeps the rounded corners without making the box a scroll container, which
    would stop the header from sticking. An open file off screen is skipped as a whole
    (see Virtual blocks), so everything in it is a whole number of rows tall: the header
@@ -1573,6 +1583,14 @@ html:has(.tpk[open]) { overflow: hidden; }
 .branch-graph td { height: 48px; border-bottom: 1px solid var(--line); }
 .branch-graph tr:last-child td { border-bottom: 0; }
 .branch-graph-lanes { width: 1%; padding: 0 0 0 12px; }
+
+/* Leading pull request filters open to the right to stay inside the viewport. */
+@media (width >= 40rem) {
+  [aria-label="Pull request filters"] > details:nth-child(-n+2) > .menu {
+    left: 0;
+    right: auto;
+  }
+}
 
 /* Diagram styles are contained in a sandbox; only the frame belongs to the page. */
 .mermaid-frame { width: 100%; border: 1px solid var(--line); border-radius: .375rem; margin-block: 1rem; }

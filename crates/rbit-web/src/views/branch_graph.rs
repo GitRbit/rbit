@@ -2,7 +2,10 @@
 
 use crate::{urls::RepoUrls, views::repo::CommitView};
 use rbit_git::{CommitSummary, RefSummary};
-use std::collections::HashMap;
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+};
 
 type BranchLinks = Vec<(String, String)>;
 
@@ -55,13 +58,15 @@ impl BranchGraph {
             }
         }
         let mut order = Vec::new();
-        let mut emitted = vec![false; commits.len()];
-        while let Some(i) = (0..commits.len()).find(|&i| !emitted[i] && children[i] == 0) {
-            emitted[i] = true;
+        let mut ready: BinaryHeap<_> = children.iter().enumerate().filter(|(_, count)| **count == 0).map(|(i, _)| Reverse(i)).collect();
+        while let Some(Reverse(i)) = ready.pop() {
             order.push(i);
             for parent in &commits[i].parent_ids {
                 if let Some(&index) = indices.get(parent.as_str()) {
                     children[index] -= 1;
+                    if children[index] == 0 {
+                        ready.push(Reverse(index));
+                    }
                 }
             }
         }
@@ -98,15 +103,16 @@ impl BranchGraph {
                 }
             }
             max_lanes = max_lanes.max(before.len()).max(lanes.len());
+            let destinations: HashMap<_, _> = lanes.iter().enumerate().map(|(i, (id, _))| (id.as_str(), i)).collect();
             for (source, (id, source_lane)) in before.iter().enumerate() {
                 if source == column {
                     for parent in &commit.parent_ids {
-                        if let Some(destination) = lanes.iter().position(|(id, _)| id == parent) {
+                        if let Some(&destination) = destinations.get(parent.as_str()) {
                             let parent_lane = lanes[destination].1;
                             edges.push(edge(source, destination, parent_lane));
                         }
                     }
-                } else if let Some(destination) = lanes.iter().position(|(next, _)| next == id) {
+                } else if let Some(&destination) = destinations.get(id.as_str()) {
                     edges.push(edge(source, destination, *source_lane));
                 }
             }

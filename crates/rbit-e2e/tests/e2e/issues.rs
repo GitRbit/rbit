@@ -109,7 +109,14 @@ async fn outsiders_get_404_for_a_private_repositorys_issues() {
     alice.get("/alice/vault/issues").await.expect_status(StatusCode::OK).expect_contains(&["Secret plans"]);
     let token = bob.create_token("api", "admin").await;
     for client in [&bob, &server.client()] {
-        for path in ["/alice/vault/issues", "/alice/vault/issues/1", "/alice/vault/labels", "/alice/vault/milestones"] {
+        for path in [
+            "/alice/vault/issues",
+            "/alice/vault/issues/1",
+            "/alice/vault/labels",
+            "/alice/vault/milestones",
+            "/alice/vault/issues/suggestions",
+            "/alice/vault/compare/refs",
+        ] {
             client.get(path).await.expect_status(StatusCode::NOT_FOUND);
         }
     }
@@ -315,4 +322,49 @@ async fn preloading_a_discussion_never_marks_it_read() {
         alice.get(path).await.expect_status(StatusCode::OK);
         assert!(!has_unread(&alice).await, "visiting {path} marks it read");
     }
+}
+
+#[tokio::test]
+async fn mention_choices_find_accounts_and_exact_thread_numbers() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "mentions", "public").await;
+    alice.post("/alice/mentions/issues", &[("title", "Mention target")]).await.expect_redirect("/alice/mentions/issues/1");
+    let users = alice.get("/alice/mentions/issues/suggestions?accounts=true&q=ali").await;
+    users.expect_status(StatusCode::OK).expect_contains(&["@alice"]);
+    let exact = alice.get("/alice/mentions/issues/suggestions?q=1").await;
+    exact.expect_status(StatusCode::OK).expect_contains(&["#1", "Mention target"]);
+    alice.get("/alice/mentions/issues/suggestions?q=target").await.expect_contains(&["#1", "Mention target"]);
+    alice.get("/alice/mentions/issues/suggestions?accounts=true&q=ali%25").await.expect_contains(&["[]"]);
+    let page = alice.get("/alice/mentions/issues/1").await;
+    page.expect_contains(&["data-reply=", "data-discussion-editor", "data-suggestions="]);
+}
+
+#[tokio::test]
+async fn personal_dashboards_show_only_the_viewers_visible_threads() {
+    let server = TestServer::start();
+    let alice = server.sign_up("alice").await;
+    let bob = server.sign_up("bob").await;
+    alice.create_repo("alice", "demo", "public").await;
+    alice.create_repo("alice", "vault", "private").await;
+    bob.post("/alice/demo/issues", &[("title", "Public report"), ("body", "Hello @alice")]).await.expect_redirect("/alice/demo/issues/1");
+    alice.post("/alice/vault/issues", &[("title", "Private report")]).await.expect_redirect("/alice/vault/issues/1");
+    bob.get("/issues").await.expect_status(StatusCode::OK).expect_contains(&[
+        "Public report",
+        "alice/demo",
+        "/alice/demo/issues/1",
+        "Created by me",
+    ]);
+    assert!(!bob.get("/issues").await.contains("Private report"));
+    alice.get("/issues").await.expect_contains(&["Private report", "alice/vault"]);
+    assert!(!alice.get("/issues").await.contains("Public report"));
+    bob.get("/issues?q=label:absent").await.expect_contains(&["No matching threads"]);
+    bob.get("/issues?page=999999").await.expect_contains(&["Public report"]);
+    bob.get("/issues?view=assigned").await.expect_contains(&["No matching threads"]);
+    bob.get("/pulls").await.expect_contains(&["Review requested", "No matching threads"]);
+    assert!(!bob.get("/pulls").await.contains("Public report"));
+    bob.get("/issues?view=review-requested").await.expect_status(StatusCode::BAD_REQUEST);
+    server.client().get("/issues").await.expect_status(StatusCode::SEE_OTHER);
+    server.client().get("/pulls").await.expect_status(StatusCode::SEE_OTHER);
+    eventually("mention dashboard", || async { alice.get("/issues?view=mentioned").await.contains("Public report") }).await;
 }

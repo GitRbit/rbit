@@ -93,12 +93,13 @@ impl SourceClient {
         timeout: Duration,
         max_wait: Duration,
         cancel: CancellationToken,
+        report_version: bool,
     ) -> Result<Self, SourceError> {
         install_crypto_provider();
         let resolver = Arc::new(GuardedResolver::new(allow_private));
         let build = |policy: reqwest::redirect::Policy, timeout: Duration| {
             reqwest::Client::builder()
-                .user_agent(USER_AGENT)
+                .user_agent(if report_version { USER_AGENT } else { "rbit-Importer" })
                 .redirect(policy)
                 .no_proxy()
                 .timeout(timeout)
@@ -459,6 +460,30 @@ impl AsyncRead for Download {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn import_api_and_download_clients_omit_running_version_when_disabled() {
+        use axum::{Router, extract::Request, routing::get};
+        let app = Router::new().route(
+            "/probe",
+            get(|request: Request| async move {
+                assert_eq!(request.headers()[reqwest::header::USER_AGENT], "rbit-Importer");
+                StatusCode::NO_CONTENT
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let source = ImportSource::parse(rbit_core::import::SourceKind::Gitea, &format!("http://{address}"), "owner/repository").unwrap();
+        let client =
+            SourceClient::new(source, None, true, Duration::from_secs(5), Duration::ZERO, CancellationToken::new(), false).unwrap();
+        for http in [&client.api, &client.downloads] {
+            assert_eq!(http.get(format!("http://{address}/probe")).send().await.unwrap().status(), StatusCode::NO_CONTENT);
+        }
+        server.abort();
+    }
 
     fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
         let mut map = HeaderMap::new();

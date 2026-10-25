@@ -21,6 +21,7 @@ mod pulls;
 mod releases;
 mod security;
 mod ssh;
+mod updates;
 mod webhooks;
 
 use std::{net::SocketAddr, path::PathBuf};
@@ -43,11 +44,13 @@ pub use pulls::PullConfig;
 pub use releases::ReleaseConfig;
 pub use security::{ProxyNetwork, ProxyNetworkError, SecurityConfig};
 pub use ssh::SshConfig;
+pub use updates::UpdateConfig;
 pub use webhooks::WebhookConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    pub updates: UpdateConfig,
     pub server: ServerConfig,
     pub branding: BrandingConfig,
     pub storage: StorageConfig,

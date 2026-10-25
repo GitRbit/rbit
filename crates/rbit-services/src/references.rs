@@ -65,6 +65,49 @@ impl ReferenceService {
         Self { ctx, timeline }
     }
 
+    /// Bounded mention choices after repository access checks. Accounts expose only names.
+    pub async fn suggestions(&self, repo: &RepoContext, prefix: &str, accounts: bool) -> Result<Vec<(String, String)>, ServiceError> {
+        if !repo.access.can_read() {
+            return Err(ServiceError::NotFound);
+        }
+        let prefix: String = prefix.chars().take(100).collect();
+        if accounts {
+            return Ok(self
+                .ctx
+                .database
+                .issue_meta()
+                .mention_candidates(&prefix)
+                .await?
+                .into_iter()
+                .map(|a| (format!("@{}", a.name), a.label().to_owned()))
+                .collect());
+        }
+        let store = self.ctx.database.issues();
+        let issues = if let Ok(number) = IssueNumber::parse(&prefix) {
+            return Ok(store
+                .find_numbers(repo.repo.repo.id, &[number])
+                .await?
+                .into_iter()
+                .map(|issue| {
+                    (
+                        format!("#{}", issue.number.get()),
+                        format!("{} · {}", if issue.kind == IssueKind::Pull { "PR" } else { "Issue" }, issue.title),
+                    )
+                })
+                .collect());
+        } else {
+            let mut filter = rbit_storage::sqlite::issue_search::SearchFilter::new(repo.repo.repo.id);
+            filter.text = prefix.split_whitespace().map(str::to_owned).collect();
+            self.ctx.database.issue_search().search(&filter, 10, 0).await?
+        };
+        Ok(issues
+            .into_iter()
+            .map(|issue| {
+                (format!("#{}", issue.number.get()), format!("{} · {}", if issue.is_pull() { "PR" } else { "Issue" }, issue.title))
+            })
+            .collect())
+    }
+
     /// Resolves the `#N` and `@name` references among `texts` in `repo` (already
     /// access-checked), with one batch query for each kind.
     pub async fn resolve(&self, repo: &RepoContext, texts: &[&str]) -> Result<ReferenceSet, ServiceError> {

@@ -99,13 +99,10 @@ text below is for the files the integrator owns (`CHANGELOG.md`, `README.md`,
 
 ## Integration requests
 
-1. **Markdown preview (W)**: once `POST /markdown/preview` is on `main`, make
-   `markdown_preview_url()` in `crates/rbit-web/src/routes/edits.rs` return
-   `Some("/markdown/preview".to_owned())`. The editor then shows Edit/Preview tabs for
-   Markdown files; the Preview button posts the textarea (field name **`content`**, via
-   `hx-include="#file-content"`) and swaps the response into `#file-preview`. If W's
-   endpoint expects another field name (e.g. `body`), either accept `content` there too or
-   add `hx-vals`/rename in `templates/repo/edit_file.html`.
+1. **Markdown preview (W)** is integrated. `markdown_preview_url(target)` provides the
+   repository and branch context for the shared Write/Preview enhancement. File previews
+   submit only `content` and the current `path`; relative links use its directory. The
+   endpoint uses the same renderer and configured text limit as browser file editing.
 2. **Archived repositories** (whoever adds them): extend `EditService::read_only_reason`
    and `RepoPage::can_edit_on`.
 

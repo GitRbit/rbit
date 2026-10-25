@@ -62,10 +62,9 @@ pub struct EditFilePage {
     /// Why the file cannot be edited in the browser (binary or too large); the editor
     /// is replaced by this message.
     pub not_editable: Option<String>,
-    pub is_markdown: bool,
-    /// Integration hook (W): the Markdown preview endpoint. `None` until `POST
-    /// /markdown/preview` exists; the template then offers the Preview tab.
-    pub preview_url: Option<String>,
+    /// Preview endpoint with repository and branch context, retained even for an empty
+    /// or plain-text path so filename changes can enable Markdown previews.
+    pub preview_url: String,
     /// "1 MiB": the largest text that can be committed here.
     pub max_size: String,
     pub commit: CommitBox,

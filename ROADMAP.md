@@ -23,13 +23,13 @@ for release history.
   SSH server, background maintenance, Prometheus metrics, health checks, consistent backups,
   Docker and systemd deployment.
 - **Access and collaboration:** collaborators, organisation teams, base permissions,
-  repository transfer with redirects from old names.
+  repository transfer and account username changes with redirects from old names.
 - **Repository essentials:** releases with files, archives, blame, compare, forks, pull
   mirrors, README links and images.
 - **Issues and pull requests:** one shared timeline; labels, milestones, assignees,
   references and closing keywords, search, in-app notifications; pull requests within a
-  repository or across forks, line comments, reviews, mergeability checks, merge / squash /
-  rebase.
+  repository or across forks, line comments with resolvable conversations, reviews, mergeability
+  checks, merge / squash / rebase; a base-branch picker for existing pull requests.
 - **Branch protection:** no force pushes or deletion, required pull requests and approvals,
   restricted pushers — enforced over HTTP, SSH and for merges.
 - **Automation:** a versioned REST API (`/api/v1`, OpenAPI 3.1), including collaborators,
@@ -49,16 +49,15 @@ for release history.
 - **Repository documents:** document tabs, a searchable heading outline and Mermaid diagrams.
 - **Activity:** contribution heatmaps on user and organisation profiles and repository commits.
 - **Administration:** instance branding and deployment configuration forms.
+- **Personal dashboards:** cross-repository `/issues` and `/pulls` with created, assigned,
+  mentioned and review-requested views.
+
+Markdown editors offer Write/Preview tabs for issue and pull request bodies, comments,
+reviews and repository Markdown files, using the same sanitized rendering as saved text.
 
 ## Near-term priorities
 
-Planned follow-up work:
-
-- **Pull request reviews:** resolve review threads.
-- **Pull request editing:** a base-branch picker for existing pull requests.
-- **Personal dashboards:** cross-repository `/issues` and `/pulls` views.
-- **Markdown editing:** preview Markdown before submitting it.
-- **Account renames:** redirect links from previous account names.
+The current near-term priorities are implemented in the features above.
 
 ## Longer-term ideas
 

@@ -449,6 +449,12 @@ pub enum TimelineEvent {
         review: ReviewId,
         reviewer: Option<AccountId>,
     },
+    ReviewThreadResolved {
+        comment: crate::pull::ReviewCommentId,
+    },
+    ReviewThreadReopened {
+        comment: crate::pull::ReviewCommentId,
+    },
     HeadRefDeleted {
         branch: String,
     },
@@ -479,6 +485,8 @@ impl TimelineEvent {
             Self::ReviewRequested { .. } => "review_requested",
             Self::ReviewRequestRemoved { .. } => "review_request_removed",
             Self::ReviewDismissed { .. } => "review_dismissed",
+            Self::ReviewThreadResolved { .. } => "review_thread_resolved",
+            Self::ReviewThreadReopened { .. } => "review_thread_reopened",
             Self::HeadRefDeleted { .. } => "head_ref_deleted",
             Self::ConvertedToDraft => "converted_to_draft",
             Self::ReadyForReview => "ready_for_review",
@@ -810,6 +818,8 @@ mod tests {
             TimelineEvent::ReviewRequested { reviewer: account },
             TimelineEvent::ReviewRequestRemoved { reviewer: account },
             TimelineEvent::ReviewDismissed { review: ReviewId(1), reviewer: None },
+            TimelineEvent::ReviewThreadResolved { comment: crate::pull::ReviewCommentId(1) },
+            TimelineEvent::ReviewThreadReopened { comment: crate::pull::ReviewCommentId(1) },
             TimelineEvent::HeadRefDeleted { branch: "feature".to_owned() },
             TimelineEvent::ConvertedToDraft,
             TimelineEvent::ReadyForReview,

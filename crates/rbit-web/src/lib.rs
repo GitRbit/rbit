@@ -25,6 +25,7 @@ pub mod routes;
 pub mod state;
 pub mod themes;
 pub mod timing;
+pub mod updates;
 pub mod urls;
 pub mod views;
 

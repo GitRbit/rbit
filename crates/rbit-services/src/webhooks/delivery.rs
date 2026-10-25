@@ -87,10 +87,10 @@ pub fn new_guid() -> String {
 /// The headers of a delivery request, in the order they are sent. Header names use HTTP's
 /// usual Title-Case (`X-Rbit-Event`, like `X-GitHub-Event`); that is header style, not a
 /// spelling of the project's name, and receivers already read these names.
-pub fn request_headers(event: &str, guid: &str, hook_id: i64, signature: Option<&str>) -> Vec<(String, String)> {
+pub fn request_headers(event: &str, guid: &str, hook_id: i64, signature: Option<&str>, report_version: bool) -> Vec<(String, String)> {
     let mut headers = vec![
         ("Content-Type".to_owned(), "application/json".to_owned()),
-        ("User-Agent".to_owned(), USER_AGENT.to_owned()),
+        ("User-Agent".to_owned(), if report_version { USER_AGENT } else { "rbit-Hookshot" }.to_owned()),
         ("X-Rbit-Event".to_owned(), event.to_owned()),
         ("X-Rbit-Delivery".to_owned(), guid.to_owned()),
         ("X-Rbit-Hook-Id".to_owned(), hook_id.to_string()),
@@ -161,10 +161,10 @@ pub fn install_crypto_provider() {
 }
 
 /// The HTTP client deliveries use.
-pub fn build_client(allow_private: bool, timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+pub fn build_client(allow_private: bool, timeout: Duration, report_version: bool) -> Result<reqwest::Client, reqwest::Error> {
     install_crypto_provider();
     reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+        .user_agent(if report_version { USER_AGENT } else { "rbit-Hookshot" })
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
         .timeout(timeout)
@@ -197,9 +197,9 @@ pub struct Attempt {
 
 /// Sends `delivery` once and reports what happened. Never returns an error: failures are
 /// part of the record.
-pub async fn attempt(client: Option<&reqwest::Client>, delivery: &ClaimedDelivery, allow_private: bool) -> Attempt {
+pub async fn attempt(client: Option<&reqwest::Client>, delivery: &ClaimedDelivery, allow_private: bool, report_version: bool) -> Attempt {
     let signature = delivery.secret.as_deref().map(|secret| signature(secret, delivery.payload.as_bytes()));
-    let headers = request_headers(delivery.event.as_str(), &delivery.guid, delivery.hook_id.0, signature.as_deref());
+    let headers = request_headers(delivery.event.as_str(), &delivery.guid, delivery.hook_id.0, signature.as_deref(), report_version);
     let mut record = AttemptRecord {
         at: Timestamp::now(),
         request_headers: headers.clone(),
@@ -346,11 +346,11 @@ mod tests {
 
     #[test]
     fn signature_headers_only_with_a_secret() {
-        let unsigned = request_headers("push", "g", 3, None);
+        let unsigned = request_headers("push", "g", 3, None, true);
         assert!(unsigned.iter().all(|(name, _)| !name.contains("Signature")));
         assert!(unsigned.contains(&("X-GitHub-Event".to_owned(), "push".to_owned())));
         assert!(unsigned.contains(&("X-Rbit-Delivery".to_owned(), "g".to_owned())));
-        let signed = request_headers("push", "g", 3, Some("abc"));
+        let signed = request_headers("push", "g", 3, Some("abc"), true);
         assert!(signed.contains(&("X-Rbit-Signature-256".to_owned(), "sha256=abc".to_owned())));
         assert!(signed.contains(&("X-Hub-Signature-256".to_owned(), "sha256=abc".to_owned())));
         assert!(USER_AGENT.starts_with("rbit-Hookshot/"));

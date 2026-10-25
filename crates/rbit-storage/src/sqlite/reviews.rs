@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use rbit_core::{
-    AccountId, IssueId, ReviewId, Timestamp,
+    AccountId, IssueId, ReviewId, TimelineEvent, Timestamp,
     issue::ReviewState,
     pull::{Review, ReviewComment, ReviewCommentId, ReviewSide},
 };
@@ -27,7 +27,7 @@ macro_rules! review_columns {
 
 macro_rules! comment_columns {
     () => {
-        "id, review_id, pull_id, author_id, path, side, line, commit_sha, diff_hunk, in_reply_to, body, outdated, created_at, updated_at"
+        "id, review_id, pull_id, author_id, path, side, line, commit_sha, diff_hunk, in_reply_to, body, outdated, created_at, updated_at, resolved_at, resolved_by"
     };
 }
 
@@ -89,6 +89,8 @@ struct CommentRow {
     in_reply_to: Option<i64>,
     body: String,
     outdated: bool,
+    resolved_at: Option<i64>,
+    resolved_by: Option<i64>,
     created_at: i64,
     updated_at: i64,
 }
@@ -110,6 +112,8 @@ impl TryFrom<CommentRow> for ReviewComment {
             in_reply_to: row.in_reply_to.map(ReviewCommentId),
             body: row.body,
             outdated: row.outdated,
+            resolved_at: row.resolved_at.map(Timestamp),
+            resolved_by: row.resolved_by.map(AccountId),
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
         })
@@ -371,6 +375,44 @@ impl ReviewStore {
                 .fetch_optional(&self.pool)
                 .await?;
         row.map(ReviewComment::try_from).transpose()
+    }
+
+    /// Changes a submitted root's resolution and records its timeline event atomically.
+    /// Repeating the same state is a no-op, including under concurrent requests.
+    pub async fn set_thread_resolved(
+        &self,
+        pull: IssueId,
+        root: ReviewCommentId,
+        actor: AccountId,
+        resolved: bool,
+        at: Timestamp,
+    ) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let changed = sqlx::query(
+            "UPDATE pull_review_comments SET resolved_at = ?, resolved_by = ? \
+             WHERE pull_id = ? AND id = ? AND in_reply_to IS NULL \
+             AND (resolved_at IS NOT NULL) <> ? \
+             AND review_id IN (SELECT id FROM pull_reviews WHERE state <> 'pending')",
+        )
+        .bind(resolved.then_some(at.0))
+        .bind(resolved.then_some(actor.0))
+        .bind(pull.0)
+        .bind(root.0)
+        .bind(resolved)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            > 0;
+        if changed {
+            let event = if resolved {
+                TimelineEvent::ReviewThreadResolved { comment: root }
+            } else {
+                TimelineEvent::ReviewThreadReopened { comment: root }
+            };
+            super::issues::insert_event(&mut tx, pull, Some(actor), &event, at).await?;
+        }
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// Comments on submitted reviews per pull request (GitHub's `review_comments`).

@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+# One integration-test binary (tests/main.rs) instead of one per file.
+autotests = false
 
 [dependencies]
 rbit-core.workspace = true
@@ -26,6 +28,7 @@ hmac.workspace = true
 sha2.workspace = true
 same-file.workspace = true
 serde_json.workspace = true
+semver.workspace = true
 percent-encoding.workspace = true
 # L: Git LFS (signed transfer tokens).
 base64.workspace = true
@@ -45,3 +48,7 @@ axum.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"

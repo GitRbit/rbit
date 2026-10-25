@@ -21,13 +21,14 @@ use axum::{
 };
 use rbit_core::{
     IssueNumber, IssueState, ReviewId, User,
-    issue::MergeStrategy,
+    issue::{MergeStrategy, ReviewState},
+    issue_query::{IssueQuery, KindFilter, StateFilter},
     pull::{HeadSpec, ReviewCommentId, ReviewSide},
 };
 use rbit_git::DiffLimits;
 use rbit_services::{
     RepoContext, ServiceError,
-    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, PullFilter, PullStateFilter, ReviewData, ReviewVerdict},
+    pulls::{LineComment, MergeFailure, MergeInput, NewPullInput, PullContext, ReviewData, ReviewVerdict},
     timeline::{IssueContext, TimelineCursor},
 };
 use serde::Deserialize;
@@ -42,6 +43,7 @@ use crate::{
     views::{
         commit::FileDiffView,
         components::Pagination,
+        issues::{MenuChoices, filter_menus, list_url},
         layout::Page,
         pulls::{
             ClosedBoxView, LabelView, ListTabs, MergeBoxView, NewPullPage, PullCommitsPage, PullCountsFragment, PullCountsView,
@@ -65,6 +67,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/pull/{number}/draft", post(draft))
         .route("/{owner}/{repo}/pull/{number}/base", post(change_base))
         .route("/{owner}/{repo}/pull/{number}/comments", post(line_comment))
+        .route("/{owner}/{repo}/pull/{number}/comments/{id}/resolution", post(resolve_thread))
         .route("/{owner}/{repo}/pull/{number}/reviews", post(submit_review))
         .route("/{owner}/{repo}/pull/{number}/reviews/discard", post(discard_review))
         .route("/{owner}/{repo}/pull/{number}/reviews/{id}/dismiss", post(dismiss_review))
@@ -125,14 +128,7 @@ async fn review_views(
     let refs = ref_context(ctx, refs);
     let urls = PullUrls::for_context(ctx);
     let can_dismiss = viewer.is_some() && ctx.repo().access.can_write();
-    let reviews = data
-        .reviews
-        .iter()
-        .map(|entry| {
-            let at = entry.review.submitted_at.unwrap_or(entry.review.created_at).seconds();
-            (at, ReviewView::new(entry, can_dismiss, &urls, &refs))
-        })
-        .collect();
+    let sources: std::collections::HashMap<_, _> = data.visible_comments().map(|(comment, _)| (comment.id.0, comment)).collect();
     let mut comments: Vec<ReviewCommentView> = Vec::new();
     for entry in &data.reviews {
         comments
@@ -142,7 +138,49 @@ async fn review_views(
         comments
             .extend(pending.comments.iter().map(|(comment, author)| ReviewCommentView::new(comment, author.as_ref(), true, &urls, &refs)));
     }
-    Ok((reviews, comments))
+    // A reply may be submitted in a different review. Keep it with its root, and
+    // inherit resolution from that root, rather than collapsing individual replies.
+    let group = |comments: Vec<ReviewCommentView>| {
+        let mut replies: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
+        let mut roots = Vec::new();
+        for mut comment in comments {
+            if comment.is_reply {
+                replies.entry(comment.reply_to).or_default().push(comment);
+            } else {
+                let author = sources.get(&comment.reply_to).and_then(|source| source.author);
+                let can_resolve = !comment.pending
+                    && ctx.thread.permissions.can_comment
+                    && viewer.is_some_and(|user| ctx.repo().access.can_write() || author == Some(user.id()));
+                comment.resolution.action_url = can_resolve.then(|| format!("{}/comments/{}/resolution", urls.page, comment.reply_to));
+                roots.push(comment);
+            }
+        }
+        for root in &mut roots {
+            root.replies = replies.remove(&root.reply_to).unwrap_or_default();
+        }
+        roots
+    };
+    let submitted = group(comments.iter().filter(|comment| !comment.pending).cloned().collect());
+    let mut by_review: std::collections::HashMap<i64, Vec<ReviewCommentView>> = std::collections::HashMap::new();
+    for root in submitted {
+        if let Some(source) = sources.get(&root.reply_to) {
+            by_review.entry(source.review_id.0).or_default().push(root);
+        }
+    }
+    let reviews = data
+        .reviews
+        .iter()
+        .filter_map(|entry| {
+            let at = entry.review.submitted_at.unwrap_or(entry.review.created_at).seconds();
+            let threads = by_review.remove(&entry.review.id.0).unwrap_or_default();
+            // Comment-only replies now live with their root; avoid an empty review card.
+            if threads.is_empty() && entry.review.state == ReviewState::Commented && entry.review.body.trim().is_empty() {
+                return None;
+            }
+            Some((at, ReviewView::new(entry, threads, can_dismiss, &urls, &refs)))
+        })
+        .collect();
+    Ok((reviews, group(comments)))
 }
 
 fn review_form(ctx: &PullContext, data: &ReviewData, viewer: Option<&User>) -> Option<ReviewFormView> {
@@ -190,6 +228,7 @@ fn title(ctx: &PullContext, suffix: &str) -> String {
 
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
+    q: Option<String>,
     #[serde(default)]
     state: String,
     #[serde(default)]
@@ -198,44 +237,30 @@ pub struct ListQuery {
     page: Option<u32>,
 }
 
-/// `GET /{owner}/{repo}/pulls?state=open|closed|merged&author=&page=`
+/// `GET /{owner}/{repo}/pulls?q=…`; legacy state and author links still work.
 async fn list(
     State(state): State<AppState>,
     viewer: Viewer,
     page: Page,
     Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
+    Query(params): Query<ListQuery>,
 ) -> WebResult<PullListPage> {
     let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let (filter_state, state_name) = match query.state.as_str() {
-        "closed" => (PullStateFilter::Closed, "closed"),
-        "merged" => (PullStateFilter::Merged, "merged"),
-        _ => (PullStateFilter::Open, "open"),
-    };
-    let author_name = query.author.trim();
-    let author = if author_name.is_empty() { None } else { state.services.accounts.find_account(author_name).await.ok() };
-    if !author_name.is_empty() && author.is_none() {
-        // An unknown author matches nothing.
-        return Ok(list_page(
-            &state,
-            &loaded,
-            page,
-            Vec::new(),
-            ListTabs { open_url: String::new(), closed_url: String::new(), open: 0, closed: 0, state: state_name },
-            Pagination { page: 1, page_count: 1, previous_url: None, next_url: None },
-            Some(author_name.to_owned()),
-        ));
-    }
-    let filter = PullFilter { state: filter_state, author: author.as_ref().map(|account| account.id), ..PullFilter::default() };
-    let number = query.page.unwrap_or(1).max(1);
-    let listed = state.services.pulls.list(&loaded.ctx, &filter, number).await?;
-    let ids: Vec<_> = listed.items.iter().map(|item| item.issue.id).collect();
-    let metadata = state.services.issues.metadata(&ids).await?;
-    let rows = listed
-        .items
+    let query = pull_query(&params);
+    let issues = &state.services.issues;
+    let ctx = &loaded.ctx;
+    let (results, labels, milestones, people) = tokio::try_join!(
+        issues.search(viewer.user(), ctx, &query, params.page.unwrap_or(1)),
+        issues.labels(ctx),
+        issues.milestones(ctx, None),
+        issues.assignable(ctx, ""),
+    )?;
+    let items = state.services.pulls.search(ctx, &results).await?;
+    let rows = items
         .iter()
         .map(|item| {
-            let labels = metadata
+            let labels = results
+                .metadata
                 .get(&item.issue.id)
                 .map(|meta| {
                     meta.labels.iter().map(|label| LabelView { name: label.name.clone(), color: valid_color(&label.color) }).collect()
@@ -245,43 +270,57 @@ async fn list(
         })
         .collect();
     let base = format!("{}/pulls", loaded.urls.home());
-    let author_query = author.as_ref().map(|account| format!("&author={}", account.name)).unwrap_or_default();
-    let page_url = |n: u32| format!("{base}?state={state_name}{author_query}&page={n}");
-    let page_count = u32::try_from(listed.total.div_ceil(u64::from(rbit_services::pulls::PAGE_SIZE))).unwrap_or(u32::MAX).max(1);
+    let clean = IssueQuery { ignored: Vec::new(), ..query.clone() };
+    let page_url = |n: u32| format!("{}&page={n}", list_url(&base, &clean));
     let pagination = Pagination {
-        page: number,
-        page_count,
-        previous_url: (number > 1).then(|| page_url(number - 1)),
-        next_url: (number < page_count).then(|| page_url(number + 1)),
+        page: results.page,
+        page_count: results.page_count(),
+        previous_url: (results.page > 1).then(|| page_url(results.page - 1)),
+        next_url: (results.page < results.page_count()).then(|| page_url(results.page + 1)),
     };
-    let tabs = ListTabs {
-        open_url: format!("{base}?state=open{author_query}"),
-        closed_url: format!("{base}?state=closed{author_query}"),
-        open: listed.open,
-        closed: listed.closed,
-        state: if state_name == "merged" { "closed" } else { state_name },
-    };
-    Ok(list_page(&state, &loaded, page, rows, tabs, pagination, author.map(|account| account.name.to_string())))
-}
-
-fn list_page(
-    state: &AppState,
-    loaded: &RepoPage,
-    page: Page,
-    rows: Vec<PullRowView>,
-    tabs: ListTabs,
-    pagination: Pagination,
-    author_filter: Option<String>,
-) -> PullListPage {
-    PullListPage {
-        page: page.titled(format!("Pull requests · {}", loaded.ctx.repo.full_name())),
-        header: loaded.header(state, "pulls"),
-        tabs,
+    Ok(PullListPage {
+        page: page.titled(format!("Pull requests · {}", ctx.repo.full_name())),
+        header: loaded.header(&state, "pulls"),
         rows,
         pagination,
+        tabs: ListTabs {
+            open_url: list_url(&base, &clean.with_state(StateFilter::Open)),
+            closed_url: list_url(&base, &clean.with_state(StateFilter::Closed)),
+            open: results.open,
+            closed: results.closed,
+            state: match clean.state {
+                Some(StateFilter::Open) => "open",
+                Some(StateFilter::Closed) => "closed",
+                None => "all",
+            },
+        },
         new_url: format!("{}/compare", loaded.urls.home()),
-        author_filter,
+        author_filter: None,
+        query: query.to_string(),
+        hints: results.hints,
+        menus: filter_menus(&clean, &base, &MenuChoices { labels, milestones, people }, viewer.user()),
+        list_url: base,
+    })
+}
+
+fn pull_query(params: &ListQuery) -> IssueQuery {
+    let mut query = IssueQuery::parse(params.q.as_deref().filter(|q| !q.trim().is_empty()).unwrap_or("is:open is:pr"));
+    query.kind = Some(KindFilter::Pull);
+    if params.q.is_none() {
+        match params.state.as_str() {
+            "closed" => query.state = Some(StateFilter::Closed),
+            "merged" => {
+                query.state = Some(StateFilter::Closed);
+                query.merged = true;
+            }
+            "all" => query.state = None,
+            _ => {}
+        }
+        if !params.author.trim().is_empty() {
+            query.author = Some(rbit_core::issue_query::Who::Name(params.author.trim().to_owned()));
+        }
     }
+    query
 }
 
 fn owner_name(loaded: &RepoPage) -> String {
@@ -326,7 +365,8 @@ async fn new_page(
     let pulls = &state.services.pulls;
     let head_ctx = pulls.resolve_head(viewer.user(), &loaded.ctx, &spec).await?;
     let head_full_name = head_ctx.repo.full_name();
-    let picker = super::compare::pickers(&state, &viewer, &loaded, &base, &spec.branch, &head_full_name).await;
+    let mut picker = super::compare::pickers(&state, &viewer, &loaded, &base, &spec.branch, &head_full_name).await;
+    picker.branches_only = true;
     let mut view = NewPullPage {
         page: page.titled(format!("Open a pull request · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "pulls"),
@@ -360,10 +400,12 @@ async fn new_page(
                 view.title = comparison.commits.first().map_or_else(|| spec.branch.clone(), |commit| commit.summary.clone());
             }
             view.commits = comparison.commits.iter().map(|commit| CommitView::new(commit, &head_urls)).collect();
-            view.files = FileDiffView::list(&comparison.files, &comparison.head.id, &head_urls);
             view.additions = comparison.additions();
             view.deletions = comparison.deletions();
             view.truncated = comparison.truncated;
+            view.files = tokio::task::spawn_blocking(move || FileDiffView::list(&comparison.files, &comparison.head.id, &head_urls))
+                .await
+                .map_err(WebError::internal)?;
             view.can_create = viewer.user().is_some();
         }
         Err(ServiceError::Internal(source)) => return Err(WebError::Internal(source)),
@@ -475,8 +517,8 @@ async fn conversation(
         user.is_some() && (permissions.can_triage || user.is_some_and(|user| ctx.issue().is_author(user) && permissions.can_comment));
     let reviewers = ReviewersView::new(&data, can_request && is_open, &urls);
     let review_form = review_form(&ctx, &data, user);
-    let can_convert_to_draft =
-        is_open && !ctx.pull.is_draft && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_change_base = is_open && user.is_some_and(|user| ctx.issue().is_author(user) || ctx.repo().access.can_write());
+    let can_convert_to_draft = can_change_base && !ctx.pull.is_draft;
     if let Some(user) = user {
         state.services.notifications.mark_thread_read(user.id(), ctx.issue().id).await;
         if page.has_unread_notifications {
@@ -497,6 +539,7 @@ async fn conversation(
         reviewers,
         sidebar,
         can_convert_to_draft,
+        can_change_base,
     };
     Ok(view.into_response())
 }
@@ -581,7 +624,11 @@ async fn files(
         signed_in: user.is_some(),
         sign_in_url: format!("/login?next={}", urls.files),
         review_form: review_form(&ctx, &data, user),
-        outdated_count: comments.iter().filter(|comment| comment.outdated).count(),
+        outdated_count: comments
+            .iter()
+            .flat_map(|comment| std::iter::once(comment).chain(&comment.replies))
+            .filter(|comment| comment.outdated)
+            .count(),
     };
     Ok(view.into_response())
 }
@@ -740,6 +787,27 @@ async fn line_comment(
 }
 
 #[derive(Debug, Deserialize)]
+struct ResolutionForm {
+    resolved: bool,
+    #[serde(default)]
+    view: String,
+}
+
+async fn resolve_thread(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    Path((owner, repo, number, id)): Path<(String, String, String, String)>,
+    Form(form): Form<ResolutionForm>,
+) -> WebResult<Redirect> {
+    let id = id.parse::<i64>().ok().filter(|id| *id > 0).map(ReviewCommentId).ok_or(WebError::NotFound)?;
+    let ctx = open_for_post(&state, &user, &owner, &repo, &number).await?;
+    let root = state.services.pulls.set_thread_resolved(&user, &ctx, id, form.resolved).await?;
+    let urls = PullUrls::for_context(&ctx);
+    let page = if form.view == "files" && !root.outdated { urls.files } else { urls.page };
+    Ok(Redirect::to(&format!("{page}#r{}", root.id.0)))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ReviewForm {
     #[serde(default)]
     verdict: String,
@@ -849,6 +917,24 @@ async fn delete_branch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pull_search_keeps_legacy_links_and_fixes_kind() {
+        let query = pull_query(&ListQuery { q: None, state: "merged".into(), author: "alice".into(), page: None });
+        assert!(query.merged);
+        assert_eq!(query.kind, Some(KindFilter::Pull));
+        assert_eq!(query.state, Some(StateFilter::Closed));
+        let query = pull_query(&ListQuery {
+            q: Some("is:issue label:bug sort:updated-desc".into()),
+            state: "closed".into(),
+            author: "bob".into(),
+            page: None,
+        });
+        assert_eq!(query.kind, Some(KindFilter::Pull));
+        assert_eq!(query.labels, ["bug"]);
+        assert!(query.author.is_none());
+        assert_eq!(query.sort, rbit_core::issue_query::IssueSort::UpdatedDesc);
+    }
 
     #[test]
     fn reviewer_names_and_colours_are_cleaned() {

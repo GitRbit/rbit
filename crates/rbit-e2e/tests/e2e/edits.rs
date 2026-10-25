@@ -48,6 +48,16 @@ async fn editing_a_file_in_the_browser() {
     alice.create_repo("alice", "demo", "public").await;
     let sample = git.sample();
     git.push_sample(&sample, &server.git_url_as("alice", "demo", "alice", PASSWORD));
+    let empty_path = alice.get("/alice/demo/new/main").await;
+    assert_eq!(attribute_after(&empty_path.body, "id=\"file-path\"", "value"), Some(String::new()));
+    for page in [empty_path, alice.get("/alice/demo/edit/main/docs/guide.txt").await] {
+        page.expect_status(StatusCode::OK).expect_contains(&["data-markdown-editor"]);
+        let preview = attribute_after(&page.body, "id=\"file-content\"", "data-preview-url")
+            .expect("empty and plain file paths retain preview context for filename changes");
+        for context in ["/issues/markdown-preview?owner=alice", "repo=demo", "revision=main"] {
+            assert!(preview.contains(context), "{context} in {preview}");
+        }
+    }
     alice.post("/alice/demo/issues", &[("title", "The README is too short"), ("body", "")]).await.expect_redirect("/alice/demo/issues/1");
 
     // Only writers see the buttons and reach the pages; tags are not branches.

@@ -4,7 +4,7 @@ members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crate
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 rust-version = "1.94"
 license = "MIT OR Apache-2.0"
@@ -49,7 +49,7 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 redb = "4.4"
 
 # Git
-gix = { version = "0.89", default-features = false, features = ["revision", "blob-diff", "max-performance-safe", "sha1"] }
+gix = { version = "0.90", default-features = false, features = ["revision", "blob-diff", "max-performance", "sha1"] }
 
 similar = "3.2"
 same-file = "1.0"
@@ -64,6 +64,7 @@ subtle = "2.6"
 # Serialisation, config, CLI
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+semver = "1.0.28"
 postcard = { version = "1.1", features = ["use-std"] }
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4.6", features = ["derive", "env"] }
@@ -128,7 +129,23 @@ codegen-units = 1
 panic = "abort"
 strip = "symbols"
 
+[profile.dev]
+# File and line numbers for backtraces and panics, without the variable-level debug info
+# that makes rbit-web and every test binary slower to generate and link.
+debug = "line-tables-only"
+
 [profile.dev.package."*"]
 # Dependencies (gix, syntect, argon2) are dramatically faster when optimised,
 # while our own crates stay quick to rebuild.
 opt-level = 2
+debug = false
+
+# The "*" override above also applies to proc-macro dependencies, ahead of build-override.
+# syn and its helpers only run inside the compiler, where optimising them costs far more
+# build time (syn is on the critical path to rbit-web) than it saves in macro expansion.
+[profile.dev.package.syn]
+opt-level = 0
+[profile.dev.package.quote]
+opt-level = 0
+[profile.dev.package.proc-macro2]
+opt-level = 0

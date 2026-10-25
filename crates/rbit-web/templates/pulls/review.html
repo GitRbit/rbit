@@ -13,8 +13,10 @@
     <div class="box mt-1 overflow-hidden">
       {% if !review.body_html.is_empty() %}<div class="prose-rbit px-3 py-3 sm:px-4">{{ review.body_html|safe }}</div>{% endif %}
       {% let show_hunk = true %}
+      {% let thread_view = "conversation" %}
+      {% let can_reply = false %}
       {% for comment in review.comments %}
-      <div class="{% if !review.body_html.is_empty() || !loop.first %}border-t border-line{% endif %}">{% include "pulls/review_comment.html" %}</div>
+      <div class="{% if !review.body_html.is_empty() || !loop.first %}border-t border-line{% endif %}">{% include "pulls/review_thread.html" %}</div>
       {% endfor %}
     </div>
     {% endif %}

@@ -1,6 +1,7 @@
 // Immediate count tooltips and persistent day selection, including after htmx swaps.
 const dayOf = target => target instanceof Element ? target.closest('[data-contribution-day]') : null;
-const dateLabel = value => new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeZone: 'UTC' });
+const dateLabel = value => dateFormatter.format(new Date(`${value}T00:00:00Z`));
 const countLabel = count => `${count} commit${count === 1 ? '' : 's'}`;
 
 function showDayTooltip(day) {

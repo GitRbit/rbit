@@ -15,13 +15,17 @@ import "./filter.js";
 
 // Diff pages: sticky file headers, the changed-file tree and its filter.
 import "./diff.js";
+import "./compare.js";
 import "./repo.js";
 import "./repo-documents.js";
 import "./sticky-header.js";
 import "./contributions.js";
 import "./branch-graph.js";
 import "./mirror-progress.js";
+import "./repo-create.js";
 import "./markdown.js";
+import "./discussion.js";
+import "./markdown-preview.js";
 
 // Long code and diff views: exact placeholder heights for virtual blocks.
 import "./blocks.js";
@@ -86,7 +90,13 @@ document.addEventListener("toggle", (event) => {
 addEventListener("load", () => {
   const manifest = document.createElement("link");
   manifest.rel = "manifest";
-  manifest.href = "/manifest.webmanifest";
+  const updateManifest = () => {
+    const selected = document.documentElement?.dataset.theme ?? "system";
+    const theme = selected === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dna-dark" : "dna-day") : selected;
+    manifest.href = `/manifest.webmanifest?theme=${encodeURIComponent(theme)}`;
+  };
+  updateManifest();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", updateManifest);
   document.head.append(manifest);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 }, { once: true });

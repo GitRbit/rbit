@@ -69,6 +69,12 @@ property tests, and an end-to-end suite (`crates/rbit-e2e`) that boots servers o
 ports and drives them with an HTTP client and the real `git` CLI. Run one crate's tests with
 `cargo test -p rbit-services`, one test with `cargo test -p rbit-e2e -- pulls::`.
 
+CI runs the tests with [cargo-nextest](https://nexte.st), which runs every test binary in
+parallel and takes about half as long as `cargo test --workspace` on a many-core machine:
+`cargo install cargo-nextest --locked`, then `cargo nextest run --workspace`. Each crate's
+integration tests are modules of one binary (`tests/main.rs`), so a new test file needs a
+`mod` line there.
+
 To exercise full upstream repositories against the development server, run
 `npm run test:realworld -- http://localhost:3000`. It loads the real rbit repository and
 Git's full history, verifies HTTP push/clone integrity and checks repository browsing.
@@ -140,8 +146,12 @@ Before publishing:
 - Check the README, deployment instructions, examples, licenses and third-party notices
   against the binaries and container image that will ship.
 - Verify private vulnerability reporting and the reporting link in `SECURITY.md`.
-  Check branch rules and required CI checks
-  for `main` on the account's available plan.
+  Run `npm run audit:repository` to check public repository settings, submission paths,
+  branch rules and release assets. For administrator-only security settings, run
+  `npm run audit:repository -- --admin` with a suitably authorized `GH_TOKEN` in your
+  environment. Never put a token in command arguments or committed files.
+  [docs/repository-configuration.md](docs/repository-configuration.md) records the expected
+  configuration, notification setup and remaining community contact work.
 - Review container package visibility separately: making the repository public does not
   by itself establish anonymous access to `ghcr.io/gitrbit/rbit`.
 

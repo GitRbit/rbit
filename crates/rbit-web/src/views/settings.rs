@@ -139,6 +139,7 @@ impl ProfilePage {
 /// Which account form a success notice or validation error belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountForm {
+    Username,
     Email,
     Password,
     /// "Resend verification email".
@@ -149,6 +150,7 @@ impl AccountForm {
     /// The `?saved=` value used after a successful change.
     pub const fn key(self) -> &'static str {
         match self {
+            Self::Username => "username",
             Self::Email => "email",
             Self::Password => "password",
             Self::Verification => "verification",
@@ -157,6 +159,7 @@ impl AccountForm {
 
     pub fn parse(value: &str) -> Option<Self> {
         match value {
+            "username" => Some(Self::Username),
             "email" => Some(Self::Email),
             "password" => Some(Self::Password),
             "verification" => Some(Self::Verification),
@@ -189,6 +192,8 @@ impl EmailVerification {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "settings/account.html")]
 pub struct AccountPage {
+    pub username: String,
+    pub username_error: FormError,
     pub page: Page,
     pub settings_nav: Vec<SettingsLink>,
     pub password_change_required: bool,
@@ -208,6 +213,8 @@ impl AccountPage {
     pub fn new(page: Page, user: &User, min_password_length: usize) -> Self {
         Self {
             page: page.titled("Account"),
+            username: user.name().to_string(),
+            username_error: FormError::default(),
             settings_nav: SettingsSection::Account.nav(),
             password_change_required: false,
             current_email: user.email.as_str().to_owned(),
@@ -227,16 +234,21 @@ impl AccountPage {
         self
     }
 
-    /// Re-renders with `error` shown above `form`; the email field keeps `submitted_email`.
+    /// Re-renders with `error` above `form`, preserving a submitted username or email.
     #[must_use]
-    pub fn with_error(mut self, form: AccountForm, error: FormError, submitted_email: Option<String>) -> Self {
+    pub fn with_error(mut self, form: AccountForm, error: FormError, submitted_value: Option<String>) -> Self {
         match form {
+            AccountForm::Username => self.username_error = error,
             AccountForm::Email => self.email_error = error,
             AccountForm::Password => self.password_error = error,
             AccountForm::Verification => self.verification_error = error,
         }
-        if let Some(email) = submitted_email {
-            self.email = email;
+        if let Some(value) = submitted_value {
+            if form == AccountForm::Username {
+                self.username = value;
+            } else {
+                self.email = value;
+            }
         }
         self
     }
@@ -249,6 +261,10 @@ impl AccountPage {
 
     pub fn saved_email(&self) -> bool {
         self.saved == Some(AccountForm::Email)
+    }
+
+    pub fn saved_username(&self) -> bool {
+        self.saved == Some(AccountForm::Username)
     }
 
     pub fn saved_password(&self) -> bool {
@@ -563,6 +579,7 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
@@ -586,6 +603,15 @@ mod tests {
 
         let html = AccountPage::new(page(), &user(), 10).saved(Some(AccountForm::Password)).render().unwrap();
         assert!(html.contains("Password changed."));
+
+        let html = AccountPage::new(page(), &user(), 10)
+            .with_error(AccountForm::Username, FormError::new("Username is already taken."), Some("submitted".into()))
+            .render()
+            .unwrap();
+        assert!(html.contains("Username is already taken."));
+        assert!(html.contains(r#"value="submitted""#));
+        assert!(html.contains(r#"action="/settings/account/username""#));
+        assert!(!html.contains("Username updated."));
     }
 
     #[test]
@@ -638,7 +664,7 @@ mod tests {
 
     #[test]
     fn account_form_keys_round_trip() {
-        for form in [AccountForm::Email, AccountForm::Password, AccountForm::Verification] {
+        for form in [AccountForm::Username, AccountForm::Email, AccountForm::Password, AccountForm::Verification] {
             assert_eq!(AccountForm::parse(form.key()), Some(form));
         }
         assert_eq!(AccountForm::parse("tokens"), None);

@@ -76,6 +76,40 @@ impl Upgraded {
 }
 
 #[tokio::test]
+async fn existing_review_threads_upgrade_as_unresolved() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("rbit.db");
+    let raw = pool(&path).await;
+    sqlx::migrate!("./migrations").run_to(40, &raw).await.unwrap();
+    sqlx::raw_sql(MILESTONE_1_ROWS).execute(&raw).await.unwrap();
+    sqlx::raw_sql(
+        "INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) \
+         VALUES (1, 6, 1, 'pull', 'Review me', 1, 10, 10); \
+         INSERT INTO pull_requests (issue_id, repo_id, head_repo_id, head_branch, base_branch, head_sha, created_at, updated_at) \
+         VALUES (1, 6, 6, 'feature', 'main', 'abc', 10, 10); \
+         INSERT INTO pull_reviews (id, pull_id, reviewer_id, state, commit_sha, created_at, submitted_at) \
+         VALUES (1, 1, 2, 'commented', 'abc', 11, 11); \
+         INSERT INTO pull_review_comments (id, review_id, pull_id, author_id, path, side, line, commit_sha, body, created_at, updated_at) \
+         VALUES (1, 1, 1, 2, 'f', 'right', 1, 'abc', 'Existing question', 11, 11);",
+    )
+    .execute(&raw)
+    .await
+    .unwrap();
+    let database = Database::open(&path).await.unwrap();
+    let comment = database.reviews().find_comment(rbit_core::IssueId(1), rbit_core::pull::ReviewCommentId(1)).await.unwrap().unwrap();
+    assert_eq!(comment.body, "Existing question");
+    assert_eq!((comment.resolved_at, comment.resolved_by), (None, None));
+    database.reviews().set_thread_resolved(comment.pull_id, comment.id, BOB, true, Timestamp(12)).await.unwrap();
+    // Removing the resolver preserves the resolution timestamp and conversation.
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&raw).await.unwrap();
+    let comment = database.reviews().find_comment(comment.pull_id, comment.id).await.unwrap().unwrap();
+    assert_eq!((comment.resolved_at, comment.resolved_by), (Some(Timestamp(12)), None));
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&raw).await.unwrap().is_empty());
+    database.close().await;
+    raw.close().await;
+}
+
+#[tokio::test]
 async fn every_migration_applies_and_the_database_stays_consistent() {
     let db = upgraded().await;
     let embedded: Vec<i64> = sqlx::migrate!("./migrations").iter().map(|m| m.version).collect();
@@ -83,6 +117,7 @@ async fn every_migration_applies_and_the_database_stays_consistent() {
         sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = 1 ORDER BY version").fetch_all(&db.raw).await.unwrap();
     assert_eq!(applied, embedded);
     assert!(applied.contains(&16), "the redirects migration is among them");
+    assert!(applied.contains(&42), "the account redirects migration is among them");
 
     let integrity: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&db.raw).await.unwrap();
     assert_eq!(integrity, "ok");
@@ -283,6 +318,29 @@ async fn repositories_from_milestone_1_get_redirects_when_they_move() {
 }
 
 #[tokio::test]
+async fn accounts_from_milestone_1_get_identity_based_redirects() {
+    let db = upgraded().await;
+    for trigger in ["account_redirects_on_create", "account_redirects_on_rename"] {
+        assert!(db.exists("trigger", trigger).await);
+    }
+    assert_eq!(db.count("SELECT COUNT(*) FROM account_redirects").await, 0);
+    let accounts = db.database.accounts();
+    for (id, old, new, repo) in [(ALICE, "alice", "renamed", "dotfiles"), (ACME, "acme", "neworg", "Rocket")] {
+        accounts.rename(id, &new.parse().unwrap()).await.unwrap();
+        assert_eq!(accounts.find_by_old_name(old).await.unwrap().unwrap().id, id);
+        let moved = db.database.repositories().find_by_old_path(old, repo).await.unwrap().unwrap();
+        assert_eq!(moved.owner.id, id);
+        assert_eq!(moved.owner.name.as_str(), new);
+    }
+    // A transferred repository remains reachable after the former owner also renames.
+    db.database.repositories().transfer(RepoId(5), ACME).await.unwrap();
+    assert_eq!(db.database.repositories().find_by_old_path("alice", "dotfiles").await.unwrap().unwrap().full_name(), "neworg/dotfiles");
+    sqlx::query("DELETE FROM accounts WHERE id = ?").bind(ALICE.0).execute(&db.raw).await.unwrap();
+    assert!(accounts.find_by_old_name("alice").await.unwrap().is_none());
+    assert_eq!(db.count("SELECT COUNT(*) FROM account_redirects WHERE account_id = 1").await, 0);
+}
+
+#[tokio::test]
 async fn new_tables_start_empty_with_their_defaults() {
     let db = upgraded().await;
     for table in [
@@ -298,6 +356,7 @@ async fn new_tables_start_empty_with_their_defaults() {
         "repo_forks",
         "repo_mirrors",
         "repo_redirects",
+        "account_redirects",
         "issue_counters",
         "issues",
         "issue_comments",
@@ -490,4 +549,14 @@ async fn import_and_push_mirror_tables_start_empty() {
     sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();
     assert_eq!(db.count("SELECT COUNT(*) FROM repo_imports").await, 0, "imports go with their repository");
     assert_eq!(db.count("SELECT COUNT(*) FROM repo_push_mirrors").await, 0, "push mirrors go with their repository");
+}
+
+#[tokio::test]
+async fn dashboard_mentions_start_empty_and_index_completion_persists() {
+    let db = upgraded().await;
+    assert!(db.exists("table", "issue_mentions").await);
+    assert_eq!(db.count("SELECT COUNT(*) FROM issue_mentions").await, 0);
+    assert!(!db.database.issue_search().mentions_indexed().await.unwrap());
+    db.database.issue_search().finish_mentions_index().await.unwrap();
+    assert!(db.database.issue_search().mentions_indexed().await.unwrap());
 }
