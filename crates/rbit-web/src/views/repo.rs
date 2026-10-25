@@ -27,6 +27,7 @@ use crate::{
 /// `Default` exists so tests can build one with `..RepoHeader::default()` and keep
 /// compiling when fields are added.
 #[derive(Debug, Clone, Default)]
+#[expect(clippy::struct_excessive_bools, reason = "independent display flags")]
 pub struct RepoHeader {
     pub owner: String,
     pub name: String,
@@ -59,6 +60,9 @@ pub struct RepoHeader {
     pub forked_from: Option<ForkedFrom>,
     /// The upstream URL, when this repository is a pull mirror.
     pub mirror_url: Option<String>,
+    /// Archived (read-only): `repo/subnav.html` shows a banner and pages hide their
+    /// write controls.
+    pub archived: bool,
     /// `/{owner}/{repo}/issues` and `/{owner}/{repo}/pulls`.
     pub issues_url: String,
     pub pulls_url: String,

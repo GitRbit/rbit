@@ -1,0 +1,20 @@
+{% extends "layout.html" %}
+{% import "parts.html" as mail %}
+{% block title %}Your {{ m.period() }} digest{% endblock %}
+{% block body %}
+<h1 style="margin:0 0 16px;font-size:18px;font-weight:600;letter-spacing:-0.01em">Your {{ m.period() }} digest</h1>
+<p style="margin:0">{{ m.summary() }}.</p>
+{% for repo in m.repositories %}
+<p style="margin:24px 0 0;padding:0 0 4px;border-bottom:1px solid #ebebeb;font-weight:600"><a href="{{ repo.link }}" style="color:#0a0a0a;text-decoration:none">{{ repo.name }}</a></p>
+{% for thread in repo.threads %}
+<p style="margin:12px 0 4px"><a href="{{ thread.link }}" style="color:#0a0a0a;font-weight:500">{{ thread.title }}</a> <span style="color:#666666;font-size:12px">{{ thread.label() }}</span></p>
+{% for entry in thread.entries %}
+<p style="margin:0 0 6px;padding:0 0 0 12px;border-left:2px solid #ebebeb"><a href="{{ entry.link }}" style="color:#333333">{{ entry.headline }}</a>{% if !entry.excerpt.is_empty() %}<br><span style="color:#666666;font-size:13px">{{ entry.excerpt }}</span>{% endif %}</p>
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endblock %}
+{% block footer %}
+You are receiving this digest because you chose {{ m.period() }} notification emails.<br>
+<a href="{{ m.settings_link }}" style="color:#666666">Notification settings</a> · <a href="{{ m.unsubscribe_link }}" style="color:#666666">Stop notification emails</a> · <a href="{{ m.base_url }}" style="color:#666666">{{ m.site_name }}</a>
+{% endblock %}

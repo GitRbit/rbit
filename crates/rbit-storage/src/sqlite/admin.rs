@@ -347,7 +347,8 @@ impl AdminStore {
         let pattern = filter.pattern();
         let rows: Vec<OwnedRepositoryRow> = sqlx::query_as(concat!(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM repositories r JOIN accounts o ON o.id = r.owner_id WHERE ",
             search_filter!("o.name || '/' || r.name", "r.description"),
@@ -373,7 +374,8 @@ impl AdminStore {
     pub async fn find_repository(&self, id: RepoId) -> Result<Option<OwnedRepository>, StorageError> {
         let row: Option<OwnedRepositoryRow> = sqlx::query_as(
             "SELECT r.id, r.owner_id, r.name, r.description, r.visibility, r.default_branch, r.created_at, r.updated_at, \
-             r.pushed_at, o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
+             r.pushed_at, (SELECT a.archived_at FROM repo_archives a WHERE a.repo_id = r.id) AS archived_at, \
+             o.kind AS owner_kind, o.name AS owner_name, o.display_name AS owner_display_name, \
              o.bio AS owner_bio, o.created_at AS owner_created_at \
              FROM repositories r JOIN accounts o ON o.id = r.owner_id WHERE r.id = ?",
         )

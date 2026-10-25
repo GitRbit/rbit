@@ -16,6 +16,9 @@
 //!   error) is stored for the settings page; the next fetch is due an interval later.
 //! * Repository administrators change the interval, ask for an immediate fetch, or stop
 //!   mirroring (the repository then becomes an ordinary one).
+//! * Archived mirrors are frozen: the scheduler skips them and "fetch now" is refused
+//!   ([`RepoContext::ensure_writable`]). Unarchiving resumes the schedule; a fetch that
+//!   fell due meanwhile runs at once.
 //! * Pushes to a mirror are refused by both transports (HTTP and SSH) with
 //!   [`PUSH_REFUSED`] — see [`MirrorService::is_mirror`].
 //!
@@ -207,6 +210,7 @@ impl MirrorService {
     /// Schedules a fetch now (it runs in the background).
     pub async fn sync_now(&self, repo: &RepoContext) -> Result<(), ServiceError> {
         Self::require_admin(repo)?;
+        repo.ensure_writable()?;
         self.store().find(repo.repo.repo.id).await?.ok_or(ServiceError::NotFound)?;
         self.store().schedule_now(repo.repo.repo.id).await?;
         self.inner.wake.notify_one();
@@ -228,6 +232,10 @@ impl MirrorService {
     pub async fn sync(&self, repo: RepoId) -> Result<(), ServiceError> {
         let Some(mirror) = self.store().find(repo).await? else { return Ok(()) };
         let Some(context) = RepoContext::load_for_system(&self.inner.ctx, repo).await? else { return Ok(()) };
+        if context.repo.repo.is_archived() {
+            // Archived mirrors are frozen: they fetch again once unarchived.
+            return Ok(());
+        }
         // Clear transient progress on success, errors and cancellation alike.
         let _progress = ActiveProgress { phases: &self.inner.phases, repo };
         lock(&self.inner.phases).insert(repo, MirrorPhase::Connecting);

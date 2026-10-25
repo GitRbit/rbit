@@ -110,8 +110,8 @@ they do not install or download an update automatically.
 **Collaboration**
 
 - **Issues**: labels, milestones, assignees, `#12` / `@name` references, `fixes #12` in commits, search with
-  GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue, with
-  one-click unsubscribe.
+  GitHub-style filters, and a notification inbox — by email too if you want it, threaded per issue or
+  collected into a daily or weekly digest, with one-click unsubscribe.
 - **Pull requests**: within a repository or across forks, line comments with resolvable conversations,
   reviews and review requests, mergeability checks, a base-branch picker for existing pull requests,
   and merging by merge commit, squash or rebase.
@@ -119,6 +119,11 @@ they do not install or download an update automatically.
   restricted pushers — enforced over HTTPS and SSH and for merges.
 - **Access**: collaborators and organisation teams with read/write/admin permissions, repository transfer
   with redirects from old names.
+- **Archived repositories**: administrators archive a finished project from its settings (or the API's
+  `archived` field) to make it read-only. It can still be read, cloned, forked and starred, but pushes over
+  HTTPS and SSH, merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused, and its pull and push mirrors pause.
+  Lists mark archived repositories and Explore can hide or show only them; unarchiving restores everything.
 
 Change your username in **Settings → Account** using your current password. Your profile
 links, repository URLs and Git HTTP/SSH remotes continue to work under old account names
@@ -282,14 +287,14 @@ lives in [deploy/rbit.example.toml](deploy/rbit.example.toml).
 | `[imports]` | Importing from GitHub and Gitea/Forgejo | `enabled`, `max_concurrent`, `git_timeout_seconds`, `api_timeout_seconds`, `rate_limit_max_wait_seconds`, `author_mapping` (`none` \| `email` \| `email_or_username`), `allow_private_addresses` |
 | `[issues]` | Issues and notifications | `scan_commit_limit`, `notifications`, `notification_retention_days` |
 | `[pulls]` | Pull requests | `merge_timeout_seconds`, `max_concurrent_merges`, `mergeability_concurrency`, `max_commits`, `noreply_domain` |
-| `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`) |
+| `[notifications]` | Email notifications on top of the inbox (need a `[mail]` transport and a verified address) | `email`, `default_email` (`off` \| `participating` \| `all`), `digest_hour` (0–23 UTC, when daily and weekly digests are sent) |
 | `[editor]` | Editing and uploading files in the browser | `max_upload_bytes`, `max_upload_files`, `upload_timeout_seconds` |
 | `[lfs]` | Git Large File Storage | `enabled`, `max_object_bytes`, `token_lifetime_seconds` |
 | `[auth]` | External sign-in; register `{public_url}/login/{id}/callback` at the provider | `timeout_seconds`, `allow_private_addresses`, `[[auth.providers]]` (`kind` = `oidc` \| `github`, `id`, `name`, `issuer` / `base_url`, `client_id`, `client_secret`, `scopes`, `allow_registration`, `trust_email`, `trust_mfa`) |
 
-Site name, registration, who may create organisations and the default repository
-visibility can also be changed at runtime by administrators under **Site administration →
-Settings**.
+Site name, registration, who may create organisations, the default repository
+visibility and the default email digest hour can also be changed at runtime by
+administrators under **Site administration → Settings**.
 
 ## Command line
 

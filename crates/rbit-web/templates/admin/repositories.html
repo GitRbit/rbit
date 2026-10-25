@@ -27,6 +27,7 @@
           <div class="flex min-w-0 items-center gap-2">
             <a href="{{ repo.url }}" class="truncate font-medium hover:underline"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</a>
             {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
+            {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
           </div>
           {% if let Some(description) = repo.description %}<p class="truncate text-xs text-ink-muted">{{ description }}</p>{% endif %}
         </td>

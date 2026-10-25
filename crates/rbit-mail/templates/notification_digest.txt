@@ -1,0 +1,22 @@
+Your {{ m.period() }} digest: {{ m.summary() }}.
+{%- for repo in m.repositories %}
+
+{{ repo.name }}
+{%- for thread in repo.threads %}
+
+{{ thread.label() }}: {{ thread.title }}
+{%- for entry in thread.entries %}
+- {{ entry.headline }}
+{%- if !entry.excerpt.is_empty() %}
+  {{ entry.excerpt }}
+{%- endif %}
+  {{ entry.link }}
+{%- endfor %}
+{%- endfor %}
+{%- endfor %}
+
+You are receiving this digest because you chose {{ m.period() }} notification emails.
+Notification settings: {{ m.settings_link }}
+Stop notification emails: {{ m.unsubscribe_link }}
+
+{% include "footer.txt" %}

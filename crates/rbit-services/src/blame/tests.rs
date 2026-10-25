@@ -268,6 +268,7 @@ fn fixture() -> (tempfile::TempDir, RepoContext) {
                 created_at: Timestamp(1),
                 updated_at: Timestamp(1),
                 pushed_at: None,
+                archived_at: None,
             },
         },
         access: RepoAccess::Read,

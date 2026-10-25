@@ -305,15 +305,17 @@ async fn explore_searches_public_repositories_by_page() {
     fixture.repo_in(&alice, "", "hidden", Visibility::Private).await.unwrap();
     let repos = &fixture.services.repositories;
 
-    let first = repos.explore(&RepoSearch { text: String::new(), sort: RepoSort::Name, page: 0 }).await.unwrap();
+    let first = repos.explore(&RepoSearch { text: String::new(), sort: RepoSort::Name, page: 0, ..RepoSearch::default() }).await.unwrap();
     assert_eq!((first.total, first.page, first.page_count(), first.repos.len()), (35, 1, 2, 30));
     assert_eq!(first.repos[0].repo.name.as_str(), "repo-00");
     assert!(first.has_next() && !first.has_previous());
 
-    let past_end = repos.explore(&RepoSearch { text: String::new(), sort: RepoSort::Name, page: 99 }).await.unwrap();
+    let past_end =
+        repos.explore(&RepoSearch { text: String::new(), sort: RepoSort::Name, page: 99, ..RepoSearch::default() }).await.unwrap();
     assert_eq!((past_end.page, past_end.repos.len()), (2, 5));
 
-    let found = repos.explore(&RepoSearch { text: " REPO-3 ".into(), sort: RepoSort::Newest, page: 1 }).await.unwrap();
+    let found =
+        repos.explore(&RepoSearch { text: " REPO-3 ".into(), sort: RepoSort::Newest, page: 1, ..RepoSearch::default() }).await.unwrap();
     let names: Vec<_> = found.repos.iter().map(|r| r.repo.name.to_string()).collect();
     assert_eq!(names, ["repo-34", "repo-33", "repo-32", "repo-31", "repo-30"]);
 

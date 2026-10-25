@@ -280,8 +280,11 @@ impl LfsService {
         operation: LfsOperation,
         objects: &[BatchRequestObject],
     ) -> Result<Vec<BatchObject>, ServiceError> {
-        if operation.is_write() && !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
+        if operation.is_write() {
+            if !repo.access.can_write() {
+                return Err(ServiceError::Forbidden);
+            }
+            repo.ensure_writable()?;
         }
         if objects.len() > MAX_BATCH_OBJECTS {
             return Err(ServiceError::Invalid(format!("a batch can name at most {MAX_BATCH_OBJECTS} objects")));
@@ -376,6 +379,7 @@ impl LfsService {
         if !repo.access.can_write() {
             return Err(ServiceError::Forbidden);
         }
+        repo.ensure_writable()?;
         let max = self.max_object_bytes();
         if size > max {
             return Err(ServiceError::Invalid(format!("objects can be at most {}", human_bytes(max))));

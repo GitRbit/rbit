@@ -2,10 +2,12 @@
 //! costs far more than compiling the tests themselves.
 
 mod admin_configuration;
+mod archives;
 mod contributions;
 mod listings;
 mod markdown_preview;
 mod mirror_progress;
+mod notification_settings;
 mod properties;
 mod repository_documents;
 mod security;

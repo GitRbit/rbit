@@ -2,7 +2,8 @@
 //!
 //! Milestone 2 workstream P (pull requests) owns this file.
 //!
-//! Merging needs `Write` on the base repository and every requirement of
+//! Merging needs `Write` on the base repository, which must not be archived
+//! ([`RepoContext::ensure_writable`]), and every requirement of
 //! [`rbit_core::pull::evaluate`]; protection rules come from
 //! [`crate::ProtectionService::check_merge`]. A merger whose rules allow a bypass may merge
 //! anyway after confirming (`MergeInput::bypass`), which is audited as
@@ -178,7 +179,7 @@ impl PullService {
             conflict_paths: if mergeable == Mergeability::Conflict { ctx.pull.conflict_paths.clone() } else { Vec::new() },
             statuses,
             head_branch_exists,
-            can_merge: viewer.is_some() && ctx.repo().access.can_write(),
+            can_merge: viewer.is_some() && ctx.repo().can_write_content(),
             can_delete_head,
             default_title,
             default_message,
@@ -231,6 +232,7 @@ impl PullService {
         if !ctx.repo().access.can_write() {
             return Err(ServiceError::Forbidden.into());
         }
+        ctx.repo().ensure_writable()?;
         let lock = merge_lock(&self.inner.merge_locks, ctx.repo().repo.repo.id);
         let _serialised = lock.lock().await;
         let _slot = self.inner.merge_slots.acquire().await.map_err(ServiceError::internal)?;
@@ -365,7 +367,7 @@ impl PullService {
         let Some(head) = &ctx.head_repo else { return };
         let result = async {
             let head_ctx = self.inner.repositories.open(Some(actor), head.owner.name.as_str(), head.repo.name.as_str()).await?;
-            if !head_ctx.access.can_write() || !self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await? {
+            if !head_ctx.can_write_content() || !self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await? {
                 return Ok(false);
             }
             let pending = self.inner.pushes.begin(&head_ctx, Some(actor.id())).await;
@@ -386,7 +388,7 @@ impl PullService {
         }
     }
 
-    /// Whether `actor` may delete the head branch: write access to the head repository and
+    /// Whether `actor` may delete the head branch: write access to the unarchived head repository and
     /// no protection rule against deleting it (`ProtectionService::may_delete_branch`).
     ///
     /// A head branch in the base repository uses the access this request already computed
@@ -404,7 +406,7 @@ impl PullService {
             };
             &opened
         };
-        Ok(head_ctx.access.can_write() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
+        Ok(head_ctx.can_write_content() && self.inner.protection.may_delete_branch(head_ctx, actor, &ctx.pull.head_branch).await?)
     }
 
     /// Deletes the head branch of a merged or closed pull request on request (the "Delete
@@ -416,6 +418,9 @@ impl PullService {
         let Some(head) = &ctx.head_repo else { return Ok(false) };
         if !self.access_of(actor.id(), head).await?.can_write() {
             return Err(ServiceError::Forbidden);
+        }
+        if head.repo.is_archived() {
+            return Err(ServiceError::Archived);
         }
         if !self.may_delete_head(actor, ctx).await? {
             return Err(ServiceError::Invalid("the head branch is protected".to_owned()));

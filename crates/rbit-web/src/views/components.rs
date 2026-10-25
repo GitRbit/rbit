@@ -48,6 +48,8 @@ pub struct RepoCard {
     pub url: String,
     pub description: Option<String>,
     pub is_private: bool,
+    /// Archived (read-only): marked with a badge.
+    pub is_archived: bool,
     pub updated: String,
     pub updated_iso: String,
     pub owner_avatar: Avatar,
@@ -69,6 +71,7 @@ impl From<&OwnedRepository> for RepoCard {
             url: format!("/{}/{}", item.owner.name, item.repo.name),
             description: item.repo.description.clone(),
             is_private: !item.repo.visibility.is_public(),
+            is_archived: item.repo.is_archived(),
             updated: item.repo.updated_at.relative(),
             updated_iso: item.repo.updated_at.iso8601(),
             owner_avatar: Avatar::for_account(&item.owner),

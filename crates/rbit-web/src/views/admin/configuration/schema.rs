@@ -521,6 +521,14 @@ const NOTIFICATIONS: &[Spec] = &[
         optional: false,
         max: "",
     },
+    Spec {
+        key: "digest_hour",
+        label: "Default digest hour (UTC)",
+        help: "The hour, 0 to 23 in UTC, daily and weekly email digests are sent at for users who did not choose one. Site administration → Settings overrides it at runtime.",
+        kind: Kind::Number,
+        optional: false,
+        max: "23",
+    },
 ];
 
 const OPERATIONS: &[Spec] = &[

@@ -83,6 +83,7 @@ pub fn repository(repo: &OwnedRepository, base_url: &str, fork: bool) -> Value {
         "created_at": timestamp(repo.repo.created_at),
         "updated_at": timestamp(repo.repo.updated_at),
         "pushed_at": optional_timestamp(repo.repo.pushed_at),
+        "archived": repo.repo.is_archived(),
     })
 }
 
@@ -169,7 +170,8 @@ fn short(id: &str) -> &str {
     id.get(..12).unwrap_or(id)
 }
 
-/// A `repository` payload (`created`, `deleted` or `transferred`).
+/// A `repository` payload (`created`, `deleted`, `transferred`, `archived` or
+/// `unarchived`).
 pub fn repository_event(action: &str, repo: &Value, sender: Option<&Account>, base_url: &str) -> Value {
     json!({
         "action": action,
@@ -430,6 +432,7 @@ mod tests {
                 created_at: Timestamp(1_792_022_400),
                 updated_at: Timestamp(1_792_022_460),
                 pushed_at: None,
+                archived_at: None,
             },
             owner,
         }

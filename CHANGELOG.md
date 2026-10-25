@@ -42,6 +42,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Collect notification emails into a daily or weekly email digest under Settings →
+  Notifications, at a chosen hour (UTC). Digests are grouped by repository, leave out
+  threads already read in the app, keep the one-click unsubscribe headers and are never
+  sent twice, also after a restart. Immediate emails stay the default. Administrators set
+  the default digest hour under Site administration → Settings (`[notifications]
+  digest_hour`, default 8), and `rbit_notification_digests_total{outcome}` counts sent and
+  failed digests.
+- Archive repositories from the settings danger zone or with `PATCH /api/v1/repos/{owner}/{repo}`
+  (`"archived": true`). Archived repositories are read-only: pushes over HTTP and SSH,
+  merges, browser edits, issues, pull requests, comments, reviews, labels, milestones,
+  releases, commit statuses and LFS uploads and locks are refused (the API answers 403
+  "Repository was archived so is read-only."), while reading, cloning, forking and starring
+  keep working. Pull and push mirrors pause until the repository is unarchived. Pages show
+  a banner and hide write controls, lists mark archived repositories, and Explore filters
+  them (`?archived=true|false`). Archiving and unarchiving are audited and send a
+  `repository` webhook (`archived` / `unarchived`); repository objects gain `archived`.
 - Export SQLite contention metrics: connection pool waits, write lock waits, write
   transaction durations and `SQLITE_BUSY`/`SQLITE_BUSY_SNAPSHOT` errors by store
   (`rbit_sqlite_*`, see the deployment guide's metrics table).
@@ -221,6 +237,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
+- Startup applies migration `0047_email_digests.sql`, adding the delivery choice and digest
+  hour to `notification_email_settings` and the `notification_digests` and
+  `notification_digest_items` tables. Existing users keep immediate notification emails;
+  nothing changes until someone chooses a digest. Back up the database before upgrading
+  as usual.
+- Startup applies migration `0046_repo_archives.sql`, adding the `repo_archives` table.
+  Existing repositories stay unarchived and their rows are unchanged; back up the database
+  before upgrading as usual.
 - Back up the database before upgrading. Migration `0045` adds the issue-list ordering
   index and runs automatically at startup; migrations only move forward.
 
