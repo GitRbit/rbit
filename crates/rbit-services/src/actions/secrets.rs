@@ -585,6 +585,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets.key");
         std::fs::write(&path, "not a key").unwrap();
+        // Private, as a key must be, so the content is what is refused (Unix checks the
+        // mode first).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
         let problem = load_key(&path, async { Ok(false) }).await.unwrap_err();
         assert!(problem.0.contains("unusable"), "{problem}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "not a key");
