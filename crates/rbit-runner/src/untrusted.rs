@@ -43,7 +43,12 @@ pub fn create(path: &Path, private: bool) -> io::Result<File> {
 }
 
 /// Opens the regular file at `path` for reading, refusing a link, a pipe or a device.
+/// Anything else is turned away before it is opened, so opening a device has no effect;
+/// the type is checked again on the open file, in case it changed in between.
 pub fn open(path: &Path) -> io::Result<File> {
+    if !fs::symlink_metadata(path)?.is_file() {
+        return Err(not_regular(path));
+    }
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]

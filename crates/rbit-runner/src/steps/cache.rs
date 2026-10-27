@@ -18,9 +18,10 @@
 //! Paths are listed one per line. They are relative to the workspace or, on the host
 //! backend, start with `~/` for the runner user's home; container jobs can cache only
 //! what is inside the mounted workspace. Glob patterns and exclusions are not supported
-//! yet. Archives store symbolic links as links, never what they point to, and a restore
-//! never writes through a symbolic link: a job cannot use the cache to write outside the
-//! directories it names.
+//! yet. Archives store symbolic links as links, never what they point to (and pipes and
+//! device nodes as such, never their content), and a restore never writes through a
+//! symbolic link or into anything but a new file: a job cannot use the cache to write
+//! outside the directories it names.
 
 use std::{
     collections::BTreeMap,
@@ -309,20 +310,22 @@ pub(super) fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
         match entry.header().entry_type() {
             tar::EntryType::Directory => fs::create_dir_all(&target)?,
             tar::EntryType::Regular | tar::EntryType::Continuous => {
-                let mut file = File::create(&target)?;
+                // Whatever a job left in the way (a link, a pipe, a device node) is replaced,
+                // never opened: writing into it would block, or reach the host.
+                let mut file = crate::untrusted::create(&target, false)?;
                 io::copy(&mut entry, &mut file)?;
                 #[cfg(unix)]
                 if let Ok(mode) = entry.header().mode() {
                     use std::os::unix::fs::PermissionsExt as _;
-                    let _ = fs::set_permissions(&target, fs::Permissions::from_mode(mode & 0o777));
+                    let _ = file.set_permissions(fs::Permissions::from_mode(mode & 0o777));
                 }
                 restored += 1;
             }
             #[cfg(unix)]
             tar::EntryType::Symlink => {
                 if let Some(link) = entry.link_name()? {
-                    if target.exists() {
-                        let _ = fs::remove_file(&target);
+                    if fs::symlink_metadata(&target).is_ok_and(|metadata| !metadata.is_dir()) {
+                        fs::remove_file(&target)?;
                     }
                     std::os::unix::fs::symlink(link, &target)?;
                 }
@@ -531,5 +534,35 @@ mod tests {
         let archive = store.entry(5, "s", "k").0;
         extract(&archive, &roots).unwrap();
         assert!(!outside.join("file").exists(), "nothing was written through the link");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restores_replace_pipes_and_links_instead_of_opening_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, roots) = (store(dir.path(), 1 << 30), roots(dir.path()));
+        let outside = dir.path().join("credential");
+        fs::write(&outside, "secret").unwrap();
+        fs::write(roots.workspace.join("piped"), "cached").unwrap();
+        fs::write(roots.workspace.join("linked"), "cached").unwrap();
+        save(&store, &roots, "s", "k", &["piped", "linked"]);
+        // A later job leaves a pipe and a link where the files go.
+        let Some(mkfifo) = crate::process::find_program("mkfifo") else { return };
+        fs::remove_file(roots.workspace.join("piped")).unwrap();
+        assert!(std::process::Command::new(mkfifo).arg(roots.workspace.join("piped")).status().unwrap().success());
+        fs::remove_file(roots.workspace.join("linked")).unwrap();
+        std::os::unix::fs::symlink(&outside, roots.workspace.join("linked")).unwrap();
+        let archive = store.entry(5, "s", "k").0;
+        let (done, wait) = std::sync::mpsc::channel();
+        let restore_roots = roots.clone();
+        std::thread::spawn(move || done.send(extract(&archive, &restore_roots).map_err(|error| error.to_string())));
+        let restored = wait.recv_timeout(std::time::Duration::from_secs(10)).expect("a pipe in the way does not block the restore");
+        assert_eq!(restored.unwrap(), 2);
+        for name in ["piped", "linked"] {
+            let metadata = fs::symlink_metadata(roots.workspace.join(name)).unwrap();
+            assert!(metadata.is_file(), "{name} is a new regular file");
+            assert_eq!(fs::read_to_string(roots.workspace.join(name)).unwrap(), "cached");
+        }
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "secret", "the link's target is untouched");
     }
 }
