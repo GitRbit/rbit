@@ -112,9 +112,11 @@ impl Store {
         None
     }
 
-    /// Whether `key` is already saved in `scope`.
-    pub fn exists(&self, repository: i64, scope: &str, key: &str) -> bool {
-        self.entry(repository, scope, key).0.is_file()
+    /// Whether `key` is already saved in `scope` with these `paths`. An entry of the key with
+    /// other paths never matches [`Self::find`], so it is replaced rather than kept.
+    pub fn exists(&self, repository: i64, scope: &str, key: &str, paths: &[String]) -> bool {
+        let (archive, meta) = self.entry(repository, scope, key);
+        archive.is_file() && read_meta(&meta).is_some_and(|meta| meta.key == key && meta.paths == paths)
     }
 
     /// Archives `paths` (resolved against `roots`) as `key` in `scope`, then evicts. The
@@ -423,7 +425,7 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
 /// `replace`.
 pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Result<(), String> {
     let (repository, scope) = (job.spec.cache.repository_id, job.spec.cache.write.clone());
-    if !replace && job.cache.exists(repository, &scope, key) {
+    if !replace && job.cache.exists(repository, &scope, key, paths) {
         job.reporter.log(&format!("The cache entry `{key}` already exists in scope `{scope}`; it is not saved again"));
         return Ok(());
     }
@@ -502,8 +504,10 @@ mod tests {
         touch(&limited.entry(5, "s", "one").0);
         std::thread::sleep(std::time::Duration::from_millis(20));
         save(&limited, &roots, "s", "three", &["blob"]);
-        assert!(limited.exists(5, "s", "one") && limited.exists(5, "s", "three"));
-        assert!(!limited.exists(5, "s", "two"));
+        let blob = ["blob".to_owned()];
+        assert!(limited.exists(5, "s", "one", &blob) && limited.exists(5, "s", "three", &blob));
+        assert!(!limited.exists(5, "s", "two", &blob));
+        assert!(!limited.exists(5, "s", "one", &["other".to_owned()]), "an entry with other paths is replaced, not kept");
         assert!(!limited.entry(5, "s", "two").1.exists(), "the entry's metadata goes too");
         let tiny = store(dir.path(), 10);
         let paths = vec!["blob".to_owned()];
