@@ -1326,9 +1326,13 @@ and what is known to be missing. Where they disagree, this section and the code 
 - **Metrics:** the Actions metrics of §9 are not exported.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
-- **Not exercised yet:** the container backend against a real Docker or Podman, the
-  Unix-only runner code (process groups, file modes) outside CI, and the new pages at 375 px
-  and in the dark theme (the stylesheet was not built where they were written).
+- **Not exercised yet:** the container backend against a real Docker or Podman, and the
+  Unix-only runner code (process groups, file modes) outside CI.
+- **Checked by hand** with CI's stylesheet on a seeded instance, with a host runner running a
+  workflow with a matrix, a failing job, a masked secret and an artifact: the Actions tab, run,
+  job and raw log pages and the repository, organisation, account and instance settings, at
+  375 px in light and dark and on desktop, with nothing wider than the screen; long log lines
+  scroll inside their box.
 
 ### 13.3 Migrations
 
