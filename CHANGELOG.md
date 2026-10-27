@@ -26,8 +26,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registers with a single-use token, runs jobs in Docker or Podman containers (no privileges,
   no Docker socket, a network per job) or on the host, masks secrets in logs, and offers
   `rbit-runner exec` to run a workflow locally. With the container backend the runner
-  follows no link and trusts no `.git` that a job leaves in its mounted directories, and it
-  pauses the job's container while built-in steps work on them.
+  follows no link and opens no pipe or device a job leaves in its mounted directories, trusts
+  no `.git` there, and pauses the job's container while built-in steps work on them;
+  containers drop `MKNOD`, no job variable reaches the container engine's own process, and
+  checkout's `git` uses only HTTPS (and the instance's own scheme), submodules included.
 - An **Actions** tab with runs, run pages, job pages with live logs and raw downloads, and
   artifacts; settings for the repository switch, the default token permission, secrets
   (sealed with AES-256-GCM under a key file kept out of the database), variables, trusted

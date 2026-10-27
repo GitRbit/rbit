@@ -532,6 +532,15 @@ credential and the work directory in its `/var/lib/rbit-runner` volume.
   is the strongest setup; a container escape is a kernel or runtime bug, so prefer one runner
   host or VM per trust level, and ephemeral runners (`rbit-runner run --once`) for public
   repositories.
+  The runner works on a job's files from the host only through checks that refuse links,
+  pipes and device nodes (containers also drop `MKNOD`), and a job's environment variables
+  never reach the container CLI's own process unless they are harmless there.
+
+  What containers can still reach: the network the runner host is on, including a cloud
+  provider's metadata endpoint (`169.254.169.254`), which hands out the VM's credentials. Block
+  it for the runner's networks (an `iptables` rule on the bridge, or the provider's setting that
+  turns the endpoint off or requires a token), and keep the VM's role free of permissions jobs
+  should not have. `memory` has no default: set one, or a single job can exhaust the host.
 - `host`: jobs run as the runner's user, with no isolation — they can read the runner's
   credential and anything else that user can. `rbit-runner` warns at registration and at every
   start, and the runners pages say "host — no isolation". Use it only for repository runners of

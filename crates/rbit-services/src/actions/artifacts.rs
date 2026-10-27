@@ -98,7 +98,7 @@ impl ActionsService {
         mut body: impl AsyncRead + Unpin,
     ) -> Result<Artifact, RunnerError> {
         if !valid_artifact_name(upload.name) {
-            return Err(RunnerError::bad_request("artifact names are 1 to 128 letters, digits, '.', '_' or '-'"));
+            return Err(RunnerError::bad_request("artifact names are 1 to 128 letters, digits, '.', '_' or '-', and not '.' or '..'"));
         }
         let expected =
             digest_from_hex(upload.sha256).ok_or_else(|| RunnerError::bad_request("the content digest must be 64 hex digits"))?;
