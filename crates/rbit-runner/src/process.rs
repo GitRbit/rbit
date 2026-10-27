@@ -14,6 +14,11 @@ use std::{
 
 use tokio::process::Command;
 
+/// Longest line [`run_streaming`] hands on before cutting it, in bytes. The task log masks
+/// a whole line before cutting it to the protocol's `MAX_LOG_LINE_BYTES`, so this is kept
+/// well above that: a secret across a cut here would be masked in neither piece.
+pub const MAX_LINE_BYTES: usize = 1024 * 1024;
+
 /// The first `name` on `PATH`, or `name` itself when it is a path to a file.
 pub fn find_program(name: &str) -> Option<PathBuf> {
     find_in(name, std::env::var_os("PATH").as_deref(), std::env::var_os("PATHEXT").as_deref())
@@ -189,11 +194,9 @@ pub async fn run_streaming(
     let (forced, mut forced_signal) = tokio::sync::mpsc::channel::<()>(1);
     let mut escalation: Option<tokio::task::JoinHandle<()>> = None;
     let (sender, mut lines) = tokio::sync::mpsc::channel::<String>(256);
-    let readers: Vec<_> = [child.stdout.take().map(Pipe::Out), child.stderr.take().map(Pipe::Err)]
-        .into_iter()
-        .flatten()
-        .map(|pipe| tokio::spawn(read_lines(pipe, max_line, sender.clone())))
-        .collect();
+    let pipes: [Option<Pipe>; 2] =
+        [child.stdout.take().map(|out| Box::new(out) as Pipe), child.stderr.take().map(|err| Box::new(err) as Pipe)];
+    let readers: Vec<_> = pipes.into_iter().flatten().map(|pipe| tokio::spawn(read_lines(pipe, max_line, sender.clone()))).collect();
     drop(sender);
     tokio::pin!(stop);
     let mut stop_sent = false;
@@ -240,20 +243,16 @@ pub async fn run_streaming(
 /// How long output is still read after a step's process has exited.
 const OUTPUT_DRAIN: Duration = Duration::from_secs(2);
 
-enum Pipe {
-    Out(tokio::process::ChildStdout),
-    Err(tokio::process::ChildStderr),
-}
+/// A process's standard output or error.
+type Pipe = Box<dyn tokio::io::AsyncRead + Unpin + Send>;
 
-/// Sends the lines of `pipe`, decoded lossily, until it closes.
-async fn read_lines(pipe: Pipe, max_line: usize, sender: tokio::sync::mpsc::Sender<String>) {
+/// Sends the lines of `reader`, decoded lossily, until it closes.
+async fn read_lines(mut reader: Pipe, max_line: usize, sender: tokio::sync::mpsc::Sender<String>) {
     use tokio::io::AsyncReadExt as _;
-    let mut reader: Box<dyn tokio::io::AsyncRead + Unpin + Send> = match pipe {
-        Pipe::Out(out) => Box::new(out),
-        Pipe::Err(err) => Box::new(err),
-    };
     let mut buffer = vec![0u8; 16 * 1024];
     let mut line = Vec::new();
+    // Whether `line` continues a line already cut: its end then sends nothing when empty.
+    let mut continued = false;
     loop {
         let read = match reader.read(&mut buffer).await {
             Ok(0) | Err(_) => break,
@@ -264,13 +263,25 @@ async fn read_lines(pipe: Pipe, max_line: usize, sender: tokio::sync::mpsc::Send
                 if line.last() == Some(&b'\r') {
                     line.pop();
                 }
+                if std::mem::take(&mut continued) && line.is_empty() {
+                    continue;
+                }
                 if sender.send(String::from_utf8_lossy(&std::mem::take(&mut line)).into_owned()).await.is_err() {
                     return;
                 }
             } else {
                 line.push(byte);
-                if line.len() >= max_line && sender.send(String::from_utf8_lossy(&std::mem::take(&mut line)).into_owned()).await.is_err() {
-                    return;
+                if line.len() >= max_line {
+                    // Cut before a character the piece ends inside of, so it is not mangled.
+                    let cut = match std::str::from_utf8(&line) {
+                        Err(error) if error.error_len().is_none() && error.valid_up_to() > 0 => error.valid_up_to(),
+                        _ => line.len(),
+                    };
+                    let rest = line.split_off(cut);
+                    continued = true;
+                    if sender.send(String::from_utf8_lossy(&std::mem::replace(&mut line, rest)).into_owned()).await.is_err() {
+                        return;
+                    }
                 }
             }
         }
@@ -296,6 +307,23 @@ mod tests {
         assert!(find_in("", Some(&path), None).is_none());
         let direct = dir.path().join(tool);
         assert_eq!(find_in(direct.to_str().unwrap(), None, None), Some(direct));
+    }
+
+    #[tokio::test]
+    async fn long_lines_are_cut_between_characters() {
+        let lines = |text: &'static str, max_line| async move {
+            let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
+            read_lines(Box::new(text.as_bytes()), max_line, sender).await;
+            let mut lines = Vec::new();
+            while let Some(line) = receiver.recv().await {
+                lines.push(line);
+            }
+            lines
+        };
+        assert_eq!(lines("abcdéfgh\r\nnext\nlast", 5).await, ["abcd", "éfgh", "next", "last"], "é is two bytes");
+        assert_eq!(lines("ab€cd\n", 4).await, ["ab", "€c", "d"]);
+        assert_eq!(lines("short\n", MAX_LINE_BYTES).await, ["short"]);
+        const { assert!(MAX_LINE_BYTES > rbit_workflow::protocol::MAX_LOG_LINE_BYTES * 8, "the log cuts lines after masking them") };
     }
 
     #[tokio::test]

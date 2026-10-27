@@ -15,7 +15,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use rbit_workflow::{model::Shell, protocol::MAX_LOG_LINE_BYTES, spec::StepTemplate};
+use rbit_workflow::{model::Shell, spec::StepTemplate};
 
 use super::Outcome;
 use crate::{
@@ -105,7 +105,7 @@ pub async fn run(
         let reporter = &job.reporter;
         let mut commands = Commands::default();
         let stopper = job.backend.stopper();
-        process::run_streaming(prepared.command, MAX_LOG_LINE_BYTES, signal.wait(), &stopper, |line| match commands.process(&line) {
+        process::run_streaming(prepared.command, process::MAX_LINE_BYTES, signal.wait(), &stopper, |line| match commands.process(&line) {
             Line::Print(text) => reporter.log(&text),
             Line::AddMask(value) => reporter.add_mask(&value),
             Line::Nothing => {}

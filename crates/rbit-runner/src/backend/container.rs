@@ -42,7 +42,7 @@ use std::{
     time::Duration,
 };
 
-use rbit_workflow::protocol::{MAX_LOG_LINE_BYTES, TaskId};
+use rbit_workflow::protocol::TaskId;
 use tokio::process::Command;
 
 use super::{Dirs, StepCommand, View};
@@ -399,7 +399,7 @@ impl Container {
         let mut command = self.cli_with(inherited);
         command.args(args);
         let cancel = reporter.cancellation().clone();
-        match process::run_streaming(command, MAX_LOG_LINE_BYTES, async move { cancel.cancelled().await }, &Stopper::Host, |line| {
+        match process::run_streaming(command, process::MAX_LINE_BYTES, async move { cancel.cancelled().await }, &Stopper::Host, |line| {
             reporter.log(&line);
         })
         .await

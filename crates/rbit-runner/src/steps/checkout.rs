@@ -39,7 +39,7 @@ use std::{
 };
 
 use base64::Engine as _;
-use rbit_workflow::{protocol::MAX_LOG_LINE_BYTES, spec::CheckoutSource};
+use rbit_workflow::spec::CheckoutSource;
 use tokio::process::Command;
 
 use super::{Inputs, Outcome};
@@ -296,7 +296,7 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
         }
         let signal = job.stop_signal(timeout);
         let reporter = &job.reporter;
-        match process::run_streaming(command, MAX_LOG_LINE_BYTES, signal.wait(), &Stopper::Host, |line| reporter.log(&line)).await {
+        match process::run_streaming(command, process::MAX_LINE_BYTES, signal.wait(), &Stopper::Host, |line| reporter.log(&line)).await {
             Ok(Exit::Code(Some(0))) => {}
             Ok(Exit::Stopped) => return job.stopped(signal.reason()),
             Ok(Exit::Code(code)) => {
