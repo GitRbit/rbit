@@ -17,6 +17,12 @@
 //! header is written into the checkout's `.git/config` so later steps can fetch and push;
 //! the file is removed with the task.
 //!
+//! `git` may use only HTTPS and the source's own scheme (plain HTTP when the instance is
+//! reached that way; `file` for `rbit-runner exec`'s local repository), also for submodules: a repository's `.gitmodules` chooses their URLs, and on the host
+//! `ssh://`, `file://` or a local path would reach the runner user's SSH keys or other
+//! repositories on the runner. `~/.netrc` is still read for HTTPS hosts; keep runner hosts
+//! free of credentials a job should not use.
+//!
 //! A container job can write the workspace, and `git` reads a repository's own
 //! configuration (`core.fsmonitor`, hooks, …), so in a container job the checkout never
 //! uses a `.git` it finds: it removes it and starts from step 1 for a new directory, then
@@ -158,18 +164,29 @@ pub fn authorization(token: &str) -> String {
     format!("AUTHORIZATION: basic {credentials}")
 }
 
-/// The environment that gives `git` the header and keeps it from prompting or asking a
-/// credential helper.
+/// The environment that gives `git` the header, keeps it from prompting or asking a
+/// credential helper, and lets it use only HTTPS and the source URL's own scheme,
+/// submodules included.
 pub fn git_env(source: &CheckoutSource, token: &str) -> BTreeMap<String, String> {
-    BTreeMap::from([
+    let mut config = vec![
+        (format!("http.{}.extraheader", server_prefix(source)), authorization(token)),
+        ("credential.helper".to_owned(), String::new()),
+        ("protocol.allow".to_owned(), "never".to_owned()),
+        ("protocol.https.allow".to_owned(), "always".to_owned()),
+    ];
+    if let Some((scheme, _)) = source.url.split_once("://").filter(|(scheme, _)| matches!(*scheme, "http" | "file")) {
+        config.push((format!("protocol.{scheme}.allow"), "always".to_owned()));
+    }
+    let mut env = BTreeMap::from([
         ("GIT_TERMINAL_PROMPT".to_owned(), "0".to_owned()),
         ("GCM_INTERACTIVE".to_owned(), "never".to_owned()),
-        ("GIT_CONFIG_COUNT".to_owned(), "2".to_owned()),
-        ("GIT_CONFIG_KEY_0".to_owned(), format!("http.{}.extraheader", server_prefix(source))),
-        ("GIT_CONFIG_VALUE_0".to_owned(), authorization(token)),
-        ("GIT_CONFIG_KEY_1".to_owned(), "credential.helper".to_owned()),
-        ("GIT_CONFIG_VALUE_1".to_owned(), String::new()),
-    ])
+        ("GIT_CONFIG_COUNT".to_owned(), config.len().to_string()),
+    ]);
+    for (index, (key, value)) in config.into_iter().enumerate() {
+        env.insert(format!("GIT_CONFIG_KEY_{index}"), key);
+        env.insert(format!("GIT_CONFIG_VALUE_{index}"), value);
+    }
+    env
 }
 
 /// `path` inside `workspace`; `None` when it leaves it or goes through a symbolic link.
@@ -343,6 +360,20 @@ mod tests {
             "https://example.com/rbit/"
         );
         assert!(target(Path::new("/w"), "../other").is_none() && target(Path::new("/w"), "/etc").is_none());
+
+        // Only HTTPS, and HTTP only for an instance reached over HTTP: no SSH keys, no local
+        // repositories through a submodule's URL.
+        let config = |env: &BTreeMap<String, String>| {
+            let count: usize = env["GIT_CONFIG_COUNT"].parse().unwrap();
+            (0..count)
+                .map(|index| format!("{}={}", env[&format!("GIT_CONFIG_KEY_{index}")], env[&format!("GIT_CONFIG_VALUE_{index}")]))
+                .collect::<Vec<_>>()
+        };
+        let https = config(&env);
+        assert!(https.contains(&"protocol.allow=never".to_owned()) && https.contains(&"protocol.https.allow=always".to_owned()));
+        assert!(!https.iter().any(|entry| entry.starts_with("protocol.http.")), "{https:?}");
+        let plain = git_env(&CheckoutSource { url: "http://localhost:3000/alice/app".into(), ..source("refs/heads/main") }, token);
+        assert!(config(&plain).contains(&"protocol.http.allow=always".to_owned()));
         assert_eq!(target(Path::new("/w"), "sub/dir"), Some(Path::new("/w").join("sub/dir")));
     }
 
