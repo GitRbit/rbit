@@ -219,7 +219,7 @@ async fn a_cancelled_job_stops_its_step_and_runs_only_always_steps() {
     }
     let sh = |script: &str| with(step(script), |step| step.shell = Some("sh".into()));
     let steps = vec![
-        sh("echo started; sleep 8"),
+        sh("echo started; sleep 15"),
         sh("echo not run"),
         with(sh("echo cleanup ran"), |step| step.condition = Some("always()".into())),
     ];
@@ -235,7 +235,9 @@ async fn a_cancelled_job_stops_its_step_and_runs_only_always_steps() {
         },
     )
     .await;
-    assert!(started.elapsed() < Duration::from_secs(20));
+    // Within the grace period: `sh` and `sleep` end on the polite signal, and where that
+    // cannot be sent (Windows' `taskkill` without `/F`), the forceful one goes at once.
+    assert!(started.elapsed() < crate::process::STOP_GRACE, "{:?}", started.elapsed());
     let text = reporter.lines().join("\n");
     assert_eq!(result, TaskResult::Cancelled, "{text}");
     assert_eq!(statuses(&reporter), [StepStatus::Cancelled, StepStatus::Skipped, StepStatus::Success], "{text}");

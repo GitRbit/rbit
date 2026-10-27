@@ -167,10 +167,14 @@ impl Stopper {
         sent
     }
 
-    /// The polite signal, [`STOP_GRACE`], then the forceful one.
+    /// The polite signal, [`STOP_GRACE`], then the forceful one. On Windows a refused
+    /// `taskkill` without `/F` leaves nothing to wait for: it cannot end a console process
+    /// that has no window, which every host step is.
     async fn escalate(self, pid: Option<u32>) {
-        self.signal(pid, false).await;
-        tokio::time::sleep(STOP_GRACE).await;
+        let sent = self.signal(pid, false).await;
+        if sent || !(cfg!(windows) && matches!(self, Self::Host)) {
+            tokio::time::sleep(STOP_GRACE).await;
+        }
         self.signal(pid, true).await;
     }
 }

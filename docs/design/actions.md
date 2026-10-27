@@ -1372,6 +1372,11 @@ and what is known to be missing. Where they disagree, this section and the code 
 - **`paths-ignore` with a `!` pattern** follows act and Forgejo, not GitHub: a negative
   pattern that does not match a path ignores it, so `['docs/**', '!docs/keep.md']` ignores
   every path but `docs/keep.md`.
+- **Stopping a Git Bash step on a Windows host** ends the shell but not what it started:
+  `taskkill /T` follows Windows' parent links, which MSYS's emulated `fork` does not keep, so
+  a cancelled or timed-out `bash`/`sh` step leaves its children running. `pwsh`, `cmd` and
+  `python` steps are unaffected. A Job Object would catch them all, but needs `unsafe` or a
+  new dependency.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
 - **Not exercised yet:** the container backend against a real Docker or Podman, and the
