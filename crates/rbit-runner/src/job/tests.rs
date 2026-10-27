@@ -237,6 +237,13 @@ async fn jobs_the_label_cannot_run_fail_before_any_step() {
     spec.template.workflow_env.insert("A".into(), "${{ github.repository }}".into());
     let (result, reporter, _work) = execute(spec).await;
     assert_eq!((result, statuses(&reporter)), (TaskResult::Failure, vec![StepStatus::Failure]));
+
+    // A name a container engine's env file could misread never gets that far.
+    let mut spec = host_job(vec![step("echo hi")]);
+    spec.template.env.insert("AWS_SECRET_ACCESS_KEY\nX".into(), "x".into());
+    let (result, reporter, _work) = execute(spec).await;
+    assert_eq!((result, statuses(&reporter)), (TaskResult::Failure, vec![StepStatus::Skipped]));
+    assert!(reporter.lines().iter().any(|line| line.contains("not a valid variable name")), "{:?}", reporter.lines());
 }
 
 #[test]

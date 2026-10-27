@@ -62,6 +62,15 @@ impl Kind {
     }
 }
 
+/// Whether `name` can name an environment variable: `[A-Za-z_][A-Za-z0-9_.-]*`. Anything
+/// else (`=`, a space, a newline, a `#`) could change what a container engine's env file
+/// says, so a workflow's `env` and `GITHUB_ENV` may use only these.
+pub fn valid_variable_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+}
+
 /// Whether `GITHUB_ENV` may set `name`.
 pub fn settable(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
@@ -156,7 +165,7 @@ impl EnvFiles {
             written.outputs.insert(name, value);
         }
         for (name, value) in parse_entries(&text(Kind::Env)?).map_err(|error| format!("GITHUB_ENV: {error}"))? {
-            if name.contains('\0') {
+            if !valid_variable_name(&name) {
                 return Err(format!("GITHUB_ENV: `{}` is not a valid variable name", name.escape_debug()));
             }
             if settable(&name) { written.env.push((name, value)) } else { written.refused.push(name) }
@@ -298,6 +307,13 @@ mod tests {
         let files = EnvFiles::create(dir.path(), 1).unwrap();
         fs::write(files.path(Kind::Output), "1bad=x\n").unwrap();
         assert!(files.collect().unwrap_err().contains("not a valid output name"));
+        // Names an env file could misread are refused, not passed on to a container engine.
+        for (index, line) in ["has space=x\n", "#hidden=x\n", "é=x\n"].into_iter().enumerate() {
+            let files = EnvFiles::create(dir.path(), 10 + index).unwrap();
+            fs::write(files.path(Kind::Env), line).unwrap();
+            assert!(files.collect().unwrap_err().contains("not a valid variable name"), "{line:?}");
+        }
+        assert!(valid_variable_name("_A1.b-c") && !valid_variable_name("1A") && !valid_variable_name("A=B"));
         for name in ["GITHUB_X", "rbit_x", "RUNNER_TEMP", "DYLD_INSERT_LIBRARIES", "BASH_ENV", "env", "NODE_OPTIONS"] {
             assert!(!settable(name), "{name}");
         }

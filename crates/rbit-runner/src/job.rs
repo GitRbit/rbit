@@ -584,7 +584,14 @@ impl Job {
     }
 
     fn render_env(&self, env: &Env) -> Result<BTreeMap<String, String>, String> {
-        env.iter().map(|(name, value)| Ok((name.clone(), self.render(value).map_err(|error| format!("{name}: {error}"))?))).collect()
+        env.iter()
+            .map(|(name, value)| {
+                if !crate::envfiles::valid_variable_name(name) {
+                    return Err(format!("`{}` is not a valid variable name", name.escape_debug()));
+                }
+                Ok((name.clone(), self.render(value).map_err(|error| format!("{name}: {error}"))?))
+            })
+            .collect()
     }
 
     /// The `env` context while a step runs: the job's, then the step's own.

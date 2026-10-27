@@ -18,9 +18,17 @@
 //! Values never travel as arguments: a container's, a service's and every step's
 //! environment goes through an `--env-file` (mode `0600`, in a directory no container
 //! mounts, deleted right after the command), and a multi-line value — which env files
-//! cannot hold — as `-e NAME` with the value in the CLI's own environment. Registry
-//! credentials go through `login --password-stdin` into a per-task configuration
-//! (`DOCKER_CONFIG`, or `REGISTRY_AUTH_FILE` for Podman).
+//! cannot hold — as `-e NAME` with the value in the CLI's own environment. That CLI runs
+//! on the host, so names are checked first ([`EnvFile::write`]): only
+//! `[A-Za-z_][A-Za-z0-9_.-]*` (nothing that could split or empty an env file's line, which
+//! would copy one of the runner's own variables into the container), and no multi-line
+//! value for a name the CLI, its loader or its C library reads ([`reaches_the_engine`]),
+//! such as `LD_PRELOAD` or `DOCKER_HOST`. Registry credentials go through `login
+//! --password-stdin` into a per-task configuration (`DOCKER_CONFIG`, or
+//! `REGISTRY_AUTH_FILE` for Podman), set after the job's values so none can replace it.
+//!
+//! Every container drops `MKNOD`: a job cannot make device nodes in the directories the
+//! runner works on from the host.
 //!
 //! The backend never uses `--privileged`, never mounts the Docker socket and never uses
 //! the host's network. Everything it creates is labelled `rbit.task` and `rbit.runner`;
@@ -132,7 +140,15 @@ pub fn network_create(names: &Names, driver: &str) -> Vec<String> {
 
 /// The limits every container of a task gets.
 fn limits(config: &ContainerConfig) -> Vec<String> {
-    let mut args = vec!["--security-opt".into(), "no-new-privileges".into(), "--pids-limit".into(), config.pids_limit.to_string()];
+    let mut args = vec![
+        "--security-opt".into(),
+        "no-new-privileges".into(),
+        // No device nodes in the mounted directories, which the runner opens from the host.
+        "--cap-drop".into(),
+        "MKNOD".into(),
+        "--pids-limit".into(),
+        config.pids_limit.to_string(),
+    ];
     if let Some(memory) = &config.memory {
         args.extend(["--memory".into(), memory.clone()]);
     }
@@ -198,6 +214,64 @@ pub fn remove(containers: &[String]) -> Vec<String> {
     ["rm".to_owned(), "--force".to_owned()].into_iter().chain(containers.iter().cloned()).collect()
 }
 
+/// Whether a variable called `name` changes how the container CLI itself runs on the host:
+/// what its dynamic loader and C library read (glibc's list of variables it ignores for
+/// set-user-ID programs), the Go runtime's, the engines' own, trust stores and proxies,
+/// and the paths and identity it runs with. Such a name may not carry a multi-line value,
+/// the one kind that travels in the CLI's environment. Case is ignored (Windows).
+pub fn reaches_the_engine(name: &str) -> bool {
+    const PREFIXES: [&str; 18] = [
+        "LD_",
+        "DYLD_",
+        "MALLOC_",
+        "GLIBC_",
+        "GO",
+        "DOCKER_",
+        "PODMAN",
+        "CONTAINER_",
+        "CONTAINERS_",
+        "_CONTAINERS_",
+        "BUILDAH_",
+        "STORAGE_",
+        "XDG_",
+        "SSL_",
+        "CURL_",
+        "REGISTRY_",
+        "NIX_",
+        "DBUS_",
+    ];
+    const NAMES: [&str; 26] = [
+        "GCONV_PATH",
+        "GETCONF_DIR",
+        "HOSTALIASES",
+        "LOCALDOMAIN",
+        "LOCPATH",
+        "NIS_PATH",
+        "NLSPATH",
+        "RESOLV_HOST_CONF",
+        "RES_OPTIONS",
+        "TMPDIR",
+        "TZDIR",
+        "PATH",
+        "HOME",
+        "USER",
+        "SHELL",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "USERPROFILE",
+        "TEMP",
+        "TMP",
+        "IFS",
+    ];
+    let upper = name.to_ascii_uppercase();
+    PREFIXES.iter().any(|prefix| upper.starts_with(prefix)) || NAMES.contains(&upper.as_str()) || upper.ends_with("_PROXY")
+}
+
 /// An env file that is deleted when dropped.
 #[derive(Debug)]
 pub struct EnvFile {
@@ -208,8 +282,21 @@ pub struct EnvFile {
 
 impl EnvFile {
     /// Writes `env` to `path` (mode `0600` on Unix): `NAME=value` lines for single-line
-    /// values, the rest left to [`Self::inherited`].
+    /// values, the rest left to [`Self::inherited`]. A name that is not a valid variable
+    /// name, or a multi-line value of one that [`reaches_the_engine`], is refused before
+    /// anything is written.
     pub fn write(path: &Path, env: &BTreeMap<String, String>) -> std::io::Result<Self> {
+        let refused = |message: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, message);
+        for (name, value) in env {
+            if !crate::envfiles::valid_variable_name(name) {
+                return Err(refused(format!("`{}` is not a valid variable name", name.escape_debug())));
+            }
+            if value.contains(['\n', '\r']) && reaches_the_engine(name) {
+                return Err(refused(format!(
+                    "`{name}` cannot hold a multi-line value in a container job: it would reach the container engine's own process"
+                )));
+            }
+        }
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
@@ -292,18 +379,25 @@ impl Container {
         self.shells.contains(name).then(|| name.to_owned())
     }
 
-    /// The CLI with this task's registry configuration.
-    fn cli(&self) -> Command {
+    /// The CLI with `inherited` (multi-line values, checked by [`EnvFile::write`]) and then
+    /// this task's registry configuration, which nothing of the job's can replace.
+    fn cli_with(&self, inherited: &[(String, String)]) -> Command {
         let mut command = Command::new(&self.program);
+        command.envs(inherited.iter().map(|(name, value)| (name, value)));
         command.env("DOCKER_CONFIG", self.private.join("docker")).env("REGISTRY_AUTH_FILE", self.private.join("auth.json"));
         command
+    }
+
+    /// The CLI with this task's registry configuration.
+    fn cli(&self) -> Command {
+        self.cli_with(&[])
     }
 
     /// Runs the CLI with `args`, logging the command line and its output.
     async fn run(&self, reporter: &Reporter, args: &[String], inherited: &[(String, String)]) -> Result<(), String> {
         reporter.log(&format!("[command]{} {}", self.program_name(), args.join(" ")));
-        let mut command = self.cli();
-        command.args(args).envs(inherited.iter().map(|(name, value)| (name, value)));
+        let mut command = self.cli_with(inherited);
+        command.args(args);
         let cancel = reporter.cancellation().clone();
         match process::run_streaming(command, MAX_LOG_LINE_BYTES, async move { cancel.cancelled().await }, &Stopper::Host, |line| {
             reporter.log(&line);
@@ -422,9 +516,8 @@ impl Container {
     /// The `exec` command of `step`, and its env file, which must outlive the command.
     pub fn command(&self, step: &StepCommand) -> std::io::Result<(Command, EnvFile)> {
         let env = EnvFile::write(&self.private.join(format!("step-{}.env", crate::client::idempotency_key())), &step.env)?;
-        let mut command = self.cli();
+        let mut command = self.cli_with(&env.inherited);
         command.args(step_exec(&self.names, step, env.path(), &env.names()));
-        command.envs(env.inherited.iter().map(|(name, value)| (name, value)));
         Ok((command, env))
     }
 
@@ -541,7 +634,7 @@ mod tests {
             "--mount type=bind,source=/work/tasks/42/files,target=/__w/_files",
             "--workdir /__w/app",
             "--label rbit.task=42 --label rbit.runner=build-1",
-            "--security-opt no-new-privileges --pids-limit 4096 --memory 4g --cpus 2",
+            "--security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --memory 4g --cpus 2",
             "--env-file /p/job.env -e KEY",
         ] {
             assert!(line.contains(part), "{part:?} missing from {line}");
@@ -560,7 +653,7 @@ mod tests {
         assert_eq!(
             args.join(" "),
             "run --detach --name rbit-42-postgres --network rbit-42 --network-alias postgres --label rbit.task=42 \
-             --label rbit.runner=build-1 --security-opt no-new-privileges --pids-limit 4096 --env-file /p/s.env postgres:17"
+             --label rbit.runner=build-1 --security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --env-file /p/s.env postgres:17"
         );
         assert_eq!(remove(&["rbit-42-postgres".into(), "rbit-42-job".into()]).join(" "), "rm --force rbit-42-postgres rbit-42-job");
     }
@@ -595,6 +688,31 @@ mod tests {
         }
         drop(file);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn nothing_of_the_job_reaches_the_engine_or_the_runners_variables() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.env");
+        let write = |name: &str, value: &str| EnvFile::write(&path, &BTreeMap::from([(name.to_owned(), value.to_owned())]));
+        // A newline in a name would make a bare `NAME` line, which copies the runner's own
+        // variable into the container; `=` or a space would change the line.
+        for name in ["AWS_SECRET_ACCESS_KEY\nX", "A=B", "has space", "#comment", "", "1ST", "é"] {
+            let error = write(name, "v").unwrap_err();
+            assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput, "{name:?}");
+            assert!(!path.exists(), "nothing is written for {name:?}");
+        }
+        // Multi-line values travel in the CLI's environment: never for what the CLI reads.
+        for name in ["LD_PRELOAD", "ld_preload", "GCONV_PATH", "GLIBC_TUNABLES", "DOCKER_HOST", "PATH", "https_proxy", "XDG_RUNTIME_DIR"] {
+            let error = write(name, "/work/evil.so:\n").unwrap_err();
+            assert!(error.to_string().contains("container engine"), "{name}: {error}");
+        }
+        // Single-line values of those names only go into the file, to the container.
+        let fine = write("PATH", "/usr/local/bin:/usr/bin").unwrap();
+        assert_eq!(fine.names(), Vec::<String>::new());
+        drop(fine);
+        let key = write("SSH_KEY", "-----BEGIN-----\nabc\n-----END-----").unwrap();
+        assert_eq!(key.names(), ["SSH_KEY"], "an ordinary multi-line value still works");
     }
 
     #[test]
