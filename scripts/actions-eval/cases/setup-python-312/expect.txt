@@ -1,0 +1,4 @@
+result: success
+split: train
+contains: Python 3.12
+skip: windows-host  # its Windows installer needs administrator rights, on GitHub's runner too

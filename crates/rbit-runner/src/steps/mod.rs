@@ -4,6 +4,7 @@
 //! defaults and checked against what the input takes (`rbit_workflow::builtins`), so an
 //! expression that evaluates to `maybe` for a boolean fails the step with a message.
 
+pub mod action;
 pub mod artifact;
 pub mod cache;
 pub mod checkout;

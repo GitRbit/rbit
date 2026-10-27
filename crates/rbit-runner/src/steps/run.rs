@@ -77,44 +77,90 @@ pub async fn run(
     if let Err(error) = written {
         return job.fail(&format!("cannot write the script: {error}"));
     }
-    let files = match EnvFiles::create(&job.dirs.files, index) {
-        Ok(files) => files,
-        Err(error) => {
-            let _ = std::fs::remove_file(&script_path);
-            return job.fail(&format!("cannot create the env files: {error}"));
-        }
-    };
     let mut script_view = join(&view.temp, &name, windows);
     if windows && matches!(shell, Shell::Bash | Shell::Sh) {
         // Git for Windows' bash reads `C:/…` paths reliably, backslashes less so.
         script_view = script_view.replace('\\', "/");
     }
     let (args, raw_args) = command_line(shell, &script_view);
-    let command = StepCommand { program, args, raw_args, env: job.process_env(step_env, files.variables(&view.files)), cwd };
+    let process = StepProcess { program, args, raw_args, cwd, extra: Vec::new() };
+    let (outcome, _) = execute(job, index, process, step_env, timeout).await;
+    let _ = std::fs::remove_file(&script_path);
+    outcome
+}
+
+// Actions: third-party actions.
+/// A process a step runs: a `run:` script's shell, or an action's `node`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StepProcess {
+    pub program: String,
+    pub args: Vec<String>,
+    pub raw_args: Option<String>,
+    /// As the step sees it.
+    pub cwd: String,
+    /// Variables on top of the job's and the step's (an action's `INPUT_*`).
+    pub extra: Vec<(String, String)>,
+}
+
+/// Runs `process` as (part of) step `index`, with fresh env files: its output is read for
+/// workflow commands, masked and logged; afterwards `GITHUB_ENV` and `GITHUB_PATH` apply to
+/// later steps, the summary is recorded, and the outcome carries `GITHUB_OUTPUT`. Also
+/// returns what it wrote to `GITHUB_STATE`.
+pub async fn execute(
+    job: &mut Job,
+    index: usize,
+    process: StepProcess,
+    step_env: &BTreeMap<String, String>,
+    timeout: Option<Duration>,
+) -> (Outcome, BTreeMap<String, String>) {
+    let view = job.backend.view().clone();
+    let files = match EnvFiles::create(&job.dirs.files, index) {
+        Ok(files) => files,
+        Err(error) => return (job.fail(&format!("cannot create the env files: {error}")), BTreeMap::new()),
+    };
+    let mut extra = files.variables(&view.files);
+    extra.extend(process.extra);
+    let command = StepCommand {
+        program: process.program,
+        args: process.args,
+        raw_args: process.raw_args,
+        env: job.process_env(step_env, extra),
+        cwd: process.cwd,
+    };
 
     let prepared = match job.backend.command(&command) {
         Ok(prepared) => prepared,
         Err(error) => {
-            let _ = std::fs::remove_file(&script_path);
             let _ = files.collect();
-            return job.fail(&format!("cannot prepare the step: {error}"));
+            return (job.fail(&format!("cannot prepare the step: {error}")), BTreeMap::new());
         }
     };
     let signal = job.stop_signal(timeout);
+    // Actions: third-party actions. What deprecated `::set-output` / `::save-state` lines set.
+    let mut printed_outputs = BTreeMap::new();
+    let mut printed_state = BTreeMap::new();
     let exit = {
         let reporter = &job.reporter;
-        let mut commands = Commands::default();
+        let mut commands = Commands::new(job.step_debug);
         let stopper = job.backend.stopper();
+        let mut warned = false;
         process::run_streaming(prepared.command, process::MAX_LINE_BYTES, signal.wait(), &stopper, |line| match commands.process(&line) {
             Line::Print(text) => reporter.log(&text),
             Line::AddMask(value) => reporter.add_mask(&value),
             Line::Nothing => {}
+            Line::Output(name, value) => {
+                deprecated(&mut warned, reporter);
+                printed_outputs.insert(name, value);
+            }
+            Line::State(name, value) => {
+                deprecated(&mut warned, reporter);
+                printed_state.insert(name, value);
+            }
         })
         .await
     };
     // The step's env file is deleted as soon as the step has ended.
     drop(prepared.env_file);
-    let _ = std::fs::remove_file(&script_path);
 
     let written = files.collect();
     let outcome = match exit {
@@ -125,17 +171,31 @@ pub async fn run(
         Ok(Exit::Code(None)) => job.fail("The process was killed by a signal."),
     };
     match written {
-        Ok(written) => {
+        Ok(mut written) => {
             // Actions: step summaries.
             job.reporter.set_summary(index, &written.summary);
-            Outcome { outputs: apply(job, written), ..outcome }
+            let mut state = printed_state;
+            state.append(&mut written.state);
+            let mut outputs = printed_outputs;
+            outputs.append(&mut apply(job, written));
+            (Outcome { outputs, ..outcome }, state)
         }
-        Err(error) => job.fail(&error),
+        Err(error) => (job.fail(&error), BTreeMap::new()),
+    }
+}
+
+// Actions: third-party actions.
+/// Warns once per step that `::set-output` / `::save-state` are deprecated, as GitHub does.
+fn deprecated(warned: &mut bool, reporter: &crate::task::Reporter) {
+    if !std::mem::replace(warned, true) {
+        reporter.log(
+            "##[warning]The `set-output` and `save-state` commands are deprecated and will be disabled; write to $GITHUB_OUTPUT and $GITHUB_STATE instead",
+        );
     }
 }
 
 /// Applies what a step wrote to `GITHUB_ENV` and `GITHUB_PATH`, and returns its outputs.
-fn apply(job: &mut Job, written: Written) -> BTreeMap<String, String> {
+pub(crate) fn apply(job: &mut Job, written: Written) -> BTreeMap<String, String> {
     for name in &written.refused {
         job.reporter.log(&format!("##[warning]GITHUB_ENV cannot set `{name}`; the entry was ignored"));
     }

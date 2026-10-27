@@ -78,6 +78,10 @@ pub struct Container {
     /// `<task dir>/private`: env files and registry logins, mounted nowhere.
     private: PathBuf,
     view: View,
+    // Actions: third-party actions.
+    /// `<work dir>/externals` (Node.js for JavaScript actions), mounted read-only at
+    /// `/__e`.
+    externals: PathBuf,
     /// What the job container has, probed after it started.
     shells: BTreeSet<String>,
     base_path: String,
@@ -139,7 +143,7 @@ pub fn network_create(names: &Names, driver: &str) -> Vec<String> {
 }
 
 /// The limits every container of a task gets.
-fn limits(config: &ContainerConfig) -> Vec<String> {
+pub fn limits(config: &ContainerConfig) -> Vec<String> {
     let mut args = vec![
         "--security-opt".into(),
         "no-new-privileges".into(),
@@ -170,11 +174,13 @@ pub fn service_run(names: &Names, config: &ContainerConfig, id: &str, image: &st
 }
 
 /// `create` of the job container.
+#[allow(clippy::too_many_arguments)] // the parts of one `create`
 pub fn job_create(
     names: &Names,
     config: &ContainerConfig,
     dirs: &Dirs,
     view: &View,
+    externals: &Path,
     image: &str,
     env_file: &Path,
     inherited: &[String],
@@ -183,6 +189,8 @@ pub fn job_create(
     for (source, target) in [(&dirs.workspace, &view.workspace), (&dirs.temp, &view.temp), (&dirs.files, &view.files)] {
         args.extend(["--mount".into(), format!("type=bind,source={},target={target}", source.display())]);
     }
+    // Actions: third-party actions. Node.js for JavaScript actions; the job cannot change it.
+    args.extend(["--mount".into(), format!("type=bind,source={},target={},readonly", externals.display(), crate::node::CONTAINER_DIR)]);
     args.extend(["--workdir".into(), view.workspace.clone()]);
     args.extend(names.labels());
     args.extend(limits(config));
@@ -337,10 +345,18 @@ impl Drop for EnvFile {
 }
 
 impl Container {
-    pub fn new(runner: &RunnerConfig, task: TaskId, repository: &str, dirs: &Dirs, task_dir: &Path) -> Result<Self, String> {
+    pub fn new(
+        runner: &RunnerConfig,
+        task: TaskId,
+        repository: &str,
+        dirs: &Dirs,
+        task_dir: &Path,
+        externals: &Path,
+    ) -> Result<Self, String> {
         let program = process::find_program(&runner.container.program)
             .ok_or_else(|| format!("`{}` is not on PATH; the container backend needs Docker or Podman", runner.container.program))?;
-        for dir in [&dirs.workspace, &dirs.temp, &dirs.files] {
+        std::fs::create_dir_all(externals).map_err(|error| format!("cannot create {}: {error}", externals.display()))?;
+        for dir in [&dirs.workspace, &dirs.temp, &dirs.files, &externals.to_path_buf()] {
             if dir.to_string_lossy().contains(',') {
                 return Err(format!("the work directory {} cannot be mounted: it contains a comma", dir.display()));
             }
@@ -359,11 +375,18 @@ impl Container {
             dirs: dirs.clone(),
             private,
             view: view(repository),
+            externals: externals.to_path_buf(),
             shells: BTreeSet::new(),
             base_path: DEFAULT_PATH.to_owned(),
             started: Vec::new(),
             network_created: false,
         })
+    }
+
+    // Actions: third-party actions.
+    /// The engine program, and the network the job's containers share (Docker actions join it).
+    pub fn engine(&self) -> (&Path, &str) {
+        (&self.program, &self.names.network)
     }
 
     pub fn view(&self) -> &View {
@@ -455,7 +478,7 @@ impl Container {
         self.run(reporter, &["pull".to_owned(), job.image.clone()], &[]).await?;
         let env = EnvFile::write(&self.private.join("job.env"), &job.env).map_err(|error| error.to_string())?;
         self.started.push(self.names.job.clone());
-        let create = job_create(&self.names, &self.config, &self.dirs, &self.view, &job.image, env.path(), &env.names());
+        let create = job_create(&self.names, &self.config, &self.dirs, &self.view, &self.externals, &job.image, env.path(), &env.names());
         self.run(reporter, &create, &env.inherited).await?;
         drop(env);
         self.run(reporter, &["start".to_owned(), self.names.job.clone()], &[]).await?;
@@ -624,7 +647,16 @@ mod tests {
     fn the_job_container_is_confined_and_mounted_under_w() {
         let view = view("alice/app");
         assert_eq!(view, View { workspace: "/__w/app".into(), temp: "/__w/_temp".into(), files: "/__w/_files".into() });
-        let args = job_create(&names(), &config(), &dirs(), &view, "docker.io/library/rust:1.94", Path::new("/p/job.env"), &["KEY".into()]);
+        let args = job_create(
+            &names(),
+            &config(),
+            &dirs(),
+            &view,
+            Path::new("/work/externals"),
+            "docker.io/library/rust:1.94",
+            Path::new("/p/job.env"),
+            &["KEY".into()],
+        );
         assert_confined(&args);
         let line = args.join(" ");
         for part in [
@@ -632,6 +664,7 @@ mod tests {
             "--mount type=bind,source=/work/tasks/42/workspace,target=/__w/app",
             "--mount type=bind,source=/work/tasks/42/temp,target=/__w/_temp",
             "--mount type=bind,source=/work/tasks/42/files,target=/__w/_files",
+            "--mount type=bind,source=/work/externals,target=/__e,readonly",
             "--workdir /__w/app",
             "--label rbit.task=42 --label rbit.runner=build-1",
             "--security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --memory 4g --cpus 2",

@@ -1,0 +1,10 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: old
+        uses: ./.github/actions/old
+      - run: echo "answer=${{ steps.old.outputs.answer }}"
+        shell: bash

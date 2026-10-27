@@ -822,7 +822,7 @@ These parts stay unchanged and binding:
 
 | Question | Decision |
 |---|---|
-| Workflow format | A **GitHub-style subset**: `on` / `jobs` / `steps` YAML with `run:` steps, plus a few **rbit built-ins** for `uses:`. Not the Node, composite or Docker action marketplace. A `uses:` that rbit does not know is a readable workflow error, never a download. |
+| Workflow format | A **GitHub-style subset**: `on` / `jobs` / `steps` YAML with `run:` steps, a few **rbit built-ins** for `uses:`, and (since "Actions: third-party actions", §12.2.1) JavaScript, composite and Docker actions the runner fetches. |
 | Where workflows live | `.rbit/workflows`, then `.forgejo/workflows`, then `.github/workflows`. Only the **first existing** directory counts; §4.1's other rules still apply. rbit now owns the format, so it gets its own directory; the other two keep simple workflows portable. |
 | Execution | `rbit-runner` has two backends. The **container backend** runs Docker or Podman through their CLI. The **host backend** runs child processes as the runner's user and is loudly flagged as unsafe for untrusted code. |
 | Shared code | `rbit-workflow` stays pure and gains three modules: `expr` (a full evaluator), `spec` (`JobTemplate`, `JobSpec`) and `protocol` (wire types). Server and runner both depend on it. The runner depends on **no** server crate. |
@@ -863,18 +863,58 @@ Custom `{0}` templates are a later feature and are an error for now.
 
 | `uses:` | Alias of | `with:` |
 |---|---|---|
-| `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `ref`, `path`, `fetch-depth` (default 1; 0 means full history), `fetch-tags`, `submodules` (`false` / `true` / `recursive`), `lfs`, `clean`, `persist-credentials` (default `true`) |
-| `rbit/cache@v1` | `actions/cache@v3` to `@v4`, including `/restore` and `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
-| `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
-| `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple` |
+| `rbit/checkout@v1` | `actions/checkout@v2` and later | `ref`, `path`, `fetch-depth` (default 1; 0 means full history), `fetch-tags`, `submodules` (`false` / `true` / `recursive`), `lfs`, `clean`, `persist-credentials` (default `true`) |
+| `rbit/cache@v1` | `actions/cache@v3` and later, including `/restore` and `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
+| `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` and later | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
+| `rbit/download-artifact@v1` | `actions/download-artifact@v3` and later | `name`, `path`, `pattern`, `merge-multiple` |
 
-`actions/setup-*` and every other action are errors. The error message suggests a `container` image or a `run:` step instead.
+An alias pinned to a commit (`actions/checkout@<40 hex digits>`) runs the built-in too.
+
+#### 12.2.1 Other actions (Actions: third-party actions)
+
+Every other `uses:` resolves (`builtins::resolve_uses`) to an `ActionStep` the runner fetches
+and runs: `owner/repo[/path]@ref`, `./path` or `docker://image`. Names are checked strictly
+(letters, digits, `-`, `_`, `.`; no `..`; a reference never starts with `-` and has no `..`,
+`:` or glob characters), at parse time and again in `JobTemplate::validate`, so what the
+runner fetches is exactly what the workflow names. `with:` keys are free; the runner warns
+about inputs the action does not declare, as GitHub does.
+
+On the runner (`rbit-runner::steps::action`):
+
+- **Fetching.** `[actions] url` (default `https://github.com`) with `git`, with no credential
+  (the task token never leaves for the action source), only that URL's scheme, and no hook.
+  A tag or branch is resolved with `ls-remote` (a peeled tag first); the commit is fetched
+  shallowly, checked, stripped of `.git` and kept under `<work_dir>/actions/<owner>/<repo>/<sha>`.
+  Each job copies it (links left out) into its `temp` directory, which job containers mount,
+  so a job never changes the cache. `[actions] allow` patterns decide which repository and
+  image actions run; workspace actions always may.
+- **Manifest.** `rbit-workflow::action::parse_action` reads `action.yml`; composite steps are
+  parsed as workflow steps (so their `uses:` resolve the same way, and `run` needs `shell`).
+- **JavaScript.** `rbit-runner::node` downloads Node.js 24.22.1 on first use, checked against
+  pinned SHA-256s, into `<work_dir>/externals`; job containers mount that directory read-only
+  at `/__e` and run the Linux build. `pre` runs right before `main`; `post` runs after the
+  last step as an added step (`TaskStateRequest.post_steps`, created by the server with
+  `ON CONFLICT DO NOTHING`, so a template step is never renamed), with `GITHUB_STATE` entries
+  as `STATE_*`.
+- **Composite.** Steps run as part of their step with their own `steps` and `inputs` context
+  and `github.action_path`; nesting stops at 9.
+- **Docker.** `Dockerfile` images are built, `docker://` images pulled; the container gets the
+  workspace at `/github/workspace`, the env files at `/github/file_commands`, the job's network
+  in a container job, and the job container's limits.
+- Tool installers get `RUNNER_TOOL_CACHE`/`AGENT_TOOLSDIRECTORY` (the runner's
+  `tool-cache` on the host, the task's temp in a container). Deprecated `::set-output` and
+  `::save-state` work with a warning; `::debug::` shows only with `ACTIONS_STEP_DEBUG`;
+  problem matchers are accepted and ignored. On Windows hosts environment names keep their
+  spelling and PowerShell runs scripts (`PSExecutionPolicyPreference=Bypass`), as on GitHub's
+  machines.
+
+`scripts/actions-eval` holds real workflows using real actions, graded by `rbit-runner exec`
+(result and log), split into train and test cases as in
+[automating eval design and hillclimbing](https://claude.dev/blog/automating-eval-design-and-hillclimbing/).
 
 **Not supported in this branch**, each an error:
 - matrices or `runs-on` that depend on `needs` outputs;
 - reusable workflows;
-- composite or JavaScript actions;
-- `docker://` steps;
 - `hashFiles` on the server (it works on the runner only);
 - a step `uses:` with `${{ }}` in the action name.
 
@@ -1018,7 +1058,7 @@ The host backend is recommended only for repository-scoped runners of trusted re
   - `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH` and `GITHUB_STEP_SUMMARY`, with `RBIT_*` aliases pointing at the same files.
   - Both the `name=value` and heredoc (`name<<EOF`) forms work.
   - Each file is limited to 1 MiB per step.
-  - `GITHUB_ENV` cannot set `GITHUB_*`, `RBIT_*`, `RUNNER_*`, `NODE_OPTIONS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` or `ENV`.
+  - `GITHUB_ENV` cannot set `GITHUB_*`, `RBIT_*`, `RUNNER_*`, `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_*`, `BASH_ENV` or `ENV` (it may set `LD_LIBRARY_PATH`, as `actions/setup-python` needs on Linux; in a container job the engine's env file never lets it reach the engine on the host).
 - **Workflow commands:**
   - Supported: `::add-mask::`, `::group::` / `::endgroup::`, `::error|warning|notice ...::`, and `::stop-commands::<token>` / `::<token>::`.
   - The deprecated `::set-output::`, `::set-env::` and `::add-path::` are refused with a log line.

@@ -1,0 +1,4 @@
+result: success
+split: test
+contains: Run pnpm --version
+contains: 9.

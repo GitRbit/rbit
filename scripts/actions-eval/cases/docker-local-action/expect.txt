@@ -1,0 +1,4 @@
+result: success
+split: test
+contains: inside saying container
+contains: said=container!

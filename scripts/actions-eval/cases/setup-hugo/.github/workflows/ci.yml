@@ -1,0 +1,10 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.140.0'
+      - run: hugo version
+        shell: bash

@@ -333,6 +333,7 @@ fn local_config(config_path: &Path, templates: &[JobTemplate], backend: ExecBack
             labels: Vec::new(),
             container: config::ContainerConfig::default(),
             cache: config::CacheConfig::default(),
+            actions: config::ActionsConfig::default(),
         },
         |loaded| loaded.config,
     );

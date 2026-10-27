@@ -1,0 +1,15 @@
+name: Outer
+outputs:
+  result:
+    value: ${{ steps.greet.outputs.greeting }}|${{ steps.sum.outputs.result }}
+runs:
+  using: composite
+  steps:
+    - id: greet
+      uses: ./.github/actions/greet
+      with:
+        who: inner
+    - id: sum
+      uses: actions/github-script@v7
+      with:
+        script: return 3 + 4

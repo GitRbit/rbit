@@ -1,0 +1,4 @@
+result: success
+split: train
+contains: sum=3
+contains: event push

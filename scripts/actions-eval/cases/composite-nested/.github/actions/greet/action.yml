@@ -1,0 +1,16 @@
+name: Greet
+inputs:
+  who:
+    description: Who to greet
+    default: world
+  event:
+    default: ${{ github.event_name }}
+outputs:
+  greeting:
+    value: ${{ steps.say.outputs.text }}
+runs:
+  using: composite
+  steps:
+    - id: say
+      shell: bash
+      run: echo "text=hello ${{ inputs.who }} on ${{ inputs.event }}" >> "$GITHUB_OUTPUT"

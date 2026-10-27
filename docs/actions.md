@@ -114,19 +114,61 @@ show.
 
 ### Built-in actions
 
-`uses:` takes only rbit's built-ins, which are compiled into rbit-runner, so nothing is
-downloaded at job time. The common `actions/*` names are aliases of them.
+Checkout, cache and artifacts are compiled into rbit-runner. The common `actions/*` names are
+aliases of them, in any later major version and when pinned to a commit
+(`actions/checkout@<sha>`).
 
 | `uses:` | Also accepted as | `with:` |
 |---|---|---|
-| `rbit/checkout@v1` | `actions/checkout@v2`–`v5` | `ref`, `path`, `fetch-depth` (1; 0 for all), `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
-| `rbit/cache@v1` | `actions/cache@v3`–`v4`, `/restore`, `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
-| `rbit/upload-artifact@v1` | `actions/upload-artifact@v3`–`v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
-| `rbit/download-artifact@v1` | `actions/download-artifact@v3`–`v4` | `name`, `path`, `pattern`, `merge-multiple` |
+| `rbit/checkout@v1` | `actions/checkout@v2` and later | `ref`, `path`, `fetch-depth` (1; 0 for all), `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
+| `rbit/cache@v1` | `actions/cache@v3` and later, `/restore`, `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
+| `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` and later | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
+| `rbit/download-artifact@v1` | `actions/download-artifact@v3` and later | `name`, `path`, `pattern`, `merge-multiple` |
 
-Any other `uses:` — `actions/setup-*`, marketplace, composite, Docker or local actions — is a
-workflow error that suggests a `container:` image or a `run:` step instead. An unknown `with:`
-key is an error too.
+An unknown `with:` key of a built-in is an error.
+
+### Other actions
+
+Any other `uses:` is an action rbit-runner fetches and runs, as GitHub's runner does:
+
+- `owner/repo@ref` or `owner/repo/path@ref` (`actions/setup-node@v4`,
+  `github/codeql-action/init@v3`, or pinned: `actions/setup-python@<sha>`) is fetched with
+  `git` from the runner's `[actions] url`, `https://github.com` unless you point it at a
+  mirror. The reference is resolved to its commit, which the log names, and the action is
+  kept in the runner's work directory at that commit. No token is sent with the fetch.
+- `./path` is an action in the workspace, usually checked out by an earlier step.
+- `docker://image` runs the image, with `with.args` and `with.entrypoint`.
+
+JavaScript actions (`using: node12` … `node24`) run with a Node.js 24 the runner downloads on
+first use and checks against a pinned SHA-256 (or the `node` that `[actions] node` names on
+the host); in container jobs it is mounted at `/__e` and needs a glibc image. Composite
+actions run their steps as part of the step, nested up to 9 deep. Docker actions are built
+or pulled and run with Docker or Podman, with the workspace at `/github/workspace`. A `pre`
+script runs right before its `main`; a `post` script runs after the job's last step as a
+step of its own (`Post Run …`), when its `post-if` holds. Inputs are passed as `INPUT_*`
+with the action's defaults, and `GITHUB_STATE` reaches the `post` script.
+
+`actions/setup-*` and other tool installers keep what they download in the runner's
+`RUNNER_TOOL_CACHE` (`<work_dir>/tool-cache` on the host, so a version is downloaded once;
+the task's temporary directory in a container). Actions that use GitHub's own cache or
+artifact services (`actions/setup-node`'s `cache:`) skip that part with a warning; use
+`actions/cache` instead.
+
+Actions that call GitHub's own API (`api.github.com`) with their default token, such as
+release lookups in some installers, get the workflow's rbit token, which GitHub rejects
+("Bad credentials"). Pass such an action a GitHub token from a secret, or `''` to call
+unauthenticated, through its token input. Actions that talk to `GITHUB_API_URL`
+(`actions/github-script`) reach rbit and work with the default token.
+
+On a Windows host, actions assume what GitHub's Windows machines have: Git for Windows,
+PowerShell 7 installed from its MSI (the Microsoft Store build is not usable from
+Node.js), and administrator rights for installers that write to `Program Files` or the
+registry (`actions/setup-python`; `actions/setup-dotnet` unless `DOTNET_INSTALL_DIR` is
+set). Linux runners have none of these limits.
+
+A runner's administrator decides which actions it runs with `[actions] allow`: `owner/repo`
+patterns such as `actions/*` or `my-org/*`, and `docker://` image patterns. The default,
+`["*"]`, allows every action; `[]` allows only the built-ins and the workspace's own.
 
 The cache lives on the runner, so a hit needs the same runner. A run reads its own branch's
 entries, then the default branch's, and writes only its own; pull requests from forks write
@@ -157,8 +199,12 @@ for example `env: TOKEN: ${{ secrets.TOKEN }}`; the task's token is `secrets.GIT
 `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH` and `GITHUB_STEP_SUMMARY` (with `RBIT_*` aliases),
 in both the `name=value` and heredoc forms. What steps write to `GITHUB_STEP_SUMMARY` is shown
 as Markdown below the jobs on the run page: up to 64 KiB per step and 256 KiB per job, with
-secrets masked; a longer summary is cut with a note. Steps can also use `::add-mask::`,
-`::group::`/`::endgroup::`, `::error::`, `::warning::`, `::notice::` and `::stop-commands::`.
+secrets masked; a longer summary is cut with a note. Actions' `post` scripts read what
+their step wrote to `GITHUB_STATE`. Steps can also use `::add-mask::`,
+`::group::`/`::endgroup::`, `::error::`, `::warning::`, `::notice::`, `::debug::` (shown
+only when the `ACTIONS_STEP_DEBUG` secret or variable is `true`, which also sets
+`RUNNER_DEBUG=1`) and `::stop-commands::`; the deprecated `::set-output` and `::save-state`
+work with a warning, while `::set-env` and `::add-path` are refused, as on GitHub.
 The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
 variables.
@@ -200,8 +246,12 @@ to `workflow_run` and `workflow_job`.
 
 ## Differences from GitHub Actions
 
-- Only the built-in actions above; no marketplace, JavaScript, composite or Docker actions,
-  and no reusable workflows (`workflow_call`, `jobs.<id>.uses`).
+- No reusable workflows (`workflow_call`, `jobs.<id>.uses`).
+- Actions are fetched when their step comes, not all at the start of the job, so an
+  action's `pre` script runs right before its `main`. Problem matchers
+  (`::add-matcher::`) are accepted and ignored. GitHub's cache and artifact services that
+  actions reach through `ACTIONS_RUNTIME_*` do not exist; the built-ins stand in for
+  `actions/cache` and `actions/*-artifact`.
 - No `environment`, `secrets: inherit`, `container.options`, service `options`/`volumes`, or
   custom shells (`shell: my {0}`): each is a readable error.
 - `permissions:` can only lower the repository's default token permission (**Settings →

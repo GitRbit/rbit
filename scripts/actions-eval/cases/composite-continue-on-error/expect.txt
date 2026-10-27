@@ -1,0 +1,3 @@
+result: success
+split: test
+contains: after=yes

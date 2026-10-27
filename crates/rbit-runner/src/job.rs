@@ -42,7 +42,7 @@ use crate::{
         host::Host,
     },
     client::Client,
-    config::{Label, Loaded},
+    config::{ActionsConfig, ContainerConfig, Label, Loaded},
     contexts::{self, Eval},
     steps::{
         self, Outcome,
@@ -110,7 +110,7 @@ pub enum Phase {
 }
 
 impl Phase {
-    const fn status(self) -> Status {
+    pub(crate) const fn status(self) -> Status {
         match self {
             Self::Success => Status::Success,
             Self::Failure => Status::Failure,
@@ -159,6 +159,17 @@ pub struct Job {
     pub post_saves: Vec<PendingSave>,
     /// The server, for the artifact built-ins; `None` without one (`rbit-runner exec`).
     pub server: Option<Client>,
+    // Actions: third-party actions.
+    /// The runner's work directory: the action cache, Node.js and the tool cache live there.
+    pub work_dir: std::path::PathBuf,
+    /// `[actions]`.
+    pub actions: ActionsConfig,
+    /// `[container]`, for Docker actions.
+    pub container: ContainerConfig,
+    /// Actions' `post` scripts, run after the last step in reverse order.
+    pub post_steps: Vec<steps::action::PostStep>,
+    /// `ACTIONS_STEP_DEBUG` is `true`: `::debug::` lines are printed.
+    pub step_debug: bool,
 }
 
 /// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
@@ -236,7 +247,8 @@ impl Job {
                 Backend::Host(Host::new(&dirs))
             }
             BackendKind::Container => {
-                let container = Container::new(&loaded.config, spec.task_id, &spec.checkout.repository, &dirs, reporter.dir())?;
+                let externals = loaded.work_dir.join("externals");
+                let container = Container::new(&loaded.config, spec.task_id, &spec.checkout.repository, &dirs, reporter.dir(), &externals)?;
                 Backend::Container(Box::new(container))
             }
         };
@@ -263,7 +275,8 @@ impl Job {
             "temp": view.temp,
             "environment": "self-hosted",
         });
-        let task_env = task_env(&github, &view, &loaded.config.name, os, arch);
+        let mut task_env = task_env(&github, &view, &loaded.config.name, os, arch);
+        let step_debug = action_env(&mut task_env, loaded, label.backend, &view, &spec)?;
         let contexts = contexts::job_contexts(&spec, github, runner);
 
         let mut job = Self {
@@ -284,6 +297,11 @@ impl Job {
             cache: Store { root: loaded.work_dir.join("cache"), max_bytes: loaded.config.cache.max_bytes },
             post_saves: Vec::new(),
             server: None,
+            work_dir: loaded.work_dir.clone(),
+            actions: loaded.config.actions.clone(),
+            container: loaded.config.container.clone(),
+            post_steps: Vec::new(),
+            step_debug,
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());
@@ -427,6 +445,7 @@ impl Job {
             self.reporter.finish_step(index, outcome.status);
             self.record(step, &outcome, conclusion);
         }
+        self.post_steps().await;
         timer.abort();
         self.save_caches().await;
         self.outputs();
@@ -440,6 +459,49 @@ impl Job {
             // was cancelled.
             Phase::Cancelled if self.timed_out.load(Ordering::SeqCst) => TaskResult::Failure,
             Phase::Cancelled => TaskResult::Cancelled,
+        }
+    }
+
+    // Actions: third-party actions.
+    /// The actions' `post` scripts, newest first, each a step of its own after the job's.
+    async fn post_steps(&mut self) {
+        let posts = std::mem::take(&mut self.post_steps);
+        for post in posts.into_iter().rev() {
+            if self.interrupt.is_cancelled() && self.interrupted_at.is_none() {
+                self.interrupted_at = Some(Instant::now());
+                self.phase = Phase::Cancelled;
+                self.sync_contexts();
+            }
+            let index = self.reporter.add_step(&post.name);
+            let text = post.condition.as_deref().unwrap_or("always()");
+            let run = Condition::parse(text).and_then(|condition| condition.evaluate(&self.eval(Some(self.phase.status()))));
+            match run {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.reporter.finish_step(index, StepStatus::Skipped);
+                    continue;
+                }
+                Err(error) => {
+                    self.reporter.start_step(index);
+                    self.reporter.log(&format!("##[error]`post-if`: {error}"));
+                    self.reporter.finish_step(index, StepStatus::Failure);
+                    self.phase = self.phase.max_with(Phase::Failure);
+                    continue;
+                }
+            }
+            self.reporter.start_step(index);
+            self.reporter.log(&format!("##[group]{}", post.name));
+            self.reporter.log("##[endgroup]");
+            self.set_env_context(&post.step_env);
+            let (outcome, _) = steps::run::execute(self, index, post.process, &post.step_env, None).await;
+            self.set_env_context(&BTreeMap::new());
+            self.reporter.finish_step(index, outcome.status);
+            match outcome.status {
+                StepStatus::Failure => self.phase = self.phase.max_with(Phase::Failure),
+                StepStatus::Cancelled => self.phase = Phase::Cancelled,
+                _ => {}
+            }
+            self.sync_contexts();
         }
     }
 
@@ -459,13 +521,14 @@ impl Job {
         let outcome = match &step.action {
             StepAction::Run(script) => steps::run::run(self, index, step, script, &step_env, timeout).await,
             StepAction::Uses(builtin) => steps::builtin(self, builtin, timeout).await,
+            StepAction::Action(action) => steps::action::action(self, index, step, action, &step_env, timeout, 0).await,
         };
         self.set_env_context(&BTreeMap::new());
         outcome
     }
 
     /// A step's `timeout-minutes`, evaluated.
-    fn step_timeout(&self, step: &StepTemplate) -> Result<Option<Duration>, String> {
+    pub(crate) fn step_timeout(&self, step: &StepTemplate) -> Result<Option<Duration>, String> {
         let Some(text) = step.timeout_minutes.as_deref() else { return Ok(None) };
         let minutes = rbit_workflow::expr::to_number(&self.evaluate(text)?);
         if !(minutes.is_finite() && minutes > 0.0) {
@@ -537,7 +600,7 @@ impl Job {
         condition.evaluate(&self.eval(Some(self.phase.status()))).map_err(|error| error.to_string())
     }
 
-    fn continue_on_error(&self, step: &StepTemplate) -> bool {
+    pub(crate) fn continue_on_error(&self, step: &StepTemplate) -> bool {
         match step.continue_on_error.as_deref() {
             None => false,
             Some(text) => match self.evaluate(text) {
@@ -583,7 +646,7 @@ impl Job {
         Template::parse(template).and_then(|parsed| parsed.evaluate(&self.eval(None))).map_err(|error| error.to_string())
     }
 
-    fn render_env(&self, env: &Env) -> Result<BTreeMap<String, String>, String> {
+    pub(crate) fn render_env(&self, env: &Env) -> Result<BTreeMap<String, String>, String> {
         env.iter()
             .map(|(name, value)| {
                 if !crate::envfiles::valid_variable_name(name) {
@@ -595,7 +658,7 @@ impl Job {
     }
 
     /// The `env` context while a step runs: the job's, then the step's own.
-    fn set_env_context(&mut self, step_env: &BTreeMap<String, String>) {
+    pub(crate) fn set_env_context(&mut self, step_env: &BTreeMap<String, String>) {
         let mut env = self.env.clone();
         env.extend(step_env.iter().map(|(name, value)| (name.clone(), value.clone())));
         self.contexts.insert("env", json!(env));
@@ -675,6 +738,41 @@ pub const fn status_name(status: StepStatus) -> &'static str {
         StepStatus::Cancelled => "cancelled",
         StepStatus::Skipped | StepStatus::Waiting | StepStatus::Running => "skipped",
     }
+}
+
+// Actions: third-party actions.
+/// Adds what actions read to `task_env`: where `actions/setup-*` keep the tools they
+/// download (the runner's own tool cache on the host, kept between jobs; the task's `temp`
+/// in a container, which the job may write) and, when the `ACTIONS_STEP_DEBUG` secret or
+/// variable is `true`, `RUNNER_DEBUG`. Returns whether debug logging is on.
+fn action_env(
+    task_env: &mut BTreeMap<String, String>,
+    loaded: &Loaded,
+    backend: BackendKind,
+    view: &View,
+    spec: &JobSpec,
+) -> Result<bool, String> {
+    let tool_cache = match backend {
+        BackendKind::Host => {
+            let dir = loaded.work_dir.join("tool-cache");
+            std::fs::create_dir_all(&dir).map_err(|error| format!("cannot create {}: {error}", dir.display()))?;
+            dir.display().to_string()
+        }
+        BackendKind::Container => format!("{}/_tool", view.temp),
+    };
+    for name in ["RUNNER_TOOL_CACHE", "AGENT_TOOLSDIRECTORY"] {
+        task_env.insert(name.to_owned(), tool_cache.clone());
+    }
+    let step_debug = spec
+        .secrets
+        .get("ACTIONS_STEP_DEBUG")
+        .map(|secret| secret.expose().to_owned())
+        .or_else(|| spec.contexts.vars.get("ACTIONS_STEP_DEBUG").cloned())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("true"));
+    if step_debug {
+        task_env.insert("RUNNER_DEBUG".to_owned(), "1".to_owned());
+    }
+    Ok(step_debug)
 }
 
 /// `dir` and `name` joined with the backend's separator.

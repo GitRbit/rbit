@@ -4,9 +4,13 @@
 //! Supported are `::add-mask::`, `::group::` / `::endgroup::`, the annotations
 //! `::error`, `::warning` and `::notice` (with `file`, `line`, `title` and the other
 //! parameters, kept as written), `::debug::`, and `::stop-commands::<token>`, which turns
-//! command processing off until a line `::<token>::`. The deprecated `::set-output`,
-//! `::set-env`, `::add-path` and `::save-state` are refused with a log line pointing at
-//! the env files. Anything else is printed as it came.
+//! command processing off until a line `::<token>::`. As on GitHub, `::debug::` lines are
+//! printed only when the `ACTIONS_STEP_DEBUG` secret or variable is `true`, and
+//! `::add-matcher::` / `::remove-matcher::` are accepted and print nothing (rbit has no
+//! problem matchers). The deprecated `::set-output` and `::save-state`, which older actions
+//! still print, work with a warning; `::set-env` and `::add-path`, which GitHub disabled
+//! because they let any printed line change the environment, are refused with a log line
+//! pointing at the env files. Anything else is printed as it came.
 //!
 //! Commands become log lines in the `##[kind]text` form the log viewer understands; an
 //! `::add-mask::` line is not printed at all. Values are unescaped as GitHub escapes them
@@ -21,6 +25,11 @@ pub enum Line {
     AddMask(String),
     /// Print nothing (a stop-commands switch).
     Nothing,
+    // Actions: third-party actions.
+    /// `::set-output name=…::`: an output of the step.
+    Output(String, String),
+    /// `::save-state name=…::`: state for the action's `post` script.
+    State(String, String),
 }
 
 /// The command state of one step.
@@ -28,11 +37,25 @@ pub enum Line {
 pub struct Commands {
     /// While set, commands are off until `::<token>::`.
     stopped: Option<String>,
+    // Actions: third-party actions.
+    /// Whether `::debug::` lines are printed (`ACTIONS_STEP_DEBUG`).
+    debug: bool,
 }
 
 impl Commands {
+    /// Commands of a step, printing `::debug::` lines when `debug` is set.
+    pub fn new(debug: bool) -> Self {
+        Self { stopped: None, debug }
+    }
+
     /// What `line` amounts to.
     pub fn process(&mut self, line: &str) -> Line {
+        // Actions: third-party actions. The legacy `##[add-matcher]path` form, which
+        // `actions/setup-node` still prints.
+        let legacy = line.trim_start();
+        if self.stopped.is_none() && (legacy.starts_with("##[add-matcher]") || legacy.starts_with("##[remove-matcher")) {
+            return Line::Nothing;
+        }
         let Some(command) = parse(line) else { return Line::Print(line.to_owned()) };
         if let Some(token) = &self.stopped {
             if command.name == token.as_str() && command.params.is_none() {
@@ -46,7 +69,8 @@ impl Commands {
             "add-mask" => Line::AddMask(message),
             "group" => Line::Print(format!("##[group]{message}")),
             "endgroup" => Line::Print("##[endgroup]".to_owned()),
-            "debug" => Line::Print(format!("##[debug]{message}")),
+            "debug" if self.debug => Line::Print(format!("##[debug]{message}")),
+            "debug" | "add-matcher" | "remove-matcher" => Line::Nothing,
             "error" | "warning" | "notice" => {
                 let params = command.params.map(|params| unescape(params, true)).filter(|params| !params.is_empty());
                 match params {
@@ -58,14 +82,21 @@ impl Commands {
                 self.stopped = Some(message);
                 Line::Nothing
             }
-            "set-output" | "set-env" | "add-path" | "save-state" => {
-                let file = match command.name {
-                    "set-output" => "$GITHUB_OUTPUT",
-                    "set-env" => "$GITHUB_ENV",
-                    "add-path" => "$GITHUB_PATH",
-                    _ => "$GITHUB_STATE (not supported)",
-                };
-                Line::Print(format!("##[error]The `{}` command is deprecated and disabled by rbit; write to {file} instead", command.name))
+            "set-output" | "save-state" => {
+                let name = command
+                    .params
+                    .and_then(|params| params.split(',').find_map(|param| param.trim().strip_prefix("name=")))
+                    .map(|name| unescape(name, true))
+                    .filter(|name| !name.is_empty());
+                match (name, command.name) {
+                    (Some(name), "set-output") => Line::Output(name, message),
+                    (Some(name), _) => Line::State(name, message),
+                    (None, _) => Line::Print(format!("##[error]`{}` needs a `name`", command.name)),
+                }
+            }
+            "set-env" | "add-path" => {
+                let file = if command.name == "set-env" { "$GITHUB_ENV" } else { "$GITHUB_PATH" };
+                Line::Print(format!("##[error]The `{}` command is disabled, as on GitHub; write to {file} instead", command.name))
             }
             _ => Line::Print(line.to_owned()),
         }
@@ -106,7 +137,7 @@ mod tests {
         match commands.process(line) {
             Line::Print(text) => text,
             Line::Nothing => String::new(),
-            Line::AddMask(value) => panic!("{line:?} added the mask {value:?}"),
+            other => panic!("{line:?} is {other:?}"),
         }
     }
 
@@ -124,14 +155,27 @@ mod tests {
     }
 
     #[test]
-    fn deprecated_commands_are_refused() {
+    fn disabled_commands_are_refused_and_deprecated_ones_work() {
         let mut commands = Commands::default();
-        for (line, file) in
-            [("::set-output name=x::1", "$GITHUB_OUTPUT"), ("::set-env name=X::1", "$GITHUB_ENV"), ("::add-path::/x", "$GITHUB_PATH")]
-        {
+        for (line, file) in [("::set-env name=X::1", "$GITHUB_ENV"), ("::add-path::/x", "$GITHUB_PATH")] {
             let text = printed(&mut commands, line);
-            assert!(text.starts_with("##[error]") && text.contains("deprecated") && text.contains(file), "{text}");
+            assert!(text.starts_with("##[error]") && text.contains("disabled") && text.contains(file), "{text}");
         }
+        assert_eq!(commands.process("::set-output name=answer::4%0A2"), Line::Output("answer".into(), "4\n2".into()));
+        assert_eq!(commands.process("::save-state name=pid::42"), Line::State("pid".into(), "42".into()));
+        assert!(printed(&mut commands, "::set-output::x").contains("needs a `name`"));
+    }
+
+    #[test]
+    fn debug_lines_and_matchers_print_only_when_asked() {
+        let mut quiet = Commands::default();
+        assert_eq!(quiet.process("::debug::details"), Line::Nothing);
+        assert_eq!(quiet.process("::add-matcher::/x/tsc.json"), Line::Nothing);
+        assert_eq!(quiet.process("::remove-matcher owner=tsc::"), Line::Nothing);
+        assert_eq!(quiet.process("##[add-matcher]C:\\x\\tsc.json"), Line::Nothing, "the legacy form");
+        assert_eq!(quiet.process("##[remove-matcher owner=tsc]"), Line::Nothing);
+        let mut loud = Commands::new(true);
+        assert_eq!(printed(&mut loud, "::debug::details"), "##[debug]details");
     }
 
     #[test]

@@ -1,0 +1,12 @@
+name: Tolerant
+outputs:
+  after: {value: "${{ steps.later.outputs.ran }}"}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      continue-on-error: true
+      run: exit 3
+    - id: later
+      shell: bash
+      run: echo "ran=yes" >> "$GITHUB_OUTPUT"

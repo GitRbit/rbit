@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - id: gs
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: return 'from-script'
+      - run: echo "result=${{ steps.gs.outputs.result }}"
+        shell: bash

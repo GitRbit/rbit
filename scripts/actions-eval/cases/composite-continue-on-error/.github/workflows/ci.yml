@@ -1,0 +1,10 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: c
+        uses: ./.github/actions/tolerant
+      - run: echo "after=${{ steps.c.outputs.after }}"
+        shell: bash

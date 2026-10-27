@@ -95,6 +95,9 @@ struct Progress {
     acknowledged: BTreeSet<u32>,
     /// The server answered `404`: nothing more is reported.
     gone: bool,
+    // Actions: third-party actions.
+    /// Steps added after the template's (actions' `post` scripts), by index.
+    post_steps: BTreeMap<u32, String>,
 }
 
 impl Reporter {
@@ -125,6 +128,7 @@ impl Reporter {
                 summaries: BTreeMap::new(),
                 acknowledged: BTreeSet::new(),
                 gone: false,
+                post_steps: BTreeMap::new(),
             }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
@@ -199,6 +203,29 @@ impl Reporter {
         if let Some(index) = progress.current {
             progress.steps[index].log_length += kept;
         }
+    }
+
+    // Actions: third-party actions.
+    /// Adds a step after the template's, waiting, and returns its index.
+    pub fn add_step(&self, name: &str) -> usize {
+        let mut progress = self.lock();
+        let index = progress.steps.len();
+        let number = u32::try_from(index).unwrap_or(u32::MAX);
+        progress.steps.push(StepState {
+            index: number,
+            status: StepStatus::Waiting,
+            started_at: None,
+            stopped_at: None,
+            log_index: 0,
+            log_length: 0,
+        });
+        let name: String = name.chars().filter(|c| !c.is_control()).collect();
+        let mut end = name.len().min(rbit_workflow::protocol::MAX_POST_STEP_NAME_BYTES);
+        while !name.is_char_boundary(end) {
+            end -= 1;
+        }
+        progress.post_steps.insert(number, name[..end].to_owned());
+        index
     }
 
     /// Step `index` starts: its log begins at the next line.
@@ -296,7 +323,7 @@ impl Reporter {
             .filter(|(index, _)| !progress.acknowledged.contains(index))
             .map(|(index, summary)| (*index, summary.clone()))
             .collect();
-        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries }
+        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries, post_steps: progress.post_steps.clone() }
     }
 
     // Actions: step summaries.

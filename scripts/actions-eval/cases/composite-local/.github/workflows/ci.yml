@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: greet
+        uses: ./.github/actions/greet
+        with:
+          who: rbit
+      - run: echo "${{ steps.greet.outputs.greeting }}"
+        shell: bash

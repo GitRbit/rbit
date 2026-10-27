@@ -1,6 +1,7 @@
-//! The env files a step writes to: `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH` and
-//! `GITHUB_STEP_SUMMARY`, also reachable as `RBIT_OUTPUT`, `RBIT_ENV`, `RBIT_PATH` and
-//! `RBIT_STEP_SUMMARY` (§12.5.4 "Env files").
+//! The env files a step writes to: `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`,
+//! `GITHUB_STEP_SUMMARY` and `GITHUB_STATE`, also reachable as `RBIT_OUTPUT`, `RBIT_ENV`,
+//! `RBIT_PATH`, `RBIT_STEP_SUMMARY` and `RBIT_STATE` (§12.5.4 "Env files"). What an
+//! action writes to `GITHUB_STATE` reaches its own `post` script as `STATE_<name>`.
 //!
 //! Each step gets fresh, empty files in the task's `files` directory; after the step they
 //! are read and removed. A container job can write that directory, so the files are
@@ -16,9 +17,11 @@
 //! ```
 //!
 //! `GITHUB_ENV` cannot set names the runner owns or that would change how later programs
-//! load code: `GITHUB_*`, `RBIT_*`, `RUNNER_*`, `NODE_OPTIONS`, `LD_PRELOAD`,
-//! `LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` and `ENV`. Such entries are refused with a log
-//! line; the step goes on.
+//! load code: `GITHUB_*`, `RBIT_*`, `RUNNER_*`, `NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_*`,
+//! `BASH_ENV` and `ENV`. Such entries are refused with a log line; the step goes on.
+//! `LD_LIBRARY_PATH` may be set, as on GitHub: `actions/setup-python` needs it for the
+//! Python it installs on Linux, and it reaches only the job's own steps (in a container job
+//! never the container engine on the host, whose env file refuses it a multi-line value).
 
 use std::{
     collections::BTreeMap,
@@ -37,10 +40,12 @@ pub enum Kind {
     Env,
     Path,
     StepSummary,
+    // Actions: third-party actions.
+    State,
 }
 
 impl Kind {
-    pub const ALL: [Self; 4] = [Self::Output, Self::Env, Self::Path, Self::StepSummary];
+    pub const ALL: [Self; 5] = [Self::Output, Self::Env, Self::Path, Self::StepSummary, Self::State];
 
     /// The variable without its `GITHUB_` / `RBIT_` prefix.
     pub const fn suffix(self) -> &'static str {
@@ -49,6 +54,7 @@ impl Kind {
             Self::Env => "ENV",
             Self::Path => "PATH",
             Self::StepSummary => "STEP_SUMMARY",
+            Self::State => "STATE",
         }
     }
 
@@ -58,6 +64,7 @@ impl Kind {
             Self::Env => "env",
             Self::Path => "path",
             Self::StepSummary => "step_summary",
+            Self::State => "state",
         }
     }
 }
@@ -75,7 +82,7 @@ pub fn valid_variable_name(name: &str) -> bool {
 pub fn settable(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     !(["GITHUB_", "RBIT_", "RUNNER_", "DYLD_"].iter().any(|prefix| upper.starts_with(prefix))
-        || ["NODE_OPTIONS", "LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV", "ENV"].contains(&upper.as_str()))
+        || ["NODE_OPTIONS", "LD_PRELOAD", "BASH_ENV", "ENV"].contains(&upper.as_str()))
 }
 
 /// The env files of one step.
@@ -96,6 +103,9 @@ pub struct Written {
     /// `GITHUB_PATH` entries, in order.
     pub path: Vec<String>,
     pub summary: String,
+    // Actions: third-party actions.
+    /// `GITHUB_STATE` entries, for the action's `post` script.
+    pub state: BTreeMap<String, String>,
 }
 
 impl EnvFiles {
@@ -172,6 +182,12 @@ impl EnvFiles {
         }
         written.path = text(Kind::Path)?.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_owned).collect();
         written.summary = text(Kind::StepSummary)?;
+        for (name, value) in parse_entries(&text(Kind::State)?).map_err(|error| format!("GITHUB_STATE: {error}"))? {
+            if !valid_variable_name(&name) {
+                return Err(format!("GITHUB_STATE: `{}` is not a valid name", name.escape_debug()));
+            }
+            written.state.insert(name, value);
+        }
         Ok(written)
     }
 }
@@ -279,6 +295,7 @@ mod tests {
         fs::write(files.path(Kind::Env), "FOO=bar\nLD_PRELOAD=/evil.so\ngithub_token=x\nPATHLIKE=ok\n").unwrap();
         fs::write(files.path(Kind::Path), "/opt/tool/bin\n\n  /usr/local/x  \n").unwrap();
         fs::write(files.path(Kind::StepSummary), "# Done\n").unwrap();
+        fs::write(files.path(Kind::State), "pid=42\ncache-key<<K\nnode-22\nK\n").unwrap();
         let output = files.path(Kind::Output);
         let written = files.collect().unwrap();
         assert_eq!(written.outputs, BTreeMap::from([("version".into(), "1.2".into()), ("notes".into(), "a\nb".into())]));
@@ -286,6 +303,7 @@ mod tests {
         assert_eq!(written.refused, ["LD_PRELOAD", "github_token"]);
         assert_eq!(written.path, ["/opt/tool/bin", "/usr/local/x"]);
         assert_eq!(written.summary, "# Done\n");
+        assert_eq!(written.state, BTreeMap::from([("pid".into(), "42".into()), ("cache-key".into(), "node-22".into())]));
         assert!(!output.exists(), "the files are removed after the step");
     }
 
@@ -314,10 +332,10 @@ mod tests {
             assert!(files.collect().unwrap_err().contains("not a valid variable name"), "{line:?}");
         }
         assert!(valid_variable_name("_A1.b-c") && !valid_variable_name("1A") && !valid_variable_name("A=B"));
-        for name in ["GITHUB_X", "rbit_x", "RUNNER_TEMP", "DYLD_INSERT_LIBRARIES", "BASH_ENV", "env", "NODE_OPTIONS"] {
+        for name in ["GITHUB_X", "rbit_x", "RUNNER_TEMP", "DYLD_INSERT_LIBRARIES", "BASH_ENV", "env", "NODE_OPTIONS", "LD_PRELOAD"] {
             assert!(!settable(name), "{name}");
         }
-        assert!(settable("CARGO_HOME") && settable("ENVIRONMENT"));
+        assert!(settable("CARGO_HOME") && settable("ENVIRONMENT") && settable("LD_LIBRARY_PATH"), "setup-python needs LD_LIBRARY_PATH");
     }
 
     /// A container step can replace its env files, or the next step's, with links to the

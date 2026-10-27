@@ -57,6 +57,38 @@ pub struct RunnerConfig {
     pub container: ContainerConfig,
     #[serde(default)]
     pub cache: CacheConfig,
+    // Actions: third-party actions.
+    #[serde(default)]
+    pub actions: ActionsConfig,
+}
+
+// Actions: third-party actions.
+/// `[actions]`: where the actions jobs name come from, which may run, and the Node.js
+/// JavaScript actions run with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionsConfig {
+    /// The server `owner/repo@ref` actions are fetched from with `git`: `https://github.com`
+    /// by default, or a mirror. Only `https://` (or `http://` on a loopback host, and
+    /// `file://` for tests).
+    #[serde(default = "default_actions_url")]
+    pub url: String,
+    /// The actions jobs may use, as `owner/repo` patterns where `*` matches anything
+    /// (`actions/*`, `my-org/*`), or `docker://` image patterns. `["*"]`, the default, allows
+    /// every action; `[]` allows only the built-ins and the workspace's own (`./`) actions.
+    #[serde(default = "default_allow")]
+    pub allow: Vec<String>,
+    /// The `node` program JavaScript actions run with on the host. Unset, the runner
+    /// downloads a pinned Node.js into its work directory on first use (checked against its
+    /// published SHA-256) and uses that, also inside job containers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<PathBuf>,
+}
+
+impl Default for ActionsConfig {
+    fn default() -> Self {
+        Self { url: default_actions_url(), allow: default_allow(), node: None }
+    }
 }
 
 /// One `[[labels]]` entry.
@@ -134,6 +166,12 @@ fn default_pids_limit() -> u32 {
 fn default_network() -> String {
     "bridge".to_owned()
 }
+fn default_actions_url() -> String {
+    "https://github.com".to_owned()
+}
+fn default_allow() -> Vec<String> {
+    vec!["*".to_owned()]
+}
 fn default_cache_bytes() -> u64 {
     10 * 1024 * 1024 * 1024
 }
@@ -169,6 +207,18 @@ impl RunnerConfig {
             "`container.network` must be a network driver name such as `bridge`"
         );
         ensure!(self.cache.max_bytes > 0, "`cache.max_bytes` must be positive");
+        // Actions: third-party actions.
+        let actions = Url::parse(&self.actions.url).with_context(|| format!("`actions.url` `{}` is not a URL", self.actions.url))?;
+        let loopback = actions.host_str().is_some_and(|host| {
+            host == "localhost" || host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+        });
+        ensure!(
+            actions.scheme() == "https" || actions.scheme() == "file" || (actions.scheme() == "http" && loopback),
+            "`actions.url` must be `https://` (or `http://` on this machine)"
+        );
+        for pattern in &self.actions.allow {
+            ensure!(!pattern.is_empty() && !pattern.chars().any(char::is_whitespace), "`actions.allow` has an empty or spaced pattern");
+        }
         protocol::DeclareRequest { name: self.name.clone(), labels: self.declared_labels(), capabilities: self.capabilities(false) }
             .validate()
             .map_err(|error| anyhow::anyhow!("{error}"))?;
@@ -379,6 +429,7 @@ pub(crate) mod tests {
             labels: vec![parse_label(DEFAULT_LABEL).unwrap(), parse_label("self-hosted:host").unwrap()],
             container: ContainerConfig::default(),
             cache: CacheConfig::default(),
+            actions: ActionsConfig::default(),
         }
     }
 

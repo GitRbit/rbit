@@ -29,6 +29,7 @@ pub fn configuration(args: &RegisterArgs) -> anyhow::Result<RunnerConfig> {
         labels: labels.iter().map(|label| config::parse_label(label)).collect::<anyhow::Result<_>>()?,
         container: ContainerConfig { program: args.container_program.clone(), ..ContainerConfig::default() },
         cache: config::CacheConfig::default(),
+        actions: config::ActionsConfig::default(),
     };
     config.validate()?;
     Ok(config)

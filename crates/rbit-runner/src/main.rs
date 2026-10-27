@@ -23,6 +23,7 @@ mod exec;
 mod job;
 mod logs;
 mod mask;
+mod node;
 mod poller;
 mod process;
 mod register;
