@@ -598,3 +598,31 @@ async fn a_job_that_cannot_run_says_why_in_its_log() {
     assert_eq!(window.lines.len(), 1);
     assert!(window.lines[0].starts_with("rbit: this job's stored template cannot be read"), "{:?}", window.lines);
 }
+
+// Actions: third-party actions.
+#[tokio::test]
+async fn post_steps_the_runner_adds_are_created_once_and_never_rename_the_template() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = rbit_core::actions::TaskId(spec(&poll(&fixture, &credential, Some("p")).await.1).task_id.0);
+    let store = fixture.database.actions_runs();
+    let template_steps = store.steps_of_tasks(&[task]).await.unwrap();
+    let added = u32::try_from(template_steps.len()).unwrap();
+    let body = json!({
+        "steps": [step(0, "success"), step(added, "running")],
+        "outputs": {},
+        "result": null,
+        "post_steps": {"0": "Post Run evil/rename@v1", added.to_string(): "Post Run actions/setup-node@v4"},
+    });
+    assert_eq!(state(&fixture, &credential, task.0, &body).await.0, StatusCode::OK);
+    assert_eq!(state(&fixture, &credential, task.0, &body).await.0, StatusCode::OK, "resent: nothing changes");
+    let steps = store.steps_of_tasks(&[task]).await.unwrap();
+    assert_eq!(steps.len(), template_steps.len() + 1);
+    assert_eq!(steps[0].name, template_steps[0].name, "a template step keeps its name");
+    let post = steps.iter().find(|step| step.number == i64::from(added)).unwrap();
+    assert_eq!((post.name.as_str(), post.status), ("Post Run actions/setup-node@v4", rbit_core::actions::Status::Running));
+
+    let bad = json!({"steps": [], "outputs": {}, "result": null, "post_steps": {"1": "a\nb"}});
+    assert_eq!(state(&fixture, &credential, task.0, &bad).await.0, StatusCode::BAD_REQUEST);
+}

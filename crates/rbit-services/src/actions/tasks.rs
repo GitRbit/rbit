@@ -53,6 +53,12 @@ impl ActionsService {
         }
         let now = Timestamp::now();
         store.heartbeat(id, now).await?;
+        // Actions: third-party actions. Steps the runner added (`post` scripts) are created
+        // once; a template step's number keeps its name.
+        if !request.post_steps.is_empty() {
+            let added: Vec<(i64, &str)> = request.post_steps.iter().map(|(index, name)| (i64::from(*index), name.as_str())).collect();
+            store.add_steps(id, &added).await?;
+        }
         if !request.steps.is_empty() {
             let steps: Vec<StepUpdate<'_>> = request
                 .steps

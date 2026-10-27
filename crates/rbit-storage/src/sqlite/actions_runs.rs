@@ -857,6 +857,27 @@ impl ActionsRunStore {
         Ok(())
     }
 
+    // Actions: third-party actions.
+    /// Creates steps a runner added to a task (its actions' `post` scripts), waiting; a
+    /// number that already has a step is left as it is.
+    pub async fn add_steps(&self, task: TaskId, steps: &[(i64, &str)]) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        for (number, name) in steps {
+            sqlx::query(
+                "INSERT INTO actions_steps (task_id, number, name, status, started_at, stopped_at, log_index, log_length) \
+                 VALUES (?1, ?2, ?3, ?4, NULL, NULL, 0, 0) ON CONFLICT (task_id, number) DO NOTHING",
+            )
+            .bind(task.0)
+            .bind(number)
+            .bind(name)
+            .bind(Status::Waiting.code())
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Creates or updates steps of a task, by number.
     pub async fn put_steps(&self, task: TaskId, steps: &[StepUpdate<'_>]) -> Result<(), StorageError> {
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;

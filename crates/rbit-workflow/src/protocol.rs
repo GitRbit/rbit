@@ -439,7 +439,16 @@ pub struct TaskStateRequest {
     /// resent call changes nothing. Left out when empty, as older runners send it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub summaries: BTreeMap<u32, String>,
+    // Actions: third-party actions.
+    /// Steps the runner added after the job's own, by index: the `post` scripts of the
+    /// actions it ran (`Post Run actions/setup-node@v4`). The server creates them once; an
+    /// index the template already has keeps its name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub post_steps: BTreeMap<u32, String>,
 }
+
+/// Longest name of a step the runner adds.
+pub const MAX_POST_STEP_NAME_BYTES: usize = 256;
 
 impl TaskStateRequest {
     pub fn is_final(&self) -> bool {
@@ -447,8 +456,15 @@ impl TaskStateRequest {
     }
 
     pub fn validate(&self) -> Result<(), ValidationError> {
-        let max_steps = crate::spec::MAX_STEPS;
+        // Every step of the template may add a post step.
+        let max_steps = 2 * crate::spec::MAX_STEPS;
         ensure(self.steps.len() <= max_steps, || format!("a task has at most {max_steps} steps"))?;
+        for (index, name) in &self.post_steps {
+            ensure(usize::try_from(*index).is_ok_and(|index| index < max_steps), || format!("post step {index} is out of range"))?;
+            ensure(!name.is_empty() && name.len() <= MAX_POST_STEP_NAME_BYTES && !name.chars().any(char::is_control), || {
+                format!("post step {index} needs a name of 1 to {MAX_POST_STEP_NAME_BYTES} bytes")
+            })?;
+        }
         ensure(unique(self.steps.iter().map(|step| step.index)), || "step indexes must not repeat".to_owned())?;
         for step in &self.steps {
             let index = step.index;
@@ -735,6 +751,7 @@ pub(crate) mod tests {
             outputs: BTreeMap::from([("version".to_owned(), "1.2.3".to_owned())]),
             result: None,
             summaries: BTreeMap::new(),
+            post_steps: BTreeMap::new(),
         };
         state.validate().unwrap();
         assert!(!state.is_final());
@@ -751,6 +768,7 @@ pub(crate) mod tests {
             outputs: BTreeMap::new(),
             result: Some(TaskResult::Cancelled),
             summaries: BTreeMap::new(),
+            post_steps: BTreeMap::new(),
         };
         assert!(done.is_final());
         golden(&done, r#"{"steps":[],"outputs":{},"result":"cancelled"}"#);
@@ -878,15 +896,16 @@ pub(crate) mod tests {
 
         let step = StepState { index: 0, status: StepStatus::Running, started_at: Some(5), stopped_at: None, log_index: 0, log_length: 0 };
         let state = |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| {
-            TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new() }.validate()
+            TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new() }.validate()
         };
         assert!(state(vec![step], BTreeMap::new(), None).is_ok());
         assert!(state(vec![step], BTreeMap::new(), Some(TaskResult::Failure)).is_err(), "a final state with a running step");
         assert!(state(vec![step, step], BTreeMap::new(), None).is_err(), "a repeated index");
-        assert!(state(vec![StepState { index: 256, ..step }], BTreeMap::new(), None).is_err());
+        assert!(state(vec![StepState { index: 511, ..step }], BTreeMap::new(), None).is_ok(), "post steps follow the template's");
+        assert!(state(vec![StepState { index: 512, ..step }], BTreeMap::new(), None).is_err());
         assert!(state(vec![StepState { stopped_at: Some(4), ..step }], BTreeMap::new(), None).is_err());
         assert!(state(vec![StepState { log_index: u64::MAX, log_length: 1, ..step }], BTreeMap::new(), None).is_err());
-        let steps = (0..257).map(|index| StepState { index, ..step }).collect();
+        let steps = (0..513).map(|index| StepState { index, ..step }).collect();
         assert!(state(steps, BTreeMap::new(), None).is_err());
 
         let outputs = |name: &str, bytes: usize| BTreeMap::from([(name.to_owned(), "x".repeat(bytes))]);
@@ -901,10 +920,28 @@ pub(crate) mod tests {
             outputs: BTreeMap::new(),
             result: Some(TaskResult::Success),
             summaries: summaries.iter().map(|(index, bytes)| (*index, "x".repeat(*bytes))).collect(),
+            post_steps: BTreeMap::new(),
         };
         assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES)]).validate().is_ok());
         assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES + 1)]).validate().is_err());
-        assert!(summarised(&[(256, 1)]).validate().is_err(), "past the last step");
+        assert!(summarised(&[(512, 1)]).validate().is_err(), "past the last step");
+
+        // Actions: third-party actions.
+        let posted =
+            |index: u32, name: &str| TaskStateRequest { post_steps: BTreeMap::from([(index, name.to_owned())]), ..summarised(&[]) };
+        assert!(posted(3, "Post Run actions/setup-node@v4").validate().is_ok());
+        golden(&posted(3, "Post x"), r#"{"steps":[],"outputs":{},"result":"success","post_steps":{"3":"Post x"}}"#);
+        assert!(posted(512, "Post x").validate().is_err());
+        assert!(posted(3, "").validate().is_err());
+        assert!(
+            posted(
+                3, "a
+b"
+            )
+            .validate()
+            .is_err()
+        );
+        assert!(posted(3, &"x".repeat(MAX_POST_STEP_NAME_BYTES + 1)).validate().is_err());
         let four: Vec<_> = (0..4).map(|index| (index, MAX_STEP_SUMMARY_BYTES)).collect();
         assert!(summarised(&four).validate().is_ok());
         let five: Vec<_> = (0..5).map(|index| (index, MAX_STEP_SUMMARY_BYTES)).collect();
