@@ -14,7 +14,7 @@
 //! encodes them, so a final state call always fits its cap.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     future::Future,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -90,6 +90,9 @@ struct Progress {
     // Actions: step summaries.
     /// Step summaries, masked and within their limits, by step index.
     summaries: BTreeMap<u32, String>,
+    /// The steps whose summary the server accepted: it keeps the first one it sees, so they
+    /// are not sent again.
+    acknowledged: BTreeSet<u32>,
     /// The server answered `404`: nothing more is reported.
     gone: bool,
 }
@@ -115,7 +118,14 @@ impl Reporter {
             log,
             masker: Masker::default(),
             echo: None,
-            progress: Mutex::new(Progress { steps, current: None, outputs: BTreeMap::new(), summaries: BTreeMap::new(), gone: false }),
+            progress: Mutex::new(Progress {
+                steps,
+                current: None,
+                outputs: BTreeMap::new(),
+                summaries: BTreeMap::new(),
+                acknowledged: BTreeSet::new(),
+                gone: false,
+            }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
         })
@@ -280,7 +290,19 @@ impl Reporter {
                 }
             }
         }
-        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries: progress.summaries.clone() }
+        let summaries = progress
+            .summaries
+            .iter()
+            .filter(|(index, _)| !progress.acknowledged.contains(index))
+            .map(|(index, summary)| (*index, summary.clone()))
+            .collect();
+        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries }
+    }
+
+    // Actions: step summaries.
+    /// The server accepted a state call carrying `sent`: those summaries are not sent again.
+    fn acknowledge(&self, sent: &BTreeMap<u32, String>) {
+        self.lock().acknowledged.extend(sent.keys().copied());
     }
 
     fn is_gone(&self) -> bool {
@@ -319,6 +341,7 @@ impl Reporter {
         }
         match client.task_state(self.task_id, &state).await {
             Ok(answer) => {
+                self.acknowledge(&state.summaries);
                 if answer.cancel && !self.cancel.is_cancelled() {
                     tracing::info!(task = %self.task_id, "the server cancelled the task");
                     self.cancel.cancel();
@@ -524,6 +547,12 @@ mod tests {
         assert!(total <= MAX_TASK_SUMMARY_BYTES, "{total}");
         assert!(!last.summaries.contains_key(&7) && reporter.lines().iter().any(|line| line.contains("dropped")));
         assert!(serde_json::to_vec(&last).unwrap().len() < rbit_workflow::protocol::Endpoint::TaskState.body_cap());
+
+        // Once the server accepted them, they are not sent again; the budget still counts them.
+        reporter.acknowledge(&last.summaries);
+        assert!(reporter.snapshot(None).summaries.is_empty());
+        reporter.set_summary(7, &"x".repeat(MAX_STEP_SUMMARY_BYTES));
+        assert!(reporter.snapshot(None).summaries.is_empty(), "the budget stays spent");
     }
 
     #[test]
