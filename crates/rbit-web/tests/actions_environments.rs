@@ -125,6 +125,8 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
         .await
         .unwrap()
         .1;
+    let (_, shown) = api(&fixture, Method::GET, &format!("/repos/alice/rocket/actions/runs/{}", run.id.0), &token, None).await;
+    assert_eq!(shown["status"], "waiting", "as GitHub shows a run whose deployments wait for review");
     let (status, pending) =
         api(&fixture, Method::GET, &format!("/repos/alice/rocket/actions/runs/{}/pending_deployments", run.id.0), &token, None).await;
     assert_eq!(status, StatusCode::OK);

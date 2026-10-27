@@ -260,7 +260,14 @@ pub fn workflow_run(run: &Run, repo: &OwnedRepository, people: &BTreeMap<Account
         "run_number": run.number,
         "run_attempt": run.attempt,
         "event": run.event.as_str(),
-        "status": if run.is_workflow_error() { "completed" } else { github_status(run.status) },
+        // Actions: environments. A run whose deployments wait for review is `waiting`.
+        "status": if run.is_workflow_error() {
+            "completed"
+        } else if run.awaiting_review {
+            "waiting"
+        } else {
+            github_status(run.status)
+        },
         "conclusion": if run.is_workflow_error() { Some("failure") } else { conclusion(run.status) },
         "head_branch": head_branch,
         "head_sha": run.sha,

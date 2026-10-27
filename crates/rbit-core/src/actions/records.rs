@@ -90,6 +90,10 @@ pub struct Run {
     pub started_at: Option<Timestamp>,
     pub finished_at: Option<Timestamp>,
     pub logs_expired_at: Option<Timestamp>,
+    // Actions: environments.
+    /// A job waits for a reviewer of its environment and none is queued or running: GitHub
+    /// shows such a run as `waiting`. Derived from its jobs when read.
+    pub awaiting_review: bool,
 }
 
 impl Run {

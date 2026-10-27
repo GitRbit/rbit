@@ -60,6 +60,7 @@ struct RunRow {
     started_at: Option<i64>,
     finished_at: Option<i64>,
     logs_expired_at: Option<i64>,
+    awaiting_review: bool,
 }
 
 impl TryFrom<RunRow> for Run {
@@ -92,6 +93,7 @@ impl TryFrom<RunRow> for Run {
             started_at: timestamp(row.started_at),
             finished_at: timestamp(row.finished_at),
             logs_expired_at: timestamp(row.logs_expired_at),
+            awaiting_review: row.awaiting_review,
         })
     }
 }
@@ -101,7 +103,7 @@ macro_rules! select_run {
         concat!(
             "SELECT id, repo_id, run_number, workflow_path, workflow_name, title, event, ref, sha, actor_id, trigger_actor_id, \
              pull_number, is_fork, trusted, status, attempt, concurrency_group, cancel_in_progress, error, approved_by, approved_at, \
-             created_at, started_at, finished_at, logs_expired_at FROM actions_runs ",
+             created_at, started_at, finished_at, logs_expired_at,              EXISTS (SELECT 1 FROM actions_jobs j WHERE j.run_id = actions_runs.id AND j.review = 1 AND j.status = 8)              AND NOT EXISTS (SELECT 1 FROM actions_jobs j WHERE j.run_id = actions_runs.id AND j.status IN (5, 6)) AS awaiting_review              FROM actions_runs ",
             $clause
         )
     };

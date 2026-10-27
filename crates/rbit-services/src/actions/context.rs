@@ -313,6 +313,7 @@ mod tests {
             started_at: None,
             finished_at: None,
             logs_expired_at: None,
+            awaiting_review: false,
         }
     }
 
