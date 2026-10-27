@@ -143,7 +143,7 @@ impl ActionsService {
     }
 
     /// The stored template of `job`, or `None` when it cannot be read.
-    async fn template(&self, job: &Job) -> Result<Option<JobTemplate>, ServiceError> {
+    pub(super) async fn template(&self, job: &Job) -> Result<Option<JobTemplate>, ServiceError> {
         let Some(payload) = self.ctx().database.actions_runs().job_payload(job.id).await? else { return Ok(None) };
         Ok(serde_json::from_slice(&payload).ok())
     }

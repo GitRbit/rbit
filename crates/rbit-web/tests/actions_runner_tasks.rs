@@ -453,6 +453,22 @@ async fn a_task_left_behind_by_a_rerun_is_cancelled_and_changes_nothing() {
 }
 
 #[tokio::test]
+async fn a_failed_job_that_may_fail_counts_as_succeeded() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let mut lenient = template("build", &["linux"], &[]);
+    lenient.continue_on_error = true;
+    let run = seed(&fixture, &[payload(&lenient), payload(&template("test", &["linux"], &["build"]))]).await;
+    let build = spec(&poll(&fixture, &credential, Some("b")).await.1);
+    let failed = json!({"steps": [step(0, "failure"), step(1, "skipped")], "outputs": {}, "result": "failure"});
+    assert_eq!(state(&fixture, &credential, build.task_id.0, &failed).await, (StatusCode::OK, json!({"cancel": false})));
+    let jobs = fixture.database.actions_runs().jobs(run.id).await.unwrap();
+    assert_eq!((jobs[0].status, jobs[1].status), (Status::Success, Status::Waiting), "the job that needs it runs");
+    let test = spec(&poll(&fixture, &credential, Some("t")).await.1);
+    assert_eq!(serde_json::to_value(test.contexts.needs["build"].result).unwrap(), json!("success"));
+}
+
+#[tokio::test]
 async fn ephemeral_runners_go_away_after_their_task() {
     let fixture = quick().await;
     let credential = fixture.runner(&["linux"]).await;

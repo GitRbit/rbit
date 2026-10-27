@@ -94,7 +94,14 @@ impl ActionsService {
         let Some(result) = request.result else {
             return Ok(TaskStateResponse { cancel: job.status == Status::Cancelled });
         };
-        self.finish(runner, id, result_status(result)).await?;
+        let mut status = result_status(result);
+        // A job with `continue-on-error` that fails counts as succeeded, as in `rbit-runner
+        // exec`: it fails neither the run nor the jobs that need it, and `fail-fast` leaves
+        // its siblings running. Its failed steps still show.
+        if status == Status::Failure && self.template(&job).await?.is_some_and(|template| template.continue_on_error) {
+            status = Status::Success;
+        }
+        self.finish(runner, id, status).await?;
         let cancelled = store.job(job.id).await?.is_some_and(|job| job.status == Status::Cancelled);
         Ok(TaskStateResponse { cancel: cancelled })
     }

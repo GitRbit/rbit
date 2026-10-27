@@ -107,7 +107,10 @@ must not silently change what a job does.
 A job without its own `if:` runs only when every job it needs succeeded (`success()`);
 `if: always()`, `failure()` and `cancelled()` change that. The server decides a job's `if:`
 when its needs are done, so a skipped job never takes a runner. With `fail-fast` (the
-default) a failed matrix job cancels its unfinished siblings.
+default) a failed matrix job cancels its unfinished siblings, and the jobs that need it see
+it as failed. A job with `continue-on-error: true` that fails counts as succeeded: it fails
+neither the run nor the jobs that need it, and cancels no siblings; its failed steps still
+show.
 
 ### Built-in actions
 
