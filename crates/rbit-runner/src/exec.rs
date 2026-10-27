@@ -149,7 +149,8 @@ pub async fn run(config_path: &Path, args: ExecArgs) -> anyhow::Result<()> {
 }
 
 /// Folds one finished job instance into `results`: a matrix job's result is the worst of
-/// its instances, and their outputs are merged.
+/// its instances, where skipped instances count only when all are, as on the server
+/// (`aggregate`); their outputs are merged.
 fn merge(
     results: &mut BTreeMap<String, (JobResult, BTreeMap<String, String>)>,
     job: &str,
@@ -158,8 +159,8 @@ fn merge(
 ) {
     let entry = results.entry(job.to_owned()).or_insert((result, BTreeMap::new()));
     let rank = |result: JobResult| match result {
-        JobResult::Success => 0,
-        JobResult::Skipped => 1,
+        JobResult::Skipped => 0,
+        JobResult::Success => 1,
         JobResult::Cancelled => 2,
         JobResult::Failure => 3,
     };
@@ -401,6 +402,15 @@ mod tests {
         merge(&mut results, "test", JobResult::Success, BTreeMap::new());
         assert_eq!(results["test"].0, JobResult::Failure);
         assert_eq!(results["test"].1.len(), 2);
+
+        merge(&mut results, "lint", JobResult::Success, BTreeMap::new());
+        merge(&mut results, "lint", JobResult::Skipped, BTreeMap::new());
+        merge(&mut results, "docs", JobResult::Skipped, BTreeMap::new());
+        merge(&mut results, "docs", JobResult::Success, BTreeMap::new());
+        merge(&mut results, "bench", JobResult::Skipped, BTreeMap::new());
+        merge(&mut results, "bench", JobResult::Skipped, BTreeMap::new());
+        let result = |job: &str| results[job].0;
+        assert_eq!((result("lint"), result("docs"), result("bench")), (JobResult::Success, JobResult::Success, JobResult::Skipped));
     }
 
     #[tokio::test]
