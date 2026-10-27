@@ -843,8 +843,9 @@ async fn reruns_restart_failed_jobs_and_their_dependents() {
     assert!(after[1].task_id.is_none() && after[1].started_at.is_none());
     assert!(store.outputs(after[1].id).await.unwrap().is_empty() && !store.outputs(after[0].id).await.unwrap().is_empty());
     let run_after = store.run(run.id).await.unwrap().unwrap();
-    assert_eq!((run_after.attempt, run_after.finished_at), (2, None));
+    assert_eq!((run_after.attempt, run_after.started_at, run_after.finished_at), (2, None, None), "each attempt is timed on its own");
     let next = store.claim(&claim(runner, scope, &labels, &[110; 32])).await.unwrap().unwrap();
+    assert!(store.run(run.id).await.unwrap().unwrap().started_at.is_some(), "set again when the attempt starts");
     assert_eq!((next.job.key.as_str(), next.task.attempt), ("b", 2));
     store.finish_task(next.task.id, Status::Success, NOW).await.unwrap();
     let last = store.claim(&claim(runner, scope, &labels, &[111; 32])).await.unwrap().unwrap();

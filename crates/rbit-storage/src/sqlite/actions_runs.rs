@@ -1132,7 +1132,9 @@ impl ActionsRunStore {
                 break;
             }
         }
-        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, finished_at = NULL WHERE id = ?")
+        // A new attempt starts its own clock, as GitHub times each attempt; the first job it
+        // starts sets `started_at` again.
+        sqlx::query("UPDATE actions_runs SET attempt = attempt + 1, status = ?, started_at = NULL, finished_at = NULL WHERE id = ?")
             .bind(placeholder_status(start).code())
             .bind(run.0)
             .execute(&mut *tx)
