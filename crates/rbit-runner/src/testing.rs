@@ -82,6 +82,8 @@ pub fn job_spec(task_id: i64, steps: usize) -> JobSpec {
                     timeout_minutes: None,
                 })
                 .collect(),
+            environment: None,
+            environment_url: None,
         },
         contexts: Contexts { github: Map::new(), inputs: Map::new(), vars: BTreeMap::new(), needs: BTreeMap::new() },
         secrets: BTreeMap::new(),

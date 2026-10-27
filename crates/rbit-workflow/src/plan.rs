@@ -175,6 +175,18 @@ fn job_template(
             })
         })
         .collect::<Result<_, WorkflowError>>()?;
+    // Actions: environments.
+    let environment = match &job.environment {
+        Some(environment) => {
+            let name = evaluator.text("environment", &environment.name)?;
+            let name = name.trim();
+            if !crate::spec::valid_environment_name(name) {
+                return Err(evaluator.refuse("environment", &format!("`{}` is not an environment name", name.escape_debug())));
+            }
+            Some(name.to_owned())
+        }
+        None => None,
+    };
     let template = JobTemplate {
         version: JOB_TEMPLATE_VERSION,
         job_id: job.id.clone(),
@@ -203,6 +215,8 @@ fn job_template(
         container,
         services,
         steps: job.steps.iter().map(step_template).collect(),
+        environment,
+        environment_url: job.environment.as_ref().and_then(|environment| environment.url.clone()),
     };
     template.validate().map_err(|problem| WorkflowError::plan(format!("job `{}`: {}", job.id, problem.message), Some(job.at)))?;
     Ok(template)
@@ -788,6 +802,49 @@ jobs:
             let error = plan(&workflow(&source), &run_context(), &Limits::default(), &Deadline::NONE).unwrap_err();
             assert_eq!(error.kind, crate::ErrorKind::Plan, "{runs_on}");
             assert!(error.message.starts_with("job `j`"), "{error}");
+        }
+    }
+
+    // Actions: environments.
+    #[test]
+    fn environments_are_named_when_planned_and_their_url_on_the_runner() {
+        let jobs = planned(
+            "on: push
+jobs:
+  deploy:
+    runs-on: x
+    strategy: {matrix: {stage: [staging, production]}}
+    environment:
+      name: ${{ matrix.stage }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps: [{run: x}]
+  plain:
+    runs-on: x
+    environment: Production
+    steps: [{run: x}]
+",
+        );
+        let environments: Vec<_> = jobs.iter().map(|job| (job.environment.as_deref(), job.environment_url.as_deref())).collect();
+        assert_eq!(
+            environments,
+            [
+                (Some("production"), Some("${{ steps.deploy.outputs.url }}")),
+                (Some("staging"), Some("${{ steps.deploy.outputs.url }}")),
+                (Some("Production"), None)
+            ]
+        );
+        for name in ["${{ inputs.missing }}", "a/b"] {
+            let source = format!(
+                "on: push
+jobs:
+  j:
+    runs-on: x
+    environment: '{name}'
+    steps: [{{run: x}}]
+"
+            );
+            let error = plan(&workflow(&source), &run_context(), &Limits::default(), &Deadline::NONE).unwrap_err();
+            assert!(error.message.contains("environment"), "{name}: {error}");
         }
     }
 

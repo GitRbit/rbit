@@ -266,7 +266,21 @@ pub struct Job {
     pub services: Vec<Service>,
     /// At least one, at most [`crate::spec::MAX_STEPS`].
     pub steps: Vec<Step>,
+    // Actions: environments.
+    /// `environment`: the deployment environment the job runs in.
+    pub environment: Option<EnvironmentRef>,
     pub at: Location,
+}
+
+// Actions: environments.
+/// A job's `environment`: `name` (or `{name, url}`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnvironmentRef {
+    /// A template the server evaluates when it plans the job (`github`, `inputs`, `vars`,
+    /// `matrix`, `strategy`).
+    pub name: String,
+    /// A template the runner evaluates after the job's steps (it may use `steps`).
+    pub url: Option<String>,
 }
 
 /// A job's `strategy`.

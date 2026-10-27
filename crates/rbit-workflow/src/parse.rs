@@ -25,9 +25,9 @@ use crate::{
     expr::{CONTEXTS, Condition, Expr, Function, Template},
     limits::{Deadline, Limits},
     model::{
-        ActionStep, ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, Filter, InputKind, Job, Matrix, On,
-        Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell, Step,
-        StepAction, Strategy, Workflow,
+        ActionStep, ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, EnvironmentRef, Filter, InputKind, Job,
+        Matrix, On, Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell,
+        Step, StepAction, Strategy, Workflow,
     },
     pattern::Patterns,
     spec::{MAX_NAME_BYTES, MAX_SERVICES, MAX_STEPS},
@@ -42,7 +42,7 @@ pub const MAX_JOB_ID_BYTES: usize = 100;
 /// The keys of a workflow.
 const WORKFLOW_KEYS: [&str; 8] = ["name", "run-name", "on", "env", "defaults", "permissions", "concurrency", "jobs"];
 /// The keys of a job.
-const JOB_KEYS: [&str; 15] = [
+const JOB_KEYS: [&str; 16] = [
     "name",
     "needs",
     "if",
@@ -58,13 +58,13 @@ const JOB_KEYS: [&str; 15] = [
     "container",
     "services",
     "steps",
+    "environment",
 ];
 /// GitHub's job keys that rbit lacks, and why.
-const JOB_UNSUPPORTED: [(&str, &str); 6] = [
+const JOB_UNSUPPORTED: [(&str, &str); 5] = [
     ("uses", ": reusable workflows are not supported"),
     ("with", ": reusable workflows are not supported"),
     ("secrets", ": reusable workflows are not supported"),
-    ("environment", ": rbit has no deployment environments"),
     ("cancel-timeout-minutes", ""),
     ("snapshot", ""),
 ];
@@ -705,6 +705,8 @@ fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
         None => return Err(error(format!("`{path}` needs `steps`"), key.at)),
         Some(node) => parse_steps(node, &field("steps"))?,
     };
+    let environment =
+        config.get("environment").filter(|node| !node.is_null()).map(|node| parse_environment(node, &field("environment"))).transpose()?;
     Ok(Job {
         id,
         name,
@@ -722,8 +724,29 @@ fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
         container,
         services,
         steps,
+        environment,
         at: key.at,
     })
+}
+
+// Actions: environments.
+/// `environment`: a name, or `{name, url}`. The name is the server's to evaluate; the URL
+/// the runner's, after the steps.
+fn parse_environment(node: &Node, path: &str) -> Result<EnvironmentRef, WorkflowError> {
+    let (name, url, name_at) = match &node.value {
+        Value::Mapping(config) => {
+            check_keys(config, path, &["name", "url"], &[])?;
+            let name = config.get("name").ok_or_else(|| error(format!("`{path}` needs a `name`"), node.at))?;
+            let text = name.as_text().ok_or_else(|| error(format!("`{path}.name` must be a string"), name.at))?;
+            (text, template_field(config, "url", &format!("{path}.url"), Scope::Runner)?, name.at)
+        }
+        _ => (node.as_text().ok_or_else(|| error(format!("`{path}` must be a name or `{{name, url}}`"), node.at))?, None, node.at),
+    };
+    if name.trim().is_empty() {
+        return Err(error(format!("`{path}` must name an environment"), name_at));
+    }
+    template(&name, Scope::Job, path, name_at)?;
+    Ok(EnvironmentRef { name, url })
 }
 
 fn parse_runs_on(node: &Node, path: &str) -> Result<Vec<String>, WorkflowError> {
@@ -1460,6 +1483,7 @@ jobs:
     }
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "every level's unknown and unsupported keys, in order")]
     fn unknown_and_unsupported_keys_are_errors() {
         let workflow_level: &[(&str, &str, (u32, u32))] = &[
             ("nmae: x\non: push\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n", "a workflow does not support `nmae`", (1, 1)),
@@ -1497,7 +1521,14 @@ jobs:
         }
         let job_level: &[(&str, &str, (u32, u32))] = &[
             ("    runs_on: x\n    steps: [{run: x}]\n", "`jobs.a` does not support `runs_on`; it supports name, needs, if", (4, 5)),
-            ("    runs-on: x\n    environment: prod\n    steps: [{run: x}]\n", "`jobs.a.environment` is not supported by rbit", (5, 5)),
+            ("    runs-on: x\n    environment: {url: x}\n    steps: [{run: x}]\n", "`jobs.a.environment` needs a `name`", (5, 18)),
+            ("    runs-on: x\n    environment: ''\n    steps: [{run: x}]\n", "`jobs.a.environment` must name an environment", (5, 18)),
+            (
+                "    runs-on: x\n    environment: {name: p, reviewers: x}\n    steps: [{run: x}]\n",
+                "`jobs.a.environment` does not support `reviewers`",
+                (5, 28),
+            ),
+            ("    runs-on: x\n    environment: ${{ steps.a.outputs.b }}\n    steps: [{run: x}]\n", "steps", (5, 18)),
             ("    uses: o/r/.github/workflows/w.yml@v1\n", "`jobs.a.uses` is not supported by rbit: reusable workflows", (4, 5)),
             ("    runs-on: x\n    secrets: inherit\n    steps: [{run: x}]\n", "`jobs.a.secrets: inherit` is not supported by rbit", (5, 5)),
             ("    runs-on: x\n    secrets: {A: b}\n    steps: [{run: x}]\n", "`jobs.a.secrets` is not supported by rbit", (5, 5)),

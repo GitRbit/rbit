@@ -449,6 +449,7 @@ impl Job {
         timer.abort();
         self.save_caches().await;
         self.outputs();
+        self.environment_url();
         if self.interrupt.is_cancelled() {
             self.phase = Phase::Cancelled;
         }
@@ -691,6 +692,16 @@ impl Job {
             None => self.backend.base_path(),
         };
         self.path.iter().map(String::as_str).chain((!base.is_empty()).then_some(base.as_str())).collect::<Vec<_>>().join(&separator)
+    }
+
+    // Actions: environments.
+    /// Evaluates and reports the job's `environment.url`, after its steps.
+    fn environment_url(&mut self) {
+        let Some(template) = self.spec.template.environment_url.clone() else { return };
+        match self.render(&template) {
+            Ok(url) => self.reporter.set_environment_url(url.trim()),
+            Err(error) => self.reporter.log(&format!("##[warning]`environment.url`: {error}")),
+        }
     }
 
     /// Evaluates and reports the job's `outputs`, masked and within the size cap.

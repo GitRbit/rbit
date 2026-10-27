@@ -94,7 +94,17 @@ pub struct JobTemplate {
     /// `services`, in file order.
     pub services: Vec<Service>,
     pub steps: Vec<StepTemplate>,
+    // Actions: environments.
+    /// The deployment environment, by name, evaluated when the job was planned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// `environment.url`, a template the runner evaluates after the steps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_url: Option<String>,
 }
+
+/// Longest environment name.
+pub const MAX_ENVIRONMENT_NAME_BYTES: usize = 255;
 
 /// The `strategy` of a job: what the server enforces and the `strategy` context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -300,6 +310,9 @@ impl JobTemplate {
         validate_env(&self.workflow_env)?;
         validate_env(&self.env)?;
         validate_outputs(&self.outputs)?;
+        if let Some(environment) = &self.environment {
+            ensure(valid_environment_name(environment), || format!("environment `{}` is malformed", environment.escape_debug()))?;
+        }
         if let Some(container) = &self.container {
             ensure(!container.image.is_empty(), || "`container.image` must not be empty".to_owned())?;
             validate_env(&container.env)?;
@@ -342,6 +355,16 @@ impl Strategy {
         ensure(self.job_index < self.job_total, || "`strategy.job-index` must be below `job-total`".to_owned())?;
         ensure(self.max_parallel != Some(0), || "`max-parallel` must be at least 1".to_owned())
     }
+}
+
+// Actions: environments.
+/// An environment's name: 1 to [`MAX_ENVIRONMENT_NAME_BYTES`] bytes, no control
+/// characters, `/` or `\\`, and not blank at either end. GitHub allows little more.
+pub fn valid_environment_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= MAX_ENVIRONMENT_NAME_BYTES
+        && name.trim() == name
+        && !name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\'))
 }
 
 /// Environment variable names: 1 to [`MAX_NAME_BYTES`], without `=` or NUL.
@@ -567,6 +590,8 @@ mod tests {
                     timeout_minutes: Some("30".into()),
                 },
             ],
+            environment: None,
+            environment_url: None,
         }
     }
 

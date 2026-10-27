@@ -98,6 +98,8 @@ struct Progress {
     // Actions: third-party actions.
     /// Steps added after the template's (actions' `post` scripts), by index.
     post_steps: BTreeMap<u32, String>,
+    // Actions: environments.
+    environment_url: Option<String>,
 }
 
 impl Reporter {
@@ -129,6 +131,7 @@ impl Reporter {
                 acknowledged: BTreeSet::new(),
                 gone: false,
                 post_steps: BTreeMap::new(),
+                environment_url: None,
             }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
@@ -263,6 +266,18 @@ impl Reporter {
         self.changed.notify_one();
     }
 
+    // Actions: environments.
+    /// Records the job's `environment.url`, masked and cut to the protocol's limit.
+    pub fn set_environment_url(&self, url: &str) {
+        let masked: String = self.mask(url).chars().filter(|c| !c.is_control()).collect();
+        let mut end = masked.len().min(rbit_workflow::protocol::MAX_ENVIRONMENT_URL_BYTES);
+        while !masked.is_char_boundary(end) {
+            end -= 1;
+        }
+        self.lock().environment_url = (!masked.trim().is_empty()).then(|| masked[..end].to_owned());
+        self.changed.notify_one();
+    }
+
     /// Records the job's outputs, masked.
     pub fn set_outputs(&self, outputs: BTreeMap<String, String>) {
         let outputs = outputs.into_iter().map(|(name, value)| (name, self.mask(&value))).collect();
@@ -323,7 +338,14 @@ impl Reporter {
             .filter(|(index, _)| !progress.acknowledged.contains(index))
             .map(|(index, summary)| (*index, summary.clone()))
             .collect();
-        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries, post_steps: progress.post_steps.clone() }
+        TaskStateRequest {
+            steps,
+            outputs: progress.outputs.clone(),
+            result,
+            summaries,
+            post_steps: progress.post_steps.clone(),
+            environment_url: progress.environment_url.clone(),
+        }
     }
 
     // Actions: step summaries.

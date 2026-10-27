@@ -445,7 +445,14 @@ pub struct TaskStateRequest {
     /// index the template already has keeps its name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub post_steps: BTreeMap<u32, String>,
+    // Actions: environments.
+    /// The job's `environment.url`, as the runner evaluated it after the steps (masked).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_url: Option<String>,
 }
+
+/// Longest environment URL a runner may report.
+pub const MAX_ENVIRONMENT_URL_BYTES: usize = 2048;
 
 /// Longest name of a step the runner adds.
 pub const MAX_POST_STEP_NAME_BYTES: usize = 256;
@@ -487,6 +494,11 @@ impl TaskStateRequest {
             total = total.saturating_add(summary.len());
         }
         ensure(total <= MAX_TASK_SUMMARY_BYTES, || format!("a task's step summaries may be at most {MAX_TASK_SUMMARY_BYTES} bytes"))?;
+        if let Some(url) = &self.environment_url {
+            ensure(url.len() <= MAX_ENVIRONMENT_URL_BYTES && !url.chars().any(char::is_control), || {
+                format!("the environment URL must be at most {MAX_ENVIRONMENT_URL_BYTES} bytes, on one line")
+            })?;
+        }
         validate_outputs(&self.outputs)
     }
 }
@@ -752,6 +764,7 @@ pub(crate) mod tests {
             result: None,
             summaries: BTreeMap::new(),
             post_steps: BTreeMap::new(),
+            environment_url: None,
         };
         state.validate().unwrap();
         assert!(!state.is_final());
@@ -769,6 +782,7 @@ pub(crate) mod tests {
             result: Some(TaskResult::Cancelled),
             summaries: BTreeMap::new(),
             post_steps: BTreeMap::new(),
+            environment_url: None,
         };
         assert!(done.is_final());
         golden(&done, r#"{"steps":[],"outputs":{},"result":"cancelled"}"#);
@@ -896,7 +910,8 @@ pub(crate) mod tests {
 
         let step = StepState { index: 0, status: StepStatus::Running, started_at: Some(5), stopped_at: None, log_index: 0, log_length: 0 };
         let state = |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| {
-            TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new() }.validate()
+            TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new(), post_steps: BTreeMap::new(), environment_url: None }
+                .validate()
         };
         assert!(state(vec![step], BTreeMap::new(), None).is_ok());
         assert!(state(vec![step], BTreeMap::new(), Some(TaskResult::Failure)).is_err(), "a final state with a running step");
@@ -921,6 +936,7 @@ pub(crate) mod tests {
             result: Some(TaskResult::Success),
             summaries: summaries.iter().map(|(index, bytes)| (*index, "x".repeat(*bytes))).collect(),
             post_steps: BTreeMap::new(),
+            environment_url: None,
         };
         assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES)]).validate().is_ok());
         assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES + 1)]).validate().is_err());
