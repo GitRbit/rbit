@@ -150,11 +150,19 @@ pub async fn execute(
             Line::Nothing => {}
             Line::Output(name, value) => {
                 deprecated(&mut warned, reporter);
-                printed_outputs.insert(name, value);
+                if crate::envfiles::valid_output_name(&name) {
+                    printed_outputs.insert(name, value);
+                } else {
+                    reporter.log(&format!("##[warning]`{}` is not a valid output name; it was ignored", name.escape_debug()));
+                }
             }
             Line::State(name, value) => {
                 deprecated(&mut warned, reporter);
-                printed_state.insert(name, value);
+                if crate::envfiles::valid_variable_name(&name) {
+                    printed_state.insert(name, value);
+                } else {
+                    reporter.log(&format!("##[warning]`{}` is not a valid state name; it was ignored", name.escape_debug()));
+                }
             }
         })
         .await

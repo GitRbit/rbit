@@ -92,9 +92,11 @@ pub struct PostStep {
 /// Where a fetched or local action is.
 #[derive(Debug, Clone)]
 struct Located {
-    /// On the runner host.
-    host: PathBuf,
-    /// As the step sees it.
+    /// Where its `action.yml` and `Dockerfile` are read: the runner's own cache for a fetched
+    /// action (never the job's copy, which a container job can change), the workspace for a
+    /// local one (read while the job's container is paused, through no link).
+    source: PathBuf,
+    /// As the step sees it: the job's copy, or the workspace directory.
     view: String,
     /// `owner/repo`, or empty for a local action.
     repository: String,
@@ -133,7 +135,17 @@ pub fn action<'a>(
             Ok(located) => located,
             Err(error) => return job.fail(&error),
         };
-        let manifest = match read_manifest(&located.host, matches!(action.source, ActionSource::Local { .. })) {
+        // A local action is in the workspace, which a container job can change: it is read
+        // while the container is paused.
+        let local = matches!(action.source, ActionSource::Local { .. });
+        if local && let Err(error) = job.backend.pause().await {
+            return job.fail(&format!("cannot pause the job container to read `{}`: {error}", action.uses));
+        }
+        let manifest = read_manifest(&located.source);
+        if local && let Err(error) = job.backend.resume().await {
+            return job.fail(&format!("cannot resume the job container after reading `{}`: {error}", action.uses));
+        }
+        let manifest = match manifest {
             Ok(manifest) => manifest,
             Err(error) => return job.fail(&format!("`{}`: {error}", action.uses)),
         };
@@ -151,7 +163,7 @@ pub fn action<'a>(
         let step = Running { index, uses: &action.uses, step_env, timeout };
         match manifest.runs.clone() {
             Runs::Node(node) => javascript(job, &step, &node, &located, extra).await,
-            Runs::Composite(steps) => composite(job, index, &manifest, &steps, &inputs, &located, step_env, depth).await,
+            Runs::Composite(steps) => composite(job, &step, &manifest, &steps, &inputs, &located, &extra, depth).await,
             Runs::Docker(docker) => container_action(job, &step, &docker, &inputs, &located, extra).await,
         }
     })
@@ -182,28 +194,47 @@ async fn javascript(job: &mut Job, step: &Running<'_>, node: &NodeRuns, located:
         cwd: cwd.clone(),
         extra,
     };
+    // What `pre` and `main` write to GITHUB_STATE reaches the scripts after them, as STATE_*.
+    let mut state = BTreeMap::new();
+    let with_state = |state: &BTreeMap<String, String>| {
+        let mut extra = extra.clone();
+        extra.extend(state.iter().map(|(name, value)| (format!("STATE_{name}"), value.clone())));
+        extra
+    };
+    let mut outcome = None;
     if let Some(pre) = &node.pre {
         match condition(job, node.pre_if.as_deref()) {
             Ok(true) => {
-                let (outcome, _) = execute(job, step.index, process(pre, extra.clone()), step.step_env, step.timeout).await;
-                if outcome.status != StepStatus::Success {
-                    return outcome;
+                let (ran, written) = execute(job, step.index, process(pre, with_state(&state)), step.step_env, step.timeout).await;
+                state.extend(written);
+                if ran.status != StepStatus::Success {
+                    outcome = Some(ran);
                 }
             }
             Ok(false) => {}
-            Err(failed) => return failed,
+            Err(failed) => outcome = Some(failed),
         }
     }
-    let (outcome, state) = execute(job, step.index, process(&node.main, extra.clone()), step.step_env, step.timeout).await;
+    let outcome = if let Some(failed) = outcome {
+        failed
+    } else {
+        let (ran, written) = execute(job, step.index, process(&node.main, with_state(&state)), step.step_env, step.timeout).await;
+        state.extend(written);
+        ran
+    };
+    // `post` runs after the job's steps whatever `pre` and `main` did, when `post-if` holds.
     if let Some(post) = &node.post {
-        let mut extra = extra;
-        extra.extend(state.iter().map(|(name, value)| (format!("STATE_{name}"), value.clone())));
-        job.post_steps.push(PostStep {
-            name: format!("Post Run {}", step.uses),
-            condition: node.post_if.clone(),
-            process: process(post, extra),
-            step_env: step.step_env.clone(),
-        });
+        let room = 2 * rbit_workflow::spec::MAX_STEPS - job.spec.template.steps.len();
+        if job.post_steps.len() < room {
+            job.post_steps.push(PostStep {
+                name: format!("Post Run {}", step.uses),
+                condition: node.post_if.clone(),
+                process: process(post, with_state(&state)),
+                step_env: step.step_env.clone(),
+            });
+        } else {
+            job.reporter.log(&format!("##[warning]the job has {room} post steps already; `{}`'s does not run", step.uses));
+        }
     }
     outcome
 }
@@ -218,14 +249,23 @@ async fn container_action(
     extra: Vec<(String, String)>,
 ) -> Outcome {
     let image = match docker.image.strip_prefix("docker://") {
-        Some(image) => DockerImage::Pull(image.to_owned()),
-        None => DockerImage::Build(located.host.join(&docker.image)),
+        Some(image) if valid_image(image) => DockerImage::Pull(image.to_owned()),
+        Some(image) => return job.fail(&format!("`runs.image`: `{}` is not an image reference", image.escape_debug())),
+        None => match dockerfile(&located.source, &docker.image) {
+            Ok(path) => DockerImage::Build(path, located.source.clone()),
+            Err(error) => return job.fail(&format!("`runs.image`: {error}")),
+        },
     };
+    // `args` and `env` are the action's: they may use `inputs`, never `secrets`.
     let saved = job.contexts.get("inputs").cloned();
     let context: Map<String, Value> = inputs.iter().map(|(name, value)| (name.clone(), Value::String(value.clone()))).collect();
     job.contexts.insert("inputs", Value::Object(context));
-    let args = docker.args.iter().map(|arg| job.render(arg)).collect::<Result<Vec<_>, _>>();
-    let env = docker.env.iter().map(|(name, value)| job.render(value).map(|value| (name.clone(), value))).collect::<Result<Vec<_>, _>>();
+    let (args, env) = without_secrets(job, |job| {
+        let args = docker.args.iter().map(|arg| job.render(arg)).collect::<Result<Vec<_>, _>>();
+        let env =
+            docker.env.iter().map(|(name, value)| job.render(value).map(|value| (name.clone(), value))).collect::<Result<Vec<_>, _>>();
+        (args, env)
+    });
     match saved {
         Some(saved) => job.contexts.insert("inputs", saved),
         None => {
@@ -239,6 +279,44 @@ async fn container_action(
     };
     let run = DockerRun { image, entrypoint: docker.entrypoint.clone(), args, extra: [extra, env].concat() };
     run_docker(job, step.index, &run, step.step_env, step.timeout).await
+}
+
+/// Whether `image` is an image reference the engine reads as one: `name[:tag][@digest]`
+/// characters only, and no leading `-`, which `docker run` would take for an option.
+pub fn valid_image(image: &str) -> bool {
+    !image.is_empty()
+        && image.len() <= 512
+        && !image.starts_with(['-', '.', '/', ':', '@'])
+        && image.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b':' | b'@'))
+}
+
+/// An action's `Dockerfile`: a regular file inside `dir`, by plain names and through no link.
+fn dockerfile(dir: &Path, image: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(image);
+    if relative.is_absolute() || !relative.components().all(|component| matches!(component, std::path::Component::Normal(_))) {
+        return Err(format!("`{image}` must be a file of the action"));
+    }
+    if crate::untrusted::crosses_link(dir, relative) {
+        return Err(format!("`{image}` goes through a symbolic link"));
+    }
+    let path = dir.join(relative);
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() => Ok(path),
+        Ok(_) => Err(format!("`{image}` is not a regular file")),
+        Err(error) => Err(format!("cannot read `{image}`: {error}")),
+    }
+}
+
+/// Runs `f` with the `secrets` context hidden: what an action's own `action.yml` evaluates
+/// (input defaults, composite steps, Docker `args` and `env`) never sees the workflow's
+/// secrets, as on GitHub. The workflow passes one with `with:` or `env:` if it means to.
+fn without_secrets<T>(job: &mut Job, f: impl FnOnce(&mut Job) -> T) -> T {
+    let secrets = job.contexts.remove("secrets");
+    let result = f(job);
+    if let Some(secrets) = secrets {
+        job.contexts.insert("secrets", secrets);
+    }
+    result
 }
 
 /// Whether a `pre-if` / `post-if` holds now; `None` is `always()`.
@@ -270,7 +348,7 @@ fn local(job: &Job, path: &str) -> Result<Located, String> {
     } else {
         join(&job.backend.view().workspace, &path.replace('/', if windows { "\\" } else { "/" }), windows)
     };
-    Ok(Located { host, view, repository: String::new(), reference: String::new() })
+    Ok(Located { source: host, view, repository: String::new(), reference: String::new() })
 }
 
 /// A repository's action: resolved, fetched into the cache unless it is there, and copied
@@ -280,38 +358,53 @@ async fn repository(job: &Job, owner: &str, repo: &str, path: &str, reference: &
     let git = process::find_program("git").ok_or("fetching actions needs `git` on the runner host")?;
     let env = git_env(&url, job.private_dir().ok().as_deref());
     let sha = if is_commit(reference) { reference.to_ascii_lowercase() } else { resolve(&git, &env, &url, reference).await? };
-    let cache = job.work_dir.join("actions").join(owner.to_ascii_lowercase()).join(repo.to_ascii_lowercase()).join(&sha);
-    if cache.join(COMPLETE).is_file() {
+    let actions = job.work_dir.join("actions");
+    let cache = actions.join(owner.to_ascii_lowercase()).join(repo.to_ascii_lowercase()).join(&sha);
+    if complete(&cache).is_file() {
         job.reporter.log(&format!("Using action repository '{owner}/{repo}@{reference}' (SHA:{sha})"));
+        // Kept in use: the oldest are pruned first.
+        let _ = std::fs::write(complete(&cache), &sha);
     } else {
         let _fetching = FETCHING.lock().await;
-        if !cache.join(COMPLETE).is_file() {
+        if !complete(&cache).is_file() {
             job.reporter.log(&format!("Download action repository '{owner}/{repo}@{reference}' (SHA:{sha})"));
             fetch(&git, &env, &url, &sha, &cache).await?;
+            prune(&actions, MAX_CACHED_ACTIONS);
         }
     }
-    let relative = format!("_actions/{}/{}/{sha}", owner.to_ascii_lowercase(), repo.to_ascii_lowercase());
-    let copy = job.dirs.temp.join(&relative);
-    if !copy.join(COMPLETE).is_file() {
-        let (from, to) = (cache.clone(), copy.clone());
-        tokio::task::spawn_blocking(move || copy_tree(&from, &to))
-            .await
-            .map_err(|error| error.to_string())?
-            .map_err(|error| format!("cannot copy the action into the task: {error}"))?;
+    // The action's own sub-path must not leave it through a link it carries.
+    if !path.is_empty() && crate::untrusted::crosses_link(&cache, Path::new(path)) {
+        return Err(format!("`{owner}/{repo}/{path}` goes through a symbolic link"));
     }
+    // The job gets a copy in a fresh directory of its `temp`, made while its container is
+    // paused: a container job can change `temp`, so it can neither have planted links on the
+    // way nor race the copy.
+    job.backend.pause().await.map_err(|error| format!("cannot pause the job container to copy the action: {error}"))?;
+    let copied = {
+        let (from, temp) = (cache.clone(), job.dirs.temp.clone());
+        tokio::task::spawn_blocking(move || copy_into_task(&from, &temp)).await.map_err(|error| error.to_string())
+    };
+    job.backend.resume().await.map_err(|error| format!("cannot resume the job container after copying the action: {error}"))?;
+    let name = copied?.map_err(|error| format!("cannot copy the action into the task: {error}"))?;
     let windows = job.backend.windows();
     let separator = if windows { "\\" } else { "/" };
-    let mut view = join(&job.backend.view().temp, &relative.replace('/', separator), windows);
-    let mut host = copy;
+    let mut view = join(&job.backend.view().temp, &format!("_actions{separator}{name}"), windows);
+    let mut source = cache;
     if !path.is_empty() {
         view = join(&view, &path.replace('/', separator), windows);
-        host = host.join(path);
+        source = source.join(path);
     }
-    Ok(Located { host, view, repository: format!("{owner}/{repo}"), reference: reference.to_owned() })
+    Ok(Located { source, view, repository: format!("{owner}/{repo}"), reference: reference.to_owned() })
 }
 
-/// The file marking a complete fetch or copy.
-const COMPLETE: &str = ".rbit-complete";
+/// How many fetched actions the runner keeps; the least recently used go first.
+const MAX_CACHED_ACTIONS: usize = 200;
+
+/// The file beside `cache` that marks it complete (beside, not in it: a fetched tree could
+/// carry a link where the mark would be written).
+fn complete(cache: &Path) -> PathBuf {
+    cache.with_extension("complete")
+}
 
 fn is_commit(reference: &str) -> bool {
     reference.len() == 40 && reference.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -389,11 +482,11 @@ async fn fetch(program: &Path, env: &BTreeMap<String, String>, url: &str, sha: &
             return Err(format!("{url} gave commit {} for {sha}", head.trim()));
         }
         std::fs::remove_dir_all(staging.join(".git")).map_err(|error| format!("cannot remove the action's .git: {error}"))?;
-        std::fs::write(staging.join(COMPLETE), sha).map_err(|error| error.to_string())?;
         if cache.exists() {
             std::fs::remove_dir_all(cache).map_err(|error| format!("cannot replace {}: {error}", cache.display()))?;
         }
-        std::fs::rename(&staging, cache).map_err(|error| format!("cannot move the action into {}: {error}", cache.display()))
+        std::fs::rename(&staging, cache).map_err(|error| format!("cannot move the action into {}: {error}", cache.display()))?;
+        std::fs::write(complete(cache), sha).map_err(|error| format!("cannot mark the action fetched: {error}"))
     }
     .await;
     if result.is_err() {
@@ -402,11 +495,44 @@ async fn fetch(program: &Path, env: &BTreeMap<String, String>, url: &str, sha: &
     result
 }
 
-/// Copies `from` into `to`, regular files and directories only (links are left out, so
-/// nothing in the copy points outside it), then marks it complete.
-fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+/// Removes the least recently used fetched actions beyond `keep`, never one used within the
+/// last hour (a job may be copying it).
+fn prune(actions: &Path, keep: usize) {
+    let mut marks: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    for owner in std::fs::read_dir(actions).into_iter().flatten().flatten() {
+        for repo in std::fs::read_dir(owner.path()).into_iter().flatten().flatten() {
+            for entry in std::fs::read_dir(repo.path()).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|extension| extension == "complete")
+                    && let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified())
+                {
+                    marks.push((modified, path));
+                }
+            }
+        }
+    }
+    if marks.len() <= keep {
+        return;
+    }
+    marks.sort();
+    let recent = std::time::SystemTime::now() - Duration::from_hours(1);
+    let excess = marks.len() - keep;
+    for (modified, mark) in marks.into_iter().take(excess) {
+        if modified > recent {
+            break;
+        }
+        let _ = std::fs::remove_file(&mark);
+        let _ = std::fs::remove_dir_all(mark.with_extension(""));
+    }
+}
+
+/// Copies the fetched action `from` into a fresh directory of `temp/_actions` and returns
+/// its name. Run while the job's container is paused: `_actions` is replaced if it is not a
+/// plain directory, the new directory is created anew, and only regular files and
+/// directories are copied, each created without following a link.
+fn copy_into_task(from: &Path, temp: &Path) -> std::io::Result<String> {
     fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
-        std::fs::create_dir_all(to)?;
+        std::fs::create_dir(to)?;
         for entry in std::fs::read_dir(from)? {
             let entry = entry?;
             let kind = entry.file_type()?;
@@ -414,23 +540,43 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
             if kind.is_dir() {
                 copy(&entry.path(), &target)?;
             } else if kind.is_file() {
-                std::fs::copy(entry.path(), &target)?;
+                let mut source = std::fs::File::open(entry.path())?;
+                let mut file = crate::untrusted::create(&target, false)?;
+                std::io::copy(&mut source, &mut file)?;
+                // Scripts an action runs directly stay executable.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    let mode = entry.metadata()?.permissions().mode() & 0o755;
+                    file.set_permissions(std::fs::Permissions::from_mode(mode))?;
+                }
             }
         }
         Ok(())
     }
-    copy(from, to)?;
-    std::fs::write(to.join(COMPLETE), "")
+    let actions = temp.join("_actions");
+    match std::fs::symlink_metadata(&actions) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(metadata) if metadata.file_type().is_symlink() || metadata.is_file() => {
+            std::fs::remove_file(&actions)?;
+            std::fs::create_dir(&actions)?;
+        }
+        Ok(_) => return Err(std::io::Error::other("`_actions` in the task's temp directory is not a directory")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => std::fs::create_dir(&actions)?,
+        Err(error) => return Err(error),
+    }
+    let name = crate::client::idempotency_key();
+    copy(from, &actions.join(&name))?;
+    Ok(name)
 }
 
-/// `action.yml` (or `action.yaml`) in `dir`. A local action's is opened without following
-/// a link: the workspace may be a container job's to change.
-fn read_manifest(dir: &Path, local: bool) -> Result<ActionManifest, String> {
+/// `action.yml` (or `action.yaml`) in `dir`, opened without following a link: a fetched
+/// action may carry links, and a local one is in a workspace a container job can change.
+fn read_manifest(dir: &Path) -> Result<ActionManifest, String> {
     let mut last = None;
     for name in ["action.yml", "action.yaml"] {
         let path = dir.join(name);
-        let file = if local { crate::untrusted::open(&path) } else { std::fs::File::open(&path) };
-        match file {
+        match crate::untrusted::open(&path) {
             Ok(file) => {
                 use std::io::Read as _;
                 let limits = Limits::default();
@@ -438,7 +584,9 @@ fn read_manifest(dir: &Path, local: bool) -> Result<ActionManifest, String> {
                 file.take(limits.max_bytes as u64 + 1).read_to_end(&mut bytes).map_err(|error| format!("cannot read {name}: {error}"))?;
                 return parse_action(&bytes, &limits).map_err(|error| format!("{name}: {error}"));
             }
-            Err(error) => last = Some(error),
+            // A refused file (a link, not a regular file) says so, whichever name it has.
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound && last.is_none() => last = Some(error),
+            Err(_) => {}
         }
     }
     Err(match last {
@@ -449,7 +597,7 @@ fn read_manifest(dir: &Path, local: bool) -> Result<ActionManifest, String> {
 
 /// The step's inputs: `with:` over the action's defaults, evaluated, by the action's
 /// spelling of each name. Inputs it does not declare are warned about and passed on.
-fn evaluate_inputs(job: &Job, action: &ActionStep, manifest: &ActionManifest) -> Result<Vec<(String, String)>, String> {
+fn evaluate_inputs(job: &mut Job, action: &ActionStep, manifest: &ActionManifest) -> Result<Vec<(String, String)>, String> {
     let unexpected: Vec<&str> = action.with.keys().filter(|key| manifest.input(key).is_none()).map(String::as_str).collect();
     if !unexpected.is_empty() {
         let valid: Vec<&str> = manifest.inputs.iter().map(|input| input.name.as_str()).collect();
@@ -467,8 +615,14 @@ fn evaluate_inputs(job: &Job, action: &ActionStep, manifest: &ActionManifest) ->
         {
             job.reporter.log(&format!("##[warning]Input '{name}' has been deprecated with message: {message}"));
         }
-        let template = given.or_else(|| declared.and_then(|input| input.default.clone())).unwrap_or_default();
-        let value = job.render(&template).map_err(|error| format!("`with.{name}`: {error}"))?;
+        // The workflow's `with:` may use its secrets; the action's own defaults may not.
+        let value = if let Some(template) = given {
+            job.render(&template)
+        } else {
+            let default = declared.and_then(|input| input.default.clone()).unwrap_or_default();
+            without_secrets(job, |job| job.render(&default))
+        };
+        let value = value.map_err(|error| format!("`with.{name}`: {error}"))?;
         values.push((name, value));
     }
     Ok(values)
@@ -485,18 +639,25 @@ async fn node_program(job: &Job) -> Result<String, String> {
     }
 }
 
-/// Runs a composite action's steps as step `index`.
+/// Runs a composite action's steps as part of its step. They see the action's `inputs`,
+/// `github.action_*` and their own `steps`, get `GITHUB_ACTION_PATH` and the other
+/// variables `extra` holds, never the workflow's `secrets`, and not the job's
+/// `defaults.run`, as on GitHub.
 #[allow(clippy::too_many_arguments)] // the parts of one composite run
 async fn composite(
     job: &mut Job,
-    index: usize,
+    step: &Running<'_>,
     manifest: &ActionManifest,
     steps: &[StepTemplate],
     inputs: &[(String, String)],
     located: &Located,
-    step_env: &BTreeMap<String, String>,
+    extra: &[(String, String)],
     depth: usize,
 ) -> Outcome {
+    let index = step.index;
+    let mut step_env = step.step_env.clone();
+    step_env.extend(extra.iter().filter(|(name, _)| !name.starts_with("INPUT_")).cloned());
+    let step_env = &step_env;
     let saved = Saved::enter(job, inputs, located);
 
     let mut failed = false;
@@ -587,15 +748,20 @@ struct Saved {
     steps: Map<String, Value>,
     inputs: Option<Value>,
     github: Option<Value>,
+    secrets: Option<Value>,
+    defaults: rbit_workflow::spec::RunDefaults,
 }
 
 impl Saved {
-    /// Gives the composite its own `steps`, its `inputs`, and `github.action_*`.
+    /// Gives the composite its own `steps`, its `inputs`, and `github.action_*`, and takes
+    /// away `secrets` and the job's `defaults.run`.
     fn enter(job: &mut Job, inputs: &[(String, String)], located: &Located) -> Self {
         let saved = Self {
             steps: std::mem::take(&mut job.steps),
             inputs: job.contexts.get("inputs").cloned(),
             github: job.contexts.get("github").cloned(),
+            secrets: job.contexts.remove("secrets"),
+            defaults: std::mem::take(&mut job.spec.template.defaults),
         };
         let mut github = saved.github.clone().unwrap_or_else(|| json!({}));
         if let Some(github) = github.as_object_mut() {
@@ -621,6 +787,10 @@ impl Saved {
         if let Some(github) = self.github {
             job.contexts.insert("github", github);
         }
+        if let Some(secrets) = self.secrets {
+            job.contexts.insert("secrets", secrets);
+        }
+        job.spec.template.defaults = self.defaults;
         job.sync_contexts();
     }
 }
@@ -645,8 +815,8 @@ fn record(job: &mut Job, step: &StepTemplate, outcome: &Outcome, conclusion: Ste
 enum DockerImage {
     /// `docker://…`: pulled.
     Pull(String),
-    /// A `Dockerfile` of the action: built.
-    Build(PathBuf),
+    /// A `Dockerfile` of the action, and the action's directory as the build's context.
+    Build(PathBuf, PathBuf),
 }
 
 #[derive(Debug, Clone)]
@@ -657,8 +827,8 @@ struct DockerRun {
     extra: Vec<(String, String)>,
 }
 
-/// `uses: docker://image`: the image run with `with.args` (split on spaces) and
-/// `with.entrypoint`.
+/// `uses: docker://image`: the image run with `with.args` (split as a shell would, quotes
+/// kept together) and `with.entrypoint`; the other `with:` keys become `INPUT_*`.
 async fn docker_step(
     job: &mut Job,
     index: usize,
@@ -672,15 +842,48 @@ async fn docker_step(
         (Ok(args), Ok(entrypoint)) => (args, entrypoint),
         (Err(error), _) | (_, Err(error)) => return job.fail(&error),
     };
-    let args = args.map(|args| args.split_whitespace().map(str::to_owned).collect()).unwrap_or_default();
-    let extra = action
-        .with
-        .iter()
-        .filter(|(key, _)| !matches!(key.as_str(), "args" | "entrypoint"))
-        .filter_map(|(key, value)| job.render(value).ok().map(|value| (input_variable(key), value)))
-        .collect();
+    let args = args.map(|args| split_args(&args)).unwrap_or_default();
+    let mut extra = Vec::new();
+    for (key, value) in action.with.iter().filter(|(key, _)| !matches!(key.as_str(), "args" | "entrypoint")) {
+        match job.render(value) {
+            Ok(value) => extra.push((input_variable(key), value)),
+            Err(error) => return job.fail(&format!("`with.{key}`: {error}")),
+        }
+    }
     let run = DockerRun { image: DockerImage::Pull(image.to_owned()), entrypoint, args, extra };
     run_docker(job, index, &run, step_env, timeout).await
+}
+
+/// `args` split as a shell would: on whitespace, with `"…"` and `'…'` kept together.
+fn split_args(text: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut started = false;
+    for c in text.chars() {
+        match (quote, c) {
+            (Some(open), c) if c == open => quote = None,
+            (Some(_), c) => current.push(c),
+            (None, '"' | '\'') => {
+                quote = Some(c);
+                started = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    args.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            (None, c) => {
+                current.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        args.push(current);
+    }
+    args
 }
 
 /// Where a Docker action sees the task's directories.
@@ -709,10 +912,22 @@ async fn run_docker(
     };
     let (image, built) = match &run.image {
         DockerImage::Pull(image) => (image.clone(), false),
-        DockerImage::Build(dockerfile) => match build_image(job, &program, dockerfile, timeout).await {
-            Ok(tag) => (tag, true),
-            Err(outcome) => return outcome,
-        },
+        DockerImage::Build(dockerfile, context) => {
+            // A local action's Dockerfile is in the workspace, which a container job can
+            // change: it is built while the job's container is paused.
+            let local = context.starts_with(&job.dirs.workspace);
+            if local && let Err(error) = job.backend.pause().await {
+                return job.fail(&format!("cannot pause the job container to build the action: {error}"));
+            }
+            let built = build_image(job, &program, dockerfile, context, timeout).await;
+            if local && let Err(error) = job.backend.resume().await {
+                return job.fail(&format!("cannot resume the job container after building the action: {error}"));
+            }
+            match built {
+                Ok(tag) => (tag, true),
+                Err(outcome) => return outcome,
+            }
+        }
     };
     let outcome = run_image(job, index, run, &program, network, &image, step_env, timeout).await;
     if built {
@@ -725,8 +940,7 @@ async fn run_docker(
 }
 
 /// Builds the action's `Dockerfile` into an image of its own; its tag.
-async fn build_image(job: &Job, program: &Path, dockerfile: &Path, timeout: Option<Duration>) -> Result<String, Outcome> {
-    let Some(context) = dockerfile.parent() else { return Err(job.fail("the action's Dockerfile has no directory")) };
+async fn build_image(job: &Job, program: &Path, dockerfile: &Path, context: &Path, timeout: Option<Duration>) -> Result<String, Outcome> {
     let tag = format!("rbit-action-{}", crate::client::idempotency_key().to_ascii_lowercase());
     job.reporter.log(&format!("Building the action's image {tag}"));
     let mut command = Command::new(program);
@@ -906,20 +1120,106 @@ mod tests {
     }
 
     #[test]
-    fn copies_leave_links_out() {
+    fn copies_are_fresh_and_leave_links_out() {
         let dir = tempfile::tempdir().unwrap();
         let from = dir.path().join("from");
         std::fs::create_dir_all(from.join("dist")).unwrap();
-        std::fs::write(from.join("action.yml"), "runs: {using: node20, main: dist/index.js}\n").unwrap();
+        std::fs::write(
+            from.join("action.yml"),
+            "runs: {using: node20, main: dist/index.js}
+",
+        )
+        .unwrap();
         std::fs::write(from.join("dist/index.js"), "console.log(1)").unwrap();
+        let temp = dir.path().join("temp");
+        std::fs::create_dir_all(&temp).unwrap();
         #[cfg(unix)]
-        std::os::unix::fs::symlink("/etc/passwd", from.join("dist/passwd")).unwrap();
-        let to = dir.path().join("to");
-        copy_tree(&from, &to).unwrap();
-        assert!(to.join(COMPLETE).is_file() && to.join("dist/index.js").is_file());
-        assert!(!to.join("dist/passwd").exists());
-        let manifest = read_manifest(&to, false).unwrap();
-        assert!(matches!(manifest.runs, Runs::Node(_)));
-        assert!(read_manifest(dir.path(), false).unwrap_err().contains("no action.yml"));
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::write(from.join("run.sh"), "echo hi").unwrap();
+            std::fs::set_permissions(from.join("run.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::os::unix::fs::symlink("/etc/passwd", from.join("dist/passwd")).unwrap();
+            // A container job planted `_actions` as a link to somewhere on the host.
+            let elsewhere = dir.path().join("elsewhere");
+            std::fs::create_dir_all(&elsewhere).unwrap();
+            std::os::unix::fs::symlink(&elsewhere, temp.join("_actions")).unwrap();
+        }
+        let first = copy_into_task(&from, &temp).unwrap();
+        let second = copy_into_task(&from, &temp).unwrap();
+        assert_ne!(first, second, "each copy is a fresh directory");
+        let copy = temp.join("_actions").join(&first);
+        assert!(std::fs::symlink_metadata(temp.join("_actions")).unwrap().is_dir(), "a planted link is replaced, never followed");
+        assert!(copy.join("dist/index.js").is_file() && !copy.join("dist/passwd").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert!(std::fs::read_dir(dir.path().join("elsewhere")).unwrap().next().is_none(), "nothing written through the link");
+            assert_eq!(std::fs::metadata(copy.join("run.sh")).unwrap().permissions().mode() & 0o111, 0o111, "scripts stay executable");
+        }
+        assert!(matches!(read_manifest(&copy).unwrap().runs, Runs::Node(_)));
+        assert!(read_manifest(dir.path()).unwrap_err().contains("no action.yml"));
+        assert_eq!(complete(Path::new("/w/actions/o/r/abc")), Path::new("/w/actions/o/r/abc.complete"), "the mark is beside the tree");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn manifests_and_dockerfiles_are_read_through_no_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let action = dir.path().join("action");
+        std::fs::create_dir_all(action.join("sub")).unwrap();
+        std::os::unix::fs::symlink("/etc/hostname", action.join("action.yml")).unwrap();
+        assert!(read_manifest(&action).unwrap_err().contains("cannot read action.yml"), "a linked action.yml is refused");
+        std::os::unix::fs::symlink("/etc", action.join("linked")).unwrap();
+        std::fs::write(action.join("sub/Dockerfile"), "FROM alpine").unwrap();
+        assert!(dockerfile(&action, "sub/Dockerfile").is_ok());
+        assert!(dockerfile(&action, "linked/hostname").unwrap_err().contains("symbolic link"));
+    }
+
+    #[test]
+    fn dockerfiles_stay_in_the_action_and_images_are_references() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Dockerfile"), "FROM alpine").unwrap();
+        assert_eq!(dockerfile(dir.path(), "Dockerfile").unwrap(), dir.path().join("Dockerfile"));
+        for outside in ["../Dockerfile", "/etc/Dockerfile", "./Dockerfile", "missing"] {
+            assert!(dockerfile(dir.path(), outside).is_err(), "{outside}");
+        }
+        for image in ["alpine", "alpine:3.20", "ghcr.io/o/i:v1", "i@sha256:0123abcd", "docker.io/library/ubuntu:24.04"] {
+            assert!(valid_image(image), "{image}");
+        }
+        for image in [
+            "",
+            "--privileged",
+            "-v",
+            "a b",
+            "a;b",
+            "/x",
+            ":x",
+            "a
+b",
+        ] {
+            assert!(!valid_image(image), "{image:?}");
+        }
+    }
+
+    #[test]
+    fn docker_args_split_as_a_shell_would() {
+        assert_eq!(split_args("echo hello  world"), ["echo", "hello", "world"]);
+        assert_eq!(split_args("sh -c 'echo a b' \"x y\" ''"), ["sh", "-c", "echo a b", "x y", ""]);
+        assert_eq!(split_args("   "), [] as [std::string::String; 0]);
+    }
+
+    #[test]
+    fn pruning_keeps_what_was_used_lately() {
+        let dir = tempfile::tempdir().unwrap();
+        let actions = dir.path().join("actions");
+        for sha in ["a", "b", "c"] {
+            let cache = actions.join("o").join("r").join(sha);
+            std::fs::create_dir_all(&cache).unwrap();
+            std::fs::write(complete(&cache), sha).unwrap();
+        }
+        prune(&actions, 1);
+        let left = std::fs::read_dir(actions.join("o/r")).unwrap().count();
+        assert_eq!(left, 6, "nothing used within the hour goes");
+        prune(&actions, 10);
     }
 }

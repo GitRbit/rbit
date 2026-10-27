@@ -151,7 +151,10 @@ pub fn resolve_uses(uses: &str) -> Result<Uses, String> {
         return Err(format!("`{}` is not an action reference", uses.escape_debug()));
     }
     if let Some(image) = uses.strip_prefix("docker://") {
-        if image.is_empty() || image.starts_with('-') {
+        let valid = !image.is_empty()
+            && !image.starts_with(['-', '.', '/', ':', '@'])
+            && image.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b':' | b'@'));
+        if !valid {
             return Err(format!("`{uses}` needs an image, as in `docker://alpine:3.20`"));
         }
         return Ok(Uses::Action(ActionSource::Docker { image: image.to_owned() }));

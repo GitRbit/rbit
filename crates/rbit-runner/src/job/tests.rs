@@ -490,3 +490,47 @@ async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
     assert!(reporter.lines().iter().any(|line| line.trim() == "rebuilt"), "{text}");
     assert_eq!(reporter.state().outputs["hit"], "true");
 }
+
+// Actions: third-party actions.
+/// What an action's own `action.yml` evaluates (input defaults, composite steps) never sees
+/// the workflow's secrets: such an expression fails, as on GitHub. The workflow passes one
+/// with `with:` if it means to. Composite steps get `GITHUB_ACTION_PATH`.
+#[tokio::test]
+async fn actions_never_see_the_workflows_secrets_unless_given() {
+    if find_program("sh").is_none() {
+        return;
+    }
+    let sh = |script: &str| with(step(script), |step| step.shell = Some("sh".into()));
+    // `${{` is built from `$D`, so this step's own template leaves the actions' expressions alone.
+    let setup = concat!(
+        "D='$' && mkdir -p default direct given\n",
+        "printf 'inputs:\\n  stolen:\\n    default: \"%s{{ secrets.MY_SECRET }}\"\\nruns:\\n  using: composite\\n  steps:\\n    - shell: sh\\n      run: echo \"x%s{{ inputs.stolen }}\"\\n' \"$D\" \"$D\" > default/action.yml\n",
+        "printf 'runs:\\n  using: composite\\n  steps:\\n    - shell: sh\\n      run: echo \"x%s{{ secrets.MY_SECRET }}\"\\n' \"$D\" > direct/action.yml\n",
+        "printf 'inputs:\\n  given: {}\\nruns:\\n  using: composite\\n  steps:\\n    - shell: sh\\n      run: echo \"given=[%s{{ inputs.given }}] path-set=[%s{GITHUB_ACTION_PATH:+yes}]\"\\n' \"$D\" \"$D\" > given/action.yml\n",
+    );
+    let local = |path: &str, with: &[(&str, &str)]| {
+        let rbit_workflow::builtins::Uses::Action(source) = rbit_workflow::builtins::resolve_uses(&format!("./{path}")).unwrap() else {
+            panic!()
+        };
+        let mut uses = step("");
+        uses.action = StepAction::Action(rbit_workflow::spec::ActionStep {
+            uses: format!("./{path}"),
+            source,
+            with: with.iter().map(|(key, value)| ((*key).to_owned(), (*value).to_owned())).collect(),
+        });
+        uses.continue_on_error = Some("true".into());
+        uses.id = Some(path.to_owned());
+        uses
+    };
+    let steps = vec![sh(setup), local("default", &[]), local("direct", &[]), local("given", &[("given", "${{ secrets.MY_SECRET }}")])];
+    let mut spec = host_job(steps);
+    spec.template.outputs =
+        [("outcomes".to_owned(), "${{ steps.default.outcome }}/${{ steps.direct.outcome }}/${{ steps.given.outcome }}".to_owned())].into();
+    let (result, reporter, _work) = execute(spec).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert_eq!(reporter.state().outputs["outcomes"], "failure/failure/success", "{text}");
+    assert_eq!(text.matches("the `secrets` context is not available here").count(), 2, "{text}");
+    assert!(text.contains("given=[***] path-set=[yes]"), "only what the workflow passes reaches the action: {text}");
+    assert!(!text.contains(SECRET), "{text}");
+}

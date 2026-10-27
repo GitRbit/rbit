@@ -212,7 +212,7 @@ fn decode(mut bytes: Vec<u8>) -> Option<String> {
 }
 
 /// `[A-Za-z_][A-Za-z0-9_-]*`.
-fn valid_output_name(name: &str) -> bool {
+pub fn valid_output_name(name: &str) -> bool {
     let mut bytes = name.bytes();
     name.len() <= rbit_workflow::protocol::MAX_OUTPUT_KEY_BYTES
         && bytes.next().is_some_and(|first| first.is_ascii_alphabetic() || first == b'_')
