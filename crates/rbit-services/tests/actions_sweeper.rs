@@ -114,6 +114,42 @@ async fn logs_expire_by_age_and_budget_and_old_runs_go() {
 }
 
 #[tokio::test]
+async fn files_whose_rows_are_gone_are_removed_once_old() {
+    let fixture = Fixture::new().await;
+    let actions = fixture.actions();
+    let claimed = claimed(&fixture, 5).await;
+    let actions_dir = fixture.dir.path().join("data").join("actions");
+    let hours_ago = |hours: u64| std::time::SystemTime::now() - std::time::Duration::from_secs(hours * 3600);
+    let file = |path: std::path::PathBuf, modified: std::time::SystemTime| {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::File::create(&path).unwrap().set_modified(modified).unwrap();
+        path
+    };
+    let logs = actions_dir.join("logs").join(claimed.job.repo_id.0.to_string());
+    let kept_log = file(logs.join(format!("{}.log", claimed.task.id.0)), hours_ago(2));
+    let orphan_log = file(logs.join("999999.log.gz"), hours_ago(2));
+    let deleted_repo_log = file(actions_dir.join("logs").join("424242").join("999998.idx"), hours_ago(2));
+    let young_log = file(logs.join("999997.log"), hours_ago(0));
+    let artifacts = actions_dir.join("artifacts");
+    let kept_artifact = file(artifacts.join(claimed.job.run_id.0.to_string()).join("1.tar.gz"), hours_ago(2));
+    let orphan_artifact = file(artifacts.join("999999").join("7.tar.gz"), hours_ago(2));
+    let young_artifact = file(artifacts.join("999998").join("8.tar.gz"), hours_ago(0));
+    let stale_upload = file(artifacts.join("tmp").join("1-abc.part"), hours_ago(25));
+    let fresh_upload = file(artifacts.join("tmp").join("2-def.part"), hours_ago(2));
+
+    assert_eq!(actions.remove_orphaned_files().await.unwrap(), 4);
+    for gone in [&orphan_log, &deleted_repo_log, &orphan_artifact, &stale_upload] {
+        assert!(!gone.exists(), "{}", gone.display());
+    }
+    assert!(!artifacts.join("999999").exists(), "the emptied run directory goes too");
+    for kept in [&kept_log, &young_log, &kept_artifact, &young_artifact, &fresh_upload] {
+        assert!(kept.exists(), "{}", kept.display());
+    }
+    let hourly = Timestamp((Timestamp::now().0 / 3600 + 1) * 3600);
+    assert_eq!(actions.sweep(hourly).await.unwrap().orphaned_files, 0, "the hourly pass finds nothing left");
+}
+
+#[tokio::test]
 async fn the_log_budget_prunes_the_oldest_runs_first() {
     let fixture = Fixture::with(|config| config.actions.max_log_storage_bytes = 70).await;
     let actions = fixture.actions();

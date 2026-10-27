@@ -201,7 +201,7 @@ struct Progress {
 
 impl ActionsService {
     /// `<data_dir>/actions/logs`.
-    fn logs_dir(&self) -> PathBuf {
+    pub(super) fn logs_dir(&self) -> PathBuf {
         self.ctx().config.storage.actions_dir().join("logs")
     }
 

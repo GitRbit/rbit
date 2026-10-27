@@ -68,7 +68,7 @@ fn latest_per_name(artifacts: Vec<Artifact>) -> Vec<Artifact> {
 
 impl ActionsService {
     /// `<data_dir>/actions/artifacts`.
-    fn artifacts_dir(&self) -> PathBuf {
+    pub(super) fn artifacts_dir(&self) -> PathBuf {
         self.ctx().config.storage.actions_dir().join("artifacts")
     }
 

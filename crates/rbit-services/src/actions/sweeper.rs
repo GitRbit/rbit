@@ -14,10 +14,16 @@
 //! * **Runs** finished more than `run_retention_days` ago are deleted, after their logs.
 //! * **Registration tokens** that expired or were revoked more than a day ago are deleted.
 //! * When runners were last seen is written ([`ActionsService::flush_seen`]).
+//! * **Orphaned files**, once an hour: log files whose task and artifact files whose run is
+//!   gone (deleted with its repository, or by run retention before its artifacts expired),
+//!   and unfinished artifact uploads ([`ActionsService::remove_orphaned_files`]).
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
-use std::time::Duration;
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime},
+};
 
 use rbit_core::{
     Timestamp,
@@ -29,6 +35,11 @@ use crate::ServiceError;
 
 /// How often the sweep runs.
 pub const SWEEP_INTERVAL: Duration = Duration::from_mins(1);
+/// A file without its row is removed once it is this old: a younger one may belong to a
+/// row on its way in.
+const ORPHAN_AGE: Duration = Duration::from_hours(1);
+/// An unfinished artifact upload is removed once it is this old.
+const STALE_UPLOAD_AGE: Duration = Duration::from_hours(24);
 /// Finished runs whose logs one sweep looks at, per pass.
 const RUNS_PER_PASS: u32 = 100;
 /// Stale registration tokens are kept this long after they expired or were revoked, so
@@ -50,6 +61,8 @@ pub struct Swept {
     pub decided: usize, // Actions: artifacts (A).
     /// Artifacts that expired, removed with their files.
     pub expired_artifacts: usize,
+    /// Files removed because what they belonged to is gone.
+    pub orphaned_files: usize,
 }
 
 impl ActionsService {
@@ -135,6 +148,9 @@ impl ActionsService {
             }
         }
         swept.deleted_runs = store.delete_finished_before(run_cutoff).await?;
+        if now.0.rem_euclid(3600) < 60 {
+            swept.orphaned_files = self.remove_orphaned_files().await?;
+        }
 
         swept.deleted_tokens =
             self.ctx().database.actions_runners().delete_stale_registration_tokens(Timestamp(now.0 - STALE_TOKEN_GRACE_SECONDS)).await?;
@@ -182,6 +198,81 @@ impl ActionsService {
         }
         store.expire_logs(run, now).await?;
         Ok(())
+    }
+}
+
+impl ActionsService {
+    /// Removes the files whose rows are gone: `logs/<repo>/<task>.*` without their task
+    /// (task ids are never reused) and `artifacts/<run>/` without its run (its artifacts
+    /// went with it), once older than [`ORPHAN_AGE`]; and uploads in `artifacts/tmp` older
+    /// than [`STALE_UPLOAD_AGE`]. Answers how many files were removed.
+    pub async fn remove_orphaned_files(&self) -> Result<usize, ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        let mut removed = 0;
+        for dir in entries(&self.logs_dir(), true).await {
+            for file in old_files(&dir, ORPHAN_AGE).await {
+                let task = file.file_name().and_then(|name| name.to_str()).and_then(|name| name.split('.').next()?.parse().ok());
+                if let Some(task) = task
+                    && store.task(TaskId(task)).await?.is_none()
+                {
+                    removed += usize::from(remove(&file).await);
+                }
+            }
+        }
+        for dir in entries(&self.artifacts_dir(), true).await {
+            let name = dir.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            if name == "tmp" {
+                for file in old_files(&dir, STALE_UPLOAD_AGE).await {
+                    removed += usize::from(remove(&file).await);
+                }
+            } else if let Ok(run) = name.parse()
+                && store.run(RunId(run)).await?.is_none()
+            {
+                for file in old_files(&dir, ORPHAN_AGE).await {
+                    removed += usize::from(remove(&file).await);
+                }
+                // Only once empty: a younger file stays, and so does its directory.
+                let _ = tokio::fs::remove_dir(&dir).await;
+            }
+        }
+        Ok(removed)
+    }
+}
+
+/// The directories (`dirs`) or files in `dir`; none when it cannot be read.
+async fn entries(dir: &Path, dirs: bool) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(mut reader) = tokio::fs::read_dir(dir).await else { return found };
+    while let Ok(Some(entry)) = reader.next_entry().await {
+        if entry.file_type().await.is_ok_and(|kind| if dirs { kind.is_dir() } else { kind.is_file() }) {
+            found.push(entry.path());
+        }
+    }
+    found
+}
+
+/// The files in `dir` last changed at least `age` ago.
+async fn old_files(dir: &Path, age: Duration) -> Vec<PathBuf> {
+    let mut old = Vec::new();
+    for file in entries(dir, false).await {
+        let modified = tokio::fs::metadata(&file).await.and_then(|metadata| metadata.modified());
+        if modified.is_ok_and(|modified| SystemTime::now().duration_since(modified).is_ok_and(|since| since >= age)) {
+            old.push(file);
+        }
+    }
+    old
+}
+
+/// Removes `file`; whether it did, logging why not.
+async fn remove(file: &Path) -> bool {
+    match tokio::fs::remove_file(file).await {
+        Ok(()) => true,
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(%error, file = %file.display(), "cannot remove an orphaned Actions file");
+            }
+            false
+        }
     }
 }
 
