@@ -1048,7 +1048,12 @@ impl IssueService {
                     return Ok(());
                 };
                 self.record_mentions(*issue, comment.body.as_str()).await?;
-                self.references.record_cross_references(&source, *actor, comment.body.as_str()).await
+                // Actions: task tokens. rbit Actions has no account a cross-reference could
+                // show; the referenced thread would name a ghost.
+                match actor {
+                    Some(_) => self.references.record_cross_references(&source, *actor, comment.body.as_str()).await,
+                    None => Ok(()),
+                }
             }
             DomainEvent::Issue {
                 kind: IssueKind::Pull,
