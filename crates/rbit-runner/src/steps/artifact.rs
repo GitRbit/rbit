@@ -11,7 +11,9 @@
 //!   `merge-multiple` is set or one was asked for by name.
 //!
 //! Archives keep paths relative to the workspace, and unpacking never writes outside the
-//! destination or through a link (`cache::extract`). Without a server (`rbit-runner exec`)
+//! destination or through a link (`cache::extract`); a `path` that goes through a link is
+//! refused. The archives themselves are packed and downloaded into the task's private
+//! directory, which no container mounts, so a job cannot plant a link where one is written. Without a server (`rbit-runner exec`)
 //! both steps fail and say why.
 
 use std::{
@@ -27,7 +29,7 @@ use super::{
     Inputs, Outcome,
     cache::{Roots, extract, lines, resolve, write_archive},
 };
-use crate::{backend::Backend, job::Job};
+use crate::{backend::Backend, job::Job, untrusted::crosses_link};
 
 fn hex(digest: &[u8]) -> String {
     digest.iter().fold(String::with_capacity(64), |mut hex, byte| {
@@ -95,7 +97,10 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
             }
         };
     }
-    let archive = job.dirs.temp.join(format!("artifact-{name}.tar.gz"));
+    let archive = match job.private_dir() {
+        Ok(dir) => dir.join(format!("artifact-{}.tar.gz", crate::client::idempotency_key())),
+        Err(error) => return job.fail(&format!("cannot pack the artifact: {error}")),
+    };
     let packed = {
         let (archive, resolved, roots) = (archive.clone(), resolved.clone(), roots.clone());
         tokio::task::spawn_blocking(move || write_archive(&archive, &resolved, &roots).and_then(|size| Ok((size, file_digest(&archive)?))))
@@ -142,8 +147,12 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         return job.fail(&format!("this run has no {what}"));
     }
     let separate = name.is_empty() && !inputs.flag("merge-multiple");
+    let private = match job.private_dir() {
+        Ok(dir) => dir,
+        Err(error) => return job.fail(&format!("cannot download artifacts: {error}")),
+    };
     for artifact in wanted {
-        let archive = job.dirs.temp.join(format!("download-{}.tar.gz", artifact.name));
+        let archive = private.join(format!("download-{}.tar.gz", crate::client::idempotency_key()));
         let digest = match server.download_artifact(job.spec.task_id, &artifact.name, &archive).await {
             Ok(digest) => digest,
             Err(error) => return job.fail(&format!("cannot download the artifact `{}`: {error}", artifact.name)),
@@ -151,10 +160,14 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         let target = if separate { destination.join(&artifact.name) } else { destination.clone() };
         let unpacked = {
             let (archive, target, expected) = (archive.clone(), target.clone(), artifact.sha256.clone());
+            let workspace = job.dirs.workspace.clone();
             tokio::task::spawn_blocking(move || {
                 let actual = file_digest(&archive)?;
                 if actual != expected || (!digest.is_empty() && digest != expected) {
                     return Err(std::io::Error::other("its content does not match its digest"));
+                }
+                if target.strip_prefix(&workspace).ok().is_none_or(|relative| crosses_link(&workspace, relative)) {
+                    return Err(std::io::Error::other("its destination goes through a symbolic link"));
                 }
                 fs::create_dir_all(&target)?;
                 extract(&archive, &Roots { workspace: target, home: None })
@@ -184,6 +197,9 @@ fn destination(job: &Job, path: &str) -> Result<PathBuf, String> {
         || !relative.components().all(|component| matches!(component, std::path::Component::Normal(_) | std::path::Component::CurDir))
     {
         return Err(format!("`{path}` is outside the workspace; download into a path inside it"));
+    }
+    if crosses_link(&workspace, relative) {
+        return Err(format!("`{path}` goes through a symbolic link; download into a directory inside the workspace"));
     }
     Ok(workspace.join(relative))
 }

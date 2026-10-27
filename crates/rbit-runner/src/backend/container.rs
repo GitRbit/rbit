@@ -10,6 +10,11 @@
 //!    `--memory`, `--cpus` and the entrypoint `tail -f /dev/null`, then `start`;
 //! 4. one `exec` per step.
 //!
+//! Built-in steps work on the mounted directories from the host (§12.5.5, §12.5.6); while
+//! they do, the job container is paused (`pause`, then `unpause`), so no process a step
+//! left running can change those directories under them. A container that cannot be
+//! paused fails the built-in step.
+//!
 //! Values never travel as arguments: a container's, a service's and every step's
 //! environment goes through an `--env-file` (mode `0600`, in a directory no container
 //! mounts, deleted right after the command), and a multi-line value — which env files
@@ -380,6 +385,28 @@ impl Container {
         }
     }
 
+    /// Freezes the job container's processes, while the runner works on its directories.
+    pub async fn pause(&self) -> Result<(), String> {
+        self.pause_command("pause").await
+    }
+
+    /// Lets the job container's processes go on.
+    pub async fn resume(&self) -> Result<(), String> {
+        self.pause_command("unpause").await
+    }
+
+    async fn pause_command(&self, verb: &str) -> Result<(), String> {
+        let mut command = self.cli();
+        command.args([verb, &self.names.job]);
+        let output = process::capture(command, None, SHORT).await.map_err(|error| format!("`{verb}` failed: {error}"))?;
+        if output.success {
+            Ok(())
+        } else {
+            let detail = output.stderr.lines().chain(output.stdout.lines()).find(|line| !line.trim().is_empty()).unwrap_or_default();
+            Err(format!("`{} {verb}` failed: {}", self.program_name(), detail.trim()))
+        }
+    }
+
     /// How a step of this job is stopped: inside the container.
     pub fn stopper(&self) -> Stopper {
         Stopper::Container {
@@ -404,6 +431,10 @@ impl Container {
     /// Hands the mounted directories back to the runner's user (a rootful engine's steps
     /// write them as root), then removes the containers and the network.
     pub async fn stop(&self, reporter: &Reporter) {
+        if self.started.contains(&self.names.job) {
+            // In case a built-in step was interrupted while the container was paused.
+            let _ = self.resume().await;
+        }
         if self.started.contains(&self.names.job)
             && let Some((uid, gid)) = owner().await
         {

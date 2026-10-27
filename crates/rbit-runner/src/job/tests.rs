@@ -285,9 +285,20 @@ async fn container_jobs_drive_the_cli() {
     .unwrap();
     std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    let mut spec = host_job(vec![with(step("echo ${{ secrets.MY_SECRET }}"), |step| {
-        step.env.insert("SECRET_ENV".into(), "${{ secrets.MY_SECRET }}".into());
-    })]);
+    let cache = with(step(""), |step| {
+        step.action = StepAction::Uses(rbit_workflow::spec::Builtin {
+            uses: "rbit/cache@v1".into(),
+            kind: rbit_workflow::spec::BuiltinKind::Cache,
+            version: 1,
+            with: [("key", "deps"), ("path", "target")].into_iter().map(|(key, value)| (key.to_owned(), value.to_owned())).collect(),
+        });
+    });
+    let mut spec = host_job(vec![
+        with(step("echo ${{ secrets.MY_SECRET }}"), |step| {
+            step.env.insert("SECRET_ENV".into(), "${{ secrets.MY_SECRET }}".into());
+        }),
+        cache,
+    ]);
     spec.template.runs_on = vec!["ubuntu-latest".into()];
     spec.template.container = Some(Container {
         image: "docker.io/library/rust:1.94".into(),
@@ -319,12 +330,16 @@ async fn container_jobs_drive_the_cli() {
         "start rbit-1-job",
         "exec rbit-1-job sh -c",
         "exec --env-file",
+        // The cache step works on the workspace from the host, with the container paused.
+        "pause rbit-1-job",
+        "unpause rbit-1-job",
         "rm --force rbit-1-postgres rbit-1-job",
         "network rm rbit-1",
     ];
     let positions: Vec<usize> = order.iter().map(|prefix| position(prefix)).collect();
     assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{calls}");
     assert!(!calls.contains(SECRET), "no secret in any argument: {calls}");
+    assert_eq!(lines.iter().filter(|line| **line == "pause rbit-1-job").count(), 2, "the step, then the post-job save: {calls}");
     assert!(
         lines[position("exec --env-file")]
             .contains("--workdir /__w/app rbit-1-job bash --noprofile --norc -eo pipefail /__w/_temp/step-0-"),

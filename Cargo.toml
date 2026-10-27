@@ -132,6 +132,9 @@ aho-corasick = "1.1"
 # tar is new, without its xattr feature, and brings no other crate.
 flate2 = "1.1"
 tar = { version = "0.4", default-features = false }
+# rbit-runner opens files a container job can write with `O_NOFOLLOW`; libc is already in the
+# tree (through tokio and getrandom), so this adds no crate.
+libc = "0.2"
 
 # Testing
 tempfile = "3"

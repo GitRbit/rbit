@@ -16,6 +16,12 @@
 //! own submodules and nothing else. With `persist-credentials` (the default) the same
 //! header is written into the checkout's `.git/config` so later steps can fetch and push;
 //! the file is removed with the task.
+//!
+//! A container job can write the workspace, and `git` reads a repository's own
+//! configuration (`core.fsmonitor`, hooks, …), so in a container job the checkout never
+//! uses a `.git` it finds: it removes it and starts from step 1 for a new directory, then
+//! runs `clean -ffdx` when `clean` is set. A `path` that goes through a symbolic link is
+//! refused.
 
 use std::{
     collections::BTreeMap,
@@ -29,6 +35,7 @@ use tokio::process::Command;
 
 use super::{Inputs, Outcome};
 use crate::{
+    backend::Backend,
     job::Job,
     process::{self, Exit, Stopper},
 };
@@ -165,16 +172,29 @@ pub fn git_env(source: &CheckoutSource, token: &str) -> BTreeMap<String, String>
     ])
 }
 
-/// `path` inside `workspace`; `None` when it leaves it.
+/// `path` inside `workspace`; `None` when it leaves it or goes through a symbolic link.
 pub fn target(workspace: &Path, path: &str) -> Option<PathBuf> {
     let relative = Path::new(path);
-    relative.components().all(|component| matches!(component, Component::Normal(_) | Component::CurDir)).then(|| workspace.join(relative))
+    (relative.components().all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+        && !crate::untrusted::crosses_link(workspace, relative))
+    .then(|| workspace.join(relative))
+}
+
+/// Removes `target`'s `.git`, whatever it is; whether there was one.
+pub fn discard_git(target: &Path) -> std::io::Result<bool> {
+    let git = target.join(".git");
+    match std::fs::symlink_metadata(&git) {
+        Ok(metadata) if metadata.is_dir() => std::fs::remove_dir_all(&git).map(|()| true),
+        Ok(_) => std::fs::remove_file(&git).map(|()| true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 /// Runs a checkout step.
 pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>) -> Outcome {
     let Some(target) = target(&job.dirs.workspace, inputs.get("path")) else {
-        return job.fail("`with.path` must stay inside the workspace");
+        return job.fail("`with.path` must stay inside the workspace and not go through a symbolic link");
     };
     let Some(git) = process::find_program("git") else {
         return job.fail("checkout needs `git` (2.30 or later) on the runner host");
@@ -185,13 +205,28 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
     let options = Options::from_inputs(inputs);
     let source = job.spec.checkout.clone();
     let env = git_env(&source, job.spec.token.expose());
-    let existing = target.join(".git").exists();
+    let mut existing = target.join(".git").exists();
+    let mut discarded = false;
+    if matches!(job.backend, Backend::Container(_)) {
+        match discard_git(&target) {
+            Ok(true) => {
+                job.reporter.log("The job's container can change `.git`, so the checkout starts a new repository");
+                (existing, discarded) = (false, true);
+            }
+            Ok(false) => {}
+            Err(error) => return job.fail(&format!("cannot remove the earlier checkout's `.git`: {error}")),
+        }
+    }
     job.reporter.log(&format!(
         "Checking out {} at {}",
         source.repository,
         if options.reference.is_empty() { &source.sha } else { &options.reference }
     ));
-    for args in commands(&source, &options, existing) {
+    let mut list = commands(&source, &options, existing);
+    if discarded && options.clean {
+        list.push(["clean", "-ffdx"].map(str::to_owned).to_vec());
+    }
+    for args in list {
         job.reporter.log(&format!("[command]git {}", args.join(" ")));
         let mut command = Command::new(&git);
         command.args(&args).current_dir(&target).envs(&env);
@@ -376,5 +411,38 @@ mod tests {
         )));
         assert!(config.contains(&authorization(&token)), "persist-credentials writes the header");
         assert!(!text.contains(&token), "{text}");
+    }
+
+    /// A container job can leave a `.git` that runs commands when host `git` reads it, or
+    /// a link out of the workspace where the checkout would write.
+    #[cfg(unix)]
+    #[test]
+    fn a_job_written_git_or_link_is_not_used() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let repo = workspace.path().join("app");
+        std::fs::create_dir_all(repo.join(".git/hooks")).unwrap();
+        std::fs::write(
+            repo.join(".git/config"),
+            "[core]
+	fsmonitor = touch /tmp/pwned
+",
+        )
+        .unwrap();
+        std::fs::write(repo.join("kept.txt"), "work").unwrap();
+        assert!(discard_git(&repo).unwrap());
+        assert!(!repo.join(".git").exists() && repo.join("kept.txt").exists());
+        assert!(!discard_git(&repo).unwrap(), "nothing left to remove");
+
+        let elsewhere = outside.path().join(".git");
+        std::fs::create_dir(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, repo.join(".git")).unwrap();
+        assert!(discard_git(&repo).unwrap());
+        assert!(elsewhere.exists(), "a linked `.git` is unlinked, not emptied");
+
+        std::os::unix::fs::symlink(outside.path(), workspace.path().join("out")).unwrap();
+        assert_eq!(target(workspace.path(), "out"), None);
+        assert_eq!(target(workspace.path(), "out/sub"), None);
+        assert_eq!(target(workspace.path(), "app"), Some(repo));
     }
 }

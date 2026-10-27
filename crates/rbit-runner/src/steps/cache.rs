@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 use super::{Inputs, Outcome};
-use crate::{backend::Backend, contexts::hex, job::Job};
+use crate::{backend::Backend, contexts::hex, job::Job, untrusted::crosses_link};
 
 /// Longest cache key, as on GitHub.
 pub const MAX_KEY_CHARS: usize = 512;
@@ -248,15 +248,6 @@ fn root(area: Area, roots: &Roots) -> Option<&Path> {
         Area::Workspace => Some(&roots.workspace),
         Area::Home => roots.home.as_deref(),
     }
-}
-
-/// Whether `relative`, or any directory on the way to it under `root`, is a symbolic link.
-fn crosses_link(root: &Path, relative: &Path) -> bool {
-    let mut path = root.to_path_buf();
-    relative.components().any(|component| {
-        path.push(component);
-        fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink())
-    })
 }
 
 /// Writes the tar.gz of `resolved` to `out`; its size. Paths that do not exist are

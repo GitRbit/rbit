@@ -2,8 +2,9 @@
 //!
 //! Each label maps to one backend. A step is described once, as a [`StepCommand`] with
 //! paths as the step sees them ([`View`]); the backend turns it into the command that
-//! runs it. Built-in actions (checkout, cache) run on the runner host and write into the
-//! task's workspace directly, whatever the backend.
+//! runs it. Built-in actions (checkout, cache, artifacts) run on the runner host and write
+//! into the task's workspace directly, whatever the backend; a container job's container is
+//! paused meanwhile ([`Backend::pause`]).
 
 pub mod container;
 pub mod host;
@@ -88,6 +89,23 @@ impl Backend {
         match self {
             Self::Host(host) => Ok(Prepared { command: host.command(step), env_file: None }),
             Self::Container(container) => container.command(step).map(|(command, env_file)| Prepared { command, env_file: Some(env_file) }),
+        }
+    }
+
+    /// Pauses the job container, if there is one, while a built-in step works on its
+    /// directories from the host.
+    pub async fn pause(&self) -> Result<(), String> {
+        match self {
+            Self::Host(_) => Ok(()),
+            Self::Container(container) => container.pause().await,
+        }
+    }
+
+    /// Undoes [`Self::pause`].
+    pub async fn resume(&self) -> Result<(), String> {
+        match self {
+            Self::Host(_) => Ok(()),
+            Self::Container(container) => container.resume().await,
         }
     }
 

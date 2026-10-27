@@ -305,6 +305,10 @@ impl Job {
             self.reporter.log("Not saving caches: the job did not succeed");
             return;
         }
+        if let Err(error) = self.backend.pause().await {
+            self.reporter.log(&format!("##[warning]Not saving caches: cannot pause the job container: {error}"));
+            return;
+        }
         for save in saves {
             self.reporter.log(&format!("##[group]Post: save cache `{}`", save.key));
             if let Err(error) = steps::cache::save(self, &save.key, &save.paths).await {
@@ -312,6 +316,7 @@ impl Job {
             }
             self.reporter.log("##[endgroup]");
         }
+        let _ = self.backend.resume().await;
     }
 
     /// Starts what the job runs in: for the container backend, the network, the services
@@ -507,6 +512,18 @@ impl Job {
                 Outcome::cancelled()
             }
         }
+    }
+
+    /// `<task dir>/private`, created: the runner's own files, which no container mounts.
+    pub fn private_dir(&self) -> std::io::Result<std::path::PathBuf> {
+        let dir = self.reporter.dir().join("private");
+        std::fs::create_dir_all(&dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(dir)
     }
 
     /// Logs `message` as an error and fails the step.

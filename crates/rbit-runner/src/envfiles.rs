@@ -3,7 +3,9 @@
 //! `RBIT_STEP_SUMMARY` (§12.5.4 "Env files").
 //!
 //! Each step gets fresh, empty files in the task's `files` directory; after the step they
-//! are read and removed. A file is at most [`MAX_FILE_BYTES`]; a larger one, or one that
+//! are read and removed. A container job can write that directory, so the files are
+//! created and read without following a link (`untrusted`): one a step puts in their
+//! place fails the step instead of reading or truncating a file on the host. A file is at most [`MAX_FILE_BYTES`]; a larger one, or one that
 //! does not parse, fails the step. Entries are `name=value` or the heredoc form
 //!
 //! ```text
@@ -93,14 +95,7 @@ impl EnvFiles {
         fs::create_dir_all(dir)?;
         let files = Self { dir: dir.to_path_buf(), step };
         for kind in Kind::ALL {
-            let mut options = fs::OpenOptions::new();
-            options.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt as _;
-                options.mode(0o600);
-            }
-            options.open(files.path(kind))?;
+            crate::untrusted::create(&files.path(kind), true)?;
         }
         Ok(files)
     }
@@ -141,7 +136,7 @@ impl EnvFiles {
         let text = |kind: Kind| -> Result<String, String> {
             let name = format!("GITHUB_{}", kind.suffix());
             let mut bytes = Vec::new();
-            match fs::File::open(self.path(kind)) {
+            match crate::untrusted::open(&self.path(kind)) {
                 Ok(file) => {
                     file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes).map_err(|error| format!("cannot read {name}: {error}"))?;
                 }
@@ -307,5 +302,31 @@ mod tests {
             assert!(!settable(name), "{name}");
         }
         assert!(settable("CARGO_HOME") && settable("ENVIRONMENT"));
+    }
+
+    /// A container step can replace its env files, or the next step's, with links to the
+    /// host; the runner neither reads nor truncates what they point to.
+    #[cfg(unix)]
+    #[test]
+    fn links_in_place_of_env_files_are_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let credential = dir.path().join("credential");
+        fs::write(&credential, "rbrt_secret").unwrap();
+        let files_dir = dir.path().join("files");
+
+        let files = EnvFiles::create(&files_dir, 0).unwrap();
+        let summary = files.path(Kind::StepSummary);
+        fs::remove_file(&summary).unwrap();
+        std::os::unix::fs::symlink(&credential, &summary).unwrap();
+        let error = files.collect().unwrap_err();
+        assert!(error.contains("GITHUB_STEP_SUMMARY") && error.contains("not a regular file"), "{error}");
+        assert!(!error.contains("rbrt_secret"));
+        assert!(!summary.exists() && credential.exists(), "the link is removed, its target kept");
+
+        std::os::unix::fs::symlink(&credential, files_dir.join("env_1")).unwrap();
+        let files = EnvFiles::create(&files_dir, 1).unwrap();
+        assert_eq!(fs::read_to_string(&credential).unwrap(), "rbrt_secret", "creating the files truncates nothing on the host");
+        assert!(!fs::symlink_metadata(files.path(Kind::Env)).unwrap().file_type().is_symlink());
+        assert_eq!(files.collect().unwrap(), Written::default());
     }
 }

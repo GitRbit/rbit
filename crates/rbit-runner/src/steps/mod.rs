@@ -86,10 +86,18 @@ pub async fn builtin(job: &mut Job, builtin: &Builtin, timeout: Option<Duration>
         Ok(inputs) => inputs,
         Err(error) => return job.fail(&error),
     };
-    match builtin.kind {
+    // The container must not change the files the built-in works on (`crate::untrusted`).
+    if let Err(error) = job.backend.pause().await {
+        return job.fail(&format!("cannot pause the job container for `{}`: {error}", builtin.uses));
+    }
+    let outcome = match builtin.kind {
         BuiltinKind::Checkout => checkout::checkout(job, &inputs, timeout).await,
         BuiltinKind::UploadArtifact => artifact::upload(job, &inputs).await,
         BuiltinKind::DownloadArtifact => artifact::download(job, &inputs).await,
         BuiltinKind::Cache | BuiltinKind::CacheRestore | BuiltinKind::CacheSave => cache::cache(job, builtin.kind, &inputs).await,
+    };
+    if let Err(error) = job.backend.resume().await {
+        return job.fail(&format!("cannot resume the job container after `{}`: {error}", builtin.uses));
     }
+    outcome
 }

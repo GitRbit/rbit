@@ -31,6 +31,7 @@ mod steps;
 mod task;
 #[cfg(test)]
 mod testing;
+mod untrusted;
 
 use std::{io::IsTerminal as _, path::Path, sync::Arc};
 

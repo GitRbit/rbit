@@ -70,7 +70,11 @@ pub async fn run(
 
     let name = format!("step-{index}-{}{}", crate::client::idempotency_key(), shell.extension());
     let script_path = job.dirs.temp.join(&name);
-    if let Err(error) = std::fs::write(&script_path, script_file(shell, &script)) {
+    let written = crate::untrusted::create(&script_path, false).and_then(|mut file| {
+        use std::io::Write as _;
+        file.write_all(script_file(shell, &script).as_ref())
+    });
+    if let Err(error) = written {
         return job.fail(&format!("cannot write the script: {error}"));
     }
     let files = match EnvFiles::create(&job.dirs.files, index) {

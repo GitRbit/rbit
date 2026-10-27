@@ -992,6 +992,13 @@ On finish, the task's containers and network are removed with `rm -f`. At start-
 
 Checkout, cache and artifacts run **on the host side**, writing into the mounted workspace, so images need no `git`.
 
+A job can write the mounted workspace, `temp` and `files`, so the runner treats what it finds there as the job's (`rbit-runner/src/untrusted.rs`):
+- The runner never follows a link there. It creates its own files (scripts, env files) with `O_EXCL` after removing whatever is in their place, and it reads env files with `O_NOFOLLOW` and `O_NONBLOCK`, regular files only.
+- Artifact archives are packed and downloaded in the task's private directory, which no container mounts.
+- Checkout, cache and artifact paths that go through a link are refused.
+- Checkout never runs `git` on a `.git` it finds in a container job. It removes it and starts a new repository, then runs `clean -ffdx` when `clean` is set.
+- The job container is paused (`pause` / `unpause`) while a built-in step, or the post-job cache save, works on its directories, so no process a step left running can change them meanwhile. A container that cannot be paused fails the built-in step. Rootless Podman needs cgroup v2 for this.
+
 #### 12.5.3 Host backend
 
 Steps are child processes of the runner's user, running in the task workspace. Registering or starting a runner with a `host` label prints a warning: any job can read everything that user can, including the runner credential. The runners page shows "host — no isolation".
@@ -1155,6 +1162,7 @@ The route sits outside the 30 s page/API timeout and has its own 30 s limit.
 | Asset / actor | Threat | Control |
 |---|---|---|
 | Runner host | Job code escapes into the host | The docs make the container backend the default. Jobs get no privileged mode, no Docker socket and no host network; they run with `no-new-privileges` and pids, memory and CPU limits; each task gets its own network; rootless Podman is recommended. A container escape is a kernel or runtime bug, so the guidance is dedicated runner hosts, VMs for public repositories and ephemeral runners. |
+| Runner host | A container job leaves links, pipes or a `.git` in its mounted directories for the runner to use on the host (to read the runner credential, overwrite host files or run commands through `git`) | Nothing in those directories is followed or trusted on the host (§12.5.2): files are created with `O_EXCL` and read with `O_NOFOLLOW`, regular files only; archives live in a directory no container mounts; paths through links are refused; checkout starts a new `.git` in container jobs; the container is paused while built-in steps work on its files. |
 | Runner host | The host backend runs untrusted code | A warning appears at register, at start and in the UI. The host backend is never chosen implicitly, because each label maps to exactly one backend. The docs say: repository-scoped runners for trusted repositories only. |
 | Runner credential | Stolen by a job | The credential file is outside every workspace and cannot be read inside containers. On the host backend jobs can read it, and the docs say so. It can be revoked from the UI, and failed authentication is throttled. |
 | Secrets | Leak through process arguments, environment dumps or logs | Secrets enter the environment only where a step maps them, through `--env-file` or env, never through arguments. The runner masks raw, per-line and base64 forms, and the server masks again. Env files are `0600` and deleted after each step. |

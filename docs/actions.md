@@ -48,7 +48,11 @@ administrator allows.
    - **container** runs the job in Docker or Podman, in the label's image (or the job's
      `container.image`), without privileges, the Docker socket or host networking, on a
      network of its own. This is the default and the right choice for anything you did not
-     write yourself.
+     write yourself. Built-in steps (checkout, cache, artifacts) run on the host, and the
+     job's container is paused while they work on its files, so the engine must support
+     `pause`; rootless Podman needs cgroup v2 for that. In a container job a checkout into a
+     directory that already has a `.git` starts a new repository there, because the job
+     could have changed that `.git`.
    - **host** runs the job as the runner's own user, with **no isolation**: a job can read
      everything that user can, the runner's credential included. Use it only for
      repository runners of repositories you trust. The runners page marks such runners

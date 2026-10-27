@@ -107,7 +107,7 @@ pub fn hash_files(workspace: &Path, patterns: &[String]) -> Result<String, Strin
         if patterns.skip([relative.as_str()]) {
             continue;
         }
-        let mut file = std::fs::File::open(path).map_err(|error| format!("cannot read {relative}: {error}"))?;
+        let mut file = crate::untrusted::open(path).map_err(|error| format!("cannot read {relative}: {error}"))?;
         let mut inner = Sha256::new();
         let mut buffer = vec![0u8; 64 * 1024];
         loop {
