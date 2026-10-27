@@ -217,6 +217,28 @@ selected ones. A repository's own secret or variable wins over an owner's of the
 Secret values are sealed with AES-256-GCM under a key file that is not part of the database
 or its backups, and are never shown again after you save them.
 
+## Environments
+
+A job with `environment: production` (or `environment: {name: production, url: ...}`) deploys
+to that environment, which is created the first time a job names it. Repository
+administrators manage environments in **Settings → Actions → Environments**:
+
+- **Required reviewers**: up to six people who can read the repository. A job in the
+  environment waits, before any runner takes it, until one of them approves it on the run's
+  page (**Review deployments**) or through the API; rejecting it fails the job. Re-running a
+  job needs a new approval. **Prevent self-review** stops whoever started the run from
+  reviewing it.
+- **Deployment branches and tags**: any ref, protected branches only, or refs matching
+  patterns: a plain pattern names branches (`release/*`), a tag pattern starts with
+  `refs/tags/` (`refs/tags/v*`), and `!` excludes, the last matching pattern deciding. A job
+  from another ref fails when a runner takes it.
+- **Secrets and variables** of its own, which win over the repository's and the owner's of
+  the same name and reach only jobs in that environment.
+
+`environment.url` is evaluated after the job's steps (it may use `steps.*.outputs`) and shown
+on the run's page. Deleting an environment, or removing its last reviewer, lets the jobs
+waiting for it run.
+
 ## Running a workflow by hand
 
 A workflow with `on: workflow_dispatch` has **Run workflow** on its page for anyone who can
@@ -239,9 +261,12 @@ Untrusted runs (forks, outside authors) get a read-only token.
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
 runs, dispatches workflows, serves job logs and artifacts, and manages secrets, variables and
-runners (with registration tokens), in GitHub's shapes (see the OpenAPI document at
+runners (with registration tokens), and reviews pending deployments
+(`…/runs/{run_id}/pending_deployments`), in GitHub's shapes (see the OpenAPI document at
 `/api/v1/openapi.json`); organisations (`/orgs/{org}/actions/...`) and users
-(`/user/actions/...`) have their own secrets, variables and runners. Webhooks can subscribe
+(`/user/actions/...`) have their own secrets, variables and runners.
+`/api/v1/repos/{owner}/{repo}/environments[/{name}]` lists, creates, changes and deletes
+environments. Webhooks can subscribe
 to `workflow_run` and `workflow_job`.
 
 ## Differences from GitHub Actions
@@ -252,7 +277,9 @@ to `workflow_run` and `workflow_job`.
   (`::add-matcher::`) are accepted and ignored. GitHub's cache and artifact services that
   actions reach through `ACTIONS_RUNTIME_*` do not exist; the built-ins stand in for
   `actions/cache` and `actions/*-artifact`.
-- No `environment`, `secrets: inherit`, `container.options`, service `options`/`volumes`, or
+- Environments have no wait timer, team reviewers or custom protection rules, and runs
+  create no deployment objects (the Deployments API).
+- No `secrets: inherit`, `container.options`, service `options`/`volumes`, or
   custom shells (`shell: my {0}`): each is a readable error.
 - `permissions:` can only lower the repository's default token permission (**Settings →
   Actions**), never raise it: a workflow that publishes releases needs that default set to

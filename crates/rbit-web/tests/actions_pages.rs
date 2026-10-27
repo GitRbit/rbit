@@ -95,6 +95,7 @@ impl Fixture {
                 condition: false,
                 max_parallel: None,
                 group: None,
+                environment: None,
             },
             NewJob {
                 key: "test",
@@ -107,6 +108,7 @@ impl Fixture {
                 condition: false,
                 max_parallel: None,
                 group: None,
+                environment: None,
             },
         ];
         let new = NewRun {

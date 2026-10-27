@@ -52,6 +52,24 @@
   <p class="mt-6 flex items-start gap-2 text-[13px] text-ink-muted">{% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}<span>This run comes from a fork or an outside author: it has a read-only token and no secrets or variables{% if let Some(approver) = run.approved_by %}, and was approved by {{ approver }}{% endif %}.</span></p>
   {% endif %}
 
+  {% for deployment in deployments %}
+  <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono">{{ deployment.environment }}</span></span></p>
+    <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
+    {% if deployment.can_review %}
+    <form method="post" action="{{ review_url }}" class="mt-3">
+      <input type="hidden" name="environment" value="{{ deployment.environment }}">
+      <label class="label" for="review-{{ loop.index }}">Comment <span class="font-normal text-ink-faint">(optional)</span></label>
+      <textarea class="input h-20 resize-y py-2" id="review-{{ loop.index }}" name="comment" rows="2"></textarea>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button class="btn btn-primary h-10 sm:h-9" type="submit" name="decision" value="approve">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and deploy</button>
+        <button class="btn h-10 sm:h-9" type="submit" name="decision" value="reject">Reject</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+
   {% if let Some(error) = run.error %}
   <div role="alert" class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
     {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
@@ -68,6 +86,7 @@
       <div class="min-w-0 flex-1">
         <a class="block truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ job.url }}">{{ job.name }}</a>
         {% if !job.needs.is_empty() %}<p class="truncate text-xs text-ink-faint">{{ job.needs }}</p>{% endif %}
+        {% if let Some(environment) = job.environment %}<p class="truncate text-xs text-ink-muted">{% call ui::icon("server", "inline size-3 align-[-1px]") %}{% endcall %} {{ environment }}{% if let Some(url) = job.environment_url %} · <a class="hover:underline" href="{{ url }}" rel="noopener noreferrer nofollow" target="_blank">{{ url }}</a>{% endif %}</p>{% endif %}
       </div>
       {% if let Some(duration) = job.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
       {% if job.can_rerun %}

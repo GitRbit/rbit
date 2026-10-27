@@ -152,6 +152,9 @@ struct JobRow {
     queued_at: Option<i64>,
     started_at: Option<i64>,
     finished_at: Option<i64>,
+    environment: Option<String>,
+    environment_url: Option<String>,
+    review: bool,
 }
 
 impl TryFrom<JobRow> for Job {
@@ -176,6 +179,9 @@ impl TryFrom<JobRow> for Job {
             queued_at: timestamp(row.queued_at),
             started_at: timestamp(row.started_at),
             finished_at: timestamp(row.finished_at),
+            environment: row.environment,
+            environment_url: row.environment_url,
+            awaiting_review: row.review && row.status == Status::AwaitingApproval.code(),
         })
     }
 }
@@ -186,8 +192,8 @@ macro_rules! select_job {
         concat!(
             "SELECT j.id, j.run_id, j.repo_id, j.job_key, j.name, j.matrix, j.needs, \
              (SELECT COALESCE(json_group_array(l.label), '[]') FROM actions_job_labels l WHERE l.job_id = j.id) AS runs_on, \
-             j.permissions, j.status, j.attempt, j.task_id, j.runner_id, j.created_at, j.queued_at, j.started_at, j.finished_at \
-             FROM actions_jobs j ",
+             j.permissions, j.status, j.attempt, j.task_id, j.runner_id, j.created_at, j.queued_at, j.started_at, j.finished_at, \
+             j.environment, j.environment_url, j.review FROM actions_jobs j ",
             $clause
         )
     };
@@ -333,6 +339,9 @@ pub struct NewJob<'a> {
     pub max_parallel: Option<u32>,
     /// Job-level `concurrency.group`.
     pub group: Option<&'a str>,
+    // Actions: environments.
+    /// The deployment environment, by name: created for the repository if it has none.
+    pub environment: Option<&'a str>,
 }
 
 /// Filters of the runs list. `before` pages by id (newest first), `offset` by position
@@ -398,6 +407,9 @@ pub struct Settled {
     pub run_status: RunStatus,
     /// Jobs that became waiting: the scheduler's version must move.
     pub now_waiting: Vec<JobId>,
+    // Actions: environments.
+    /// Jobs that would have become waiting but wait for a reviewer of their environment.
+    pub now_reviewing: Vec<JobId>,
     // Actions: join (J).
     /// Jobs whose needs are done and whose own `if:` the caller must now decide.
     pub to_decide: Vec<JobId>,
@@ -484,8 +496,8 @@ impl ActionsRunStore {
             let status = initial_status(new.start, !job.needs.is_empty() || job.condition);
             let job_id: i64 = sqlx::query_scalar(
                 "INSERT INTO actions_jobs (run_id, repo_id, job_key, name, matrix, needs, permissions, payload, status, created_at, \
-                 queued_at, condition, max_parallel, job_group) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) \
-                 RETURNING id",
+                 queued_at, condition, max_parallel, job_group, environment) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) RETURNING id",
             )
             .bind(run_id)
             .bind(new.repo.0)
@@ -501,9 +513,24 @@ impl ActionsRunStore {
             .bind(job.condition)
             .bind(job.max_parallel)
             .bind(job.group)
+            .bind(job.environment)
             .fetch_one(&mut *tx)
             .await?;
             insert_labels(&mut tx, job_id, job.runs_on).await?;
+            // Actions: environments. Named for the first time, an environment exists with no
+            // protection, as on GitHub, so it can be configured; past the cap of a repository
+            // it is not created (and so has no protection to apply either).
+            if let Some(environment) = job.environment {
+                sqlx::query(
+                    "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3                      WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
+                )
+                .bind(new.repo.0)
+                .bind(environment)
+                .bind(new.now.0)
+                .bind(i64::try_from(super::actions_environments::MAX_ENVIRONMENTS).unwrap_or(i64::MAX))
+                .execute(&mut *tx)
+                .await?;
+            }
             if status == Status::Waiting {
                 waiting.push(job_id);
             }
@@ -857,6 +884,133 @@ impl ActionsRunStore {
         Ok(())
     }
 
+    // Actions: environments.
+    /// Records a reviewer's decision on jobs of `run` waiting for their environment: approved
+    /// jobs wait for a runner (their attempt approved), rejected ones fail. Only jobs still
+    /// waiting for review count; `None` when none of `jobs` was.
+    pub async fn review_jobs(
+        &self,
+        run: RunId,
+        jobs: &[JobId],
+        reviewer: AccountId,
+        decision: rbit_core::actions::ReviewDecision,
+        comment: &str,
+        now: Timestamp,
+    ) -> Result<Option<Settled>, StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut decided = 0;
+        for job in jobs {
+            let row: Option<(i64, String)> = sqlx::query_as(
+                "SELECT attempt, environment FROM actions_jobs WHERE id = ? AND run_id = ? AND status = 8 AND review = 1 AND environment IS NOT NULL",
+            )
+            .bind(job.0)
+            .bind(run.0)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let Some((attempt, environment)) = row else { continue };
+            let update = match decision {
+                rbit_core::actions::ReviewDecision::Approved => {
+                    "UPDATE actions_jobs SET status = 5, review = 0, approved_attempt = attempt, queued_at = ?2 WHERE id = ?1"
+                }
+                rbit_core::actions::ReviewDecision::Rejected => {
+                    "UPDATE actions_jobs SET status = 2, review = 0, finished_at = ?2 WHERE id = ?1"
+                }
+            };
+            sqlx::query(update).bind(job.0).bind(now.0).execute(&mut *tx).await?;
+            sqlx::query(
+                "INSERT INTO actions_deployment_reviews (job_id, attempt, environment, reviewer_id, decision, comment, created_at) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(job.0)
+            .bind(attempt)
+            .bind(&environment)
+            .bind(reviewer.0)
+            .bind(decision.as_str())
+            .bind(comment)
+            .bind(now.0)
+            .execute(&mut *tx)
+            .await?;
+            decided += 1;
+        }
+        if decided == 0 {
+            return Ok(None);
+        }
+        let waiting =
+            if decision == rbit_core::actions::ReviewDecision::Approved { jobs.iter().map(|job| job.0).collect() } else { Vec::new() };
+        let settled = settle(&mut tx, run, waiting, now).await?;
+        tx.commit().await?;
+        Ok(Some(settled))
+    }
+
+    /// Brings the jobs of `repo` in line with its environments' reviewers, after they
+    /// changed: jobs waiting for review run when their environment no longer has reviewers
+    /// (or no longer exists), and queued jobs no runner took yet wait for review when it now
+    /// has some. Settles their runs.
+    pub async fn release_reviews(&self, repo: RepoId, now: Timestamp) -> Result<Vec<Settled>, StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let released: Vec<(i64, i64)> = sqlx::query_as(
+            "UPDATE actions_jobs SET status = 5, review = 0, queued_at = ?2 WHERE repo_id = ?1 AND status = 8 AND review = 1              AND NOT EXISTS (SELECT 1 FROM actions_environments e JOIN actions_environment_reviewers r ON r.environment_id = e.id              WHERE e.repo_id = actions_jobs.repo_id AND e.name = actions_jobs.environment) RETURNING id, run_id",
+        )
+        .bind(repo.0)
+        .bind(now.0)
+        .fetch_all(&mut *tx)
+        .await?;
+        // `settle` holds the queued ones back.
+        let held: Vec<i64> = sqlx::query_scalar(
+            "SELECT DISTINCT run_id FROM actions_jobs WHERE repo_id = ?1 AND status = 5 AND environment IS NOT NULL              AND (approved_attempt IS NULL OR approved_attempt <> attempt) AND EXISTS              (SELECT 1 FROM actions_environments e JOIN actions_environment_reviewers r ON r.environment_id = e.id              WHERE e.repo_id = actions_jobs.repo_id AND e.name = actions_jobs.environment)",
+        )
+        .bind(repo.0)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut runs: Vec<i64> = released.iter().map(|(_, run)| *run).chain(held).collect();
+        runs.sort_unstable();
+        runs.dedup();
+        let mut settled = Vec::new();
+        for run in runs {
+            let waiting = released.iter().filter(|(_, of)| *of == run).map(|(job, _)| *job).collect();
+            settled.push(settle(&mut tx, RunId(run), waiting, now).await?);
+        }
+        tx.commit().await?;
+        Ok(settled)
+    }
+
+    /// The decisions reviewers made on the jobs of `run`, oldest first.
+    pub async fn deployment_reviews(&self, run: RunId) -> Result<Vec<rbit_core::actions::DeploymentReview>, StorageError> {
+        // id, job, attempt, environment, reviewer, decision, comment, created_at
+        type ReviewRow = (i64, i64, i64, String, Option<i64>, String, String, i64);
+        let rows: Vec<ReviewRow> = sqlx::query_as(
+            "SELECT r.id, r.job_id, r.attempt, r.environment, r.reviewer_id, r.decision, r.comment, r.created_at \
+             FROM actions_deployment_reviews r JOIN actions_jobs j ON j.id = r.job_id WHERE j.run_id = ? ORDER BY r.id",
+        )
+        .bind(run.0)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.into_iter()
+            .map(|(id, job, attempt, environment, reviewer, decision, comment, at)| {
+                Ok(rbit_core::actions::DeploymentReview {
+                    id: rbit_core::actions::DeploymentReviewId(id),
+                    job_id: JobId(job),
+                    attempt,
+                    environment,
+                    reviewer: reviewer.map(AccountId),
+                    decision: rbit_core::actions::ReviewDecision::parse(&decision).ok_or_else(|| corrupt("review decision", &decision))?,
+                    comment,
+                    created_at: Timestamp(at),
+                })
+            })
+            .collect()
+    }
+
+    /// Records the URL the runner evaluated for the environment of `job`'s current task.
+    pub async fn set_environment_url(&self, job: JobId, url: &str) -> Result<(), StorageError> {
+        sqlx::query("UPDATE actions_jobs SET environment_url = ? WHERE id = ? AND environment IS NOT NULL")
+            .bind(url)
+            .bind(job.0)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     // Actions: third-party actions.
     /// Creates steps a runner added to a task (its actions' `post` scripts), waiting; a
     /// number that already has a step is left as it is.
@@ -1166,7 +1320,7 @@ impl ActionsRunStore {
             let status = initial_status(start, waits);
             sqlx::query(
                 "UPDATE actions_jobs SET status = ?1, attempt = attempt + 1, task_id = NULL, runner_id = NULL, started_at = NULL, \
-                 finished_at = NULL, queued_at = ?2 WHERE id = ?3",
+                 finished_at = NULL, queued_at = ?2, review = 0, environment_url = NULL WHERE id = ?3",
             )
             .bind(status.code())
             .bind((status == Status::Waiting).then_some(now.0))
@@ -1181,6 +1335,13 @@ impl ActionsRunStore {
         let settled = settle(&mut tx, run, waiting, now).await?;
         tx.commit().await?;
         Ok(Some(settled))
+    }
+
+    /// Records who started the run's latest attempt (`github.triggering_actor`): whoever ran
+    /// it again, as on GitHub, so an environment that prevents self-review sees them too.
+    pub async fn set_trigger_actor(&self, run: RunId, actor: AccountId) -> Result<(), StorageError> {
+        sqlx::query("UPDATE actions_runs SET trigger_actor_id = ? WHERE id = ?").bind(actor.0).bind(run.0).execute(&self.pool).await?;
+        Ok(())
     }
 
     /// Finished runs whose logs are kept, finished before `before`, oldest first: the
@@ -1481,8 +1642,27 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
             .fetch_all(&mut *tx)
             .await?;
     }
-    let codes: Vec<i64> = sqlx::query_scalar("SELECT status FROM actions_jobs WHERE run_id = ?").bind(run.0).fetch_all(&mut *tx).await?;
-    let statuses = codes.into_iter().map(status).collect::<Result<Vec<_>, _>>()?;
+    // Actions: environments. A job about to wait for a runner whose environment has
+    // reviewers, and whose attempt none approved, waits for one of them instead; in the same
+    // transaction, so no runner can take it in between. Protection is read as it is now.
+    let reviewing: Vec<i64> = sqlx::query_scalar(
+        "UPDATE actions_jobs SET status = 8, review = 1, queued_at = NULL WHERE run_id = ?1 AND status = 5 \
+         AND environment IS NOT NULL AND (approved_attempt IS NULL OR approved_attempt <> attempt) AND EXISTS \
+         (SELECT 1 FROM actions_environments e JOIN actions_environment_reviewers r ON r.environment_id = e.id \
+          WHERE e.repo_id = actions_jobs.repo_id AND e.name = actions_jobs.environment) RETURNING id",
+    )
+    .bind(run.0)
+    .fetch_all(&mut *tx)
+    .await?;
+    now_waiting.retain(|job| !reviewing.contains(job));
+    // A job waiting for its reviewer counts as waiting for the run: the run itself is not
+    // held, as one awaiting approval is.
+    let codes: Vec<(i64, bool)> =
+        sqlx::query_as("SELECT status, review FROM actions_jobs WHERE run_id = ?").bind(run.0).fetch_all(&mut *tx).await?;
+    let statuses = codes
+        .into_iter()
+        .map(|(code, review)| if review && code == Status::AwaitingApproval.code() { Ok(Status::Waiting) } else { status(code) })
+        .collect::<Result<Vec<_>, _>>()?;
     let aggregated = match aggregate(statuses.iter().copied()) {
         // Every job blocked on a decision (its own `if:`) is not a run held for its group:
         // a blocked run status would stop the next settle from unblocking anything.
@@ -1506,6 +1686,7 @@ async fn settle(tx: &mut SqliteConnection, run: RunId, mut now_waiting: Vec<i64>
         run_id: run,
         run_status: aggregated,
         now_waiting: now_waiting.into_iter().map(JobId).collect(),
+        now_reviewing: reviewing.into_iter().map(JobId).collect(),
         to_decide: to_decide.into_iter().map(JobId).collect(),
     })
 }

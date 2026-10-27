@@ -233,6 +233,9 @@ pub enum ActionsTarget<'a> {
     Organization(&'a OrgContext),
     /// A user's own account (personal settings).
     User(&'a User),
+    // Actions: environments.
+    /// A deployment environment of a repository.
+    Environment(&'a RepoContext, &'a rbit_core::actions::Environment),
 }
 
 impl ActionsTarget<'_> {
@@ -241,13 +244,14 @@ impl ActionsTarget<'_> {
             Self::Repository(repo) => SecretScope::Repository(repo.repo.repo.id),
             Self::Organization(org) => SecretScope::Owner(org.org.account.id),
             Self::User(user) => SecretScope::Owner(user.id()),
+            Self::Environment(_, environment) => SecretScope::Environment(environment.id),
         }
     }
 
     /// Repository administrators, organisation owners, and users for themselves.
     pub fn can_manage(&self) -> bool {
         match self {
-            Self::Repository(repo) => repo.access.can_admin(),
+            Self::Repository(repo) | Self::Environment(repo, _) => repo.access.can_admin(),
             Self::Organization(org) => org.can_manage,
             Self::User(_) => true,
         }
@@ -259,6 +263,7 @@ impl ActionsTarget<'_> {
             Self::Repository(repo) => repo.repo.full_name(),
             Self::Organization(org) => org.org.name().to_string(),
             Self::User(user) => user.name().to_string(),
+            Self::Environment(repo, environment) => format!("{} ({})", repo.repo.full_name(), environment.name),
         }
     }
 
@@ -332,7 +337,7 @@ impl ActionsService {
         let name: SecretName = name.parse().map_err(|error| ServiceError::Invalid(format!("{error}")))?;
         check_value("secret", value, MAX_VALUE_BYTES)?;
         let scope = target.scope();
-        if matches!(scope, SecretScope::Repository(_)) && visibility != SecretVisibility::All {
+        if matches!(scope, SecretScope::Repository(_) | SecretScope::Environment(_)) && visibility != SecretVisibility::All {
             return Err(ServiceError::Invalid("a repository secret is visible to its repository only".to_owned()));
         }
         let key = self.secrets_key().await.map_err(|problem| ServiceError::Invalid(format!("secrets cannot be stored: {problem}")))?;

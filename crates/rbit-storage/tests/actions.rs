@@ -136,6 +136,7 @@ fn job<'a>(key: &'a str, needs: &'a [String], runs_on: &'a [String]) -> NewJob<'
         condition: false,
         max_parallel: None,
         group: None,
+        environment: None,
     }
 }
 
@@ -1002,4 +1003,130 @@ async fn schedules_are_replaced_ticked_and_paused() {
     assert!(!resumed.paused && resumed.failures == 0);
     store.record_tick(fx.rocket, "a.yml", "0 * * * *", Timestamp(500), false, 3).await.unwrap();
     assert_eq!(store.due(Timestamp(500), 10).await.unwrap()[0].next_at, Timestamp(500));
+}
+
+// Actions: environments.
+#[tokio::test]
+async fn jobs_of_a_protected_environment_wait_for_a_reviewer() {
+    use rbit_core::actions::{BranchPolicy, ReviewDecision};
+    use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let environments = fx.db.actions_environments();
+    let none: Vec<String> = Vec::new();
+    let linux = strings(&["linux"]);
+    let build = strings(&["build"]);
+    let jobs = [
+        job("build", &none, &linux),
+        NewJob { environment: Some("Production"), ..job("deploy", &build, &linux) },
+        NewJob { environment: Some("preview"), ..job("preview", &none, &linux) },
+    ];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    // Named for the first time, the environments exist, unprotected.
+    let names: Vec<_> = environments.list(fx.rocket).await.unwrap().into_iter().map(|environment| environment.name).collect();
+    assert_eq!(names, ["preview", "Production"]);
+    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    environments.put(fx.rocket, "production", &changes, NOW).await.unwrap();
+
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let mut seed = 10u8;
+    let mut claim_one = || {
+        seed += 1;
+        [seed; 32]
+    };
+    // `build` and the unprotected `preview` run; `deploy` waits for the reviewer.
+    for _ in 0..2 {
+        let claimed = store.claim(&claim(runner, scope, &labels, &claim_one())).await.unwrap().unwrap();
+        store.finish_task(claimed.task.id, Status::Success, NOW).await.unwrap();
+    }
+    let deploy = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "deploy").unwrap();
+    assert_eq!(
+        (deploy.status, deploy.awaiting_review, deploy.environment.as_deref()),
+        (Status::AwaitingApproval, true, Some("Production"))
+    );
+    assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Waiting, "the run is not held, only the job");
+    assert!(store.claim(&claim(runner, scope, &labels, &claim_one())).await.unwrap().is_none(), "no runner takes it");
+
+    let approved = store.review_jobs(run.id, &[deploy.id], fx.bob, ReviewDecision::Approved, "ship it", NOW).await.unwrap().unwrap();
+    assert_eq!(approved.now_waiting, [deploy.id]);
+    assert!(store.review_jobs(run.id, &[deploy.id], fx.bob, ReviewDecision::Approved, "", NOW).await.unwrap().is_none(), "decided once");
+    let claimed = store.claim(&claim(runner, scope, &labels, &claim_one())).await.unwrap().unwrap();
+    assert_eq!(claimed.job.id, deploy.id);
+    store.set_environment_url(deploy.id, "https://example.com/v1").await.unwrap();
+    store.finish_task(claimed.task.id, Status::Success, NOW).await.unwrap();
+    let reviews = store.deployment_reviews(run.id).await.unwrap();
+    assert_eq!((reviews.len(), reviews[0].decision, reviews[0].comment.as_str()), (1, ReviewDecision::Approved, "ship it"));
+    let deploy = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "deploy").unwrap();
+    assert_eq!(deploy.environment_url.as_deref(), Some("https://example.com/v1"));
+
+    // A rerun is a new attempt: it waits again, and a rejection fails it.
+    store.rerun(fx.rocket, run.id, Rerun::Job(deploy.id), RunStart::Runnable, NOW).await.unwrap().unwrap();
+    let deploy = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "deploy").unwrap();
+    assert!(deploy.awaiting_review && deploy.environment_url.is_none(), "{deploy:?}");
+    store.review_jobs(run.id, &[deploy.id], fx.bob, ReviewDecision::Rejected, "not today", NOW).await.unwrap().unwrap();
+    let after = store.run(run.id).await.unwrap().unwrap();
+    assert_eq!(after.status, Status::Failure);
+
+    // Reviewers removed while a job waits: it runs without review.
+    store.rerun(fx.rocket, run.id, Rerun::Job(deploy.id), RunStart::Runnable, NOW).await.unwrap().unwrap();
+    let changes = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    environments.put(fx.rocket, "Production", &changes, NOW).await.unwrap();
+    let released = store.release_reviews(fx.rocket, NOW).await.unwrap();
+    assert_eq!(released.len(), 1);
+    assert_eq!(released[0].now_waiting, [deploy.id]);
+    // Reviewers added while it waits for a runner: no runner may take it any more.
+    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    environments.put(fx.rocket, "Production", &changes, NOW).await.unwrap();
+    assert_eq!(store.release_reviews(fx.rocket, NOW).await.unwrap().len(), 1);
+    let deploy = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "deploy").unwrap();
+    assert_eq!((deploy.status, deploy.awaiting_review), (Status::AwaitingApproval, true));
+    assert!(store.claim(&claim(runner, scope, &labels, &claim_one())).await.unwrap().is_none());
+    assert!(store.release_reviews(fx.rocket, NOW).await.unwrap().is_empty(), "nothing else to bring in line");
+    assert!(environments.delete(fx.rocket, "PRODUCTION").await.unwrap(), "names compare without case");
+
+    // Workflows create environments only up to the repository's cap.
+    let unprotected = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    for n in 1..100 {
+        environments.put(fx.rocket, &format!("e{n}"), &unprotected, NOW).await.unwrap();
+    }
+    let overflow = [NewJob { environment: Some("overflow"), ..job("deploy", &none, &linux) }];
+    store.create_run(&new_run(fx.rocket, &overflow, RunStart::Runnable)).await.unwrap();
+    let all = environments.list(fx.rocket).await.unwrap();
+    assert_eq!((all.len(), all.iter().any(|environment| environment.name == "overflow")), (100, false));
+}
+
+#[tokio::test]
+async fn environment_secrets_and_variables_stay_in_their_environment() {
+    use rbit_core::actions::{BranchPolicy, SecretScope};
+    use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
+    let fx = Fixture::new().await;
+    let secrets = fx.db.actions_secrets();
+    let changes =
+        EnvironmentChanges { reviewers: &[], prevent_self_review: true, branch_policy: &BranchPolicy::Selected(vec!["main".into()]) };
+    let production = fx.db.actions_environments().put(fx.rocket, "production", &changes, NOW).await.unwrap();
+    assert_eq!((production.prevent_self_review, &production.branch_policy), (true, &BranchPolicy::Selected(vec!["main".into()])));
+    let scope = SecretScope::Environment(production.id);
+    let name: rbit_core::actions::SecretName = "DEPLOY_KEY".parse().unwrap();
+    let sealed = |id: rbit_core::actions::SecretId| SealedSecret {
+        key_id: [1; 8],
+        nonce: [2; 12],
+        ciphertext: vec![u8::try_from(id.0).unwrap(); 16],
+    };
+    let info = secrets.put_secret(scope, &name, SecretVisibility::All, fx.alice, NOW, sealed).await.unwrap();
+    assert_eq!(info.scope, scope);
+    assert_eq!(secrets.secrets(scope).await.unwrap().len(), 1);
+    assert!(secrets.secrets(SecretScope::Repository(fx.rocket)).await.unwrap().is_empty(), "not the repository's");
+    assert!(secrets.secrets_for_task(fx.rocket, fx.alice).await.unwrap().is_empty(), "not given to every job");
+    assert_eq!(secrets.secrets_for_environment(production.id).await.unwrap().len(), 1);
+    assert!(secrets.any_secret().await.unwrap());
+    let variable: rbit_core::actions::VariableName = "URL".parse().unwrap();
+    secrets.put_variable(scope, &variable, "https://a", fx.alice, NOW).await.unwrap();
+    let updated = secrets.put_variable(scope, &variable, "https://b", fx.alice, NOW).await.unwrap();
+    assert_eq!((updated.value.as_str(), secrets.count_variables(scope).await.unwrap()), ("https://b", 1));
+    assert_eq!(secrets.variables_for_task(fx.rocket, fx.alice).await.unwrap(), []);
+    // Deleting the environment takes its secrets and variables along.
+    assert!(fx.db.actions_environments().delete(fx.rocket, "production").await.unwrap());
+    assert!(secrets.secrets(scope).await.unwrap().is_empty() && secrets.variables(scope).await.unwrap().is_empty());
+    assert!(!secrets.delete_secret(scope, &name).await.unwrap());
 }

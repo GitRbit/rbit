@@ -328,6 +328,8 @@ pub struct RepoActionsSettingsPage {
     pub trusted_url: String,
     /// The runners page of this repository.
     pub runners_url: String,
+    // Actions: environments.
+    pub environments_url: String,
 }
 
 /// `/{org}/settings/actions`.
@@ -383,4 +385,56 @@ mod tests {
         let selected: Vec<_> = options.iter().filter(|option| option.selected).map(|option| option.value).collect();
         assert_eq!(selected, ["write"]);
     }
+}
+
+// Actions: environments.
+/// An environment in the list.
+#[derive(Debug, Clone)]
+pub struct EnvironmentRow {
+    pub name: String,
+    pub url: String,
+    /// "2 reviewers · branches main, release/*", or "No protection".
+    pub protection: String,
+}
+
+/// `/{owner}/{repo}/settings/actions/environments`.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/environments.html")]
+pub struct EnvironmentsPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub settings_url: String,
+    /// `/{owner}/{repo}/settings/actions`, for the breadcrumb.
+    pub actions_url: String,
+    /// This page; the new environment form posts here.
+    pub action_url: String,
+    pub environments: Vec<EnvironmentRow>,
+    pub error: FormError,
+    pub new_name: String,
+}
+
+/// `/{owner}/{repo}/settings/actions/environments/{name}`.
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/environment.html")]
+pub struct EnvironmentPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub settings_url: String,
+    pub actions_url: String,
+    pub environments_url: String,
+    pub name: String,
+    /// This page; the protection rules post here.
+    pub action_url: String,
+    pub delete_url: String,
+    /// The reviewers' usernames, one per line.
+    pub reviewers: String,
+    pub prevent_self_review: bool,
+    /// `all`, `protected` or `selected`.
+    pub policy: String,
+    /// The selected patterns, one per line.
+    pub patterns: String,
+    pub error: FormError,
+    pub notice: Option<Notice>,
+    pub secrets: SecretsSection,
+    pub variables: VariablesSection,
 }

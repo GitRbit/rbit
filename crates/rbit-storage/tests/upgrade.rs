@@ -754,6 +754,11 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
         tables,
         [
             "actions_artifacts",
+            "actions_deployment_reviews",
+            "actions_environment_reviewers",
+            "actions_environment_secrets",
+            "actions_environment_variables",
+            "actions_environments",
             "actions_job_labels",
             "actions_job_outputs",
             "actions_jobs",
@@ -804,7 +809,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
          INSERT INTO actions_owner_policies (owner_id, instance_runners, updated_by, updated_at) VALUES (10, 1, 2, 1); \
          INSERT INTO actions_registration_tokens (digest, scope_kind, repo_id, created_by, created_at, expires_at) \
              VALUES (zeroblob(32), 'repository', 6, 2, 1, 2); \
-         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);",
+         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);          INSERT INTO actions_environments (id, repo_id, name, created_at, updated_at) VALUES (1, 6, 'production', 1, 1);          INSERT INTO actions_environment_reviewers (environment_id, account_id) VALUES (1, 2);          INSERT INTO actions_environment_secrets (environment_id, name, key_id, nonce, ciphertext, created_at, updated_at, updated_by)              VALUES (1, 'KEY', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1, 2);          INSERT INTO actions_environment_variables (environment_id, name, value, created_at, updated_at) VALUES (1, 'A', 'b', 1, 1);          INSERT INTO actions_deployment_reviews (job_id, attempt, environment, reviewer_id, decision, created_at)              VALUES (1, 1, 'production', 2, 'approved', 1);",
     )
     .execute(&db.raw)
     .await
@@ -820,6 +825,9 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     assert_eq!(db.count("SELECT COUNT(*) FROM actions_registration_tokens WHERE created_by IS NULL").await, 1);
     assert_eq!(db.count("SELECT COUNT(*) FROM actions_owner_policies WHERE updated_by IS NULL").await, 1);
     assert_eq!(db.count("SELECT COUNT(*) FROM actions_trusted_users").await, 0, "a deleted user is no longer trusted");
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_environment_reviewers").await, 0, "nor a reviewer");
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_deployment_reviews WHERE reviewer_id IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_environment_secrets WHERE updated_by IS NULL").await, 1);
 
     // Deleting the repository removes everything Actions kept for it but its owner's.
     sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();

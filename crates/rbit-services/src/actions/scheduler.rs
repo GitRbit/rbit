@@ -304,6 +304,18 @@ impl ActionsService {
         } else {
             (BTreeMap::new(), BTreeMap::new())
         };
+        // Actions: environments. Its branch policy decides now; its values win over the
+        // repository's and owner's.
+        let (mut secrets, mut vars) = (secrets, vars);
+        if let Some(environment) = &template.environment {
+            match self.environment_values(&run, environment).await? {
+                Err(reason) => return Ok(Err(reason)),
+                Ok(values) => {
+                    secrets.extend(values.secrets.into_iter().map(|(name, value)| (name, Secret::new(value))));
+                    vars.extend(values.variables);
+                }
+            }
+        }
         let needs = self.needs(&run, &template).await?;
         let base_url = self.ctx().config.server.base_url();
         let full_name = repo.full_name();

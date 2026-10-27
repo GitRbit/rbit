@@ -29,8 +29,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, ArtifactRow, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary, RunsPage, SummaryView,
-            WorkflowLink, job_rows, workflow_file,
+            ActionsUrls, ArtifactRow, DeploymentView, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary,
+            RunsPage, SummaryView, WorkflowLink, job_rows, workflow_file,
         },
         layout::Page,
     },
@@ -317,6 +317,18 @@ pub async fn show(
         .iter()
         .filter_map(|(id, texts)| detail.jobs.iter().find(|job| job.id == *id).map(|job| SummaryView::new(&job.name, texts)))
         .collect();
+    // Actions: environments.
+    let deployments = actions
+        .pending_deployments(viewer.user(), &loaded.ctx, run)
+        .await?
+        .into_iter()
+        .map(|pending| DeploymentView {
+            environment: pending.environment.name,
+            jobs: pending.jobs.iter().map(|job| job.name.as_str()).collect::<Vec<_>>().join(", "),
+            // Reviewers need only read access, but nothing changes in an archived repository.
+            can_review: pending.can_review && !loaded.ctx.repo.repo.is_archived(),
+        })
+        .collect();
     Ok(RunPage {
         page: page.titled(format!("{} #{} · Actions · {}", run.workflow_name, run.number, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
@@ -333,7 +345,49 @@ pub async fn show(
         approve_url: urls.run_action(run.number, "approve"),
         artifacts,
         summaries,
+        deployments,
+        review_url: urls.run_action(run.number, "review"),
     })
+}
+
+// Actions: environments.
+/// The review form of a run's waiting deployments: the environments chosen, a comment,
+/// and whether they are approved.
+#[derive(Debug, Default)]
+pub struct ReviewForm {
+    environments: Vec<String>,
+    comment: String,
+    decision: String,
+}
+
+/// `POST /{owner}/{repo}/actions/runs/{run}/review`: approves or rejects the jobs waiting
+/// for the chosen environments.
+pub async fn review(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    viewer: Viewer,
+    Path((owner, repo, run)): Path<(String, String, String)>,
+    axum::Form(pairs): axum::Form<Vec<(String, String)>>,
+) -> WebResult<Redirect> {
+    let mut form = ReviewForm::default();
+    for (key, value) in pairs {
+        match key.as_str() {
+            "environment" => form.environments.push(value),
+            "comment" => form.comment = value,
+            "decision" => form.decision = value,
+            _ => {}
+        }
+    }
+    let decision = match form.decision.as_str() {
+        "approve" => rbit_core::actions::ReviewDecision::Approved,
+        "reject" => rbit_core::actions::ReviewDecision::Rejected,
+        _ => return Err(WebError::BadRequest("choose approve or reject".to_owned())),
+    };
+    let actions = actions(&state)?;
+    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    let detail = actions.run_detail(&loaded.ctx, run_number(&run)?).await?;
+    actions.review_deployments(&user, &loaded.ctx, &detail.run, &form.environments, decision, &form.comment).await?;
+    Ok(Redirect::to(&ActionsUrls::new(&loaded.urls.home()).run(detail.run.number)))
 }
 
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs`: the jobs are on the run page.

@@ -91,6 +91,7 @@ pub async fn seed_run(fixture: &Fixture, jobs: &[(JobTemplate, Vec<u8>)], truste
             condition: false,
             max_parallel: None,
             group: None,
+            environment: template.environment.as_deref(),
         })
         .collect();
     let run = fixture

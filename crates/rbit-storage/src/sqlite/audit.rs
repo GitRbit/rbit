@@ -118,6 +118,11 @@ pub enum AuditAction {
     // Actions: triggers (T).
     ActionsRunApproved,
     ActionsUserTrusted,
+    // Actions: environments.
+    ActionsEnvironmentChanged,
+    ActionsEnvironmentDeleted,
+    ActionsDeploymentApproved,
+    ActionsDeploymentRejected,
     // Actions: interface and secrets (U).
     ActionsSecretSet,
     ActionsSecretDeleted,
@@ -139,7 +144,7 @@ pub enum AuditAction {
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 67] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -188,6 +193,10 @@ impl AuditAction {
         // Actions: triggers (T).
         Self::ActionsRunApproved,
         Self::ActionsUserTrusted,
+        Self::ActionsEnvironmentChanged,
+        Self::ActionsEnvironmentDeleted,
+        Self::ActionsDeploymentApproved,
+        Self::ActionsDeploymentRejected,
         // Actions: interface and secrets (U).
         Self::ActionsSecretSet,
         Self::ActionsSecretDeleted,
@@ -259,6 +268,10 @@ impl AuditAction {
             // Actions: triggers (T).
             Self::ActionsRunApproved => "actions_run_approved",
             Self::ActionsUserTrusted => "actions_user_trusted",
+            Self::ActionsEnvironmentChanged => "actions_environment_changed",
+            Self::ActionsEnvironmentDeleted => "actions_environment_deleted",
+            Self::ActionsDeploymentApproved => "actions_deployment_approved",
+            Self::ActionsDeploymentRejected => "actions_deployment_rejected",
             // Actions: interface and secrets (U).
             Self::ActionsSecretSet => "actions_secret_set",
             Self::ActionsSecretDeleted => "actions_secret_deleted",
@@ -330,6 +343,10 @@ impl AuditAction {
             // Actions: triggers (T).
             | Self::ActionsRunApproved
             | Self::ActionsUserTrusted
+            | Self::ActionsEnvironmentChanged
+            | Self::ActionsEnvironmentDeleted
+            | Self::ActionsDeploymentApproved
+            | Self::ActionsDeploymentRejected
             // Actions: interface and secrets (U).
             | Self::ActionsSecretSet
             | Self::ActionsSecretDeleted
@@ -401,6 +418,10 @@ impl AuditAction {
             // Actions: triggers (T).
             Self::ActionsRunApproved => "Approved a workflow run",
             Self::ActionsUserTrusted => "Trusted a pull request author's workflow runs",
+            Self::ActionsEnvironmentChanged => "Changed a deployment environment",
+            Self::ActionsEnvironmentDeleted => "Deleted a deployment environment",
+            Self::ActionsDeploymentApproved => "Approved a deployment",
+            Self::ActionsDeploymentRejected => "Rejected a deployment",
             // Actions: interface and secrets (U).
             Self::ActionsSecretSet => "Set an Actions secret",
             Self::ActionsSecretDeleted => "Deleted an Actions secret",

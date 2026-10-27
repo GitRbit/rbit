@@ -961,6 +961,7 @@ mod tests {
                 condition: false,
                 max_parallel: None,
                 group: None,
+                environment: None,
             },
             NewJob {
                 key: "test",
@@ -973,6 +974,7 @@ mod tests {
                 condition: false,
                 max_parallel: None,
                 group: None,
+                environment: None,
             },
         ];
         let actor = spec.actor.map(User::id);

@@ -21,8 +21,9 @@ use crate::{AccountId, RepoAccess, RepoId};
 pub mod records;
 
 pub use records::{
-    Artifact, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken, RepoActionsSettings, Run, RunEvent, Runner, RunnerBackend,
-    RunnerCapabilities, ScheduleEntry, SealedSecret, SecretInfo, SecretVisibility, Step, Task, TrustedUser, Variable,
+    Artifact, BranchPolicy, DeploymentReview, Environment, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken, RepoActionsSettings,
+    ReviewDecision, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities, ScheduleEntry, SealedSecret, SecretInfo, SecretVisibility,
+    Step, Task, TrustedUser, Variable,
 };
 
 macro_rules! id {
@@ -68,6 +69,15 @@ id!(
     VariableId
 );
 // Actions: artifacts (A).
+// Actions: environments.
+id!(
+    /// A deployment environment of a repository.
+    EnvironmentId
+);
+id!(
+    /// A reviewer's decision on a job waiting for its environment.
+    DeploymentReviewId
+);
 id!(
     /// Files a job uploaded.
     ArtifactId
@@ -363,26 +373,31 @@ pub fn runner_sees(scope: RunnerScope, repo: RepoId, owner: AccountId, instance_
     }
 }
 
-/// Where a secret or variable is defined. Repository values win over owner values.
+/// Where a secret or variable is defined. Environment values win over repository values,
+/// which win over owner values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SecretScope {
     Owner(AccountId),
     Repository(RepoId),
+    // Actions: environments.
+    /// A deployment environment's, given only to jobs that run in it, once approved.
+    Environment(EnvironmentId),
 }
 
 impl SecretScope {
-    /// The stored `scope_kind`.
+    /// The stored `scope_kind` (environment values live in tables of their own).
     pub const fn kind(self) -> &'static str {
         match self {
             Self::Owner(_) => "owner",
             Self::Repository(_) => "repository",
+            Self::Environment(_) => "environment",
         }
     }
 
-    /// The account or repository id.
+    /// The account, repository or environment id.
     pub const fn id(self) -> i64 {
         match self {
-            Self::Owner(AccountId(id)) | Self::Repository(RepoId(id)) => id,
+            Self::Owner(AccountId(id)) | Self::Repository(RepoId(id)) | Self::Environment(EnvironmentId(id)) => id,
         }
     }
 

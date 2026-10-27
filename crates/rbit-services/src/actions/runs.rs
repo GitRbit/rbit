@@ -356,6 +356,7 @@ impl ActionsService {
         let Some(settled) = settled else {
             return Err(ServiceError::Invalid("no job of the run matches".to_owned()));
         };
+        store.set_trigger_actor(id, actor.id()).await?;
         tracing::info!(repo = %repo.repo.full_name(), run = id.0, by = %actor.name(), ?which, "workflow run started again");
         self.followed_up(&settled).await?;
         store.find_run(repo_id, id).await?.ok_or(ServiceError::NotFound)
@@ -515,6 +516,8 @@ impl JobRows {
                 condition: job.condition.is_some(),
                 max_parallel: job.strategy.max_parallel,
                 group: job.concurrency.as_ref().map(|concurrency| concurrency.group.as_str()),
+                // Actions: environments.
+                environment: job.environment.as_deref(),
             })
             .collect()
     }

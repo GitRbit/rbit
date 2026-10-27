@@ -11,6 +11,7 @@ mod actions_api;
 // Actions: artifacts (A).
 mod actions_artifacts;
 mod actions_disabled;
+mod actions_environments;
 // Actions: interface and secrets (U).
 mod actions_job_pages;
 mod actions_pages;

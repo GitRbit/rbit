@@ -44,6 +44,7 @@ mod test_support;
 mod statuses;
 // Actions: integration (I).
 mod actions;
+mod environments;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
@@ -211,12 +212,16 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
 /// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
 fn actions_routes() -> Vec<ApiRoute> {
     // Actions: integration (I).
-    actions::routes()
+    let mut routes = actions::routes();
+    // Actions: environments.
+    routes.extend(environments::routes());
+    routes
 }
 
 /// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
 // Actions: integration (I).
-const ACTIONS_FRAGMENTS: [(&str, &str); 1] = [("actions", include_str!("openapi/actions.json"))];
+const ACTIONS_FRAGMENTS: [(&str, &str); 2] =
+    [("actions", include_str!("openapi/actions.json")), ("environments", include_str!("openapi/environments.json"))];
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.

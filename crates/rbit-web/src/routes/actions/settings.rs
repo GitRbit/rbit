@@ -45,24 +45,24 @@ use crate::{
     },
 };
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
+pub(super) fn actions(state: &AppState) -> WebResult<&ActionsService> {
     state.services.actions.as_ref().ok_or(WebError::NotFound)
 }
 
 /// `?done=` after a form's redirect.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct DoneQuery {
+pub(super) struct DoneQuery {
     done: String,
 }
 
 impl DoneQuery {
-    fn notice(&self) -> Option<Notice> {
+    pub(super) fn notice(&self) -> Option<Notice> {
         Notice::parse(&self.done)
     }
 }
 
-fn done(url: &str, notice: Notice) -> Response {
+pub(super) fn done(url: &str, notice: Notice) -> Response {
     Redirect::to(&format!("{url}?done={}", notice.key())).into_response()
 }
 
@@ -71,8 +71,8 @@ fn done(url: &str, notice: Notice) -> Response {
 /// A secret or variable form. Read from the pairs, since an owner secret's repositories
 /// repeat the `repository` field.
 #[derive(Debug, Default)]
-struct EntryForm {
-    kind: String,
+pub(super) struct EntryForm {
+    pub(super) kind: String,
     action: String,
     name: String,
     value: String,
@@ -81,7 +81,7 @@ struct EntryForm {
 }
 
 impl EntryForm {
-    fn parse(pairs: Vec<(String, String)>) -> Self {
+    pub(super) fn parse(pairs: Vec<(String, String)>) -> Self {
         let mut form = Self::default();
         for (key, value) in pairs {
             match key.as_str() {
@@ -105,7 +105,12 @@ impl EntryForm {
 }
 
 /// Applies a secret form to `target`.
-async fn apply_secret(actions: &ActionsService, user: &User, target: ActionsTarget<'_>, form: &EntryForm) -> Result<Notice, ServiceError> {
+pub(super) async fn apply_secret(
+    actions: &ActionsService,
+    user: &User,
+    target: ActionsTarget<'_>,
+    form: &EntryForm,
+) -> Result<Notice, ServiceError> {
     match form.action.as_str() {
         "delete" => {
             actions.delete_secret(user, target, &form.name).await?;
@@ -128,7 +133,7 @@ async fn apply_secret(actions: &ActionsService, user: &User, target: ActionsTarg
 }
 
 /// Applies a variable form to `target`.
-async fn apply_variable(
+pub(super) async fn apply_variable(
     actions: &ActionsService,
     user: &User,
     target: ActionsTarget<'_>,
@@ -145,14 +150,14 @@ async fn apply_variable(
 
 /// The secrets and variables sections of `target`, posting to `secrets_url` and
 /// `variables_url`.
-async fn sections(
+pub(super) async fn sections(
     actions: &ActionsService,
     target: ActionsTarget<'_>,
     secrets_url: String,
     variables_url: String,
 ) -> WebResult<(SecretsSection, VariablesSection)> {
     let owner_repositories: Option<Vec<OwnerRepository>> = match target {
-        ActionsTarget::Repository(_) => None,
+        ActionsTarget::Repository(_) | ActionsTarget::Environment(..) => None,
         ActionsTarget::Organization(_) | ActionsTarget::User(_) => Some(actions.owner_repositories(target).await?),
     };
     let secrets = actions.list_secrets(target).await?;
@@ -166,7 +171,12 @@ async fn sections(
 
 /// Puts a rejected entry form's message (and, for a new one, what was submitted, never a
 /// secret's value) back on its section.
-fn reject(secrets: SecretsSection, variables: VariablesSection, form: &EntryForm, message: &str) -> (SecretsSection, VariablesSection) {
+pub(super) fn reject(
+    secrets: SecretsSection,
+    variables: VariablesSection,
+    form: &EntryForm,
+    message: &str,
+) -> (SecretsSection, VariablesSection) {
     let error = FormError::from_message(message);
     if form.kind == "variable" {
         (secrets, variables.rejected(error, &form.name, &form.value))
@@ -179,7 +189,7 @@ fn reject(secrets: SecretsSection, variables: VariablesSection, form: &EntryForm
 // ------------------------------------------------------------------ repository
 
 /// Loads the repository for a viewer who may administer it; 404 for everyone else.
-async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
+pub(super) async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
     actions(state)?;
     let loaded = RepoPage::load(state, viewer, owner, repo).await?;
     if !loaded.ctx.access.can_admin() {
@@ -209,6 +219,7 @@ async fn repo_page(state: &AppState, loaded: &RepoPage, page: Page, notice: Opti
         trusted: settings.trusted.iter().map(TrustedRow::from).collect(),
         trusted_url: format!("{action_url}/trusted"),
         runners_url: format!("{action_url}/runners"),
+        environments_url: format!("{action_url}/environments"),
         action_url,
     })
 }

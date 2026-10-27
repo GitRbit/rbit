@@ -331,6 +331,11 @@ pub struct JobRow {
     pub indent: &'static str,
     pub rerun_url: String,
     pub can_rerun: bool,
+    // Actions: environments.
+    /// The deployment environment the job runs in.
+    pub environment: Option<String>,
+    /// The URL the job reported for it (`environment.url`), shown when it is http(s).
+    pub environment_url: Option<String>,
 }
 
 /// The jobs of a run in `needs` order: each after everything it needs, otherwise in the
@@ -366,6 +371,8 @@ pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) 
             indent: ["", "w-4", "w-8", "w-12", "w-16"][level.min(4)],
             rerun_url: format!("{}/rerun", urls.job(number, job.id.0)),
             can_rerun: can_write && job.status.is_done(),
+            environment: job.environment.clone(),
+            environment_url: job.environment_url.clone().filter(|url| url.starts_with("https://") || url.starts_with("http://")),
         })
         .collect()
 }
@@ -441,6 +448,21 @@ pub struct RunPage {
     pub artifacts: Vec<ArtifactRow>,
     // Actions: step summaries.
     pub summaries: Vec<SummaryView>,
+    // Actions: environments.
+    /// Jobs waiting for an environment's reviewers, by environment.
+    pub deployments: Vec<DeploymentView>,
+    /// Where reviews post.
+    pub review_url: String,
+}
+
+// Actions: environments.
+/// The jobs of a run waiting for one environment's reviewers.
+#[derive(Debug, Clone)]
+pub struct DeploymentView {
+    pub environment: String,
+    /// "deploy, smoke test".
+    pub jobs: String,
+    pub can_review: bool,
 }
 
 // Actions: step summaries.
@@ -682,6 +704,9 @@ mod tests {
             queued_at: None,
             started_at: None,
             finished_at: None,
+            environment: None,
+            environment_url: None,
+            awaiting_review: false,
         }
     }
 

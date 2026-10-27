@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AccountId, RepoId, Timestamp,
     actions::{
-        ArtifactId, DefaultTokenPermission, JobId, JobStatus, RegistrationTokenId, RunId, RunStatus, RunnerId, RunnerLabel, RunnerScope,
-        SecretId, SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
+        ArtifactId, DefaultTokenPermission, DeploymentReviewId, EnvironmentId, JobId, JobStatus, RegistrationTokenId, RunId, RunStatus,
+        RunnerId, RunnerLabel, RunnerScope, SecretId, SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
     },
 };
 
@@ -124,6 +124,13 @@ pub struct Job {
     pub queued_at: Option<Timestamp>,
     pub started_at: Option<Timestamp>,
     pub finished_at: Option<Timestamp>,
+    // Actions: environments.
+    /// The deployment environment the job runs in, by name.
+    pub environment: Option<String>,
+    /// Its `environment.url` as the runner evaluated it after the steps.
+    pub environment_url: Option<String>,
+    /// Waiting for a reviewer of its environment (its status is then awaiting approval).
+    pub awaiting_review: bool,
 }
 
 /// Where a task's log is.
@@ -415,4 +422,78 @@ mod tests {
         let printed = format!("{sealed:?}");
         assert!(printed.contains("ciphertext_len: 20") && !printed.contains("171"), "{printed}");
     }
+}
+
+// Actions: environments.
+/// Which refs may deploy to an environment.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum BranchPolicy {
+    /// Any branch or tag.
+    #[default]
+    All,
+    /// Branches with a branch protection rule.
+    Protected,
+    /// Branches and tags matching these GitHub filter patterns (`main`, `release/*`).
+    Selected(Vec<String>),
+}
+
+impl BranchPolicy {
+    /// The stored `branch_policy`.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Protected => "protected",
+            Self::Selected(_) => "selected",
+        }
+    }
+}
+
+/// A repository's deployment environment (Actions: environments). A job that names it with
+/// `environment:` gets its secrets and variables over the repository's, waits for one of its
+/// reviewers when it has any, and runs only from the refs its branch policy allows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Environment {
+    pub id: EnvironmentId,
+    pub repo_id: RepoId,
+    pub name: String,
+    /// Who may approve its jobs; none means they run without review.
+    pub reviewers: Vec<AccountId>,
+    /// Whoever started the run may not approve it.
+    pub prevent_self_review: bool,
+    pub branch_policy: BranchPolicy,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+
+/// A reviewer's decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReviewDecision {
+    Approved,
+    Rejected,
+}
+
+impl ReviewDecision {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::Rejected => "rejected",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        [Self::Approved, Self::Rejected].into_iter().find(|decision| decision.as_str() == value)
+    }
+}
+
+/// A reviewer's decision on one attempt of a job waiting for its environment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeploymentReview {
+    pub id: DeploymentReviewId,
+    pub job_id: JobId,
+    pub attempt: i64,
+    pub environment: String,
+    pub reviewer: Option<AccountId>,
+    pub decision: ReviewDecision,
+    pub comment: String,
+    pub created_at: Timestamp,
 }

@@ -6,6 +6,7 @@ mod accounts;
 mod actions_rows;
 // Actions: artifacts (A).
 pub mod actions_artifacts;
+pub mod actions_environments;
 pub mod actions_runners;
 pub mod actions_runs;
 pub mod actions_schedules;
@@ -318,6 +319,11 @@ impl Database {
 
     pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {
         actions_secrets::ActionsSecretStore::new(self.pool.clone())
+    }
+
+    // Actions: environments.
+    pub fn actions_environments(&self) -> actions_environments::ActionsEnvironmentStore {
+        actions_environments::ActionsEnvironmentStore::new(self.pool.clone())
     }
 
     pub fn actions_schedules(&self) -> actions_schedules::ActionsScheduleStore {

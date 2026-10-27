@@ -10,6 +10,7 @@
 //! The Actions foundation (workstream F) owns the route list; workstream U (interface and
 //! secrets) owns the handlers.
 
+mod environments;
 pub(crate) mod jobs;
 mod runners;
 mod runs;
@@ -34,6 +35,13 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/runs/{run}/rerun", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/rerun-failed", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/approve", &[Method::POST]),
+    // Actions: environments.
+    ("/{owner}/{repo}/actions/runs/{run}/review", &[Method::POST]),
+    ("/{owner}/{repo}/settings/actions/environments", &[Method::GET, Method::POST]),
+    ("/{owner}/{repo}/settings/actions/environments/{environment}", &[Method::GET, Method::POST]),
+    ("/{owner}/{repo}/settings/actions/environments/{environment}/secrets", &[Method::GET, Method::POST]),
+    ("/{owner}/{repo}/settings/actions/environments/{environment}/variables", &[Method::GET, Method::POST]),
+    ("/{owner}/{repo}/settings/actions/environments/{environment}/delete", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", &[Method::GET]),
@@ -84,6 +92,19 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/runs/{run}/rerun", post(runs::rerun_all))
         .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
         .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
+        // Actions: environments.
+        .route("/{owner}/{repo}/actions/runs/{run}/review", post(runs::review))
+        .route("/{owner}/{repo}/settings/actions/environments", get(environments::list).post(environments::create))
+        .route("/{owner}/{repo}/settings/actions/environments/{environment}", get(environments::show).post(environments::save))
+        .route(
+            "/{owner}/{repo}/settings/actions/environments/{environment}/secrets",
+            get(environments::to_environment).post(environments::secret),
+        )
+        .route(
+            "/{owner}/{repo}/settings/actions/environments/{environment}/variables",
+            get(environments::to_environment).post(environments::variable),
+        )
+        .route("/{owner}/{repo}/settings/actions/environments/{environment}/delete", post(environments::delete))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
         .route("/{owner}/{repo}/settings/actions/runners", get(runners::repository).post(runners::repository_tokens))
         .route("/{owner}/{repo}/settings/actions/runners/{runner}", post(runners::repository_runner))

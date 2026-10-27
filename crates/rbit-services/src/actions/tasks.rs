@@ -91,6 +91,11 @@ impl ActionsService {
             }
             return Ok(TaskStateResponse { cancel: true });
         }
+        // Actions: environments.
+        if let Some(url) = &request.environment_url {
+            let masker = self.masker(&task, &job).await?;
+            store.set_environment_url(job.id, &masker.mask(url)).await?;
+        }
         if !request.outputs.is_empty() {
             let masker = self.masker(&task, &job).await?;
             let cleaned: Vec<(&str, String)> = request.outputs.iter().map(|(key, value)| (key.as_str(), masker.mask(value))).collect();

@@ -114,7 +114,13 @@ impl ActionsService {
             return Ok(Arc::clone(masker));
         }
         let Some(run) = self.ctx().database.actions_runs().run(job.run_id).await? else { return Ok(Arc::new(Masker::none())) };
-        let secrets = if run.trusted { self.task_secrets(&run).await? } else { std::collections::BTreeMap::default() };
+        let mut secrets = if run.trusted { self.task_secrets(&run).await? } else { std::collections::BTreeMap::default() };
+        // Actions: environments. The job had its environment's secrets too.
+        if let Some(environment) = &job.environment
+            && let Ok(values) = self.environment_values(&run, environment).await?
+        {
+            secrets.extend(values.secrets);
+        }
         let masker = Arc::new(Masker::new(secrets.values().map(String::as_str)));
         self.inner.masks.lock().unwrap_or_else(PoisonError::into_inner).insert(task.id, Arc::clone(&masker));
         Ok(masker)

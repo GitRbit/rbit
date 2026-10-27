@@ -131,6 +131,9 @@ mod tests {
             queued_at: None,
             started_at: started.map(Timestamp),
             finished_at: finished.map(Timestamp),
+            environment: None,
+            environment_url: None,
+            awaiting_review: false,
         }
     }
 

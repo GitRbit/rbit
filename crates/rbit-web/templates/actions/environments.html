@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> Environments</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">Environments</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">A job that names an environment with <span class="font-mono text-ink">environment:</span> gets its secrets and variables, waits for one of its reviewers when it has any, and runs only from the branches it allows. An environment appears here the first time a workflow names it.</p>
+
+  <div class="box mt-6">
+    {% if environments.is_empty() %}
+    {% call ui::empty_state("server", "No environments", "Add one below, or run a workflow whose job names one with environment:.") %}{% endcall %}
+    {% else %}
+    <ul>
+      {% for environment in environments %}
+      <li class="border-b border-line last:border-b-0">
+        <a class="flex min-h-11 items-center gap-3 px-4 py-3 hover:bg-subtle" href="{{ environment.url }}">
+          {% call ui::icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+          <span class="min-w-0 flex-1"><span class="block truncate font-medium">{{ environment.name }}</span><span class="block truncate text-xs text-ink-muted">{{ environment.protection }}</span></span>
+          {% call ui::icon("chevron-right", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+
+  <form method="post" action="{{ action_url }}" class="box mt-4" novalidate>
+    <div class="box-header"><h2 class="text-[13px] font-medium">New environment</h2></div>
+    <div class="p-4">
+      {% call ui::form_error(error) %}{% endcall %}
+      <label class="label" for="environment-name">Name</label>
+      <input class="input" id="environment-name" name="name" value="{{ new_name }}" maxlength="255" autocomplete="off" required placeholder="production">
+    </div>
+    <div class="flex justify-end border-t border-line px-4 py-3">
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">Add environment</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

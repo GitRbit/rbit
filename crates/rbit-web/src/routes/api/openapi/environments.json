@@ -1,0 +1,557 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/environments": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listEnvironments",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A repository's deployment environments",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The environments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentList"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/environments/{environment_name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "environment_name",
+          "in": "path",
+          "required": true,
+          "description": "The environment's name; case-insensitive.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getEnvironment",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A deployment environment",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putEnvironment",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create or change a deployment environment (admin scope; a repository administrator)",
+        "description": "Absent fields keep their value; `null` clears `reviewers` or `deployment_branch_policy`. Unlike GitHub, custom branch policies are given here as `patterns` (a plain pattern names branches, `refs/tags/\u2026` names tags, `!` excludes) rather than through a separate endpoint. Changes are audited, and jobs waiting for an environment that no longer has reviewers run.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvironmentBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteEnvironment",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete a deployment environment (admin scope; a repository administrator)",
+        "description": "Its secrets, variables and rules go too; jobs waiting for its reviewers run.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getPendingDeployments",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The environments whose reviewers a run's jobs wait for",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What waits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingDeployment"
+                  }
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "reviewPendingDeployments",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Approve or reject a run's jobs waiting for these environments (write scope; a reviewer)",
+        "description": "Approved jobs wait for a runner; rejected ones fail. Unlike GitHub, the response is what still waits, not deployment objects. Reviews are recorded on the run.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentReviewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What still waits",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingDeployment"
+                  }
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The environment does not let this user review the run (self-review)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EnvironmentBranchPolicy": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "description": "`null`: any ref may deploy.",
+        "properties": {
+          "protected_branches": {
+            "type": "boolean"
+          },
+          "custom_branch_policies": {
+            "type": "boolean"
+          },
+          "patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "rbit: the custom patterns."
+          }
+        }
+      },
+      "Environment": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "html_url",
+          "created_at",
+          "updated_at",
+          "protection_rules",
+          "deployment_branch_policy"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "html_url": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "protection_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "required_reviewers",
+                    "branch_policy"
+                  ]
+                },
+                "prevent_self_review": {
+                  "type": "boolean"
+                },
+                "reviewers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "reviewer"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "User"
+                        ]
+                      },
+                      "reviewer": {
+                        "type": "object",
+                        "description": "A user, as in other responses."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "deployment_branch_policy": {
+            "$ref": "#/components/schemas/EnvironmentBranchPolicy"
+          }
+        }
+      },
+      "EnvironmentList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "environments"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Environment"
+            }
+          }
+        }
+      },
+      "EnvironmentBody": {
+        "type": "object",
+        "properties": {
+          "reviewers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "User"
+                  ]
+                },
+                "id": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "prevent_self_review": {
+            "type": "boolean"
+          },
+          "deployment_branch_policy": {
+            "$ref": "#/components/schemas/EnvironmentBranchPolicy"
+          }
+        }
+      },
+      "PendingDeployment": {
+        "type": "object",
+        "required": [
+          "environment",
+          "wait_timer",
+          "wait_timer_started_at",
+          "current_user_can_approve",
+          "reviewers"
+        ],
+        "properties": {
+          "environment": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "html_url": {
+                "type": "string"
+              }
+            }
+          },
+          "wait_timer": {
+            "type": "integer",
+            "description": "Always 0: rbit has no wait timers."
+          },
+          "wait_timer_started_at": {
+            "type": "null"
+          },
+          "current_user_can_approve": {
+            "type": "boolean"
+          },
+          "reviewers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "reviewer"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "User"
+                  ]
+                },
+                "reviewer": {
+                  "type": "object",
+                  "description": "A user, as in other responses."
+                }
+              }
+            }
+          }
+        }
+      },
+      "DeploymentReviewBody": {
+        "type": "object",
+        "required": [
+          "environment_ids",
+          "state"
+        ],
+        "properties": {
+          "environment_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "rejected"
+            ]
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

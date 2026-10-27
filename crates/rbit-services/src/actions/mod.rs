@@ -41,6 +41,7 @@ pub mod browse;
 pub mod conditions;
 pub mod context;
 pub mod dispatch;
+pub mod environments;
 pub mod hooks;
 pub mod logs;
 pub mod runners;

@@ -62,6 +62,7 @@ async fn writers_cancel_and_run_again() {
     let version = actions.tasks_version();
     let again = actions.rerun(&fixture.carol, &writer, run.id, Rerun::Failed).await.unwrap();
     assert_eq!((again.attempt, again.number, again.status), (2, run.number, Status::Waiting));
+    assert_eq!(again.trigger_actor, Some(fixture.carol.id()), "whoever runs it again triggers the attempt");
     assert!(actions.tasks_version() > version, "jobs became claimable");
     assert_eq!(statuses(&fixture, run.id).await, keyed(&[("a", Status::Waiting), ("b", Status::Blocked), ("c", Status::Waiting)]));
 

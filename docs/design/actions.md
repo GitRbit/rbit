@@ -837,7 +837,6 @@ These parts stay unchanged and binding:
 
 Unknown keys are **parse errors** at every level, with line and column, because a typo must not silently change what a job does. GitHub keys that rbit deliberately lacks are also errors: the message names the key and says "not supported by rbit". These are:
 - `workflow_call` and `jobs.<id>.uses`;
-- `environment`;
 - `secrets: inherit`;
 - `container.options`;
 - `services.*.options` and `services.*.volumes`.
@@ -917,6 +916,35 @@ On the runner (`rbit-runner::steps::action`):
 - reusable workflows;
 - `hashFiles` on the server (it works on the runner only);
 - a step `uses:` with `${{ }}` in the action name.
+
+#### 12.2.2 Environments (Actions: environments)
+
+`jobs.<id>.environment` is a name or `{name, url}`. The planner evaluates the name (it may
+use `matrix` and `inputs`); the runner evaluates `url` after the steps, so it may read
+`steps.*.outputs`, and reports it masked in `TaskStateRequest.environment_url` (one line,
+at most 2 KiB). The web shows only `http(s)` URLs as links.
+
+An environment (`actions_environments`, migration `0053`) is created the first time a job
+names it and holds:
+- **reviewers** (up to six users who can read the repository) and `prevent_self_review`;
+- a **branch policy**: all refs, protected branches, or patterns in workflow-filter syntax,
+  matched against the full ref (a plain pattern is a branch pattern, `refs/tags/…` a tag
+  pattern, so a tag named `main` does not pass for the branch);
+- its own **secrets and variables** (`SecretScope::Environment`), layered over the owner's
+  and the repository's, sealed as theirs are.
+
+*Gate.* When `settle` would queue a job whose environment has reviewers and whose
+`approved_attempt` is not the job's attempt, it sets `review = 1` instead and the job stays
+waiting; the run aggregates it as waiting. A reviewer approves on the run page or through
+`POST …/runs/{id}/pending_deployments`, which records a `actions_deployment_reviews` row,
+sets `approved_attempt` and queues the job; rejecting fails it, and the run settles as for any
+failed job. A rerun is a new attempt, so it needs a new approval. Removing the last reviewer or
+deleting the environment releases its waiting jobs.
+
+*Claim.* The branch policy and the environment's values are read when a runner claims the
+job (`job_spec`), not when it was queued: a job from a ref the policy does not allow fails
+there with a message saying so, and a secret changed while a job waited is the new one. Jobs
+of untrusted runs get no environment secrets, as they get no others.
 
 ### 12.3 Crates and layering
 
@@ -1421,8 +1449,8 @@ and what is known to be missing. Where they disagree, this section and the code 
   new dependency.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
-- **Not exercised yet:** the container backend against a real Docker or Podman, and the
-  Unix-only runner code (process groups, file modes) outside CI.
+- **Environments** have no wait timer, team reviewers or custom protection rules, and create
+  no deployment objects or `deployment` events.
 - **Checked by hand** with CI's stylesheet on a seeded instance, with a host runner running a
   workflow with a matrix, a failing job, a masked secret and an artifact: the Actions tab, run,
   job and raw log pages and the repository, organisation, account and instance settings, at
@@ -1443,6 +1471,13 @@ and must not look like a comment whose author was deleted (a ghost).
 
 **`0051_step_summaries.sql`** adds `actions_step_summaries` (task, step number, Markdown up to
 64 KiB), apart from the small rows of `actions_steps` and deleted with its task.
+
+**`0052_release_source.sql`** adds `releases.source` (`user` or `actions`), for releases a
+workflow publishes with its token (shown as rbit-actions, as statuses and comments are).
+
+**`0053_actions_environments.sql`** adds environments, their reviewers, secrets and variables,
+deployment reviews, and the `environment`, `environment_url`, `review` and `approved_attempt`
+columns of `actions_jobs` (§12.2.2).
 
 ### 13.4 Commits
 
