@@ -1364,6 +1364,14 @@ and what is known to be missing. Where they disagree, this section and the code 
   issues and comments, so the common "update my earlier comment" pattern of pull request
   bots does not work yet.
 - **No attempt picker or log timestamps** on the pages.
+- **A job's `timeout-minutes` starts with its first step.** Pulling images and starting
+  the job and service containers are not counted, so a stuck pull ends only when the run is
+  cancelled or the endless sweep fails the task.
+- **Artifact storage is checked at the start of each upload**, not reserved, so uploads
+  running at once in one repository can together pass `max_artifact_storage_bytes`.
+- **`paths-ignore` with a `!` pattern** follows act and Forgejo, not GitHub: a negative
+  pattern that does not match a path ignores it, so `['docs/**', '!docs/keep.md']` ignores
+  every path but `docs/keep.md`.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
 - **Not exercised yet:** the container backend against a real Docker or Podman, and the
