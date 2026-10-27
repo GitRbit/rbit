@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-pub use crate::spec::{Builtin, BuiltinKind, Env, RegistryCredentials, RunDefaults, StepAction};
+pub use crate::spec::{ActionSource, ActionStep, Builtin, BuiltinKind, Env, RegistryCredentials, RunDefaults, StepAction};
 use crate::{cron::Cron, error::Location, pattern::Patterns};
 
 /// A parsed workflow file.

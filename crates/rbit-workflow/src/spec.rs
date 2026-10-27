@@ -226,6 +226,33 @@ pub enum StepAction {
     Run(String),
     /// A built-in action.
     Uses(Builtin),
+    // Actions: third-party actions.
+    /// An action the runner fetches and runs.
+    Action(ActionStep),
+}
+
+// Actions: third-party actions.
+/// A `uses:` that is not built in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionStep {
+    /// `uses:` as written, for display.
+    pub uses: String,
+    pub source: ActionSource,
+    /// `with:`, as templates; the runner checks them against the action's inputs.
+    pub with: BTreeMap<String, String>,
+}
+
+/// Where an action comes from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum ActionSource {
+    /// `owner/repo[/path]@reference`, from the runner's action source.
+    Repository { owner: String, repo: String, path: String, reference: String },
+    /// `./path`: a directory of the workspace.
+    Local { path: String },
+    /// `docker://image`.
+    Docker { image: String },
 }
 
 /// A resolved `uses:` (§12.2 built-ins).
@@ -292,6 +319,14 @@ impl JobTemplate {
             }
             if let StepAction::Uses(builtin) = &step.action {
                 ensure(builtin.version >= 1, || format!("`{}` has no version", builtin.uses))?;
+            }
+            // Actions: third-party actions. The runner fetches what this names, so it is
+            // checked again here, whoever wrote the template.
+            if let StepAction::Action(action) = &step.action {
+                let resolved = crate::builtins::resolve_uses(&action.uses);
+                ensure(resolved == Ok(crate::builtins::Uses::Action(action.source.clone())), || {
+                    format!("`{}` does not name the action it carries", action.uses)
+                })?;
             }
             validate_env(&step.env)?;
         }

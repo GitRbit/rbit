@@ -25,9 +25,9 @@ use crate::{
     expr::{CONTEXTS, Condition, Expr, Function, Template},
     limits::{Deadline, Limits},
     model::{
-        ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, Filter, InputKind, Job, Matrix, On, Permission,
-        Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell, Step, StepAction,
-        Strategy, Workflow,
+        ActionStep, ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, Filter, InputKind, Job, Matrix, On,
+        Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell, Step,
+        StepAction, Strategy, Workflow,
     },
     pattern::Patterns,
     spec::{MAX_NAME_BYTES, MAX_SERVICES, MAX_STEPS},
@@ -283,7 +283,7 @@ fn amount(node: &Node, path: &str, scope: Scope, whole: bool) -> Result<String, 
 }
 
 /// An `env` mapping: names without `=` or NUL, scalar values as templates.
-fn parse_env(node: &Node, path: &str) -> Result<Env, WorkflowError> {
+pub(crate) fn parse_env(node: &Node, path: &str) -> Result<Env, WorkflowError> {
     if node.is_null() {
         return Ok(Env::new());
     }
@@ -839,7 +839,7 @@ fn image_env_credentials(config: &Mapping, node: &Node, path: &str) -> Result<(S
 }
 
 /// `steps`: 1 to [`MAX_STEPS`], step ids unique.
-fn parse_steps(node: &Node, path: &str) -> Result<Vec<Step>, WorkflowError> {
+pub(crate) fn parse_steps(node: &Node, path: &str) -> Result<Vec<Step>, WorkflowError> {
     let items = node.as_sequence().ok_or_else(|| error(format!("`{path}` must be a list of steps"), node.at))?;
     if items.is_empty() {
         return Err(error(format!("`{path}` must have at least one step"), node.at));
@@ -902,11 +902,27 @@ fn parse_step(node: &Node, path: &str) -> Result<Step, WorkflowError> {
                 .as_text()
                 .filter(|uses| !uses.is_empty())
                 .ok_or_else(|| error(format!("`{path}.uses` must name an action"), uses_node.at))?;
-            let (kind, version) = builtins::resolve(&uses).map_err(|problem| error(format!("`{path}.uses`: {problem}"), uses_node.at))?;
-            let check = |key: &str, value: &str| builtins::check_input(kind, &uses, key, value);
-            let with = config.get("with").map(|node| parse_with(node, &field("with"), &check)).transpose()?.unwrap_or_default();
-            builtins::check_required(kind, &uses, &with).map_err(|problem| error(format!("`{path}`: {problem}"), uses_node.at))?;
-            StepAction::Uses(Builtin { uses, kind, version, with })
+            match builtins::resolve_uses(&uses).map_err(|problem| error(format!("`{path}.uses`: {problem}"), uses_node.at))? {
+                builtins::Uses::Builtin(kind, version) => {
+                    let check = |key: &str, value: &str| builtins::check_input(kind, &uses, key, value);
+                    let with = config.get("with").map(|node| parse_with(node, &field("with"), &check)).transpose()?.unwrap_or_default();
+                    builtins::check_required(kind, &uses, &with).map_err(|problem| error(format!("`{path}`: {problem}"), uses_node.at))?;
+                    StepAction::Uses(Builtin { uses, kind, version, with })
+                }
+                // Actions: third-party actions. Inputs are the action's to check, when it is
+                // fetched.
+                builtins::Uses::Action(source) => {
+                    let check = |key: &str, _: &str| {
+                        if key.is_empty() || key.len() > 100 || key.chars().any(|c| c.is_whitespace() || c.is_control()) {
+                            Err(format!("`{}` is not an input name", key.escape_debug()))
+                        } else {
+                            Ok(())
+                        }
+                    };
+                    let with = config.get("with").map(|node| parse_with(node, &field("with"), &check)).transpose()?.unwrap_or_default();
+                    StepAction::Action(ActionStep { uses, source, with })
+                }
+            }
         }
     };
     let shell = config.get("shell").filter(|node| !node.is_null()).map(|node| parse_shell(node, &field("shell"))).transpose()?;
@@ -1554,6 +1570,34 @@ jobs:
         assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
     }
 
+    // Actions: third-party actions.
+    #[test]
+    fn other_actions_are_steps_the_runner_fetches() {
+        let workflow = parse_ok(
+            "on: push\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 22\n          cache: ${{ matrix.cache }}\n      - uses: ./.github/actions/build\n      - uses: docker://alpine:3.20\n      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n",
+        );
+        let steps = &workflow.jobs[0].steps;
+        let StepAction::Action(node) = &steps[0].action else { panic!("{:?}", steps[0].action) };
+        assert_eq!(node.uses, "actions/setup-node@v4");
+        assert_eq!(
+            node.source,
+            crate::spec::ActionSource::Repository {
+                owner: "actions".into(),
+                repo: "setup-node".into(),
+                path: String::new(),
+                reference: "v4".into()
+            }
+        );
+        assert_eq!((node.with["node-version"].as_str(), node.with["cache"].as_str()), ("22", "${{ matrix.cache }}"));
+        assert!(
+            matches!(&steps[1].action, StepAction::Action(local) if local.source == crate::spec::ActionSource::Local { path: ".github/actions/build".into() })
+        );
+        assert!(
+            matches!(&steps[2].action, StepAction::Action(docker) if docker.source == crate::spec::ActionSource::Docker { image: "alpine:3.20".into() })
+        );
+        assert!(matches!(&steps[3].action, StepAction::Uses(builtin) if builtin.kind == BuiltinKind::Checkout), "a pinned built-in");
+    }
+
     #[test]
     fn steps_do_exactly_one_thing() {
         let cases: &[(&str, &str, (u32, u32))] = &[
@@ -1570,8 +1614,13 @@ jobs:
             ("    steps:\n      - {id: 1a, run: x}\n", "`1a` must start with a letter", (6, 14)),
             ("    steps:\n      - {run: x, with: {}}\n", "steps[0].with` only applies", (6, 18)),
             ("    steps:\n      - {uses: rbit/checkout@v1, with: {ref: [1]}}\n", "`jobs.a.steps[0].with.ref` must be a string", (6, 46)),
-            ("    steps:\n      - {uses: actions/setup-node@v4}\n", "`jobs.a.steps[0].uses`: `actions/setup-node` is not one of", (6, 16)),
-            ("    steps:\n      - {uses: 'docker://alpine'}\n", "`docker://` steps are not supported by rbit", (6, 16)),
+            (
+                "    steps:\n      - {uses: 'octo/ci/.github/workflows/x.yml@v1'}\n",
+                "`jobs.a.steps[0].uses`: `octo/ci/.github/workflows/x.yml@v1`: reusable workflows",
+                (6, 16),
+            ),
+            ("    steps:\n      - {uses: 'octo/repo@--upload-pack=x'}\n", "is not a branch, tag or commit", (6, 16)),
+            ("    steps:\n      - {uses: actions/setup-node@v4, with: {'a b': x}}\n", "`a b` is not an input name", (6, 46)),
             (
                 "    steps:\n      - {uses: actions/checkout@v4, with: {token: x}}\n",
                 "`jobs.a.steps[0].with.token`: `actions/checkout@v4` has no input `token`",

@@ -208,7 +208,7 @@ fn job_template(
     Ok(template)
 }
 
-fn step_template(step: &Step) -> StepTemplate {
+pub(crate) fn step_template(step: &Step) -> StepTemplate {
     StepTemplate {
         id: step.id.clone(),
         name: step.name.clone(),

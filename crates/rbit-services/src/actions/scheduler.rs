@@ -408,6 +408,7 @@ fn step_name(index: usize, step: &rbit_workflow::spec::StepTemplate) -> String {
     let name = match (&step.name, &step.action) {
         (Some(name), _) if !name.trim().is_empty() => name.trim().to_owned(),
         (_, StepAction::Uses(builtin)) => format!("Run {}", builtin.uses),
+        (_, StepAction::Action(action)) => format!("Run {}", action.uses),
         (_, StepAction::Run(script)) => script
             .lines()
             .map(str::trim)

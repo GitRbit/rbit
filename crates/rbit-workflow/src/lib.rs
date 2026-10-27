@@ -26,6 +26,7 @@
 //!
 //! The Actions foundation (workstream F of `docs/design/actions.md`) owns this crate.
 
+pub mod action;
 pub mod builtins;
 pub mod cron;
 pub mod error;
