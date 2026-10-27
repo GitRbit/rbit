@@ -30,6 +30,32 @@ pub fn find_on(name: &str, path: &str) -> Option<PathBuf> {
     find_in(name, Some(OsStr::new(path)), std::env::var_os("PATHEXT").as_deref())
 }
 
+/// The shell `name` of a host step on `path`: [`find_on`], except that on Windows `bash`
+/// and `sh` are Git for Windows' own. The `bash.exe` in `System32` (or the Store's
+/// `WindowsApps`) starts WSL, where the step's `C:/…` script does not exist, and Git's
+/// installer puts only `Git\cmd` on `PATH` by default, so Git's shells are also looked for
+/// next to `git`.
+pub fn find_shell(name: &str, path: &str) -> Option<PathBuf> {
+    if !cfg!(windows) || !matches!(name, "bash" | "sh") {
+        return find_on(name, path);
+    }
+    let path_ext = std::env::var_os("PATHEXT");
+    let starts_wsl = |found: &Path| {
+        found
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|dir| ["system32", "syswow64", "sysnative", "windowsapps"].iter().any(|system| dir.eq_ignore_ascii_case(system)))
+    };
+    std::env::split_paths(OsStr::new(path))
+        .filter_map(|dir| find_in(name, Some(dir.as_os_str()), path_ext.as_deref()))
+        .find(|found| !starts_wsl(found))
+        .or_else(|| {
+            // `Git\cmd\git.exe`, `Git\bin\git.exe` or `Git\mingw64\bin\git.exe`.
+            let git = find_in("git", Some(OsStr::new(path)), path_ext.as_deref())?;
+            git.ancestors().skip(2).take(2).map(|root| root.join("bin").join(format!("{name}.exe"))).find(|shell| shell.is_file())
+        })
+}
+
 fn find_in(name: &str, path: Option<&OsStr>, path_ext: Option<&OsStr>) -> Option<PathBuf> {
     if name.is_empty() {
         return None;
@@ -311,6 +337,32 @@ mod tests {
         assert!(find_in("", Some(&path), None).is_none());
         let direct = dir.path().join(tool);
         assert_eq!(find_in(direct.to_str().unwrap(), None, None), Some(direct));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_shells_are_git_for_windows_not_wsl() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = |parts: &[&str]| {
+            let dir = parts.iter().fold(root.path().to_path_buf(), |dir, part| dir.join(part));
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        };
+        let (system, git_cmd, git_bin, usr_bin) =
+            (dir(&["Windows", "System32"]), dir(&["Git", "cmd"]), dir(&["Git", "bin"]), dir(&["Git", "usr", "bin"]));
+        for file in
+            [system.join("bash.exe"), git_cmd.join("git.exe"), git_bin.join("bash.exe"), git_bin.join("sh.exe"), usr_bin.join("bash.exe")]
+        {
+            std::fs::write(file, "").unwrap();
+        }
+        let path = |dirs: &[&PathBuf]| std::env::join_paths(dirs).unwrap().to_string_lossy().into_owned();
+        // Git's default installation: only `Git\cmd` on `PATH`, after `System32`.
+        assert_eq!(find_shell("bash", &path(&[&system, &git_cmd])), Some(git_bin.join("bash.exe")));
+        assert_eq!(find_shell("sh", &path(&[&system, &git_cmd])), Some(git_bin.join("sh.exe")));
+        // A bash put on `PATH` by hand still wins, as long as it is not WSL's.
+        assert_eq!(find_shell("bash", &path(&[&system, &usr_bin, &git_cmd])), Some(usr_bin.join("bash.exe")));
+        assert_eq!(find_shell("bash", &path(&[&system])), None);
+        assert_eq!(find_shell("pwsh", &path(&[&system, &git_cmd])), None, "other shells are looked up as before");
     }
 
     #[tokio::test]

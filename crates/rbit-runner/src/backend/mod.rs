@@ -117,10 +117,10 @@ impl Backend {
         }
     }
 
-    /// The program `name` as the step would find it on `path` (the step's `PATH`).
+    /// The shell `name` as the step would find it on `path` (the step's `PATH`).
     pub fn find(&self, name: &str, path: &str) -> Option<String> {
         match self {
-            Self::Host(_) => crate::process::find_on(name, path).map(|found| found.to_string_lossy().into_owned()),
+            Self::Host(_) => crate::process::find_shell(name, path).map(|found| found.to_string_lossy().into_owned()),
             Self::Container(container) => container.find(name),
         }
     }

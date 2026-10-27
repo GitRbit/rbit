@@ -49,9 +49,10 @@ pub fn parse_git_version(text: &str) -> Option<(u32, u32)> {
     Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
-/// The shells of [`SHELLS`] found on `PATH`.
+/// The shells of [`SHELLS`] a host step finds on `PATH`.
 pub fn shells() -> Vec<&'static str> {
-    SHELLS.into_iter().filter(|shell| process::find_program(shell).is_some()).collect()
+    let path = std::env::var("PATH").unwrap_or_default();
+    SHELLS.into_iter().filter(|shell| process::find_shell(shell, &path).is_some()).collect()
 }
 
 /// Runs the checks and prints a report; fails when a configured backend cannot work.
