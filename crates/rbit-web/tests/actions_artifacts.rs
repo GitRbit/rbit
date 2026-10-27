@@ -147,6 +147,7 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
     let shown = page(&fixture, &alice, &run_url).await;
     let html = String::from_utf8_lossy(&shown.body).into_owned();
     assert!(html.contains("dist-linux") && html.contains("Artifacts"), "{html}");
+    assert!(html.contains(">in 3 months</time>"), "the default 90 days, not \"just now\": {html}");
     let artifact = fixture.database.actions_artifacts().of_run(run.id, rbit_core::Timestamp::now()).await.unwrap().remove(0);
     let download_url = format!("{run_url}/artifacts/{}", artifact.id.0);
     assert!(html.contains(&download_url));

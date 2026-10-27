@@ -122,7 +122,7 @@ impl TokenRow {
         Self {
             id: token.id.0,
             created: token.created_at.relative(),
-            expires: token.expires_at.relative(),
+            expires: token.expires_at.until(),
             uses,
             usable: token.is_usable(now),
             labels: token.labels.as_ref().map(|labels| labels.iter().map(RunnerLabel::as_str).collect::<Vec<_>>().join(", ")),

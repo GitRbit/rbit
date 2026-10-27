@@ -375,7 +375,7 @@ impl ArtifactRow {
         Self {
             name: artifact.name.clone(),
             size: crate::render::format_size(artifact.size),
-            expires: artifact.expires_at.relative(),
+            expires: artifact.expires_at.until(),
             expires_iso: artifact.expires_at.iso8601(),
             url: format!("{}/artifacts/{}", urls.run(number), artifact.id.0),
         }
