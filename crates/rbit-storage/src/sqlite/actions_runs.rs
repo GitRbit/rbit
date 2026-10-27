@@ -33,6 +33,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use super::actions_rows::{corrupt, labels_json, runner_columns, status, strings, strings_json, timestamp};
 use crate::StorageError;
 
+#[expect(clippy::struct_excessive_bools, reason = "one column per run flag")]
 #[derive(Debug, sqlx::FromRow)]
 struct RunRow {
     id: i64,

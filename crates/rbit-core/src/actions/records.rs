@@ -57,6 +57,7 @@ pub struct RepoActionsSettings {
 }
 
 /// A workflow run. The event payload and dispatch inputs are read separately.
+#[expect(clippy::struct_excessive_bools, reason = "independent facts about a run")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Run {
     pub id: RunId,
