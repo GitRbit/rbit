@@ -74,19 +74,13 @@ impl ActionsService {
     pub async fn job_summaries(&self, repo: &RepoContext, jobs: &[Job]) -> Result<Vec<(JobId, Vec<String>)>, ServiceError> {
         self.require_pages(repo).await?;
         let tasks: Vec<TaskId> = jobs.iter().filter(|job| job.repo_id == repo.repo.repo.id).filter_map(|job| job.task_id).collect();
-        let mut summaries = self.ctx().database.actions_runs().summaries_of_tasks(&tasks).await?.into_iter().peekable();
-        let mut by_job = Vec::new();
-        for job in jobs {
-            let Some(task) = job.task_id else { continue };
-            let mut texts = Vec::new();
-            while let Some((_, _, text)) = summaries.next_if(|(of, _, _)| *of == task) {
-                texts.push(text);
-            }
-            if !texts.is_empty() {
-                by_job.push((job.id, texts));
-            }
+        // Grouped by task, not walked in job order: tasks are numbered as runners claim them
+        // and reruns, so a later job may hold the earlier task.
+        let mut by_task: BTreeMap<TaskId, Vec<String>> = BTreeMap::new();
+        for (task, _, text) in self.ctx().database.actions_runs().summaries_of_tasks(&tasks).await? {
+            by_task.entry(task).or_default().push(text);
         }
-        Ok(by_job)
+        Ok(jobs.iter().filter_map(|job| Some((job.id, by_task.remove(&job.task_id?)?))).collect())
     }
 
     /// Every workflow of `repo` with runs: its path and the name of its newest run.

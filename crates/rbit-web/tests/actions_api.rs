@@ -208,3 +208,32 @@ async fn step_summaries_are_kept_once_and_shown_sanitised_on_the_run_page() {
     assert!(!page.contains("a later, different summary"), "the first summary of a step is kept");
     assert!(!page.contains("no such step"), "only the task's own steps");
 }
+
+// Actions: step summaries.
+/// Tasks are numbered as runners claim jobs, so a later job may hold the earlier task; each
+/// job still shows its own summary.
+#[tokio::test]
+async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let (linux, mac) = (fixture.runner(&["linux"]).await, fixture.runner(&["mac"]).await);
+    let run = seed(&fixture, &[payload(&template("first", &["mac"], &[])), payload(&template("second", &["linux"], &[]))]).await;
+    let second = spec(&poll(&fixture, &linux, Some("l")).await.1).task_id.0;
+    let first = spec(&poll(&fixture, &mac, Some("m")).await.1).task_id.0;
+    assert!(second < first, "the second job holds the earlier task");
+    for (credential, task, text) in [(&linux, second, "summary of the second job"), (&mac, first, "summary of the first job")] {
+        let body = json!({"steps": [], "outputs": {}, "result": null, "summaries": {"0": text}});
+        assert_eq!(state(&fixture, credential, task, &body).await.0, StatusCode::OK);
+    }
+
+    let token = fixture.services.accounts.start_session(&fixture.alice).await.unwrap();
+    let request = Request::builder()
+        .uri(format!("/alice/rocket/actions/runs/{}", run.number))
+        .header(header::HOST, "localhost:3000")
+        .header(header::COOKIE, format!("rbit_session={}", token.encode()))
+        .body(Body::empty())
+        .unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(page.contains("summary of the first job") && page.contains("summary of the second job"), "{page}");
+}
