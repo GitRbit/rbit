@@ -105,6 +105,10 @@ impl ActionsService {
         let task = self.running_task(runner, task).await?;
         let database = &self.ctx().database;
         let job = database.actions_runs().job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
+        // A task left behind by a rerun would otherwise file its artifact under the new attempt.
+        if job.task_id != Some(task.id) {
+            return Err(RunnerError::conflict("the job has been rerun; this task no longer belongs to it"));
+        }
         let run = database.actions_runs().run(job.run_id).await?.ok_or_else(|| RunnerError::not_found("there is no such run"))?;
         let config = self.config();
         let stored = database.actions_artifacts().stored_bytes(run.repo_id).await?;

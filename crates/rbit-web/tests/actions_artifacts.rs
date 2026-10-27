@@ -176,3 +176,18 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
         .unwrap();
     assert_eq!(page(&fixture, &bob, &download_url).await.status, StatusCode::NOT_FOUND, "the repository is private");
 }
+
+#[tokio::test]
+async fn a_task_left_behind_by_a_rerun_cannot_upload_into_the_new_attempt() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let old = spec(&poll(&fixture, &credential, Some("old")).await.1).task_id.0;
+    let repo = fixture.repo().await;
+    fixture.actions().cancel(&fixture.alice, &repo, run.id).await.unwrap();
+    fixture.actions().rerun(&fixture.alice, &repo, run.id, rbit_storage::sqlite::actions_runs::Rerun::All).await.unwrap();
+    let new = spec(&poll(&fixture, &credential, Some("new")).await.1).task_id.0;
+
+    assert_eq!(upload(&fixture, &credential, old, "dist", "", b"stale bytes").await.status, StatusCode::CONFLICT);
+    assert_eq!(upload(&fixture, &credential, new, "dist", "", b"fresh bytes").await.status, StatusCode::CREATED);
+}
