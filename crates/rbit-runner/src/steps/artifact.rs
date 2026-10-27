@@ -10,7 +10,8 @@
 //!   workspace by default). Several artifacts each get a directory of their name unless
 //!   `merge-multiple` is set or one was asked for by name.
 //!
-//! Archives keep paths relative to the workspace, and unpacking never writes outside the
+//! Archives keep paths relative to the deepest directory holding every uploaded path (as
+//! `actions/upload-artifact` does: `path: dist` stores `dist`'s files at the top), and unpacking never writes outside the
 //! destination or through a link (`cache::extract`); a `path` that goes through a link is
 //! refused. The archives themselves are packed and downloaded into the task's private
 //! directory, which no container mounts, so a job cannot plant a link where one is written. Without a server (`rbit-runner exec`)
@@ -27,7 +28,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     Inputs, Outcome,
-    cache::{Roots, extract, lines, resolve, write_archive},
+    cache::{Area, Roots, extract, lines, resolve, write_archive},
 };
 use crate::{backend::Backend, job::Job, untrusted::crosses_link};
 
@@ -88,8 +89,8 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
         Ok(resolved) => resolved,
         Err(error) => return job.fail(&error.replace("rbit's cache", "rbit's artifacts").replace("cache paths", "artifact paths")),
     };
-    let roots = workspace_roots(job);
-    if !resolved.iter().any(|(_, relative)| roots.workspace.join(relative).exists()) {
+    let workspace = workspace_roots(job);
+    if !resolved.iter().any(|(_, relative)| workspace.workspace.join(relative).exists()) {
         let message = format!("no files were found for the artifact `{name}`");
         return match inputs.get("if-no-files-found") {
             "error" => job.fail(&message),
@@ -100,6 +101,7 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
             }
         };
     }
+    let (roots, resolved) = archive_root(&workspace.workspace, resolved);
     let archive = match job.private_dir() {
         Ok(dir) => dir.join(format!("artifact-{}.tar.gz", crate::client::idempotency_key())),
         Err(error) => return job.fail(&format!("cannot pack the artifact: {error}")),
@@ -125,6 +127,32 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
         }
         Err(error) => job.fail(&format!("the artifact `{name}` was not uploaded: {error}")),
     }
+}
+
+/// The archive's root and `resolved` relative to it: the deepest directory holding every
+/// path that exists (a directory itself, a file its parent), as `actions/upload-artifact`
+/// does, so `path: dist` stores `dist`'s files at the top. The workspace when that
+/// directory is reached through a link.
+fn archive_root(workspace: &Path, resolved: Vec<(Area, PathBuf)>) -> (Roots, Vec<(Area, PathBuf)>) {
+    let mut common: Option<PathBuf> = None;
+    for (_, relative) in &resolved {
+        let source = workspace.join(relative);
+        let directory = if source.is_dir() {
+            relative.clone()
+        } else if source.exists() {
+            relative.parent().map(Path::to_path_buf).unwrap_or_default()
+        } else {
+            continue;
+        };
+        common = Some(match common {
+            None => directory,
+            Some(common) => common.components().zip(directory.components()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect(),
+        });
+    }
+    let base = common.filter(|base| !crosses_link(workspace, base)).unwrap_or_default();
+    let resolved =
+        resolved.into_iter().filter_map(|(area, relative)| Some((area, relative.strip_prefix(&base).ok()?.to_path_buf()))).collect();
+    (Roots { workspace: workspace.join(&base), home: None }, resolved)
 }
 
 /// Runs `rbit/download-artifact`.
@@ -206,7 +234,7 @@ fn destination(job: &Job, path: &str) -> Result<PathBuf, String> {
         return Ok(workspace);
     }
     let view = job.backend.view().workspace.clone();
-    let relative = path.strip_prefix(view.as_str()).map_or(path, |rest| rest.trim_start_matches(['/', '\\']));
+    let relative = workspace_relative(&view, path);
     let relative = Path::new(relative);
     if relative.is_absolute()
         || !relative.components().all(|component| matches!(component, std::path::Component::Normal(_) | std::path::Component::CurDir))
@@ -217,6 +245,14 @@ fn destination(job: &Job, path: &str) -> Result<PathBuf, String> {
         return Err(format!("`{path}` goes through a symbolic link; download into a directory inside the workspace"));
     }
     Ok(workspace.join(relative))
+}
+
+/// `path` relative to the job's view of the workspace, `view`, when it is the workspace or
+/// below it (`/__w/app2` is not inside `/__w/app`); otherwise `path` unchanged.
+fn workspace_relative<'a>(view: &str, path: &'a str) -> &'a str {
+    path.strip_prefix(view)
+        .filter(|rest| rest.is_empty() || rest.starts_with(['/', '\\']))
+        .map_or(path, |rest| rest.trim_start_matches(['/', '\\']))
 }
 
 #[cfg(test)]
@@ -242,5 +278,36 @@ mod tests {
         assert!(!matches("log-??", "log-1"));
         assert!(!matches("dist-*", "build-linux"));
         assert!(matches("a*b*c", "aXXbYc"));
+    }
+
+    #[test]
+    fn only_paths_below_the_workspace_are_made_relative() {
+        assert_eq!(workspace_relative("/__w/app", "/__w/app/dist"), "dist");
+        assert_eq!(workspace_relative("/__w/app", "/__w/app"), "");
+        assert_eq!(workspace_relative("/__w/app", "dist/out"), "dist/out");
+        assert_eq!(workspace_relative("/__w/app", "/__w/app2/out"), "/__w/app2/out", "a sibling is not inside");
+    }
+
+    #[test]
+    fn archives_are_rooted_where_their_paths_meet() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path();
+        fs::create_dir_all(workspace.join("dist/linux")).unwrap();
+        fs::create_dir_all(workspace.join("docs")).unwrap();
+        fs::write(workspace.join("dist/app.txt"), "app").unwrap();
+        fs::write(workspace.join("dist/linux/app"), "bin").unwrap();
+        fs::write(workspace.join("README.md"), "readme").unwrap();
+        let root = |paths: &[&str]| {
+            let resolved = paths.iter().map(|path| (Area::Workspace, PathBuf::from(path))).collect();
+            let (roots, resolved) = archive_root(workspace, resolved);
+            let relative: Vec<_> = resolved.into_iter().map(|(_, path)| path).collect();
+            (roots.workspace.strip_prefix(workspace).unwrap().to_path_buf(), relative)
+        };
+        assert_eq!(root(&["dist"]), (PathBuf::from("dist"), vec![PathBuf::new()]), "a directory's files go at the top");
+        assert_eq!(root(&["dist/app.txt"]), (PathBuf::from("dist"), vec![PathBuf::from("app.txt")]), "so does a file");
+        assert_eq!(root(&["dist/app.txt", "dist/linux"]), (PathBuf::from("dist"), vec![PathBuf::from("app.txt"), PathBuf::from("linux")]));
+        assert_eq!(root(&["dist", "docs"]), (PathBuf::new(), vec![PathBuf::from("dist"), PathBuf::from("docs")]));
+        assert_eq!(root(&["README.md", "dist"]).0, PathBuf::new());
+        assert_eq!(root(&["dist", "missing/file"]), (PathBuf::from("dist"), vec![PathBuf::new()]), "missing paths do not count");
     }
 }

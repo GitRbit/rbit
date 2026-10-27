@@ -84,7 +84,7 @@ jobs:
       - shell: bash
         run: |
           echo "the answer is ${{ needs.build.outputs.answer }}"
-          cat dist/app.txt
+          cat app.txt
   on-failure:
     needs: build
     if: failure()
