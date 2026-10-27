@@ -283,6 +283,22 @@ async fn concurrency_groups_cancel_or_hold_earlier_runs() {
     let unique = "on: push\nconcurrency: ci-${{ github.run_id }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
     let run = push(&fixture, &[(path, ""), (CI, unique)], "Unique", "refs/heads/main", source).await.remove(0);
     assert_eq!(run.concurrency_group, None, "a group naming the run id holds nothing");
+    let numbered = "on: push\nconcurrency: ci-${{ github.run_number }}\njobs:\n  a:\n    runs-on: x\n    steps: [{run: x}]\n";
+    let run = push(&fixture, &[(CI, numbered)], "Numbered", "refs/heads/main", source).await.remove(0);
+    assert_eq!(run.concurrency_group, None, "nor does one naming the run number");
+
+    // Jobs' own groups follow the same rule.
+    let jobs = "on: push\njobs:\n  unique:\n    runs-on: x\n    concurrency: build-${{ github.run_id }}\n    steps: [{run: x}]\n  \
+                numbered:\n    runs-on: x\n    concurrency: build-${{ github.run_number }}\n    steps: [{run: x}]\n  \
+                shared:\n    runs-on: x\n    concurrency: build-${{ github.ref }}\n    steps: [{run: x}]\n";
+    let run = push(&fixture, &[(CI, jobs)], "Job groups", "refs/heads/main", source).await.remove(0);
+    let mut groups = Vec::new();
+    for job in store.jobs(run.id).await.unwrap() {
+        let payload: serde_json::Value = serde_json::from_slice(&store.job_payload(job.id).await.unwrap().unwrap()).unwrap();
+        groups.push((job.key, payload["concurrency"]["group"].as_str().map(str::to_owned)));
+    }
+    groups.sort();
+    assert_eq!(groups, [("numbered".into(), None), ("shared".into(), Some("build-refs/heads/main".into())), ("unique".into(), None)]);
 }
 
 #[tokio::test]

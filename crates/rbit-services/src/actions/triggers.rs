@@ -583,17 +583,32 @@ pub(super) fn plan_workflow(
     deadline: &Deadline,
 ) -> Result<Plan, WorkflowError> {
     let context = GroupContext { workflow: name.to_owned(), workflow_path: path.to_owned(), run_id: 0, ..group.clone() };
-    let jobs = rbit_workflow::plan(workflow, &context.run_context(), limits, deadline)?;
+    let mut jobs = rbit_workflow::plan(workflow, &context.run_context(), limits, deadline)?;
+    // A group naming `github.run_id` or `github.run_number` is unique to its run: it never
+    // waits for or cancels another, so it is no group at all. Neither is known before the
+    // run exists, so evaluating again with other values tells.
+    let other_run = {
+        let mut other = GroupContext { run_id: 1, ..context.clone() }.run_context();
+        other.github.insert("run_number".to_owned(), serde_json::Value::String("1".to_owned()));
+        other
+    };
     let concurrency = match rbit_workflow::concurrency_group(workflow, &context.run_context())? {
-        // A group naming `github.run_id` is unique to its run: it never waits for or
-        // cancels another, so it is no group at all. The id is not known before the run
-        // exists, so evaluating twice tells.
-        Some((group, cancel)) => match rbit_workflow::concurrency_group(workflow, &GroupContext { run_id: 1, ..context }.run_context())? {
+        Some((group, cancel)) => match rbit_workflow::concurrency_group(workflow, &other_run)? {
             Some((other, _)) if other == group => Some((group, cancel)),
             _ => None,
         },
         None => None,
     };
+    if jobs.iter().any(|job| job.concurrency.is_some())
+        && let Ok(others) = rbit_workflow::plan(workflow, &other_run, limits, deadline)
+    {
+        for (job, other) in jobs.iter_mut().zip(&others) {
+            let group = job.concurrency.as_ref().map(|concurrency| &concurrency.group);
+            if job.job_id == other.job_id && group != other.concurrency.as_ref().map(|concurrency| &concurrency.group) {
+                job.concurrency = None;
+            }
+        }
+    }
     Ok(Plan { jobs, concurrency })
 }
 
