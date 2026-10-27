@@ -432,6 +432,27 @@ async fn cancellation_reaches_the_runner_in_the_answer() {
 }
 
 #[tokio::test]
+async fn a_task_left_behind_by_a_rerun_is_cancelled_and_changes_nothing() {
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let old = spec(&poll(&fixture, &credential, Some("old")).await.1);
+    let repo = fixture.repo().await;
+    fixture.actions().cancel(&fixture.alice, &repo, run.id).await.unwrap();
+    fixture.actions().rerun(&fixture.alice, &repo, run.id, rbit_storage::sqlite::actions_runs::Rerun::All).await.unwrap();
+    let new = spec(&poll(&fixture, &credential, Some("new")).await.1);
+
+    let late = json!({"steps": [step(0, "success"), step(1, "success")], "outputs": {"version": "old"}, "result": "success"});
+    assert_eq!(state(&fixture, &credential, old.task_id.0, &late).await, (StatusCode::OK, json!({"cancel": true})));
+    let store = fixture.database.actions_runs();
+    let job = &store.jobs(run.id).await.unwrap()[0];
+    assert_eq!((job.status, job.task_id.map(|task| task.0)), (Status::Running, Some(new.task_id.0)));
+    assert!(store.outputs(job.id).await.unwrap().is_empty(), "the old attempt's outputs are dropped");
+    let heartbeat = json!({"steps": [], "outputs": {}, "result": null});
+    assert_eq!(state(&fixture, &credential, new.task_id.0, &heartbeat).await, (StatusCode::OK, json!({"cancel": false})));
+}
+
+#[tokio::test]
 async fn ephemeral_runners_go_away_after_their_task() {
     let fixture = quick().await;
     let credential = fixture.runner(&["linux"]).await;

@@ -746,6 +746,33 @@ async fn cancelling_stops_tokens_at_once_and_keeps_the_job_cancelled() {
 }
 
 #[tokio::test]
+async fn a_task_left_behind_by_a_rerun_never_settles_the_new_attempt() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let none: Vec<String> = Vec::new();
+    let linux = strings(&["linux"]);
+    let run = store.create_run(&new_run(fx.rocket, &[job("a", &none, &linux)], RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let old = store.claim(&claim(runner, scope, &labels, &[140; 32])).await.unwrap().unwrap();
+    store.cancel_run(fx.rocket, run.id, NOW).await.unwrap().unwrap();
+    // The cancelled run is finished while its task still runs; a rerun starts at once.
+    store.rerun(fx.rocket, run.id, Rerun::All, RunStart::Runnable, NOW).await.unwrap().unwrap();
+    let new = store.claim(&claim(runner, scope, &labels, &[141; 32])).await.unwrap().unwrap();
+    assert_eq!(new.job.id, old.job.id);
+
+    store.finish_task(old.task.id, Status::Failure, Timestamp(NOW.0 + 10)).await.unwrap().unwrap();
+    assert_eq!(store.task(old.task.id).await.unwrap().unwrap().status, Status::Failure);
+    let job = store.job(old.job.id).await.unwrap().unwrap();
+    assert_eq!((job.status, job.finished_at, job.task_id), (Status::Running, None, Some(new.task.id)), "the new attempt still runs");
+    assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Running);
+
+    store.finish_task(new.task.id, Status::Success, Timestamp(NOW.0 + 20)).await.unwrap().unwrap();
+    assert_eq!(store.job(old.job.id).await.unwrap().unwrap().status, Status::Success);
+    assert_eq!(store.run(run.id).await.unwrap().unwrap().status, Status::Success);
+}
+
+#[tokio::test]
 async fn awaiting_and_held_runs_start_only_when_released() {
     let fx = Fixture::new().await;
     let store = fx.db.actions_runs();

@@ -15,7 +15,9 @@
 //!   deleted.
 //! * The answer is `{cancel: true}` from the moment the job is cancelled — by then the
 //!   token is already dead (§11.11). Calls about a task that already stopped change
-//!   nothing and are answered the same way.
+//!   nothing and are answered the same way, and so are calls about a task whose job a
+//!   rerun gave to a newer task: its outputs are dropped and its result leaves the job
+//!   alone.
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
@@ -74,6 +76,14 @@ impl ActionsService {
                 request.summaries.iter().map(|(index, summary)| (i64::from(*index), masker.mask(summary))).collect();
             let summaries: Vec<(i64, &str)> = cleaned.iter().map(|(index, summary)| (*index, summary.as_str())).collect();
             store.add_summaries(id, &summaries).await?;
+        }
+        if job.task_id != Some(id) {
+            // A rerun gave the job a new attempt while this one was still running: its
+            // outputs and result no longer belong to the job, and it should stop.
+            if let Some(result) = request.result {
+                self.finish(runner, id, result_status(result)).await?;
+            }
+            return Ok(TaskStateResponse { cancel: true });
         }
         if !request.outputs.is_empty() {
             let masker = self.masker(&task, &job).await?;

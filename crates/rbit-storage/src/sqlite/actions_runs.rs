@@ -911,8 +911,8 @@ impl ActionsRunStore {
     }
 
     /// Finishes a running task with `result` (its token stops working), and its job unless
-    /// the job was cancelled meanwhile; then settles the run. `None` when the task was not
-    /// running.
+    /// the job was cancelled meanwhile or was given to a newer task by a rerun; then settles
+    /// the run. `None` when the task was not running.
     pub async fn finish_task(&self, id: TaskId, result: Status, now: Timestamp) -> Result<Option<Settled>, StorageError> {
         if !result.is_done() {
             return Err(corrupt("task result", result));
@@ -930,12 +930,14 @@ impl ActionsRunStore {
             return Ok(None);
         };
         let run: i64 = sqlx::query_scalar(
-            "UPDATE actions_jobs SET status = CASE WHEN status = 6 THEN ?1 ELSE status END, \
-             finished_at = COALESCE(finished_at, ?2) WHERE id = ?3 RETURNING run_id",
+            "UPDATE actions_jobs SET status = CASE WHEN status = 6 AND task_id = ?4 THEN ?1 ELSE status END, \
+             finished_at = CASE WHEN task_id = ?4 THEN COALESCE(finished_at, ?2) ELSE finished_at END \
+             WHERE id = ?3 RETURNING run_id",
         )
         .bind(result.code())
         .bind(now.0)
         .bind(job)
+        .bind(id.0)
         .fetch_one(&mut *tx)
         .await?;
         let settled = settle(&mut tx, RunId(run), Vec::new(), now).await?;
