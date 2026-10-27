@@ -189,6 +189,47 @@ fn receive_request(work: &std::path::Path, old: &str, new: &str) -> Vec<u8> {
     body
 }
 
+/// `alice/rocket` with one commit on `main`, and that commit's id.
+fn first_commit(repo: &rbit_services::RepoContext) -> String {
+    let work = repo.disk_path.with_extension("work");
+    std::fs::create_dir_all(&work).unwrap();
+    git(&work, &["init", "-q"]);
+    let sha = commit(&work, "README.md", "# rocket\n", "Start");
+    git(&work, &["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:refs/heads/main"]);
+    sha
+}
+
+#[tokio::test]
+async fn writing_tasks_post_statuses_as_rbit_actions() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let repo = fixture.repo().await;
+    let sha = first_commit(&repo);
+    let (_, _, token) = running_task(&fixture).await;
+    let bearer = format!("Bearer {token}");
+    let post = |sha: &str| {
+        let (path, bearer) = (format!("/api/v1/repos/alice/rocket/statuses/{sha}"), bearer.clone());
+        let body = json!({"state": "success", "context": "deploy", "description": "Deployed", "target_url": "https://example.com/d/1"});
+        let fixture = &fixture;
+        async move { send(fixture, Method::POST, &path, Some(&bearer), Some(body)).await }
+    };
+    assert_eq!(post(&sha).await.0, StatusCode::FORBIDDEN, "read is the default");
+
+    let write = DefaultTokenPermission::Write;
+    fixture.database.actions_settings().set_token_permission(repo.repo.repo.id, write, Timestamp::now()).await.unwrap();
+    let (status, json) = post(&sha).await;
+    assert_eq!(status, StatusCode::CREATED, "{json}");
+    assert_eq!((json["state"].as_str(), json["context"].as_str()), (Some("success"), Some("deploy")));
+    assert_eq!(json["creator"]["login"], "rbit-actions[bot]", "a workflow's status is rbit Actions', not a person's: {json}");
+    let combined = fixture.services.statuses.combined(&repo, &sha).await.unwrap();
+    assert_eq!(combined.statuses.len(), 1);
+    assert_eq!(combined.statuses[0].creator, None);
+
+    // The checks people pass still apply.
+    let (status, json) = post("0123456789abcdef0123456789abcdef01234567").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{json}");
+    assert_eq!(post("main").await.0, StatusCode::UNPROCESSABLE_ENTITY, "a full commit id, as for people");
+}
+
 #[tokio::test]
 async fn task_pushes_land_unless_they_change_workflows() {
     let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;

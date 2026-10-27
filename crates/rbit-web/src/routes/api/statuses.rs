@@ -105,12 +105,18 @@ pub async fn create(
     ApiJson(body): ApiJson<StatusBody>,
 ) -> ApiResult<Response> {
     let ctx = caller.open_repo(&state, &owner, &name).await?;
-    let user = caller.require(TokenScope::Write)?;
-    if !ctx.access.can_write() {
-        return Err(ApiError::forbidden("You must have write access to this repository to create statuses"));
-    }
     let input = NewStatus { state: body.state, target_url: body.target_url, description: body.description, context: body.context };
-    let status = state.services.statuses.create(user, &ctx, &sha, &input).await.map_err(field_error)?;
+    // Actions: task tokens. A workflow's status is rbit Actions', not a person's.
+    let status = if let Some(grant) = caller.task() {
+        state.services.statuses.create_for_task(grant, &ctx, &sha, &input).await
+    } else {
+        let user = caller.require(TokenScope::Write)?;
+        if !ctx.access.can_write() {
+            return Err(ApiError::forbidden("You must have write access to this repository to create statuses"));
+        }
+        state.services.statuses.create(user, &ctx, &sha, &input).await
+    }
+    .map_err(field_error)?;
     let value = statuses_json(&state, &ctx, std::slice::from_ref(&status)).await?.remove(0);
     let location = value["url"].as_str().unwrap_or_default().to_owned();
     Ok((StatusCode::CREATED, [(header::LOCATION, location)], Json(value)).into_response())

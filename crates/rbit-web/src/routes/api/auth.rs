@@ -141,6 +141,12 @@ impl Caller {
         self.user.as_deref()
     }
 
+    // Actions: task tokens.
+    /// The workflow task calling, for the endpoints of [`TASK_ROUTES`] that act for one.
+    pub fn task(&self) -> Option<&TaskGrant> {
+        self.task.as_ref().map(|(grant, _)| grant)
+    }
+
     /// The authenticated user; 401 for anonymous requests, 403 for a workflow task.
     pub fn require_user(&self) -> ApiResult<&User> {
         if self.task.is_some() {
