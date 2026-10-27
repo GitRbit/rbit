@@ -432,8 +432,15 @@ impl WebhookService {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
                 let Some(release) = self.release_json(&owned, *release, &base).await? else { return Ok(0) };
-                let sender = self.account(*actor).await?;
-                let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
+                let sender = match actor {
+                    Some(actor) => self.account(*actor).await?,
+                    None => None,
+                };
+                let mut payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
+                // Actions: releases from workflows. A workflow's release is sent by rbit Actions.
+                if actor.is_none() {
+                    payload["sender"] = crate::statuses::hooks::actions_bot();
+                }
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
             DomainEvent::CollaboratorChanged { repo, user, actor, change } => {

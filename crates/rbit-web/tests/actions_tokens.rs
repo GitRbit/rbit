@@ -230,6 +230,66 @@ async fn writing_tasks_post_statuses_as_rbit_actions() {
     assert_eq!(post("main").await.0, StatusCode::UNPROCESSABLE_ENTITY, "a full commit id, as for people");
 }
 
+// Actions: releases from workflows.
+#[tokio::test]
+async fn writing_tasks_publish_releases_as_rbit_actions() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let repo = fixture.repo().await;
+    first_commit(&repo);
+    let (_, _, token) = running_task(&fixture).await;
+    let bearer = format!("Bearer {token}");
+    let releases = "/api/v1/repos/alice/rocket/releases";
+    let new = json!({"tag_name": "v1.0.0", "target_commitish": "main", "name": "One", "draft": true});
+    assert_eq!(
+        send(&fixture, Method::POST, releases, Some(&bearer), Some(new.clone())).await.0,
+        StatusCode::FORBIDDEN,
+        "read is the default"
+    );
+
+    let write = DefaultTokenPermission::Write;
+    fixture.database.actions_settings().set_token_permission(repo.repo.repo.id, write, Timestamp::now()).await.unwrap();
+    let (status, release) = send(&fixture, Method::POST, releases, Some(&bearer), Some(new)).await;
+    assert_eq!(status, StatusCode::CREATED, "{release}");
+    assert_eq!(release["author"]["login"], "rbit-actions[bot]", "a workflow's release is rbit Actions', not a person's: {release}");
+    let id = release["id"].as_i64().unwrap();
+    let stored = fixture.services.releases.by_tag(&repo, "v1.0.0").await.unwrap().release;
+    assert_eq!((stored.author, stored.source), (None, rbit_core::release::ReleaseSource::Actions));
+    let tags = repo.reader.ref_snapshot().await.unwrap();
+    assert!(tags.get("refs/tags/v1.0.0").is_some(), "the tag was created from main");
+
+    // What publishing actions do next: find it by tag, attach a file, replace it, publish.
+    let (status, found) = send(&fixture, Method::GET, &format!("{releases}/tags/v1.0.0"), Some(&bearer), None).await;
+    assert_eq!((status, found["id"].as_i64()), (StatusCode::OK, Some(id)));
+    let upload = format!("{releases}/{id}/assets?name=app.txt");
+    let (status, asset) = send(&fixture, Method::POST, &upload, Some(&bearer), Some(json!("built"))).await;
+    assert_eq!(status, StatusCode::CREATED, "{asset}");
+    assert_eq!(asset["uploader"]["login"], "rbit-actions[bot]");
+    let asset = asset["id"].as_i64().unwrap();
+    assert_eq!(send(&fixture, Method::DELETE, &format!("{releases}/assets/{asset}"), Some(&bearer), None).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(send(&fixture, Method::POST, &upload, Some(&bearer), Some(json!("rebuilt"))).await.0, StatusCode::CREATED);
+    let (status, published) =
+        send(&fixture, Method::PATCH, &format!("{releases}/{id}"), Some(&bearer), Some(json!({"draft": false}))).await;
+    assert_eq!((status, published["draft"].as_bool()), (StatusCode::OK, Some(false)), "{published}");
+    assert!(published["published_at"].is_string());
+
+    // Never another repository's releases, even a public one it may read.
+    let bob = fixture
+        .services
+        .accounts
+        .create_user(
+            rbit_services::SignUp { username: "bob".into(), email: "bob@example.com".into(), password: "correct horse battery".into() },
+            Some(true),
+        )
+        .await
+        .unwrap();
+    let input = rbit_services::CreateRepository { name: "open".into(), description: String::new(), visibility: Visibility::Public };
+    fixture.services.repositories.create(&bob, input).await.unwrap();
+    let theirs = json!({"tag_name": "v9", "target_commitish": "main"});
+    let (status, json) = send(&fixture, Method::POST, "/api/v1/repos/bob/open/releases", Some(&bearer), Some(theirs)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{json}");
+    assert_eq!(send(&fixture, Method::DELETE, &format!("{releases}/{id}"), Some(&bearer), None).await.0, StatusCode::NO_CONTENT);
+}
+
 #[tokio::test]
 async fn tasks_that_may_comment_write_as_rbit_actions() {
     let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;

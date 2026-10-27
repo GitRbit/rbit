@@ -10,7 +10,7 @@
     </h2>
     <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
       <a href="{{ release.tag_url }}" class="inline-flex items-center gap-1 font-mono hover:text-ink">{% call ui::icon("tag", "size-3") %}{% endcall %}{{ release.tag }}</a>
-      {% if let Some(author) = release.author %}<span>· <a href="/{{ author }}" class="hover:text-ink">{{ author }}</a></span>{% endif %}
+      {% if release.by_actions %}<span>· rbit-actions <span class="badge">bot</span></span>{% else if let Some(author) = release.author %}<span>· <a href="/{{ author }}" class="hover:text-ink">{{ author }}</a></span>{% endif %}
       <span>· {% if release.is_draft %}created{% endif %} <time datetime="{{ release.when_iso }}" title="{{ release.when_iso }}">{{ release.when }}</time></span>
     </p>
   </div>

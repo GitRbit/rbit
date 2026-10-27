@@ -31,6 +31,31 @@ pub struct ReleaseAuthor {
     pub name: String,
 }
 
+// Actions: releases from workflows.
+/// Who made a release or uploaded one of its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ReleaseSource {
+    /// A person (or anything acting with their credentials).
+    #[default]
+    User,
+    /// A workflow task, with its token. Such a release or file has no author.
+    Actions,
+}
+
+impl ReleaseSource {
+    /// The stored value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Actions => "actions",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        [Self::User, Self::Actions].into_iter().find(|source| source.as_str() == value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Release {
     pub id: ReleaseId,
@@ -48,6 +73,8 @@ pub struct Release {
     pub updated_at: Timestamp,
     /// When it was first published; `None` for drafts that never were.
     pub published_at: Option<Timestamp>,
+    // Actions: releases from workflows.
+    pub source: ReleaseSource,
 }
 
 impl Release {
@@ -72,6 +99,8 @@ pub struct ReleaseAsset {
     pub download_count: u64,
     pub uploader_id: Option<AccountId>,
     pub created_at: Timestamp,
+    // Actions: releases from workflows.
+    pub source: ReleaseSource,
 }
 
 impl ReleaseAsset {
@@ -166,6 +195,7 @@ mod tests {
             download_count: 0,
             uploader_id: None,
             created_at: Timestamp(0),
+            source: ReleaseSource::User,
         };
         let hex = asset.sha256_hex();
         assert_eq!(hex.len(), 64);

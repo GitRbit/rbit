@@ -8,7 +8,7 @@
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use rbit_core::{
     Account, AccountKind, Timestamp,
-    release::{Release, ReleaseAsset},
+    release::{Release, ReleaseAsset, ReleaseSource},
     repository::OwnedRepository,
     webhook::{Webhook, WebhookEvent, WebhookOwner},
 };
@@ -258,7 +258,11 @@ pub fn release(
                 "created_at": timestamp(asset.created_at),
                 "updated_at": timestamp(asset.created_at),
                 "browser_download_url": format!("{html}/releases/download/{tag}/{}", encode_path(&asset.name)),
-                "uploader": uploader.map(|who| account(who, base_url)),
+                // Actions: releases from workflows. A task's upload is rbit Actions'.
+                "uploader": match asset.source {
+                    ReleaseSource::Actions => crate::statuses::hooks::actions_bot(),
+                    ReleaseSource::User => uploader.map_or(Value::Null, |who| account(who, base_url)),
+                },
             })
         })
         .collect();
@@ -271,7 +275,10 @@ pub fn release(
         "prerelease": release.is_prerelease,
         "created_at": timestamp(release.created_at),
         "published_at": optional_timestamp(release.published_at),
-        "author": author.map(|who| account(who, base_url)),
+        "author": match release.source {
+            ReleaseSource::Actions => crate::statuses::hooks::actions_bot(),
+            ReleaseSource::User => author.map_or(Value::Null, |who| account(who, base_url)),
+        },
         "url": url,
         "assets_url": format!("{url}/assets"),
         "upload_url": format!("{url}/assets{{?name,label}}"),
@@ -595,6 +602,7 @@ mod tests {
             created_at: Timestamp(1_792_022_400),
             updated_at: Timestamp(1_792_022_400),
             published_at: Some(Timestamp(1_792_022_460)),
+            source: ReleaseSource::User,
         };
         let asset = ReleaseAsset {
             id: ReleaseAssetId(4),
@@ -607,8 +615,9 @@ mod tests {
             download_count: 3,
             uploader_id: Some(AccountId(1)),
             created_at: Timestamp(1_792_022_400),
+            source: ReleaseSource::User,
         };
-        let value = release(&published, &[asset], None, &[user()], &repo(org()), BASE);
+        let value = release(&published, std::slice::from_ref(&asset), None, &[user()], &repo(org()), BASE);
         assert_eq!(value["id"], 9);
         assert_eq!(value["tag_name"], "release/1.0");
         assert_eq!(value["name"], "One point oh");
@@ -626,5 +635,14 @@ mod tests {
         assert_eq!(file["uploader"]["login"], "ada");
         assert_eq!(file["url"], "https://git.example.com/api/v1/repos/acme/tools/releases/assets/4");
         assert_eq!(file["browser_download_url"], "https://git.example.com/acme/tools/releases/download/release/1.0/app%201.zip");
+
+        // Actions: releases from workflows. A workflow's release and files are rbit Actions'.
+        let by_actions = Release { source: ReleaseSource::Actions, ..published };
+        let file = ReleaseAsset { uploader_id: None, source: ReleaseSource::Actions, ..asset };
+        let value = release(&by_actions, &[file], None, &[], &repo(org()), BASE);
+        assert_eq!(
+            (value["author"]["login"].as_str(), value["assets"][0]["uploader"]["login"].as_str()),
+            (Some("rbit-actions[bot]"), Some("rbit-actions[bot]"))
+        );
     }
 }

@@ -67,8 +67,9 @@ pub enum DomainEvent {
     /// workstream.
     RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },
     /// A release was published (created as non-draft, or a draft was published).
-    /// Published by the repository essentials workstream.
-    ReleasePublished { repo: RepoId, release: ReleaseId, actor: AccountId },
+    /// Published by the repository essentials workstream. `actor` is `None` when a
+    /// workflow task published it (Actions: releases from workflows).
+    ReleasePublished { repo: RepoId, release: ReleaseId, actor: Option<AccountId> },
     /// An account was created, by sign-up or by an administrator.
     UserSignedUp { user: AccountId },
     /// A user's password was changed (by them, by a reset link, or by an administrator).

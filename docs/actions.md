@@ -181,10 +181,12 @@ the default branch are listed on the Actions tab even before they ever ran.
 ## The workflow's token
 
 `secrets.GITHUB_TOKEN` (or `RBIT_TOKEN`) works with `git` and with a part of the REST API at
-`GITHUB_API_URL`: reading the repository, its refs, commits and releases, posting commit
-statuses (with `contents: write`) and commenting on issues (with `issues: write`) and pull
-requests (with `issues: write` or `pull-requests: write`). Statuses and comments it writes
-show as `rbit-actions[bot]`. It cannot list or edit comments yet, nor create releases.
+`GITHUB_API_URL`: reading the repository, its refs, commits and releases; with
+`contents: write`, posting commit statuses and creating, editing and deleting releases and
+their files (a release may create its tag from a branch); and commenting on issues (with
+`issues: write`) and pull requests (with `issues: write` or `pull-requests: write`).
+Statuses, releases, files and comments it writes show as `rbit-actions[bot]`, and a tag it
+creates starts no runs, as on GitHub. It cannot list or edit comments yet.
 Untrusted runs (forks, outside authors) get a read-only token.
 
 ## The REST API and webhooks
@@ -202,10 +204,13 @@ to `workflow_run` and `workflow_job`.
   and no reusable workflows (`workflow_call`, `jobs.<id>.uses`).
 - No `environment`, `secrets: inherit`, `container.options`, service `options`/`volumes`, or
   custom shells (`shell: my {0}`): each is a readable error.
+- `permissions:` can only lower the repository's default token permission (**Settings →
+  Actions**), never raise it: a workflow that publishes releases needs that default set to
+  write.
 - `runs-on` and matrices cannot depend on another job's outputs.
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
 - A workflow is identified by its file name in the API.
 - A job's log and an artifact are downloaded directly from the API, not through a redirect,
   and artifacts are tar.gz archives (`…/artifacts/{id}/tar.gz`), not zip.
-- The workflow's token cannot create releases, or list and edit comments, yet.
+- The workflow's token cannot list and edit comments yet.

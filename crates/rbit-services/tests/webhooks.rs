@@ -560,7 +560,7 @@ async fn release_payloads_describe_the_release_and_forks_say_so() {
     };
     let release = releases.create(&repo, &alice, release_input).await.unwrap();
     releases.upload_asset(&repo, &alice, release.id, "app.tar.gz", "application/gzip", &b"bytes"[..]).await.unwrap();
-    let event = DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: release.id, actor: alice.id() };
+    let event = DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: release.id, actor: Some(alice.id()) };
     assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
     webhooks.deliver_due(far_future()).await.unwrap();
 

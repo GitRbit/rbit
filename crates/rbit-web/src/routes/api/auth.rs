@@ -16,8 +16,8 @@
 //!
 //! A workflow task's token (`rbat_…`) is a caller kind of its own, never a user
 //! (`docs/design/actions.md` §11.3): it is accepted only on the endpoints of
-//! [`TASK_ROUTES`] — reading contents, refs, commits and releases; creating statuses,
-//! releases and release assets with `contents: write`; commenting with `issues` or
+//! [`TASK_ROUTES`] — reading contents, refs, commits and releases; creating statuses, and
+//! creating, editing and deleting releases and their files with `contents: write`; commenting with `issues` or
 //! `pull-requests: write` — and everywhere else answers 403. It opens its own repository at
 //! its grant and other public ones read-only, writes only to its own, and is re-checked on
 //! every request. With Actions disabled it is refused before anything is looked up.
@@ -96,6 +96,11 @@ pub const TASK_ROUTES: &[(ApiMethod, &str, TaskNeed)] = &[
     (ApiMethod::Post, "/repos/{owner}/{repo}/statuses/{sha}", TaskNeed::ContentsWrite),
     (ApiMethod::Post, "/repos/{owner}/{repo}/releases", TaskNeed::ContentsWrite),
     (ApiMethod::Post, "/repos/{owner}/{repo}/releases/{release_id}/assets", TaskNeed::ContentsWrite),
+    // Actions: releases from workflows. What publishing actions do besides creating: finish a
+    // draft, replace a file, start over.
+    (ApiMethod::Patch, "/repos/{owner}/{repo}/releases/{release_id}", TaskNeed::ContentsWrite),
+    (ApiMethod::Delete, "/repos/{owner}/{repo}/releases/{release_id}", TaskNeed::ContentsWrite),
+    (ApiMethod::Delete, "/repos/{owner}/{repo}/releases/assets/{asset_id}", TaskNeed::ContentsWrite),
     (ApiMethod::Post, "/repos/{owner}/{repo}/issues/{number}/comments", TaskNeed::Comment),
 ];
 

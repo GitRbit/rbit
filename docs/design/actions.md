@@ -704,8 +704,8 @@ request whose head moved because of such a push.
 A task token is a **caller kind of its own**, never a synthetic user. It is accepted only by:
 Git smart HTTP (fetch; push when the token has `contents: write`), LFS on its own repository
 (download; upload when `contents: write`), and an explicit API allowlist — reading the
-repository's contents, refs, commits, releases; creating commit statuses; creating releases
-and release assets (when `contents: write`); commenting on issues and pull requests of its own
+repository's contents, refs, commits, releases; creating commit statuses; creating, editing
+and deleting releases and release assets (when `contents: write`); commenting on issues and pull requests of its own
 repository (when the repository token permission is write). Everything else answers `403`. A
 test walks `api::table` and fails for any route that accepts a task caller without being on
 the list. Task callers may never dispatch, re-run, cancel, approve, fork, create tokens,
@@ -1334,8 +1334,14 @@ and what is known to be missing. Where they disagree, this section and the code 
   Commenting on an issue needs `issues: write`, on a pull request either that or
   `pull-requests: write`, and lets a task read its own repository's threads whatever its
   `contents` permission. A workflow's comment records no cross-reference to the threads it
-  mentions: rbit Actions has no account the other thread could show. Task tokens may still
-  not create releases or release assets (below).
+  mentions: rbit Actions has no account the other thread could show.
+- Workflow releases and their files are written the same way (migration `0052`): no author
+  or uploader, `source = actions`, `rbit-actions[bot]` in the API, webhooks and on the
+  releases page. A task may create, edit (publish a draft) and delete releases and delete
+  their files, on its own repository with `contents: write`. A tag a release creates is
+  pushed as `PushSource::Task`, so it starts no runs; the `release` event starts none
+  either, since `on: release` is not supported, and its webhook's sender is
+  `rbit-actions[bot]`.
 - The dispatch form posts through the same `ActionsService::dispatch` as the API. Choosing
   a branch or tag reloads the workflow's page with `?ref=`, so the inputs shown are always
   those of the workflow at that ref. Workflow pages exist for the default branch's workflow
@@ -1352,10 +1358,6 @@ and what is known to be missing. Where they disagree, this section and the code 
 
 ### 13.2 Known gaps
 
-- **Releases from workflows.** Creating releases and release assets is on the task
-  allowlist, but those handlers still need a `User`, so a task gets 403. Letting a task do
-  it needs the rule that its token starts no runs carried through the release's tag and the
-  `release` event first, and a release author of rbit Actions.
 - **`hashFiles` during a running container job.** `run` steps do not pause the job's
   container, so a process left running could swap a directory for a link while `hashFiles`
   walks the workspace and have it hash files outside it. Only a digest comes out, never their

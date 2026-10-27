@@ -160,7 +160,7 @@ async fn drafts_are_hidden_from_readers_and_published_once() {
     releases.update(&repo, &alice, draft.id, publish).await.unwrap();
 
     let event = events.try_recv().unwrap();
-    assert_eq!(event, DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: draft.id, actor: alice.id() });
+    assert_eq!(event, DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: draft.id, actor: Some(alice.id()) });
     assert!(events.try_recv().is_err(), "published exactly once");
 }
 

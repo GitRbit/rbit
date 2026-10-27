@@ -736,7 +736,8 @@ impl Job {
             notes,
             is_draft: release.draft,
             is_prerelease: release.prerelease,
-            author_id: author.unwrap_or_else(|| self.importer.id()),
+            author_id: Some(author.unwrap_or_else(|| self.importer.id())),
+            source: rbit_core::release::ReleaseSource::User,
         };
         let id = match store.create(new).await {
             Ok(id) => id,

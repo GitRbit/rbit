@@ -1,6 +1,9 @@
 //! Release and attached-file persistence against a real, migrated `SQLite` database.
 
-use rbit_core::{RepoId, Timestamp, User, Visibility, release::ReleaseId};
+use rbit_core::{
+    RepoId, Timestamp, User, Visibility,
+    release::{ReleaseId, ReleaseSource},
+};
 use rbit_storage::{
     Database, NewRepository, NewUser, StorageError,
     sqlite::releases::{NewAsset, NewRelease, ReleaseChanges},
@@ -35,7 +38,16 @@ async fn setup() -> (tempfile::TempDir, Database, User, RepoId) {
 }
 
 fn release<'a>(repo: RepoId, user: &User, tag: &'a str, is_draft: bool, is_prerelease: bool) -> NewRelease<'a> {
-    NewRelease { repo_id: repo, tag_name: tag, name: tag, notes: "notes", is_draft, is_prerelease, author_id: user.id() }
+    NewRelease {
+        repo_id: repo,
+        tag_name: tag,
+        name: tag,
+        notes: "notes",
+        is_draft,
+        is_prerelease,
+        author_id: Some(user.id()),
+        source: ReleaseSource::User,
+    }
 }
 
 #[tokio::test]
@@ -105,7 +117,8 @@ async fn assets_are_unique_per_release_and_cascade() {
         size: 3,
         content_type: "application/zip",
         sha256: [7; 32],
-        uploader_id: alice.id(),
+        uploader_id: Some(alice.id()),
+        source: ReleaseSource::User,
     };
     let stored = store.insert_asset(asset(one, "b.zip")).await.unwrap();
     store.insert_asset(asset(one, "a.zip")).await.unwrap();
@@ -142,7 +155,8 @@ async fn concurrent_asset_uploads_cannot_exceed_the_release_limit() {
         size: 3,
         content_type: "application/zip",
         sha256: [7; 32],
-        uploader_id: alice.id(),
+        uploader_id: Some(alice.id()),
+        source: ReleaseSource::User,
     };
     assert!(store.insert_asset_limited(asset("disabled.zip"), 0).await.unwrap().is_none());
     let (first, second) =
