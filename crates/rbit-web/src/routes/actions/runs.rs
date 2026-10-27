@@ -161,13 +161,18 @@ async fn runs_page(
         let filters = query.encoded();
         format!("{action}?{}before={}", if filters.is_empty() { String::new() } else { format!("{filters}&") }, before.0)
     });
+    // The name the workflow file gives itself, when the form read it.
+    let selected = selected.map(|(path, name)| (path, dispatch.as_ref().and_then(|form| form.name.clone()).unwrap_or(name)));
     let workflows = known
         .iter()
-        .map(|(path, name)| WorkflowLink {
-            name: name.clone(),
-            file: path.clone(),
-            url: urls.workflow(path),
-            is_current: selected.as_ref().is_some_and(|(selected, _)| selected == path),
+        .map(|(path, name)| {
+            let current = selected.as_ref().filter(|(selected, _)| selected == path);
+            WorkflowLink {
+                name: current.map_or_else(|| name.clone(), |(_, name)| name.clone()),
+                file: path.clone(),
+                url: urls.workflow(path),
+                is_current: current.is_some(),
+            }
         })
         .collect();
     let title = match &selected {
@@ -238,6 +243,7 @@ async fn dispatch_form(
         open: error.is_some() || !query.reference.trim().is_empty(),
         error,
         can_run: form.is_some(),
+        name: form.map(|form| form.name),
     }))
 }
 

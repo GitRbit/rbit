@@ -51,6 +51,8 @@
       {% if runs.is_empty() %}
       {% if filters.any %}
       {% call ui::empty_state("zap", "No matching runs", "No workflow run matches these filters.") %}{% endcall %}
+      {% else if dispatch.is_some() %}
+      {% call ui::empty_state("zap", "No runs yet", "This workflow runs when it is started: use Run workflow above.") %}{% endcall %}
       {% else %}
       {% call ui::empty_state("zap", "No workflow runs yet", "Add a workflow file under .rbit/workflows and push it: runs show up here as runners pick them up.") %}{% endcall %}
       {% endif %}

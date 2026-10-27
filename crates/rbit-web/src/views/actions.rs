@@ -257,6 +257,9 @@ pub struct DispatchFormView {
     pub can_run: bool,
     /// Open when there is something to fix or a ref was just chosen.
     pub open: bool,
+    /// The workflow's `name`, when it was read: a workflow that never ran is otherwise
+    /// known only by its file.
+    pub name: Option<String>,
 }
 
 /// One `workflow_dispatch` input, rendered by its type.

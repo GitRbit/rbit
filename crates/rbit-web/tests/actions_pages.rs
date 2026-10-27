@@ -270,6 +270,8 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     assert!(page.contains(r#"<option value="stable" selected>stable</option>"#), "the default is chosen");
     assert!(page.contains(r#"type="checkbox" id="dispatch-input-2" name="inputs[dry-run]" value="true""#));
     assert!(page.contains(r#"id="dispatch-ref" name="ref" value="main""#), "the default branch");
+    assert!(page.contains(">Release</h1>") && page.contains("<title>Release · Actions"), "the workflow's own name, not its file's");
+    assert!(page.contains("use Run workflow above"), "no runs yet, and no \"add a workflow file\"");
     assert!(!fixture.page(url, &fixture.reader).await.contains("Run workflow"), "readers cannot run it");
     assert!(!fixture.page("/alice/rocket/actions/workflows/ci.yml", &fixture.owner).await.contains("Run workflow"));
     let unknown = fixture.page(&format!("{url}?ref=nope"), &fixture.owner).await;
