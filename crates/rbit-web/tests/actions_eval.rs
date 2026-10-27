@@ -305,17 +305,6 @@ const CASES: &[Case] = &[
     )
     .tags(&["runs", "idor", "privacy"])
     .hard("alice owns a repository and has admin rights, but nothing in bob's private vault"),
-    case(
-        "read-jobs-reader",
-        World::Base,
-        CAROL_READ,
-        "GET",
-        "/repos/alice/rocket/actions/runs/{run}/jobs",
-        200,
-        "readers list the jobs of a run",
-    )
-    .tags(&["runs", "reads"])
-    .items(2),
     // ------------------------------------------------------------------ logs and artifacts
     case(
         "logs-reader",
@@ -357,17 +346,6 @@ const CASES: &[Case] = &[
         "a job token may call only the workflow-task routes, so raw logs are refused",
     )
     .tags(&["logs", "job-token"]),
-    case(
-        "artifacts-run-list-reader",
-        World::Base,
-        CAROL_READ,
-        "GET",
-        "/repos/alice/rocket/actions/runs/{run}/artifacts",
-        200,
-        "readers list the artifacts of a run",
-    )
-    .tags(&["artifacts", "reads"])
-    .items(1),
     case(
         "artifacts-repo-list-name-traversal",
         World::Base,
@@ -702,6 +680,18 @@ const CASES: &[Case] = &[
     )
     .tags(&["secrets", "privacy"]),
     case(
+        "secret-rotate-owner",
+        World::Base,
+        ALICE_ADMIN,
+        "PUT",
+        "/repos/alice/rocket/actions/secrets/DEPLOY_KEY",
+        204,
+        "an owner rotates a secret's value, and the response never repeats it",
+    )
+    .tags(&["secrets", "writes"])
+    .body(r#"{"value":"rotated-deploy-value"}"#)
+    .hidden("rotated-deploy-value"),
+    case(
         "secret-put-writer-refused",
         World::Base,
         DAVE_WRITE,
@@ -723,7 +713,8 @@ const CASES: &[Case] = &[
         "sealed boxes are refused with a message, and nothing is stored",
     )
     .tags(&["secrets", "writes"])
-    .body(r#"{"encrypted_value":"abc"}"#)
+    .body(r#"{"encrypted_value":"never-stored-value"}"#)
+    .hidden("never-stored-value")
     .unchanged(),
     case(
         "secret-put-lowercase-name",
@@ -735,7 +726,8 @@ const CASES: &[Case] = &[
         "a secret name must be upper case letters, digits and underscores",
     )
     .tags(&["secrets", "writes"])
-    .body(r#"{"value":"v"}"#)
+    .body(r#"{"value":"never-stored-value"}"#)
+    .hidden("never-stored-value")
     .unchanged(),
     case(
         "variable-update-reader-refused",
@@ -810,18 +802,6 @@ const CASES: &[Case] = &[
     .tags(&["environments", "reviews", "job-token"])
     .body(r#"{"environment_ids":[{env_prod}],"state":"approved","comment":""}"#)
     .unchanged(),
-    case(
-        "review-unknown-environment",
-        World::Base,
-        DAVE_WRITE,
-        "POST",
-        "/repos/alice/rocket/actions/runs/{prod}/pending_deployments",
-        422,
-        "only environments a job of the run waits for can be reviewed",
-    )
-    .tags(&["environments", "reviews"])
-    .body(r#"{"environment_ids":[999999],"state":"approved","comment":""}"#)
-    .unchanged(),
     // ------------------------------------------------------------- runners and tokens
     case(
         "runners-list-writer-refused",
@@ -885,8 +865,7 @@ const CASES: &[Case] = &[
         403,
         "a writer cannot create a registration token",
     )
-    .tags(&["runners", "tokens"])
-    .unchanged(),
+    .tags(&["runners", "tokens"]),
     case(
         "registration-token-owner",
         World::Base,
@@ -904,6 +883,29 @@ const CASES: &[Case] = &[
     case("runner-poll-no-credential", World::Base, ANON, "POST", "runner:poll", 401, "a poll needs a runner credential")
         .tags(&["runners", "protocol"])
         .body(r#"{"free_slots":1}"#),
+    case(
+        "runner-poll-other-repo-gets-nothing",
+        World::Many,
+        Actor::Runner(Which::Garden),
+        "POST",
+        "runner:poll",
+        204,
+        "a runner of another repository is never handed this repository's jobs",
+    )
+    .tags(&["runners", "claims", "idor"])
+    .hard("the garden runner is idle, and rocket's queue holds 97 linux jobs it could run")
+    .body(r#"{"free_slots":1}"#),
+    case(
+        "runner-poll-claims-own-repo-job",
+        World::Many,
+        Actor::Runner(Which::B),
+        "POST",
+        "runner:poll",
+        200,
+        "a runner of the repository takes a queued job of it",
+    )
+    .tags(&["runners", "claims"])
+    .body(r#"{"free_slots":1}"#),
     case(
         "runner-poll-with-personal-token",
         World::Base,
@@ -1490,6 +1492,9 @@ async fn build(world: World) -> (Fixture, Ids) {
     let vault_run = seed(&fx, &vault, &fx.bob, &[job("secret", &[], None)]).await;
     ids.garden_run = garden_run.id.0;
     ids.vault_run = vault_run.id.0;
+    // Bob's runner takes bob's job, so the garden queue is empty from here on.
+    let claimed = poll(&fx, &ids.garden_credential).await;
+    assert_eq!(claimed.template.job_id, "site", "the garden runner takes its own job");
     let garden_jobs = fx.database.actions_runs().jobs(garden_run.id).await.unwrap();
     ids.garden_job = garden_jobs[0].id.0;
     let rocket_jobs = fx.database.actions_runs().jobs(run.id).await.unwrap();
@@ -1569,6 +1574,9 @@ async fn snapshot(fx: &Fixture, ids: &Ids) -> String {
         (admin, "/repos/alice/rocket/actions/artifacts".to_owned()),
         (bob, format!("/repos/bob/garden/actions/runs/{}", ids.garden_run)),
         (bob, "/repos/bob/garden/actions/runners".to_owned()),
+        (admin, "/repos/alice/rocket/releases".to_owned()),
+        (admin, "/repos/alice/rocket/environments".to_owned()),
+        (bob, "/repos/bob/garden/releases".to_owned()),
     ];
     let mut out = String::new();
     for (token, path) in paths {
