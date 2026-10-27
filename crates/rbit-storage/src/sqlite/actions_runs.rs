@@ -1104,27 +1104,31 @@ impl ActionsRunStore {
         }
         let rows: Vec<JobRow> = sqlx::query_as(select_job!("WHERE j.run_id = ? ORDER BY j.id")).bind(run.0).fetch_all(&mut *tx).await?;
         let jobs = rows.into_iter().map(Job::try_from).collect::<Result<Vec<_>, _>>()?;
-        let mut keys: BTreeSet<&str> = jobs
+        // Chosen by id: a matrix instance that succeeded does not run again with a failed
+        // sibling, as on GitHub.
+        let mut chosen: BTreeSet<i64> = jobs
             .iter()
             .filter(|job| match which {
                 Rerun::All => true,
                 Rerun::Failed => matches!(job.status, Status::Failure | Status::Cancelled),
                 Rerun::Job(id) => job.id == id,
             })
-            .map(|job| job.key.as_str())
+            .map(|job| job.id.0)
             .collect();
-        if keys.is_empty() {
+        if chosen.is_empty() {
             return Ok(None);
         }
+        let mut keys: BTreeSet<&str> = jobs.iter().filter(|job| chosen.contains(&job.id.0)).map(|job| job.key.as_str()).collect();
         // The jobs needing a chosen job run again too, transitively.
         loop {
-            let before = keys.len();
+            let before = chosen.len();
             for job in &jobs {
                 if job.needs.iter().any(|need| keys.contains(need.as_str())) {
+                    chosen.insert(job.id.0);
                     keys.insert(&job.key);
                 }
             }
-            if keys.len() == before {
+            if chosen.len() == before {
                 break;
             }
         }
@@ -1134,7 +1138,7 @@ impl ActionsRunStore {
             .execute(&mut *tx)
             .await?;
         let mut waiting = Vec::new();
-        for job in jobs.iter().filter(|job| keys.contains(job.key.as_str())) {
+        for job in jobs.iter().filter(|job| chosen.contains(&job.id.0)) {
             let waits = job.needs.iter().any(|need| keys.contains(need.as_str()));
             let status = initial_status(start, waits);
             sqlx::query(

@@ -857,6 +857,40 @@ async fn reruns_restart_failed_jobs_and_their_dependents() {
 }
 
 #[tokio::test]
+async fn reruns_restart_only_the_chosen_matrix_instances() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let none: Vec<String> = Vec::new();
+    let linux = strings(&["linux"]);
+    let test = strings(&["test"]);
+    // Two instances of one matrix job, and a job that needs them.
+    let jobs = [job("test", &none, &linux), job("test", &none, &linux), job("report", &test, &linux)];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let mut seed = 100u8;
+    let mut failed_first = false;
+    while let Some(claimed) = store.claim(&claim(runner, scope, &labels, &[seed; 32])).await.unwrap() {
+        seed += 1;
+        let result = if claimed.job.key == "test" && !failed_first { Status::Failure } else { Status::Success };
+        failed_first |= result == Status::Failure;
+        store.finish_task(claimed.task.id, result, NOW).await.unwrap();
+    }
+    let before = store.jobs(run.id).await.unwrap();
+    assert_eq!(statuses(&before), [("test", Status::Failure), ("test", Status::Success), ("report", Status::Skipped)]);
+
+    store.rerun(fx.rocket, run.id, Rerun::Failed, RunStart::Runnable, NOW).await.unwrap().unwrap();
+    let after = store.jobs(run.id).await.unwrap();
+    assert_eq!(statuses(&after), [("test", Status::Waiting), ("test", Status::Success), ("report", Status::Blocked)]);
+    assert_eq!(after.iter().map(|job| job.attempt).collect::<Vec<_>>(), [2, 1, 2]);
+    let next = store.claim(&claim(runner, scope, &labels, &[120; 32])).await.unwrap().unwrap();
+    assert_eq!(next.job.id, after[0].id);
+    store.finish_task(next.task.id, Status::Success, NOW).await.unwrap();
+    let report = store.claim(&claim(runner, scope, &labels, &[121; 32])).await.unwrap().unwrap();
+    assert_eq!(report.job.key, "report", "the job that needs them runs once every instance is done");
+}
+
+#[tokio::test]
 async fn sweeps_find_silent_endless_and_abandoned_work() {
     let fx = Fixture::new().await;
     let store = fx.db.actions_runs();
