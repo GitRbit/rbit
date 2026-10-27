@@ -204,6 +204,16 @@ pub struct Runner {
     pub protocol: u32,
 }
 
+/// A runner that reported this recently counts as online; idle runners poll every 25 s.
+pub const RUNNER_ONLINE_SECONDS: i64 = 90;
+
+impl Runner {
+    /// Whether it reported within [`RUNNER_ONLINE_SECONDS`] of `now` (disabled or not).
+    pub fn is_online(&self, now: Timestamp) -> bool {
+        self.last_online.is_some_and(|seen| now.seconds() - seen.seconds() <= RUNNER_ONLINE_SECONDS)
+    }
+}
+
 // Actions: S.
 /// How a runner runs the jobs of a label (`rbit_workflow::protocol::Backend`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

@@ -20,7 +20,7 @@ use std::{
 };
 
 use rbit_core::{
-    Timestamp,
+    Timestamp, User,
     actions::{Artifact, ArtifactId, RunId, Task, valid_artifact_name},
 };
 use rbit_storage::sqlite::actions_artifacts::{NewArtifact, Recorded};
@@ -222,6 +222,40 @@ impl ActionsService {
             self.ctx().database.actions_artifacts().find(repo.repo.repo.id, id, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
         let file = tokio::fs::File::open(self.artifact_path(&artifact)).await.map_err(|_| ServiceError::NotFound)?;
         Ok((artifact, file))
+    }
+
+    // Actions: REST API.
+    /// A page of `repo`'s artifacts for a reader, newest first, only those named `name` when
+    /// given, and how many there are in all.
+    pub async fn repo_artifacts(
+        &self,
+        repo: &RepoContext,
+        name: Option<&str>,
+        offset: u32,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, u64), ServiceError> {
+        self.require_pages(repo).await?;
+        Ok(self.ctx().database.actions_artifacts().of_repo(repo.repo.repo.id, name, Timestamp::now(), offset, limit).await?)
+    }
+
+    /// Artifact `id` of `repo` for a reader.
+    pub async fn artifact(&self, repo: &RepoContext, id: ArtifactId) -> Result<Artifact, ServiceError> {
+        self.require_pages(repo).await?;
+        let store = self.ctx().database.actions_artifacts();
+        store.find(repo.repo.repo.id, id, Timestamp::now()).await?.ok_or(ServiceError::NotFound)
+    }
+
+    /// Deletes artifact `id` of `repo` with its file, for someone who may write to it.
+    pub async fn delete_artifact(&self, actor: &User, repo: &RepoContext, id: ArtifactId) -> Result<(), ServiceError> {
+        let artifact = self.artifact(repo, id).await?;
+        if !repo.access.can_write() {
+            return Err(ServiceError::Forbidden);
+        }
+        repo.ensure_writable()?;
+        remove_file(&self.artifact_path(&artifact)).await;
+        self.ctx().database.actions_artifacts().delete(artifact.id).await?;
+        tracing::info!(repo = %repo.repo.full_name(), artifact = artifact.id.0, name = %artifact.name, by = %actor.name(), "artifact deleted");
+        Ok(())
     }
 
     /// Deletes artifacts that expired by `now`, with their files; how many.

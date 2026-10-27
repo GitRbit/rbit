@@ -23,14 +23,14 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
-struct Answer {
-    status: StatusCode,
-    headers: axum::http::HeaderMap,
-    body: Vec<u8>,
+pub struct Answer {
+    pub status: StatusCode,
+    pub headers: axum::http::HeaderMap,
+    pub body: Vec<u8>,
 }
 
 impl Answer {
-    fn json(&self) -> Value {
+    pub fn json(&self) -> Value {
         serde_json::from_slice(&self.body).unwrap_or(Value::Null)
     }
 }
@@ -50,7 +50,7 @@ async fn call(fixture: &Fixture, method: Method, path: &str, credential: &str, d
     Answer { status, headers, body: to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec() }
 }
 
-async fn upload(fixture: &Fixture, credential: &str, task: i64, name: &str, query: &str, bytes: &[u8]) -> Answer {
+pub async fn upload(fixture: &Fixture, credential: &str, task: i64, name: &str, query: &str, bytes: &[u8]) -> Answer {
     let digest = hex(bytes);
     call(fixture, Method::PUT, &format!("tasks/{task}/artifacts/{name}{query}"), credential, Some(&digest), bytes.to_vec()).await
 }

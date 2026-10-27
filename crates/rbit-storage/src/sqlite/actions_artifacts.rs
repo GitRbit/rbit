@@ -147,6 +147,38 @@ impl ActionsArtifactStore {
         row.map(Artifact::try_from).transpose()
     }
 
+    // Actions: REST API.
+    /// A page of repository `repo`'s artifacts that have not expired by `now`, newest
+    /// first, only those named `name` when given, and how many there are in all.
+    pub async fn of_repo(
+        &self,
+        repo: RepoId,
+        name: Option<&str>,
+        now: Timestamp,
+        offset: u32,
+        limit: u32,
+    ) -> Result<(Vec<Artifact>, u64), StorageError> {
+        let rows: Vec<ArtifactRow> = sqlx::query_as(select_artifact!(
+            "WHERE repo_id = ?1 AND expires_at > ?2 AND (?3 IS NULL OR name = ?3) ORDER BY id DESC LIMIT ?4 OFFSET ?5"
+        ))
+        .bind(repo.0)
+        .bind(now.0)
+        .bind(name)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+        let total: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM actions_artifacts WHERE repo_id = ?1 AND expires_at > ?2 AND (?3 IS NULL OR name = ?3)",
+        )
+        .bind(repo.0)
+        .bind(now.0)
+        .bind(name)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((rows.into_iter().map(Artifact::try_from).collect::<Result<_, _>>()?, u64::try_from(total).unwrap_or_default()))
+    }
+
     /// Bytes of artifacts `repo` keeps (expired ones count until the sweeper removes them).
     pub async fn stored_bytes(&self, repo: RepoId) -> Result<u64, StorageError> {
         let bytes: i64 = sqlx::query_scalar("SELECT COALESCE(SUM(size), 0) FROM actions_artifacts WHERE repo_id = ?")

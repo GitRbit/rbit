@@ -19,9 +19,6 @@ use rbit_core::{
 
 use crate::views::{admin::AdminLink, components::FormError, layout::Page, org::OrgHeader, repo::RepoHeader, settings::SettingsLink};
 
-/// A runner seen this recently counts as online; idle runners poll every 25 s.
-const ONLINE_SECONDS: i64 = 90;
-
 /// One runner as the list shows it.
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools, reason = "independent facts the list shows")]
@@ -63,7 +60,7 @@ impl RunnerRow {
             .collect();
         let (state, tone) = match runner.last_online {
             _ if runner.disabled => ("disabled", "text-ink-faint"),
-            Some(seen) if now.seconds() - seen.seconds() <= ONLINE_SECONDS => ("online", "text-success"),
+            Some(_) if runner.is_online(now) => ("online", "text-success"),
             Some(_) => ("offline", "text-ink-muted"),
             None => ("never seen", "text-ink-muted"),
         };

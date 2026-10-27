@@ -6,6 +6,8 @@
 mod query_count;
 
 // Actions: foundation (F).
+// Actions: REST API.
+mod actions_api;
 // Actions: artifacts (A).
 mod actions_artifacts;
 mod actions_disabled;

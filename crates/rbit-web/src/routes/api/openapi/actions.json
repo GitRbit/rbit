@@ -1998,6 +1998,859 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/logs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadJobLogsForWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The raw log of a job's current attempt",
+        "description": "The log itself as `text/plain` (gzip-encoded when the request accepts it), not GitHub's redirect to a download URL. 404 before the job started and once its log expired.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The log",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listWorkflowRunArtifacts",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The artifacts of a run: the newest attempt's of each name, by name",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of artifacts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listArtifactsForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's artifacts that have not expired, newest first",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "Only artifacts with this name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of artifacts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "artifact_id",
+          "in": "path",
+          "required": true,
+          "description": "The artifact's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An artifact",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The artifact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Artifact"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an artifact and its file (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "artifact_id",
+          "in": "path",
+          "required": true,
+          "description": "The artifact's id.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "archive_format",
+          "in": "path",
+          "required": true,
+          "description": "`tar.gz`, the only format: rbit keeps artifacts as tar.gz archives, not GitHub's zip.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "tar.gz"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Download an artifact",
+        "description": "The archive itself, not GitHub's redirect to a download URL. Any other format is 404.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tar.gz",
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listSelfHostedRunnersForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners/registration-token": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "createRegistrationTokenForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; a repository administrator)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; a repository administrator)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listSelfHostedRunnersForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; an organisation owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners/registration-token": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "post": {
+        "operationId": "createRegistrationTokenForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; an organisation owner)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; an organisation owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; an organisation owner)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners": {
+      "get": {
+        "operationId": "listSelfHostedRunnersForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners/registration-token": {
+      "post": {
+        "operationId": "createRegistrationTokenForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; the user themselves)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; the user themselves)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2745,6 +3598,220 @@
             ]
           }
         }
+      },
+      "Artifact": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size_in_bytes",
+          "url",
+          "archive_download_url",
+          "expired",
+          "digest",
+          "created_at",
+          "updated_at",
+          "expires_at",
+          "workflow_run"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size_in_bytes": {
+            "type": "integer",
+            "description": "Bytes of the tar.gz."
+          },
+          "url": {
+            "type": "string"
+          },
+          "archive_download_url": {
+            "type": "string",
+            "description": "`…/tar.gz`: the archive."
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Always `false`: expired artifacts are gone."
+          },
+          "digest": {
+            "type": "string",
+            "description": "`sha256:` and the archive's SHA-256 in hex."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workflow_run": {
+            "type": "object",
+            "required": [
+              "id",
+              "repository_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "repository_id": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "description": "A workflow artifact, shaped like GitHub's."
+      },
+      "ArtifactList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "artifacts"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "Runner": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "os",
+          "arch",
+          "status",
+          "busy",
+          "disabled",
+          "ephemeral",
+          "version",
+          "labels",
+          "last_seen_at",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string",
+            "description": "`linux`, `macos` or `windows`, as the runner declared it; empty before it first started."
+          },
+          "arch": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline"
+            ],
+            "description": "Online when it reported in the last 90 seconds."
+          },
+          "busy": {
+            "type": "boolean",
+            "description": "Running a task now."
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "Takes no new jobs."
+          },
+          "ephemeral": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "custom"
+                  ]
+                }
+              }
+            }
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A runner, shaped like GitHub's self-hosted runner, with what rbit adds."
+      },
+      "RunnerList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "runners"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "runners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Runner"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "RunnerRegistrationToken": {
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "`rbrg_…`, for `rbit-runner register`; never shown again."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A runner registration token."
       }
     }
   }

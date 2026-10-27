@@ -1,7 +1,7 @@
 //! REST API: rbit Actions, a GitHub-shaped subset (§4.10 of `docs/design/actions.md`):
-//! runs, jobs and workflows under `/repos/{owner}/{repo}/actions`, and secrets and
-//! variables of a repository, an organisation (`/orgs/{org}/actions`) or the caller
-//! (`/user/actions`).
+//! runs, jobs, job logs, artifacts and workflows under `/repos/{owner}/{repo}/actions`, and
+//! secrets, variables and runners of a repository, an organisation (`/orgs/{org}/actions`)
+//! or the caller (`/user/actions`).
 //!
 //! The integration workstream (I) owns this file and `openapi/actions.json`, the `OpenAPI`
 //! fragment documenting exactly these routes (merged into the served document only when
@@ -14,10 +14,11 @@
 //! * Runs, jobs and workflows exist only for readers of a repository with Actions on, as
 //!   the pages: 404 otherwise. Runs and jobs are named by their database ids, as on GitHub
 //!   (`run_number` is the `#n` of the pages), workflows by their file name (`ci.yml`).
-//! * Scopes: `read` for every `GET`; `write` and write access to cancel, re-run, approve
-//!   and dispatch; `admin` with repository administrator or organisation owner rights
-//!   for secrets and variables (a user manages their own). Callers who may see the
-//!   repository or organisation but lack the scope or the rights get 403.
+//! * Scopes: `read` for every `GET`; `write` and write access to cancel, re-run, approve,
+//!   dispatch and delete artifacts; `admin` with repository administrator or organisation
+//!   owner rights for secrets, variables, runners and registration tokens (a user manages
+//!   their own). Callers who may see the repository or organisation but lack the scope or
+//!   the rights get 403. Instance runners are managed on the administration pages only.
 //! * A run and a job are the JSON of the `workflow_run` and `workflow_job` webhooks
 //!   ([`rbit_services::actions::hooks`]), so the API and webhooks never disagree. Lists
 //!   are wrapped like GitHub's (`{"total_count": n, "workflow_runs": […]}`), paginated with
@@ -26,18 +27,21 @@
 //!   TLS instead of GitHub's libsodium sealed box (`encrypted_value` and `key_id`), so there
 //!   is no `…/secrets/public-key`.
 //! * Secrets and variables can be managed before a repository turns Actions on.
+//! * A job's log (`…/jobs/{job_id}/logs`) is the raw log itself, `text/plain`, not GitHub's
+//!   redirect to it. Artifacts are tar.gz, not zip: `…/artifacts/{artifact_id}/tar.gz`
+//!   downloads one, any other format is 404.
 
 use std::collections::BTreeMap;
 
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::{HeaderName, HeaderValue, StatusCode, header},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use rbit_core::{
-    RepoId, TokenScope, User,
-    actions::{JobId, RunEvent, RunId, SecretScope, SecretVisibility, Status, Variable},
+    RepoId, Timestamp, TokenScope, User,
+    actions::{Artifact, ArtifactId, JobId, RunEvent, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Status, Variable},
 };
 use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
@@ -45,6 +49,7 @@ use rbit_services::{
         browse::RunQuery,
         dispatch::DispatchRequest,
         hooks,
+        runners::{ManagedScope, RegistrationOptions},
         runs::Rerun,
         secrets::{ActionsTarget, ListedSecret},
     },
@@ -79,7 +84,13 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Post, repo("/runs/{run_id}/rerun-failed-jobs"), rerun_failed),
         route(Post, repo("/runs/{run_id}/approve"), approve),
         route(Get, repo("/jobs/{job_id}"), show_job),
+        route(Get, repo("/jobs/{job_id}/logs"), job_logs),
         route(Post, repo("/jobs/{job_id}/rerun"), rerun_job),
+        route(Get, repo("/runs/{run_id}/artifacts"), run_artifacts),
+        route(Get, repo("/artifacts"), list_artifacts),
+        route(Get, repo("/artifacts/{artifact_id}"), show_artifact),
+        route(Delete, repo("/artifacts/{artifact_id}"), delete_artifact),
+        route(Get, repo("/artifacts/{artifact_id}/{archive_format}"), download_artifact),
         route(Get, repo("/workflows"), workflows),
         route(Post, repo("/workflows/{workflow_id}/dispatches"), dispatch),
     ];
@@ -95,6 +106,10 @@ pub(super) fn routes() -> Vec<ApiRoute> {
             route(Get, path("/variables/{name}"), show_variable),
             route(Patch, path("/variables/{name}"), update_variable),
             route(Delete, path("/variables/{name}"), delete_variable),
+            route(Get, path("/runners"), list_runners),
+            route(Post, path("/runners/registration-token"), create_registration_token),
+            route(Get, path("/runners/{runner_id}"), show_runner),
+            route(Delete, path("/runners/{runner_id}"), delete_runner),
         ]);
     }
     routes
@@ -110,6 +125,9 @@ pub struct ActionsPath {
     job_id: Option<String>,
     workflow_id: Option<String>,
     name: Option<String>,
+    artifact_id: Option<String>,
+    archive_format: Option<String>,
+    runner_id: Option<String>,
 }
 
 /// A positive numeric id from the path; anything else is 404.
@@ -124,6 +142,14 @@ impl ActionsPath {
 
     fn job(&self) -> ApiResult<JobId> {
         parse_id(self.job_id.as_deref()).map(JobId)
+    }
+
+    fn artifact(&self) -> ApiResult<ArtifactId> {
+        parse_id(self.artifact_id.as_deref()).map(ArtifactId)
+    }
+
+    fn runner(&self) -> ApiResult<RunnerId> {
+        parse_id(self.runner_id.as_deref()).map(RunnerId)
     }
 
     fn name(&self) -> &str {
@@ -278,6 +304,24 @@ pub async fn show_job(State(state): State<AppState>, caller: Caller, Path(path):
     Ok(Json(hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, base_url(&state))))
 }
 
+// Actions: REST API.
+/// `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs`: the job's current attempt's raw
+/// log as `text/plain`, as the job page's "Raw log"; 404 before it started or once expired.
+pub async fn job_logs(
+    State(state): State<AppState>,
+    caller: Caller,
+    headers: HeaderMap,
+    Path(path): Path<ActionsPath>,
+) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let actions = actions(&state)?;
+    let detail = actions.job_detail(&ctx, path.job()?).await?;
+    let task = detail.job.task_id.ok_or_else(ApiError::not_found)?;
+    let log = actions.raw_log(&ctx, task).await?.ok_or_else(ApiError::not_found)?;
+    let file_name = format!("{}-run-{}-{}.log", ctx.repo.repo.name, detail.run.number, detail.job.key);
+    Ok(crate::routes::actions::jobs::raw_log_response(log, &headers, &file_name))
+}
+
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
 /// stop when their runners next report.
 pub async fn cancel(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
@@ -396,6 +440,201 @@ pub async fn dispatch(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ------------------------------------------------------------------ artifacts
+
+// Actions: REST API.
+/// An artifact, shaped like GitHub's (`size_in_bytes`, `archive_download_url`, `digest`).
+fn artifact_json(artifact: &Artifact, ctx: &RepoContext, base: &str) -> Value {
+    let url = format!("{base}/api/v1/repos/{}/actions/artifacts/{}", ctx.repo.full_name(), artifact.id.0);
+    let digest = artifact.sha256.iter().fold(String::with_capacity(64), |mut hex, byte| {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    json!({
+        "id": artifact.id.0,
+        "name": artifact.name,
+        "size_in_bytes": artifact.size,
+        "url": url,
+        "archive_download_url": format!("{url}/tar.gz"),
+        "expired": false,
+        "digest": format!("sha256:{digest}"),
+        "created_at": timestamp(artifact.created_at),
+        "updated_at": timestamp(artifact.created_at),
+        "expires_at": timestamp(artifact.expires_at),
+        "workflow_run": { "id": artifact.run_id.0, "repository_id": artifact.repo_id.0 },
+    })
+}
+
+/// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts`: the newest attempt's
+/// artifact of each name, by name.
+pub async fn run_artifacts(
+    State(state): State<AppState>,
+    caller: Caller,
+    pager: Pager,
+    Path(path): Path<ActionsPath>,
+) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let actions = actions(&state)?;
+    let run = actions.run_by_id(&ctx, path.run()?).await?.run;
+    let base = base_url(&state);
+    let items = actions.run_artifacts(&ctx, run.id).await?.iter().map(|artifact| artifact_json(artifact, &ctx, base)).collect();
+    Ok(wrapped("artifacts", pager.page_of(items)))
+}
+
+/// The filter of `GET …/actions/artifacts`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ArtifactsQuery {
+    name: String,
+}
+
+/// `GET /repos/{owner}/{repo}/actions/artifacts`: newest first; `name` keeps one name.
+pub async fn list_artifacts(
+    State(state): State<AppState>,
+    caller: Caller,
+    pager: Pager,
+    Path(path): Path<ActionsPath>,
+    Query(filter): Query<ArtifactsQuery>,
+) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
+    let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
+    let name = non_empty(&filter.name);
+    let (artifacts, total) = actions(&state)?.repo_artifacts(&ctx, name.as_deref(), offset, limit).await?;
+    let base = base_url(&state);
+    let items = artifacts.iter().map(|artifact| artifact_json(artifact, &ctx, base)).collect();
+    Ok(wrapped("artifacts", pager.paged(items, Some(total), false)))
+}
+
+/// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`
+pub async fn show_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
+    let ctx = path.repo(&state, &caller).await?;
+    let artifact = actions(&state)?.artifact(&ctx, path.artifact()?).await?;
+    Ok(Json(artifact_json(&artifact, &ctx, base_url(&state))))
+}
+
+/// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/tar.gz`: the file itself
+/// (GitHub's `zip` format does not exist here).
+pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let id = path.artifact()?;
+    if path.archive_format.as_deref() != Some("tar.gz") {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Artifacts are tar.gz archives: download …/tar.gz"));
+    }
+    let (artifact, file) = actions(&state)?.open_artifact(&ctx, id).await?;
+    let mut response = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(header::CONTENT_LENGTH, HeaderValue::from(artifact.size));
+    // Names are [A-Za-z0-9._-], so they need no quoting beyond the quotes.
+    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{}.tar.gz\"", artifact.name)) {
+        headers.insert(header::CONTENT_DISPOSITION, value);
+    }
+    Ok(response)
+}
+
+/// `DELETE /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`: `204`; the file goes too.
+pub async fn delete_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    let ctx = path.repo(&state, &caller).await?;
+    let actions = actions(&state)?;
+    let artifact = actions.artifact(&ctx, path.artifact()?).await?;
+    let user = require_writer(&caller, &ctx)?;
+    actions.delete_artifact(user, &ctx, artifact.id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ------------------------------------------------------------------ runners
+
+// Actions: REST API.
+/// A runner, shaped like GitHub's (`status`, `busy`, `labels`), with what rbit adds.
+fn runner_json(runner: &Runner, busy: bool, now: Timestamp) -> Value {
+    let labels: Vec<Value> = runner.labels.iter().map(|label| json!({ "name": label.as_str(), "type": "custom" })).collect();
+    json!({
+        "id": runner.id.0,
+        "name": runner.name,
+        "os": runner.capabilities.os,
+        "arch": runner.capabilities.arch,
+        "status": if runner.is_online(now) { "online" } else { "offline" },
+        "busy": busy,
+        "disabled": runner.disabled,
+        "ephemeral": runner.ephemeral,
+        "version": runner.version,
+        "labels": labels,
+        "last_seen_at": runner.last_online.map_or(Value::Null, timestamp),
+        "created_at": timestamp(runner.created_at),
+    })
+}
+
+/// `runners` as the API shows them, with whether each is running a task.
+async fn runners_json(actions: &ActionsService, runners: &[Runner]) -> ApiResult<Vec<Value>> {
+    let now = Timestamp::now();
+    let mut items = Vec::with_capacity(runners.len());
+    for runner in runners {
+        items.push(runner_json(runner, actions.runner_busy(runner.id).await?, now));
+    }
+    Ok(items)
+}
+
+/// `GET …/actions/runners`: the runners of exactly this repository, organisation or user,
+/// oldest first.
+pub async fn list_runners(
+    State(state): State<AppState>,
+    caller: Caller,
+    pager: Pager,
+    Path(path): Path<ActionsPath>,
+) -> ApiResult<Response> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let user = caller.require(TokenScope::Admin)?;
+    let actions = actions(&state)?;
+    let runners = actions.runners(user, owner.managed()).await?;
+    let total = u64::try_from(runners.len()).unwrap_or(u64::MAX);
+    let shown: Vec<_> = runners.into_iter().skip(pager.offset()).take(pager.limit()).collect();
+    let items = runners_json(actions, &shown).await?;
+    Ok(wrapped("runners", pager.paged(items, Some(total), false)))
+}
+
+/// Runner `id` of exactly this repository, organisation or user.
+async fn find_runner(actions: &ActionsService, user: &User, owner: &Owner, id: RunnerId) -> ApiResult<Runner> {
+    let runners = actions.runners(user, owner.managed()).await?;
+    runners.into_iter().find(|runner| runner.id == id).ok_or_else(ApiError::not_found)
+}
+
+/// `GET …/actions/runners/{runner_id}`
+pub async fn show_runner(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let user = caller.require(TokenScope::Admin)?;
+    let actions = actions(&state)?;
+    let runner = find_runner(actions, user, &owner, path.runner()?).await?;
+    Ok(Json(runner_json(&runner, actions.runner_busy(runner.id).await?, Timestamp::now())))
+}
+
+/// `DELETE …/actions/runners/{runner_id}`: `204`; its credential stops working at once and
+/// the tasks it was running fail.
+pub async fn delete_runner(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let user = caller.require(TokenScope::Admin)?;
+    actions(&state)?.remove_runner(user, owner.managed(), path.runner()?).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST …/actions/runners/registration-token`: `201`; a single-use token for an hour, as
+/// the runners pages make by default, shown this once.
+pub async fn create_registration_token(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<ActionsPath>,
+) -> ApiResult<Response> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let user = caller.require(TokenScope::Admin)?;
+    let issued = actions(&state)?.create_registration_token(user, owner.managed(), RegistrationOptions::default()).await?;
+    let body = json!({ "token": issued.secret.expose(), "expires_at": timestamp(issued.token.expires_at) });
+    let mut response = (StatusCode::CREATED, Json(body)).into_response();
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(response)
+}
+
 // ------------------------------------------------------------------ secrets and variables
 
 /// Whose secrets and variables these are, as the caller sees it.
@@ -429,6 +668,16 @@ impl Owner {
             Self::Repository(ctx) => ActionsTarget::Repository(ctx),
             Self::Organization(ctx) => ActionsTarget::Organization(ctx),
             Self::User(user) => ActionsTarget::User(user),
+        }
+    }
+
+    // Actions: REST API.
+    /// Whose runners these are.
+    fn managed(&self) -> ManagedScope<'_> {
+        match self {
+            Self::Repository(ctx) => ManagedScope::Repository(ctx),
+            Self::Organization(ctx) => ManagedScope::Owner(&ctx.org.account),
+            Self::User(user) => ManagedScope::Owner(&user.account),
         }
     }
 
@@ -1290,6 +1539,9 @@ jobs:
             ("{job_id}", "1"),
             ("{workflow_id}", "ci.yml"),
             ("{name}", "TOKEN"),
+            ("{artifact_id}", "1"),
+            ("{archive_format}", "tar.gz"),
+            ("{runner_id}", "1"),
         ]
         .into_iter()
         .fold(path.to_owned(), |path, (parameter, value)| path.replace(parameter, value))

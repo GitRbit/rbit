@@ -10,7 +10,7 @@
 //! The Actions foundation (workstream F) owns the route list; workstream U (interface and
 //! secrets) owns the handlers.
 
-mod jobs;
+pub(crate) mod jobs;
 mod runners;
 mod runs;
 mod settings;

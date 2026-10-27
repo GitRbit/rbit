@@ -16,7 +16,7 @@ use axum::{
 use rbit_core::actions::{JobId, Step, TaskId};
 use rbit_services::{
     ActionsService, RepoContext,
-    actions::logs::{LogRange, STEP_VIEW_BYTES, STEP_VIEW_LINES},
+    actions::logs::{LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
 };
 use serde::Deserialize;
 use tokio_util::io::ReaderStream;
@@ -166,7 +166,15 @@ pub async fn raw(
     let Some(log) = actions.raw_log(&loaded.ctx, task).await? else {
         return Err(WebError::NotFound);
     };
-    let accepts_gzip = headers
+    let file_name = format!("{}-run-{number}-{}.log", loaded.ctx.repo.repo.name, detail.job.key);
+    Ok(raw_log_response(log, &headers, &file_name))
+}
+
+// Actions: REST API.
+/// A raw log as `text/plain`, inline and sandboxed: gzipped as stored when the request
+/// accepts it, decompressed otherwise. The REST API's job log answers the same.
+pub(crate) fn raw_log_response(log: RawLog, request: &HeaderMap, file_name: &str) -> Response {
+    let accepts_gzip = request
         .get_all(header::ACCEPT_ENCODING)
         .iter()
         .filter_map(|value| value.to_str().ok())
@@ -182,7 +190,6 @@ pub async fn raw(
         }
         response
     };
-    let file_name = format!("{}-run-{number}-{}.log", loaded.ctx.repo.repo.name, detail.job.key);
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("sandbox; default-src 'none'"));
@@ -191,5 +198,5 @@ pub async fn raw(
     if let Ok(value) = HeaderValue::from_str(&format!("inline; filename=\"{}\"", file_name.replace(['"', '\\', '\r', '\n'], "_"))) {
         headers.insert(header::CONTENT_DISPOSITION, value);
     }
-    Ok(response)
+    response
 }

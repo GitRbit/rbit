@@ -596,6 +596,12 @@ impl ActionsService {
         Ok(self.ctx().database.actions_runners().list(scope.scope()).await?)
     }
 
+    // Actions: REST API.
+    /// Whether runner `id` is running a task now (the API's `busy`).
+    pub async fn runner_busy(&self, id: RunnerId) -> Result<bool, ServiceError> {
+        Ok(!self.ctx().database.actions_runs().running_tasks_of(id).await?.is_empty())
+    }
+
     /// The runners a repository's jobs can run on, as its settings list them: its own, its
     /// owner's and the instance's, the last only when they serve its owner. Read access is
     /// enough to see them.
