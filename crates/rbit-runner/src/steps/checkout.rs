@@ -24,10 +24,13 @@
 //! free of credentials a job should not use.
 //!
 //! A container job can write the workspace, and `git` reads a repository's own
-//! configuration (`core.fsmonitor`, hooks, …), so in a container job the checkout never
-//! uses a `.git` it finds: it removes it and starts from step 1 for a new directory, then
-//! runs `clean -ffdx` when `clean` is set. A `path` that goes through a symbolic link is
-//! refused.
+//! configuration — hooks, `core.fsmonitor` — and runs it on the host, so in a container job
+//! the checkout uses no `.git` it finds: it removes every one under the path (a submodule's
+//! included, since `git submodule update` would otherwise run a planted `.git`'s hooks on the
+//! host) and starts from step 1 for a new directory, then runs `clean -ffdx` when `clean` is
+//! set. Whatever the backend, checkout's `git` points its hooks at an empty private directory
+//! no container mounts and disables `fsmonitor`, so no repository hook or command runs on the
+//! host. A `path` that goes through a symbolic link is refused.
 
 use std::{
     collections::BTreeMap,
@@ -165,15 +168,22 @@ pub fn authorization(token: &str) -> String {
 }
 
 /// The environment that gives `git` the header, keeps it from prompting or asking a
-/// credential helper, and lets it use only HTTPS and the source URL's own scheme,
-/// submodules included.
-pub fn git_env(source: &CheckoutSource, token: &str) -> BTreeMap<String, String> {
+/// credential helper, lets it use only HTTPS and the source URL's own scheme (submodules
+/// included), and keeps it from running a repository's hooks or `fsmonitor` command on the
+/// host: `hooks_path` is an empty directory no container mounts.
+pub fn git_env(source: &CheckoutSource, token: &str, hooks_path: Option<&Path>) -> BTreeMap<String, String> {
     let mut config = vec![
         (format!("http.{}.extraheader", server_prefix(source)), authorization(token)),
         ("credential.helper".to_owned(), String::new()),
         ("protocol.allow".to_owned(), "never".to_owned()),
         ("protocol.https.allow".to_owned(), "always".to_owned()),
+        // A job controls the workspace; host `git` must run no hook or `fsmonitor` command a
+        // `.git` there carries. A command-line value wins over any repository config.
+        ("core.fsmonitor".to_owned(), "false".to_owned()),
     ];
+    if let Some(path) = hooks_path {
+        config.push(("core.hooksPath".to_owned(), path.display().to_string()));
+    }
     if let Some((scheme, _)) = source.url.split_once("://").filter(|(scheme, _)| matches!(*scheme, "http" | "file")) {
         config.push((format!("protocol.{scheme}.allow"), "always".to_owned()));
     }
@@ -195,6 +205,35 @@ pub fn target(workspace: &Path, path: &str) -> Option<PathBuf> {
     (relative.components().all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
         && !crate::untrusted::crosses_link(workspace, relative))
     .then(|| workspace.join(relative))
+}
+
+/// Removes every `.git` under `root`, without following symbolic links; returns how many
+/// were removed. A container job can plant a `.git` deep in the workspace (a submodule's
+/// path), and `git submodule update` on the host would run that `.git`'s hooks, so the whole
+/// tree is cleared before a container checkout, not only the top (§12.9).
+fn discard_git_tree(root: &Path) -> std::io::Result<usize> {
+    let mut removed = 0;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if discard_git(&dir)? {
+            removed += 1;
+        }
+        match std::fs::read_dir(&dir) {
+            Ok(entries) => {
+                for entry in entries {
+                    let entry = entry?;
+                    // `.git` is gone; descend only into real directories, never a link the job
+                    // may have planted to reach outside the workspace.
+                    if entry.file_name() != ".git" && std::fs::symlink_metadata(entry.path())?.is_dir() {
+                        stack.push(entry.path());
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(removed)
 }
 
 /// Removes `target`'s `.git`, whatever it is; whether there was one.
@@ -221,16 +260,18 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
     }
     let options = Options::from_inputs(inputs);
     let source = job.spec.checkout.clone();
-    let env = git_env(&source, job.spec.token.expose());
+    // Host `git`'s hooks point at a private directory no container mounts, so none can run.
+    let hooks = job.private_dir().ok();
+    let env = git_env(&source, job.spec.token.expose(), hooks.as_deref());
     let mut existing = target.join(".git").exists();
     let mut discarded = false;
     if matches!(job.backend, Backend::Container(_)) {
-        match discard_git(&target) {
-            Ok(true) => {
+        match discard_git_tree(&target) {
+            Ok(0) => {}
+            Ok(_) => {
                 job.reporter.log("The job's container can change `.git`, so the checkout starts a new repository");
                 (existing, discarded) = (false, true);
             }
-            Ok(false) => {}
             Err(error) => return job.fail(&format!("cannot remove the earlier checkout's `.git`: {error}")),
         }
     }
@@ -345,7 +386,7 @@ mod tests {
     #[test]
     fn the_token_is_in_the_environment_only() {
         let token = "rbat_FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
-        let env = git_env(&source("refs/heads/main"), token);
+        let env = git_env(&source("refs/heads/main"), token, None);
         assert_eq!(env["GIT_CONFIG_KEY_0"], "http.https://git.example.com/.extraheader");
         let header = &env["GIT_CONFIG_VALUE_0"];
         let encoded = header.strip_prefix("AUTHORIZATION: basic ").unwrap();
@@ -372,7 +413,7 @@ mod tests {
         let https = config(&env);
         assert!(https.contains(&"protocol.allow=never".to_owned()) && https.contains(&"protocol.https.allow=always".to_owned()));
         assert!(!https.iter().any(|entry| entry.starts_with("protocol.http.")), "{https:?}");
-        let plain = git_env(&CheckoutSource { url: "http://localhost:3000/alice/app".into(), ..source("refs/heads/main") }, token);
+        let plain = git_env(&CheckoutSource { url: "http://localhost:3000/alice/app".into(), ..source("refs/heads/main") }, token, None);
         assert!(config(&plain).contains(&"protocol.http.allow=always".to_owned()));
         assert_eq!(target(Path::new("/w"), "sub/dir"), Some(Path::new("/w").join("sub/dir")));
     }
@@ -475,5 +516,32 @@ mod tests {
         assert_eq!(target(workspace.path(), "out"), None);
         assert_eq!(target(workspace.path(), "out/sub"), None);
         assert_eq!(target(workspace.path(), "app"), Some(repo));
+    }
+
+    /// A container job can plant a `.git` in a submodule's path whose hooks host `git` would
+    /// run; the checkout clears every `.git` under the path, but not one past a link.
+    #[cfg(unix)]
+    #[test]
+    fn a_nested_git_is_cleared_before_checkout() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let repo = workspace.path().join("app");
+        std::fs::create_dir_all(repo.join("sub/.git/hooks")).unwrap();
+        std::fs::write(
+            repo.join("sub/.git/hooks/post-checkout"),
+            "#!/bin/sh
+",
+        )
+        .unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join("keep.txt"), "work").unwrap();
+        std::fs::create_dir(outside.path().join(".git")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), repo.join("out")).unwrap();
+
+        assert_eq!(discard_git_tree(&repo).unwrap(), 2, "the top and the submodule `.git`");
+        assert!(!repo.join(".git").exists() && !repo.join("sub/.git").exists());
+        assert!(repo.join("keep.txt").exists() && repo.join("sub").exists());
+        assert!(outside.path().join(".git").exists(), "a `.git` past a symbolic link is left alone");
+        assert_eq!(discard_git_tree(&repo).unwrap(), 0, "nothing left to clear");
     }
 }
