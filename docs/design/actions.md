@@ -1359,7 +1359,8 @@ and what is known to be missing. Where they disagree, this section and the code 
   workflow with a matrix, a failing job, a masked secret and an artifact: the Actions tab, run,
   job and raw log pages and the repository, organisation, account and instance settings, at
   375 px in light and dark and on desktop, with nothing wider than the screen; long log lines
-  scroll inside their box.
+  scroll inside their box. Later, the same way: the dispatch form (each input type, a refused
+  ref, a run started from it) and a step summary with a table on the run page.
 
 ### 13.3 Migrations
 
