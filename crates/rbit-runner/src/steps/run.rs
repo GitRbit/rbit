@@ -48,7 +48,7 @@ pub async fn run(
         Ok(directory) => directory,
         Err(error) => return job.fail(&format!("`working-directory`: {error}")),
     };
-    let search_path = job.search_path();
+    let search_path = job.search_path(step_env);
     let (shell, program) = match choose_shell(shell.as_deref(), job.backend.windows(), |name| job.backend.find(name, &search_path)) {
         Ok(chosen) => chosen,
         Err(error) => return job.fail(&error),

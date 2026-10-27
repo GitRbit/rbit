@@ -614,15 +614,19 @@ impl Job {
         let mut env = self.task_env.clone();
         env.extend(self.env.iter().map(|(name, value)| (name.clone(), value.clone())));
         env.extend(step_env.iter().map(|(name, value)| (name.clone(), value.clone())));
-        env.insert("PATH".to_owned(), self.search_path());
+        env.insert("PATH".to_owned(), self.search_path(step_env));
         env.extend(extra);
         env
     }
 
-    /// `PATH` as steps see it.
-    pub fn search_path(&self) -> String {
+    /// `PATH` as a step with `step_env` sees it: the `GITHUB_PATH` entries in front of the
+    /// `PATH` its `env` (or the job's) sets, or else the backend's.
+    pub fn search_path(&self, step_env: &BTreeMap<String, String>) -> String {
         let separator = self.backend.path_separator().to_string();
-        let base = self.backend.base_path();
+        let base = match step_env.get("PATH").or_else(|| self.env.get("PATH")) {
+            Some(path) => path.clone(),
+            None => self.backend.base_path(),
+        };
         self.path.iter().map(String::as_str).chain((!base.is_empty()).then_some(base.as_str())).collect::<Vec<_>>().join(&separator)
     }
 

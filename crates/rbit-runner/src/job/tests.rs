@@ -147,6 +147,30 @@ async fn steps_share_env_files_outputs_and_masks() {
 }
 
 #[tokio::test]
+async fn a_path_set_in_env_is_the_base_of_the_steps_path() {
+    if find_program("sh").is_none() {
+        return;
+    }
+    let sh = |script: &str| with(step(script), |step| step.shell = Some("sh".into()));
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let own = format!("rbit-own-tools{separator}{}", std::env::var("PATH").unwrap());
+    let steps = vec![
+        sh("echo \"$RUNNER_TEMP/rbit-extra-tools\" >> \"$GITHUB_PATH\""),
+        with(sh("echo \"path=$PATH\""), |step| _ = step.env.insert("PATH".into(), own.clone())),
+        sh("echo \"plain=$PATH\""),
+    ];
+    let (result, reporter, _work) = execute(host_job(steps)).await;
+    let log = reporter.lines();
+    let text = log.join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    let path = log.iter().find_map(|line| line.strip_prefix("path=")).unwrap();
+    let (extra, own) = (path.find("rbit-extra-tools"), path.find("rbit-own-tools"));
+    assert!(extra.is_some() && extra < own, "GITHUB_PATH entries come first, then the step's own PATH: {text}");
+    let plain = log.iter().find_map(|line| line.strip_prefix("plain=")).unwrap();
+    assert!(plain.contains("rbit-extra-tools") && !plain.contains("rbit-own-tools"), "{text}");
+}
+
+#[tokio::test]
 async fn bash_runs_with_pipefail_and_the_working_directory() {
     if find_program("bash").is_none() {
         return;
