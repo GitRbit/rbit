@@ -19,10 +19,10 @@
 use std::{
     collections::BTreeMap,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
-use rbit_workflow::protocol::ArtifactQuery;
+use rbit_workflow::protocol::{ArtifactQuery, valid_artifact_name};
 use sha2::{Digest, Sha256};
 
 use super::{
@@ -79,6 +79,9 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
         return job.fail("artifacts need an rbit server; `rbit-runner exec` cannot upload them");
     };
     let name = inputs.get("name").trim().to_owned();
+    if !valid_artifact_name(&name) {
+        return job.fail(&format!("`{name}` is not a valid artifact name: use 1 to 128 of `A-Z a-z 0-9 . _ -`, not `.` or `..`"));
+    }
     let paths = lines(inputs.get("path"));
     let container = matches!(job.backend, Backend::Container(_));
     let resolved = match resolve(&paths, &workspace_roots(job), &job.backend.view().workspace, container) {
@@ -152,6 +155,10 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         Err(error) => return job.fail(&format!("cannot download artifacts: {error}")),
     };
     for artifact in wanted {
+        // The server never lists such a name; the directory it would make is checked anyway.
+        if !valid_artifact_name(&artifact.name) {
+            return job.fail(&format!("the run has an artifact with an invalid name, `{}`", artifact.name.escape_debug()));
+        }
         let archive = private.join(format!("download-{}.tar.gz", crate::client::idempotency_key()));
         let digest = match server.download_artifact(job.spec.task_id, &artifact.name, &archive).await {
             Ok(digest) => digest,
@@ -166,8 +173,8 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
                 if actual != expected || (!digest.is_empty() && digest != expected) {
                     return Err(std::io::Error::other("its content does not match its digest"));
                 }
-                if target.strip_prefix(&workspace).ok().is_none_or(|relative| crosses_link(&workspace, relative)) {
-                    return Err(std::io::Error::other("its destination goes through a symbolic link"));
+                if !inside(&workspace, &target) {
+                    return Err(std::io::Error::other("its destination is outside the workspace or goes through a symbolic link"));
                 }
                 fs::create_dir_all(&target)?;
                 extract(&archive, &Roots { workspace: target, home: None })
@@ -182,6 +189,14 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         }
     }
     Outcome::success(BTreeMap::from([("download-path".to_owned(), destination.display().to_string())]))
+}
+
+/// Whether `target` is `workspace` or below it, by plain names (no `..`, which a lexical
+/// prefix check would let through) and through no symbolic link.
+fn inside(workspace: &Path, target: &Path) -> bool {
+    target.strip_prefix(workspace).is_ok_and(|relative| {
+        relative.components().all(|component| matches!(component, Component::Normal(_))) && !crosses_link(workspace, relative)
+    })
 }
 
 /// Where `path` (relative to the workspace, or the workspace's own path) is on the host.
@@ -207,6 +222,17 @@ fn destination(job: &Job, path: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn destinations_stay_in_the_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        fs::create_dir_all(workspace.join("dist")).unwrap();
+        assert!(inside(&workspace, &workspace) && inside(&workspace, &workspace.join("dist")));
+        assert!(!inside(&workspace, &workspace.join("..")), "a lexical prefix is not enough");
+        assert!(!inside(&workspace, &workspace.join("dist/../..")));
+        assert!(!inside(&workspace, dir.path()));
+    }
 
     #[test]
     fn patterns_match_like_globs() {

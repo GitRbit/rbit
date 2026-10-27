@@ -570,6 +570,16 @@ impl ErrorCode {
 /// The upload's cap is the server's `[actions] max_artifact_bytes`, not a protocol constant.
 pub const ARTIFACTS_PATH: &str = "tasks/{id}/artifacts";
 
+/// The shape of an artifact name: 1 to 128 of `[A-Za-z0-9._-]`, but not `.` or `..`
+/// (§12.7). A name is a path segment of [`ARTIFACTS_PATH`] and the directory a runner
+/// unpacks it into among several, so it must not walk up a directory.
+pub fn valid_artifact_name(name: &str) -> bool {
+    (1..=128).contains(&name.len())
+        && name != "."
+        && name != ".."
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
 /// The query of an artifact upload.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactQuery {
@@ -902,6 +912,18 @@ pub(crate) mod tests {
         let largest =
             TaskStateRequest { outputs: BTreeMap::from([("big".to_owned(), "x".repeat(MAX_OUTPUT_BYTES - 3))]), ..summarised(&four) };
         assert!(serde_json::to_vec(&largest).unwrap().len() < Endpoint::TaskState.body_cap(), "the largest valid call fits its cap");
+    }
+
+    // Actions: artifacts (A).
+    #[test]
+    fn artifact_names_never_walk_up() {
+        for name in ["dist", "dist-linux_x86.64", ".hidden", "...", "a..b"] {
+            assert!(valid_artifact_name(name), "{name}");
+        }
+        for name in ["", ".", "..", "a/b", "a\\b", "../x", "a?b", "a b", "é"] {
+            assert!(!valid_artifact_name(name), "{name}");
+        }
+        assert!(valid_artifact_name(&"x".repeat(128)) && !valid_artifact_name(&"x".repeat(129)));
     }
 
     #[test]

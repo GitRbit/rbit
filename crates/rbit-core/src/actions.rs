@@ -73,11 +73,6 @@ id!(
     ArtifactId
 );
 
-/// The shape of an artifact name: 1 to 128 of `[A-Za-z0-9._-]` (§12.7).
-pub fn valid_artifact_name(name: &str) -> bool {
-    (1..=128).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
-}
-
 /// The life cycle of a run or a job, with Forgejo's numbers (`0` is Forgejo's "unknown"
 /// and never stored). [`Status::AwaitingApproval`] is rbit's own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

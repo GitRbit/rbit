@@ -74,6 +74,9 @@ async fn runners_upload_list_and_download_the_artifacts_of_their_run() {
     assert_eq!(wrong.status, StatusCode::BAD_REQUEST, "the digest must match");
     assert_eq!(upload(&fixture, &credential, task, "big", "", &[0; 65]).await.status, StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(upload(&fixture, &credential, task, "bad%20name", "", b"x").await.status, StatusCode::BAD_REQUEST);
+    // A name that would walk up a directory where a runner unpacks it (`%2E%2E` reaches the
+    // handler as `..`; a literal `..` is resolved away by the client before it is sent).
+    assert_eq!(upload(&fixture, &credential, task, "%2E%2E", "", b"x").await.status, StatusCode::BAD_REQUEST);
     let missing = call(&fixture, Method::PUT, &format!("tasks/{task}/artifacts/x"), &credential, None, b"x".to_vec()).await;
     assert_eq!(missing.status, StatusCode::BAD_REQUEST, "the digest header is required");
 

@@ -21,9 +21,10 @@ use std::{
 
 use rbit_core::{
     Timestamp, User,
-    actions::{Artifact, ArtifactId, RunId, Task, valid_artifact_name},
+    actions::{Artifact, ArtifactId, RunId, Task},
 };
 use rbit_storage::sqlite::actions_artifacts::{NewArtifact, Recorded};
+use rbit_workflow::protocol::valid_artifact_name;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
