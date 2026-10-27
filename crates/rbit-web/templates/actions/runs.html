@@ -20,6 +20,8 @@
       <h1 class="text-[13px] font-medium text-ink-muted">{% if let Some(name) = workflow %}{{ name }}{% else %}All workflow runs{% endif %}</h1>
     </div>
 
+    {% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
+
     <form method="get" action="{{ filters.action }}" class="mb-3 flex flex-wrap items-center gap-2" role="search">
       <label class="sr-only" for="runs-branch">Branch</label>
       <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-branch" type="search" name="branch" value="{{ filters.branch }}" placeholder="Branch" autocomplete="off" autocapitalize="none" spellcheck="false">

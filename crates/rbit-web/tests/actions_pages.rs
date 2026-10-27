@@ -210,3 +210,89 @@ async fn writers_cancel_and_run_again_and_readers_only_look() {
     let (status, ..) = fixture.send(Method::GET, "/alice/rocket/actions/runs/nope", &fixture.reader, "").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// Actions: dispatch form.
+/// Commits `files` to `alice/rocket`'s `main`.
+fn push(repo: &rbit_services::RepoContext, files: &[(&str, &str)]) {
+    let work = repo.disk_path.with_extension("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .args(["-c", "user.name=Ada", "-c", "user.email=ada@example.com", "-c", "init.defaultBranch=main", "-c", "core.autocrlf=false"])
+            .args(args)
+            .current_dir(&work)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+    };
+    git(&["init", "-q"]);
+    for (path, contents) in files {
+        let file = work.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, contents).unwrap();
+    }
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "Workflows"]);
+    git(&["push", "-q", repo.disk_path.to_str().unwrap(), "HEAD:refs/heads/main"]);
+}
+
+const RELEASE: &str = "name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version: {description: The version to tag, required: true}
+      channel: {type: choice, options: [stable, beta], default: stable}
+      dry-run: {type: boolean}
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo tagging
+";
+
+#[tokio::test]
+async fn writers_run_dispatch_workflows_from_their_page() {
+    let fixture = Fixture::new().await;
+    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
+    let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
+    let ci = "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n";
+    push(&repo, &[(".rbit/workflows/release.yml", RELEASE), (".rbit/workflows/ci.yml", ci)]);
+
+    // Neither ran, yet both have a page; only the dispatch one offers the form, to writers.
+    let list = fixture.page("/alice/rocket/actions", &fixture.owner).await;
+    assert!(list.contains(r#"href="/alice/rocket/actions/workflows/release.yml""#) && list.contains("/actions/workflows/ci.yml"));
+    let url = "/alice/rocket/actions/workflows/release.yml";
+    let page = fixture.page(url, &fixture.owner).await;
+    assert!(page.contains("Run workflow") && page.contains(r#"action="/alice/rocket/actions/workflows/release.yml/dispatch""#));
+    assert!(page.contains(r#"name="inputs[version]""#) && page.contains("The version to tag"));
+    assert!(page.contains(r#"<option value="stable" selected>stable</option>"#), "the default is chosen");
+    assert!(page.contains(r#"type="checkbox" id="dispatch-input-2" name="inputs[dry-run]" value="true""#));
+    assert!(page.contains(r#"id="dispatch-ref" name="ref" value="main""#), "the default branch");
+    assert!(!fixture.page(url, &fixture.reader).await.contains("Run workflow"), "readers cannot run it");
+    assert!(!fixture.page("/alice/rocket/actions/workflows/ci.yml", &fixture.owner).await.contains("Run workflow"));
+    let unknown = fixture.page(&format!("{url}?ref=nope"), &fixture.owner).await;
+    assert!(unknown.contains("the ref must be a branch or tag of this repository"), "said in the form");
+
+    // What the workflow refuses comes back with the values given.
+    let dispatch = format!("{url}/dispatch");
+    let missing = "ref=main&inputs%5Bversion%5D=&inputs%5Bchannel%5D=beta&inputs%5Bdry-run%5D=false";
+    let (status, body, _) = fixture.send(Method::POST, &dispatch, &fixture.owner, missing).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(body.contains("the input `version` is required") && body.contains(r#"<option value="beta" selected>beta</option>"#));
+    let (status, ..) = fixture.send(Method::POST, &dispatch, &fixture.reader, missing).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // A good one starts a run and shows it; a ticked box sends `true` after the hidden `false`.
+    let good = "ref=main&inputs%5Bversion%5D=1.2.0&inputs%5Bchannel%5D=beta&inputs%5Bdry-run%5D=false&inputs%5Bdry-run%5D=true";
+    let (status, _, location) = fixture.send(Method::POST, &dispatch, &fixture.owner, good).await;
+    assert!(status.is_redirection(), "{status}");
+    assert_eq!(location.as_deref(), Some("/alice/rocket/actions/runs/1"));
+    let actions = fixture.services.actions.as_ref().unwrap();
+    let detail = actions.run_detail(&repo, 1).await.unwrap();
+    assert_eq!((detail.run.event, detail.run.title.as_str()), (RunEvent::WorkflowDispatch, "Release ran manually"));
+    let (_, inputs) = fixture.database.actions_runs().event(detail.run.id).await.unwrap().unwrap();
+    let inputs: serde_json::Value = serde_json::from_str(&inputs.unwrap()).unwrap();
+    assert_eq!(inputs, serde_json::json!({"version": "1.2.0", "channel": "beta", "dry-run": true}));
+}

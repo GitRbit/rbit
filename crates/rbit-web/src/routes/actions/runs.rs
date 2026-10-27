@@ -1,5 +1,5 @@
 //! The runs list, a run page and what writers do to runs: cancel, re-run (all, failed, one
-//! job) and approve.
+//! job) and approve; and on a workflow's page, running it by hand (`workflow_dispatch`).
 //!
 //! Every page needs a reader of a repository with Actions on (`ActionsService::list_runs`
 //! and `run_detail` answer 404 otherwise); the buttons post to handlers the service checks
@@ -12,10 +12,13 @@ use axum::{
     extract::{Path, Query, State},
     response::Redirect,
 };
+use std::collections::BTreeMap;
+
 use rbit_core::actions::{JobId, RunEvent, RunId, Status};
+use rbit_git::RefKind;
 use rbit_services::{
-    ActionsService,
-    actions::{browse::RunQuery, runs::Rerun},
+    ActionsService, ServiceError,
+    actions::{browse::RunQuery, dispatch::DispatchRequest, runs::Rerun},
 };
 use serde::Deserialize;
 
@@ -25,7 +28,10 @@ use crate::{
     extract::{SignedIn, Viewer},
     routes::repo::RepoPage,
     views::{
-        actions::{ActionsUrls, ArtifactRow, RunFilters, RunPage, RunRow, RunSummary, RunsPage, WorkflowLink, job_rows, workflow_file},
+        actions::{
+            ActionsUrls, ArtifactRow, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary, RunsPage, WorkflowLink,
+            job_rows, workflow_file,
+        },
         layout::Page,
     },
 };
@@ -43,6 +49,10 @@ pub struct ListQuery {
     event: String,
     status: String,
     before: Option<i64>,
+    // Actions: dispatch form.
+    /// The branch or tag the dispatch form reads the workflow at.
+    #[serde(rename = "ref")]
+    reference: String,
 }
 
 impl ListQuery {
@@ -84,7 +94,7 @@ pub async fn list(
     Path((owner, repo)): Path<(String, String)>,
     Query(query): Query<ListQuery>,
 ) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, None, &query).await
+    runs_page(&state, &viewer, page, &owner, &repo, None, &query, None).await
 }
 
 /// `GET /{owner}/{repo}/actions/workflows/{workflow}`: the runs of one workflow file.
@@ -95,9 +105,18 @@ pub async fn workflow(
     Path((owner, repo, workflow)): Path<(String, String, String)>,
     Query(query): Query<ListQuery>,
 ) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &query).await
+    runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &query, None).await
 }
 
+// Actions: dispatch form.
+/// A dispatch that failed, shown again with its values and why.
+struct Submitted {
+    reference: String,
+    inputs: BTreeMap<String, String>,
+    error: String,
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn runs_page(
     state: &AppState,
     viewer: &Viewer,
@@ -106,15 +125,27 @@ async fn runs_page(
     repo: &str,
     workflow: Option<&str>,
     query: &ListQuery,
+    submitted: Option<&Submitted>,
 ) -> WebResult<RunsPage> {
     let actions = actions(state)?;
     let loaded = RepoPage::load(state, viewer, owner, repo).await?;
     let urls = ActionsUrls::new(&loaded.urls.home());
-    // The workflows with runs; a file name names one of them.
-    let known = actions.workflows(&loaded.ctx).await?;
+    // The workflows with runs, then the default branch's that never ran (named by file
+    // until they do); a file name names one of them.
+    let mut known = actions.workflows(&loaded.ctx).await?;
+    for path in actions.workflow_paths(&loaded.ctx).await? {
+        if !known.iter().any(|(known, _)| *known == path) {
+            let name = workflow_file(&path).to_owned();
+            known.push((path, name));
+        }
+    }
     let selected = match workflow {
         Some(file) => Some(known.iter().find(|(path, _)| workflow_file(path) == file).ok_or(WebError::NotFound)?.clone()),
         None => None,
+    };
+    let dispatch = match &selected {
+        Some((path, _)) if loaded.ctx.can_write_content() => dispatch_form(actions, &loaded, &urls, path, query, submitted).await?,
+        _ => None,
     };
     let run_query = RunQuery {
         workflow: selected.as_ref().map(|(path, _)| path.clone()),
@@ -152,7 +183,101 @@ async fn runs_page(
         workflow: selected.map(|(_, name)| name),
         filters: RunFilters::new(action, query.branch.trim(), query.actor.trim(), query.event(), query.status()),
         next_url,
+        dispatch,
     })
+}
+
+// Actions: dispatch form.
+/// Most branches, and then tags, offered while typing the ref to run a workflow at.
+const DISPATCH_REFS: usize = 50;
+
+/// The "Run workflow" form of workflow `path`, when it runs on `workflow_dispatch`.
+async fn dispatch_form(
+    actions: &ActionsService,
+    loaded: &RepoPage,
+    urls: &ActionsUrls,
+    path: &str,
+    query: &ListQuery,
+    submitted: Option<&Submitted>,
+) -> WebResult<Option<DispatchFormView>> {
+    let reference = submitted.map_or_else(|| query.reference.trim(), |submitted| submitted.reference.trim());
+    let (form, error) = match actions.dispatch_form(&loaded.ctx, path, reference).await {
+        Ok(Some(form)) => (Some(form), None),
+        // Not a workflow_dispatch workflow (at this ref): no form, unless one was asked for.
+        Ok(None) if reference.is_empty() && submitted.is_none() => return Ok(None),
+        Ok(None) => (None, Some(format!("{} does not run on workflow_dispatch at {reference}", workflow_file(path)))),
+        Err(ServiceError::Invalid(message)) => (None, Some(message)),
+        Err(error) => return Err(error.into()),
+    };
+    let shown = form.as_ref().map_or(reference, |form| form.reference.as_str());
+    let shown = shown.strip_prefix("refs/heads/").or_else(|| shown.strip_prefix("refs/tags/")).unwrap_or(shown).to_owned();
+    let mut refs: Vec<String> = loaded
+        .refs()
+        .iter()
+        .filter(|summary| summary.kind == RefKind::Branch)
+        .take(DISPATCH_REFS)
+        .map(|summary| summary.name.clone())
+        .collect();
+    refs.extend(
+        loaded.refs().iter().filter(|summary| summary.kind == RefKind::Tag).take(DISPATCH_REFS).map(|summary| summary.name.clone()),
+    );
+    let inputs = form
+        .as_ref()
+        .map(|form| {
+            let given = |name: &str| submitted.and_then(|submitted| submitted.inputs.get(name)).map(String::as_str);
+            form.inputs.iter().enumerate().map(|(index, input)| DispatchInputView::new(index, input, given(&input.name))).collect()
+        })
+        .unwrap_or_default();
+    let error = submitted.map(|submitted| submitted.error.clone()).or(error);
+    Ok(Some(DispatchFormView {
+        action: format!("{}/dispatch", urls.workflow(path)),
+        page_url: urls.workflow(path),
+        reference: shown,
+        refs,
+        inputs,
+        open: error.is_some() || !query.reference.trim().is_empty(),
+        error,
+        can_run: form.is_some(),
+    }))
+}
+
+/// `POST /{owner}/{repo}/actions/workflows/{workflow}/dispatch`: runs the workflow at the
+/// chosen branch or tag with the inputs given, and shows the new run. What the workflow
+/// refuses (a ref, an input) is shown in the form again, with the values given.
+pub async fn dispatch(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    viewer: Viewer,
+    page: Page,
+    Path((owner, repo, workflow)): Path<(String, String, String)>,
+    Form(fields): Form<Vec<(String, String)>>,
+) -> WebResult<axum::response::Response> {
+    use axum::response::IntoResponse as _;
+    let actions = actions(&state)?;
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let mut reference = String::new();
+    // A boolean is sent as a hidden `false` and, when ticked, a later `true`: the last wins.
+    let mut inputs = BTreeMap::new();
+    for (name, value) in fields {
+        if name == "ref" {
+            reference = value;
+        } else if let Some(input) = name.strip_prefix("inputs[").and_then(|rest| rest.strip_suffix(']')) {
+            inputs.insert(input.to_owned(), value);
+        }
+    }
+    let request = DispatchRequest { workflow: workflow.clone(), reference: reference.clone(), inputs: inputs.clone() };
+    match actions.dispatch(&user, &ctx, &request).await {
+        Ok(run) => {
+            let urls = ActionsUrls::new(&format!("/{}", ctx.repo.full_name()));
+            Ok(Redirect::to(&urls.run(run.number)).into_response())
+        }
+        Err(ServiceError::Invalid(error)) => {
+            let submitted = Submitted { reference, inputs, error };
+            let page = runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &ListQuery::default(), Some(&submitted)).await?;
+            Ok((axum::http::StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn run_number(run: &str) -> WebResult<i64> {

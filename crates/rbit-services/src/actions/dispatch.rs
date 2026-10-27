@@ -12,6 +12,10 @@
 //!   by its file name or path; inputs follow `rbit_workflow::trigger::resolve_inputs` (at
 //!   most 10 set, values at most 1 KiB, `choice`, `boolean` and `number` checked). Problems
 //!   are answered to the person dispatching; no workflow-error run is recorded.
+//! * The pages offer a form ([`ActionsService::dispatch_form`]) on a workflow's page: the
+//!   workflow's inputs at a branch or tag, read as a dispatch reads them. The workflows
+//!   on the default branch ([`ActionsService::workflow_paths`]) get a page even before they
+//!   ever ran, so a workflow that only runs on `workflow_dispatch` can be started at all.
 //!
 //! Workstream T (triggers and runs) owns this file.
 
@@ -21,13 +25,13 @@ use rbit_core::{
     User,
     actions::{Run, RunEvent, RunTrust},
 };
-use rbit_git::RefKind;
-use rbit_workflow::{Event, GroupContext, trigger::resolve_inputs};
+use rbit_git::{EntryKind, GitError, RefKind};
+use rbit_workflow::{Event, GroupContext, model::DispatchInput, trigger::resolve_inputs};
 
 use super::{
     ActionsService, context,
     runs::{Candidate, Trigger},
-    triggers::{WORKFLOW_DIRS, describe, discover, plan_workflow},
+    triggers::{MAX_WORKFLOW_FILES, WORKFLOW_DIRS, describe, discover, plan_workflow},
 };
 use crate::{RepoContext, ServiceError};
 
@@ -42,7 +46,82 @@ pub struct DispatchRequest {
     pub inputs: BTreeMap<String, String>,
 }
 
+// Actions: dispatch form.
+/// What the dispatch form of one workflow asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DispatchForm {
+    /// `.forgejo/workflows/release.yml`.
+    pub path: String,
+    /// The workflow's `name`, or its path.
+    pub name: String,
+    /// The full ref the workflow was read at: `refs/heads/main`.
+    pub reference: String,
+    pub inputs: Vec<DispatchInput>,
+}
+
 impl ActionsService {
+    // Actions: dispatch form.
+    /// The workflow files on `repo`'s default branch, by path, from the first of
+    /// [`WORKFLOW_DIRS`] that exists, as runs read them: what the pages list beside the
+    /// workflows that ran. Nothing is parsed. Empty for an empty repository.
+    pub async fn workflow_paths(&self, repo: &RepoContext) -> Result<Vec<String>, ServiceError> {
+        self.require_pages(repo).await?;
+        let branch = format!("refs/heads/{}", repo.repo.repo.default_branch);
+        let sha = match repo.reader.commit_id(branch).await {
+            Ok(sha) => sha,
+            Err(GitError::NotFound(_)) => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        for dir in WORKFLOW_DIRS {
+            let tree = match repo.reader.tree(sha.clone(), dir.to_owned()).await {
+                Ok(tree) => tree,
+                Err(GitError::NotFound(_)) => continue,
+                Err(error) => return Err(error.into()),
+            };
+            let mut paths: Vec<String> = tree
+                .entries
+                .into_iter()
+                .filter(|entry| matches!(entry.kind, EntryKind::File | EntryKind::Executable))
+                .filter(|entry| Path::new(&entry.name).extension().is_some_and(|extension| extension == "yml" || extension == "yaml"))
+                .map(|entry| format!("{dir}/{}", entry.name))
+                .collect();
+            paths.sort();
+            paths.truncate(MAX_WORKFLOW_FILES);
+            return Ok(paths);
+        }
+        Ok(Vec::new())
+    }
+
+    /// The form that dispatches `workflow` (its file name or path) at `reference`, a branch
+    /// or tag of `repo` (its default branch when blank), for someone who may dispatch it:
+    /// `None` when the file is not there or does not run on `workflow_dispatch`. A workflow
+    /// that does not parse, or a ref that is no branch or tag, is `Invalid`.
+    pub async fn dispatch_form(&self, repo: &RepoContext, workflow: &str, reference: &str) -> Result<Option<DispatchForm>, ServiceError> {
+        if !repo.access.can_write() {
+            return Err(if repo.access.can_read() { ServiceError::Forbidden } else { ServiceError::NotFound });
+        }
+        self.require_pages(repo).await?;
+        let given = if reference.trim().is_empty() { repo.repo.repo.default_branch.as_str() } else { reference };
+        let reference = own_ref(repo, given).await?;
+        let sha = repo.reader.commit_id(reference.clone()).await?;
+        let file = workflow_file(workflow)?;
+        let (reader, limits) = (repo.reader.clone(), self.limits());
+        let read = self
+            .evaluate(move |handle, deadline| {
+                let files = discover(handle, &reader, &sha, &limits, deadline).map_err(|error| {
+                    tracing::warn!(%error, "cannot read the workflows for a dispatch form");
+                    "the workflows could not be read".to_owned()
+                })?;
+                let Some(found) = files.into_iter().find(|candidate| file.matches(&candidate.path)) else { return Ok(None) };
+                let name = found.name();
+                let workflow = found.parsed.as_ref().map_err(|error| describe(&found.path, error))?;
+                Ok(workflow.on.workflow_dispatch.as_ref().map(|dispatch| (found.path.clone(), name, dispatch.inputs.clone())))
+            })
+            .await?;
+        let read = read.map_err(ServiceError::Invalid)?;
+        Ok(read.map(|(path, name, inputs)| DispatchForm { path, name, reference, inputs }))
+    }
+
     /// Starts `request`'s workflow for `actor`, who needs write access to `repo`.
     pub async fn dispatch(&self, actor: &User, repo: &RepoContext, request: &DispatchRequest) -> Result<Run, ServiceError> {
         if !repo.access.can_write() {

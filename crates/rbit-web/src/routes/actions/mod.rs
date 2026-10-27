@@ -77,6 +77,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/{owner}/{repo}/actions", get(runs::list))
         .route("/{owner}/{repo}/actions/workflows/{workflow}", get(runs::workflow))
+        .route("/{owner}/{repo}/actions/workflows/{workflow}/dispatch", post(runs::dispatch))
         .route("/{owner}/{repo}/actions/runs/{run}", get(runs::show))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs", get(runs::jobs))
         .route("/{owner}/{repo}/actions/runs/{run}/cancel", post(runs::cancel))
