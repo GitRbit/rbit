@@ -20,8 +20,9 @@ use crate::model::{ActivityType, Filter, InputKind, PushFilters, Workflow};
 
 /// Markers in a head commit message (push) or a pull request title that skip its runs.
 pub const SKIP_MARKERS: [&str; 5] = ["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"];
-/// Most inputs one dispatch may set.
-pub const MAX_DISPATCH_INPUTS_SET: usize = 10;
+/// Most inputs one dispatch may set: as many as a workflow may declare, since the dispatch
+/// form sends every one.
+pub const MAX_DISPATCH_INPUTS_SET: usize = crate::parse::MAX_DISPATCH_INPUTS;
 /// Longest dispatch input value, in bytes.
 pub const MAX_DISPATCH_VALUE_BYTES: usize = 1024;
 
@@ -398,7 +399,12 @@ mod tests {
             assert!(error.contains(message), "{inputs:?}: {error}");
         }
         let many: BTreeMap<_, _> = (0..=MAX_DISPATCH_INPUTS_SET).map(|index| (format!("i{index}"), String::new())).collect();
-        assert!(resolve_inputs(&workflow, &many).unwrap_err().contains("at most 10"));
+        assert!(resolve_inputs(&workflow, &many).unwrap_err().contains("at most 25"));
+        // The dispatch form sends every input, set or not.
+        let twelve = (0..12).map(|index| format!("      i{index}: {{}}\n")).collect::<Vec<_>>().concat();
+        let declared = self::workflow(&format!("  workflow_dispatch:\n    inputs:\n{twelve}"));
+        let sent: BTreeMap<_, _> = (0..12).map(|index| (format!("i{index}"), String::new())).collect();
+        assert_eq!(resolve_inputs(&declared, &sent).unwrap().len(), 12);
         assert!(resolve_inputs(&self::workflow("  push:"), &given(&[])).is_err());
     }
 }

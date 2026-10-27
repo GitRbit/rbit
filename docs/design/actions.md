@@ -155,8 +155,8 @@ pattern dialect:
   heads already live in the base repository. Workflow files come from the **head** commit
   (the `pull_request` contract); the trust rules of §6.2 decide what that run may touch.
 - **workflow_dispatch**: from the UI or API, a ref chosen by a writer; workflow read at that
-  ref; inputs validated (required, `choice` options, `boolean`, `number`), ≤ 10 inputs set,
-  values ≤ 1 KiB.
+  ref; inputs validated (required, `choice` options, `boolean`, `number`), ≤ 25 inputs set
+  (as many as a workflow declares, since the form sends them all), values ≤ 1 KiB.
 - **schedule**: workflows on the **default branch** only; refreshed on each push that moves
   it and when the repository's Actions switch is turned on; minimum interval 5 minutes;
   a run uses the default branch head at fire time. Paused automatically (and shown so) when
