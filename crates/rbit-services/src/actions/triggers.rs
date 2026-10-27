@@ -62,7 +62,7 @@ use tokio::{
 
 use super::{
     ActionsService, context,
-    runs::{Candidate, Plan, Trigger},
+    runs::{Candidate, Plan, Problem, Trigger},
 };
 use crate::{DomainEvent, ServiceError};
 
@@ -529,9 +529,9 @@ pub(super) fn candidates(
     let mut candidates = Vec::new();
     for file in files {
         let outcome = match &file.parsed {
-            Err(error) => Err(describe(&file.path, error)),
+            Err(error) => Err(problem(&file.path, error)),
             Ok(workflow) if rbit_workflow::matches(workflow, event, changed) => {
-                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline).map_err(|error| describe(&file.path, &error))
+                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline).map_err(|error| problem(&file.path, &error))
             }
             Ok(_) => continue,
         };
@@ -543,6 +543,12 @@ pub(super) fn candidates(
 /// A workflow error as the run shows it: the file, then the problem and where it is.
 pub(super) fn describe(path: &str, error: &WorkflowError) -> String {
     format!("{path}: {error}")
+}
+
+// Actions: metrics.
+/// `error` of the workflow at `path` as a workflow-error run records it.
+pub(super) fn problem(path: &str, error: &WorkflowError) -> Problem {
+    Problem { reason: error.kind, message: describe(path, error) }
 }
 
 /// Plans `workflow` (named `name`, at `path`) for an event described by `group`.

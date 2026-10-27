@@ -139,3 +139,39 @@ async fn runners_and_registration_tokens_need_admin_rights() {
     assert_eq!(poll(&fixture, &credential, Some("gone")).await.0, StatusCode::UNAUTHORIZED);
     let _: Value = api(&fixture, Method::GET, runners, &admin).await.json();
 }
+
+// Actions: metrics.
+#[tokio::test]
+async fn metrics_count_each_transition_once() {
+    // This test's own recorder: the global one is shared by every test of the binary.
+    let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+    let handle = recorder.handle();
+    let _local = metrics::set_default_local_recorder(&recorder);
+
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let credential = fixture.runner(&["linux"]).await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = spec(&poll(&fixture, &credential, Some("m")).await.1).task_id.0;
+    assert_eq!(logs(&fixture, &credential, task, 0, "hello\n").await.0, StatusCode::OK);
+    let done = json!({"steps": [], "outputs": {}, "result": "success"});
+    assert_eq!(state(&fixture, &credential, task, &done).await.0, StatusCode::OK);
+    assert_eq!(state(&fixture, &credential, task, &done).await.0, StatusCode::OK, "a resent final call");
+    assert_eq!(poll(&fixture, "rbrn_not-a-credential", Some("x")).await.0, StatusCode::UNAUTHORIZED);
+    fixture.actions().record_gauges(rbit_core::Timestamp::now()).await.unwrap();
+
+    let text = handle.render();
+    let value = |series: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(series).and_then(|rest| rest.strip_prefix(' ')).and_then(|value| value.parse::<f64>().ok()))
+    };
+    assert_eq!(value(r#"rbit_actions_jobs_total{outcome="success"}"#), Some(1.0), "{text}");
+    assert_eq!(value(r#"rbit_actions_runs_total{event="push",outcome="success"}"#), Some(1.0), "once, though reported twice");
+    assert_eq!(value("rbit_actions_job_queue_seconds_count"), Some(1.0));
+    assert_eq!(value("rbit_actions_job_duration_seconds_count"), Some(1.0));
+    assert!(value("rbit_actions_log_bytes_total").is_some_and(|bytes| bytes >= 6.0), "{text}");
+    assert_eq!(value(r#"rbit_actions_rpc_total{method="register",code="ok"}"#), Some(1.0));
+    assert_eq!(value(r#"rbit_actions_rpc_total{method="task_state",code="ok"}"#), Some(2.0));
+    assert_eq!(value(r#"rbit_actions_rpc_total{method="poll",code="unauthenticated"}"#), Some(1.0));
+    assert_eq!(value("rbit_actions_runners_online"), Some(1.0));
+    assert_eq!(value("rbit_actions_jobs_waiting"), Some(0.0));
+}

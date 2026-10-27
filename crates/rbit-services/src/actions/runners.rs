@@ -39,8 +39,8 @@ use rbit_auth::{RegistrationSecret, RunnerCredential, TokenDigest};
 use rbit_core::{
     Account, AccountKind, Timestamp, User,
     actions::{
-        RegistrationToken, RegistrationTokenId, Runner, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel, RunnerScope, Status,
-        TaskId,
+        RUNNER_ONLINE_SECONDS, RegistrationToken, RegistrationTokenId, Runner, RunnerBackend, RunnerCapabilities, RunnerId, RunnerLabel,
+        RunnerScope, Status, TaskId,
     },
     org::OrgRole,
 };
@@ -202,6 +202,18 @@ impl RunnerCache {
 
     pub fn len(&self) -> usize {
         self.by_digest.read().unwrap_or_else(PoisonError::into_inner).len()
+    }
+
+    // Actions: metrics.
+    /// Runners that called within [`RUNNER_ONLINE_SECONDS`] of `now`.
+    pub fn online(&self, now: Timestamp) -> usize {
+        let since = now.0 - RUNNER_ONLINE_SECONDS;
+        self.by_digest
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .filter(|runner| runner.last_seen.load(Ordering::SeqCst) >= since)
+            .count()
     }
 
     pub fn is_empty(&self) -> bool {

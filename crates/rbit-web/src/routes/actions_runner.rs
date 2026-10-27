@@ -17,6 +17,10 @@
 //! * is answered, when refused, with `{"code", "message"}` and the code's status
 //!   ([`Refusal`]).
 //!
+//! Every call counts in `rbit_actions_rpc_total{method, code}`: `method` names the call
+//! (`poll`, `task_state`, `artifact_upload`, …), `code` is `ok` or the refusal's
+//! [`ErrorCode`] (`unauthenticated`, `throttled`, …), both from fixed sets.
+//!
 //! [`RunnerCaller`] authenticates a runner call: `Authorization: Bearer rbrn_…`, checked
 //! against the runner cache only (one digest, one map lookup, no SQLite). Only failed
 //! authentication spends the client's `RunnerAuth` budget; registrations spend
@@ -30,7 +34,7 @@ use std::{io::Read as _, sync::Arc, time::Duration};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRequestParts, Path, Query, Request, State},
+    extract::{FromRequestParts, MatchedPath, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts},
     middleware::{Next, from_fn},
     response::{IntoResponse, Response},
@@ -88,14 +92,65 @@ pub fn routes() -> Router<AppState> {
         .route(&path(Endpoint::Unregister), post(unregister))
         .layer(from_fn(require_protocol))
         .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, CALL_TIMEOUT))
+        // Actions: metrics.
+        .layer(from_fn(count_call))
         // Actions: artifacts (A).
         .merge(
             Router::new()
                 .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}"), axum::routing::get(list_artifacts))
                 .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}/{{name}}"), axum::routing::get(download_artifact).put(upload_artifact))
                 .layer(from_fn(require_protocol))
-                .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, ARTIFACT_TIMEOUT)),
+                .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, ARTIFACT_TIMEOUT))
+                .layer(from_fn(count_call)),
         )
+}
+
+// Actions: metrics.
+/// Counts the call in `rbit_actions_rpc_total`, refusals and time-outs included.
+async fn count_call(request: Request, next: Next) -> Response {
+    let method = request.extensions().get::<MatchedPath>().map_or("unknown", |matched| call_name(matched.as_str(), request.method()));
+    let response = next.run(request).await;
+    metrics::counter!("rbit_actions_rpc_total", "method" => method, "code" => call_code(response.status())).increment(1);
+    response
+}
+
+/// The `method` label of a call to `path` (a route template).
+fn call_name(path: &str, method: &axum::http::Method) -> &'static str {
+    let path = path.strip_prefix(BASE_PATH).and_then(|path| path.strip_prefix('/')).unwrap_or(path);
+    if let Some(endpoint) = Endpoint::ALL.iter().find(|endpoint| endpoint.path() == path) {
+        return match endpoint {
+            Endpoint::Register => "register",
+            Endpoint::Declare => "declare",
+            Endpoint::Poll => "poll",
+            Endpoint::TaskState => "task_state",
+            Endpoint::TaskLogs => "task_logs",
+            Endpoint::Unregister => "unregister",
+        };
+    }
+    match (path == ARTIFACTS_PATH, *method == axum::http::Method::PUT) {
+        (true, _) => "artifact_list",
+        (false, true) => "artifact_upload",
+        (false, false) => "artifact_download",
+    }
+}
+
+/// The `code` label of a response: `ok`, or the [`ErrorCode`] its status stands for.
+fn call_code(status: StatusCode) -> &'static str {
+    if status.is_success() {
+        return "ok";
+    }
+    match status.as_u16() {
+        400 => "bad_request",
+        401 => "unauthenticated",
+        403 => "forbidden",
+        404 => "not_found",
+        409 => "conflict",
+        413 => "too_large",
+        426 => "unsupported_protocol",
+        429 => "throttled",
+        503 => "unavailable",
+        _ => "other",
+    }
 }
 
 fn path(endpoint: Endpoint) -> String {

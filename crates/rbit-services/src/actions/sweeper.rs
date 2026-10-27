@@ -70,6 +70,20 @@ impl ActionsService {
         }
     }
 
+    // Actions: metrics.
+    /// Sets the `rbit_actions_jobs_waiting` and `rbit_actions_runners_online` gauges as of
+    /// `now`; the sweep does it once a minute.
+    pub async fn record_gauges(&self, now: Timestamp) -> Result<(), ServiceError> {
+        let waiting = self.ctx().database.actions_runs().count_all_waiting().await?;
+        let online = self.runner_cache().await?.online(now);
+        #[allow(clippy::cast_precision_loss)] // Gauges; precision beyond 2^53 jobs or runners is moot.
+        {
+            metrics::gauge!("rbit_actions_jobs_waiting").set(waiting as f64);
+            metrics::gauge!("rbit_actions_runners_online").set(online as f64);
+        }
+        Ok(())
+    }
+
     /// One sweep as of `now`. See the module documentation.
     pub async fn sweep(&self, now: Timestamp) -> Result<Swept, ServiceError> {
         let config = self.config();
@@ -94,6 +108,8 @@ impl ActionsService {
         swept.decided = self.decide_stragglers().await?;
         // Actions: artifacts (A).
         swept.expired_artifacts = self.expire_artifacts(now).await?;
+        // Actions: metrics.
+        self.record_gauges(now).await?;
 
         for task in store.unfinalised_logs(RUNS_PER_PASS).await? {
             self.finalise_log(task).await?;

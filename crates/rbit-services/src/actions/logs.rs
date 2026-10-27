@@ -264,6 +264,8 @@ impl ActionsService {
             .map_err(ServiceError::internal)?
             .map_err(ServiceError::internal)?;
         *checked = true;
+        // Actions: metrics.
+        metrics::counter!("rbit_actions_log_bytes_total").increment(progress.bytes.saturating_sub(stored.bytes));
         let lines = i64::try_from(progress.lines).unwrap_or(i64::MAX);
         let bytes = i64::try_from(progress.bytes).unwrap_or(i64::MAX);
         self.ctx().database.actions_runs().set_log_progress(task.id, lines, bytes, progress.truncated).await?;

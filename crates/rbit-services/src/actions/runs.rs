@@ -34,6 +34,7 @@ use rbit_core::{
 pub use rbit_storage::sqlite::actions_runs::Rerun;
 use rbit_storage::sqlite::actions_runs::{NewJob, NewRun, RunStart, Settled};
 use rbit_workflow::{
+    ErrorKind,
     model::{Permission, Permissions},
     spec::JobTemplate,
 };
@@ -59,6 +60,15 @@ pub struct Plan {
     pub concurrency: Option<(String, bool)>,
 }
 
+// Actions: metrics.
+/// Why a workflow has no plan: the error its workflow-error run shows, and its kind (the
+/// `reason` of `rbit_actions_workflow_errors_total`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Problem {
+    pub reason: ErrorKind,
+    pub message: String,
+}
+
 /// One workflow file's answer to an event: a plan, or why it has none.
 #[derive(Debug, Clone)]
 pub struct Candidate {
@@ -67,7 +77,7 @@ pub struct Candidate {
     /// The workflow's `name`, or its path.
     pub name: String,
     /// The plan, or the error shown on the workflow-error run.
-    pub outcome: Result<Plan, String>,
+    pub outcome: Result<Plan, Problem>,
 }
 
 /// The event every run it starts shares.
@@ -125,13 +135,15 @@ impl ActionsService {
         allowance.runs -= 1;
         let plan = match candidate.outcome {
             Ok(plan) => plan,
-            Err(error) => return self.record_error(trigger, &candidate.path, &candidate.name, &error).await.map(Some),
+            Err(problem) => {
+                return self.record_error(trigger, &candidate.path, &candidate.name, problem.reason, &problem.message).await.map(Some);
+            }
         };
         let jobs = u32::try_from(plan.jobs.len()).unwrap_or(u32::MAX);
         if jobs > allowance.jobs {
             let max = self.config().max_jobs_per_event;
             let error = format!("{}: this event already started its share of jobs; one event may start at most {max}", candidate.path);
-            return self.record_error(trigger, &candidate.path, &candidate.name, &error).await.map(Some);
+            return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
         }
         allowance.jobs -= jobs;
         if let Some(label) =
@@ -142,7 +154,7 @@ impl ActionsService {
                 candidate.path,
                 truncate_chars(label, 64)
             );
-            return self.record_error(trigger, &candidate.path, &candidate.name, &error).await.map(Some);
+            return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
         }
         let group = plan.concurrency.as_ref().map(|(group, cancel)| (namespaced_group(trigger, group), *cancel));
         let awaiting = matches!(trigger.trust, RunTrust::Untrusted { awaits_approval: true });
@@ -156,7 +168,7 @@ impl ActionsService {
             if waiting + starting > max {
                 let error =
                     format!("{}: the repository already has {waiting} jobs waiting for a runner; at most {max} may wait", candidate.path);
-                return self.record_error(trigger, &candidate.path, &candidate.name, &error).await.map(Some);
+                return self.record_error(trigger, &candidate.path, &candidate.name, ErrorKind::Limit, &error).await.map(Some);
             }
             match &group {
                 Some((group, cancel)) => self.enter_group(trigger.repo.repo.id, group, *cancel, None).await?,
@@ -194,7 +206,14 @@ impl ActionsService {
     }
 
     /// Records a workflow error: a failed run without jobs that says why nothing ran.
-    async fn record_error(&self, trigger: &Trigger<'_>, path: &str, name: &str, error: &str) -> Result<Run, ServiceError> {
+    async fn record_error(
+        &self,
+        trigger: &Trigger<'_>,
+        path: &str,
+        name: &str,
+        reason: ErrorKind,
+        error: &str,
+    ) -> Result<Run, ServiceError> {
         let (path, name, title) =
             (truncate_chars(path, MAX_TEXT_CHARS), truncate_chars(name, MAX_TEXT_CHARS), truncate_chars(trigger.title, MAX_TEXT_CHARS));
         let error = truncate_bytes(error, MAX_ERROR_BYTES);
@@ -205,6 +224,8 @@ impl ActionsService {
             .create_run(&NewRun { error: Some(&error), ..new_run(trigger, &path, &name, &title) })
             .await?;
         tracing::info!(repo = %trigger.repo.full_name(), run = run.id.0, workflow = %run.workflow_path, "workflow error recorded");
+        // Actions: metrics.
+        metrics::counter!("rbit_actions_workflow_errors_total", "reason" => reason.as_str()).increment(1);
         // Actions: integration (I).
         self.announce(run.id).await?;
         Ok(run)

@@ -31,7 +31,7 @@ use rbit_workflow::{Event, GroupContext, cron::Cron};
 use super::{
     ActionsService, context,
     runs::{Candidate, Trigger},
-    triggers::{describe, discover, plan_workflow},
+    triggers::{discover, plan_workflow, problem},
 };
 use crate::ServiceError;
 
@@ -180,10 +180,10 @@ impl ActionsService {
                 let files = discover(handle, &reader, &at, &limits, deadline).ok()?;
                 let file = files.iter().find(|file| file.path == path)?;
                 let outcome = match &file.parsed {
-                    Err(error) => Err(describe(&file.path, error)),
+                    Err(error) => Err(problem(&file.path, error)),
                     Ok(workflow) if rbit_workflow::matches(workflow, &Event::Schedule { cron: &cron }, &mut None::<Vec<String>>) => {
                         plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline)
-                            .map_err(|error| describe(&file.path, &error))
+                            .map_err(|error| problem(&file.path, &error))
                     }
                     Ok(_) => return None,
                 };

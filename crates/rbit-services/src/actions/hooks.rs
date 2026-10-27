@@ -29,7 +29,7 @@
 use std::collections::BTreeMap;
 
 use rbit_core::{
-    Account, AccountId,
+    Account, AccountId, Timestamp,
     actions::{Job, Run, RunEvent, RunId, Status, Step},
     repository::OwnedRepository,
     webhook::WebhookEvent,
@@ -144,6 +144,7 @@ impl ActionsService {
             let Some(job_action) = JobAction::of(job.status) else { continue };
             if store.announce_job(job.id, job_action.as_str()).await? {
                 self.ctx().events.publish(DomainEvent::ActionsJob { repo: run.repo_id, run: id, job: job.id, action: job_action });
+                record_job(job, job_action);
             }
         }
         if action == RunAction::Completed {
@@ -154,9 +155,36 @@ impl ActionsService {
             }
             if store.announce_run(id, action.as_str()).await? {
                 self.ctx().events.publish(DomainEvent::ActionsRun { repo: run.repo_id, run: id, action });
+                // Actions: metrics.
+                let outcome = conclusion(run.status).unwrap_or("failure");
+                metrics::counter!("rbit_actions_runs_total", "event" => run.event.as_str(), "outcome" => outcome).increment(1);
             }
         }
         Ok(())
+    }
+}
+
+// Actions: metrics.
+/// Records what `job` just did, announced once: the time it waited for a runner when one
+/// takes it, and its outcome and how long it ran when it finishes.
+fn record_job(job: &Job, action: JobAction) {
+    #[allow(clippy::cast_precision_loss)] // Seconds; precision beyond 2^53 of them is moot.
+    let seconds = |from: Timestamp, to: Timestamp| (to.seconds() - from.seconds()).max(0) as f64;
+    match action {
+        JobAction::InProgress => {
+            if let Some(started) = job.started_at {
+                let waited = seconds(job.queued_at.unwrap_or(job.created_at), started);
+                metrics::histogram!("rbit_actions_job_queue_seconds").record(waited);
+            }
+        }
+        JobAction::Completed => {
+            let outcome = conclusion(job.status).unwrap_or("failure");
+            metrics::counter!("rbit_actions_jobs_total", "outcome" => outcome).increment(1);
+            if let (Some(started), Some(finished)) = (job.started_at, job.finished_at) {
+                metrics::histogram!("rbit_actions_job_duration_seconds").record(seconds(started, finished));
+            }
+        }
+        JobAction::Waiting | JobAction::Queued => {}
     }
 }
 
