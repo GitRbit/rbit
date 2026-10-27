@@ -97,6 +97,7 @@ async fn steps_share_env_files_outputs_and_masks() {
                 "echo \"::add-mask::masked-later\"\n",
                 "echo \"secret is ${{ secrets.MY_SECRET }}\"\n",
                 "echo \"::warning::look here\"\n",
+                "echo \"# Released ${{ secrets.MY_SECRET }}\" >> \"$GITHUB_STEP_SUMMARY\"\n",
             )),
             |step| step.id = Some("first".into()),
         ),
@@ -140,6 +141,9 @@ async fn steps_share_env_files_outputs_and_masks() {
     assert!(text.contains("after failure: failure"));
     let outputs = reporter.state().outputs;
     assert_eq!((outputs["version"].as_str(), outputs["broken"].as_str(), outputs["leak"].as_str()), ("1.2.3", "failure/success", "***"));
+    // Actions: step summaries. Sent masked, by the step that wrote it.
+    let summaries = reporter.state().summaries;
+    assert_eq!(summaries, std::collections::BTreeMap::from([(0, "# Released ***\n".to_owned())]), "{text}");
 }
 
 #[tokio::test]

@@ -436,6 +436,23 @@ pub struct RunPage {
     pub approve_url: String,
     // Actions: artifacts (A).
     pub artifacts: Vec<ArtifactRow>,
+    // Actions: step summaries.
+    pub summaries: Vec<SummaryView>,
+}
+
+// Actions: step summaries.
+/// What a job's steps wrote to `GITHUB_STEP_SUMMARY`, rendered like any untrusted Markdown
+/// (sanitised; raw HTML never reaches the page).
+#[derive(Debug, Clone)]
+pub struct SummaryView {
+    pub job: String,
+    pub html: String,
+}
+
+impl SummaryView {
+    pub fn new(job: &str, texts: &[String]) -> Self {
+        Self { job: job.to_owned(), html: crate::render::render_markdown(&texts.join("\n"), None) }
+    }
 }
 
 // Actions: artifacts (A).

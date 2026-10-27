@@ -125,7 +125,11 @@ pub async fn run(
         Ok(Exit::Code(None)) => job.fail("The process was killed by a signal."),
     };
     match written {
-        Ok(written) => Outcome { outputs: apply(job, written), ..outcome },
+        Ok(written) => {
+            // Actions: step summaries.
+            job.reporter.set_summary(index, &written.summary);
+            Outcome { outputs: apply(job, written), ..outcome }
+        }
         Err(error) => job.fail(&error),
     }
 }

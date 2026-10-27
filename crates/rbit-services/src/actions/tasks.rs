@@ -2,6 +2,8 @@
 //! step states, job outputs and, at the end, the result — and the answer that carries
 //! cancellation back (§12.6 "Lifecycle").
 //!
+//! * Step summaries (`GITHUB_STEP_SUMMARY`) are kept when first seen per step, masked
+//!   again with the secrets the server knows, for the run page.
 //! * Every call checks that the task is the calling runner's; another runner's task is
 //!   `forbidden`, an unknown one `not_found` (the runner then cancels it locally).
 //! * Each call is a heartbeat. Steps are keyed by index and only the steps the task was
@@ -64,6 +66,14 @@ impl ActionsService {
                 })
                 .collect();
             store.update_steps(id, &steps).await?;
+        }
+        // Actions: step summaries.
+        if !request.summaries.is_empty() {
+            let masker = self.masker(&task, &job).await?;
+            let cleaned: Vec<(i64, String)> =
+                request.summaries.iter().map(|(index, summary)| (i64::from(*index), masker.mask(summary))).collect();
+            let summaries: Vec<(i64, &str)> = cleaned.iter().map(|(index, summary)| (*index, summary.as_str())).collect();
+            store.add_summaries(id, &summaries).await?;
         }
         if !request.outputs.is_empty() {
             let masker = self.masker(&task, &job).await?;

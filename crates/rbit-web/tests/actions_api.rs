@@ -175,3 +175,36 @@ async fn metrics_count_each_transition_once() {
     assert_eq!(value("rbit_actions_runners_online"), Some(1.0));
     assert_eq!(value("rbit_actions_jobs_waiting"), Some(0.0));
 }
+
+// Actions: step summaries.
+#[tokio::test]
+async fn step_summaries_are_kept_once_and_shown_sanitised_on_the_run_page() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = spec(&poll(&fixture, &credential, Some("s")).await.1).task_id.0;
+    let first = json!({
+        "steps": [], "outputs": {}, "result": null,
+        "summaries": {"0": "## Benchmarks\n\n| case | ms |\n|---|---|\n| parse | 12 |\n\n<script>alert(1)</script>", "9": "no such step"},
+    });
+    assert_eq!(state(&fixture, &credential, task, &first).await.0, StatusCode::OK);
+    let again = json!({"steps": [], "outputs": {}, "result": "success", "summaries": {"0": "a later, different summary"}});
+    assert_eq!(state(&fixture, &credential, task, &again).await.0, StatusCode::OK);
+    let oversized = json!({"steps": [], "outputs": {}, "result": null, "summaries": {"1": "x".repeat(64 * 1024 + 1)}});
+    assert_eq!(state(&fixture, &credential, task, &oversized).await.0, StatusCode::BAD_REQUEST, "past the protocol's limit");
+
+    let token = fixture.services.accounts.start_session(&fixture.alice).await.unwrap();
+    let request = Request::builder()
+        .uri(format!("/alice/rocket/actions/runs/{}", run.number))
+        .header(header::HOST, "localhost:3000")
+        .header(header::COOKIE, format!("rbit_session={}", token.encode()))
+        .body(Body::empty())
+        .unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert!(page.contains("build summary") && page.contains("Benchmarks") && page.contains("<table>"), "rendered Markdown: {page}");
+    assert!(!page.contains("<script>alert(1)"), "sanitised");
+    assert!(!page.contains("a later, different summary"), "the first summary of a step is kept");
+    assert!(!page.contains("no such step"), "only the task's own steps");
+}

@@ -68,6 +68,27 @@ impl ActionsService {
         if repo.access.can_read() && self.enabled_for(repo.repo.repo.id).await? { Ok(()) } else { Err(ServiceError::NotFound) }
     }
 
+    // Actions: step summaries.
+    /// The step summaries of `jobs` (a run of `repo` a reader opened), each job's in step
+    /// order, for the jobs whose current task has any.
+    pub async fn job_summaries(&self, repo: &RepoContext, jobs: &[Job]) -> Result<Vec<(JobId, Vec<String>)>, ServiceError> {
+        self.require_pages(repo).await?;
+        let tasks: Vec<TaskId> = jobs.iter().filter(|job| job.repo_id == repo.repo.repo.id).filter_map(|job| job.task_id).collect();
+        let mut summaries = self.ctx().database.actions_runs().summaries_of_tasks(&tasks).await?.into_iter().peekable();
+        let mut by_job = Vec::new();
+        for job in jobs {
+            let Some(task) = job.task_id else { continue };
+            let mut texts = Vec::new();
+            while let Some((_, _, text)) = summaries.next_if(|(of, _, _)| *of == task) {
+                texts.push(text);
+            }
+            if !texts.is_empty() {
+                by_job.push((job.id, texts));
+            }
+        }
+        Ok(by_job)
+    }
+
     /// Every workflow of `repo` with runs: its path and the name of its newest run.
     pub async fn workflows(&self, repo: &RepoContext) -> Result<Vec<(String, String)>, ServiceError> {
         self.require_pages(repo).await?;

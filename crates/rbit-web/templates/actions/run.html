@@ -88,6 +88,13 @@
     {% endfor %}
   </ul>
   {% endif %}
+
+  {% for summary in summaries %}
+  <section class="box mt-6 overflow-hidden" aria-label="{{ summary.job }} summary">
+    <h2 class="flex min-h-10 items-center gap-2 border-b border-line bg-subtle px-3 text-[13px] font-medium">{% call ui::icon("file", "size-4 shrink-0 text-ink-muted") %}{% endcall %}<span class="truncate">{{ summary.job }} summary</span></h2>
+    <article class="prose-rbit overflow-x-auto px-4 py-4 sm:px-6">{{ summary.html|safe }}</article>
+  </section>
+  {% endfor %}
   {% endif %}
 </section>
 {% endblock %}

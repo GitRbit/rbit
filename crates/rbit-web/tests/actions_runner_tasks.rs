@@ -404,8 +404,11 @@ async fn state_calls_are_for_the_runners_own_tasks() {
     assert_eq!(state(&fixture, &owner, task, &bad_output).await.0, StatusCode::BAD_REQUEST);
     let unauthenticated = fixture.call(&format!("tasks/{task}/state"), None, heartbeat.to_string()).await;
     assert_eq!(unauthenticated.status, StatusCode::UNAUTHORIZED);
-    let huge = format!("{{\"steps\": [], \"outputs\": {{\"a\": \"{}\"}}, \"result\": null}}", "x".repeat(1_100_000));
-    assert_eq!(fixture.call(&format!("tasks/{task}/state"), Some(&owner), huge).await.status, StatusCode::PAYLOAD_TOO_LARGE);
+    let body = |bytes: usize| format!("{{\"steps\": [], \"outputs\": {{\"a\": \"{}\"}}, \"result\": null}}", "x".repeat(bytes));
+    let over_outputs = fixture.call(&format!("tasks/{task}/state"), Some(&owner), body(1_100_000)).await;
+    assert_eq!(over_outputs.status, StatusCode::BAD_REQUEST, "within the call's cap, over the outputs' limit");
+    let huge = fixture.call(&format!("tasks/{task}/state"), Some(&owner), body(4_300_000)).await;
+    assert_eq!(huge.status, StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 #[tokio::test]

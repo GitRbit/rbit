@@ -79,6 +79,12 @@ pub const MAX_LOG_LINE_BYTES: usize = 64 * 1024;
 pub const MAX_OUTPUT_KEY_BYTES: usize = 255;
 /// Most bytes of job outputs (names and values) per job.
 pub const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+// Actions: step summaries.
+/// Most bytes of one step's summary (`GITHUB_STEP_SUMMARY`) in a state call. The runner
+/// counts the text as JSON encodes it and cuts a longer summary with a note.
+pub const MAX_STEP_SUMMARY_BYTES: usize = 64 * 1024;
+/// Most bytes of all of a task's step summaries together, counted the same way.
+pub const MAX_TASK_SUMMARY_BYTES: usize = 256 * 1024;
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
@@ -121,7 +127,10 @@ impl Endpoint {
         match self {
             Self::Register | Self::Declare => 64 * KIB,
             Self::Poll => 4 * KIB,
-            Self::TaskState => MIB,
+            // Outputs (up to `MAX_OUTPUT_BYTES` before JSON escapes them), step states and
+            // summaries (`MAX_TASK_SUMMARY_BYTES`), with room to spare: a final call that is
+            // too large could never report how its task ended.
+            Self::TaskState => 4 * MIB,
             Self::TaskLogs => 8 * MIB,
             Self::Unregister => KIB,
         }
@@ -424,6 +433,12 @@ pub struct TaskStateRequest {
     pub outputs: BTreeMap<String, String>,
     /// Set on the final call only.
     pub result: Option<TaskResult>,
+    // Actions: step summaries.
+    /// What steps wrote to `GITHUB_STEP_SUMMARY` (Markdown, masked by the runner), by step
+    /// index, once each step has ended. The first summary seen for a step is kept, so a
+    /// resent call changes nothing. Left out when empty, as older runners send it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub summaries: BTreeMap<u32, String>,
 }
 
 impl TaskStateRequest {
@@ -444,6 +459,18 @@ impl TaskStateRequest {
             }
             ensure(!self.is_final() || step.status != StepStatus::Running, || format!("step {index} is still running"))?;
         }
+        // Actions: step summaries.
+        let mut total = 0usize;
+        for (index, summary) in &self.summaries {
+            ensure(usize::try_from(*index).is_ok_and(|index| index < max_steps), || {
+                format!("the summary of step {index} is out of range")
+            })?;
+            ensure(summary.len() <= MAX_STEP_SUMMARY_BYTES, || {
+                format!("the summary of step {index} is over {MAX_STEP_SUMMARY_BYTES} bytes")
+            })?;
+            total = total.saturating_add(summary.len());
+        }
+        ensure(total <= MAX_TASK_SUMMARY_BYTES, || format!("a task's step summaries may be at most {MAX_TASK_SUMMARY_BYTES} bytes"))?;
         validate_outputs(&self.outputs)
     }
 }
@@ -697,6 +724,7 @@ pub(crate) mod tests {
             ],
             outputs: BTreeMap::from([("version".to_owned(), "1.2.3".to_owned())]),
             result: None,
+            summaries: BTreeMap::new(),
         };
         state.validate().unwrap();
         assert!(!state.is_final());
@@ -708,9 +736,19 @@ pub(crate) mod tests {
                 r#""outputs":{"version":"1.2.3"},"result":null}"#
             ),
         );
-        let done = TaskStateRequest { steps: Vec::new(), outputs: BTreeMap::new(), result: Some(TaskResult::Cancelled) };
+        let done = TaskStateRequest {
+            steps: Vec::new(),
+            outputs: BTreeMap::new(),
+            result: Some(TaskResult::Cancelled),
+            summaries: BTreeMap::new(),
+        };
         assert!(done.is_final());
         golden(&done, r#"{"steps":[],"outputs":{},"result":"cancelled"}"#);
+        // Actions: step summaries. Older servers read the call the same way; newer ones keep them.
+        let summarised = TaskStateRequest { summaries: BTreeMap::from([(0, "# Done\n".to_owned())]), ..done };
+        golden(&summarised, r##"{"steps":[],"outputs":{},"result":"cancelled","summaries":{"0":"# Done\n"}}"##);
+        let old: TaskStateRequest = serde_json::from_str(r#"{"steps":[],"outputs":{},"result":null}"#).unwrap();
+        assert!(old.summaries.is_empty());
         golden(&TaskStateResponse { cancel: true }, r#"{"cancel":true}"#);
         golden(&LogsQuery { from: 42 }, r#"{"from":42}"#);
         golden(&LogsResponse { next_line: 57 }, r#"{"next_line":57}"#);
@@ -829,8 +867,9 @@ pub(crate) mod tests {
         assert!(PollRequest { free_slots: 0 }.validate().is_err());
 
         let step = StepState { index: 0, status: StepStatus::Running, started_at: Some(5), stopped_at: None, log_index: 0, log_length: 0 };
-        let state =
-            |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| TaskStateRequest { steps, outputs, result }.validate();
+        let state = |steps: Vec<StepState>, outputs: BTreeMap<String, String>, result| {
+            TaskStateRequest { steps, outputs, result, summaries: BTreeMap::new() }.validate()
+        };
         assert!(state(vec![step], BTreeMap::new(), None).is_ok());
         assert!(state(vec![step], BTreeMap::new(), Some(TaskResult::Failure)).is_err(), "a final state with a running step");
         assert!(state(vec![step, step], BTreeMap::new(), None).is_err(), "a repeated index");
@@ -845,6 +884,24 @@ pub(crate) mod tests {
         assert!(state(Vec::new(), outputs("ok_name-1", MAX_OUTPUT_BYTES - 8), None).is_err());
         assert!(state(Vec::new(), outputs("1st", 1), None).is_err());
         assert!(state(Vec::new(), outputs(&"k".repeat(MAX_OUTPUT_KEY_BYTES + 1), 1), None).is_err());
+
+        // Actions: step summaries.
+        let summarised = |summaries: &[(u32, usize)]| TaskStateRequest {
+            steps: Vec::new(),
+            outputs: BTreeMap::new(),
+            result: Some(TaskResult::Success),
+            summaries: summaries.iter().map(|(index, bytes)| (*index, "x".repeat(*bytes))).collect(),
+        };
+        assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES)]).validate().is_ok());
+        assert!(summarised(&[(0, MAX_STEP_SUMMARY_BYTES + 1)]).validate().is_err());
+        assert!(summarised(&[(256, 1)]).validate().is_err(), "past the last step");
+        let four: Vec<_> = (0..4).map(|index| (index, MAX_STEP_SUMMARY_BYTES)).collect();
+        assert!(summarised(&four).validate().is_ok());
+        let five: Vec<_> = (0..5).map(|index| (index, MAX_STEP_SUMMARY_BYTES)).collect();
+        assert!(summarised(&five).validate().is_err(), "the task's budget");
+        let largest =
+            TaskStateRequest { outputs: BTreeMap::from([("big".to_owned(), "x".repeat(MAX_OUTPUT_BYTES - 3))]), ..summarised(&four) };
+        assert!(serde_json::to_vec(&largest).unwrap().len() < Endpoint::TaskState.body_cap(), "the largest valid call fits its cap");
     }
 
     #[test]
@@ -856,7 +913,7 @@ pub(crate) mod tests {
                 ("register", 65_536),
                 ("declare", 65_536),
                 ("poll", 4_096),
-                ("tasks/{id}/state", 1_048_576),
+                ("tasks/{id}/state", 4_194_304),
                 ("tasks/{id}/logs", 8_388_608),
                 ("unregister", 1_024)
             ]

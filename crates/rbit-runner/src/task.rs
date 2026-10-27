@@ -8,7 +8,10 @@
 //! reconnect backoff for up to [`FINAL_REPORT_DEADLINE`], and the directory is removed.
 //!
 //! The executor sees the task only through its [`Reporter`]: it appends log lines, moves
-//! steps through their states, records outputs and watches [`Reporter::cancellation`].
+//! steps through their states, records outputs and step summaries, and watches
+//! [`Reporter::cancellation`]. Summaries are masked like the log and kept within
+//! [`MAX_STEP_SUMMARY_BYTES`] each and [`MAX_TASK_SUMMARY_BYTES`] in all, counted as JSON
+//! encodes them, so a final state call always fits its cap.
 
 use std::{
     collections::BTreeMap,
@@ -19,7 +22,9 @@ use std::{
 };
 
 use rbit_workflow::{
-    protocol::{MAX_HEARTBEAT_INTERVAL, StepState, StepStatus, TaskId, TaskResult, TaskStateRequest},
+    protocol::{
+        MAX_HEARTBEAT_INTERVAL, MAX_STEP_SUMMARY_BYTES, MAX_TASK_SUMMARY_BYTES, StepState, StepStatus, TaskId, TaskResult, TaskStateRequest,
+    },
     spec::JobSpec,
 };
 use tokio::sync::Notify;
@@ -36,6 +41,9 @@ use crate::{
 pub const FINAL_REPORT_DEADLINE: Duration = Duration::from_mins(15);
 /// The shortest gap between two state calls, however often steps change.
 const MIN_REPORT_GAP: Duration = Duration::from_millis(500);
+// Actions: step summaries.
+/// What ends a summary that had to be cut.
+const SUMMARY_CUT: &str = "\n\n*rbit: this summary was cut to fit its size limit.*\n";
 
 /// Runs the jobs of claimed tasks.
 pub trait Executor: Send + Sync + 'static {
@@ -79,6 +87,9 @@ struct Progress {
     /// The step whose lines are being written.
     current: Option<usize>,
     outputs: BTreeMap<String, String>,
+    // Actions: step summaries.
+    /// Step summaries, masked and within their limits, by step index.
+    summaries: BTreeMap<u32, String>,
     /// The server answered `404`: nothing more is reported.
     gone: bool,
 }
@@ -104,7 +115,7 @@ impl Reporter {
             log,
             masker: Masker::default(),
             echo: None,
-            progress: Mutex::new(Progress { steps, current: None, outputs: BTreeMap::new(), gone: false }),
+            progress: Mutex::new(Progress { steps, current: None, outputs: BTreeMap::new(), summaries: BTreeMap::new(), gone: false }),
             changed: Notify::new(),
             cancel: CancellationToken::new(),
         })
@@ -222,6 +233,33 @@ impl Reporter {
         self.changed.notify_one();
     }
 
+    // Actions: step summaries.
+    /// Records what step `index` wrote to `GITHUB_STEP_SUMMARY`, masked. A summary longer
+    /// than its share of the limits is cut with a note; once the task's budget is spent,
+    /// later summaries are dropped with a warning in the log. A blank one is nothing.
+    pub fn set_summary(&self, index: usize, text: &str) {
+        let Ok(index) = u32::try_from(index) else { return };
+        if text.trim().is_empty() {
+            return;
+        }
+        let masked = self.mask(text);
+        let mut progress = self.lock();
+        let used: usize = progress.summaries.values().map(|summary| encoded_len(summary)).sum();
+        let budget = MAX_STEP_SUMMARY_BYTES.min(MAX_TASK_SUMMARY_BYTES.saturating_sub(used));
+        let fitted = fit_summary(&masked, budget);
+        let cut = fitted.as_ref().is_some_and(|fitted| fitted.len() != masked.len());
+        if let Some(fitted) = fitted {
+            progress.summaries.insert(index, fitted);
+        }
+        drop(progress);
+        if cut {
+            self.log("##[warning]the step summary was cut to fit its size limit");
+        } else if !self.lock().summaries.contains_key(&index) {
+            self.log("##[warning]the task's step summaries reached their size limit; this step's summary was dropped");
+        }
+        self.changed.notify_one();
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Progress> {
         self.progress.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -242,7 +280,7 @@ impl Reporter {
                 }
             }
         }
-        TaskStateRequest { steps, outputs: progress.outputs.clone(), result }
+        TaskStateRequest { steps, outputs: progress.outputs.clone(), result, summaries: progress.summaries.clone() }
     }
 
     fn is_gone(&self) -> bool {
@@ -434,9 +472,71 @@ async fn finish(client: &Client, reporter: &Reporter, result: TaskResult, pacing
     }
 }
 
+// Actions: step summaries.
+/// Bytes of `text` as a JSON string, without its quotes.
+fn encoded_len(text: &str) -> usize {
+    serde_json::to_string(text).map_or(usize::MAX, |encoded| encoded.len().saturating_sub(2))
+}
+
+/// `text` within `budget` encoded bytes: whole when it fits, else its longest beginning (on
+/// a character boundary) followed by [`SUMMARY_CUT`]; `None` when not even the note fits.
+fn fit_summary(text: &str, budget: usize) -> Option<String> {
+    if encoded_len(text) <= budget {
+        return Some(text.to_owned());
+    }
+    let room = budget.checked_sub(encoded_len(SUMMARY_CUT))?;
+    // The longest beginning whose encoding fits: encoding never shrinks text, so start
+    // from `room` bytes and search down.
+    let boundaries: Vec<usize> = text.char_indices().map(|(at, _)| at).chain([text.len()]).take_while(|at| *at <= room).collect();
+    let fits = boundaries.partition_point(|at| encoded_len(&text[..*at]) <= room);
+    let end = boundaries[..fits].last().copied().unwrap_or(0);
+    Some(format!("{}{SUMMARY_CUT}", &text[..end]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Actions: step summaries.
+    #[test]
+    fn summaries_are_masked_cut_and_capped() {
+        let dir = tempfile::tempdir().unwrap();
+        let reporter = Reporter::new(TaskId(1), dir.path(), 8).unwrap();
+        reporter.add_mask("s3cr3t-value");
+        reporter.set_summary(0, "# Deployed\nwith s3cr3t-value\n");
+        reporter.set_summary(1, "   \n");
+        let state = reporter.snapshot(None);
+        assert_eq!(state.summaries, BTreeMap::from([(0, "# Deployed\nwith ***\n".to_owned())]), "masked; a blank one is nothing");
+
+        // Too long for a step: cut with a note, on a character boundary, within the limit as encoded.
+        reporter.set_summary(2, &"é\"".repeat(MAX_STEP_SUMMARY_BYTES));
+        let cut = &reporter.snapshot(None).summaries[&2];
+        assert!(cut.ends_with(SUMMARY_CUT) && encoded_len(cut) <= MAX_STEP_SUMMARY_BYTES && encoded_len(cut) > MAX_STEP_SUMMARY_BYTES - 8);
+        assert!(reporter.lines().iter().any(|line| line.contains("was cut")));
+
+        // The task's budget: later summaries are dropped once it is spent.
+        for index in 3..8 {
+            reporter.set_summary(index, &"x".repeat(MAX_STEP_SUMMARY_BYTES));
+        }
+        let last = reporter.snapshot(Some(TaskResult::Success));
+        last.validate().unwrap();
+        let total: usize = last.summaries.values().map(|summary| encoded_len(summary)).sum();
+        assert!(total <= MAX_TASK_SUMMARY_BYTES, "{total}");
+        assert!(!last.summaries.contains_key(&7) && reporter.lines().iter().any(|line| line.contains("dropped")));
+        assert!(serde_json::to_vec(&last).unwrap().len() < rbit_workflow::protocol::Endpoint::TaskState.body_cap());
+    }
+
+    #[test]
+    fn fitting_keeps_what_fits() {
+        assert_eq!(fit_summary("short", 10).as_deref(), Some("short"));
+        assert_eq!(fit_summary("long enough", 3), None, "not even the note fits");
+        let room = encoded_len(SUMMARY_CUT) + 4;
+        let long = format!("abcd{}", "x".repeat(200));
+        assert_eq!(fit_summary(&long, room).as_deref(), Some(format!("abcd{SUMMARY_CUT}").as_str()));
+        // A control character takes six bytes encoded (`\u0001`): one fits in seven, two do not.
+        let controls = "\u{1}".repeat(40);
+        assert_eq!(fit_summary(&controls, encoded_len(SUMMARY_CUT) + 7).as_deref(), Some(format!("\u{1}{SUMMARY_CUT}").as_str()));
+    }
 
     #[test]
     fn steps_record_their_log_ranges() {

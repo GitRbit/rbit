@@ -766,6 +766,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
             "actions_schedules",
             "actions_secret_repositories",
             "actions_secrets",
+            "actions_step_summaries",
             "actions_steps",
             "actions_tasks",
             "actions_trusted_users",

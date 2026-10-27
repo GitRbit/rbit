@@ -29,8 +29,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, ArtifactRow, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary, RunsPage, WorkflowLink,
-            job_rows, workflow_file,
+            ActionsUrls, ArtifactRow, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary, RunsPage, SummaryView,
+            WorkflowLink, job_rows, workflow_file,
         },
         layout::Page,
     },
@@ -304,6 +304,13 @@ pub async fn show(
     // Actions: artifacts (A).
     let artifacts =
         actions.run_artifacts(&loaded.ctx, run.id).await?.iter().map(|artifact| ArtifactRow::new(artifact, &urls, run.number)).collect();
+    // Actions: step summaries.
+    let summaries = actions
+        .job_summaries(&loaded.ctx, &detail.jobs)
+        .await?
+        .iter()
+        .filter_map(|(id, texts)| detail.jobs.iter().find(|job| job.id == *id).map(|job| SummaryView::new(&job.name, texts)))
+        .collect();
     Ok(RunPage {
         page: page.titled(format!("{} #{} · Actions · {}", run.workflow_name, run.number, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
@@ -319,6 +326,7 @@ pub async fn show(
         rerun_failed_url: (finished && has_jobs && any_failed).then(|| urls.run_action(run.number, "rerun-failed")),
         approve_url: urls.run_action(run.number, "approve"),
         artifacts,
+        summaries,
     })
 }
 

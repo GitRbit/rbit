@@ -555,6 +555,42 @@ impl ActionsRunStore {
         Ok(u64::try_from(count).unwrap_or_default())
     }
 
+    // Actions: step summaries.
+    /// Keeps the summaries of `task`'s steps it does not have yet, by step number; steps the
+    /// task was not created with are ignored.
+    pub async fn add_summaries(&self, task: TaskId, summaries: &[(i64, &str)]) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        for (number, summary) in summaries {
+            sqlx::query(
+                "INSERT OR IGNORE INTO actions_step_summaries (task_id, number, summary) \
+                 SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM actions_steps WHERE task_id = ?1 AND number = ?2)",
+            )
+            .bind(task.0)
+            .bind(number)
+            .bind(summary)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// The step summaries of `tasks`: task, step number and text, by task and number.
+    pub async fn summaries_of_tasks(&self, tasks: &[TaskId]) -> Result<Vec<(TaskId, i64, String)>, StorageError> {
+        if tasks.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = format!("[{}]", tasks.iter().map(|task| task.0.to_string()).collect::<Vec<_>>().join(","));
+        let rows: Vec<(i64, i64, String)> = sqlx::query_as(
+            "SELECT task_id, number, summary FROM actions_step_summaries \
+             WHERE task_id IN (SELECT value FROM json_each(?)) ORDER BY task_id, number",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(task, number, summary)| (TaskId(task), number, summary)).collect())
+    }
+
     /// The steps of `tasks`, by task and number.
     pub async fn steps_of_tasks(&self, tasks: &[TaskId]) -> Result<Vec<Step>, StorageError> {
         if tasks.is_empty() {
