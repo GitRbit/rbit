@@ -311,7 +311,7 @@ impl Job {
         }
         for save in saves {
             self.reporter.log(&format!("##[group]Post: save cache `{}`", save.key));
-            if let Err(error) = steps::cache::save(self, &save.key, &save.paths).await {
+            if let Err(error) = steps::cache::save(self, &save.key, &save.paths, save.replace).await {
                 self.reporter.log(&format!("##[warning]{error}"));
             }
             self.reporter.log("##[endgroup]");

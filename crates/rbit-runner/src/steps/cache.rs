@@ -346,6 +346,8 @@ fn home() -> Option<PathBuf> {
 pub struct PendingSave {
     pub key: String,
     pub paths: Vec<String>,
+    /// Whether it replaces an entry for `key` that could not be restored.
+    pub replace: bool,
 }
 
 pub(super) fn lines(text: &str) -> Vec<String> {
@@ -367,7 +369,7 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
         return job.fail(&error);
     }
     if kind == BuiltinKind::CacheSave {
-        return match save(job, &key, &paths).await {
+        return match save(job, &key, &paths, false).await {
             Ok(()) => Outcome::success(BTreeMap::new()),
             Err(error) => job.fail(&error),
         };
@@ -376,38 +378,52 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
     let (store, scopes, repository, roots) = (job.cache.clone(), job.spec.cache.read.clone(), job.spec.cache.repository_id, roots(job));
     let found = store.find(repository, &scopes, &key, &restore_keys, &paths);
     let mut outputs = BTreeMap::from([("cache-primary-key".to_owned(), key.clone())]);
-    let Some(found) = found else {
+    let miss = |job: &mut Job, mut outputs: BTreeMap<String, String>, replace: bool| {
         if inputs.flag("fail-on-cache-miss") {
             return job.fail(&format!("no cache entry for `{key}`, and `fail-on-cache-miss` is set"));
         }
-        job.reporter.log(&format!("No cache entry for `{key}`"));
         outputs.insert("cache-hit".to_owned(), "false".to_owned());
         if kind == BuiltinKind::Cache {
-            job.post_saves.push(PendingSave { key, paths });
+            job.post_saves.push(PendingSave { key: key.clone(), paths: paths.clone(), replace });
         }
-        return Outcome::success(outputs);
+        Outcome::success(outputs)
+    };
+    let Some(found) = found else {
+        job.reporter.log(&format!("No cache entry for `{key}`"));
+        return miss(job, outputs, false);
     };
     job.reporter.log(&format!("Restoring the cache entry `{}` from scope `{}`", found.key, found.scope));
-    touch(&found.archive);
     let archive = found.archive.clone();
-    match tokio::task::spawn_blocking(move || extract(&archive, &roots)).await {
-        Ok(Ok(files)) => job.reporter.log(&format!("Restored {files} file(s)")),
-        Ok(Err(error)) => return job.fail(&format!("cannot restore the cache entry: {error}")),
-        Err(error) => return job.fail(&format!("cannot restore the cache entry: {error}")),
+    // As with GitHub's cache, an entry that cannot be restored (another job's save evicted
+    // it meanwhile, it is damaged) is a miss, not a failed job, and the job's save replaces
+    // it.
+    let error = match tokio::task::spawn_blocking(move || extract(&archive, &roots)).await {
+        Ok(Ok(files)) => {
+            job.reporter.log(&format!("Restored {files} file(s)"));
+            touch(&found.archive);
+            None
+        }
+        Ok(Err(error)) => Some(error.to_string()),
+        Err(error) => Some(error.to_string()),
+    };
+    if let Some(error) = error {
+        job.reporter.log(&format!("##[warning]cannot restore the cache entry `{}`, so it is a miss: {error}", found.key));
+        return miss(job, outputs, true);
     }
     outputs.insert("cache-matched-key".to_owned(), found.key.clone());
     let hit = found.key == key;
     outputs.insert("cache-hit".to_owned(), hit.to_string());
     if kind == BuiltinKind::Cache && !hit {
-        job.post_saves.push(PendingSave { key, paths });
+        job.post_saves.push(PendingSave { key, paths, replace: false });
     }
     Outcome::success(outputs)
 }
 
-/// Saves `paths` as `key` in the job's write scope.
-pub async fn save(job: &Job, key: &str, paths: &[String]) -> Result<(), String> {
+/// Saves `paths` as `key` in the job's write scope; an entry already there stays unless
+/// `replace`.
+pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Result<(), String> {
     let (repository, scope) = (job.spec.cache.repository_id, job.spec.cache.write.clone());
-    if job.cache.exists(repository, &scope, key) {
+    if !replace && job.cache.exists(repository, &scope, key) {
         job.reporter.log(&format!("The cache entry `{key}` already exists in scope `{scope}`; it is not saved again"));
         return Ok(());
     }

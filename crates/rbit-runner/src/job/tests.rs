@@ -468,4 +468,23 @@ async fn a_cache_saved_after_one_job_is_restored_in_the_next() {
     assert_eq!(reporter.state().outputs["hit"], "true");
     assert!(!text.contains("Saved the cache entry"), "an exact hit is not saved again");
     assert!(work.path().join("cache/1/refs/heads/main").is_dir(), "entries live under the repository and scope");
+
+    // An entry that cannot be restored is a miss, not a failed job.
+    for entry in std::fs::read_dir(work.path().join("cache/1/refs/heads/main")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.to_string_lossy().ends_with(".tar.gz") {
+            std::fs::write(&path, b"not an archive").unwrap();
+        }
+    }
+    let (result, reporter) = run(3, vec![cache_step(&key), step("mkdir cachedir\necho rebuilt > cachedir/x")]).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(text.contains("##[warning]cannot restore the cache entry `deps-"), "{text}");
+    assert_eq!(reporter.state().outputs["hit"], "false");
+    assert!(text.contains("Saved the cache entry `deps-"), "the job's save replaces it: {text}");
+    let (result, reporter) = run(4, vec![cache_step(&key), step("cat cachedir/x")]).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(reporter.lines().iter().any(|line| line.trim() == "rebuilt"), "{text}");
+    assert_eq!(reporter.state().outputs["hit"], "true");
 }
