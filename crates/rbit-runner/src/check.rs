@@ -1,7 +1,7 @@
 //! `rbit-runner check`: whether this host can run what the configuration promises.
 //!
 //! It reports whether docker or podman answers (the configured program, or both without a
-//! configuration), the `git` version (checkout needs 2.30 or later) and which shells of
+//! configuration), the `git` version (checkout needs 2.31 or later) and which shells of
 //! §12.2 exist. A configured backend that cannot work is an error, so `check` can gate a
 //! deployment script.
 
@@ -12,7 +12,7 @@ use rbit_workflow::protocol::Backend;
 use crate::{config, process};
 
 /// The oldest `git` the built-in checkout supports.
-pub const MIN_GIT: (u32, u32) = (2, 30);
+pub const MIN_GIT: (u32, u32) = (2, 31);
 /// The shells a `run:` step may name, in the order `check` lists them.
 pub const SHELLS: [&str; 6] = ["bash", "sh", "pwsh", "powershell", "cmd", "python"];
 
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(parse_git_version("git version 2.30.0"), Some((2, 30)));
         assert_eq!(parse_git_version("git version 2.39.5 (Apple Git-154)"), Some((2, 39)));
         assert_eq!(parse_git_version("hg 6.0"), None);
-        assert!((2, 29) < MIN_GIT && (3, 0) > MIN_GIT);
+        assert!((2, 30) < MIN_GIT && (2, 31) == MIN_GIT && (3, 0) > MIN_GIT);
     }
 
     #[tokio::test]

@@ -253,8 +253,16 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
         return job.fail("`with.path` must stay inside the workspace and not go through a symbolic link");
     };
     let Some(git) = process::find_program("git") else {
-        return job.fail("checkout needs `git` (2.30 or later) on the runner host");
+        return job.fail("checkout needs `git` (2.31 or later) on the runner host");
     };
+    // An older git ignores the GIT_CONFIG_* variables, and with them the task token and
+    // the protocols it may use.
+    if let Ok((version, text)) = crate::check::git_version().await
+        && version < crate::check::MIN_GIT
+    {
+        let (major, minor) = crate::check::MIN_GIT;
+        return job.fail(&format!("checkout needs git {major}.{minor} or later on the runner host, not {text}"));
+    }
     if let Err(error) = std::fs::create_dir_all(&target) {
         return job.fail(&format!("cannot create {}: {error}", target.display()));
     }

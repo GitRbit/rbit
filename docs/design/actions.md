@@ -1041,7 +1041,7 @@ The host backend is recommended only for repository-scoped runners of trusted re
 
 #### 12.5.5 Built-in checkout
 
-Checkout uses the `git` CLI (2.30 or later) on the runner host:
+Checkout uses the `git` CLI (2.31 or later, for `GIT_CONFIG_COUNT`) on the runner host:
 1. `init`.
 2. `remote add origin <url>/<owner>/<repo>`.
 3. `fetch --no-tags --depth=<n> origin <sha>`: by SHA, with tags and full history as `with:` asks.
