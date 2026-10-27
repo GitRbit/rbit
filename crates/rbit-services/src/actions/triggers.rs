@@ -448,6 +448,35 @@ pub(super) fn discover(
     limits: &Limits,
     deadline: &Deadline,
 ) -> Result<Vec<WorkflowFile>, GitError> {
+    Ok(workflow_paths(handle, reader, sha)?
+        .into_iter()
+        .map(|path| {
+            let parsed = read_workflow(handle, reader, sha, &path, limits, deadline);
+            WorkflowFile { path, parsed }
+        })
+        .collect())
+}
+
+// Actions: dispatch form.
+/// Blocking: the first workflow file of commit `sha` whose path `wanted` accepts, parsed,
+/// among the files [`discover`] reads; the others are not read.
+pub(super) fn discover_one(
+    handle: &Handle,
+    reader: &RepositoryReader,
+    sha: &str,
+    wanted: impl Fn(&str) -> bool,
+    limits: &Limits,
+    deadline: &Deadline,
+) -> Result<Option<WorkflowFile>, GitError> {
+    Ok(workflow_paths(handle, reader, sha)?.into_iter().find(|path| wanted(path)).map(|path| {
+        let parsed = read_workflow(handle, reader, sha, &path, limits, deadline);
+        WorkflowFile { path, parsed }
+    }))
+}
+
+/// Blocking: the paths of the workflow files of commit `sha`, by name: the YAML files of the
+/// first of [`WORKFLOW_DIRS`] that exists, at most [`MAX_WORKFLOW_FILES`].
+fn workflow_paths(handle: &Handle, reader: &RepositoryReader, sha: &str) -> Result<Vec<String>, GitError> {
     for dir in WORKFLOW_DIRS {
         let tree = match handle.block_on(reader.tree(sha.to_owned(), dir.to_owned())) {
             Ok(tree) => tree,
@@ -466,14 +495,7 @@ pub(super) fn discover(
             tracing::warn!(dir, files = names.len(), "only the first {MAX_WORKFLOW_FILES} workflow files are read");
             names.truncate(MAX_WORKFLOW_FILES);
         }
-        return Ok(names
-            .into_iter()
-            .map(|name| {
-                let path = format!("{dir}/{name}");
-                let parsed = read_workflow(handle, reader, sha, &path, limits, deadline);
-                WorkflowFile { path, parsed }
-            })
-            .collect());
+        return Ok(names.into_iter().map(|name| format!("{dir}/{name}")).collect());
     }
     Ok(Vec::new())
 }

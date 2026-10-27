@@ -31,7 +31,7 @@ use rbit_workflow::{Event, GroupContext, model::DispatchInput, trigger::resolve_
 use super::{
     ActionsService, context,
     runs::{Candidate, Trigger},
-    triggers::{MAX_WORKFLOW_FILES, WORKFLOW_DIRS, describe, discover, plan_workflow},
+    triggers::{MAX_WORKFLOW_FILES, WORKFLOW_DIRS, describe, discover_one, plan_workflow},
 };
 use crate::{RepoContext, ServiceError};
 
@@ -108,11 +108,12 @@ impl ActionsService {
         let (reader, limits) = (repo.reader.clone(), self.limits());
         let read = self
             .evaluate(move |handle, deadline| {
-                let files = discover(handle, &reader, &sha, &limits, deadline).map_err(|error| {
-                    tracing::warn!(%error, "cannot read the workflows for a dispatch form");
-                    "the workflows could not be read".to_owned()
+                // Only the one file: every writer's view of a workflow page reads it.
+                let found = discover_one(handle, &reader, &sha, |path| file.matches(path), &limits, deadline).map_err(|error| {
+                    tracing::warn!(%error, "cannot read the workflow for a dispatch form");
+                    "the workflow could not be read".to_owned()
                 })?;
-                let Some(found) = files.into_iter().find(|candidate| file.matches(&candidate.path)) else { return Ok(None) };
+                let Some(found) = found else { return Ok(None) };
                 let name = found.name();
                 let workflow = found.parsed.as_ref().map_err(|error| describe(&found.path, error))?;
                 Ok(workflow.on.workflow_dispatch.as_ref().map(|dispatch| (found.path.clone(), name, dispatch.inputs.clone())))
@@ -143,11 +144,12 @@ impl ActionsService {
         let evaluated_sha = sha.clone();
         let evaluated = self
             .evaluate(move |handle, deadline| {
-                let files = discover(handle, &reader, &evaluated_sha, &limits, deadline).map_err(|error| {
-                    tracing::warn!(%error, "cannot read the workflows to dispatch");
-                    "the workflows could not be read".to_owned()
-                })?;
-                let Some(found) = files.iter().find(|candidate| file.matches(&candidate.path)) else {
+                let found =
+                    discover_one(handle, &reader, &evaluated_sha, |path| file.matches(path), &limits, deadline).map_err(|error| {
+                        tracing::warn!(%error, "cannot read the workflow to dispatch");
+                        "the workflow could not be read".to_owned()
+                    })?;
+                let Some(found) = found else {
                     return Err(format!("there is no workflow `{}` at this ref", file.shown()));
                 };
                 let workflow = found.parsed.as_ref().map_err(|error| describe(&found.path, error))?;
