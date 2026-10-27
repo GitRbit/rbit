@@ -67,9 +67,20 @@ impl TaskGrant {
         }
     }
 
-    /// Whether it may comment on its own repository's issues and pull requests.
+    /// Whether it may comment on some of its own repository's threads: an endpoint that
+    /// comments asks no less of a task's token.
     pub fn can_comment(&self) -> bool {
         self.permissions.issues == PermissionLevel::Write || self.permissions.pull_requests == PermissionLevel::Write
+    }
+
+    // Actions: task tokens.
+    /// Whether it may comment on a thread of `kind`: an issue needs `issues: write`, a pull
+    /// request `pull-requests: write` or `issues: write` (its conversation is an issue's).
+    pub fn can_comment_on(&self, kind: rbit_core::IssueKind) -> bool {
+        match kind {
+            rbit_core::IssueKind::Issue => self.permissions.issues == PermissionLevel::Write,
+            rbit_core::IssueKind::Pull => self.can_comment(),
+        }
     }
 }
 
@@ -299,5 +310,16 @@ mod tests {
         assert!(grant(PermissionLevel::Read, PermissionLevel::Write).can_comment());
         assert!(!grant(PermissionLevel::Write, PermissionLevel::Read).can_comment());
         assert!(is_object_id(&"a".repeat(40)) && !is_object_id("HEAD"));
+        // Actions: task tokens. Issues need `issues: write`; pull requests either.
+        let pulls_only = TaskGrant {
+            permissions: TokenPermissions {
+                pull_requests: PermissionLevel::Write,
+                ..grant(PermissionLevel::Read, PermissionLevel::Read).permissions
+            },
+            ..grant(PermissionLevel::Read, PermissionLevel::Read)
+        };
+        assert!(pulls_only.can_comment_on(rbit_core::IssueKind::Pull) && !pulls_only.can_comment_on(rbit_core::IssueKind::Issue));
+        let issues = grant(PermissionLevel::Read, PermissionLevel::Write);
+        assert!(issues.can_comment_on(rbit_core::IssueKind::Issue) && issues.can_comment_on(rbit_core::IssueKind::Pull));
     }
 }

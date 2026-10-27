@@ -274,12 +274,13 @@ impl TimelineService {
 
     // Actions: task tokens.
     /// Adds a comment a workflow task wrote with its token, as rbit Actions: no author and
-    /// [`CommentSource::Actions`](rbit_core::CommentSource::Actions). `issues: write` or
-    /// `pull-requests: write` lets a task comment as a writer would, on locked threads too;
+    /// [`CommentSource::Actions`](rbit_core::CommentSource::Actions). `issues: write` (on any
+    /// thread) or `pull-requests: write` (on pull requests) lets a task comment as a writer
+    /// would, on locked threads too;
     /// the thread must be in its own repository, and the repository not archived. The task
     /// spends the API's per-task budget, not a person's content budget.
     pub async fn comment_for_task(&self, grant: &TaskGrant, ctx: &IssueContext, body: &str) -> Result<Comment, ServiceError> {
-        if ctx.repo.repo.repo.id != grant.repo || !grant.can_comment() {
+        if ctx.repo.repo.repo.id != grant.repo || !grant.can_comment_on(ctx.issue.kind) {
             return Err(ServiceError::Forbidden);
         }
         ctx.repo.ensure_writable()?;
