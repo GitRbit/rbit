@@ -336,11 +336,18 @@ impl ActionsService {
         let mut needs = BTreeMap::new();
         for need in &template.needs {
             let instances: Vec<&Job> = jobs.iter().filter(|job| &job.key == need).collect();
-            let result = match aggregate(instances.iter().map(|job| job.status)) {
-                Status::Success => JobResult::Success,
-                Status::Skipped => JobResult::Skipped,
-                Status::Cancelled => JobResult::Cancelled,
-                _ => JobResult::Failure,
+            // A failed instance fails the job even when `fail-fast` cancelled its siblings,
+            // as on GitHub, in `ExprStatus::of_needs` and in `rbit-runner exec`; a run's own
+            // status lets the cancellation win (`aggregate`).
+            let result = if instances.iter().any(|job| job.status == Status::Failure) {
+                JobResult::Failure
+            } else {
+                match aggregate(instances.iter().map(|job| job.status)) {
+                    Status::Success => JobResult::Success,
+                    Status::Skipped => JobResult::Skipped,
+                    Status::Cancelled => JobResult::Cancelled,
+                    _ => JobResult::Failure,
+                }
             };
             let mut outputs = BTreeMap::new();
             for job in instances {

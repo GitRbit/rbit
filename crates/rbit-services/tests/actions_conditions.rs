@@ -127,6 +127,36 @@ async fn fail_fast_cancels_matrix_siblings_unless_turned_off() {
 }
 
 #[tokio::test]
+async fn a_matrix_job_whose_failure_cancelled_its_siblings_failed() {
+    let fixture = Fixture::new().await;
+    let workflow = "on: push
+jobs:
+  test:
+    strategy:
+      matrix: {n: [1, 2]}
+    runs-on: x
+    steps: [{run: x}]
+  on-failure:
+    needs: test
+    if: failure() && needs.test.result == 'failure'
+    runs-on: x
+    steps: [{run: x}]
+  on-cancel:
+    needs: test
+    if: cancelled()
+    runs-on: x
+    steps: [{run: x}]
+";
+    let run = pushed(&fixture, workflow, "refs/heads/main").await;
+    run_next(&fixture, 1, Status::Failure, &[]).await;
+    // As on GitHub (and in `rbit-runner exec`): the failure the cancellations came from wins.
+    assert_eq!(
+        statuses(&fixture, &run).await,
+        keyed(&[("test", Status::Failure), ("test", Status::Cancelled), ("on-failure", Status::Waiting), ("on-cancel", Status::Skipped)])
+    );
+}
+
+#[tokio::test]
 async fn max_parallel_lets_one_matrix_job_run_at_a_time() {
     let fixture = Fixture::new().await;
     let workflow = "on: push\njobs:\n  test:\n    strategy:\n      max-parallel: 1\n      matrix: {n: [1, 2]}\n    runs-on: x\n    steps: [{run: x}]\n";
