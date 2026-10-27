@@ -1327,9 +1327,11 @@ and what is known to be missing. Where they disagree, this section and the code 
   organisation and user level; instance runners stay on the administration pages.
 - Workflow statuses and comments (task tokens) are written as rbit Actions: no creator or
   author, `source = actions`, shown as `rbit-actions[bot]` (migrations `0049`, `0050`).
-  Commenting needs `issues` or `pull-requests: write` and lets a task read its own
-  repository's threads whatever its `contents` permission. Task tokens may still not create
-  releases or release assets (below).
+  Commenting on an issue needs `issues: write`, on a pull request either that or
+  `pull-requests: write`, and lets a task read its own repository's threads whatever its
+  `contents` permission. A workflow's comment records no cross-reference to the threads it
+  mentions: rbit Actions has no account the other thread could show. Task tokens may still
+  not create releases or release assets (below).
 - The dispatch form posts through the same `ActionsService::dispatch` as the API. Choosing
   a branch or tag reloads the workflow's page with `?ref=`, so the inputs shown are always
   those of the workflow at that ref. Workflow pages exist for the default branch's workflow
@@ -1350,6 +1352,9 @@ and what is known to be missing. Where they disagree, this section and the code 
   allowlist, but those handlers still need a `User`, so a task gets 403. Letting a task do
   it needs the rule that its token starts no runs carried through the release's tag and the
   `release` event first, and a release author of rbit Actions.
+- **Threads for workflows.** Task tokens can create comments but not list, read or edit
+  issues and comments, so the common "update my earlier comment" pattern of pull request
+  bots does not work yet.
 - **No attempt picker or log timestamps** on the pages.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
