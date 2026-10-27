@@ -1,0 +1,163 @@
+{
+  "cases": [
+    {
+      "id": "concurrency-group-from-ref",
+      "area": "concurrency",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > concurrency: a string group may use the github context, and the run is not cancelled by default.",
+      "split": "test",
+      "kind": "concurrency",
+      "input": {
+        "yaml": [
+          "on: push",
+          "concurrency: 'ci-${{ github.ref }}'",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "github": {
+            "ref": "refs/heads/main"
+          }
+        }
+      },
+      "expect": {
+        "value": {
+          "group": "ci-refs/heads/main",
+          "cancel_in_progress": false
+        }
+      }
+    },
+    {
+      "id": "concurrency-object-cancel-in-progress",
+      "area": "concurrency",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > concurrency: cancel-in-progress: true cancels the run already in progress in the group.",
+      "split": "train",
+      "kind": "concurrency",
+      "input": {
+        "yaml": [
+          "on: push",
+          "concurrency:",
+          "  group: ci",
+          "  cancel-in-progress: true",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "value": {
+          "group": "ci",
+          "cancel_in_progress": true
+        }
+      }
+    },
+    {
+      "id": "concurrency-missing-pr-number-is-empty",
+      "area": "concurrency",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "On a push there is no pull request, so the property is null and renders as nothing; the group is ci- rather than an error.",
+      "source": "GitHub Docs, Workflow syntax > concurrency: a missing context property is null, which renders as the empty string in a group.",
+      "split": "test",
+      "kind": "concurrency",
+      "input": {
+        "yaml": [
+          "on: push",
+          "concurrency: 'ci-${{ github.event.pull_request.number }}'",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "github": {
+            "event_name": "push"
+          }
+        }
+      },
+      "expect": {
+        "value": {
+          "group": "ci-",
+          "cancel_in_progress": false
+        }
+      }
+    },
+    {
+      "id": "concurrency-pr-number-group",
+      "area": "concurrency",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > concurrency: a pull request group is keyed by the pull request number.",
+      "split": "test",
+      "kind": "concurrency",
+      "input": {
+        "yaml": [
+          "on: pull_request",
+          "concurrency: 'ci-${{ github.event.pull_request.number }}'",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "github": {
+            "event": {
+              "pull_request": {
+                "number": 7
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "value": {
+          "group": "ci-7",
+          "cancel_in_progress": false
+        }
+      }
+    },
+    {
+      "id": "run-name-from-dispatch-input",
+      "area": "concurrency",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > run-name: may use the inputs context and names the run in the UI.",
+      "split": "test",
+      "kind": "run_name",
+      "input": {
+        "yaml": [
+          "on: workflow_dispatch",
+          "run-name: Deploy ${{ inputs.target }}",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "inputs": {
+            "target": "arm64"
+          }
+        }
+      },
+      "expect": {
+        "value": "Deploy arm64"
+      }
+    }
+  ]
+}
