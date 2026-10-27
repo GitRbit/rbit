@@ -1090,7 +1090,7 @@ The cache is runner-local by design, so a hit needs the same runner.
 | `POST register` | 64 KiB | Takes a registration token (§11.9 rules), name, labels and capabilities (`backends`, `os`, `arch`, `capacity`, `version`, `ephemeral`). Returns the runner id, the credential (shown once) and the poll and heartbeat intervals. |
 | `POST declare` | 64 KiB | Sends labels and capabilities at every start. Pinned labels are enforced, and a label change bumps `tasks_version`. |
 | `POST poll` | 4 KiB | Long poll for one task when `free_slots ≥ 1`, with an `Idempotency-Key` header. Returns `200 {task: JobSpec}`, or `204` after at most 25 s. |
-| `POST tasks/{id}/state` | 1 MiB | Heartbeat (at least every 10 s), step states, the result when final, and outputs. Returns `{cancel: bool}`. |
+| `POST tasks/{id}/state` | 4 MiB | Heartbeat (at least every 10 s), step states, the result when final, outputs and step summaries. Returns `{cancel: bool}`. |
 | `POST tasks/{id}/logs?from=<line>` | 8 MiB | `text/plain` lines, stored only from the server's current line count. A resend overlaps harmlessly; a gap answers `409 {next_line}`. |
 | `PUT tasks/{id}/artifacts/{name}` | `max_artifact_bytes` | Stream A: upload an artifact. |
 | `GET tasks/{id}/artifacts[/{name}]` | — | Stream A: this run's artifacts. |
@@ -1321,17 +1321,36 @@ and what is known to be missing. Where they disagree, this section and the code 
 - The REST API identifies workflows by file name, takes secret values in plain JSON over
   TLS, answers 409 for actions on a run in the wrong state, and never trusts an author on
   approval.
+- A job's log (`…/jobs/{job_id}/logs`) and an artifact's archive (`…/artifacts/{id}/tar.gz`)
+  are the files themselves, not GitHub's redirects to them; artifacts are tar.gz, so the
+  `zip` format is 404. Runners and registration tokens are in the API at repository,
+  organisation and user level; instance runners stay on the administration pages.
+- Workflow statuses and comments (task tokens) are written as rbit Actions: no creator or
+  author, `source = actions`, shown as `rbit-actions[bot]` (migrations `0049`, `0050`).
+  Commenting needs `issues` or `pull-requests: write` and lets a task read its own
+  repository's threads whatever its `contents` permission. Task tokens may still not create
+  releases or release assets (below).
+- The dispatch form posts through the same `ActionsService::dispatch` as the API. Choosing
+  a branch or tag reloads the workflow's page with `?ref=`, so the inputs shown are always
+  those of the workflow at that ref. Workflow pages exist for the default branch's workflow
+  files even before they ran (named by file until they do), so a dispatch-only workflow can
+  be started.
+- Step summaries travel in `TaskStateRequest.summaries`, by step index, at most 64 KiB each
+  and 256 KiB per task as JSON encodes them. The runner masks them and cuts or drops what
+  does not fit, so a final call always fits; the server masks them again, keeps the first one
+  per step and shows each job's as sanitised Markdown on the run page. The state call's cap
+  is 4 MiB (it was 1 MiB, which job outputs alone could fill).
+- Metrics (§9) are counted where each run and job transition is announced once, so resent
+  state calls count nothing; `rpc_total`'s labels come from fixed sets, and the two gauges
+  are set by the once-a-minute sweep.
 
 ### 13.2 Known gaps
 
-- **Task tokens on API writes.** Statuses, releases and comments are on the task allowlist,
-  but their handlers need a `User`, so a task gets 403 there; workflows cannot post commit
-  statuses or comments yet.
-- **No dispatch form, attempt picker or log timestamps** on the pages; dispatch is API-only.
-- **The step summary** (`GITHUB_STEP_SUMMARY`) is read and capped but not sent; the protocol
-  has no field for it.
-- **REST API:** no job log, runner, registration token or artifact endpoints.
-- **Metrics:** the Actions metrics of §9 are not exported.
+- **Releases from workflows.** Creating releases and release assets is on the task
+  allowlist, but those handlers still need a `User`, so a task gets 403. Letting a task do
+  it needs the rule that its token starts no runs carried through the release's tag and the
+  `release` event first, and a release author of rbit Actions.
+- **No attempt picker or log timestamps** on the pages.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
 - **Not exercised yet:** the container backend against a real Docker or Podman, and the
@@ -1352,6 +1371,9 @@ The plan text above keeps the old numbers.
 **`0050_comment_source.sql`** adds `issue_comments.source` (`user` or `actions`), as `0049` did
 for statuses: a workflow task commenting with its token writes as rbit Actions, with no author,
 and must not look like a comment whose author was deleted (a ghost).
+
+**`0051_step_summaries.sql`** adds `actions_step_summaries` (task, step number, Markdown up to
+64 KiB), apart from the small rows of `actions_steps` and deleted with its task.
 
 ### 13.4 Commits
 

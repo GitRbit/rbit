@@ -421,6 +421,15 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
 | `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
 | `rbit_notification_digests_total` | counter | `outcome` (`sent`, `failed`) — one per email digest handed to the mail transport |
+| `rbit_actions_runs_total` | counter | `event` (`push`, `pull_request`, `workflow_dispatch`, `schedule`), `outcome` (`success`, `failure`, `cancelled`, `skipped`) — finished runs, Actions only |
+| `rbit_actions_jobs_total` | counter | `outcome` — finished jobs |
+| `rbit_actions_job_queue_seconds` | histogram | — from queued to started, when a runner takes a job |
+| `rbit_actions_job_duration_seconds` | histogram | — from started to finished |
+| `rbit_actions_rpc_total` | counter | `method` (`register`, `declare`, `poll`, `task_state`, `task_logs`, `unregister`, `artifact_list`, `artifact_upload`, `artifact_download`), `code` (`ok` or the protocol's error code) — runner calls |
+| `rbit_actions_log_bytes_total` | counter | — job log bytes written |
+| `rbit_actions_workflow_errors_total` | counter | `reason` (`parse`, `limit`, `plan`, `timeout`) — runs that failed before any job |
+| `rbit_actions_jobs_waiting` | gauge | — jobs waiting for a runner (set once a minute) |
+| `rbit_actions_runners_online` | gauge | — runners that called in the last 90 seconds (set once a minute) |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.

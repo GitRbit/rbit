@@ -75,7 +75,7 @@ repository can keep GitHub's workflows and add rbit's own beside them.
 |---|---|
 | `push` | `branches`, `branches-ignore`, `tags`, `tags-ignore`, `paths`, `paths-ignore` |
 | `pull_request` | `types` (default `opened`, `reopened`, `synchronize`) and the same filters |
-| `workflow_dispatch` | `inputs` of type `string`, `boolean`, `number`, `choice`; started through the REST API |
+| `workflow_dispatch` | `inputs` of type `string`, `boolean`, `number`, `choice`; started with **Run workflow** on the workflow's page or through the REST API |
 | `schedule` | `cron`, in UTC |
 
 A commit message or pull request title containing `[skip ci]` (or `[ci skip]`, `[no ci]`,
@@ -152,8 +152,11 @@ for example `env: TOKEN: ${{ secrets.TOKEN }}`; the task's token is `secrets.GIT
 ### Files and commands steps can use
 
 `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH` and `GITHUB_STEP_SUMMARY` (with `RBIT_*` aliases),
-in both the `name=value` and heredoc forms; `::add-mask::`, `::group::`/`::endgroup::`,
-`::error::`, `::warning::`, `::notice::` and `::stop-commands::`. The environment has
+in both the `name=value` and heredoc forms. What steps write to `GITHUB_STEP_SUMMARY` is shown
+as Markdown below the jobs on the run page: up to 64 KiB per step and 256 KiB per job, with
+secrets masked; a longer summary is cut with a note. Steps can also use `::add-mask::`,
+`::group::`/`::endgroup::`, `::error::`, `::warning::`, `::notice::` and `::stop-commands::`.
+The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
 variables.
 
@@ -165,12 +168,29 @@ selected ones. A repository's own secret or variable wins over an owner's of the
 Secret values are sealed with AES-256-GCM under a key file that is not part of the database
 or its backups, and are never shown again after you save them.
 
+## Running a workflow by hand
+
+A workflow with `on: workflow_dispatch` has **Run workflow** on its page for anyone who can
+write to the repository. Choose the branch or tag to run it from (the form then shows the
+workflow's inputs at that ref), fill in the inputs and run it; the new run opens. Workflows on
+the default branch are listed on the Actions tab even before they ever ran.
+
+## The workflow's token
+
+`secrets.GITHUB_TOKEN` (or `RBIT_TOKEN`) works with `git` and with a part of the REST API at
+`GITHUB_API_URL`: reading the repository, its refs, commits and releases, posting commit
+statuses (with `contents: write`) and commenting on issues and pull requests (with
+`issues: write` or `pull-requests: write`). Statuses and comments it writes show as
+`rbit-actions[bot]`. Untrusted runs (forks, outside authors) get a read-only token.
+
 ## The REST API and webhooks
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
-runs, dispatches workflows and manages secrets and variables, in GitHub's shapes (see the
-OpenAPI document at `/api/v1/openapi.json`). Webhooks can subscribe to `workflow_run` and
-`workflow_job`.
+runs, dispatches workflows, serves job logs and artifacts, and manages secrets, variables and
+runners (with registration tokens), in GitHub's shapes (see the OpenAPI document at
+`/api/v1/openapi.json`); organisations (`/orgs/{org}/actions/...`) and users
+(`/user/actions/...`) have their own secrets, variables and runners. Webhooks can subscribe
+to `workflow_run` and `workflow_job`.
 
 ## Differences from GitHub Actions
 
@@ -182,6 +202,6 @@ OpenAPI document at `/api/v1/openapi.json`). Webhooks can subscribe to `workflow
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
 - A workflow is identified by its file name in the API.
-- The step summary (`GITHUB_STEP_SUMMARY`) is accepted but not shown yet.
-- Manual runs (`workflow_dispatch`) start through the REST API; the pages have no form for them
-  yet.
+- A job's log and an artifact are downloaded directly from the API, not through a redirect,
+  and artifacts are tar.gz archives (`…/artifacts/{id}/tar.gz`), not zip.
+- The workflow's token cannot create releases yet.

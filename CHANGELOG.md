@@ -35,12 +35,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pull requests from forks and from people without write access run read-only, without
   secrets or variables, after a writer approves them.
 - `workflow_run` and `workflow_job` webhooks, and `/api/v1/repos/{owner}/{repo}/actions/…`
-  endpoints for runs, jobs, workflows, dispatch, secrets and variables.
+  endpoints for runs, jobs, job logs, artifacts, workflows, dispatch, secrets, variables,
+  runners and registration tokens (runners, secrets and variables for organisations and users
+  too).
+- **Run workflow** on a `workflow_dispatch` workflow's page, with its inputs at the chosen
+  branch or tag; workflows on the default branch are listed before they ever ran.
+- Workflows post commit statuses and comment on issues and pull requests with their token,
+  shown as `rbit-actions[bot]`.
+- What steps write to `GITHUB_STEP_SUMMARY` is shown as Markdown on the run page.
+- `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
+  log bytes, workflow errors, waiting jobs and online runners.
 
 ### Upgrade notes
 
-- Migrations `0048` and `0049` add the Actions tables and a `source` column on commit
-  statuses. Nothing changes until an administrator enables Actions; with it off no Actions
+- Migrations `0048` to `0051` add the Actions tables, a `source` column on commit statuses
+  and comments, and step summaries. Nothing changes until an administrator enables Actions; with it off no Actions
   table is written and `<data_dir>/actions` is not created.
 - With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
   copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
