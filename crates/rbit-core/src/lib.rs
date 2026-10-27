@@ -43,8 +43,8 @@ pub use account::{Account, AccountId, AccountKind, User};
 pub use config::Config;
 pub use instance::{InstanceSettings, OrgCreationPolicy, RegistrationMode};
 pub use issue::{
-    Comment, CommentId, EventId, Issue, IssueId, IssueKind, IssueNumber, IssuePermissions, IssueState, IssueText, IssueTitle, LabelId,
-    MilestoneId, ReviewId, StateReason, TimelineEvent,
+    Comment, CommentId, CommentSource, EventId, Issue, IssueId, IssueKind, IssueNumber, IssuePermissions, IssueState, IssueText,
+    IssueTitle, LabelId, MilestoneId, ReviewId, StateReason, TimelineEvent,
 };
 pub use membership::{BasePermission, Permission, TeamName};
 pub use names::{AccountName, Email, NameError, RepoName};

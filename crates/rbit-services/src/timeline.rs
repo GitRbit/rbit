@@ -22,7 +22,7 @@ use rbit_core::{
 use rbit_storage::sqlite::issues::{NewIssue, StoredTimelineItem};
 pub use rbit_storage::sqlite::issues::{TimelineCursor, TimelineItemId};
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
+use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, actions::tokens::TaskGrant};
 
 /// Most entries one [`TimelineService::timeline`] call returns.
 pub const MAX_TIMELINE_PAGE: u32 = 200;
@@ -268,7 +268,26 @@ impl TimelineService {
             .add_comment(ctx.issue.id, actor.id(), &body, Timestamp::now())
             .await?
             .ok_or(ServiceError::NotFound)?;
-        self.publish_comment(ctx, comment.id, actor, CommentAction::Created);
+        self.publish_comment(ctx, comment.id, Some(actor), CommentAction::Created);
+        Ok(comment)
+    }
+
+    // Actions: task tokens.
+    /// Adds a comment a workflow task wrote with its token, as rbit Actions: no author and
+    /// [`CommentSource::Actions`](rbit_core::CommentSource::Actions). `issues: write` or
+    /// `pull-requests: write` lets a task comment as a writer would, on locked threads too;
+    /// the thread must be in its own repository, and the repository not archived. The task
+    /// spends the API's per-task budget, not a person's content budget.
+    pub async fn comment_for_task(&self, grant: &TaskGrant, ctx: &IssueContext, body: &str) -> Result<Comment, ServiceError> {
+        if ctx.repo.repo.repo.id != grant.repo || !grant.can_comment() {
+            return Err(ServiceError::Forbidden);
+        }
+        ctx.repo.ensure_writable()?;
+        let body = IssueText::comment(body)?;
+        let store = self.ctx.database.issues();
+        let comment = store.add_actions_comment(ctx.issue.id, &body, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
+        tracing::info!(repo = grant.repo.0, issue = ctx.issue.number.get(), task = grant.task.0, "comment written by a workflow task");
+        self.publish_comment(ctx, comment.id, None, CommentAction::Created);
         Ok(comment)
     }
 
@@ -286,7 +305,7 @@ impl TimelineService {
         }
         self.spend(actor)?;
         let edited = store.edit_comment(id, &body, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-        self.publish_comment(ctx, id, actor, CommentAction::Edited { previous_body: comment.body.into() });
+        self.publish_comment(ctx, id, Some(actor), CommentAction::Edited { previous_body: comment.body.into() });
         Ok(edited)
     }
 
@@ -299,7 +318,7 @@ impl TimelineService {
         }
         ctx.repo.ensure_writable()?;
         if let Some(snapshot) = store.delete_comment(id).await? {
-            self.publish_comment(ctx, id, actor, CommentAction::Deleted { snapshot });
+            self.publish_comment(ctx, id, Some(actor), CommentAction::Deleted { snapshot });
         }
         Ok(())
     }
@@ -404,7 +423,8 @@ impl TimelineService {
         });
     }
 
-    fn publish_comment(&self, ctx: &IssueContext, comment: CommentId, actor: &User, action: CommentAction) {
+    /// Publishes what happened to `comment`; `actor` is `None` for rbit Actions.
+    fn publish_comment(&self, ctx: &IssueContext, comment: CommentId, actor: Option<&User>, action: CommentAction) {
         let issue = &ctx.issue;
         self.ctx.events.publish(DomainEvent::IssueComment {
             repo: issue.repo_id,
@@ -412,7 +432,7 @@ impl TimelineService {
             number: issue.number,
             kind: issue.kind,
             comment,
-            actor: actor.id(),
+            actor: actor.map(User::id),
             action,
         });
     }

@@ -231,6 +231,46 @@ async fn writing_tasks_post_statuses_as_rbit_actions() {
 }
 
 #[tokio::test]
+async fn tasks_that_may_comment_write_as_rbit_actions() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let repo = fixture.repo().await;
+    let input = rbit_services::issues::NewIssueInput { title: "Benchmarks".into(), ..Default::default() };
+    let issue = fixture.services.issues.create(&fixture.alice, &repo, input).await.unwrap();
+    let (_, _, token) = running_task(&fixture).await;
+    let bearer = format!("Bearer {token}");
+    let path = format!("/api/v1/repos/alice/rocket/issues/{}/comments", issue.number.get());
+    let body = json!({"body": "3% faster than main"});
+    assert_eq!(
+        send(&fixture, Method::POST, &path, Some(&bearer), Some(body.clone())).await.0,
+        StatusCode::FORBIDDEN,
+        "read is the default"
+    );
+
+    let write = DefaultTokenPermission::Write;
+    fixture.database.actions_settings().set_token_permission(repo.repo.repo.id, write, Timestamp::now()).await.unwrap();
+    let (status, json) = send(&fixture, Method::POST, &path, Some(&bearer), Some(body)).await;
+    assert_eq!(status, StatusCode::CREATED, "{json}");
+    assert_eq!(json["user"]["login"], "rbit-actions[bot]", "a workflow's comment is rbit Actions', not a person's: {json}");
+    let id = rbit_core::CommentId(json["id"].as_i64().unwrap());
+    let stored = fixture.database.issues().find_comment(issue.id, id).await.unwrap().unwrap();
+    assert_eq!((stored.author, stored.source), (None, rbit_core::CommentSource::Actions));
+
+    // Reading it back shows the bot too; editing it stays with no one.
+    assert_eq!(send(&fixture, Method::GET, &path, Some(&bearer), None).await.0, StatusCode::FORBIDDEN, "listing is not on the allowlist");
+    let thread = fixture.services.timeline.open(Some(&fixture.alice), repo.clone(), issue.number).await.unwrap();
+    let (comment, author) = fixture.services.timeline.find_comment(&thread, id).await.unwrap();
+    assert_eq!((comment.source, author.is_none()), (rbit_core::CommentSource::Actions, true));
+    let edited = fixture.services.timeline.edit_comment(&fixture.alice, &thread, id, "mine now").await;
+    assert!(matches!(edited, Err(rbit_services::ServiceError::Forbidden)), "{edited:?}");
+
+    // Another repository's threads stay out of reach.
+    assert_eq!(
+        send(&fixture, Method::POST, "/api/v1/repos/bob/open/issues/1/comments", Some(&bearer), Some(json!({"body": "hi"}))).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
 async fn task_pushes_land_unless_they_change_workflows() {
     let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
     let repo = fixture.repo().await;

@@ -337,7 +337,7 @@ async fn reviews_and_review_requests_notify() {
         number: pull.number,
         kind: IssueKind::Pull,
         comment: rbit_core::CommentId(1),
-        actor: fixture.carol.id(),
+        actor: Some(fixture.carol.id()),
         action: CommentAction::Created,
     };
     notifications.handle_event(&deleted).await.unwrap();

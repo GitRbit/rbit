@@ -1048,7 +1048,7 @@ impl IssueService {
                     return Ok(());
                 };
                 self.record_mentions(*issue, comment.body.as_str()).await?;
-                self.references.record_cross_references(&source, Some(*actor), comment.body.as_str()).await
+                self.references.record_cross_references(&source, *actor, comment.body.as_str()).await
             }
             DomainEvent::Issue {
                 kind: IssueKind::Pull,

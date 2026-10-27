@@ -1341,6 +1341,10 @@ open, so merging it renumbered the Actions migrations: `0044_actions.sql` is now
 **`0048_actions.sql`** and `0045_commit_status_source.sql` is **`0049_commit_status_source.sql`**.
 The plan text above keeps the old numbers.
 
+**`0050_comment_source.sql`** adds `issue_comments.source` (`user` or `actions`), as `0049` did
+for statuses: a workflow task commenting with its token writes as rbit Actions, with no author,
+and must not look like a comment whose author was deleted (a ghost).
+
 ### 13.4 Commits
 
 Commits carry the contributor's configured Git identity, which is not the one §12.11 names,

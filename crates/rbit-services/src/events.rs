@@ -93,7 +93,8 @@ pub enum DomainEvent {
         number: IssueNumber,
         kind: IssueKind,
         comment: CommentId,
-        actor: AccountId,
+        /// `None` for rbit Actions: a workflow task commenting with its token.
+        actor: Option<AccountId>,
         action: CommentAction,
     },
     /// A pull request review was submitted, edited or dismissed. Published by P.

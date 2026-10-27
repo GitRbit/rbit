@@ -6,13 +6,14 @@
   <div class="box min-w-0 flex-1 overflow-hidden">
     <header class="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-subtle px-3 py-1.5 text-[13px] sm:px-4">
       <span class="sm:hidden">{% call ui::avatar(comment.author.avatar, "size-5 text-[9px]") %}{% endcall %}</span>
-      {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium text-ink-muted">{{ comment.author.name }}</span>{% endif %}
+      {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium {% if comment.author.is_bot %}text-ink{% else %}text-ink-muted{% endif %}">{{ comment.author.name }}</span>{% endif %}
+      {% if comment.author.is_bot %}<span class="badge">bot</span>{% endif %}
       <span class="text-ink-muted">{% if comment.is_opening_post %}opened{% else %}commented{% endif %} <a href="#{{ comment.anchor }}" class="hover:text-ink hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a></span>
       {% if comment.edited %}<span class="text-xs text-ink-faint">edited</span>{% endif %}
       <span class="ml-auto flex items-center gap-1">
         {% if comment.by_thread_author %}<span class="badge">Author</span>{% endif %}
         {% if comment.can_reply && !comment.editing %}
-        <button type="button" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" data-reply="{{ comment.anchor }}" data-reply-author="{% if !comment.author.is_ghost %}{{ comment.author.name }}{% endif %}" hidden>Reply</button>
+        <button type="button" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" data-reply="{{ comment.anchor }}" data-reply-author="{% if !comment.author.is_ghost && !comment.author.is_bot %}{{ comment.author.name }}{% endif %}" hidden>Reply</button>
         {% endif %}
         {% if comment.can_edit && !comment.editing %}
         <a href="{{ comment.edit_url }}" class="btn btn-ghost h-8 px-2 text-xs sm:h-7" hx-get="{{ comment.edit_url }}" hx-select="#{{ comment.anchor }}" hx-target="#{{ comment.anchor }}" hx-swap="outerHTML" hx-push-url="true">Edit</a>

@@ -13,7 +13,7 @@
 //! and `organization` for organisation repositories.
 
 use rbit_core::{
-    Account, AccountId, Issue, IssueKind,
+    Account, AccountId, CommentSource, Issue, IssueKind,
     issue::{CommentAction, IssueAction},
     repository::OwnedRepository,
     webhook::WebhookEvent,
@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use super::{IssueMetadata, MilestoneRef, json as issue_json};
 use crate::{
     DomainEvent, ServiceContext, ServiceError,
+    statuses::hooks::actions_bot,
     webhooks::{
         HookPayload,
         payloads::{account, repository, with_organization},
@@ -102,7 +103,12 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
             if let CommentAction::Edited { previous_body } = action {
                 body["changes"] = json!({ "body": { "from": previous_body } });
             }
-            Ok(Some(finish(ctx, body, &repo, Some(*actor), WebhookEvent::IssueComment, base_url).await?))
+            let mut payload = finish(ctx, body, &repo, *actor, WebhookEvent::IssueComment, base_url).await?;
+            // Actions: task tokens. A workflow's comment is sent by rbit Actions.
+            if stored.source == CommentSource::Actions {
+                payload.body["sender"] = actions_bot();
+            }
+            Ok(Some(payload))
         }
         _ => Ok(None),
     }
@@ -290,7 +296,7 @@ mod tests {
             number: pull.number,
             kind: IssueKind::Pull,
             comment: comment.id,
-            actor: fixture.alice.id(),
+            actor: Some(fixture.alice.id()),
             action,
         };
         let created = fixture.body(&event(CommentAction::Created)).await.unwrap();

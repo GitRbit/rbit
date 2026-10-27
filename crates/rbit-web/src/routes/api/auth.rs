@@ -180,7 +180,11 @@ impl Caller {
     pub async fn open_repo(&self, state: &AppState, owner: &str, name: &str) -> ApiResult<RepoContext> {
         // Actions: S. A task: its own repository at its grant, others public and read-only.
         if let (Some((grant, need)), Some(actions)) = (&self.task, &state.services.actions) {
-            let ctx = actions.open_for_task(grant, owner, name).await?;
+            let ctx = if *need == TaskNeed::Comment {
+                actions.open_for_task_comment(grant, owner, name).await?
+            } else {
+                actions.open_for_task(grant, owner, name).await?
+            };
             if need.writes() && ctx.repo.repo.id != grant.repo {
                 return Err(ApiError::forbidden("A workflow task may change only its own repository"));
             }

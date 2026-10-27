@@ -54,9 +54,15 @@ pub(super) async fn create_comment(
     ApiJson(body): ApiJson<CommentBody>,
 ) -> ApiResult<Response> {
     let ctx = open_thread(&state, &caller, &path.owner, &path.repo, &path.number).await?;
-    let user = caller.require(TokenScope::Write)?;
-    let comment = state.services.timeline.comment(user, &ctx, &body.body).await.map_err(|e| ApiError::service(e, "body"))?;
-    let value = issue_json::comment(&comment, Some(&user.account), &ctx.issue, &ctx.repo.repo, base(&state));
+    // Actions: task tokens. A workflow's comment is rbit Actions', not a person's.
+    let (comment, author) = if let Some(grant) = caller.task() {
+        (state.services.timeline.comment_for_task(grant, &ctx, &body.body).await, None)
+    } else {
+        let user = caller.require(TokenScope::Write)?;
+        (state.services.timeline.comment(user, &ctx, &body.body).await, Some(&user.account))
+    };
+    let comment = comment.map_err(|e| ApiError::service(e, "body"))?;
+    let value = issue_json::comment(&comment, author, &ctx.issue, &ctx.repo.repo, base(&state));
     let location = value["url"].as_str().unwrap_or_default().to_owned();
     Ok(created(&location, value))
 }

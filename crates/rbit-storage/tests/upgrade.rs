@@ -846,3 +846,21 @@ async fn existing_repositories_upgrade_unarchived_and_can_be_archived() {
     assert_eq!(rocket.repo.archived_at, Some(Timestamp(1_800_000_000)));
     assert_eq!(rocket.repo.default_branch, "trunk", "the repository row is untouched");
 }
+
+// Actions: task tokens.
+#[tokio::test]
+async fn comments_upgrade_as_written_by_people() {
+    let db = upgraded().await;
+    sqlx::raw_sql(
+        "INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) VALUES (1, 6, 1, 'issue', 'x', 1, 10, 10); \
+         INSERT INTO issue_comments (id, issue_id, author_id, body, created_at, updated_at) VALUES (1, 1, 1, 'Existing', 11, 11);",
+    )
+    .execute(&db.raw)
+    .await
+    .unwrap();
+    let comment = db.database.issues().find_comment(rbit_core::IssueId(1), rbit_core::CommentId(1)).await.unwrap().unwrap();
+    assert_eq!(comment.source, rbit_core::CommentSource::User, "every comment so far was written by a person");
+    let insert = "INSERT INTO issue_comments (issue_id, body, created_at, updated_at, source) VALUES (1, 'x', 12, 12, ?)";
+    assert!(sqlx::query(insert).bind("robot").execute(&db.raw).await.is_err(), "only the known sources");
+    sqlx::query(insert).bind("actions").execute(&db.raw).await.unwrap();
+}

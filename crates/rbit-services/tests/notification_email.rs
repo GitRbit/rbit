@@ -170,6 +170,42 @@ async fn mentions_reach_verified_addresses_and_never_the_actor() {
     assert!(closed.text.contains("because you were mentioned"), "the strongest reason is given");
 }
 
+// Actions: task tokens.
+#[tokio::test]
+async fn workflow_comments_are_mailed_as_rbit_actions() {
+    use rbit_core::actions::{JobId, PermissionLevel, RunId, TaskId, TokenPermissions};
+
+    let fixture = Fixture::new(Visibility::Public, |_| {}).await;
+    let mut events = fixture.services.events.subscribe();
+    let issue = fixture.create_issue("Slow builds").await;
+    fixture.deliver(&mut events).await;
+    let as_alice = fixture.open(&fixture.alice, issue.number).await;
+    let grant = rbit_services::actions::tokens::TaskGrant {
+        task: TaskId(1),
+        job: JobId(1),
+        run: RunId(1),
+        repo: issue.repo_id,
+        permissions: TokenPermissions { issues: PermissionLevel::Write, ..TokenPermissions::uniform(PermissionLevel::Read) },
+    };
+    let comment = fixture.services.timeline.comment_for_task(&grant, &as_alice, "Build took 41s").await.unwrap();
+    assert_eq!((comment.author, comment.source), (None, rbit_core::CommentSource::Actions));
+    fixture.deliver(&mut events).await;
+    let mail = fixture.mail_to("alice").pop().expect("the thread's author hears about it");
+    assert!(
+        mail.text.starts_with(
+            "rbit Actions commented on issue #1.
+
+Build took 41s"
+        ),
+        "not \"Someone\": {}",
+        mail.text
+    );
+
+    let read_only = rbit_services::actions::tokens::TaskGrant { permissions: TokenPermissions::uniform(PermissionLevel::Read), ..grant };
+    let refused = fixture.services.timeline.comment_for_task(&read_only, &as_alice, "again").await;
+    assert!(matches!(refused, Err(rbit_services::ServiceError::Forbidden)), "{refused:?}");
+}
+
 #[tokio::test]
 async fn each_notification_is_mailed_once() {
     let fixture = Fixture::new(Visibility::Public, |_| {}).await;
@@ -292,7 +328,7 @@ async fn email_batches_recheck_access_verification_preferences_and_deduplication
         number: issue.number,
         kind: IssueKind::Issue,
         comment: comment.id,
-        actor: fixture.alice.id(),
+        actor: Some(fixture.alice.id()),
         action: rbit_core::issue::CommentAction::Created,
     };
     fixture.notifications.handle_event(&event).await.unwrap();
@@ -322,7 +358,7 @@ async fn rendering_failure_leaves_the_entire_email_batch_unclaimed() {
         number: issue.number,
         kind: IssueKind::Issue,
         comment: comment.id,
-        actor: fixture.alice.id(),
+        actor: Some(fixture.alice.id()),
         action: rbit_core::issue::CommentAction::Created,
     };
     let options = SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));
@@ -373,7 +409,7 @@ async fn email_batches_refresh_repository_ownership() {
         number: issue.number,
         kind: IssueKind::Issue,
         comment: comment.id,
-        actor: fixture.alice.id(),
+        actor: Some(fixture.alice.id()),
         action: rbit_core::issue::CommentAction::Created,
     };
     let options = SqliteConnectOptions::new().filename(fixture.dir.path().join("rbit.db"));

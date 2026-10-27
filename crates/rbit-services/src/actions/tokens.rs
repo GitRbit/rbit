@@ -96,6 +96,20 @@ impl ActionsService {
     /// Opens `owner/name` (an old name too) for a task: its own repository at the granted
     /// `contents` level, any other public one read-only; everything else is `NotFound`.
     pub async fn open_for_task(&self, grant: &TaskGrant, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
+        self.open_as_task(grant, owner, name, grant.contents()).await
+    }
+
+    // Actions: task tokens.
+    /// [`Self::open_for_task`] for commenting: a task that may comment (`issues` or
+    /// `pull-requests: write`) reads its own repository's threads whatever its `contents`
+    /// permission, as `permissions: {pull-requests: write}` alone allows on GitHub.
+    pub async fn open_for_task_comment(&self, grant: &TaskGrant, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
+        let own = if grant.can_comment() { grant.contents().max(RepoAccess::Read) } else { grant.contents() };
+        self.open_as_task(grant, owner, name, own).await
+    }
+
+    /// Opens `owner/name` with `own` access when it is the task's repository.
+    async fn open_as_task(&self, grant: &TaskGrant, owner: &str, name: &str, own: RepoAccess) -> Result<RepoContext, ServiceError> {
         let name = name.strip_suffix(".git").unwrap_or(name);
         let store = self.ctx().database.repositories();
         let repo = match store.find_by_path(owner, name).await? {
@@ -103,7 +117,7 @@ impl ActionsService {
             None => store.find_by_old_path(owner, name).await?.ok_or(ServiceError::NotFound)?,
         };
         let public = if repo.repo.visibility.is_public() { RepoAccess::Read } else { RepoAccess::None };
-        let access = if repo.repo.id == grant.repo { grant.contents().max(public) } else { public };
+        let access = if repo.repo.id == grant.repo { own.max(public) } else { public };
         if !access.can_read() {
             return Err(ServiceError::NotFound);
         }

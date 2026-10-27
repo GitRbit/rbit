@@ -358,7 +358,7 @@ async fn mentions_of_other_threads_become_cross_references_once() {
         number: source,
         kind: IssueKind::Issue,
         comment: comment.id,
-        actor: fixture.bob.id(),
+        actor: Some(fixture.bob.id()),
         action: rbit_core::issue::CommentAction::Created,
     };
     issues.handle_event(&commented).await.unwrap();
