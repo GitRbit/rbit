@@ -340,13 +340,22 @@ pub fn remove(containers: &[String]) -> Vec<String> {
 /// set-user-ID programs), the Go runtime's, the engines' own, trust stores and proxies,
 /// and the paths and identity it runs with. Such a name may not carry a multi-line value,
 /// the one kind that travels in the CLI's environment. Case is ignored (Windows).
+///
+/// Checked against the variables the CLIs document: Docker's (`DOCKER_*`, and the proxy
+/// variables), Buildx's (`BUILDKIT_*`, `BUILDX_*`, `EXPERIMENTAL_BUILDKIT_SOURCE_POLICY`),
+/// the OpenTelemetry exporter the Docker CLI reports to (`OTEL_*`), Docker Content Trust's
+/// signer (`NOTARY_*`), Podman's and Buildah's (`CONTAINER_*`, `CONTAINERS_*`, `BUILDAH_*`,
+/// `STORAGE_*`, `REGISTRY_AUTH_FILE`), `ssh` for an `ssh://` engine (`SSH_AUTH_SOCK`,
+/// `SSH_ASKPASS`), the `pass` credential helper the CLI may pick by default
+/// (`PASSWORD_STORE_DIR`, `GNUPGHOME`), and `git`, which Buildx runs in a build's context
+/// (`GIT_CONFIG*`, `GIT_EXEC_PATH`, …). Cloud credential helpers (`AWS_*`, `GOOGLE_*`) run
+/// only when a configuration names them, and the task's own (`DOCKER_CONFIG`) names none.
 pub fn reaches_the_engine(name: &str) -> bool {
-    const PREFIXES: [&str; 18] = [
+    const PREFIXES: [&str; 22] = [
         "LD_",
         "DYLD_",
         "MALLOC_",
         "GLIBC_",
-        "GO",
         "DOCKER_",
         "PODMAN",
         "CONTAINER_",
@@ -360,8 +369,13 @@ pub fn reaches_the_engine(name: &str) -> bool {
         "REGISTRY_",
         "NIX_",
         "DBUS_",
+        "BUILDKIT_",
+        "BUILDX_",
+        "EXPERIMENTAL_BUILDKIT_",
+        "OTEL_",
+        "NOTARY_",
     ];
-    const NAMES: [&str; 26] = [
+    const NAMES: [&str; 55] = [
         "GCONV_PATH",
         "GETCONF_DIR",
         "HOSTALIASES",
@@ -388,9 +402,45 @@ pub fn reaches_the_engine(name: &str) -> bool {
         "TEMP",
         "TMP",
         "IFS",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "ZONEINFO",
+        "SSH_AUTH_SOCK",
+        "SSH_ASKPASS",
+        "SSH_ASKPASS_REQUIRE",
+        "PASSWORD_STORE_DIR",
+        "GNUPGHOME",
+        "KUBECONFIG",
+        "GIT_CONFIG",
+        "GIT_CONFIG_PARAMETERS",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_CONFIG_NOSYSTEM",
+        "GIT_EXEC_PATH",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_SSH",
+        "GIT_SSH_COMMAND",
+        "GIT_ASKPASS",
+        // The Go runtime's (its package documentation), not every `GO…`: `GOOGLE_CREDENTIALS`
+        // is an ordinary multi-line value.
+        "GODEBUG",
+        "GOGC",
+        "GOMEMLIMIT",
+        "GOMAXPROCS",
+        "GOTRACEBACK",
+        "GORACE",
+        "GOROOT",
+        "GOCOVERDIR",
     ];
     let upper = name.to_ascii_uppercase();
-    PREFIXES.iter().any(|prefix| upper.starts_with(prefix)) || NAMES.contains(&upper.as_str()) || upper.ends_with("_PROXY")
+    PREFIXES.iter().any(|prefix| upper.starts_with(prefix))
+        || NAMES.contains(&upper.as_str())
+        || upper.ends_with("_PROXY")
+        // `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`
+        || upper.starts_with("GIT_CONFIG_KEY_")
+        || upper.starts_with("GIT_CONFIG_VALUE_")
 }
 
 /// An env file that is deleted when dropped.
@@ -904,7 +954,30 @@ mod tests {
             assert!(!path.exists(), "nothing is written for {name:?}");
         }
         // Multi-line values travel in the CLI's environment: never for what the CLI reads.
-        for name in ["LD_PRELOAD", "ld_preload", "GCONV_PATH", "GLIBC_TUNABLES", "DOCKER_HOST", "PATH", "https_proxy", "XDG_RUNTIME_DIR"] {
+        for name in [
+            "LD_PRELOAD",
+            "ld_preload",
+            "GCONV_PATH",
+            "GLIBC_TUNABLES",
+            "DOCKER_HOST",
+            "DOCKER_CUSTOM_HEADERS",
+            "PATH",
+            "https_proxy",
+            "NO_PROXY",
+            "XDG_RUNTIME_DIR",
+            "BUILDKIT_HOST",
+            "BUILDX_CONFIG",
+            "EXPERIMENTAL_BUILDKIT_SOURCE_POLICY",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "NOTARY_ROOT_PASSPHRASE",
+            "CONTAINER_HOST",
+            "SSH_ASKPASS",
+            "PASSWORD_STORE_DIR",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_VALUE_0",
+            "GODEBUG",
+            "gomaxprocs",
+        ] {
             let error = write(name, "/work/evil.so:\n").unwrap_err();
             assert!(error.to_string().contains("container engine"), "{name}: {error}");
         }
@@ -912,8 +985,10 @@ mod tests {
         let fine = write("PATH", "/usr/local/bin:/usr/bin").unwrap();
         assert_eq!(fine.names(), Vec::<String>::new());
         drop(fine);
-        let key = write("SSH_KEY", "-----BEGIN-----\nabc\n-----END-----").unwrap();
-        assert_eq!(key.names(), ["SSH_KEY"], "an ordinary multi-line value still works");
+        for name in ["SSH_KEY", "GIT_SSH_KEY", "AWS_CERTIFICATE", "GOOGLE_CREDENTIALS", "KUBE_CONFIG_DATA"] {
+            let key = write(name, "-----BEGIN-----\nabc\n-----END-----").unwrap();
+            assert_eq!(key.names(), [name], "an ordinary multi-line value still works");
+        }
     }
 
     #[test]

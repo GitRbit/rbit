@@ -428,6 +428,12 @@ to `workflow_run` and `workflow_job`.
 - A Docker action's `Dockerfile` is built without limits and with the network, and the
   default `[actions] allow = ["*"]` lets any workflow use any action or image; narrow it
   for runners that take pull requests from forks.
+- A container's environment goes through an env file, which cannot hold a multi-line value;
+  such a value travels in the environment of the engine's CLI on the host instead. So a
+  multi-line value cannot go to a variable that CLI, its loader or a program it starts reads
+  (`LD_*`, `DOCKER_*`, `BUILDKIT_*`, `BUILDX_*`, `OTEL_*`, `*_PROXY`, `PATH`, `GIT_CONFIG*`,
+  …): the step fails and names it. Single-line values of any name, and multi-line values of
+  any other name (a key in `SSH_KEY`, `GOOGLE_CREDENTIALS`), reach the container.
 - Masking works on each printed line: a secret split across two lines, or across the
   1 MiB cut of a single very long line, or printed in another encoding (base64, URL), is
   not masked.
