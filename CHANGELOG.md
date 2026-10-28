@@ -12,6 +12,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Update `zstd` to 0.14.3, `zstd-safe` to 8.2.0 and `zstd-sys` to 2.1.2 for
   RUSTSEC-2026-0391, RUSTSEC-2026-0398, RUSTSEC-2026-0403 and RUSTSEC-2026-0410; they reach
   rbit through `async-compression`.
+- Update `pulldown-cmark` to 0.13.5 for RUSTSEC-2026-0414. rbit's Markdown never enables
+  wikilinks, the only affected option.
 
 ### Added
 
