@@ -1,0 +1,24 @@
+on: push
+jobs:
+  svc:
+    runs-on: eval-linux
+    container:
+      image: docker.io/library/redis:7-alpine
+      volumes:
+        - redisdata:/shared
+    services:
+      redis:
+        image: docker.io/library/redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 20
+        volumes:
+          - redisdata:/data
+    steps:
+      - run: |
+          redis-cli -h redis ping
+          redis-cli -h redis set k v
+          redis-cli -h redis save
+          ls /shared

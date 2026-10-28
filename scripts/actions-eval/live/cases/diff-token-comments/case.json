@@ -1,0 +1,33 @@
+{
+  "feature": "token-comments",
+  "split": "train",
+  "why": "a bot that lists an issue's comments with the workflow's token",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "write"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "bot",
+        "conclusion": "success",
+        "contains": [
+          "listed ['first']"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

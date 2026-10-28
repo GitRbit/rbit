@@ -1,0 +1,32 @@
+{
+  "feature": "dynamic-plan",
+  "split": "train",
+  "why": "a matrix built from an earlier job's output, the common dynamic-matrix pattern",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "build \\(apple\\)",
+        "conclusion": "success",
+        "contains": [
+          "fruit=apple"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "build \\(pear\\)",
+        "conclusion": "success",
+        "contains": [
+          "fruit=pear"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

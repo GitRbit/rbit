@@ -1,0 +1,23 @@
+{
+  "feature": "problem-matchers",
+  "split": "test",
+  "why": "a two-line matcher with `loop`, as eslint's stylish output needs",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "lint",
+        "conclusion": "success",
+        "matches": [
+          "##\\[error\\][^\\n]*'x' is never used[^\\n]*src/app\\.js",
+          "##\\[warning\\][^\\n]*Unexpected console[^\\n]*src/app\\.js"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+on: push
+jobs:
+  triage:
+    runs-on: self-hosted
+    permissions:
+      issues: write
+    steps:
+      - shell: bash
+        env: {TOKEN: '${{ github.token }}'}
+        run: |
+          curl -sSf -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues" -d '{"title":"triage"}' > /dev/null
+          echo opened
+  reader:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        env: {TOKEN: '${{ github.token }}'}
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues" -d '{"title":"no"}')
+          echo "refused $code"

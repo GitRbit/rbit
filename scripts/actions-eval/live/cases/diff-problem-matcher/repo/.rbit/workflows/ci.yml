@@ -1,0 +1,14 @@
+on: push
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/gcc.json" <<'EOF'
+          {"problemMatcher":[{"owner":"gcc","pattern":[{"regexp":"^(.+):(\\d+):(\\d+): (warning|error): (.+)$","file":1,"line":2,"column":3,"severity":4,"message":5}]}]}
+          EOF
+          echo "::add-matcher::$RUNNER_TEMP/gcc.json"
+          echo "src/main.c:12:5: error: expected ';'"
+          echo "::remove-matcher owner=gcc::"
+          echo "src/other.c:1:1: error: not matched after removal"

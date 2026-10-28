@@ -1,0 +1,46 @@
+{
+  "feature": "environments",
+  "split": "test",
+  "why": "a job with an environment records a deployment, as the Deployments API lists it",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/environments/production",
+        "body": {}
+      }
+    }
+  ],
+  "observe": [
+    {
+      "id": "deployments",
+      "http": {
+        "method": "GET",
+        "path": "/repos/{owner}/{repo}/deployments"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "ship",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "deployments",
+      "status": 200,
+      "json": {
+        "0.environment": "production",
+        "0.ref": "main",
+        "0.task": "deploy"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

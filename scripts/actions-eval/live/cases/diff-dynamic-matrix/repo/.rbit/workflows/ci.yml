@@ -1,0 +1,18 @@
+on: push
+jobs:
+  setup:
+    runs-on: self-hosted
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        run: echo 'matrix={"fruit":["apple","pear"]}' >> "$GITHUB_OUTPUT"
+  build:
+    needs: setup
+    runs-on: self-hosted
+    strategy:
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    steps:
+      - shell: bash
+        run: echo "fruit=${{ matrix.fruit }}"

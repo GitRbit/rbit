@@ -1,0 +1,43 @@
+{
+  "feature": "permissions-raise",
+  "split": "test",
+  "why": "one job asks for `issues: write` above a read default; its sibling keeps the default",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "read"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "triage",
+        "conclusion": "success",
+        "contains": [
+          "opened"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "reader",
+        "conclusion": "success",
+        "contains": [
+          "refused 403"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

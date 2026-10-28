@@ -1,0 +1,9 @@
+on: push
+jobs:
+  opts:
+    runs-on: eval-linux
+    container:
+      image: docker.io/library/alpine:3.20
+      options: --user 1000:1000 --hostname buildbox --env FROM_OPTIONS=yes
+    steps:
+      - run: echo "uid=$(id -u) host=$(hostname) env=$FROM_OPTIONS"

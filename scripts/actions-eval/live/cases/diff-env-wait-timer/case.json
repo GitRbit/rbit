@@ -1,0 +1,38 @@
+{
+  "feature": "environments",
+  "split": "train",
+  "why": "an environment's wait timer holds its job back before it starts",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/environments/staging",
+        "body": {
+          "wait_timer": 1
+        }
+      }
+    }
+  ],
+  "wait": {
+    "runs": 1,
+    "settle": 15,
+    "timeout": 600
+  },
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "deploy",
+        "conclusion": "success",
+        "contains": [
+          "waited-long-enough=1"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

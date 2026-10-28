@@ -1,0 +1,35 @@
+{
+  "feature": "masking",
+  "split": "train",
+  "why": "attack: a secret with a quote and a backslash printed inside JSON, escaped",
+  "setup": [
+    {
+      "secret": {
+        "repo": "{repo}",
+        "name": "PASS",
+        "value": "pa\"ss\\w0rd-42"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "leak",
+        "conclusion": "success",
+        "contains": [
+          "json-printed"
+        ],
+        "lacks": [
+          "pa\\\"ss\\\\w0rd-42",
+          "pa\"ss\\w0rd-42"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

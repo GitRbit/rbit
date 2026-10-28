@@ -1,0 +1,26 @@
+{
+  "feature": "problem-matchers",
+  "split": "train",
+  "why": "a compiler's errors become annotations through a problem matcher, until it is removed",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "build",
+        "conclusion": "success",
+        "matches": [
+          "##\\[error\\][^\\n]*expected ';'[^\\n]*src/main\\.c"
+        ],
+        "lacks": [
+          "##[error]not matched after removal",
+          "##[error]src/other.c"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

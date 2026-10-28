@@ -1,0 +1,23 @@
+{
+  "feature": "container-options",
+  "split": "train",
+  "why": "a service with health-check options and a named volume shared with the job's container, as GitHub runs them",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "svc",
+        "conclusion": "success",
+        "contains": [
+          "PONG",
+          "dump.rdb"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}
