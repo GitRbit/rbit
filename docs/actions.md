@@ -181,6 +181,12 @@ aliases of them, in any later major version and when pinned to a commit
 
 An unknown `with:` key of a built-in is an error.
 
+With `persist-credentials` (the default) the checkout keeps the task's token for later steps
+as `actions/checkout` v6 does: in `git-credentials-<id>.config` in `RUNNER_TEMP`, which the
+checkout's `.git/config` includes for that repository only (`includeIf.gitdir`), at the
+paths the runner host, the job's container and a Docker action see. The workspace never
+holds the token, so no artifact or cache of it carries it; the file goes with the task.
+
 The `path` of the cache and of `upload-artifact` takes paths and glob patterns, one per line,
 as GitHub's `@actions/glob` reads them: `*` and `?` within a name, `[a-z]` sets, `**` for any
 number of directories, and `!` lines excluding; the last line that matches a file decides, and
@@ -443,7 +449,4 @@ to `workflow_run` and `workflow_job`.
 - Masking works on each printed line: a secret split across two lines, or across the
   1 MiB cut of a single very long line, or printed in another encoding (base64, URL), is
   not masked.
-- `actions/checkout` keeps the task's token in `.git/config` unless
-  `persist-credentials: false`, as on GitHub; an artifact or cache of the workspace root
-  carries it (it stops working when the job ends).
 - Values shorter than four characters are never masked.

@@ -13,9 +13,12 @@
 //! The task token travels as an `Authorization` header in `http.<server>/.extraHeader`,
 //! set through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`, so it is in
 //! no URL and no argument. Scoped to this rbit instance's URL, it reaches the instance's
-//! own submodules and nothing else. With `persist-credentials` (the default) the same
-//! header is written into the checkout's `.git/config` so later steps can fetch and push;
-//! the file is removed with the task.
+//! own submodules and nothing else. With `persist-credentials` (the default) later steps can
+//! fetch and push with it, as with `actions/checkout` v6: the header is written to
+//! `git-credentials-<id>.config` in the task's `temp`, and the checkout's `.git/config` only
+//! includes that file for its own repository (`includeIf.gitdir`), at the paths the host,
+//! the job's container and a Docker action see. The workspace never holds the token, so no
+//! artifact or cache of it carries it; the file goes with the task.
 //!
 //! `git` may use only HTTPS and the source's own scheme (plain HTTP when the instance is
 //! reached that way; `file` for `rbit-runner exec`'s local repository), also for submodules: a repository's `.gitmodules` chooses their URLs, and on the host
@@ -322,18 +325,65 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
             Err(error) => return job.fail(&format!("cannot run git: {error}")),
         }
     }
-    if inputs.flag("persist-credentials") {
-        let section = format!("\n[http \"{}\"]\n\textraheader = {}\n", server_prefix(&source), authorization(job.spec.token.expose()));
-        let config = target.join(".git").join("config");
-        let appended = std::fs::OpenOptions::new().append(true).open(&config).and_then(|mut file| {
-            use std::io::Write as _;
-            file.write_all(section.as_bytes())
-        });
-        if let Err(error) = appended {
-            return job.fail(&format!("cannot persist the credentials in {}: {error}", config.display()));
-        }
+    if inputs.flag("persist-credentials")
+        && let Err(error) = persist(job, &source, &target)
+    {
+        return job.fail(&format!("cannot persist the credentials: {error}"));
     }
     Outcome::success(BTreeMap::new())
+}
+
+/// Writes the header for later steps into a file of the task's `temp`, and has the
+/// checkout at `target` include it (see the module documentation).
+fn persist(job: &Job, source: &CheckoutSource, target: &Path) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let name = format!("git-credentials-{}.config", crate::client::idempotency_key());
+    let mut file = crate::untrusted::create(&job.dirs.temp.join(&name), true)?;
+    file.write_all(credentials_config(&server_prefix(source), job.spec.token.expose()).as_bytes())?;
+    let relative: Vec<String> = target
+        .strip_prefix(&job.dirs.workspace)
+        .unwrap_or(Path::new(""))
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    // The host's own paths, absolute and with `/`; then the job container's and a Docker
+    // action's, which see the workspace and `temp` elsewhere.
+    let host = |path: &Path| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()).to_string_lossy().replace('\\', "/");
+    let mut views = vec![(host(&job.dirs.workspace), host(&job.dirs.temp), cfg!(windows))];
+    if let Backend::Container(_) = &job.backend {
+        let view = job.backend.view();
+        views.push((view.workspace.clone(), view.temp.clone(), false));
+    }
+    views.push((super::action::DOCKER_WORKSPACE.to_owned(), super::action::DOCKER_TEMP.to_owned(), false));
+    let mut includes = String::new();
+    for (workspace, temp, windows) in views {
+        let git_dir =
+            std::iter::once(workspace.trim_end_matches('/').to_owned()).chain(relative.iter().cloned()).chain([".git".to_owned()]);
+        let git_dir = git_dir.collect::<Vec<_>>().join("/");
+        includes.push_str(&include_if(&git_dir, &format!("{}/{name}", temp.trim_end_matches('/')), windows));
+    }
+    let config = target.join(".git").join("config");
+    std::fs::OpenOptions::new().append(true).open(&config)?.write_all(includes.as_bytes())
+}
+
+/// The credentials file: the header for `prefix`, as `actions/checkout` writes it.
+fn credentials_config(prefix: &str, token: &str) -> String {
+    format!("[http \"{}\"]\n\textraheader = {}\n", config_escape(prefix), authorization(token))
+}
+
+/// `includeIf` sections that include `file` in the repository whose `.git` is `git_dir`, and
+/// in its worktrees; without regard to case on Windows, whose paths ignore it.
+fn include_if(git_dir: &str, file: &str, windows: bool) -> String {
+    let condition = if windows { "gitdir/i" } else { "gitdir" };
+    let (git_dir, file) = (config_escape(git_dir), config_escape(file));
+    format!(
+        "[includeIf \"{condition}:{git_dir}\"]\n\tpath = \"{file}\"\n[includeIf \"{condition}:{git_dir}/worktrees/*\"]\n\tpath = \"{file}\"\n"
+    )
+}
+
+/// `text` inside a Git configuration file's double quotes.
+fn config_escape(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[cfg(test)]
@@ -502,12 +552,17 @@ mod tests {
         assert_eq!(git(&workspace, &["rev-parse", "HEAD"]), sha);
         assert_eq!(git(&workspace, &["branch", "--show-current"]), "main");
         assert_eq!(git(&workspace, &["rev-list", "--count", "HEAD"]), "1", "fetch-depth defaults to 1");
+        // The header is in a file of `temp` that the checkout's configuration includes, never
+        // in the workspace itself.
+        let prefix = server_prefix(&CheckoutSource { url, repository: "alice/app".into(), sha, reference: String::new() });
         let config = std::fs::read_to_string(workspace.join(".git/config")).unwrap();
-        assert!(config.contains(&format!(
-            "[http \"{}\"]",
-            server_prefix(&CheckoutSource { url, repository: "alice/app".into(), sha, reference: String::new() })
-        )));
-        assert!(config.contains(&authorization(&token)), "persist-credentials writes the header");
+        assert!(!config.contains(&authorization(&token)) && config.contains("[includeIf \"gitdir"), "{config}");
+        assert!(config.contains("/__w/") || config.contains("/github/workspace/.git"), "a Docker action's view too: {config}");
+        assert_eq!(git(&workspace, &["config", "--get", &format!("http.{prefix}.extraheader")]), authorization(&token));
+        let temp = workspace.with_file_name("temp");
+        let files: Vec<String> =
+            std::fs::read_dir(&temp).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert!(files.iter().any(|name| name.starts_with("git-credentials-") && name.ends_with(".config")), "{files:?}");
         assert!(!text.contains(&token), "{text}");
     }
 

@@ -895,9 +895,9 @@ fn split_args(text: &str) -> Vec<String> {
 }
 
 /// Where a Docker action sees the task's directories.
-const DOCKER_WORKSPACE: &str = "/github/workspace";
+pub(super) const DOCKER_WORKSPACE: &str = "/github/workspace";
 const DOCKER_FILES: &str = "/github/file_commands";
-const DOCKER_TEMP: &str = "/github/runner_temp";
+pub(super) const DOCKER_TEMP: &str = "/github/runner_temp";
 
 /// Builds or pulls the image, then runs it with the task's directories mounted, as step
 /// `index`.
