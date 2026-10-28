@@ -13,6 +13,8 @@ path = "src/main.rs"
 [dependencies]
 # The wire contract, shared with the server; the runner depends on no server crate.
 rbit-workflow.workspace = true
+# Problem matchers' regular expressions.
+regex-automata.workspace = true
 
 # Masking: one automaton per task over every secret and its encodings.
 aho-corasick.workspace = true

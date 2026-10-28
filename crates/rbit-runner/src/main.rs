@@ -25,6 +25,7 @@ mod integrity;
 mod job;
 mod logs;
 mod mask;
+mod matchers;
 mod node;
 mod poller;
 mod process;

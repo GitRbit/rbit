@@ -276,6 +276,9 @@ their step wrote to `GITHUB_STATE`. Steps can also use `::add-mask::`,
 only when the `ACTIONS_STEP_DEBUG` secret or variable is `true`, which also sets
 `RUNNER_DEBUG=1`) and `::stop-commands::`; the deprecated `::set-output` and `::save-state`
 work with a warning, while `::set-env` and `::add-path` are refused, as on GitHub.
+`::add-matcher::<file>` adds GitHub's problem matchers (one-line and looping patterns): for
+the rest of the job, a line a matcher matches is followed by its `##[error]`, `##[warning]` or
+`##[notice]` annotation with the file, line and column, until `::remove-matcher owner=…::`.
 The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
 variables.
@@ -399,8 +402,7 @@ to `workflow_run` and `workflow_job`.
   `runs-on` and matrix can use only the inputs known when the run starts, not those a
   `with:` reads from `needs`.
 - Actions are fetched when their step comes, not all at the start of the job, so an
-  action's `pre` script runs right before its `main`. Problem matchers
-  (`::add-matcher::`) are accepted and ignored. GitHub's cache and artifact services that
+  action's `pre` script runs right before its `main`. GitHub's cache and artifact services that
   actions reach through `ACTIONS_RUNTIME_*` do not exist; the built-ins stand in for
   `actions/cache` and `actions/*-artifact`.
 - Environments have no wait timer, team reviewers or custom protection rules, and runs

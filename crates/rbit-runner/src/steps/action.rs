@@ -1110,8 +1110,12 @@ async fn run_image(
                 crate::commands::Line::Output(name, value) => {
                     printed_outputs.insert(name, value);
                 }
-                // A Docker action has no `post` script to read state.
-                crate::commands::Line::Nothing | crate::commands::Line::State(..) => {}
+                // A Docker action has no `post` script to read state, and its matcher files
+                // are inside its own image.
+                crate::commands::Line::Nothing
+                | crate::commands::Line::State(..)
+                | crate::commands::Line::AddMatcher(_)
+                | crate::commands::Line::RemoveMatcher(_) => {}
             }
         })
         .await

@@ -6,8 +6,8 @@
 //! parameters, kept as written), `::debug::`, and `::stop-commands::<token>`, which turns
 //! command processing off until a line `::<token>::`. As on GitHub, `::debug::` lines are
 //! printed only when the `ACTIONS_STEP_DEBUG` secret or variable is `true`, and
-//! `::add-matcher::` / `::remove-matcher::` are accepted and print nothing (rbit has no
-//! problem matchers). The deprecated `::set-output` and `::save-state`, which older actions
+//! `::add-matcher::` / `::remove-matcher owner=…::` (and their legacy `##[add-matcher]`
+//! forms) add and remove problem matchers ([`crate::matchers`]). The deprecated `::set-output` and `::save-state`, which older actions
 //! still print, work with a warning; `::set-env` and `::add-path`, which GitHub disabled
 //! because they let any printed line change the environment, are refused with a log line
 //! pointing at the env files. Anything else is printed as it came.
@@ -15,6 +15,11 @@
 //! Commands become log lines in the `##[kind]text` form the log viewer understands; an
 //! `::add-mask::` line is not printed at all. Values are unescaped as GitHub escapes them
 //! (`%25`, `%0D`, `%0A`, and in parameters also `%3A`, `%2C`).
+
+/// The `owner` of `owner=…` parameters.
+fn owner_param(params: &str) -> String {
+    params.split(',').find_map(|param| param.trim().strip_prefix("owner=")).unwrap_or_default().trim().to_owned()
+}
 
 /// One line after command processing.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +35,10 @@ pub enum Line {
     Output(String, String),
     /// `::save-state name=…::`: state for the action's `post` script.
     State(String, String),
+    /// `::add-matcher::<file>`: the matcher file, as the step names it.
+    AddMatcher(String),
+    /// `::remove-matcher owner=…::`: the owner.
+    RemoveMatcher(String),
 }
 
 /// The command state of one step.
@@ -53,8 +62,13 @@ impl Commands {
         // Actions: third-party actions. The legacy `##[add-matcher]path` form, which
         // `actions/setup-node` still prints.
         let legacy = line.trim_start();
-        if self.stopped.is_none() && (legacy.starts_with("##[add-matcher]") || legacy.starts_with("##[remove-matcher")) {
-            return Line::Nothing;
+        if self.stopped.is_none() {
+            if let Some(path) = legacy.strip_prefix("##[add-matcher]") {
+                return Line::AddMatcher(path.trim().to_owned());
+            }
+            if let Some(rest) = legacy.strip_prefix("##[remove-matcher") {
+                return Line::RemoveMatcher(owner_param(rest.trim_end_matches(']')));
+            }
         }
         let Some(command) = parse(line) else { return Line::Print(line.to_owned()) };
         if let Some(token) = &self.stopped {
@@ -70,7 +84,9 @@ impl Commands {
             "group" => Line::Print(format!("##[group]{message}")),
             "endgroup" => Line::Print("##[endgroup]".to_owned()),
             "debug" if self.debug => Line::Print(format!("##[debug]{message}")),
-            "debug" | "add-matcher" | "remove-matcher" => Line::Nothing,
+            "debug" => Line::Nothing,
+            "add-matcher" => Line::AddMatcher(message),
+            "remove-matcher" => Line::RemoveMatcher(owner_param(&command.params.map(|params| unescape(params, true)).unwrap_or_default())),
             "error" | "warning" | "notice" => {
                 let params = command.params.map(|params| unescape(params, true)).filter(|params| !params.is_empty());
                 match params {
@@ -170,10 +186,10 @@ mod tests {
     fn debug_lines_and_matchers_print_only_when_asked() {
         let mut quiet = Commands::default();
         assert_eq!(quiet.process("::debug::details"), Line::Nothing);
-        assert_eq!(quiet.process("::add-matcher::/x/tsc.json"), Line::Nothing);
-        assert_eq!(quiet.process("::remove-matcher owner=tsc::"), Line::Nothing);
-        assert_eq!(quiet.process("##[add-matcher]C:\\x\\tsc.json"), Line::Nothing, "the legacy form");
-        assert_eq!(quiet.process("##[remove-matcher owner=tsc]"), Line::Nothing);
+        assert_eq!(quiet.process("::add-matcher::/x/tsc.json"), Line::AddMatcher("/x/tsc.json".into()));
+        assert_eq!(quiet.process("::remove-matcher owner=tsc::"), Line::RemoveMatcher("tsc".into()));
+        assert_eq!(quiet.process("##[add-matcher]C:\\x\\tsc.json"), Line::AddMatcher("C:\\x\\tsc.json".into()), "the legacy form");
+        assert_eq!(quiet.process("##[remove-matcher owner=tsc]"), Line::RemoveMatcher("tsc".into()));
         let mut loud = Commands::new(true);
         assert_eq!(printed(&mut loud, "::debug::details"), "##[debug]details");
     }

@@ -139,13 +139,25 @@ pub async fn execute(
     // Actions: third-party actions. What deprecated `::set-output` / `::save-state` lines set.
     let mut printed_outputs = BTreeMap::new();
     let mut printed_state = BTreeMap::new();
+    let mut matchers = std::mem::take(&mut job.matchers);
     let exit = {
         let reporter = &job.reporter;
         let mut commands = Commands::new(job.step_debug);
         let stopper = job.backend.stopper();
         let mut warned = false;
+        let (view, dirs, host) = (job.backend.view().clone(), job.dirs.clone(), matches!(job.backend, crate::backend::Backend::Host(_)));
         process::run_streaming(prepared.command, process::MAX_LINE_BYTES, signal.wait(), &stopper, |line| match commands.process(&line) {
-            Line::Print(text) => reporter.log(&text),
+            Line::Print(text) => {
+                reporter.log(&text);
+                if let Some(annotation) = matchers.annotate(&reporter.mask(&text)) {
+                    reporter.log(&annotation);
+                }
+            }
+            Line::AddMatcher(seen) => match read_matcher(&seen, &view, &dirs, host).and_then(|text| matchers.add(&text)) {
+                Ok(owners) => reporter.log(&format!("Added matchers: {}", owners.join(", "))),
+                Err(error) => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}: {error}")),
+            },
+            Line::RemoveMatcher(owner) => matchers.remove(&owner),
             Line::AddMask(value) => reporter.add_mask(&value),
             Line::Nothing => {}
             Line::Output(name, value) => {
@@ -167,6 +179,7 @@ pub async fn execute(
         })
         .await
     };
+    job.matchers = matchers;
     // The step's env file is deleted as soon as the step has ended.
     drop(prepared.env_file);
 
@@ -190,6 +203,27 @@ pub async fn execute(
         }
         Err(error) => (job.fail(&error), BTreeMap::new()),
     }
+}
+
+/// Reads the matcher file a step named `seen`, as the runner host finds it: a path in the
+/// job container's workspace, `temp` or `files` maps to the task's directory, a host job's
+/// is its own. Read as untrusted (no link, pipe or device), and at most 1 MiB.
+fn read_matcher(seen: &str, view: &crate::backend::View, dirs: &crate::backend::Dirs, host: bool) -> Result<String, String> {
+    use std::io::Read as _;
+    let mapped =
+        [(&view.workspace, &dirs.workspace), (&view.temp, &dirs.temp), (&view.files, &dirs.files)].into_iter().find_map(|(view, dir)| {
+            let rest = seen.strip_prefix(view.as_str())?;
+            let rest = rest.trim_start_matches(['/', '\\']);
+            (!rest.split(['/', '\\']).any(|part| part == "..")).then(|| dir.join(rest))
+        });
+    let path = match mapped {
+        Some(path) => path,
+        None if host => std::path::PathBuf::from(seen),
+        None => return Err("a container job's matcher must be in its workspace or temp directory".to_owned()),
+    };
+    let mut text = String::new();
+    crate::untrusted::open(&path).and_then(|file| file.take(1 << 20).read_to_string(&mut text)).map_err(|error| error.to_string())?;
+    Ok(text)
 }
 
 // Actions: third-party actions.

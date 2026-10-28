@@ -4277,6 +4277,7 @@ dependencies = [
  "getrandom 0.4.3",
  "libc",
  "rbit-workflow",
+ "regex-automata",
  "reqwest",
  "rustls",
  "serde",

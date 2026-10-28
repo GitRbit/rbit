@@ -172,6 +172,8 @@ pub struct Job {
     pub post_steps: Vec<steps::action::PostStep>,
     /// `ACTIONS_STEP_DEBUG` is `true`: `::debug::` lines are printed.
     pub step_debug: bool,
+    /// Problem matchers added so far, for every later step.
+    pub matchers: crate::matchers::Matchers,
 }
 
 /// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
@@ -305,6 +307,7 @@ impl Job {
             runner_name: loaded.config.name.clone(),
             post_steps: Vec::new(),
             step_debug,
+            matchers: crate::matchers::Matchers::default(),
         };
         job.sync_contexts();
         let (workflow_env, job_env) = (job.spec.template.workflow_env.clone(), job.spec.template.env.clone());
