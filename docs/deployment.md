@@ -515,7 +515,7 @@ data directory's ACLs.
 sudo useradd --system --create-home --home-dir /var/lib/rbit-runner --shell /usr/sbin/nologin rbit-runner
 sudo usermod -aG docker rbit-runner   # container labels with rootful Docker
 sudo install -m 0755 rbit-runner /usr/local/bin/rbit-runner
-sudo -u rbit-runner sh -c 'cd /var/lib/rbit-runner && read -rs RBIT_RUNNER_TOKEN && export RBIT_RUNNER_TOKEN &&   rbit-runner register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04'
+sudo -u rbit-runner bash -c 'cd /var/lib/rbit-runner && read -rs RBIT_RUNNER_TOKEN && export RBIT_RUNNER_TOKEN &&   rbit-runner register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04'
 sudo rbit-runner --config /var/lib/rbit-runner/runner.toml install --user rbit-runner
 ```
 
@@ -582,7 +582,8 @@ credential and the work directory in its `/var/lib/rbit-runner` volume.
   repositories you trust.
 
 Pull requests from forks and from people without write access get a read-only token, no
-secrets and no variables, and wait for a writer's approval. Instance runners (registered under
+secrets and no variables, and wait for a writer's approval as the repository's
+`approval_policy` decides (see `docs/actions.md`). Instance runners (registered under
 **Administration → Runners**) serve only the owners an administrator allows, unless
 `instance_runners_for_all` is set.
 

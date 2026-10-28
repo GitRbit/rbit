@@ -8,7 +8,7 @@ has it for every platform, and it always matches its server's API.
 ## Logging in
 
 Create a personal access token (**Settings → Access tokens**; `read` for looking, `write`
-to run, re-run, cancel and merge) and store it:
+to run, re-run, cancel and merge, `admin` for settings such as `actions/permissions`) and store it:
 
 ```bash
 rbit auth login --hostname https://git.example.com --with-token < token.txt

@@ -48,7 +48,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (sealed with AES-256-GCM under a key file kept out of the database), variables, trusted
   authors and runners at repository, organisation, account and instance level.
 - Pull requests from forks and from people without write access run read-only, without
-  secrets or variables, after a writer approves them.
+  secrets or variables, after a writer approves them as the approval policy decides.
 - `workflow_run` and `workflow_job` webhooks, and `/api/v1/repos/{owner}/{repo}/actions/…`
   endpoints for runs, jobs, job logs, artifacts, workflows, dispatch, secrets, variables,
   runners and registration tokens (runners, secrets and variables for organisations and users
