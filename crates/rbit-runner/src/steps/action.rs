@@ -943,6 +943,9 @@ async fn run_docker(
         Backend::Container(container) => container.wrote(),
         Backend::Host(_) => {
             if let Some(owner) = crate::backend::container::file_owner(&program).await {
+                if let Err(error) = crate::backend::container::ensure_image(&program, &job.container.helper_image, &job.reporter).await {
+                    return job.fail(&error);
+                }
                 let args = crate::backend::container::reclaim_run(
                     job.spec.task_id,
                     &job.runner_name,

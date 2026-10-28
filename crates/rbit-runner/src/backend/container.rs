@@ -259,7 +259,9 @@ fn env_args(env_file: &Path, inherited: &[String]) -> Vec<String> {
 /// capability dropped but the three `chown` and `chmod` need, a read-only root and nothing
 /// mounted but the directories.
 pub fn reclaim_run(task: TaskId, runner: &str, image: &str, dirs: &Dirs, owner: &str) -> Vec<String> {
-    let mut args = vec!["run".into(), "--rm".into()];
+    // Pulled beforehand ([`ensure_image`]): a registry out of reach fails that pull, once,
+    // rather than every hand-back.
+    let mut args = vec!["run".into(), "--rm".into(), "--pull".into(), "never".into()];
     args.extend(task_labels(task, runner));
     args.extend(["--network".into(), "none".into(), "--cap-drop".into(), "ALL".into()]);
     for capability in ["CHOWN", "FOWNER", "DAC_OVERRIDE"] {
@@ -273,6 +275,25 @@ pub fn reclaim_run(task: TaskId, runner: &str, image: &str, dirs: &Dirs, owner: 
     args.extend(["--entrypoint".into(), "sh".into(), image.to_owned()]);
     args.extend(["-c".into(), RECLAIM_SCRIPT.into(), "reclaim".into(), owner.to_owned()]);
     args
+}
+
+/// Pulls `image` with the engine `program` unless it has it already, logging the pull.
+pub async fn ensure_image(program: &Path, image: &str, reporter: &Reporter) -> Result<(), String> {
+    let mut inspect = process::command(program);
+    inspect.args(["image", "inspect", "--format", "{{.Id}}", image]);
+    if process::capture(inspect, None, SHORT).await.is_ok_and(|output| output.success) {
+        return Ok(());
+    }
+    reporter.log(&format!("Pulling {image}, which hands the task's files back to the runner's user"));
+    let mut pull = process::command(program);
+    pull.args(["pull", image]);
+    let output = process::capture(pull, None, RECLAIM_TIMEOUT).await.map_err(|error| format!("cannot pull {image}: {error}"))?;
+    if output.success {
+        Ok(())
+    } else {
+        let detail = output.stderr.lines().find(|line| !line.trim().is_empty()).unwrap_or_default();
+        Err(format!("cannot pull {image} ({}); set `[container] helper_image` to a mirror the runner can reach", detail.trim()))
+    }
 }
 
 /// Runs `command` (the engine's CLI) with the [`reclaim_run`] arguments `args`.
@@ -578,6 +599,9 @@ impl Container {
         self.run(reporter, &["start".to_owned(), self.names.job.clone()], &[]).await?;
         self.probe().await;
         self.owner = file_owner(&self.program).await;
+        if self.owner.is_some() {
+            ensure_image(&self.program, &self.config.helper_image, reporter).await?;
+        }
         Ok(())
     }
 
@@ -842,7 +866,7 @@ mod tests {
         let args = reclaim_run(TaskId(42), "build-1", HELPER_IMAGE, &dirs(), "1000:1000");
         let line = args.join(" ");
         for part in [
-            "run --rm --label rbit.task=42 --label rbit.runner=build-1",
+            "run --rm --pull never --label rbit.task=42 --label rbit.runner=build-1",
             "--network none --cap-drop ALL --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE",
             "--security-opt no-new-privileges --pids-limit 64 --read-only --user 0:0",
             "--mount type=bind,source=/work/tasks/42/workspace,target=/r/w",
@@ -851,6 +875,7 @@ mod tests {
         ] {
             assert!(line.contains(part), "{part:?} missing from {line}");
         }
+        assert!(line.starts_with("run --rm --pull never "), "{line}");
         let entrypoint = args.iter().position(|arg| arg == "--entrypoint").unwrap();
         assert_eq!(args[entrypoint..entrypoint + 4], ["--entrypoint", "sh", HELPER_IMAGE, "-c"]);
         assert_eq!(args[entrypoint + 5..], ["reclaim", "1000:1000"], "the owner is an argument, never part of the script");
