@@ -263,7 +263,8 @@ On a Windows host, actions assume what GitHub's Windows machines have: Git for W
 PowerShell 7 installed from its MSI (the Microsoft Store build is not usable from
 Node.js), and administrator rights for installers that write to `Program Files` or the
 registry (`actions/setup-python`; `actions/setup-dotnet` unless `DOTNET_INSTALL_DIR` is
-set). Linux runners have none of these limits.
+set). Linux runners have none of these limits. As on GitHub's machines, `bash` in a step is
+Git's, not WSL's: its directory goes first on the job's `PATH` when WSL's would win.
 
 A runner's administrator decides which actions it runs with `[actions] allow`: `owner/repo`
 patterns such as `actions/*` or `my-org/*`, and `docker://` image patterns. The default,

@@ -56,6 +56,21 @@ pub fn find_shell(name: &str, path: &str) -> Option<PathBuf> {
         })
 }
 
+// Actions: third-party actions.
+/// `path` with the directory of Git's `bash` in front, when the first `bash` on it would
+/// start WSL (or there is none): on GitHub's Windows machines `bash` in a script is Git's,
+/// and actions call it from PowerShell (`taiki-e/install-action`). `None` when `path`
+/// already has it first, or there is no Git `bash`.
+pub fn with_git_bash_first(path: &str) -> Option<String> {
+    let git_bash = find_shell("bash", path)?;
+    if find_on("bash", path).as_ref() == Some(&git_bash) {
+        return None;
+    }
+    let dir = git_bash.parent()?.to_path_buf();
+    let joined = std::env::join_paths(std::iter::once(dir).chain(std::env::split_paths(OsStr::new(path)))).ok()?;
+    Some(joined.to_string_lossy().into_owned())
+}
+
 fn find_in(name: &str, path: Option<&OsStr>, path_ext: Option<&OsStr>) -> Option<PathBuf> {
     if name.is_empty() {
         return None;
@@ -379,6 +394,12 @@ mod tests {
         assert_eq!(find_shell("bash", &path(&[&system, &usr_bin, &git_cmd])), Some(usr_bin.join("bash.exe")));
         assert_eq!(find_shell("bash", &path(&[&system])), None);
         assert_eq!(find_shell("pwsh", &path(&[&system, &git_cmd])), None, "other shells are looked up as before");
+
+        // A script's own `bash` is Git's too: its directory goes first.
+        let default = path(&[&system, &git_cmd]);
+        assert_eq!(with_git_bash_first(&default), Some(path(&[&git_bin, &system, &git_cmd])));
+        assert_eq!(with_git_bash_first(&path(&[&git_bin, &system])), None, "already first");
+        assert_eq!(with_git_bash_first(&path(&[&system])), None, "no Git");
     }
 
     #[tokio::test]

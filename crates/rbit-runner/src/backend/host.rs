@@ -6,7 +6,8 @@
 //! variable names are compared without case, as Windows does, but each is passed with the
 //! spelling it was last set with: a step's `toolchain` stays `$toolchain` in Git Bash.
 //! Windows steps run PowerShell scripts as on GitHub's machines
-//! (`PSExecutionPolicyPreference=Bypass`, unless the runner's environment sets it).
+//! (`PSExecutionPolicyPreference=Bypass`, unless the runner's environment sets it), and
+//! find Git's `bash` first on `PATH`, not WSL's.
 
 use std::collections::BTreeMap;
 
@@ -36,6 +37,11 @@ impl Host {
         if cfg!(windows) {
             let name = "PSExecutionPolicyPreference";
             base_env.entry(env_key(name)).or_insert_with(|| (name.to_owned(), "Bypass".to_owned()));
+            if let Some((name, path)) = base_env.get(&env_key("PATH")).cloned()
+                && let Some(path) = crate::process::with_git_bash_first(&path)
+            {
+                base_env.insert(env_key("PATH"), (name, path));
+            }
         }
         Self { view: View { workspace: text(&dirs.workspace), temp: text(&dirs.temp), files: text(&dirs.files) }, base_env }
     }
