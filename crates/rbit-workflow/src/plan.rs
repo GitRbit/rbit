@@ -502,6 +502,35 @@ fn call_inputs(
 }
 
 /// One job of one combination as a template.
+/// The job's `container` and `services`, evaluated.
+fn containers(evaluator: &Evaluator<'_>, job: &Job) -> Result<(Option<Container>, Vec<Service>), WorkflowError> {
+    let container = match &job.container {
+        Some(container) => Some(Container {
+            image: evaluator.image("container.image", &container.image)?,
+            env: container.env.clone(),
+            credentials: container.credentials.clone(),
+            options: evaluator.options("container", container.options.as_deref(), false)?,
+            volumes: evaluator.volumes("container", &container.volumes)?,
+        }),
+        None => None,
+    };
+    let services = job
+        .services
+        .iter()
+        .map(|service| {
+            Ok(Service {
+                id: service.id.clone(),
+                image: evaluator.image(&format!("services.{}.image", service.id), &service.image)?,
+                env: service.env.clone(),
+                credentials: service.credentials.clone(),
+                options: evaluator.options(&format!("services.{}", service.id), service.options.as_deref(), true)?,
+                volumes: evaluator.volumes(&format!("services.{}", service.id), &service.volumes)?,
+            })
+        })
+        .collect::<Result<_, WorkflowError>>()?;
+    Ok((container, services))
+}
+
 fn job_template(
     workflow: &Workflow,
     job: &Job,
@@ -544,26 +573,7 @@ fn job_template(
         }
         None => None,
     };
-    let container = match &job.container {
-        Some(container) => Some(Container {
-            image: evaluator.image("container.image", &container.image)?,
-            env: container.env.clone(),
-            credentials: container.credentials.clone(),
-        }),
-        None => None,
-    };
-    let services = job
-        .services
-        .iter()
-        .map(|service| {
-            Ok(Service {
-                id: service.id.clone(),
-                image: evaluator.image(&format!("services.{}.image", service.id), &service.image)?,
-                env: service.env.clone(),
-                credentials: service.credentials.clone(),
-            })
-        })
-        .collect::<Result<_, WorkflowError>>()?;
+    let (container, services) = containers(&evaluator, job)?;
     // Actions: environments.
     let environment = match &job.environment {
         Some(environment) => {
@@ -644,6 +654,27 @@ impl Evaluator<'_> {
 
     fn text(&self, field: &str, text: &str) -> Result<String, WorkflowError> {
         Template::parse(text).and_then(|template| template.render(self.contexts)).map_err(|problem| self.refuse(field, &problem))
+    }
+
+    /// `options` of `field` (`container`, `services.<id>`), evaluated and checked.
+    fn options(&self, field: &str, text: Option<&str>, service: bool) -> Result<Vec<String>, WorkflowError> {
+        let Some(text) = text else { return Ok(Vec::new()) };
+        let field = format!("{field}.options");
+        let text = self.text(&field, text)?;
+        crate::options::docker_options(&text, service).map_err(|problem| self.refuse(&field, &problem))
+    }
+
+    /// `volumes` of `field`, evaluated and checked.
+    fn volumes(&self, field: &str, volumes: &[String]) -> Result<Vec<String>, WorkflowError> {
+        let field = format!("{field}.volumes");
+        volumes
+            .iter()
+            .map(|volume| {
+                let volume = self.text(&field, volume)?;
+                crate::options::volume(&volume).map_err(|problem| self.refuse(&field, &problem))?;
+                Ok(volume.trim().to_owned())
+            })
+            .collect()
     }
 
     fn image(&self, field: &str, text: &str) -> Result<String, WorkflowError> {

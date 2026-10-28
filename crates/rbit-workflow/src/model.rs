@@ -424,6 +424,10 @@ pub struct Container {
     pub env: Env,
     /// `credentials`, as templates.
     pub credentials: Option<RegistryCredentials>,
+    /// `options`, as written (it may contain expressions; see [`crate::options`]).
+    pub options: Option<String>,
+    /// `volumes`, as written: named volumes only.
+    pub volumes: Vec<String>,
     pub at: Location,
 }
 
@@ -436,6 +440,10 @@ pub struct Service {
     pub image: String,
     pub env: Env,
     pub credentials: Option<RegistryCredentials>,
+    /// `options`, as written.
+    pub options: Option<String>,
+    /// `volumes`, as written.
+    pub volumes: Vec<String>,
     pub at: Location,
 }
 

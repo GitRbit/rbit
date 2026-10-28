@@ -176,6 +176,17 @@ pub struct Job {
     pub matchers: crate::matchers::Matchers,
 }
 
+/// A container's `options` from the server, checked again here.
+fn checked_options(options: &[String], service: bool, field: &str) -> Result<Vec<String>, String> {
+    rbit_workflow::options::check(options, service).map_err(|error| format!("`{field}.options`: {error}"))?;
+    Ok(options.to_vec())
+}
+
+/// A container's `volumes` from the server: named volumes only.
+fn checked_volumes(volumes: &[String], field: &str) -> Result<Vec<rbit_workflow::options::Volume>, String> {
+    volumes.iter().map(|volume| rbit_workflow::options::volume(volume).map_err(|error| format!("`{field}.volumes`: {error}"))).collect()
+}
+
 /// How long steps that run after a cancellation (`always()`, `cancelled()`) may take
 /// together.
 pub const CANCEL_BUDGET: Duration = Duration::from_mins(5);
@@ -361,6 +372,8 @@ impl Job {
                 None => BTreeMap::new(),
             },
             credentials: self.credentials(template.container.as_ref().and_then(|container| container.credentials.as_ref()), "container")?,
+            options: checked_options(template.container.as_ref().map_or(&[][..], |container| &container.options), false, "container")?,
+            volumes: checked_volumes(template.container.as_ref().map_or(&[][..], |container| &container.volumes), "container")?,
         };
         let mut services = Vec::new();
         for service in &template.services {
@@ -371,6 +384,8 @@ impl Job {
                     image: service.image.clone(),
                     env: self.render_env(&service.env).map_err(|error| format!("`{field}.env`: {error}"))?,
                     credentials: self.credentials(service.credentials.as_ref(), &field)?,
+                    options: checked_options(&service.options, true, &field)?,
+                    volumes: checked_volumes(&service.volumes, &field)?,
                 },
             ));
         }

@@ -67,6 +67,8 @@ pub const MOUNT_ROOT: &str = "/__w";
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 /// How long a short CLI command (a probe, `rm`) may take.
 const SHORT: Duration = Duration::from_secs(120);
+/// How long services may take to become healthy.
+const HEALTH_TIMEOUT: Duration = Duration::from_mins(10);
 /// The `busybox` image, multi-platform, for [`reclaim_run`] (`[container] helper_image`).
 pub const HELPER_IMAGE: &str = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
 /// How long handing a task's files back may take: a pull, then a walk of the workspace.
@@ -85,6 +87,11 @@ pub struct Spec {
     pub env: BTreeMap<String, String>,
     /// `(username, password)`, evaluated.
     pub credentials: Option<(String, String)>,
+    /// `options`, checked (`rbit_workflow::options`): put before the runner's own limits,
+    /// which therefore win.
+    pub options: Vec<String>,
+    /// Named volumes, the task's own.
+    pub volumes: Vec<rbit_workflow::options::Volume>,
 }
 
 /// The container backend of one task.
@@ -106,6 +113,8 @@ pub struct Container {
     base_path: String,
     started: Vec<String>,
     network_created: bool,
+    /// The task's named volumes, created before its containers.
+    volumes: Vec<String>,
     /// Who [`reclaim_run`] hands the directories back to; none where ownership means
     /// nothing to the engine's bind mounts.
     owner: Option<String>,
@@ -130,6 +139,11 @@ impl Names {
 
     pub fn service(&self, id: &str) -> String {
         format!("rbit-{}-{id}", self.task)
+    }
+
+    /// The task's own volume called `name` in the workflow.
+    pub fn volume(&self, name: &str) -> String {
+        format!("rbit-{}-vol-{name}", self.task)
     }
 
     /// `--label` arguments marking a resource as this task's.
@@ -199,14 +213,27 @@ pub fn limits(config: &ContainerConfig) -> Vec<String> {
     args
 }
 
+/// `--mount` arguments of the task's named volumes.
+fn volume_mounts(names: &Names, volumes: &[rbit_workflow::options::Volume]) -> Vec<String> {
+    volumes
+        .iter()
+        .flat_map(|volume| {
+            let readonly = if volume.read_only { ",readonly" } else { "" };
+            ["--mount".to_owned(), format!("type=volume,source={},target={}{readonly}", names.volume(&volume.name), volume.target)]
+        })
+        .collect()
+}
+
 /// `run -d` of service `id`; its environment is in `env_file`.
-pub fn service_run(names: &Names, config: &ContainerConfig, id: &str, image: &str, env_file: &Path, inherited: &[String]) -> Vec<String> {
+pub fn service_run(names: &Names, config: &ContainerConfig, id: &str, spec: &Spec, env_file: &Path, inherited: &[String]) -> Vec<String> {
     let mut args = vec!["run".into(), "--detach".into(), "--name".into(), names.service(id)];
     args.extend(["--network".into(), names.network.clone(), "--network-alias".into(), id.to_owned()]);
     args.extend(names.labels());
+    args.extend(volume_mounts(names, &spec.volumes));
+    args.extend(spec.options.iter().cloned());
     args.extend(limits(config));
     args.extend(env_args(env_file, inherited));
-    args.push(image.to_owned());
+    args.push(spec.image.clone());
     args
 }
 
@@ -218,16 +245,19 @@ pub fn job_create(
     dirs: &Dirs,
     view: &View,
     externals: &Path,
-    image: &str,
+    spec: &Spec,
     env_file: &Path,
     inherited: &[String],
 ) -> Vec<String> {
+    let image = &spec.image;
     let mut args = vec!["create".into(), "--name".into(), names.job.clone(), "--network".into(), names.network.clone()];
     for (source, target) in [(&dirs.workspace, &view.workspace), (&dirs.temp, &view.temp), (&dirs.files, &view.files)] {
         args.extend(["--mount".into(), format!("type=bind,source={},target={target}", source.display())]);
     }
     // Actions: third-party actions. Node.js for JavaScript actions; the job cannot change it.
     args.extend(["--mount".into(), format!("type=bind,source={},target={},readonly", externals.display(), crate::node::CONTAINER_DIR)]);
+    args.extend(volume_mounts(names, &spec.volumes));
+    args.extend(spec.options.iter().cloned());
     args.extend(["--workdir".into(), view.workspace.clone()]);
     args.extend(names.labels());
     args.extend(limits(config));
@@ -570,6 +600,7 @@ impl Container {
             base_path: DEFAULT_PATH.to_owned(),
             started: Vec::new(),
             network_created: false,
+            volumes: Vec::new(),
             owner: None,
             written: AtomicBool::new(false),
         })
@@ -660,17 +691,31 @@ impl Container {
         }
         self.run(reporter, &network_create(&self.names, &self.config.network), &[]).await?;
         self.network_created = true;
+        let mut volumes: Vec<&str> = std::iter::once(job)
+            .chain(services.iter().map(|(_, service)| service))
+            .flat_map(|spec| &spec.volumes)
+            .map(|volume| volume.name.as_str())
+            .collect();
+        volumes.sort_unstable();
+        volumes.dedup();
+        for name in volumes {
+            let mut args = vec!["volume".to_owned(), "create".to_owned()];
+            args.extend(self.names.labels());
+            args.push(self.names.volume(name));
+            self.volumes.push(self.names.volume(name));
+            self.run(reporter, &args, &[]).await?;
+        }
         for (id, service) in services {
             self.run(reporter, &["pull".to_owned(), service.image.clone()], &[]).await?;
             let env = EnvFile::write(&self.private.join(format!("service-{id}.env")), &service.env).map_err(|error| error.to_string())?;
             self.started.push(self.names.service(id));
-            self.run(reporter, &service_run(&self.names, &self.config, id, &service.image, env.path(), &env.names()), &env.inherited)
-                .await?;
+            self.run(reporter, &service_run(&self.names, &self.config, id, service, env.path(), &env.names()), &env.inherited).await?;
         }
+        self.wait_healthy(reporter, services).await?;
         self.run(reporter, &["pull".to_owned(), job.image.clone()], &[]).await?;
         let env = EnvFile::write(&self.private.join("job.env"), &job.env).map_err(|error| error.to_string())?;
         self.started.push(self.names.job.clone());
-        let create = job_create(&self.names, &self.config, &self.dirs, &self.view, &self.externals, &job.image, env.path(), &env.names());
+        let create = job_create(&self.names, &self.config, &self.dirs, &self.view, &self.externals, job, env.path(), &env.names());
         self.run(reporter, &create, &env.inherited).await?;
         drop(env);
         self.run(reporter, &["start".to_owned(), self.names.job.clone()], &[]).await?;
@@ -678,6 +723,40 @@ impl Container {
         self.owner = file_owner(&self.program).await;
         if self.owner.is_some() {
             ensure_image(&self.program, &self.config.helper_image, reporter).await?;
+        }
+        Ok(())
+    }
+
+    /// Waits until every service with a health check is healthy, as GitHub's runner does
+    /// before the first step: an unhealthy one, or one still starting after
+    /// [`HEALTH_TIMEOUT`], fails the job.
+    async fn wait_healthy(&self, reporter: &Reporter, services: &[(String, Spec)]) -> Result<(), String> {
+        if services.is_empty() {
+            return Ok(());
+        }
+        reporter.log("Waiting for all services to be ready");
+        let deadline = tokio::time::Instant::now() + HEALTH_TIMEOUT;
+        for (id, _) in services {
+            loop {
+                let mut command = self.cli();
+                command.args(["inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{end}}", &self.names.service(id)]);
+                let status = process::capture(command, None, SHORT).await.map(|output| output.stdout.trim().to_owned()).unwrap_or_default();
+                match status.as_str() {
+                    "" | "healthy" => {
+                        reporter.log(&format!("{id} service is {}", if status.is_empty() { "running" } else { "healthy" }));
+                        break;
+                    }
+                    "unhealthy" => return Err(format!("the `{id}` service is unhealthy")),
+                    _ if tokio::time::Instant::now() >= deadline => {
+                        return Err(format!("the `{id}` service was not healthy within {} minutes", HEALTH_TIMEOUT.as_secs() / 60));
+                    }
+                    _ => {}
+                }
+                tokio::select! {
+                    () = reporter.cancellation().cancelled() => return Err("cancelled".to_owned()),
+                    () = tokio::time::sleep(Duration::from_secs(2)) => {}
+                }
+            }
         }
         Ok(())
     }
@@ -781,6 +860,11 @@ impl Container {
             }
         }
         self.reclaim(reporter).await;
+        if !self.volumes.is_empty() {
+            let mut command = self.cli();
+            command.args(["volume", "rm", "--force"]).args(&self.volumes);
+            let _ = process::capture(command, None, SHORT).await;
+        }
         if self.network_created {
             let mut command = self.cli();
             command.args(["network", "rm", &self.names.network]);
@@ -800,16 +884,18 @@ async fn owner() -> Option<(String, String)> {
     (!uid.is_empty() && !gid.is_empty()).then_some((uid, gid))
 }
 
-/// Removes containers and networks this runner left behind (labelled `rbit.runner` with
-/// its name), at start-up, when no task runs.
+/// Removes containers, networks and volumes this runner left behind (labelled
+/// `rbit.runner` with its name), at start-up, when no task runs.
 pub async fn janitor(config: &RunnerConfig) {
     let Some(program) = process::find_program(&config.container.program) else { return };
     let filter = format!("label=rbit.runner={}", config.name);
-    for (list, remove) in
-        [(["ps", "--all"].as_slice(), ["rm", "--force"].as_slice()), (["network", "ls"].as_slice(), ["network", "rm"].as_slice())]
-    {
+    for (list, remove, format) in [
+        (["ps", "--all"].as_slice(), ["rm", "--force"].as_slice(), "{{.ID}}"),
+        (["network", "ls"].as_slice(), ["network", "rm"].as_slice(), "{{.ID}}"),
+        (["volume", "ls"].as_slice(), ["volume", "rm", "--force"].as_slice(), "{{.Name}}"),
+    ] {
         let mut command = process::command(&program);
-        command.args(list).args(["--filter", &filter, "--format", "{{.ID}}"]);
+        command.args(list).args(["--filter", &filter, "--format", format]);
         let Ok(output) = process::capture(command, None, SHORT).await else { continue };
         let ids: Vec<&str> = output.stdout.lines().map(str::trim).filter(|id| !id.is_empty()).collect();
         if output.success && !ids.is_empty() {
@@ -868,7 +954,7 @@ mod tests {
             &dirs(),
             &view,
             Path::new("/work/externals"),
-            "docker.io/library/rust:1.94",
+            &spec("docker.io/library/rust:1.94"),
             Path::new("/p/job.env"),
             &["KEY".into()],
         );
@@ -896,7 +982,7 @@ mod tests {
             network_create(&names(), "bridge").join(" "),
             "network create --driver bridge --label rbit.task=42 --label rbit.runner=build-1 rbit-42"
         );
-        let args = service_run(&names(), &ContainerConfig::default(), "postgres", "postgres:17", Path::new("/p/s.env"), &[]);
+        let args = service_run(&names(), &ContainerConfig::default(), "postgres", &spec("postgres:17"), Path::new("/p/s.env"), &[]);
         assert_confined(&args);
         assert_eq!(
             args.join(" "),
@@ -904,6 +990,23 @@ mod tests {
              --label rbit.runner=build-1 --security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --env-file /p/s.env postgres:17"
         );
         assert_eq!(remove(&["rbit-42-postgres".into(), "rbit-42-job".into()]).join(" "), "rm --force rbit-42-postgres rbit-42-job");
+    }
+
+    fn spec(image: &str) -> Spec {
+        Spec { image: image.into(), env: BTreeMap::new(), credentials: None, options: Vec::new(), volumes: Vec::new() }
+    }
+
+    #[test]
+    fn options_come_before_the_runners_limits_and_volumes_are_the_tasks() {
+        let mut service = spec("redis:7");
+        service.options = rbit_workflow::options::docker_options("--health-cmd 'redis-cli ping' --memory 64g", true).unwrap();
+        service.volumes =
+            vec![rbit_workflow::options::volume("data:/data").unwrap(), rbit_workflow::options::volume("conf:/etc/x:ro").unwrap()];
+        let line = service_run(&names(), &config(), "redis", &service, Path::new("/p/s.env"), &[]).join(" ");
+        assert!(line.contains("--mount type=volume,source=rbit-42-vol-data,target=/data --mount type=volume,source=rbit-42-vol-conf,target=/etc/x,readonly"), "{line}");
+        let (options, limit) = (line.find("--memory 64g").unwrap(), line.find("--memory 4g").unwrap());
+        assert!(options < limit, "the runner's own memory limit comes last, and wins: {line}");
+        assert!(line.contains("--health-cmd redis-cli ping"), "{line}");
     }
 
     #[test]

@@ -90,17 +90,11 @@ const CALL_UNSUPPORTED: [(&str, &str); 12] = [
 const STEP_KEYS: [&str; 11] =
     ["id", "name", "if", "run", "shell", "working-directory", "env", "uses", "with", "continue-on-error", "timeout-minutes"];
 /// The container keys GitHub has and rbit lacks.
-const CONTAINER_UNSUPPORTED: [(&str, &str); 3] = [
-    ("options", ": the runner chooses the container options"),
-    ("ports", ": services reach the job container by name on the job's own network"),
-    ("volumes", ": the workspace is mounted for you"),
-];
+const CONTAINER_UNSUPPORTED: [(&str, &str); 1] = [("ports", ": services reach the job container by name on the job's own network")];
 /// The service keys GitHub has and rbit lacks.
-const SERVICE_UNSUPPORTED: [(&str, &str); 3] = [
-    ("options", ": the runner chooses the container options"),
-    ("ports", ": the job reaches a service by its id as host name"),
-    ("volumes", ""),
-];
+const SERVICE_UNSUPPORTED: [(&str, &str); 1] = [("ports", ": the job reaches a service by its id as host name")];
+/// The keys of a container and of a service.
+const CONTAINER_KEYS: [&str; 5] = ["image", "env", "credentials", "options", "volumes"];
 /// Every event GitHub documents for `on`. rbit starts runs for some of them
 /// ([`crate::trigger`]); the others are accepted and never fire.
 const GITHUB_EVENTS: [&str; 35] = [
@@ -1052,12 +1046,35 @@ fn parse_container(node: &Node, path: &str) -> Result<Container, WorkflowError> 
         let image =
             node.as_text().filter(|image| !image.is_empty()).ok_or_else(|| error(format!("`{path}` must name an image"), node.at))?;
         template(&image, Scope::Job, path, node.at)?;
-        return Ok(Container { image, env: Env::new(), credentials: None, at: node.at });
+        return Ok(Container { image, env: Env::new(), credentials: None, options: None, volumes: Vec::new(), at: node.at });
     }
     let config = mapping(node, path)?;
-    check_keys(config, path, &["image", "env", "credentials"], &CONTAINER_UNSUPPORTED)?;
+    check_keys(config, path, &CONTAINER_KEYS, &CONTAINER_UNSUPPORTED)?;
     let (image, env, credentials) = image_env_credentials(config, node, path)?;
-    Ok(Container { image, env, credentials, at: node.at })
+    let (options, volumes) = options_volumes(config, path, false)?;
+    Ok(Container { image, env, credentials, options, volumes, at: node.at })
+}
+
+/// `options` and `volumes` of a container or service, checked now unless they hold
+/// expressions ([`crate::options`]).
+fn options_volumes(config: &Mapping, path: &str, service: bool) -> Result<(Option<String>, Vec<String>), WorkflowError> {
+    let options = template_field(config, "options", &format!("{path}.options"), Scope::Job)?.filter(|text| !text.trim().is_empty());
+    if let (Some(text), Some(node)) = (&options, config.get("options"))
+        && !text.contains("${{")
+    {
+        crate::options::docker_options(text, service).map_err(|problem| error(format!("`{path}.options`: {problem}"), node.at))?;
+    }
+    let mut volumes = Vec::new();
+    if let Some(node) = config.get("volumes").filter(|node| !node.is_null()) {
+        for volume in strings(node, &format!("{path}.volumes"))? {
+            template(&volume, Scope::Job, &format!("{path}.volumes"), node.at)?;
+            if !volume.contains("${{") {
+                crate::options::volume(&volume).map_err(|problem| error(format!("`{path}.volumes`: {problem}"), node.at))?;
+            }
+            volumes.push(volume);
+        }
+    }
+    Ok((options, volumes))
 }
 
 /// `services`: at most [`MAX_SERVICES`], each `image`, `env` and `credentials`.
@@ -1079,9 +1096,10 @@ fn parse_services(node: &Node, path: &str) -> Result<Vec<Service>, WorkflowError
             ));
         }
         let config = mapping(value, &service_path)?;
-        check_keys(config, &service_path, &["image", "env", "credentials"], &SERVICE_UNSUPPORTED)?;
+        check_keys(config, &service_path, &CONTAINER_KEYS, &SERVICE_UNSUPPORTED)?;
         let (image, env, credentials) = image_env_credentials(config, value, &service_path)?;
-        services.push(Service { id: key.name.clone(), image, env, credentials, at: key.at });
+        let (options, volumes) = options_volumes(config, &service_path, true)?;
+        services.push(Service { id: key.name.clone(), image, env, credentials, options, volumes, at: key.at });
     }
     Ok(services)
 }
@@ -1800,13 +1818,13 @@ jobs:
             ),
             (
                 "    runs-on: x\n    container: {image: a, options: --privileged}\n    steps: [{run: x}]\n",
-                "`jobs.a.container.options` is not supported by rbit",
-                (5, 27),
+                "`jobs.a.container.options`: `--privileged` is not an option rbit passes",
+                (5, 36),
             ),
             (
                 "    runs-on: x\n    container: {image: a, volumes: [/x]}\n    steps: [{run: x}]\n",
-                "`jobs.a.container.volumes` is not supported by rbit",
-                (5, 27),
+                "`jobs.a.container.volumes`: `/x` must be `name:/path`",
+                (5, 36),
             ),
             (
                 "    runs-on: x\n    container: {image: a, credentials: {user: u}}\n    steps: [{run: x}]\n",
@@ -1817,13 +1835,13 @@ jobs:
             ("    runs-on: x\n    container: {env: {}}\n    steps: [{run: x}]\n", "`jobs.a.container` needs an `image`", (5, 16)),
             (
                 "    runs-on: x\n    services: {db: {image: pg, options: --x}}\n    steps: [{run: x}]\n",
-                "`jobs.a.services.db.options` is not supported by rbit",
-                (5, 32),
+                "`jobs.a.services.db.options`: `--x` is not an option rbit passes",
+                (5, 41),
             ),
             (
                 "    runs-on: x\n    services: {db: {image: pg, volumes: [/x]}}\n    steps: [{run: x}]\n",
-                "`jobs.a.services.db.volumes` is not supported by rbit",
-                (5, 32),
+                "`jobs.a.services.db.volumes`: `/x` must be `name:/path`",
+                (5, 41),
             ),
             (
                 "    runs-on: x\n    services: {db: {image: pg, ports: [5432]}}\n    steps: [{run: x}]\n",

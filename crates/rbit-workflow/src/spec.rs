@@ -253,6 +253,12 @@ pub struct Container {
     pub image: String,
     pub env: Env,
     pub credentials: Option<RegistryCredentials>,
+    /// `options`, evaluated and checked: `docker create` arguments ([`crate::options`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+    /// `volumes`, evaluated and checked: `name:/path[:ro]`, named volumes only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub volumes: Vec<String>,
 }
 
 /// One `services.<id>` container (container backend only).
@@ -265,6 +271,12 @@ pub struct Service {
     pub image: String,
     pub env: Env,
     pub credentials: Option<RegistryCredentials>,
+    /// As [`Container::options`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+    /// As [`Container::volumes`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub volumes: Vec<String>,
 }
 
 /// `credentials` of a container or service, as templates (normally
@@ -767,12 +779,16 @@ mod tests {
                 image: "docker.io/library/rust:1.94".into(),
                 env: Env::new(),
                 credentials: Some(RegistryCredentials { username: "ci".into(), password: "${{ secrets.REGISTRY_PASSWORD }}".into() }),
+                options: Vec::new(),
+                volumes: Vec::new(),
             }),
             services: vec![Service {
                 id: "postgres".into(),
                 image: "postgres:17".into(),
                 env: Env::from([("POSTGRES_PASSWORD".into(), "pw".into())]),
                 credentials: None,
+                options: Vec::new(),
+                volumes: Vec::new(),
             }],
             steps: vec![
                 StepTemplate {

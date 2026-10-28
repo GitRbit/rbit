@@ -35,6 +35,7 @@ pub mod expr;
 pub mod glob;
 pub mod limits;
 pub mod model;
+pub mod options;
 pub mod parse;
 pub mod pattern;
 pub mod plan;

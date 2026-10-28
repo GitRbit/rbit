@@ -247,7 +247,8 @@ async fn a_cancelled_job_stops_its_step_and_runs_only_always_steps() {
 #[tokio::test]
 async fn jobs_the_label_cannot_run_fail_before_any_step() {
     let mut spec = host_job(vec![step("echo hi")]);
-    spec.template.container = Some(Container { image: "alpine".into(), env: Env::new(), credentials: None });
+    spec.template.container =
+        Some(Container { image: "alpine".into(), env: Env::new(), credentials: None, options: Vec::new(), volumes: Vec::new() });
     let (result, reporter, _work) = execute(spec).await;
     assert_eq!(result, TaskResult::Failure);
     assert!(reporter.lines()[0].contains("use a container label"), "{:?}", reporter.lines());
@@ -341,12 +342,16 @@ async fn container_jobs_drive_the_cli() {
         image: "docker.io/library/rust:1.94".into(),
         env: Env::from([("IN_CONTAINER".into(), "${{ secrets.MY_SECRET }}".into())]),
         credentials: None,
+        options: Vec::new(),
+        volumes: Vec::new(),
     });
     spec.template.services = vec![rbit_workflow::spec::Service {
         id: "postgres".into(),
         image: "postgres:17".into(),
         env: Env::from([("POSTGRES_PASSWORD".into(), "pw".into())]),
         credentials: None,
+        options: Vec::new(),
+        volumes: Vec::new(),
     }];
     let program = fake.display().to_string();
     let (result, reporter, _work) = execute_with(spec, |loaded| loaded.config.container.program = program, |_| {}).await;
