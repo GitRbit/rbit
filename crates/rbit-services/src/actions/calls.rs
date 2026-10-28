@@ -400,5 +400,5 @@ const fn result_name(result: JobResult) -> &'static str {
 
 /// Whether `job` waits for the server to decide calls' `if:`.
 pub fn decided_by_server(template: &JobTemplate) -> bool {
-    template.condition.is_some() || template.calls.iter().any(|level| level.condition.is_some())
+    template.deferred || template.condition.is_some() || template.calls.iter().any(|level| level.condition.is_some())
 }

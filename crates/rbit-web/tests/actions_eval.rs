@@ -1327,6 +1327,7 @@ fn job(key: &str, needs: &[&str], environment: Option<&str>) -> JobTemplate {
         environment_url: None,
         calls: Vec::new(),
         need_names: std::collections::BTreeMap::new(),
+        deferred: false,
     }
 }
 

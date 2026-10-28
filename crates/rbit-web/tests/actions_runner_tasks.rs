@@ -66,6 +66,7 @@ pub fn template(job_id: &str, labels: &[&str], needs: &[&str]) -> JobTemplate {
         environment_url: None,
         calls: Vec::new(),
         need_names: std::collections::BTreeMap::new(),
+        deferred: false,
     }
 }
 

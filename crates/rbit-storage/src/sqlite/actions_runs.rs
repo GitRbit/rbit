@@ -500,44 +500,7 @@ impl ActionsRunStore {
         for job in new.jobs {
             // A job with its own `if:` waits for the server's decision like one with needs.
             let status = initial_status(new.start, !job.needs.is_empty() || job.condition);
-            let job_id: i64 = sqlx::query_scalar(
-                "INSERT INTO actions_jobs (run_id, repo_id, job_key, name, matrix, needs, permissions, payload, status, created_at, \
-                 queued_at, condition, max_parallel, job_group, environment) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) RETURNING id",
-            )
-            .bind(run_id)
-            .bind(new.repo.0)
-            .bind(job.key)
-            .bind(job.name)
-            .bind(job.matrix)
-            .bind(strings_json(job.needs)?)
-            .bind(job.permissions)
-            .bind(job.payload)
-            .bind(status.code())
-            .bind(new.now.0)
-            .bind((status == Status::Waiting).then_some(new.now.0))
-            .bind(job.condition)
-            .bind(job.max_parallel)
-            .bind(job.group)
-            .bind(job.environment)
-            .fetch_one(&mut *tx)
-            .await?;
-            insert_labels(&mut tx, job_id, job.runs_on).await?;
-            // Actions: environments. Named for the first time, an environment exists with no
-            // protection, as on GitHub, so it can be configured; past the cap of a repository
-            // it is not created (and so has no protection to apply either). An untrusted run
-            // (a fork's pull request) creates none, so it cannot fill the cap.
-            if let Some(environment) = job.environment.filter(|_| new.trusted) {
-                sqlx::query(
-                    "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3                      WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
-                )
-                .bind(new.repo.0)
-                .bind(environment)
-                .bind(new.now.0)
-                .bind(i64::try_from(super::actions_environments::MAX_ENVIRONMENTS).unwrap_or(i64::MAX))
-                .execute(&mut *tx)
-                .await?;
-            }
+            let job_id = insert_job(&mut tx, RunId(run_id), new.repo, new.trusted, job, status, new.now).await?;
             if status == Status::Waiting {
                 waiting.push(job_id);
             }
@@ -1461,6 +1424,50 @@ impl ActionsRunStore {
         Ok(Some(settled))
     }
 
+    // Actions: plans from needs.
+    /// Puts `jobs`, planned now that its needs are done, in the place of the blocked
+    /// stand-in `job` (`JobTemplate::deferred`): the first takes over its row, the others
+    /// are added to its run, and all are ready to run. `None` when the stand-in was decided
+    /// or cancelled meanwhile, or `jobs` is empty.
+    pub async fn expand(&self, job: JobId, jobs: &[NewJob<'_>], now: Timestamp) -> Result<Option<Settled>, StorageError> {
+        let Some((first, rest)) = jobs.split_first() else { return Ok(None) };
+        let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let found: Option<(i64, i64, bool)> = sqlx::query_as(
+            "SELECT j.run_id, j.repo_id, r.trusted FROM actions_jobs j JOIN actions_runs r ON r.id = j.run_id \
+             WHERE j.id = ? AND j.status = 7 AND j.condition = 1",
+        )
+        .bind(job.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some((run, repo, trusted)) = found else { return Ok(None) };
+        sqlx::query(
+            "UPDATE actions_jobs SET name = ?2, matrix = ?3, needs = ?4, permissions = ?5, payload = ?6, status = ?7, queued_at = ?8, \
+             condition = 0, max_parallel = ?9, job_group = ?10, environment = ?11 WHERE id = ?1",
+        )
+        .bind(job.0)
+        .bind(first.name)
+        .bind(first.matrix)
+        .bind(strings_json(first.needs)?)
+        .bind(first.permissions)
+        .bind(first.payload)
+        .bind(Status::Waiting.code())
+        .bind(now.0)
+        .bind(first.max_parallel)
+        .bind(first.group)
+        .bind(first.environment)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM actions_job_labels WHERE job_id = ?").bind(job.0).execute(&mut *tx).await?;
+        insert_labels(&mut tx, job.0, first.runs_on).await?;
+        let mut waiting = vec![job.0];
+        for next in rest {
+            waiting.push(insert_job(&mut tx, RunId(run), RepoId(repo), trusted, next, Status::Waiting, now).await?);
+        }
+        let settled = settle(&mut tx, RunId(run), waiting, now).await?;
+        tx.commit().await?;
+        Ok(Some(settled))
+    }
+
     /// Cancels the unfinished jobs among `jobs` of run `run` (`strategy.fail-fast`: the
     /// matrix siblings of a job that failed). Running ones are cancelled in the database —
     /// their task tokens die at once, as with [`Self::cancel_run`] (§11.11) — and their
@@ -1559,6 +1566,58 @@ fn initial_status(start: RunStart, has_needs: bool) -> JobStatus {
         RunStart::HeldForConcurrency => Status::Blocked,
         RunStart::AwaitingApproval => Status::AwaitingApproval,
     }
+}
+
+/// Inserts `job` into run `run` with `status`; its id.
+async fn insert_job(
+    tx: &mut SqliteConnection,
+    run: RunId,
+    repo: RepoId,
+    trusted: bool,
+    job: &NewJob<'_>,
+    status: JobStatus,
+    now: Timestamp,
+) -> Result<i64, StorageError> {
+    let job_id: i64 = sqlx::query_scalar(
+        "INSERT INTO actions_jobs (run_id, repo_id, job_key, name, matrix, needs, permissions, payload, status, created_at, \
+         queued_at, condition, max_parallel, job_group, environment) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) RETURNING id",
+    )
+    .bind(run.0)
+    .bind(repo.0)
+    .bind(job.key)
+    .bind(job.name)
+    .bind(job.matrix)
+    .bind(strings_json(job.needs)?)
+    .bind(job.permissions)
+    .bind(job.payload)
+    .bind(status.code())
+    .bind(now.0)
+    .bind((status == Status::Waiting).then_some(now.0))
+    .bind(job.condition)
+    .bind(job.max_parallel)
+    .bind(job.group)
+    .bind(job.environment)
+    .fetch_one(&mut *tx)
+    .await?;
+    insert_labels(tx, job_id, job.runs_on).await?;
+    // Actions: environments. Named for the first time, an environment exists with no
+    // protection, as on GitHub, so it can be configured; past the cap of a repository it is
+    // not created (and so has no protection to apply either). An untrusted run (a fork's
+    // pull request) creates none, so it cannot fill the cap.
+    if let Some(environment) = job.environment.filter(|_| trusted) {
+        sqlx::query(
+            "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3 \
+             WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
+        )
+        .bind(repo.0)
+        .bind(environment)
+        .bind(now.0)
+        .bind(i64::try_from(super::actions_environments::MAX_ENVIRONMENTS).unwrap_or(i64::MAX))
+        .execute(&mut *tx)
+        .await?;
+    }
+    Ok(job_id)
 }
 
 async fn insert_labels(tx: &mut SqliteConnection, job: i64, labels: &[String]) -> Result<(), StorageError> {

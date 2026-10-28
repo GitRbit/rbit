@@ -188,8 +188,12 @@ fn check_keys(mapping: &Mapping, path: &str, allowed: &[&str], unsupported: &[(&
 /// Where a field is evaluated (§12.4), which decides the contexts and functions it may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Scope {
-    /// The server, when the run is created: `run-name`, `strategy`, workflow `concurrency`.
+    /// The server, when the run is created: `run-name`, workflow `concurrency`.
     Run,
+    // Actions: plans from needs.
+    /// The server: a job's `strategy`, which may read `needs` (then it is planned when they
+    /// are done).
+    Strategy,
     /// The server, per planned job: job `name`, `runs-on`, `timeout-minutes`,
     /// `continue-on-error`, `concurrency`, `container.image`, `services.*.image`.
     Job,
@@ -216,8 +220,10 @@ impl Scope {
     fn contexts(self) -> &'static [&'static str] {
         match self {
             Self::Run => &["github", "inputs", "vars"],
-            Self::Job => &["github", "inputs", "vars", "matrix", "strategy"],
-            Self::JobCondition | Self::Call => &["github", "inputs", "vars", "matrix", "strategy", "needs"],
+            Self::Strategy => &["github", "inputs", "vars", "needs"],
+            // Actions: plans from needs. A job that reads `needs` here is planned once they are
+            // done (`plan::plan_deferred`).
+            Self::Job | Self::JobCondition | Self::Call => &["github", "inputs", "vars", "matrix", "strategy", "needs"],
             Self::Runner | Self::StepCondition => &RUNNER_CONTEXTS,
             Self::CallSecrets => &["github", "inputs", "vars", "matrix", "strategy", "needs", "secrets"],
             Self::CallOutputs => &["github", "inputs", "vars", "jobs"],
@@ -1030,12 +1036,12 @@ fn parse_strategy(node: &Node, path: &str) -> Result<Strategy, WorkflowError> {
     let fail_fast = config
         .get("fail-fast")
         .filter(|node| !node.is_null())
-        .map(|node| flag(node, &format!("{path}.fail-fast"), Scope::Run))
+        .map(|node| flag(node, &format!("{path}.fail-fast"), Scope::Strategy))
         .transpose()?;
     let max_parallel = config
         .get("max-parallel")
         .filter(|node| !node.is_null())
-        .map(|node| amount(node, &format!("{path}.max-parallel"), Scope::Run, true))
+        .map(|node| amount(node, &format!("{path}.max-parallel"), Scope::Strategy, true))
         .transpose()?;
     Ok(Strategy { matrix, fail_fast, max_parallel })
 }
@@ -1254,7 +1260,7 @@ fn parse_matrix(node: &Node, path: &str) -> Result<Matrix, WorkflowError> {
             .as_text()
             .filter(|text| text.contains("${{"))
             .ok_or_else(|| error(format!("`{path}` must be a mapping of lists, or an expression"), node.at))?;
-        template(&text, Scope::Run, path, node.at)?;
+        template(&text, Scope::Strategy, path, node.at)?;
         return Ok(Matrix { value: serde_json::Value::String(text), has_expressions: true, at: node.at });
     };
     let has_expressions = matrix_expressions(node, path)?;
@@ -1304,11 +1310,11 @@ fn parse_matrix(node: &Node, path: &str) -> Result<Matrix, WorkflowError> {
     Ok(Matrix { value: node.to_json(), has_expressions, at: node.at })
 }
 
-/// Checks every `${{ }}` in a matrix against [`Scope::Run`]; whether there is one.
+/// Checks every `${{ }}` in a matrix against [`Scope::Strategy`]; whether there is one.
 fn matrix_expressions(node: &Node, path: &str) -> Result<bool, WorkflowError> {
     match &node.value {
         Value::Scalar(scalar) => match &scalar.value {
-            ScalarValue::String(text) if text.contains("${{") => template(text, Scope::Run, path, node.at).map(|()| true),
+            ScalarValue::String(text) if text.contains("${{") => template(text, Scope::Strategy, path, node.at).map(|()| true),
             _ => Ok(false),
         },
         Value::Sequence(items) => items.iter().try_fold(false, |found, item| Ok(matrix_expressions(item, path)? || found)),
@@ -1551,11 +1557,6 @@ jobs:
             (
                 "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: linux}\n",
                 "must be a mapping of lists, or an expression",
-                (5, 24),
-            ),
-            (
-                "on: push\njobs:\n  a:\n    runs-on: x\n    strategy: {matrix: '${{ fromJSON(needs.b.outputs.m) }}'}\n",
-                "values that depend on `needs` are not supported by rbit",
                 (5, 24),
             ),
             (
@@ -2002,10 +2003,6 @@ jobs:
             ("concurrency: '${{ matrix.os }}'\n", "`concurrency.group`: the `matrix` context is not available"),
             ("run-name: '${{ github.ref'\n", "`run-name`: a `${{` is not closed"),
             ("jobs: {a: {runs-on: '${{ secrets.LABEL }}', steps: [{run: x}]}}\n", "`jobs.a.runs-on`: the `secrets` context"),
-            (
-                "jobs: {a: {runs-on: '${{ needs.b.outputs.os }}', steps: [{run: x}]}}\n",
-                "values that depend on `needs` are not supported by rbit",
-            ),
             ("jobs: {a: {runs-on: x, name: '${{ steps.x.outputs.y }}', steps: [{run: x}]}}\n", "`jobs.a.name`: the `steps` context"),
             ("jobs: {a: {runs-on: x, name: '${{ success() }}', steps: [{run: x}]}}\n", "`success()` can only be used in `if`"),
             ("jobs: {a: {runs-on: x, name: \"${{ hashFiles('x') }}\", steps: [{run: x}]}}\n", "`hashFiles` only works in steps"),

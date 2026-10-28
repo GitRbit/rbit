@@ -9,6 +9,12 @@
 //!   `needs`, and the status the status functions read from the needed jobs' results. True
 //!   queues the job, false skips it, and a condition that cannot be evaluated fails it, as on
 //!   GitHub. `secrets` are never evaluated on the server.
+//! * A job whose `runs-on`, `strategy`, `container`, `services` or `environment` reads
+//!   `needs` was planned as a blocked stand-in (`JobTemplate::deferred`). Once its needs are
+//!   done its `if:` is decided as any other's; if it runs, the job is planned from its
+//!   workflow at the run's commit with `needs` known, and the jobs that gives (a matrix
+//!   from an earlier job's outputs, for instance) take its place. A plan that fails fails
+//!   the job, as on GitHub.
 //! * Fail-fast: once a matrix job fails, its unfinished siblings (the same job key) are
 //!   cancelled unless the job's strategy turned `fail-fast` off.
 //!
@@ -55,6 +61,8 @@ impl ActionsService {
         let Some(job) = store.job(id).await? else { return Ok(None) };
         let Some(run) = store.run(job.run_id).await? else { return Ok(None) };
         let decision = match self.template(&job).await? {
+            // Actions: plans from needs.
+            Some(template) if template.deferred => return self.expand_deferred(&run, &job, &template).await,
             // Actions: reusable workflows. The calls' own `if:` first, outermost first.
             Some(template) => match self.calls_decision(&run, &template).await? {
                 Some(decision) => decision,
@@ -69,6 +77,59 @@ impl ActionsService {
             tracing::info!(run = run.id.0, job = %job.key, ?decision, "job condition decided");
         }
         Ok(store.decide(id, decision, Timestamp::now()).await?)
+    }
+
+    // Actions: plans from needs.
+    /// Decides the stand-in `job` of a job planned from its needs, and puts the jobs its
+    /// plan gives in its place.
+    async fn expand_deferred(&self, run: &Run, job: &Job, template: &JobTemplate) -> Result<Option<Settled>, ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        let condition = template.condition.as_deref().unwrap_or("success()");
+        let decision = self.evaluate_condition(run, job, template, condition).await?;
+        if decision != Decision::Run {
+            tracing::info!(run = run.id.0, job = %job.key, ?decision, "job condition decided");
+            return Ok(store.decide(job.id, decision, Timestamp::now()).await?);
+        }
+        let planned = match self.plan_from_needs(run, job, template).await? {
+            Ok(planned) if !planned.is_empty() => planned,
+            Ok(_) => {
+                tracing::info!(run = run.id.0, job = %job.key, "a job planned from its needs has an empty matrix; it is skipped");
+                return Ok(store.decide(job.id, Decision::Skip, Timestamp::now()).await?);
+            }
+            Err(error) => {
+                tracing::warn!(run = run.id.0, job = %job.key, %error, "a job cannot be planned from its needs; it fails");
+                return Ok(store.decide(job.id, Decision::Fail, Timestamp::now()).await?);
+            }
+        };
+        let rows = super::runs::JobRows::new(&planned);
+        let settled = store.expand(job.id, &rows.jobs(&planned), Timestamp::now()).await?;
+        if settled.is_some() {
+            tracing::info!(run = run.id.0, job = %job.key, jobs = planned.len(), "job planned from its needs");
+            self.announce(run.id).await?;
+        }
+        Ok(settled)
+    }
+
+    /// The jobs `job`'s workflow, read again at the run's commit, plans for it now that its
+    /// needs are done.
+    async fn plan_from_needs(
+        &self,
+        run: &Run,
+        job: &Job,
+        template: &JobTemplate,
+    ) -> Result<Result<Vec<JobTemplate>, rbit_workflow::WorkflowError>, ServiceError> {
+        let contexts = self.condition_contexts(run, job, template).await?;
+        let Some(repo) = self.ctx().database.admin().find_repository(run.repo_id).await? else {
+            return Ok(Err(rbit_workflow::WorkflowError::plan("the repository is gone".to_owned(), None)));
+        };
+        let reader = self.reader(&repo);
+        let existing = self.ctx().database.actions_runs().jobs(run.id).await?.len();
+        let (sha, path, key, limits) = (run.sha.clone(), run.workflow_path.clone(), job.key.clone(), self.limits());
+        self.evaluate(move |handle, deadline| {
+            let workflow = super::triggers::read_workflow_file(handle, &reader, &sha, &path, &limits, deadline)?;
+            rbit_workflow::plan::plan_deferred(&workflow, &key, &contexts, existing, &limits, deadline)
+        })
+        .await
     }
 
     // Actions: reusable workflows.

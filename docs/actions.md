@@ -130,6 +130,12 @@ must not silently change what a job does.
   `powershell`, `cmd`, `python`. The default is `bash` (or `sh` without it), or `pwsh` (or
   `powershell` without it) on Windows hosts.
 
+A job's `name`, `runs-on`, `strategy` (a matrix from `fromJSON(needs.setup.outputs.matrix)`),
+`timeout-minutes`, `continue-on-error`, `concurrency`, `container`, `services` and
+`environment` may read `needs`, as on GitHub: such a job is planned when the jobs it needs are
+done, with their outputs, and a plan that cannot be made (a matrix that is not JSON) fails it.
+A called workflow's jobs cannot do this yet.
+
 A job without its own `if:` runs only when every job it needs succeeded (`success()`);
 `if: always()`, `failure()` and `cancelled()` change that. The server decides a job's `if:`
 when its needs are done, so a skipped job never takes a runner. With `fail-fast` (the
@@ -419,8 +425,6 @@ to `workflow_run` and `workflow_job`.
 - No custom shells (`shell: my {0}`), container `ports` or host-path `volumes`, and
   `options` take only what cannot give a job the runner host (see [Workflow
   syntax](#workflow-syntax)). Each is a readable error.
-- `runs-on` and matrices cannot depend on another job's outputs.
-- `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
 - A workflow is identified by its file name in the API.
 - A job's log and an artifact are downloaded directly from the API, not through a redirect.

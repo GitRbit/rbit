@@ -111,6 +111,13 @@ pub struct JobTemplate {
     /// the jobs of that key, as before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub need_names: BTreeMap<String, NeedSource>,
+    // Actions: plans from needs.
+    /// A stand-in for a job whose `runs-on`, `strategy`, `container`, `services` or
+    /// `environment` reads `needs`: it stays blocked until its needs are done, when the
+    /// server plans the job with their results and outputs ([`crate::plan::plan_deferred`])
+    /// and puts the jobs it gives in its place. No runner ever gets it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deferred: bool,
 }
 
 // Actions: reusable workflows.
@@ -823,6 +830,7 @@ mod tests {
             environment_url: None,
             calls: Vec::new(),
             need_names: std::collections::BTreeMap::new(),
+            deferred: false,
         }
     }
 

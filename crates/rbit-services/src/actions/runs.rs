@@ -474,7 +474,7 @@ fn namespaced_group(trigger: &Trigger<'_>, group: &str) -> String {
 }
 
 /// The owned values a run's [`NewJob`]s borrow.
-struct JobRows {
+pub(super) struct JobRows {
     names: Vec<String>,
     matrices: Vec<Option<String>>,
     permissions: Vec<Option<String>>,
@@ -483,7 +483,7 @@ struct JobRows {
 }
 
 impl JobRows {
-    fn new(jobs: &[JobTemplate]) -> Self {
+    pub(super) fn new(jobs: &[JobTemplate]) -> Self {
         Self {
             names: jobs
                 .iter()
@@ -501,7 +501,7 @@ impl JobRows {
         }
     }
 
-    fn jobs<'a>(&'a self, jobs: &'a [JobTemplate]) -> Vec<NewJob<'a>> {
+    pub(super) fn jobs<'a>(&'a self, jobs: &'a [JobTemplate]) -> Vec<NewJob<'a>> {
         jobs.iter()
             .enumerate()
             .map(|(index, job)| NewJob {

@@ -208,6 +208,20 @@ impl Planner<'_> {
             if job.needs.is_empty() {
                 needs.extend(scope.root_needs.iter().cloned());
             }
+            // Actions: plans from needs. Planned once its needs are done (`plan_deferred`).
+            if job.call.is_none() && reads_needs(job) {
+                if !scope.calls.is_empty() {
+                    return Err(WorkflowError::plan(
+                        format!("job `{}`: a called workflow's `runs-on`, matrix or containers cannot read `needs` yet", job.id),
+                        Some(job.at),
+                    ));
+                }
+                let key = scope.key(&job.id);
+                planned.insert(job.id.clone(), vec![deferred_template(job, &key, &needs)]);
+                sources.insert(job.id.clone(), NeedSource::Jobs(vec![key]));
+                self.jobs += 1;
+                continue;
+            }
             let combinations = match &job.strategy.matrix {
                 Some(matrix) => combinations(&Axes::resolve(matrix, run, &job.id)?, self.limits, self.deadline)?,
                 None => vec![Combination::new()],
@@ -383,6 +397,109 @@ fn passed_secrets(
             Ok(PassedSecrets::Map(map.clone()))
         }
     }
+}
+
+// Actions: plans from needs.
+/// Whether what the server plans of `job` (`name`, `runs-on`, `strategy`, `timeout-minutes`,
+/// `continue-on-error`, `concurrency`, `container`, `services`, `environment`) reads `needs`,
+/// as GitHub allows: then it is planned when they are done.
+fn reads_needs(job: &Job) -> bool {
+    if job.needs.is_empty() {
+        return false;
+    }
+    let mut texts: Vec<&str> = job.runs_on.iter().map(String::as_str).collect();
+    texts.extend(job.name.as_deref());
+    texts.extend(job.timeout_minutes.as_deref());
+    texts.extend(job.continue_on_error.as_deref());
+    texts.extend(job.concurrency.as_ref().map(|concurrency| concurrency.group.as_str()));
+    let matrix = job.strategy.matrix.as_ref().filter(|matrix| matrix.has_expressions).map(|matrix| matrix.value.to_string());
+    texts.extend(matrix.as_deref());
+    texts.extend(job.strategy.fail_fast.as_deref());
+    texts.extend(job.strategy.max_parallel.as_deref());
+    for (image, options, volumes) in job
+        .container
+        .iter()
+        .map(|container| (&container.image, &container.options, &container.volumes))
+        .chain(job.services.iter().map(|service| (&service.image, &service.options, &service.volumes)))
+    {
+        texts.push(image);
+        texts.extend(options.as_deref());
+        texts.extend(volumes.iter().map(String::as_str));
+    }
+    if let Some(environment) = &job.environment {
+        texts.push(&environment.name);
+    }
+    texts.iter().any(|text| text.contains("${{") && text.contains("needs"))
+}
+
+/// The blocked stand-in of a job planned once its needs are done ([`JobTemplate::deferred`]):
+/// its `if:` (GitHub's default `success()` when it has none) is decided first.
+fn deferred_template(job: &Job, key: &str, needs: &[String]) -> JobTemplate {
+    JobTemplate {
+        version: JOB_TEMPLATE_VERSION,
+        job_id: key.to_owned(),
+        name: job.name.clone().filter(|name| !name.contains("${{")).unwrap_or_else(|| job.id.clone()),
+        needs: needs.to_vec(),
+        condition: Some(job.condition.clone().unwrap_or_else(|| "success()".to_owned())),
+        runs_on: Vec::new(),
+        matrix: Map::new(),
+        strategy: Strategy { fail_fast: true, max_parallel: None, job_index: 0, job_total: 1 },
+        permissions: None,
+        concurrency: None,
+        timeout_minutes: DEFAULT_TIMEOUT_MINUTES,
+        continue_on_error: false,
+        workflow_env: BTreeMap::new(),
+        env: BTreeMap::new(),
+        defaults: RunDefaults::default(),
+        outputs: BTreeMap::new(),
+        container: None,
+        services: Vec::new(),
+        steps: Vec::new(),
+        environment: None,
+        environment_url: None,
+        calls: Vec::new(),
+        need_names: BTreeMap::new(),
+        deferred: true,
+    }
+}
+
+/// Plans job `job_id` of the run's own `workflow` now that its needs are done: `run` holds
+/// the run's contexts and `needs`, with their results and outputs. `existing_jobs` is how
+/// many jobs the run already has, for [`Limits::max_run_jobs`].
+pub fn plan_deferred(
+    workflow: &Workflow,
+    job_id: &str,
+    run: &ContextMap,
+    existing_jobs: usize,
+    limits: &Limits,
+    deadline: &Deadline,
+) -> Result<Vec<JobTemplate>, WorkflowError> {
+    let job = workflow
+        .jobs
+        .iter()
+        .find(|job| job.id == job_id)
+        .ok_or_else(|| WorkflowError::plan(format!("the workflow has no job `{job_id}` any more"), None))?;
+    let mut no_calls = NoCalls;
+    let mut planner = Planner { limits, deadline, loader: &mut no_calls, called: BTreeSet::new(), jobs: existing_jobs.saturating_sub(1) };
+    let scope = CallScope { prefix: String::new(), origin: None, depth: 1, calls: Vec::new(), cap: None, root_needs: Vec::new() };
+    let need_names: BTreeMap<String, NeedSource> =
+        job.needs.iter().map(|need| (need.clone(), NeedSource::Jobs(vec![need.clone()]))).collect();
+    let combinations = match &job.strategy.matrix {
+        Some(matrix) => combinations(&Axes::resolve(matrix, run, &job.id)?, limits, deadline)?,
+        None => vec![Combination::new()],
+    };
+    let evaluator = Evaluator { job, contexts: run };
+    let fail_fast = job.strategy.fail_fast.as_deref().map(|text| evaluator.flag("strategy.fail-fast", text)).transpose()?.unwrap_or(true);
+    let max_parallel =
+        job.strategy.max_parallel.as_deref().map(|text| evaluator.whole_number("strategy.max-parallel", text)).transpose()?;
+    let job_total = u32::try_from(combinations.len()).unwrap_or(u32::MAX);
+    let expansion = Expansion { combinations, fail_fast, max_parallel, job_total, need_names, needs: job.needs.clone() };
+    let (mut templates, _) = planner.steps_job(workflow, job, run, &scope, expansion)?;
+    // The decision was made for the stand-in: the planned jobs run.
+    for template in &mut templates {
+        template.condition = None;
+    }
+    Ok(templates)
 }
 
 /// The jobs of `workflow`, each after those it needs, otherwise in file order. Parsing
@@ -618,6 +735,7 @@ fn job_template(
         environment_url: job.environment.as_ref().and_then(|environment| environment.url.clone()),
         calls: Vec::new(),
         need_names: std::collections::BTreeMap::new(),
+        deferred: false,
     };
     template.validate().map_err(|problem| WorkflowError::plan(format!("job `{}`: {}", job.id, problem.message), Some(job.at)))?;
     Ok(template)

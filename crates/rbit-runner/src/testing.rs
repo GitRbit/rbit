@@ -86,6 +86,7 @@ pub fn job_spec(task_id: i64, steps: usize) -> JobSpec {
             environment_url: None,
             calls: Vec::new(),
             need_names: std::collections::BTreeMap::new(),
+            deferred: false,
         },
         contexts: Contexts { github: Map::new(), inputs: Map::new(), vars: BTreeMap::new(), needs: BTreeMap::new() },
         secrets: BTreeMap::new(),
