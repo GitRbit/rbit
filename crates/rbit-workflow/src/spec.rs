@@ -118,6 +118,12 @@ pub struct JobTemplate {
     /// and puts the jobs it gives in its place. No runner ever gets it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub deferred: bool,
+    // Actions: reusable workflows.
+    /// A called workflow's job whose calling jobs declared no `permissions:`: its token stays
+    /// within the repository's default, as the calling job's own token does, whatever this
+    /// job declares (GitHub: permissions can only be kept or reduced down the chain).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default_ceiling: bool,
 }
 
 // Actions: reusable workflows.
@@ -831,6 +837,7 @@ mod tests {
             calls: Vec::new(),
             need_names: std::collections::BTreeMap::new(),
             deferred: false,
+            default_ceiling: false,
         }
     }
 

@@ -87,3 +87,22 @@ async fn a_bad_matrix_fails_the_job_and_a_failed_need_skips_it() {
     let listed = jobs(&fixture, &run).await;
     assert_eq!(listed.iter().find(|(key, ..)| key == "build").unwrap().2, Status::Skipped, "success() is the default: {listed:?}");
 }
+
+#[tokio::test]
+async fn an_if_that_reads_the_matrix_is_decided_per_combination() {
+    let fixture = Fixture::new().await;
+    let workflow = DYNAMIC.replace(
+        "  build:
+    needs: setup
+",
+        "  build:
+    needs: setup
+    if: matrix.fruit != 'pear'
+",
+    );
+    let run = pushed(&fixture, &[(".rbit/workflows/ci.yml", &workflow)]).await;
+    run_next(&fixture, &["x"], 1, &[("matrix", r#"{"fruit":["apple","pear"]}"#), ("label", "big")], Status::Success).await;
+    let listed = jobs(&fixture, &run).await;
+    let builds: Vec<_> = listed.iter().filter(|(key, ..)| key == "build").map(|(_, name, status)| (name.as_str(), *status)).collect();
+    assert_eq!(builds, [("build (apple)", Status::Waiting), ("build (pear)", Status::Skipped)], "{listed:?}");
+}

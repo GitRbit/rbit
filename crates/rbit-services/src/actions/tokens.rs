@@ -109,7 +109,15 @@ impl ActionsService {
         let trust = if run.trusted { RunTrust::Trusted } else { RunTrust::Untrusted { awaits_approval: false } };
         // The repository's default, capped by its owner's ceiling.
         let default = self.effective_policies(job.repo_id).await?.token_permission;
-        let permissions = token_permissions(default, None, declared, trust);
+        let mut permissions = token_permissions(default, None, declared, trust);
+        // Actions: reusable workflows. A called job (`caller/job`) whose callers declared no
+        // permissions stays within the default, as their own token does.
+        if job.key.contains('/')
+            && let Some(payload) = database.actions_runs().job_payload(job.id).await?
+            && serde_json::from_slice::<rbit_workflow::spec::JobTemplate>(&payload).is_ok_and(|template| template.default_ceiling)
+        {
+            permissions = permissions.at_most(default.permissions());
+        }
         Ok(Some(TaskGrant { task: task.id, job: job.id, run: run.id, repo: job.repo_id, permissions }))
     }
 

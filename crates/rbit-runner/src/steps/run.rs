@@ -159,6 +159,8 @@ pub async fn execute(
             }
             Line::AddMatcher(seen) => match read_matcher(&seen, &view, &dirs, host).and_then(|text| matchers.add(&text)) {
                 Ok(owners) => reporter.log(&format!("Added matchers: {}", owners.join(", "))),
+                // A container job's file is read on the host: what it holds is never echoed.
+                Err(_) if !host => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}")),
                 Err(error) => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}: {error}")),
             },
             Line::RemoveMatcher(owner) => matchers.remove(&owner),
@@ -217,8 +219,10 @@ fn read_matcher(seen: &str, view: &crate::backend::View, dirs: &crate::backend::
     let mapped =
         [(&view.workspace, &dirs.workspace), (&view.temp, &dirs.temp), (&view.files, &dirs.files)].into_iter().find_map(|(view, dir)| {
             let rest = seen.strip_prefix(view.as_str())?;
-            let rest = rest.trim_start_matches(['/', '\\']);
-            (!rest.split(['/', '\\']).any(|part| part == "..")).then(|| dir.join(rest))
+            let rest = std::path::Path::new(rest.trim_start_matches(['/', '\\']));
+            // Plain names only: no `..`, root or drive (`C:` would replace `dir` on Windows).
+            (rest.components().all(|part| matches!(part, std::path::Component::Normal(_))) && !crate::untrusted::crosses_link(dir, rest))
+                .then(|| dir.join(rest))
         });
     let path = match mapped {
         Some(path) => path,

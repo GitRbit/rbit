@@ -176,10 +176,23 @@ pub struct Job {
     pub matchers: crate::matchers::Matchers,
 }
 
-/// A container's `options` from the server, checked again here.
-fn checked_options(options: &[String], service: bool, field: &str) -> Result<Vec<String>, String> {
+/// A container's `options` from the server, checked again here, with their `--env` values
+/// moved into `env` (where `env:` itself wins): values travel in the env file, never in an
+/// argument.
+fn checked_options(options: &[String], service: bool, field: &str, env: &mut BTreeMap<String, String>) -> Result<Vec<String>, String> {
     rbit_workflow::options::check(options, service).map_err(|error| format!("`{field}.options`: {error}"))?;
-    Ok(options.to_vec())
+    let mut kept = Vec::new();
+    let mut words = options.iter();
+    while let Some(word) = words.next() {
+        if word == "--env"
+            && let Some((name, value)) = words.next().and_then(|pair| pair.split_once('='))
+        {
+            env.entry(name.to_owned()).or_insert_with(|| value.to_owned());
+            continue;
+        }
+        kept.push(word.clone());
+    }
+    Ok(kept)
 }
 
 /// A container's `volumes` from the server: named volumes only.
@@ -365,26 +378,31 @@ impl Job {
             Some(container) => container.image.clone(),
             None => self.label.image.clone().unwrap_or_default(),
         };
+        let mut job_env = match &template.container {
+            Some(container) => self.render_env(&container.env).map_err(|error| format!("`container.env`: {error}"))?,
+            None => BTreeMap::new(),
+        };
+        let job_options =
+            checked_options(template.container.as_ref().map_or(&[][..], |container| &container.options), false, "container", &mut job_env)?;
         let job = ContainerSpec {
             image,
-            env: match &template.container {
-                Some(container) => self.render_env(&container.env).map_err(|error| format!("`container.env`: {error}"))?,
-                None => BTreeMap::new(),
-            },
+            env: job_env,
             credentials: self.credentials(template.container.as_ref().and_then(|container| container.credentials.as_ref()), "container")?,
-            options: checked_options(template.container.as_ref().map_or(&[][..], |container| &container.options), false, "container")?,
+            options: job_options,
             volumes: checked_volumes(template.container.as_ref().map_or(&[][..], |container| &container.volumes), "container")?,
         };
         let mut services = Vec::new();
         for service in &template.services {
             let field = format!("services.{}", service.id);
+            let mut env = self.render_env(&service.env).map_err(|error| format!("`{field}.env`: {error}"))?;
+            let options = checked_options(&service.options, true, &field, &mut env)?;
             services.push((
                 service.id.clone(),
                 ContainerSpec {
                     image: service.image.clone(),
-                    env: self.render_env(&service.env).map_err(|error| format!("`{field}.env`: {error}"))?,
+                    env,
                     credentials: self.credentials(service.credentials.as_ref(), &field)?,
-                    options: checked_options(&service.options, true, &field)?,
+                    options,
                     volumes: checked_volumes(&service.volumes, &field)?,
                 },
             ));

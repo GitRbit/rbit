@@ -69,8 +69,12 @@ fn watch_stop_file(path: PathBuf) {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let _ = std::fs::remove_file(&path);
+            let taken = path.with_extension("taken");
+            if std::fs::rename(&path, &taken).is_err() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&taken).unwrap_or_default();
+            let _ = std::fs::remove_file(&taken);
             tracing::info!(file = %path.display(), "stop requested");
             request();
             if text.trim() == "now" {

@@ -20,6 +20,8 @@ use windows_service::{
 /// The configuration and service name, for the dispatcher's thread.
 static SERVICE: OnceLock<(PathBuf, String)> = OnceLock::new();
 static HANDLE: OnceLock<ServiceStatusHandle> = OnceLock::new();
+/// Set when the service could not even register with the service manager.
+static FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 define_windows_service!(ffi_service_main, service_main);
 
@@ -27,7 +29,11 @@ define_windows_service!(ffi_service_main, service_main);
 pub fn run(config: PathBuf, name: &str) -> anyhow::Result<()> {
     let _ = SERVICE.set((config, name.to_owned()));
     service_dispatcher::start(name, ffi_service_main)
-        .context("--as-service runs only under the Windows service manager: `rbit-runner start` starts the service")
+        .context("--as-service runs only under the Windows service manager: `rbit-runner start` starts the service")?;
+    if FAILED.load(std::sync::atomic::Ordering::SeqCst) {
+        anyhow::bail!("the service could not register with the service manager");
+    }
+    Ok(())
 }
 
 fn status(state: ServiceState, wait: Duration, failed: bool) -> ServiceStatus {
@@ -67,6 +73,7 @@ fn service_main(_arguments: Vec<OsString>) {
         Ok(handle) => handle,
         Err(error) => {
             tracing::error!(%error, "cannot register with the service manager");
+            FAILED.store(true, std::sync::atomic::Ordering::SeqCst);
             return;
         }
     };

@@ -1290,7 +1290,11 @@ impl ActionsRunStore {
             .await?;
         let mut waiting = Vec::new();
         for job in jobs.iter().filter(|job| chosen.contains(&job.id.0)) {
-            let waits = job.needs.iter().any(|need| keys.contains(need.as_str()));
+            // A job with its own `if:` (or the stand-in of one planned from its needs) is
+            // decided again by the server, with the needs of this attempt.
+            let decided: bool =
+                sqlx::query_scalar("SELECT condition FROM actions_jobs WHERE id = ?").bind(job.id.0).fetch_one(&mut *tx).await?;
+            let waits = decided || job.needs.iter().any(|need| keys.contains(need.as_str()));
             let status = initial_status(start, waits);
             sqlx::query(
                 "UPDATE actions_jobs SET status = ?1, attempt = attempt + 1, task_id = NULL, runner_id = NULL, started_at = NULL, \
@@ -1431,9 +1435,17 @@ impl ActionsRunStore {
     /// stand-in `job` (`JobTemplate::deferred`): the first takes over its row, the others
     /// are added to its run, and all are ready to run. `None` when the stand-in was decided
     /// or cancelled meanwhile, or `jobs` is empty.
-    pub async fn expand(&self, job: JobId, jobs: &[NewJob<'_>], now: Timestamp) -> Result<Option<Settled>, StorageError> {
+    pub async fn expand(&self, job: JobId, jobs: &[NewJob<'_>], max_jobs: usize, now: Timestamp) -> Result<Option<Settled>, StorageError> {
         let Some((first, rest)) = jobs.split_first() else { return Ok(None) };
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM actions_jobs WHERE run_id = (SELECT run_id FROM actions_jobs WHERE id = ?)")
+                .bind(job.0)
+                .fetch_one(&mut *tx)
+                .await?;
+        if usize::try_from(count).unwrap_or(usize::MAX).saturating_add(rest.len()) > max_jobs {
+            return Err(StorageError::Conflict("the run would have more jobs than it may"));
+        }
         let found: Option<(i64, i64, bool)> = sqlx::query_as(
             "SELECT j.run_id, j.repo_id, r.trusted FROM actions_jobs j JOIN actions_runs r ON r.id = j.run_id \
              WHERE j.id = ? AND j.status = 7 AND j.condition = 1",
@@ -1442,9 +1454,11 @@ impl ActionsRunStore {
         .fetch_optional(&mut *tx)
         .await?;
         let Some((run, repo, trusted)) = found else { return Ok(None) };
+        // A planned job with its own `if:` (one that reads its matrix) waits for that decision.
+        let status = |job: &NewJob<'_>| if job.condition { Status::Blocked } else { Status::Waiting };
         sqlx::query(
             "UPDATE actions_jobs SET name = ?2, matrix = ?3, needs = ?4, permissions = ?5, payload = ?6, status = ?7, queued_at = ?8, \
-             condition = 0, max_parallel = ?9, job_group = ?10, environment = ?11 WHERE id = ?1",
+             condition = ?12, max_parallel = ?9, job_group = ?10, environment = ?11 WHERE id = ?1",
         )
         .bind(job.0)
         .bind(first.name)
@@ -1452,18 +1466,28 @@ impl ActionsRunStore {
         .bind(strings_json(first.needs)?)
         .bind(first.permissions)
         .bind(first.payload)
-        .bind(Status::Waiting.code())
-        .bind(now.0)
+        .bind(status(first).code())
+        .bind((status(first) == Status::Waiting).then_some(now.0))
         .bind(first.max_parallel)
         .bind(first.group)
         .bind(first.environment)
+        .bind(first.condition)
         .execute(&mut *tx)
         .await?;
         sqlx::query("DELETE FROM actions_job_labels WHERE job_id = ?").bind(job.0).execute(&mut *tx).await?;
         insert_labels(&mut tx, job.0, first.runs_on).await?;
-        let mut waiting = vec![job.0];
+        if trusted && let Some(environment) = first.environment {
+            insert_environment(&mut tx, RepoId(repo), environment, now).await?;
+        }
+        let mut waiting = Vec::new();
+        if status(first) == Status::Waiting {
+            waiting.push(job.0);
+        }
         for next in rest {
-            waiting.push(insert_job(&mut tx, RunId(run), RepoId(repo), trusted, next, Status::Waiting, now).await?);
+            let id = insert_job(&mut tx, RunId(run), RepoId(repo), trusted, next, status(next), now).await?;
+            if status(next) == Status::Waiting {
+                waiting.push(id);
+            }
         }
         let settled = settle(&mut tx, RunId(run), waiting, now).await?;
         tx.commit().await?;
@@ -1605,23 +1629,28 @@ async fn insert_job(
     .fetch_one(&mut *tx)
     .await?;
     insert_labels(tx, job_id, job.runs_on).await?;
-    // Actions: environments. Named for the first time, an environment exists with no
-    // protection, as on GitHub, so it can be configured; past the cap of a repository it is
-    // not created (and so has no protection to apply either). An untrusted run (a fork's
-    // pull request) creates none, so it cannot fill the cap.
     if let Some(environment) = job.environment.filter(|_| trusted) {
-        sqlx::query(
-            "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3 \
-             WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
-        )
-        .bind(repo.0)
-        .bind(environment)
-        .bind(now.0)
-        .bind(i64::try_from(super::actions_environments::MAX_ENVIRONMENTS).unwrap_or(i64::MAX))
-        .execute(&mut *tx)
-        .await?;
+        insert_environment(tx, repo, environment, now).await?;
     }
     Ok(job_id)
+}
+
+/// Actions: environments. Named for the first time, an environment exists with no
+/// protection, as on GitHub, so it can be configured; past the cap of a repository it is not
+/// created (and so has no protection to apply either). An untrusted run (a fork's pull
+/// request) creates none, so it cannot fill the cap: callers ask only for trusted runs.
+async fn insert_environment(tx: &mut SqliteConnection, repo: RepoId, environment: &str, now: Timestamp) -> Result<(), StorageError> {
+    sqlx::query(
+        "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3 \
+         WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
+    )
+    .bind(repo.0)
+    .bind(environment)
+    .bind(now.0)
+    .bind(i64::try_from(super::actions_environments::MAX_ENVIRONMENTS).unwrap_or(i64::MAX))
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
 }
 
 async fn insert_labels(tx: &mut SqliteConnection, job: i64, labels: &[String]) -> Result<(), StorageError> {

@@ -49,7 +49,12 @@ impl ActionsService {
     pub(super) async fn decide_jobs(&self, settled: &Settled) -> Result<Vec<Settled>, ServiceError> {
         let mut followed = Vec::new();
         for job in &settled.to_decide {
-            followed.extend(self.decide_job(*job).await?);
+            // One job that cannot be decided now is left to the sweeper
+            // (`decide_stragglers`); the others' decisions still count.
+            match self.decide_job(*job).await {
+                Ok(decided) => followed.extend(decided),
+                Err(error) => tracing::warn!(job = job.0, %error, "a job could not be decided; the sweeper tries again"),
+            }
         }
         followed.extend(self.fail_fast(settled.run_id).await?);
         Ok(followed)
@@ -102,7 +107,14 @@ impl ActionsService {
             }
         };
         let rows = super::runs::JobRows::new(&planned);
-        let settled = store.expand(job.id, &rows.jobs(&planned), Timestamp::now()).await?;
+        let settled = match store.expand(job.id, &rows.jobs(&planned), self.limits().max_run_jobs, Timestamp::now()).await {
+            Ok(settled) => settled,
+            Err(rbit_storage::StorageError::Conflict(why)) => {
+                tracing::warn!(run = run.id.0, job = %job.key, why, "a job planned from its needs is past the run's job limit; it fails");
+                return Ok(store.decide(job.id, Decision::Fail, Timestamp::now()).await?);
+            }
+            Err(error) => return Err(error.into()),
+        };
         if settled.is_some() {
             tracing::info!(run = run.id.0, job = %job.key, jobs = planned.len(), "job planned from its needs");
             self.announce(run.id).await?;
@@ -248,8 +260,10 @@ impl ActionsService {
         let undecided = self.ctx().database.actions_runs().undecided(SWEEP_DECISIONS).await?;
         let count = undecided.len();
         for job in undecided {
-            if let Some(settled) = self.decide_job(job).await? {
-                self.settled(&settled).await?;
+            match self.decide_job(job).await {
+                Ok(Some(settled)) => self.settled(&settled).await?,
+                Ok(None) => {}
+                Err(error) => tracing::warn!(job = job.0, %error, "a job could not be decided"),
             }
         }
         Ok(count)

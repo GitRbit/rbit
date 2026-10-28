@@ -22,8 +22,6 @@ const WITH_VALUE: &[&[&str]] = &[
     &["--workdir", "-w"],
     &["--cpus"],
     &["--memory", "-m"],
-    &["--memory-swap"],
-    &["--memory-reservation"],
     &["--shm-size"],
     &["--ulimit"],
     &["--add-host"],
@@ -88,6 +86,10 @@ fn normalize(words: Vec<String>, service: bool) -> Result<Vec<String>, String> {
         };
         if name == "--label" && value.trim_start().to_ascii_lowercase().starts_with("rbit.") {
             return Err("`rbit.` labels are the runner's own".to_owned());
+        }
+        // `--env NAME` alone would copy the runner's own variable into the container.
+        if name == "--env" && !value.contains('=') {
+            return Err(format!("`--env {value}` needs a value: `--env {value}=…`"));
         }
         args.push(name.to_owned());
         args.push(value);
@@ -233,6 +235,8 @@ mod tests {
             "--sysctl net.ipv4.ip_forward=1",
             "--runtime runc",
             "--label rbit.task=1",
+            "-e AWS_SECRET_ACCESS_KEY",
+            "--memory-swap -1",
         ] {
             assert!(docker_options(bad, true).is_err(), "{bad}");
         }

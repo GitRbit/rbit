@@ -668,6 +668,13 @@ async fn jobs_with_their_own_if_wait_for_the_servers_decision() {
     let next = store.claim(&claim(runner, scope, &labels, &[92; 32])).await.unwrap().unwrap();
     assert_eq!(next.job.key, key("report"));
     assert!(store.undecided(10).await.unwrap().is_empty(), "every condition is decided");
+
+    // Re-running a job with its own `if:` decides it again rather than running it.
+    store.finish_task(next.task.id, Status::Success, NOW).await.unwrap();
+    store.rerun(fx.rocket, run.id, Rerun::Job(report), RunStart::Runnable, NOW).await.unwrap().unwrap();
+    assert_eq!(status_of(&store.jobs(run.id).await.unwrap(), "report"), Status::Blocked);
+    assert_eq!(store.undecided(10).await.unwrap(), [report], "the server decides it, with this attempt's needs");
+    assert!(store.claim(&claim(runner, scope, &labels, &[93; 32])).await.unwrap().is_none());
 }
 
 #[tokio::test]

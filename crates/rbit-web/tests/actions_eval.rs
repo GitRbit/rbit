@@ -1328,6 +1328,7 @@ fn job(key: &str, needs: &[&str], environment: Option<&str>) -> JobTemplate {
         calls: Vec::new(),
         need_names: std::collections::BTreeMap::new(),
         deferred: false,
+        default_ceiling: false,
     }
 }
 

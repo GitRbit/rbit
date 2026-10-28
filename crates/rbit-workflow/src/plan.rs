@@ -153,7 +153,15 @@ pub fn plan_with(
     loader: &mut dyn Loader,
 ) -> Result<Vec<JobTemplate>, WorkflowError> {
     let mut planner = Planner { limits, deadline, loader, called: BTreeSet::new(), jobs: 0 };
-    let scope = CallScope { prefix: String::new(), origin: None, depth: 1, calls: Vec::new(), cap: None, root_needs: Vec::new() };
+    let scope = CallScope {
+        prefix: String::new(),
+        origin: None,
+        depth: 1,
+        calls: Vec::new(),
+        cap: None,
+        root_needs: Vec::new(),
+        default_ceiling: false,
+    };
     Ok(planner.workflow(workflow, &context.contexts(), &scope)?.0)
 }
 
@@ -168,6 +176,9 @@ struct CallScope {
     cap: Option<Permissions>,
     /// What the calling job waits for, so every job of the called workflow waits for it too.
     root_needs: Vec<String>,
+    /// No calling job declared `permissions:`: the jobs inside stay within the repository's
+    /// default ([`JobTemplate::default_ceiling`]).
+    default_ceiling: bool,
 }
 
 impl CallScope {
@@ -209,6 +220,12 @@ impl Planner<'_> {
                 needs.extend(scope.root_needs.iter().cloned());
             }
             // Actions: plans from needs. Planned once its needs are done (`plan_deferred`).
+            if job.call.is_some() && reads_needs(job) {
+                return Err(WorkflowError::plan(
+                    format!("job `{}`: a job that calls a workflow cannot read `needs` in its `strategy` yet", job.id),
+                    Some(job.at),
+                ));
+            }
             if job.call.is_none() && reads_needs(job) {
                 if !scope.calls.is_empty() {
                     return Err(WorkflowError::plan(
@@ -280,6 +297,7 @@ impl Planner<'_> {
                 let callers: Vec<&str> = scope.calls.iter().map(|call| call.name.as_str()).collect();
                 template.name = format!("{} / {}", callers.join(" / "), template.name);
                 template.calls.clone_from(&scope.calls);
+                template.default_ceiling = scope.default_ceiling;
             }
             templates.push(template);
             self.jobs += 1;
@@ -346,8 +364,15 @@ impl Planner<'_> {
             let mut calls = scope.calls.clone();
             calls.push(level);
             let cap = narrowed(job.permissions.or(workflow.permissions), scope.cap, &job.id, job.at)?;
-            let inner =
-                CallScope { prefix, origin: Some(loaded.origin.clone()), depth: scope.depth + 1, calls, cap, root_needs: needs.clone() };
+            let inner = CallScope {
+                prefix,
+                origin: Some(loaded.origin.clone()),
+                depth: scope.depth + 1,
+                calls,
+                cap,
+                root_needs: needs.clone(),
+                default_ceiling: scope.default_ceiling || cap.is_none(),
+            };
             let inner_run = run.clone().with("inputs", inputs);
             let (inner_templates, inner_sources) = self.workflow(&loaded.workflow, &inner_run, &inner)?;
             keys.extend(inner_templates.iter().map(|template| template.job_id.clone()));
@@ -429,7 +454,14 @@ fn reads_needs(job: &Job) -> bool {
     if let Some(environment) = &job.environment {
         texts.push(&environment.name);
     }
-    texts.iter().any(|text| text.contains("${{") && text.contains("needs"))
+    // Context names are matched without regard to case.
+    texts.iter().any(|text| text.contains("${{") && text.to_ascii_lowercase().contains("needs"))
+}
+
+/// Whether a job's `if:` reads `matrix` or `strategy`.
+fn reads_matrix(condition: &str) -> bool {
+    let condition = condition.to_ascii_lowercase();
+    condition.contains("matrix") || condition.contains("strategy")
 }
 
 /// The blocked stand-in of a job planned once its needs are done ([`JobTemplate::deferred`]):
@@ -440,7 +472,12 @@ fn deferred_template(job: &Job, key: &str, needs: &[String]) -> JobTemplate {
         job_id: key.to_owned(),
         name: job.name.clone().filter(|name| !name.contains("${{")).unwrap_or_else(|| job.id.clone()),
         needs: needs.to_vec(),
-        condition: Some(job.condition.clone().unwrap_or_else(|| "success()".to_owned())),
+        condition: Some(match &job.condition {
+            // Its matrix is not known yet: each planned job decides its `if:` (`plan_deferred`).
+            Some(condition) if reads_matrix(condition) => "always()".to_owned(),
+            Some(condition) => condition.clone(),
+            None => "success()".to_owned(),
+        }),
         runs_on: Vec::new(),
         matrix: Map::new(),
         strategy: Strategy { fail_fast: true, max_parallel: None, job_index: 0, job_total: 1 },
@@ -460,6 +497,7 @@ fn deferred_template(job: &Job, key: &str, needs: &[String]) -> JobTemplate {
         calls: Vec::new(),
         need_names: BTreeMap::new(),
         deferred: true,
+        default_ceiling: false,
     }
 }
 
@@ -481,7 +519,15 @@ pub fn plan_deferred(
         .ok_or_else(|| WorkflowError::plan(format!("the workflow has no job `{job_id}` any more"), None))?;
     let mut no_calls = NoCalls;
     let mut planner = Planner { limits, deadline, loader: &mut no_calls, called: BTreeSet::new(), jobs: existing_jobs.saturating_sub(1) };
-    let scope = CallScope { prefix: String::new(), origin: None, depth: 1, calls: Vec::new(), cap: None, root_needs: Vec::new() };
+    let scope = CallScope {
+        prefix: String::new(),
+        origin: None,
+        depth: 1,
+        calls: Vec::new(),
+        cap: None,
+        root_needs: Vec::new(),
+        default_ceiling: false,
+    };
     let need_names: BTreeMap<String, NeedSource> =
         job.needs.iter().map(|need| (need.clone(), NeedSource::Jobs(vec![need.clone()]))).collect();
     let combinations = match &job.strategy.matrix {
@@ -495,9 +541,12 @@ pub fn plan_deferred(
     let job_total = u32::try_from(combinations.len()).unwrap_or(u32::MAX);
     let expansion = Expansion { combinations, fail_fast, max_parallel, job_total, need_names, needs: job.needs.clone() };
     let (mut templates, _) = planner.steps_job(workflow, job, run, &scope, expansion)?;
-    // The decision was made for the stand-in: the planned jobs run.
+    // The stand-in's decision stands for the planned jobs, unless their `if:` reads the
+    // matrix they only now have: then each decides its own.
     for template in &mut templates {
-        template.condition = None;
+        if !template.condition.as_deref().is_some_and(reads_matrix) {
+            template.condition = None;
+        }
     }
     Ok(templates)
 }
@@ -736,6 +785,7 @@ fn job_template(
         calls: Vec::new(),
         need_names: std::collections::BTreeMap::new(),
         deferred: false,
+        default_ceiling: false,
     };
     template.validate().map_err(|problem| WorkflowError::plan(format!("job `{}`: {}", job.id, problem.message), Some(job.at)))?;
     Ok(template)
@@ -1780,6 +1830,22 @@ jobs:
         let caller = "on: push\npermissions: {contents: read}\njobs:\n  call:\n    uses: ./w.yml\n";
         let error = planned_with(caller, &[("w.yml", writer)]).unwrap_err().to_string();
         assert!(error.contains("asks for `contents: write`, but the workflow calling it allows only `contents: read`"), "{error}");
+        // A caller that declares nothing gives its own token, the repository's default: the called
+        // job is marked to stay within it, whatever it declares.
+        let undeclared = "on: push
+jobs:
+  call:
+    uses: ./w.yml
+";
+        let planned = planned_with(undeclared, &[("w.yml", writer)]).unwrap();
+        assert!(planned.iter().all(|template| template.default_ceiling), "{planned:?}");
+        let declared = "on: push
+permissions: {contents: write}
+jobs:
+  call:
+    uses: ./w.yml
+";
+        assert!(planned_with(declared, &[("w.yml", writer)]).unwrap().iter().all(|template| !template.default_ceiling));
         assert!(
             plan(&workflow("on: push\njobs:\n  call: {uses: ./b.yml}\n"), &run_context(), &Limits::default(), &Deadline::NONE).is_err()
         );

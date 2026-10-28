@@ -740,7 +740,12 @@ impl Container {
             loop {
                 let mut command = self.cli();
                 command.args(["inspect", "--format", "{{if .State.Health}}{{.State.Health.Status}}{{end}}", &self.names.service(id)]);
-                let status = process::capture(command, None, SHORT).await.map(|output| output.stdout.trim().to_owned()).unwrap_or_default();
+                // A failed inspect is no answer: ask again until the deadline.
+                let status = process::capture(command, None, SHORT)
+                    .await
+                    .ok()
+                    .filter(|output| output.success)
+                    .map_or_else(|| "unknown".to_owned(), |output| output.stdout.trim().to_owned());
                 match status.as_str() {
                     "" | "healthy" => {
                         reporter.log(&format!("{id} service is {}", if status.is_empty() { "running" } else { "healthy" }));
