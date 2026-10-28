@@ -79,6 +79,8 @@ pub const fn event_label(event: RunEvent) -> &'static str {
         RunEvent::PullRequest => "pull request",
         RunEvent::WorkflowDispatch => "manual",
         RunEvent::Schedule => "schedule",
+        RunEvent::WorkflowRun => "after a workflow",
+        RunEvent::RepositoryDispatch => "dispatch",
     }
 }
 

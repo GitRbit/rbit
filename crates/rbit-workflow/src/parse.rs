@@ -26,8 +26,8 @@ use crate::{
     limits::{Deadline, Limits},
     model::{
         ActionStep, ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, EnvironmentRef, Filter, InputKind, Job,
-        Matrix, On, Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RunDefaults, Schedule, Service, Shell,
-        Step, StepAction, Strategy, Workflow,
+        Matrix, On, Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RepositoryDispatchFilters, RunDefaults,
+        Schedule, Service, Shell, Step, StepAction, Strategy, Workflow, WorkflowRunFilters, WorkflowRunType,
     },
     pattern::Patterns,
     spec::{MAX_NAME_BYTES, MAX_SERVICES, MAX_STEPS},
@@ -409,6 +409,12 @@ fn add_event(on: &mut On, event: &str, config: Option<&Node>, at: Location) -> R
             None => return Err(error("`on.schedule` needs a list of `cron` entries", at)),
         },
         "workflow_call" => return Err(error("`on.workflow_call` is not supported by rbit: reusable workflows are not supported", at)),
+        // Actions: workflow_run and repository_dispatch.
+        "workflow_run" => match config {
+            Some(node) => on.workflow_run = Some(parse_workflow_run(node)?),
+            None => return Err(error("`on.workflow_run` needs `workflows`", at)),
+        },
+        "repository_dispatch" => on.repository_dispatch = Some(config.map(parse_repository_dispatch).transpose()?.unwrap_or_default()),
         other if GITHUB_EVENTS.contains(&other) => on.other.push(other.to_owned()),
         other => return Err(error(format!("`on.{other}` is not an event"), at)),
     }
@@ -470,6 +476,40 @@ fn parse_pull_request(node: &Node) -> Result<PullRequestFilters, WorkflowError> 
         branches: filter(filters, "pull_request", "branches")?,
         paths: filter(filters, "pull_request", "paths")?,
     })
+}
+
+// Actions: workflow_run and repository_dispatch.
+fn parse_workflow_run(node: &Node) -> Result<WorkflowRunFilters, WorkflowError> {
+    let filters = mapping(node, "on.workflow_run")?;
+    only_keys(filters, "workflow_run", &["workflows", "types", "branches", "branches-ignore"])?;
+    let Some(workflows) = filters.get("workflows") else {
+        return Err(error("`on.workflow_run` needs `workflows`", node.at));
+    };
+    let workflows = strings(workflows, "on.workflow_run.workflows")?;
+    if workflows.is_empty() || workflows.iter().any(String::is_empty) {
+        return Err(error("`on.workflow_run.workflows` names one or more workflows", node.at));
+    }
+    let types = match filters.get("types") {
+        None => None,
+        Some(node) => Some(
+            strings(node, "on.workflow_run.types")?
+                .iter()
+                .map(|name| {
+                    WorkflowRunType::parse(name).ok_or_else(|| {
+                        error(format!("`on.workflow_run.types`: `{name}` is not requested, in_progress or completed"), node.at)
+                    })
+                })
+                .collect::<Result<_, _>>()?,
+        ),
+    };
+    Ok(WorkflowRunFilters { workflows, types, branches: filter(filters, "workflow_run", "branches")? })
+}
+
+fn parse_repository_dispatch(node: &Node) -> Result<RepositoryDispatchFilters, WorkflowError> {
+    let filters = mapping(node, "on.repository_dispatch")?;
+    only_keys(filters, "repository_dispatch", &["types"])?;
+    let types = filters.get("types").map(|node| strings(node, "on.repository_dispatch.types")).transpose()?;
+    Ok(RepositoryDispatchFilters { types })
 }
 
 fn parse_dispatch(node: &Node) -> Result<Dispatch, WorkflowError> {

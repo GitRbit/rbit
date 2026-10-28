@@ -5,6 +5,8 @@ mod access;
 // Actions: foundation (F).
 mod actions;
 // Actions: triggers (T).
+// Actions: workflow_run and repository_dispatch.
+mod actions_chains;
 mod actions_conditions;
 mod actions_dispatch;
 #[path = "support/actions_fixture.rs"]

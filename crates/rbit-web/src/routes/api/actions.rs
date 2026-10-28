@@ -97,6 +97,8 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/artifacts/{artifact_id}/{archive_format}"), download_artifact),
         route(Get, repo("/workflows"), workflows),
         route(Post, repo("/workflows/{workflow_id}/dispatches"), dispatch),
+        // Actions: workflow_run and repository_dispatch.
+        route(Post, "/repos/{owner}/{repo}/dispatches".to_owned(), repository_dispatch),
     ];
     for prefix in SETTINGS_PREFIXES {
         let path = |suffix: &str| format!("{prefix}{suffix}");
@@ -446,6 +448,37 @@ pub async fn dispatch(
     let request = DispatchRequest { workflow: path.workflow_id.clone().unwrap_or_default(), reference, inputs };
     actions.dispatch(user, &ctx, &request).await.map_err(dispatch_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// Actions: workflow_run and repository_dispatch.
+#[derive(Debug, Deserialize)]
+pub struct RepositoryDispatchBody {
+    event_type: Option<String>,
+    client_payload: Option<Value>,
+}
+
+/// `POST /repos/{owner}/{repo}/dispatches`: `204`; the default branch's workflows that run
+/// on `repository_dispatch` of `event_type` start, with `client_payload` in their event.
+pub async fn repository_dispatch(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<ActionsPath>,
+    ApiJson(body): ApiJson<RepositoryDispatchBody>,
+) -> ApiResult<StatusCode> {
+    let ctx = path.repo(&state, &caller).await?;
+    let user = require_writer(&caller, &ctx)?;
+    let event_type = body.event_type.ok_or_else(|| ApiError::invalid("event_type", "event_type is required"))?;
+    actions(&state)?
+        .repository_dispatch(user, &ctx, &event_type, body.client_payload)
+        .await
+        .map_err(|error| ApiError::service(error, error_field(&event_type).unwrap_or("client_payload")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Which field a refused dispatch is about: its `event_type` when that is out of range.
+fn error_field(event_type: &str) -> Option<&'static str> {
+    let length = event_type.trim().chars().count();
+    (length == 0 || length > rbit_services::actions::chains::MAX_DISPATCH_EVENT_TYPE_CHARS).then_some("event_type")
 }
 
 // ------------------------------------------------------------------ artifacts

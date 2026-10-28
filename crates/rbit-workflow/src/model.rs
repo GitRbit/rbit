@@ -49,8 +49,53 @@ pub struct On {
     pub workflow_dispatch: Option<Dispatch>,
     /// `schedule` entries, in file order.
     pub schedule: Vec<Schedule>,
+    // Actions: workflow_run and repository_dispatch.
+    pub workflow_run: Option<WorkflowRunFilters>,
+    pub repository_dispatch: Option<RepositoryDispatchFilters>,
     /// Other events, by name. rbit starts no runs for them.
     pub other: Vec<String>,
+}
+
+// Actions: workflow_run and repository_dispatch.
+/// `on.workflow_run`: runs of these workflows (by `name:`) of the same repository start
+/// this one.
+#[derive(Debug, Clone, Default)]
+pub struct WorkflowRunFilters {
+    pub workflows: Vec<String>,
+    /// `None` means all three.
+    pub types: Option<Vec<WorkflowRunType>>,
+    /// Matched against the triggering run's branch.
+    pub branches: Filter,
+}
+
+/// What happened to the triggering run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkflowRunType {
+    Requested,
+    InProgress,
+    Completed,
+}
+
+impl WorkflowRunType {
+    pub const ALL: [Self; 3] = [Self::Requested, Self::InProgress, Self::Completed];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Requested => "requested",
+            Self::InProgress => "in_progress",
+            Self::Completed => "completed",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == value)
+    }
+}
+
+/// `on.repository_dispatch`: the `event_type`s that start it; `None` means any.
+#[derive(Debug, Clone, Default)]
+pub struct RepositoryDispatchFilters {
+    pub types: Option<Vec<String>>,
 }
 
 /// One of the three filters of an event: absent, an inclusion list (`branches`) or an

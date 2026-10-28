@@ -21,10 +21,16 @@ pub enum RunEvent {
     PullRequest,
     WorkflowDispatch,
     Schedule,
+    // Actions: workflow_run and repository_dispatch.
+    /// Another run of the repository was requested, started or completed.
+    WorkflowRun,
+    /// `POST /repos/{owner}/{repo}/dispatches`.
+    RepositoryDispatch,
 }
 
 impl RunEvent {
-    pub const ALL: [Self; 4] = [Self::Push, Self::PullRequest, Self::WorkflowDispatch, Self::Schedule];
+    pub const ALL: [Self; 6] =
+        [Self::Push, Self::PullRequest, Self::WorkflowDispatch, Self::Schedule, Self::WorkflowRun, Self::RepositoryDispatch];
 
     /// The GitHub event name, as stored.
     pub const fn as_str(self) -> &'static str {
@@ -33,6 +39,8 @@ impl RunEvent {
             Self::PullRequest => "pull_request",
             Self::WorkflowDispatch => "workflow_dispatch",
             Self::Schedule => "schedule",
+            Self::WorkflowRun => "workflow_run",
+            Self::RepositoryDispatch => "repository_dispatch",
         }
     }
 

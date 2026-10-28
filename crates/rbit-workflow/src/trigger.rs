@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::model::{ActivityType, Filter, InputKind, PushFilters, Workflow};
+use crate::model::{ActivityType, Filter, InputKind, PushFilters, Workflow, WorkflowRunType};
 
 /// Markers in a head commit message (push) or a pull request title that skip its runs.
 pub const SKIP_MARKERS: [&str; 5] = ["[skip ci]", "[ci skip]", "[no ci]", "[skip actions]", "[actions skip]"];
@@ -50,6 +50,18 @@ pub enum Event<'a> {
     /// A tick of one of the workflow's `schedule` entries, by its expression as written.
     Schedule {
         cron: &'a str,
+    },
+    // Actions: workflow_run and repository_dispatch.
+    /// A run of the repository was requested, started or completed.
+    WorkflowRun {
+        /// The triggering workflow's name.
+        workflow: &'a str,
+        action: WorkflowRunType,
+        /// The triggering run's branch, or tag; `None` for neither.
+        branch: Option<&'a str>,
+    },
+    RepositoryDispatch {
+        event_type: &'a str,
     },
 }
 
@@ -111,6 +123,16 @@ pub fn matches(workflow: &Workflow, event: &Event<'_>, changed: &mut dyn Changed
         }),
         Event::Dispatch => workflow.on.workflow_dispatch.is_some(),
         Event::Schedule { cron } => workflow.on.schedule.iter().any(|entry| entry.cron.as_str() == cron),
+        Event::WorkflowRun { workflow: name, action, branch } => workflow.on.workflow_run.as_ref().is_some_and(|filters| {
+            filters.workflows.iter().any(|listed| listed == name)
+                && filters.types.as_ref().is_none_or(|types| types.contains(&action))
+                && (filters.branches.is_absent() || branch.is_some_and(|branch| filters.branches.passes([branch])))
+        }),
+        Event::RepositoryDispatch { event_type } => workflow
+            .on
+            .repository_dispatch
+            .as_ref()
+            .is_some_and(|filters| filters.types.as_ref().is_none_or(|types| types.iter().any(|listed| listed == event_type))),
     }
 }
 
@@ -406,5 +428,105 @@ mod tests {
         let sent: BTreeMap<_, _> = (0..12).map(|index| (format!("i{index}"), String::new())).collect();
         assert_eq!(resolve_inputs(&declared, &sent).unwrap().len(), 12);
         assert!(resolve_inputs(&self::workflow("  push:"), &given(&[])).is_err());
+    }
+
+    // Actions: workflow_run and repository_dispatch.
+    #[test]
+    fn workflow_run_matches_name_type_and_branch() {
+        use WorkflowRunType::{Completed, InProgress, Requested};
+        let run = |workflow: &Workflow, name: &str, action, branch: Option<&str>| {
+            matches(workflow, &Event::WorkflowRun { workflow: name, action, branch }, &mut None::<Vec<String>>)
+        };
+        let any = workflow(
+            "  workflow_run:
+    workflows: [CI, Build]",
+        );
+        for action in [Requested, InProgress, Completed] {
+            assert!(run(&any, "CI", action, Some("main")), "all types when none are listed");
+        }
+        assert!(run(&any, "Build", Completed, None) && !run(&any, "ci", Completed, Some("main")), "names match exactly");
+        let completed = workflow(
+            "  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: ['release/**']",
+        );
+        assert!(run(&completed, "CI", Completed, Some("release/1.0")));
+        assert!(!run(&completed, "CI", Requested, Some("release/1.0")));
+        assert!(!run(&completed, "CI", Completed, Some("main")) && !run(&completed, "CI", Completed, None));
+        let ignore = workflow(
+            "  workflow_run:
+    workflows: [CI]
+    branches-ignore: [main]",
+        );
+        assert!(!run(&ignore, "CI", Completed, Some("main")) && run(&ignore, "CI", Completed, Some("dev")));
+        assert!(!run(&workflow("  push:"), "CI", Completed, Some("main")), "only workflows that ask for it");
+    }
+
+    #[test]
+    fn workflow_run_and_repository_dispatch_are_checked() {
+        for (on, message) in [
+            ("  workflow_run:", "needs `workflows`"),
+            (
+                "  workflow_run:
+    types: [completed]",
+                "needs `workflows`",
+            ),
+            (
+                "  workflow_run:
+    workflows: []",
+                "names one or more workflows",
+            ),
+            (
+                "  workflow_run:
+    workflows: [CI]
+    types: [finished]",
+                "is not requested, in_progress or completed",
+            ),
+            (
+                "  workflow_run:
+    workflows: [CI]
+    branches: [a]
+    branches-ignore: [b]",
+                "cannot have both",
+            ),
+            (
+                "  workflow_run:
+    workflows: [CI]
+    paths: [a]",
+                "paths",
+            ),
+            (
+                "  repository_dispatch:
+    events: [a]",
+                "events",
+            ),
+        ] {
+            let source = format!(
+                "on:
+{on}
+jobs:
+  a:
+    runs-on: x
+    steps: [{{run: x}}]
+"
+            );
+            let error = parse(source.as_bytes(), &Limits::default(), &Deadline::NONE).unwrap_err().to_string();
+            assert!(error.contains(message), "{on}: {error}");
+        }
+    }
+
+    #[test]
+    fn repository_dispatch_matches_its_types() {
+        let dispatch =
+            |workflow: &Workflow, event_type| matches(workflow, &Event::RepositoryDispatch { event_type }, &mut None::<Vec<String>>);
+        let any = workflow("  repository_dispatch:");
+        assert!(dispatch(&any, "deploy") && dispatch(&any, "anything"));
+        let typed = workflow(
+            "  repository_dispatch:
+    types: [deploy, rollback]",
+        );
+        assert!(dispatch(&typed, "deploy") && dispatch(&typed, "rollback") && !dispatch(&typed, "Deploy"));
+        assert!(!dispatch(&workflow("  push:"), "deploy"));
     }
 }

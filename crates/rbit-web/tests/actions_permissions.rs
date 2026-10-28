@@ -227,3 +227,19 @@ async fn only_administrators_see_or_change_permissions() {
     );
     assert_eq!(api(&fixture, Method::GET, "/orgs/nobody/actions/permissions", Some(&bob_token), None).await.0, StatusCode::NOT_FOUND);
 }
+
+// Actions: workflow_run and repository_dispatch.
+#[tokio::test]
+async fn writers_dispatch_repository_events() {
+    let fixture = Fixture::new().await;
+    let admin = token(&fixture, &fixture.alice).await;
+    let path = "/repos/alice/rocket/dispatches";
+    let body = json!({"event_type": "deploy", "client_payload": {"env": "staging"}});
+    assert_eq!(api(&fixture, Method::POST, path, Some(&admin), Some(body)).await.0, StatusCode::NO_CONTENT, "nothing to run is fine");
+    assert_eq!(api(&fixture, Method::POST, path, Some(&admin), Some(json!({}))).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let long = json!({"event_type": "x".repeat(101)});
+    assert_eq!(api(&fixture, Method::POST, path, Some(&admin), Some(long)).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    let list = json!({"event_type": "deploy", "client_payload": [1]});
+    assert_eq!(api(&fixture, Method::POST, path, Some(&admin), Some(list)).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(api(&fixture, Method::POST, path, None, Some(json!({"event_type": "deploy"}))).await.0, StatusCode::NOT_FOUND);
+}

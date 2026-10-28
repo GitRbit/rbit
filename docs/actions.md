@@ -84,6 +84,14 @@ repository can keep GitHub's workflows and add rbit's own beside them.
 | `pull_request` | `types` (default `opened`, `reopened`, `synchronize`) and the same filters |
 | `workflow_dispatch` | `inputs` of type `string`, `boolean`, `number`, `choice`; started with **Run workflow** on the workflow's page or through the REST API |
 | `schedule` | `cron`, in UTC |
+| `workflow_run` | `workflows` (by `name:`), `types` (`requested`, `in_progress`, `completed`; all when absent), `branches`, `branches-ignore` (the triggering run's branch); the event carries `github.event.workflow_run` (`conclusion`, `head_sha`, `id`, …) |
+| `repository_dispatch` | `types`; started with `POST /repos/{owner}/{repo}/dispatches` by a writer, `event_type` up to 100 characters and `client_payload` (at most 10 top-level properties, 65,535 characters) in `github.event` |
+
+`workflow_run` and `repository_dispatch` run the default branch's workflows at its newest
+commit, as on GitHub, with secrets and the repository's token permission, even when the
+run that started a `workflow_run` had neither (a fork's pull request): treat that run's
+artifacts and outputs as untrusted input. A run that three `workflow_run`s in a row led to
+starts no more, so a workflow that waits for itself ends there.
 
 A commit message or pull request title containing `[skip ci]` (or `[ci skip]`, `[no ci]`,
 `[skip actions]`, `[actions skip]`) starts nothing. Pushes made by runs themselves, by

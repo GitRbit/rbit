@@ -136,6 +136,15 @@ impl ActionsService {
                     }
                 });
             }
+            // Actions: workflow_run and repository_dispatch.
+            DomainEvent::ActionsRun { repo, run, action } => {
+                let this = self.clone();
+                self.inner.tasks.spawn(async move {
+                    if let Err(error) = this.handle_workflow_run(repo, run, action).await {
+                        tracing::warn!(%error, repo = repo.0, run = run.0, "cannot start workflow_run runs");
+                    }
+                });
+            }
             DomainEvent::Issue { repo, issue, kind: IssueKind::Pull, actor, action, .. } => {
                 let this = self.clone();
                 self.inner.tasks.spawn(async move {

@@ -2858,6 +2858,71 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/dispatches": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "createRepositoryDispatch",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Start the default branch's workflows that run on repository_dispatch (write scope; a writer)",
+        "description": "Workflows whose `on.repository_dispatch.types` list `event_type`, or that list none, run at the default branch's newest commit with `client_payload` in `github.event`. `event_type` is 1 to 100 characters; `client_payload` an object of at most 10 top-level properties and 65,535 characters.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_type"
+                ],
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "client_payload": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Dispatched"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
     }
   },
   "components": {

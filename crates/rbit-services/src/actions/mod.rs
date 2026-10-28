@@ -12,6 +12,7 @@
 //! | Module | Responsibility |
 //! |---|---|
 //! | [`triggers`] | Domain events → runs, on the bounded evaluation semaphore |
+//! | [`chains`] | `workflow_run` and `repository_dispatch` runs |
 //! | [`runs`] | Creating runs, concurrency, cancel, re-run, approval, listings |
 //! | [`context`] | The task context and GitHub-shaped event payloads |
 //! | [`dispatch`] | `workflow_dispatch` |
@@ -38,6 +39,8 @@
 // Actions: artifacts (A).
 pub mod artifacts;
 pub mod browse;
+// Actions: workflow_run and repository_dispatch.
+pub mod chains;
 // Actions: join (J).
 pub mod conditions;
 pub mod context;
