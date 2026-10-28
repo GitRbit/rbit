@@ -1,0 +1,419 @@
+{
+  "cases": [
+    {
+      "id": "expr-eq-case-insensitive",
+      "area": "expressions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: string comparison with == is case-insensitive.",
+      "split": "test",
+      "kind": "expr",
+      "input": {
+        "template": "${{ 'ABC' == 'abc' }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-loose-number-equals-string",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "Values of different types are coerced before comparing: a numeric string equals the number it spells, so '1' == 1 holds even though the types differ.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: values of different types are converted to numbers before comparing; a string that is a number equals that number.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ 1 == '1' }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-null-equals-empty-string",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "null and '' both coerce to 0 when compared, so a missing value equals an empty string, which a naive null check misses.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: null converts to 0 and an empty string to 0 when comparing values of different types.",
+      "split": "test",
+      "kind": "expr",
+      "input": {
+        "template": "${{ null == '' }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-bool-equals-one",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "Booleans coerce to numbers too: true compares equal to 1.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: true converts to 1 and false to 0 when comparing against a number.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ true == 1 }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-or-returns-operand",
+      "area": "expressions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: || returns the first truthy operand, not a boolean.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ '' || 'fallback' }}"
+      },
+      "expect": {
+        "value": "fallback"
+      }
+    },
+    {
+      "id": "expr-and-returns-falsy-operand",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "&& also returns an operand rather than a boolean, so '' && 'x' yields the empty string, not false.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: && returns the first falsy operand, or the last operand when all are truthy.",
+      "split": "test",
+      "kind": "expr",
+      "input": {
+        "template": "${{ '' && 'x' }}"
+      },
+      "expect": {
+        "value": ""
+      }
+    },
+    {
+      "id": "expr-not-of-empty-string",
+      "area": "expressions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Truthy and falsy values: the empty string is falsy.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ !'' }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-contains-array-item-case-insensitive",
+      "area": "functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "contains() over an array compares each string item with the same case-insensitive rule as a string search.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: contains(search, item) matches an array's string items case-insensitively.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ contains(fromJSON('[\"alpha\",\"beta\"]'), 'BETA') }}"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "expr-format-escaped-braces",
+      "area": "functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "{{ and }} are literal braces in format(); a single brace is a placeholder, so the braces around the value must be doubled to survive.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: format() escapes a literal { as {{ and } as }}.",
+      "split": "test",
+      "kind": "expr",
+      "input": {
+        "template": "${{ format('{{Hello {0} }}', 'world') }}"
+      },
+      "expect": {
+        "value": "{Hello world }"
+      }
+    },
+    {
+      "id": "expr-format-missing-argument-error",
+      "area": "functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A placeholder with no matching argument is an error, not an empty substitution.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: format() requires an argument for every placeholder index.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ format('{0} {1}', 'only') }}"
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "expr-fromjson-invalid-error",
+      "area": "functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "Malformed JSON must fail the evaluation; it must not produce null and let the job run.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: fromJSON() errors on input that is not valid JSON.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ fromJSON('{oops') }}"
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "expr-unknown-function-error",
+      "area": "functions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions: calling a function that does not exist is an error.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ nosuchfn('x') }}"
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "expr-no-arithmetic-operators",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The expression language has no + operator; 1 + 1 must be rejected, not evaluated as something else.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Operators: the operator list has no arithmetic operators.",
+      "split": "test",
+      "kind": "expr",
+      "input": {
+        "template": "${{ 1 + 1 }}"
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "expr-missing-property-is-null",
+      "area": "contexts",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Contexts: a property that is not set reads as null.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ github.event.nothing }}",
+        "contexts": {
+          "github": {}
+        }
+      },
+      "expect": {
+        "value": null
+      }
+    },
+    {
+      "id": "expr-unknown-context-error",
+      "area": "contexts",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A name that is not a context at all is rejected, not read as null; a typo in a context name must not silently pass.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Contexts: only the documented contexts exist; any other named value is an error.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ frobnicate.x }}",
+        "contexts": {
+          "github": {}
+        }
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "expr-hashfiles-no-match-empty",
+      "area": "functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "When no file matches, hashFiles returns the empty string, which is a value, not an error; a cache key built from it must still evaluate.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: hashFiles() returns an empty string when no files match.",
+      "split": "train",
+      "kind": "expr",
+      "input": {
+        "template": "${{ hashFiles('**/none.lock') == '' }}",
+        "hash_files": ""
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "cond-success-after-failure",
+      "area": "status functions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Status check functions: success() is false once something before has failed.",
+      "split": "test",
+      "kind": "condition",
+      "input": {
+        "condition": "success()",
+        "status": "failure"
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "cond-always-after-skipped-need",
+      "area": "status functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "always() is the one status function true after a skipped need, so it is the only way such a job runs.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Status check functions: always() runs the job even when its needs were skipped.",
+      "split": "train",
+      "kind": "condition",
+      "input": {
+        "condition": "always()",
+        "status": "skipped"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "cond-success-after-skipped-need",
+      "area": "status functions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A skipped need makes success() false as well, so the dependent job is skipped too instead of running.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Status check functions: success() is false when a needed job was skipped; the job then is skipped.",
+      "split": "train",
+      "kind": "condition",
+      "input": {
+        "condition": "success()",
+        "status": "skipped"
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "cond-cancelled-after-cancel",
+      "area": "status functions",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Expressions > Status check functions: cancelled() is true when the workflow run was cancelled.",
+      "split": "train",
+      "kind": "condition",
+      "input": {
+        "condition": "cancelled()",
+        "status": "cancelled"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "needs-status-failure-wins-over-skipped",
+      "area": "needs",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "When one need failed and another was skipped, failure() is true; a skipped sibling does not hide the failure.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Status check functions: failure() is true when any previous step or needed job failed.",
+      "split": "train",
+      "kind": "needs_status",
+      "input": {
+        "results": [
+          "success",
+          "failure",
+          "skipped"
+        ]
+      },
+      "expect": {
+        "value": "failure"
+      }
+    },
+    {
+      "id": "needs-status-no-needs-is-success",
+      "area": "needs",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Jobs > jobs.<job_id>.if: a job with no needs runs under success().",
+      "split": "train",
+      "kind": "needs_status",
+      "input": {
+        "results": []
+      },
+      "expect": {
+        "value": "success"
+      }
+    },
+    {
+      "id": "render-null-is-empty",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A null value renders as nothing at all, so x and y are adjacent rather than separated by 'null'.",
+      "source": "GitHub Docs, Workflow syntax > Expressions: a null value in a string is replaced by the empty string.",
+      "split": "train",
+      "kind": "render",
+      "input": {
+        "template": "x${{ null }}y"
+      },
+      "expect": {
+        "value": "xy"
+      }
+    },
+    {
+      "id": "render-unterminated-error",
+      "area": "expressions",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An opening ${{ with no closing }} is a malformed template and must be an error, not literal text.",
+      "source": "GitHub Docs, Workflow syntax > Expressions: every ${{ must be closed by }}.",
+      "split": "train",
+      "kind": "render",
+      "input": {
+        "template": "${{ github.ref"
+      },
+      "expect": {
+        "error": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,456 @@
+{
+  "cases": [
+    {
+      "id": "parse-minimal-workflow",
+      "area": "parsing",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax: on, jobs, runs-on and steps make a valid workflow.",
+      "split": "test",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "parse-empty-file-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax: a workflow file must declare on and jobs; an empty file is not a workflow.",
+      "split": "test",
+      "kind": "parse",
+      "input": {
+        "yaml": []
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-missing-on-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > on: required; a workflow with no event does not run.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-unknown-top-level-key-rejected",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A misspelt top-level key such as colour would silently change nothing if ignored; it must be an error with its line.",
+      "source": "GitHub Docs, Workflow syntax: only the documented keys are valid at the top level of a workflow.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "colour: red",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-step-run-and-uses-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.steps[*].run and .uses: a step sets one of run or uses, not both.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x",
+          "        uses: actions/checkout@v4"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-tab-indentation-rejected",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "YAML forbids tab characters for indentation; a tab-indented file must be an error rather than a silently re-nested workflow.",
+      "source": "YAML 1.2 spec, 6.1 Indentation spaces: tabs are not allowed as indentation; GitHub reports the file as invalid.",
+      "split": "test",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "\ta:",
+          "\t\truns-on: x",
+          "\t\tsteps:",
+          "\t\t  - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-duplicate-key-rejected",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A repeated mapping key would let the second value silently win; the file must be refused.",
+      "source": "YAML 1.2 spec, 3.2.1.3: mapping keys must be unique; GitHub rejects a workflow that repeats a key.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    runs-on: y",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-job-id-with-space-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>: a job id uses letters, digits, - and _ only.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  my job:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-job-id-leading-digit-rejected",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The id 1build is made of valid characters, but it must start with a letter or underscore.",
+      "source": "GitHub Docs, jobs.<job_id>: a job id must start with a letter or _.",
+      "split": "test",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  1build:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-permissions-unknown-value",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > permissions: the shorthands are read-all and write-all; other values are invalid.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "permissions: admin",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-if-invalid-expression",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The condition text is not valid expression syntax (a dangling operator); GitHub reports this when the workflow loads, not when the job reaches its if.",
+      "source": "GitHub Docs, Workflow syntax > Expressions: an invalid expression in if is a workflow error.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    if: github.ref ==",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-if-unknown-function",
+      "area": "malformed",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The syntax is fine; the function name is not one the expression language has.",
+      "source": "GitHub Docs, Workflow syntax > Expressions > Functions: an unknown function is refused when the workflow loads.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    if: nosuchfn()",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-branches-and-ignore-both-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > push: branches and branches-ignore cannot be used together.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: [main]",
+          "    branches-ignore: [wip]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-paths-and-ignore-both-rejected",
+      "area": "malformed",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > push: paths and paths-ignore cannot be used together.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    paths: ['src/**']",
+          "    paths-ignore: ['docs/**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "parse-list-form-on-accepted",
+      "area": "malformed",
+      "tags": [
+        "edge"
+      ],
+      "source": "GitHub Docs, Workflow syntax > on: a list of event names is valid.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: [push, pull_request]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "uses-checkout-pinned-sha",
+      "area": "uses",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Security hardening > Using third-party actions: an action may be pinned to a full commit SHA.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    },
+    {
+      "id": "uses-remote-without-ref-rejected",
+      "area": "uses",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A remote action with no @ref is not a valid reference; it must not be read as the default branch.",
+      "source": "GitHub Docs, jobs.<job_id>.steps[*].uses: a remote action must be referenced with @ and a ref.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - uses: actions/checkout"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "uses-empty-ref-rejected",
+      "area": "uses",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An @ with nothing after it has a separator but no ref.",
+      "source": "GitHub Docs, jobs.<job_id>.steps[*].uses: the ref after @ must not be empty.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - uses: actions/checkout@"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "uses-builtin-cache-with-inputs",
+      "area": "uses",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, actions/cache: key and path are its inputs; rbit's built-in cache accepts the same names.",
+      "split": "train",
+      "kind": "parse",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - uses: actions/cache@v4",
+          "        with:",
+          "          path: ~/.cache",
+          "          key: deps-${{ hashFiles('**/lock') }}"
+        ]
+      },
+      "expect": {
+        "ok": true
+      }
+    }
+  ]
+}

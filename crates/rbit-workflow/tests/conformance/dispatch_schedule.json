@@ -1,0 +1,269 @@
+{
+  "cases": [
+    {
+      "id": "dispatch-string-default-used",
+      "area": "dispatch",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > on.workflow_dispatch.inputs.<input_id>.default: used when the run does not set the input.",
+      "split": "test",
+      "kind": "dispatch",
+      "input": {
+        "yaml": [
+          "on:",
+          "  workflow_dispatch:",
+          "    inputs:",
+          "      env:",
+          "        type: string",
+          "        default: dev",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "given": {}
+      },
+      "expect": {
+        "value": {
+          "env": "dev"
+        }
+      }
+    },
+    {
+      "id": "dispatch-boolean-default-text",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The event carries a boolean input as the text true or false, so the default true reads back as the string \"true\".",
+      "source": "GitHub Docs, Workflow syntax > on.workflow_dispatch.inputs: a boolean input is passed to the run as true or false.",
+      "split": "train",
+      "kind": "dispatch",
+      "input": {
+        "yaml": [
+          "on:",
+          "  workflow_dispatch:",
+          "    inputs:",
+          "      dry:",
+          "        type: boolean",
+          "        default: true",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "given": {}
+      },
+      "expect": {
+        "value": {
+          "dry": "true"
+        }
+      }
+    },
+    {
+      "id": "dispatch-boolean-not-true-or-false",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "yes is a truthy word in YAML and in many tools, but a boolean input accepts only true or false.",
+      "source": "GitHub Docs, Workflow syntax > on.workflow_dispatch.inputs: boolean inputs are true or false.",
+      "split": "train",
+      "kind": "dispatch",
+      "input": {
+        "yaml": [
+          "on:",
+          "  workflow_dispatch:",
+          "    inputs:",
+          "      dry:",
+          "        type: boolean",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "given": {
+          "dry": "yes"
+        }
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "dispatch-choice-not-an-option",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An option list is a closed set: a value outside it is refused, even though it is a non-empty string.",
+      "source": "GitHub Docs, Workflow syntax > on.workflow_dispatch.inputs.<input_id>.options: a choice input must be one of the listed options.",
+      "split": "train",
+      "kind": "dispatch",
+      "input": {
+        "yaml": [
+          "on:",
+          "  workflow_dispatch:",
+          "    inputs:",
+          "      env:",
+          "        type: choice",
+          "        options: [dev, prod]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "given": {
+          "env": "staging"
+        }
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "dispatch-number-not-numeric",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A number input refuses text that is not a number, rather than passing it through as a string.",
+      "source": "GitHub Docs, Workflow syntax > on.workflow_dispatch.inputs: number inputs must be numeric.",
+      "split": "train",
+      "kind": "dispatch",
+      "input": {
+        "yaml": [
+          "on:",
+          "  workflow_dispatch:",
+          "    inputs:",
+          "      count:",
+          "        type: number",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "given": {
+          "count": "many"
+        }
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "schedule-tick-declared",
+      "area": "dispatch",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > schedule: the workflow runs on the cron schedules declared under on.schedule.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  schedule:",
+          "    - cron: '0 5 * * *'",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "schedule",
+          "cron": "0 5 * * *"
+        }
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "cron-next-fire-daily",
+      "area": "dispatch",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > schedule: cron runs at the given minute and hour in UTC.",
+      "split": "test",
+      "kind": "cron",
+      "input": {
+        "expression": "0 5 * * *",
+        "after": 1793073600
+      },
+      "expect": {
+        "value": {
+          "too_frequent": false,
+          "next": 1793077200
+        }
+      }
+    },
+    {
+      "id": "cron-next-fire-strictly-after",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A run exactly at 05:00 has already fired; the next tick is the following day, not 05:00 again.",
+      "source": "GitHub Docs, Events that trigger workflows > schedule: the schedule fires at the listed time, once per occurrence.",
+      "split": "train",
+      "kind": "cron",
+      "input": {
+        "expression": "0 5 * * *",
+        "after": 1793077200
+      },
+      "expect": {
+        "value": {
+          "too_frequent": false,
+          "next": 1793163600
+        }
+      }
+    },
+    {
+      "id": "cron-weekdays-skip-weekend",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The Friday evening tick skips Saturday and Sunday and lands on Monday morning.",
+      "source": "GitHub Docs, Events that trigger workflows > schedule: POSIX cron day-of-week ranges; 1-5 is Monday to Friday.",
+      "split": "train",
+      "kind": "cron",
+      "input": {
+        "expression": "0 9 * * 1-5",
+        "after": 1793354400
+      },
+      "expect": {
+        "value": {
+          "too_frequent": false,
+          "next": 1793610000
+        }
+      }
+    },
+    {
+      "id": "cron-four-fields-rejected",
+      "area": "dispatch",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A cron expression needs all five fields; four look almost right but must be refused rather than read with a field missing.",
+      "source": "GitHub Docs, Events that trigger workflows > schedule: a cron expression has five fields.",
+      "split": "train",
+      "kind": "cron",
+      "input": {
+        "expression": "0 5 * *"
+      },
+      "expect": {
+        "error": true
+      }
+    }
+  ]
+}
