@@ -1,7 +1,7 @@
 {
   "feature": "badge",
   "split": "test",
-  "why": "a private repository's badge must not tell an anonymous caller that it exists or how it fares",
+  "why": "a private repository's badge tells an anonymous caller nothing; a public one's, for a branch, shows its state with public caching",
   "observe": [
     {
       "id": "anon",
@@ -20,10 +20,11 @@
       }
     },
     {
-      "id": "owner",
+      "id": "public",
       "http": {
-        "path": "/{owner}/{repo}/actions/workflows/ci.yml/badge.svg",
-        "api": false
+        "path": "/{owner}/{repo:pub}/actions/workflows/ci.yml/badge.svg?branch=main",
+        "api": false,
+        "auth": "none"
       }
     }
   ],
@@ -47,10 +48,11 @@
       "status": 404
     },
     {
-      "obs": "owner",
+      "obs": "public",
       "status": 200,
       "headers": {
-        "cache-control": "private"
+        "cache-control": "public",
+        "etag": ""
       },
       "contains": [
         "failing"
@@ -60,6 +62,10 @@
   "repos": {
     "main": {
       "files": "repo"
+    },
+    "pub": {
+      "files": "repo",
+      "public": true
     }
   }
 }
