@@ -425,9 +425,15 @@ to `workflow_run` and `workflow_job`.
   Podman it hands them to the container's root, which is the runner's user. An engine
   with `userns-remap` is not supported. The runner keeps `<work_dir>/tasks` private to its
   user.
-- A Docker action's `Dockerfile` is built without limits and with the network, and the
-  default `[actions] allow = ["*"]` lets any workflow use any action or image; narrow it
-  for runners that take pull requests from forks.
+- A Docker action's image is built from the action's own directory only, with
+  `[container] memory`, `cpus` and `pids_limit` where the builder takes them (Podman,
+  Docker's classic builder). BuildKit takes no limit for one build: there it runs under
+  the engine's own, within the step's timeout, and the log says so. Builds use the engine's
+  default network, never the host's, as GitHub's runner builds them, and Buildx is told to
+  run no `git` in the build's context (`BUILDX_GIT_INFO=0`), which can be the job's
+  workspace.
+- The default `[actions] allow = ["*"]` lets any workflow use any action or image; narrow
+  it for runners that take pull requests from forks.
 - A container's environment goes through an env file, which cannot hold a multi-line value;
   such a value travels in the environment of the engine's CLI on the host instead. So a
   multi-line value cannot go to a variable that CLI, its loader or a program it starts reads

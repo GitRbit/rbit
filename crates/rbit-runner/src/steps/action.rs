@@ -972,8 +972,23 @@ async fn run_docker(
 async fn build_image(job: &Job, program: &Path, dockerfile: &Path, context: &Path, timeout: Option<Duration>) -> Result<String, Outcome> {
     let tag = format!("rbit-action-{}", crate::client::idempotency_key().to_ascii_lowercase());
     job.reporter.log(&format!("Building the action's image {tag}"));
+    let mut help = process::command(program);
+    help.args(["build", "--help"]);
+    let help = process::capture(help, None, Duration::from_mins(1)).await.map(|output| output.stdout).unwrap_or_default();
+    let (limits, missing) = crate::backend::container::build_limits(&help, &job.container);
+    if !missing.is_empty() {
+        job.reporter.log(&format!(
+            "The engine's builder (BuildKit) takes no {} limit for a build: it runs under the engine's own, within the step's timeout",
+            missing.join(" or ")
+        ));
+    }
     let mut command = process::command(program);
-    command.arg("build").arg("--tag").arg(&tag).arg("--file").arg(dockerfile).arg(context);
+    command.arg("build").arg("--tag").arg(&tag).arg("--file").arg(dockerfile).args(&limits).arg(context);
+    // Buildx runs `git` on the host in a context inside a repository (the workspace, for a
+    // local action) to describe an image that is removed after the step: not at all, and
+    // with no hook or `fsmonitor` command of the repository's should a version still do.
+    command.envs(git_env(&job.actions.url, job.private_dir().ok().as_deref()));
+    command.env("BUILDX_GIT_INFO", "0").env("BUILDX_GIT_LABELS", "0");
     let signal = job.stop_signal(timeout);
     let reporter = &job.reporter;
     match process::run_streaming(command, process::MAX_LINE_BYTES, signal.wait(), &crate::process::Stopper::Host, |line| {

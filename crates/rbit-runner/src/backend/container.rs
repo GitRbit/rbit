@@ -330,6 +330,33 @@ fn rootless(info: &str) -> bool {
     info.contains("name=rootless") || info.split_whitespace().collect::<String>().contains("\"rootless\":true")
 }
 
+/// The flags that hold a Docker action's build to `config`'s limits, as far as the engine's
+/// builder takes them (`help` is its `build --help`): Podman's and Docker's classic builder
+/// take `--memory` and `--cpu-period`/`--cpu-quota`, Podman also `--pids-limit`; `BuildKit`
+/// takes none. Also the limits that were set but could not be passed.
+pub fn build_limits(help: &str, config: &ContainerConfig) -> (Vec<String>, Vec<&'static str>) {
+    let takes = |flag: &str| help.split_whitespace().any(|word| word.trim_end_matches(',') == flag);
+    let (mut args, mut missing) = (Vec::new(), Vec::new());
+    if let Some(memory) = &config.memory {
+        if takes("--memory") {
+            args.extend(["--memory".into(), memory.clone()]);
+        } else {
+            missing.push("memory");
+        }
+    }
+    if let Some(cpus) = config.cpus {
+        if takes("--cpu-quota") && takes("--cpu-period") {
+            args.extend(["--cpu-period".into(), "100000".into(), "--cpu-quota".into(), format!("{:.0}", cpus * 100_000.0)]);
+        } else {
+            missing.push("CPU");
+        }
+    }
+    if takes("--pids-limit") {
+        args.extend(["--pids-limit".into(), config.pids_limit.to_string()]);
+    }
+    (args, missing)
+}
+
 /// `rm -f` of the task's containers.
 pub fn remove(containers: &[String]) -> Vec<String> {
     ["rm".to_owned(), "--force".to_owned()].into_iter().chain(containers.iter().cloned()).collect()
@@ -931,6 +958,22 @@ mod tests {
         assert_eq!(args[entrypoint + 5..], ["reclaim", "1000:1000"], "the owner is an argument, never part of the script");
         assert!(HELPER_IMAGE.contains("@sha256:"), "pinned by digest");
         assert!(!line.contains("privileged") && !line.contains("docker.sock") && !line.contains("--network host"));
+    }
+
+    #[test]
+    fn builds_get_the_limits_their_builder_takes() {
+        let config = config();
+        let classic =
+            "Usage: docker build [OPTIONS] PATH\n  -m, --memory bytes   Memory limit\n      --cpu-period int\n      --cpu-quota int\n";
+        assert_eq!(
+            build_limits(classic, &config),
+            (["--memory", "4g", "--cpu-period", "100000", "--cpu-quota", "200000"].map(String::from).to_vec(), vec![])
+        );
+        let podman = "--cpu-period uint\n--cpu-quota int\n--memory, -m string\n--pids-limit int\n";
+        assert!(build_limits(podman, &config).0.join(" ").ends_with("--pids-limit 4096"));
+        let buildkit = "Usage:  docker buildx build [OPTIONS] PATH\n      --network string   (format: \"memory=2g\")\n";
+        assert_eq!(build_limits(buildkit, &config), (vec![], vec!["memory", "CPU"]));
+        assert_eq!(build_limits(buildkit, &ContainerConfig::default()), (vec![], vec![]), "nothing set, nothing missing");
     }
 
     #[test]
