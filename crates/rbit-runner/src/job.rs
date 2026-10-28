@@ -326,7 +326,14 @@ impl Job {
             post_saves: Vec::new(),
             server: None,
             work_dir: loaded.work_dir.clone(),
-            actions: loaded.config.actions.clone(),
+            // Actions come from the runner's own instance unless `[actions] url` names another.
+            actions: {
+                let mut actions = loaded.config.actions.clone();
+                if actions.url.trim().is_empty() {
+                    actions.url.clone_from(&loaded.config.url);
+                }
+                actions
+            },
             container: loaded.config.container.clone(),
             runner_name: loaded.config.name.clone(),
             post_steps: Vec::new(),

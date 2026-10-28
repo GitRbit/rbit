@@ -68,10 +68,12 @@ pub struct RunnerConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionsConfig {
-    /// The server `owner/repo@ref` actions are fetched from with `git`: `https://github.com`
-    /// by default, or a mirror. Only `https://` (or `http://` on a loopback host, and
-    /// `file://` for tests).
-    #[serde(default = "default_actions_url")]
+    /// The server `owner/repo@ref` actions are fetched from with `git`. Empty (the default)
+    /// means this runner's own rbit instance, so nothing is fetched from elsewhere: mirror
+    /// the actions workflows use (`actions/setup-node`) there. `https://github.com` fetches
+    /// them from GitHub. Only `https://` (or `http://` on a loopback host, and `file://`
+    /// for tests).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
     /// The actions jobs may use, as `owner/repo` patterns where `*` matches anything
     /// (`actions/*`, `my-org/*`), or `docker://` image patterns. `["*"]`, the default, allows
@@ -87,7 +89,7 @@ pub struct ActionsConfig {
 
 impl Default for ActionsConfig {
     fn default() -> Self {
-        Self { url: default_actions_url(), allow: default_allow(), node: None }
+        Self { url: String::new(), allow: default_allow(), node: None }
     }
 }
 
@@ -184,9 +186,6 @@ fn default_helper_image() -> String {
 fn is_default_helper_image(image: &String) -> bool {
     image == crate::backend::container::HELPER_IMAGE
 }
-fn default_actions_url() -> String {
-    "https://github.com".to_owned()
-}
 fn default_allow() -> Vec<String> {
     vec!["*".to_owned()]
 }
@@ -225,15 +224,17 @@ impl RunnerConfig {
             "`container.network` must be a network driver name such as `bridge`"
         );
         ensure!(self.cache.max_bytes > 0, "`cache.max_bytes` must be positive");
-        // Actions: third-party actions.
-        let actions = Url::parse(&self.actions.url).with_context(|| format!("`actions.url` `{}` is not a URL", self.actions.url))?;
-        let loopback = actions.host_str().is_some_and(|host| {
-            host == "localhost" || host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
-        });
-        ensure!(
-            actions.scheme() == "https" || actions.scheme() == "file" || (actions.scheme() == "http" && loopback),
-            "`actions.url` must be `https://` (or `http://` on this machine)"
-        );
+        // Actions: third-party actions. Empty: the runner's own instance, checked above.
+        if !self.actions.url.trim().is_empty() {
+            let actions = Url::parse(&self.actions.url).with_context(|| format!("`actions.url` `{}` is not a URL", self.actions.url))?;
+            let loopback = actions.host_str().is_some_and(|host| {
+                host == "localhost" || host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>().is_ok_and(|ip| ip.is_loopback())
+            });
+            ensure!(
+                actions.scheme() == "https" || actions.scheme() == "file" || (actions.scheme() == "http" && loopback),
+                "`actions.url` must be `https://` (or `http://` on this machine)"
+            );
+        }
         for pattern in &self.actions.allow {
             ensure!(!pattern.is_empty() && !pattern.chars().any(char::is_whitespace), "`actions.allow` has an empty or spaced pattern");
         }

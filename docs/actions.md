@@ -224,9 +224,13 @@ Any other `uses:` is an action rbit-runner fetches and runs, as GitHub's runner 
 
 - `owner/repo@ref` or `owner/repo/path@ref` (`actions/setup-node@v4`,
   `github/codeql-action/init@v3`, or pinned: `actions/setup-python@<sha>`) is fetched with
-  `git` from the runner's `[actions] url`, `https://github.com` unless you point it at a
-  mirror. The reference is resolved to its commit, which the log names, and the action is
-  kept in the runner's work directory at that commit. No token is sent with the fetch.
+  `git` from the runner's own rbit instance, so a runner depends on nothing outside it:
+  mirror the actions your workflows use there as public repositories (a pull mirror of
+  `https://github.com/actions/setup-node` named `actions/setup-node`, kept current by the
+  mirror's schedule). `[actions] url = "https://github.com"` in `runner.toml` fetches them
+  from GitHub instead, as GitHub's own runner does. The reference is resolved to its
+  commit, which the log names, and the action is kept in the runner's work directory at that
+  commit. No token is sent with the fetch.
 - `./path` is an action in the workspace, usually checked out by an earlier step.
 - `docker://image` runs the image, with `with.args` and `with.entrypoint`.
 
