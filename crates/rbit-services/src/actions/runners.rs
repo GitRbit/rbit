@@ -207,6 +207,28 @@ impl RunnerCache {
         self.by_digest.read().unwrap_or_else(PoisonError::into_inner).len()
     }
 
+    /// `runners` with `last_online` brought up to what this process saw last: the stored
+    /// value is written at most once a minute, so on its own an idle runner between two
+    /// long polls could look offline.
+    fn with_seen(&self, mut runners: Vec<Runner>) -> Vec<Runner> {
+        let seen: HashMap<RunnerId, i64> = self
+            .by_digest
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .map(|runner| (runner.id, runner.last_seen.load(Ordering::SeqCst)))
+            .collect();
+        for runner in &mut runners {
+            if let Some(&seen) = seen.get(&runner.id)
+                && runner.last_online.is_none_or(|stored| stored.0 < seen)
+                && seen > 0
+            {
+                runner.last_online = Some(Timestamp(seen));
+            }
+        }
+        runners
+    }
+
     // Actions: metrics.
     /// Runners that called within [`RUNNER_ONLINE_SECONDS`] of `now`.
     pub fn online(&self, now: Timestamp) -> usize {
@@ -609,7 +631,8 @@ impl ActionsService {
     /// The runners of exactly `scope`, oldest first.
     pub async fn runners(&self, actor: &User, scope: ManagedScope<'_>) -> Result<Vec<Runner>, ServiceError> {
         self.require_manager(actor, scope).await?;
-        Ok(self.ctx().database.actions_runners().list(scope.scope()).await?)
+        let runners = self.ctx().database.actions_runners().list(scope.scope()).await?;
+        Ok(self.runner_cache().await?.with_seen(runners))
     }
 
     // Actions: REST API.
@@ -630,7 +653,7 @@ impl ActionsService {
         let instance_allowed =
             self.config().instance_runners_for_all || self.ctx().database.actions_settings().instance_runners_allowed(owner).await?;
         runners.retain(|runner| runner.scope != RunnerScope::Instance || instance_allowed);
-        Ok(runners)
+        Ok(self.runner_cache().await?.with_seen(runners))
     }
 
     /// Disables or enables runner `id` of `scope`. A disabled runner takes no new jobs; the
@@ -791,6 +814,17 @@ mod tests {
             capabilities: RunnerCapabilities::default(),
             protocol: 1,
         }
+    }
+
+    #[test]
+    fn listed_runners_show_when_this_process_last_saw_them() {
+        let credential = RunnerCredential::generate();
+        let cache = RunnerCache::load(vec![(runner(1, "one"), credential.digest())]);
+        cache.get(&credential.digest()).unwrap().seen(Timestamp(170));
+        let listed = cache.with_seen(vec![runner(1, "one"), runner(2, "unknown")]);
+        assert_eq!(listed[0].last_online, Some(Timestamp(170)), "newer than the stored value, which is written once a minute");
+        assert_eq!(listed[1].last_online, Some(Timestamp(100)), "a runner this process has not seen keeps the stored value");
+        assert!(listed[0].is_online(Timestamp(250)) && !runner(1, "one").is_online(Timestamp(250)));
     }
 
     #[test]
