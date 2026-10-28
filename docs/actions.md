@@ -114,8 +114,8 @@ must not silently change what a job does.
 - **Job that calls a workflow:** `name`, `uses`, `with`, `secrets` (or `secrets: inherit`),
   `strategy`, `needs`, `if`, `permissions` (see [Reusable workflows](#reusable-workflows)).
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
-  `outputs`, `timeout-minutes` (default 360, capped by `[actions] endless_timeout_seconds`,
-  3 hours unless set higher), `continue-on-error`, `concurrency`,
+  `outputs`, `timeout-minutes` (at most `[actions] endless_timeout_seconds`, 3 hours by
+  default, which is also the default when a job sets none), `continue-on-error`, `concurrency`,
   `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `environment`
   (a name, or `{name, url}`), `container`
   (`image`, `env`, `credentials`, `options`, `volumes`), `services` (`image`, `env`,

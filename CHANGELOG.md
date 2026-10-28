@@ -28,7 +28,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **rbit Actions**, rbit's own CI/CD, off unless `[actions] enabled = true`
   ([docs/actions.md](docs/actions.md)). Workflows in `.rbit/workflows` (or
   `.forgejo/workflows`, `.github/workflows`) use a GitHub-style subset: `push`,
-  `pull_request`, `workflow_dispatch` and `schedule` triggers, matrices, `needs`, job and step
+  `pull_request`, `workflow_dispatch`, `schedule`, `workflow_run` and `repository_dispatch`
+  triggers, matrices, `needs`, job and step
   `if:` with GitHub's expressions, `fail-fast`, `max-parallel`, concurrency groups,
   containers and services, and the built-in `rbit/checkout`, `rbit/cache`,
   `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases).

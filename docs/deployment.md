@@ -498,6 +498,7 @@ artifact_retention_days = 90
 max_artifact_bytes = 2147483648          # per artifact
 max_artifact_storage_bytes = 10737418240 # per repository
 instance_runners_for_all = false         # instance runners serve only owners you allow
+endless_timeout_seconds = 10800          # the longest a job may run (3 hours)
 ```
 
 **The secrets key.** rbit creates `actions/secrets.key` (mode `0600` on Unix) the first time it
@@ -589,7 +590,8 @@ secrets and no variables, and wait for a writer's approval. Instance runners (re
 server on the same machine). rbit makes no outbound connections of its own for Actions
 (webhooks subscribed to `workflow_run` and `workflow_job` are sent like any other). A runner
 fetches actions from its rbit instance unless `[actions] url` names another, downloads
-Node.js from `nodejs.org` for JavaScript actions unless `[actions] node` names a local one,
+Node.js from `nodejs.org` for JavaScript actions (on the host unless `[actions] node` names a
+local one; container jobs always use the downloaded Linux build),
 and pulls container images (its `busybox` helper included, `[container] helper_image`) from
 their registries.
 
