@@ -414,7 +414,15 @@ mod platform {
     /// The account a service runs as by default, as GitHub's runner service does.
     const DEFAULT_ACCOUNT: &str = r"NT AUTHORITY\NETWORK SERVICE";
 
+    /// The account running this, as Windows names it: `USERDOMAIN` is the workgroup's name
+    /// in some sessions (over SSH), which the Task Scheduler cannot map to an account.
     fn current_user() -> String {
+        if let Ok(name) = tool("whoami.exe", &[]) {
+            let name = name.trim();
+            if !name.is_empty() && !name.contains('\n') {
+                return name.to_owned();
+            }
+        }
         let domain = std::env::var("USERDOMAIN").unwrap_or_default();
         let user = std::env::var("USERNAME").unwrap_or_default();
         if domain.is_empty() { user } else { format!("{domain}\\{user}") }
