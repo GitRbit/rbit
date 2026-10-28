@@ -216,7 +216,11 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
             let store = database.actions_runs();
             let Some(job) = store.find_job(repo, job).await? else { return Ok(None) };
             let steps = store.steps_of_tasks(job.task_id.as_slice()).await?;
-            body["workflow_job"] = workflow_job(&job, &run, &owned, &steps, base_url);
+            let runner = match job.runner_id {
+                Some(id) => database.actions_runners().find(id).await?,
+                None => None,
+            };
+            body["workflow_job"] = workflow_job(&job, &run, &owned, &steps, runner.as_ref().map(|runner| runner.name.as_str()), base_url);
         }
     }
     Ok(Some(HookPayload { body: with_organization(body, &owned, base_url), repo: owned, event: kind }))
@@ -288,7 +292,8 @@ pub fn workflow_run(run: &Run, repo: &OwnedRepository, people: &BTreeMap<Account
 
 /// A job as `workflow_job` and the REST API show it, with `steps`, the steps of its
 /// current task (others are ignored).
-pub fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, steps: &[Step], base_url: &str) -> Value {
+/// `runner_name` is the name of the runner that took it (`job.runner_id`), if known.
+pub fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, steps: &[Step], runner_name: Option<&str>, base_url: &str) -> Value {
     let full_name = repo.full_name();
     let api = format!("{base_url}/api/v1/repos/{full_name}/actions");
     let steps: Vec<Value> = steps
@@ -320,6 +325,7 @@ pub fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, steps: &[Step]
         "conclusion": conclusion(job.status),
         "labels": job.runs_on,
         "runner_id": job.runner_id.map(|runner| runner.0),
+        "runner_name": runner_name,
         "steps": steps,
         "created_at": timestamp(job.created_at),
         "started_at": job.started_at.map(timestamp),

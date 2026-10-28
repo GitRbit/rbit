@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use rbit_core::{
     Account, AccountId, RepoId,
-    actions::{Job, JobId, Run, RunEvent, RunId, Status, Step, TaskId},
+    actions::{Job, JobId, Run, RunEvent, RunId, RunnerId, Status, Step, TaskId},
 };
 use rbit_storage::sqlite::actions_runs::RunFilter;
 
@@ -285,6 +285,19 @@ impl ActionsService {
     pub async fn steps(&self, jobs: &[Job]) -> Result<Vec<Step>, ServiceError> {
         let tasks: Vec<TaskId> = jobs.iter().filter_map(|job| job.task_id).collect();
         Ok(self.ctx().database.actions_runs().steps_of_tasks(&tasks).await?)
+    }
+
+    /// The names of the runners that took `jobs`, by id; a deleted runner is left out.
+    pub async fn runner_names(&self, jobs: &[Job]) -> Result<BTreeMap<RunnerId, String>, ServiceError> {
+        let ids: std::collections::BTreeSet<RunnerId> = jobs.iter().filter_map(|job| job.runner_id).collect();
+        let runners = self.ctx().database.actions_runners();
+        let mut names = BTreeMap::new();
+        for id in ids {
+            if let Some(runner) = runners.find(id).await? {
+                names.insert(id, runner.name);
+            }
+        }
+        Ok(names)
     }
 }
 

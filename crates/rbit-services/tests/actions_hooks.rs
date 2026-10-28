@@ -134,6 +134,7 @@ async fn workflow_webhooks_have_githubs_shape() {
     assert_eq!(payload["workflow_job"]["labels"], serde_json::json!(["x"]));
     assert_eq!(payload["workflow_job"]["workflow_name"], "CI");
     assert_eq!(payload["workflow_job"]["steps"], serde_json::json!([]), "no runner took it yet");
+    assert_eq!(payload["workflow_job"]["runner_name"], Value::Null);
     assert_eq!(payload["workflow_job"]["url"], format!("https://git.example.com/api/v1/repos/alice/rocket/actions/jobs/{}", job.id.0));
 
     // Once a runner reports steps, they are numbered from 1 as on GitHub.
@@ -154,6 +155,8 @@ async fn workflow_webhooks_have_githubs_shape() {
     let started = log.deliveries.iter().find(|delivery| delivery.action.as_deref() == Some("in_progress")).unwrap();
     let payload: Value = serde_json::from_str(&started.payload).unwrap();
     assert_eq!(payload["workflow_job"]["status"], "in_progress");
+    let runner = fixture.database.actions_runners().find(claimed.task.runner_id.unwrap()).await.unwrap().unwrap();
+    assert_eq!(payload["workflow_job"]["runner_name"], runner.name.as_str());
     assert_eq!(
         payload["workflow_job"]["steps"],
         serde_json::json!([{

@@ -301,8 +301,10 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
     let detail = actions.run_by_id(&ctx, path.run()?).await?;
     let shown: Vec<_> = detail.jobs.iter().skip(pager.offset()).take(pager.limit()).cloned().collect();
     let steps = actions.steps(&shown).await?;
+    let runners = actions.runner_names(&shown).await?;
     let base = base_url(&state);
-    let items = shown.iter().map(|job| hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, base)).collect();
+    let runner = |job: &rbit_core::actions::Job| job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
+    let items = shown.iter().map(|job| hooks::workflow_job(job, &detail.run, &ctx.repo, &steps, runner(job), base)).collect();
     let total = u64::try_from(detail.jobs.len()).unwrap_or(u64::MAX);
     Ok(wrapped("jobs", pager.paged(items, Some(total), false)))
 }
@@ -311,7 +313,9 @@ pub async fn run_jobs(State(state): State<AppState>, caller: Caller, pager: Page
 pub async fn show_job(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
     let ctx = path.repo(&state, &caller).await?;
     let detail = actions(&state)?.job_detail(&ctx, path.job()?).await?;
-    Ok(Json(hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, base_url(&state))))
+    let runners = actions(&state)?.runner_names(std::slice::from_ref(&detail.job)).await?;
+    let runner = detail.job.runner_id.and_then(|id| runners.get(&id)).map(String::as_str);
+    Ok(Json(hooks::workflow_job(&detail.job, &detail.run, &ctx.repo, &detail.steps, runner, base_url(&state))))
 }
 
 // Actions: REST API.
