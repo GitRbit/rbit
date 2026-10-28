@@ -22,12 +22,13 @@ use crate::{
     builtins,
     cron::{Cron, MIN_INTERVAL_MINUTES},
     error::{ErrorKind, Location, WorkflowError},
-    expr::{CONTEXTS, Condition, Expr, Function, Template},
+    expr::{Condition, Expr, Function, Template},
     limits::{Deadline, Limits},
     model::{
-        ActionStep, ActivityType, Builtin, Concurrency, Container, Dispatch, DispatchInput, Env, EnvironmentRef, Filter, InputKind, Job,
-        Matrix, On, Permission, Permissions, PullRequestFilters, PushFilters, RegistryCredentials, RepositoryDispatchFilters, RunDefaults,
-        Schedule, Service, Shell, Step, StepAction, Strategy, Workflow, WorkflowRunFilters, WorkflowRunType,
+        ActionStep, ActivityType, Builtin, CallInput, CallInputKind, CallSecrets, CallTarget, Concurrency, Container, Dispatch,
+        DispatchInput, Env, EnvironmentRef, Filter, InputKind, Job, JobCall, Matrix, On, Permission, Permissions, PullRequestFilters,
+        PushFilters, RegistryCredentials, RepositoryDispatchFilters, RunDefaults, Schedule, Service, Shell, Step, StepAction, Strategy,
+        Workflow, WorkflowCall, WorkflowRunFilters, WorkflowRunType,
     },
     pattern::Patterns,
     spec::{MAX_NAME_BYTES, MAX_SERVICES, MAX_STEPS},
@@ -61,12 +62,29 @@ const JOB_KEYS: [&str; 16] = [
     "environment",
 ];
 /// GitHub's job keys that rbit lacks, and why.
-const JOB_UNSUPPORTED: [(&str, &str); 5] = [
-    ("uses", ": reusable workflows are not supported"),
-    ("with", ": reusable workflows are not supported"),
-    ("secrets", ": reusable workflows are not supported"),
+const JOB_UNSUPPORTED: [(&str, &str); 4] = [
+    ("with", ": only a job that calls a workflow (`uses`) takes it"),
+    ("secrets", ": only a job that calls a workflow (`uses`) takes it"),
     ("cancel-timeout-minutes", ""),
     ("snapshot", ""),
+];
+// Actions: reusable workflows.
+/// The keys of a job that calls a workflow (`uses`), as on GitHub.
+const CALL_KEYS: [&str; 8] = ["name", "uses", "with", "secrets", "strategy", "needs", "if", "permissions"];
+/// Keys of other jobs that a calling job cannot have, and why.
+const CALL_UNSUPPORTED: [(&str, &str); 12] = [
+    ("runs-on", ": the called workflow's jobs say where they run"),
+    ("steps", ": the called workflow's jobs have the steps"),
+    ("env", ": the called workflow does not see the caller's `env`"),
+    ("defaults", ": the called workflow has its own"),
+    ("outputs", ": the called workflow declares them under `on.workflow_call.outputs`"),
+    ("timeout-minutes", ": set it on the called workflow's jobs"),
+    ("continue-on-error", ": set it on the called workflow's jobs"),
+    ("container", ": set it on the called workflow's jobs"),
+    ("services", ": set it on the called workflow's jobs"),
+    ("environment", ": set it on the called workflow's jobs"),
+    ("concurrency", " on a job that calls a workflow yet; set it on the called workflow's jobs"),
+    ("cancel-timeout-minutes", ""),
 ];
 /// The keys of a step.
 const STEP_KEYS: [&str; 11] =
@@ -187,15 +205,28 @@ enum Scope {
     Runner,
     /// The runner: step `if`.
     StepCondition,
+    // Actions: reusable workflows.
+    /// The server, for a job that calls a workflow: `with`.
+    Call,
+    /// The server, for a job that calls a workflow: `secrets`.
+    CallSecrets,
+    /// The server: a called workflow's `outputs`.
+    CallOutputs,
 }
+
+/// What the runner provides: every context but `jobs`, which only a called workflow's
+/// `outputs` read.
+const RUNNER_CONTEXTS: [&str; 11] = ["github", "env", "vars", "job", "steps", "runner", "secrets", "strategy", "matrix", "needs", "inputs"];
 
 impl Scope {
     fn contexts(self) -> &'static [&'static str] {
         match self {
             Self::Run => &["github", "inputs", "vars"],
             Self::Job => &["github", "inputs", "vars", "matrix", "strategy"],
-            Self::JobCondition => &["github", "inputs", "vars", "matrix", "strategy", "needs"],
-            Self::Runner | Self::StepCondition => &CONTEXTS,
+            Self::JobCondition | Self::Call => &["github", "inputs", "vars", "matrix", "strategy", "needs"],
+            Self::Runner | Self::StepCondition => &RUNNER_CONTEXTS,
+            Self::CallSecrets => &["github", "inputs", "vars", "matrix", "strategy", "needs", "secrets"],
+            Self::CallOutputs => &["github", "inputs", "vars", "jobs"],
         }
     }
 }
@@ -204,7 +235,7 @@ impl Scope {
 fn check_exprs<'a>(exprs: impl IntoIterator<Item = &'a Expr>, scope: Scope, path: &str, at: Location) -> Result<(), WorkflowError> {
     for expr in exprs {
         if let Some(name) = expr.contexts().into_iter().find(|name| !scope.contexts().contains(name)) {
-            if name == "needs" {
+            if name == "needs" && !matches!(scope, Scope::Call | Scope::CallSecrets) {
                 return Err(error(format!("`{path}`: values that depend on `needs` are not supported by rbit"), at));
             }
             let available = scope.contexts().join(", ");
@@ -408,7 +439,8 @@ fn add_event(on: &mut On, event: &str, config: Option<&Node>, at: Location) -> R
             Some(node) => on.schedule = parse_schedule(node)?,
             None => return Err(error("`on.schedule` needs a list of `cron` entries", at)),
         },
-        "workflow_call" => return Err(error("`on.workflow_call` is not supported by rbit: reusable workflows are not supported", at)),
+        // Actions: reusable workflows.
+        "workflow_call" => on.workflow_call = Some(config.map(parse_workflow_call).transpose()?.unwrap_or_default()),
         // Actions: workflow_run and repository_dispatch.
         "workflow_run" => match config {
             Some(node) => on.workflow_run = Some(parse_workflow_run(node)?),
@@ -686,6 +718,23 @@ fn parse_jobs(key: &Key, node: &Node, limits: &Limits, deadline: &Deadline) -> R
     Ok(jobs)
 }
 
+/// A job's `needs`, each named once.
+fn parse_needs(config: &Mapping, path: &str, at: Location) -> Result<Vec<String>, WorkflowError> {
+    let needs = config.get("needs").map(|node| strings(node, &format!("{path}.needs"))).transpose()?.unwrap_or_default();
+    if let Some(repeated) = needs.iter().enumerate().find_map(|(index, need)| needs[..index].contains(need).then_some(need)) {
+        return Err(error(format!("`{path}.needs` names `{repeated}` twice"), config.get("needs").map_or(at, |node| node.at)));
+    }
+    Ok(needs)
+}
+
+/// A job's `if`, checked.
+fn job_condition(config: &Mapping, path: &str) -> Result<Option<String>, WorkflowError> {
+    let Some(node) = config.get("if").filter(|node| !node.is_null()) else { return Ok(None) };
+    let text = node.as_text().ok_or_else(|| error(format!("`{path}.if` must be a condition"), node.at))?;
+    condition(&text, Scope::JobCondition, &format!("{path}.if"), node.at)?;
+    Ok(Some(text))
+}
+
 fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
     let id = key.name.clone();
     if !valid_job_id(&id) {
@@ -698,31 +747,47 @@ fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
     }
     let path = format!("jobs.{id}");
     let config = node.as_mapping().ok_or_else(|| error(format!("`{path}` must be a mapping"), node.at))?;
-    if let Some((key, value)) = config.entry("secrets")
-        && value.as_text().as_deref() == Some("inherit")
-    {
-        return Err(error(format!("`{path}.secrets: inherit` is not supported by rbit: reusable workflows are not supported"), key.at));
+    // Actions: reusable workflows.
+    let calls = config.get("uses").is_some();
+    if calls {
+        check_keys(config, &path, &CALL_KEYS, &CALL_UNSUPPORTED)?;
+    } else {
+        check_keys(config, &path, &JOB_KEYS, &JOB_UNSUPPORTED)?;
     }
-    check_keys(config, &path, &JOB_KEYS, &JOB_UNSUPPORTED)?;
     let field = |key: &str| format!("{path}.{key}");
     let name = template_field(config, "name", &field("name"), Scope::Job)?;
-    let needs = config.get("needs").map(|node| strings(node, &field("needs"))).transpose()?.unwrap_or_default();
-    if let Some(repeated) = needs.iter().enumerate().find_map(|(index, need)| needs[..index].contains(need).then_some(need)) {
-        return Err(error(format!("`{path}.needs` names `{repeated}` twice"), config.get("needs").map_or(key.at, |node| node.at)));
+    let needs = parse_needs(config, &path, key.at)?;
+    let condition = job_condition(config, &path)?;
+    let permissions = config.get("permissions").map(|node| parse_permissions(node, &field("permissions"))).transpose()?;
+    // Actions: reusable workflows.
+    if calls {
+        let strategy = config.get("strategy").map(|node| parse_strategy(node, &field("strategy"))).transpose()?.unwrap_or_default();
+        return Ok(Job {
+            id,
+            name,
+            needs,
+            condition,
+            runs_on: Vec::new(),
+            permissions,
+            env: Env::default(),
+            defaults: RunDefaults::default(),
+            outputs: BTreeMap::new(),
+            timeout_minutes: None,
+            continue_on_error: None,
+            concurrency: None,
+            strategy,
+            container: None,
+            services: Vec::new(),
+            steps: Vec::new(),
+            environment: None,
+            call: Some(parse_call(config, &path)?),
+            at: key.at,
+        });
     }
-    let condition = match config.get("if").filter(|node| !node.is_null()) {
-        None => None,
-        Some(node) => {
-            let text = node.as_text().ok_or_else(|| error(format!("`{path}.if` must be a condition"), node.at))?;
-            condition(&text, Scope::JobCondition, &field("if"), node.at)?;
-            Some(text)
-        }
-    };
     let runs_on = match config.get("runs-on") {
         None => return Err(error(format!("`{path}` needs `runs-on`"), key.at)),
         Some(node) => parse_runs_on(node, &field("runs-on"))?,
     };
-    let permissions = config.get("permissions").map(|node| parse_permissions(node, &field("permissions"))).transpose()?;
     let env = config.get("env").map(|node| parse_env(node, &field("env"))).transpose()?.unwrap_or_default();
     let defaults = config.get("defaults").map(|node| parse_defaults(node, &field("defaults"))).transpose()?.unwrap_or_default();
     let outputs = config.get("outputs").map(|node| parse_outputs(node, &field("outputs"))).transpose()?.unwrap_or_default();
@@ -765,8 +830,142 @@ fn parse_job(key: &Key, node: &Node) -> Result<Job, WorkflowError> {
         services,
         steps,
         environment,
+        call: None,
         at: key.at,
     })
+}
+
+// Actions: reusable workflows.
+/// `uses`, `with` and `secrets` of a job that calls a workflow.
+fn parse_call(config: &Mapping, path: &str) -> Result<JobCall, WorkflowError> {
+    let (uses_key, node) = config.entry("uses").expect("checked by the caller");
+    let uses = node.as_text().ok_or_else(|| error(format!("`{path}.uses` must name a workflow"), node.at))?;
+    let target = call_target(&uses).ok_or_else(|| {
+        error(format!("`{path}.uses`: `{uses}` must be `./path/to/workflow.yml` or `owner/repo/path/to/workflow.yml@ref`"), uses_key.at)
+    })?;
+    let mut with = BTreeMap::new();
+    if let Some(node) = config.get("with").filter(|node| !node.is_null()) {
+        for (key, value) in mapping(node, &format!("{path}.with"))?.iter() {
+            let input_path = format!("{path}.with.{}", key.name);
+            let text = value.as_text().ok_or_else(|| error(format!("`{input_path}` must be a string, number or boolean"), value.at))?;
+            template(&text, Scope::Call, &input_path, value.at)?;
+            with.insert(key.name.clone(), text);
+        }
+    }
+    let secrets = match config.get("secrets").filter(|node| !node.is_null()) {
+        None => CallSecrets::default(),
+        Some(node) if node.as_text().as_deref() == Some("inherit") => CallSecrets::Inherit,
+        Some(node) => {
+            let mut map = BTreeMap::new();
+            for (key, value) in mapping(node, &format!("{path}.secrets"))?.iter() {
+                let secret_path = format!("{path}.secrets.{}", key.name);
+                let text = value.as_text().ok_or_else(|| error(format!("`{secret_path}` must be a string"), value.at))?;
+                template(&text, Scope::CallSecrets, &secret_path, value.at)?;
+                map.insert(key.name.clone(), text);
+            }
+            CallSecrets::Map(map)
+        }
+    };
+    Ok(JobCall { uses, target, with, secrets })
+}
+
+/// The workflow `uses` names, or `None` when it has neither form.
+pub(crate) fn call_target(uses: &str) -> Option<CallTarget> {
+    // Lowercase only, as GitHub: `.github/workflows/ci.YML` is no workflow there.
+    #[expect(clippy::case_sensitive_file_extension_comparisons, reason = "GitHub reads only lowercase extensions")]
+    let workflow_file = |path: &str| {
+        (path.ends_with(".yml") || path.ends_with(".yaml"))
+            && path.split('/').all(|part| !part.is_empty() && part != "." && part != ".." && !part.contains('\\'))
+    };
+    if let Some(path) = uses.strip_prefix("./") {
+        return workflow_file(path).then(|| CallTarget::Local { path: path.to_owned() });
+    }
+    let (spec, reference) = uses.rsplit_once('@')?;
+    let mut parts = spec.splitn(3, '/');
+    let (owner, repo, path) = (parts.next()?, parts.next()?, parts.next()?);
+    let name = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+    (name(owner) && name(repo) && workflow_file(path) && !reference.is_empty() && !reference.contains(char::is_whitespace)).then(|| {
+        CallTarget::Remote { owner: owner.to_owned(), repo: repo.to_owned(), path: path.to_owned(), reference: reference.to_owned() }
+    })
+}
+
+/// `on.workflow_call`: `inputs`, `outputs` and `secrets`.
+fn parse_workflow_call(node: &Node) -> Result<WorkflowCall, WorkflowError> {
+    let config = mapping(node, "on.workflow_call")?;
+    only_keys(config, "workflow_call", &["inputs", "outputs", "secrets"])?;
+    let mut call = WorkflowCall::default();
+    if let Some(inputs) = config.get("inputs").filter(|node| !node.is_null()) {
+        for (key, node) in mapping(inputs, "on.workflow_call.inputs")?.iter() {
+            let path = format!("on.workflow_call.inputs.{}", key.name);
+            let entry = mapping(node, &path)?;
+            check_keys(entry, &path, &["description", "required", "default", "type"], &[])?;
+            let kind = match entry.get("type").and_then(Node::as_text).as_deref() {
+                Some("boolean") => CallInputKind::Boolean,
+                Some("number") => CallInputKind::Number,
+                Some("string") => CallInputKind::String,
+                _ => return Err(error(format!("`{path}.type` must be boolean, number or string"), node.at)),
+            };
+            let required = match entry.get("required") {
+                None => false,
+                Some(node) => match node.as_scalar().map(|scalar| &scalar.value) {
+                    Some(ScalarValue::Bool(value)) => *value,
+                    _ => return Err(error(format!("`{path}.required` must be true or false"), node.at)),
+                },
+            };
+            let default = match entry.get("default").filter(|node| !node.is_null()) {
+                None => None,
+                Some(node) => {
+                    let text = node.as_text().ok_or_else(|| error(format!("`{path}.default` must be a {}", kind.as_str()), node.at))?;
+                    Some(
+                        call_input_value(kind, &text)
+                            .ok_or_else(|| error(format!("`{path}.default` must be a {}", kind.as_str()), node.at))?,
+                    )
+                }
+            };
+            call.inputs.insert(key.name.clone(), CallInput { kind, required, default });
+        }
+    }
+    if let Some(outputs) = config.get("outputs").filter(|node| !node.is_null()) {
+        for (key, node) in mapping(outputs, "on.workflow_call.outputs")?.iter() {
+            let path = format!("on.workflow_call.outputs.{}", key.name);
+            let entry = mapping(node, &path)?;
+            check_keys(entry, &path, &["description", "value"], &[])?;
+            let value = template_field(entry, "value", &format!("{path}.value"), Scope::CallOutputs)?
+                .ok_or_else(|| error(format!("`{path}` needs a `value`"), node.at))?;
+            call.outputs.insert(key.name.clone(), value);
+        }
+    }
+    if let Some(secrets) = config.get("secrets").filter(|node| !node.is_null()) {
+        for (key, node) in mapping(secrets, "on.workflow_call.secrets")?.iter() {
+            let path = format!("on.workflow_call.secrets.{}", key.name);
+            let required = if node.is_null() {
+                false
+            } else {
+                let entry = mapping(node, &path)?;
+                check_keys(entry, &path, &["description", "required"], &[])?;
+                match entry.get("required").map(|node| node.as_scalar().map(|scalar| &scalar.value)) {
+                    None => false,
+                    Some(Some(ScalarValue::Bool(value))) => *value,
+                    Some(_) => return Err(error(format!("`{path}.required` must be true or false"), node.at)),
+                }
+            };
+            call.secrets.insert(key.name.clone(), required);
+        }
+    }
+    Ok(call)
+}
+
+/// `text` as a value of a `workflow_call` input of `kind`, or `None` when it is not one.
+pub fn call_input_value(kind: CallInputKind, text: &str) -> Option<serde_json::Value> {
+    match kind {
+        CallInputKind::String => Some(serde_json::Value::String(text.to_owned())),
+        CallInputKind::Boolean => match text.trim() {
+            "true" => Some(serde_json::Value::Bool(true)),
+            "false" => Some(serde_json::Value::Bool(false)),
+            _ => None,
+        },
+        CallInputKind::Number => text.trim().parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(serde_json::Value::Number),
+    }
 }
 
 // Actions: environments.
@@ -1297,7 +1496,11 @@ jobs:
             ("on: push\njobs:\n  a: {steps: []}\n", "needs `runs-on`", (3, 3)),
             ("on: push\njobs:\n  a: {runs-on: []}\n", "at least one label", (3, 16)),
             ("on: push\njobs:\n  a: {runs-on: {group: big}}\n", "runner groups", (3, 16)),
-            ("on: push\njobs:\n  a: {uses: ./.github/workflows/x.yml}\n", "reusable workflows", (3, 7)),
+            (
+                "on: push\njobs:\n  a: {uses: ./x.txt}\n",
+                "must be `./path/to/workflow.yml` or `owner/repo/path/to/workflow.yml@ref`",
+                (3, 7),
+            ),
             ("on: push\njobs:\n  a: {steps: [{run: x}], runs-on: x, needs: b}\n", "needs `b`, which does not exist", (3, 3)),
             ("on: push\njobs:\n  a: {steps: [{run: x}], runs-on: x, needs: a}\n", "needs itself", (3, 3)),
             (
@@ -1528,9 +1731,9 @@ jobs:
         let workflow_level: &[(&str, &str, (u32, u32))] = &[
             ("nmae: x\non: push\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n", "a workflow does not support `nmae`", (1, 1)),
             (
-                "on: {workflow_call: {}}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n",
-                "`on.workflow_call` is not supported by rbit",
-                (1, 6),
+                "on: {workflow_call: {inputs: {a: {type: text}}}}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n",
+                "`on.workflow_call.inputs.a.type` must be boolean, number or string",
+                (1, 34),
             ),
             ("on: [push, pushh]\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n", "`on.pushh` is not an event", (1, 5)),
             (
@@ -1569,9 +1772,27 @@ jobs:
                 (5, 28),
             ),
             ("    runs-on: x\n    environment: ${{ steps.a.outputs.b }}\n    steps: [{run: x}]\n", "steps", (5, 18)),
-            ("    uses: o/r/.github/workflows/w.yml@v1\n", "`jobs.a.uses` is not supported by rbit: reusable workflows", (4, 5)),
-            ("    runs-on: x\n    secrets: inherit\n    steps: [{run: x}]\n", "`jobs.a.secrets: inherit` is not supported by rbit", (5, 5)),
-            ("    runs-on: x\n    secrets: {A: b}\n    steps: [{run: x}]\n", "`jobs.a.secrets` is not supported by rbit", (5, 5)),
+            (
+                "    uses: o/r/.github/workflows/w.yml@v1\n    runs-on: x\n",
+                "`jobs.a.runs-on` is not supported by rbit: the called workflow's jobs",
+                (5, 5),
+            ),
+            (
+                "    uses: ./w.yml\n    concurrency: g\n",
+                "`jobs.a.concurrency` is not supported by rbit on a job that calls a workflow",
+                (5, 5),
+            ),
+            ("    uses: ./w.yml\n    with: {a: '${{ steps.x.outputs.y }}'}\n", "the `steps` context is not available here", (5, 15)),
+            (
+                "    runs-on: x\n    secrets: inherit\n    steps: [{run: x}]\n",
+                "`jobs.a.secrets` is not supported by rbit: only a job that calls a workflow",
+                (5, 5),
+            ),
+            (
+                "    runs-on: x\n    with: {A: b}\n    steps: [{run: x}]\n",
+                "`jobs.a.with` is not supported by rbit: only a job that calls a workflow",
+                (5, 5),
+            ),
             (
                 "    runs-on: x\n    strategy: {fail_fast: false}\n    steps: [{run: x}]\n",
                 "`jobs.a.strategy` does not support `fail_fast`",
@@ -1687,7 +1908,7 @@ jobs:
             ("    steps:\n      - {uses: rbit/checkout@v1, with: {ref: [1]}}\n", "`jobs.a.steps[0].with.ref` must be a string", (6, 46)),
             (
                 "    steps:\n      - {uses: 'octo/ci/.github/workflows/x.yml@v1'}\n",
-                "`jobs.a.steps[0].uses`: `octo/ci/.github/workflows/x.yml@v1`: reusable workflows",
+                "`jobs.a.steps[0].uses`: `octo/ci/.github/workflows/x.yml@v1` is a workflow: call it from a job",
                 (6, 16),
             ),
             ("    steps:\n      - {uses: 'octo/repo@--upload-pack=x'}\n", "is not a branch, tag or commit", (6, 16)),

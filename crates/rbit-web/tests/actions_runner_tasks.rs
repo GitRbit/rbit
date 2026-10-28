@@ -64,6 +64,8 @@ pub fn template(job_id: &str, labels: &[&str], needs: &[&str]) -> JobTemplate {
         steps: vec![step(Some("Build"), "make"), step(None, "\n  make test\nmake lint")],
         environment: None,
         environment_url: None,
+        calls: Vec::new(),
+        need_names: std::collections::BTreeMap::new(),
     }
 }
 

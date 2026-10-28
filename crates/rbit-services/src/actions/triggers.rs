@@ -51,7 +51,7 @@ use rbit_core::{
 };
 use rbit_git::{CommitSummary, DiffLimits, EntryKind, GitError, RefUpdate, RepositoryReader};
 use rbit_workflow::{
-    Deadline, ErrorKind, Event, GroupContext, LazyPaths, Limits, Workflow, WorkflowError,
+    Deadline, ErrorKind, Event, GroupContext, LazyPaths, Limits, Loader, Workflow, WorkflowError,
     model::ActivityType,
     trigger::{ChangedPaths, has_skip_marker},
 };
@@ -61,7 +61,9 @@ use tokio::{
 };
 
 use super::{
-    ActionsService, context,
+    ActionsService,
+    calls::CallLoader,
+    context,
     runs::{Candidate, Plan, Problem, Trigger},
 };
 use crate::{DomainEvent, ServiceError};
@@ -198,8 +200,11 @@ impl ActionsService {
         // ref and commit are filled in per updated ref.
         let group = self.planning(&owned, RunEvent::Push, "", "", (source.pusher(), source.pusher()), true).await?;
         let (limits, default_branch) = (self.limits(), owned.repo.default_branch.clone());
+        let (this, caller) = (self.clone(), owned.clone());
         let outcomes = self
-            .evaluate(move |handle, deadline| evaluate_push(handle, &reader, &updates, &default_branch, &group, &limits, deadline))
+            .evaluate(move |handle, deadline| {
+                evaluate_push(handle, (&this, &caller), &reader, &updates, &default_branch, &group, &limits, deadline)
+            })
             .await?;
         let mut started = Vec::new();
         if outcomes.is_empty() {
@@ -287,6 +292,7 @@ impl ActionsService {
             ..planning
         };
         let (limits, head, base_branch) = (self.limits(), pull.head_sha.clone(), pull.base_branch.clone());
+        let (this, caller) = (self.clone(), owned.clone());
         let candidates = self
             .evaluate(move |handle, deadline| {
                 let files = match discover(handle, &reader, &head, &limits, deadline) {
@@ -298,7 +304,8 @@ impl ActionsService {
                 };
                 let event = Event::PullRequest { action: &activity, base_branch: &base_branch };
                 let mut changed = LazyPaths::new(|| changed_paths(handle, &reader, Some(&base_branch), &head));
-                candidates(&files, &event, &mut changed, &group, &limits, deadline)
+                let mut loader = CallLoader::new(handle, &this, &caller, &reader, &head, &limits, deadline);
+                candidates(&files, &event, &mut changed, &group, &limits, deadline, &mut loader)
             })
             .await?;
         if candidates.is_empty() {
@@ -382,8 +389,10 @@ struct PushOutcome {
 }
 
 /// Blocking: the candidates of every updated ref of a push.
+#[expect(clippy::too_many_arguments, reason = "the evaluation's parts, all borrowed from its closure")]
 fn evaluate_push(
     handle: &Handle,
+    (service, caller): (&ActionsService, &OwnedRepository),
     reader: &RepositoryReader,
     updates: &[RefUpdate],
     default_branch: &str,
@@ -433,7 +442,8 @@ fn evaluate_push(
         let mut changed = LazyPaths::new(|| changed_paths(handle, reader, base.as_deref(), after));
         let event = Event::Push { reference: &update.name, deleted: false };
         let group = GroupContext { reference: update.name.clone(), sha: after.clone(), ..planning.clone() };
-        let candidates = candidates(files, &event, &mut changed, &group, limits, deadline);
+        let mut loader = CallLoader::new(handle, service, caller, reader, after, limits, deadline);
+        let candidates = candidates(files, &event, &mut changed, &group, limits, deadline, &mut loader);
         if !candidates.is_empty() {
             outcomes.push(PushOutcome { update: update.clone(), head, candidates });
         }
@@ -460,7 +470,7 @@ pub(super) fn discover(
     Ok(workflow_paths(handle, reader, sha)?
         .into_iter()
         .map(|path| {
-            let parsed = read_workflow(handle, reader, sha, &path, limits, deadline);
+            let parsed = read_workflow_file(handle, reader, sha, &path, limits, deadline);
             WorkflowFile { path, parsed }
         })
         .collect())
@@ -478,7 +488,7 @@ pub(super) fn discover_one(
     deadline: &Deadline,
 ) -> Result<Option<WorkflowFile>, GitError> {
     Ok(workflow_paths(handle, reader, sha)?.into_iter().find(|path| wanted(path)).map(|path| {
-        let parsed = read_workflow(handle, reader, sha, &path, limits, deadline);
+        let parsed = read_workflow_file(handle, reader, sha, &path, limits, deadline);
         WorkflowFile { path, parsed }
     }))
 }
@@ -509,7 +519,8 @@ fn workflow_paths(handle: &Handle, reader: &RepositoryReader, sha: &str) -> Resu
     Ok(Vec::new())
 }
 
-fn read_workflow(
+// Actions: reusable workflows. Also what a called workflow is read with.
+pub(super) fn read_workflow_file(
     handle: &Handle,
     reader: &RepositoryReader,
     sha: &str,
@@ -558,13 +569,15 @@ pub(super) fn candidates(
     group: &GroupContext,
     limits: &Limits,
     deadline: &Deadline,
+    loader: &mut dyn Loader,
 ) -> Vec<Candidate> {
     let mut candidates = Vec::new();
     for file in files {
         let outcome = match &file.parsed {
             Err(error) => Err(problem(&file.path, error)),
             Ok(workflow) if rbit_workflow::matches(workflow, event, changed) => {
-                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline).map_err(|error| problem(&file.path, &error))
+                plan_workflow(workflow, &file.name(), &file.path, group, limits, deadline, loader)
+                    .map_err(|error| problem(&file.path, &error))
             }
             Ok(_) => continue,
         };
@@ -592,9 +605,10 @@ pub(super) fn plan_workflow(
     group: &GroupContext,
     limits: &Limits,
     deadline: &Deadline,
+    loader: &mut dyn Loader,
 ) -> Result<Plan, WorkflowError> {
     let context = GroupContext { workflow: name.to_owned(), workflow_path: path.to_owned(), run_id: 0, ..group.clone() };
-    let mut jobs = rbit_workflow::plan(workflow, &context.run_context(), limits, deadline)?;
+    let mut jobs = rbit_workflow::plan_with(workflow, &context.run_context(), limits, deadline, loader)?;
     // A group naming `github.run_id` or `github.run_number` is unique to its run: it never
     // waits for or cancels another, so it is no group at all. Neither is known before the
     // run exists, so evaluating again with other values tells.
@@ -611,7 +625,7 @@ pub(super) fn plan_workflow(
         None => None,
     };
     if jobs.iter().any(|job| job.concurrency.is_some())
-        && let Ok(others) = rbit_workflow::plan(workflow, &other_run, limits, deadline)
+        && let Ok(others) = rbit_workflow::plan_with(workflow, &other_run, limits, deadline, loader)
     {
         for (job, other) in jobs.iter_mut().zip(&others) {
             let group = job.concurrency.as_ref().map(|concurrency| &concurrency.group);

@@ -142,6 +142,7 @@ impl ActionsService {
         // Dispatching needs write access, so the run is trusted.
         let group = self.planning(owned, RunEvent::WorkflowDispatch, &reference, &sha, (Some(actor.id()), Some(actor.id())), true).await?;
         let evaluated_sha = sha.clone();
+        let (this, caller) = (self.clone(), owned.clone());
         let evaluated = self
             .evaluate(move |handle, deadline| {
                 let found =
@@ -162,7 +163,8 @@ impl ActionsService {
                     _ => serde_json::Map::new(),
                 };
                 let group = GroupContext { inputs: typed, ..group };
-                let plan = plan_workflow(workflow, &found.name(), &found.path, &group, &limits, deadline)
+                let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &evaluated_sha, &limits, deadline);
+                let plan = plan_workflow(workflow, &found.name(), &found.path, &group, &limits, deadline, &mut loader)
                     .map_err(|error| describe(&found.path, &error))?;
                 Ok((Candidate { path: found.path.clone(), name: found.name(), outcome: Ok(plan) }, inputs))
             })

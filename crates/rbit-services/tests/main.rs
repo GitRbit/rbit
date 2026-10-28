@@ -6,6 +6,7 @@ mod access;
 mod actions;
 // Actions: triggers (T).
 // Actions: workflow_run and repository_dispatch.
+mod actions_calls;
 mod actions_chains;
 mod actions_conditions;
 mod actions_dispatch;

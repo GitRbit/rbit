@@ -233,6 +233,7 @@ impl ActionsService {
         wanted: impl Fn(&rbit_workflow::Workflow) -> bool + Send + 'static,
     ) -> Result<Vec<Candidate>, ServiceError> {
         let (reader, limits, at) = (self.reader(owned), self.limits(), sha.to_owned());
+        let (this, caller) = (self.clone(), owned.clone());
         self.evaluate(move |handle, deadline| {
             let files = match discover(handle, &reader, &at, &limits, deadline) {
                 Ok(files) => files,
@@ -245,7 +246,8 @@ impl ActionsService {
                 .iter()
                 .filter_map(|file| {
                     let workflow = file.parsed.as_ref().ok().filter(|workflow| wanted(workflow))?;
-                    let outcome = plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline)
+                    let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &at, &limits, deadline);
+                    let outcome = plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
                         .map_err(|error| super::triggers::problem(&file.path, &error));
                     Some(Candidate { path: file.path.clone(), name: file.name(), outcome })
                 })

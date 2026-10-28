@@ -48,5 +48,5 @@ pub use error::{ErrorKind, Location, WorkflowError};
 pub use limits::{Deadline, Limits};
 pub use model::Workflow;
 pub use parse::parse;
-pub use plan::{GroupContext, RunContext, concurrency_group, plan, run_name};
+pub use plan::{GroupContext, Loaded, Loader, NoCalls, RunContext, concurrency_group, plan, plan_with, run_name};
 pub use trigger::{ChangedPaths, Event, LazyPaths, matches};

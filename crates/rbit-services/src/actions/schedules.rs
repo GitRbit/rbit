@@ -175,6 +175,7 @@ impl ActionsService {
         // Nobody causes a scheduled run; it runs the default branch, so it is trusted.
         let planning = self.planning(&owned, RunEvent::Schedule, &reference, &sha, (None, None), true).await?;
         let group = GroupContext { schedule: entry.cron.clone(), ..planning };
+        let (this, caller) = (self.clone(), owned.clone());
         let candidate = self
             .evaluate(move |handle, deadline| {
                 let files = discover(handle, &reader, &at, &limits, deadline).ok()?;
@@ -182,7 +183,8 @@ impl ActionsService {
                 let outcome = match &file.parsed {
                     Err(error) => Err(problem(&file.path, error)),
                     Ok(workflow) if rbit_workflow::matches(workflow, &Event::Schedule { cron: &cron }, &mut None::<Vec<String>>) => {
-                        plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline)
+                        let mut loader = super::calls::CallLoader::new(handle, &this, &caller, &reader, &at, &limits, deadline);
+                        plan_workflow(workflow, &file.name(), &file.path, &group, &limits, deadline, &mut loader)
                             .map_err(|error| problem(&file.path, &error))
                     }
                     Ok(_) => return None,

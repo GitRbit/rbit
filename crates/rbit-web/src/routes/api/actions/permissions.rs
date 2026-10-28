@@ -56,6 +56,10 @@ pub(super) fn routes(prefixes: &[&str]) -> Vec<super::ApiRoute> {
             route(Get, path("/fork-pr-contributor-approval"), show_approval),
             route(Put, path("/fork-pr-contributor-approval"), update_approval),
         ]);
+        // Actions: reusable workflows.
+        if prefix.starts_with("/repos/") {
+            routes.extend([route(Get, path("/access"), show_access), route(Put, path("/access"), update_access)]);
+        }
         if !prefix.starts_with("/repos/") {
             routes.extend([
                 route(Get, path("/repositories"), list_repositories),
@@ -282,6 +286,38 @@ pub async fn update_approval(
     };
     let change = PermissionsChange { approval_policy: Some(policy), ..PermissionsChange::default() };
     apply(&state, &caller, &owner, &change).await
+}
+
+// ------------------------------------------------------------------ calling a private repository's workflows
+
+// Actions: reusable workflows.
+/// `GET /repos/{owner}/{repo}/actions/permissions/access`: who may call the repository's
+/// workflows while it is private.
+pub async fn show_access(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let Owner::Repository(ctx) = &owner else { return Err(ApiError::not_found()) };
+    Ok(Json(json!({ "access_level": actions(&state)?.repo_access_level(ctx).await? })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccessBody {
+    access_level: Option<String>,
+}
+
+/// `PUT /repos/{owner}/{repo}/actions/permissions/access`: `none`, `user` or `organization`
+/// (the owner's other private repositories may call its workflows).
+pub async fn update_access(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<ActionsPath>,
+    ApiJson(body): ApiJson<AccessBody>,
+) -> ApiResult<StatusCode> {
+    let owner = Owner::load(&state, &caller, &path).await?;
+    let Owner::Repository(ctx) = &owner else { return Err(ApiError::not_found()) };
+    let user = caller.require_user()?;
+    let level = body.access_level.ok_or_else(|| ApiError::invalid("access_level", "access_level is required"))?;
+    actions(&state)?.set_repo_access_level(user, ctx, &level).await.map_err(|error| ApiError::service(error, "access_level"))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ------------------------------------------------------------------ an owner's selected repositories

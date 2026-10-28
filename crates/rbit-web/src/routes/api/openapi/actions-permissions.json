@@ -1307,6 +1307,95 @@
           }
         }
       }
+    },
+    "/repos/{owner}/{repo}/actions/permissions/access": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoWorkflowAccess",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Who may call the repository's reusable workflows while it is private (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The access level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsWorkflowAccess"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoWorkflowAccess",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change who may call the repository's reusable workflows while it is private (admin scope; repository administrator)",
+        "description": "`user` and `organization` both let the owner's other private repositories call its workflows; public repositories' workflows can be called by anyone who may read them.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsWorkflowAccess"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1505,6 +1594,22 @@
             "items": {
               "type": "integer"
             }
+          }
+        }
+      },
+      "ActionsWorkflowAccess": {
+        "type": "object",
+        "required": [
+          "access_level"
+        ],
+        "properties": {
+          "access_level": {
+            "type": "string",
+            "enum": [
+              "none",
+              "user",
+              "organization"
+            ]
           }
         }
       }

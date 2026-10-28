@@ -177,7 +177,7 @@ pub fn resolve_uses(uses: &str) -> Result<Uses, String> {
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml"));
     if action.contains("/.github/workflows/") || workflow_file {
-        return Err(format!("`{uses}`: reusable workflows are not supported by rbit"));
+        return Err(format!("`{uses}` is a workflow: call it from a job (`jobs.<id>.uses`), not from a step"));
     }
     if ACTIONS.iter().any(|(name, ..)| name.eq_ignore_ascii_case(action)) {
         return resolve(uses).map(|(kind, version)| Uses::Builtin(kind, version));
@@ -238,7 +238,7 @@ pub fn resolve(uses: &str) -> Result<(BuiltinKind, u32), String> {
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml"));
     if action.contains("/.github/workflows/") || workflow_file {
-        return Err(format!("`{uses}`: reusable workflows are not supported by rbit"));
+        return Err(format!("`{uses}` is a workflow: call it from a job (`jobs.<id>.uses`), not from a step"));
     }
     let known = ACTIONS.iter().filter(|(name, ..)| name.eq_ignore_ascii_case(action)).collect::<Vec<_>>();
     // Actions: third-party actions. A pinned commit of an action rbit stands in for runs the
@@ -407,7 +407,7 @@ mod tests {
         assert_eq!(resolve_uses("Actions/Upload-Artifact@v4"), Ok(Uses::Builtin(BuiltinKind::UploadArtifact, 1)));
 
         let refused = [
-            ("octo/repo/.github/workflows/ci.yml@v1", "reusable workflows are not supported"),
+            ("octo/repo/.github/workflows/ci.yml@v1", "call it from a job"),
             ("octo/repo@${{ inputs.v }}", "cannot contain expressions"),
             ("octo@v1", "name an action as `owner/repo@ref`"),
             ("octo/../etc@v1", "name an action as"),

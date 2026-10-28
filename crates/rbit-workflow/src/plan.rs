@@ -27,8 +27,24 @@
 //! becomes a combination of its own. Combinations are then ordered by their display name
 //! `(value, value)` — values in key order — as Forgejo orders them, and a job without a
 //! `name` is called `<id> (<values>)`.
+//!
+//! # Reusable workflows
+//!
+//! A job that calls a workflow (`uses`) becomes the jobs of that workflow, planned here with
+//! [`plan_with`] and a [`Loader`] that finds the workflow: keyed `caller/job` (with the
+//! caller's matrix, `caller#n/job`), named `caller / job`, and waiting for what the caller
+//! waits for. Each keeps the calls around it ([`CallLevel`]): the caller's `if`, its matrix,
+//! the inputs known now and the `with:` that read `needs`, which the server evaluates when
+//! the job is handed out, and the secrets it passes on. Inputs are typed and checked against
+//! `on.workflow_call` (a missing required one, or an unknown one, fails planning), and so are
+//! the secrets a caller names. The called workflow sees the caller's `github` and `vars`, its
+//! own `inputs` and `env`. Permissions only narrow: a called job may not ask for more than its
+//! caller allows. Calls nest at most [`MAX_CALL_DEPTH`] levels deep and name at most
+//! [`MAX_CALLED_WORKFLOWS`] different workflows, GitHub's limits. A job that needs a calling
+//! job waits for all of its jobs; its `needs` context reads the called workflow's `outputs`
+//! ([`NeedSource`]).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
@@ -36,12 +52,49 @@ use crate::{
     error::{Location, WorkflowError},
     expr::{ContextMap, Contexts, Template, to_number, to_text},
     limits::{Deadline, Limits},
-    model::{Job, Matrix, Step, Workflow},
+    model::{CallInputKind, CallSecrets, CallTarget, Job, JobCall, Matrix, Permission, Permissions, Step, Workflow},
+    parse::call_input_value,
     spec::{
-        ConcurrencyGroup, Container, DEFAULT_TIMEOUT_MINUTES, JOB_TEMPLATE_VERSION, JobTemplate, RunDefaults, Service, StepTemplate,
-        Strategy,
+        CallLevel, ConcurrencyGroup, Container, DEFAULT_TIMEOUT_MINUTES, DeferredInput, JOB_TEMPLATE_VERSION, JobTemplate, NeedSource,
+        PassedSecrets, RunDefaults, Service, StepTemplate, Strategy,
     },
 };
+
+// Actions: reusable workflows.
+/// How many levels of workflows may call each other, the run's own included (GitHub's limit).
+pub const MAX_CALL_DEPTH: usize = 10;
+/// How many different workflows one run may call (GitHub's limit).
+pub const MAX_CALLED_WORKFLOWS: usize = 50;
+/// The longest job key the database keeps.
+pub const MAX_JOB_KEY_BYTES: usize = 100;
+
+/// Finds the workflows that jobs call.
+pub trait Loader {
+    /// The workflow `target` names, called from the workflow that [`Loaded::origin`] named
+    /// (`None`: the run's own). The error says why it cannot be used, without telling a
+    /// private repository from a missing one.
+    fn load(&mut self, origin: Option<&str>, target: &CallTarget) -> Result<Loaded, String>;
+}
+
+/// A called workflow.
+#[derive(Debug, Clone)]
+pub struct Loaded {
+    pub workflow: Workflow,
+    /// Where its own `./` calls are found: opaque to planning, given back to [`Loader::load`].
+    pub origin: String,
+    /// The file at its commit, to count different workflows.
+    pub id: String,
+}
+
+/// The [`Loader`] of a workflow that may call none: every call is refused.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCalls;
+
+impl Loader for NoCalls {
+    fn load(&mut self, _origin: Option<&str>, _target: &CallTarget) -> Result<Loaded, String> {
+        Err("calling a workflow needs the rbit server".to_owned())
+    }
+}
 
 /// One matrix combination: each key and its value, keys in sorted order.
 pub type Combination = Map<String, Value>;
@@ -85,31 +138,367 @@ impl Contexts for JobContexts<'_> {
 }
 
 /// Plans every job of `workflow`, in file order, each job's combinations in Forgejo's order.
+/// A job that calls a workflow fails planning: see [`plan_with`].
 pub fn plan(workflow: &Workflow, context: &RunContext, limits: &Limits, deadline: &Deadline) -> Result<Vec<JobTemplate>, WorkflowError> {
-    let run = context.contexts();
-    let mut planned = Vec::new();
-    for job in &workflow.jobs {
-        deadline.check()?;
-        let combinations = match &job.strategy.matrix {
-            Some(matrix) => combinations(&Axes::resolve(matrix, &run, &job.id)?, limits, deadline)?,
-            None => vec![Combination::new()],
-        };
-        if planned.len() + combinations.len() > limits.max_run_jobs {
-            return Err(WorkflowError::limit(format!("a run may have at most {} jobs", limits.max_run_jobs), Some(job.at)));
+    plan_with(workflow, context, limits, deadline, &mut NoCalls)
+}
+
+// Actions: reusable workflows.
+/// [`plan`], with the workflows that jobs call found by `loader` and planned in their place.
+pub fn plan_with(
+    workflow: &Workflow,
+    context: &RunContext,
+    limits: &Limits,
+    deadline: &Deadline,
+    loader: &mut dyn Loader,
+) -> Result<Vec<JobTemplate>, WorkflowError> {
+    let mut planner = Planner { limits, deadline, loader, called: BTreeSet::new(), jobs: 0 };
+    let scope = CallScope { prefix: String::new(), origin: None, depth: 1, calls: Vec::new(), cap: None, root_needs: Vec::new() };
+    Ok(planner.workflow(workflow, &context.contexts(), &scope)?.0)
+}
+
+/// Where a workflow's jobs are planned: inside which calls.
+struct CallScope {
+    /// The key of the calling job (`call`, `outer/inner`); empty for the run's own workflow.
+    prefix: String,
+    origin: Option<String>,
+    depth: usize,
+    calls: Vec<CallLevel>,
+    /// The most the calling jobs allow.
+    cap: Option<Permissions>,
+    /// What the calling job waits for, so every job of the called workflow waits for it too.
+    root_needs: Vec<String>,
+}
+
+impl CallScope {
+    fn key(&self, id: &str) -> String {
+        if self.prefix.is_empty() { id.to_owned() } else { format!("{}/{id}", self.prefix) }
+    }
+}
+
+struct Planner<'a> {
+    limits: &'a Limits,
+    deadline: &'a Deadline,
+    loader: &'a mut dyn Loader,
+    /// The different workflows called so far.
+    called: BTreeSet<String>,
+    /// Jobs planned so far, for [`Limits::max_run_jobs`].
+    jobs: usize,
+}
+
+impl Planner<'_> {
+    /// The jobs of `workflow` in `scope`, in file order, and what each of its jobs stands for
+    /// in a `needs` context.
+    fn workflow(
+        &mut self,
+        workflow: &Workflow,
+        run: &ContextMap,
+        scope: &CallScope,
+    ) -> Result<(Vec<JobTemplate>, BTreeMap<String, NeedSource>), WorkflowError> {
+        let mut sources: BTreeMap<String, NeedSource> = BTreeMap::new();
+        let mut planned: BTreeMap<String, Vec<JobTemplate>> = BTreeMap::new();
+        for job in needs_order(workflow) {
+            self.deadline.check()?;
+            let need_names: BTreeMap<String, NeedSource> = job
+                .needs
+                .iter()
+                .map(|need| (need.clone(), sources.get(need).cloned().unwrap_or_else(|| NeedSource::Jobs(vec![scope.key(need)]))))
+                .collect();
+            let mut needs: Vec<String> = need_names.values().flat_map(NeedSource::keys).collect();
+            if job.needs.is_empty() {
+                needs.extend(scope.root_needs.iter().cloned());
+            }
+            let combinations = match &job.strategy.matrix {
+                Some(matrix) => combinations(&Axes::resolve(matrix, run, &job.id)?, self.limits, self.deadline)?,
+                None => vec![Combination::new()],
+            };
+            let evaluator = Evaluator { job, contexts: run };
+            let fail_fast =
+                job.strategy.fail_fast.as_deref().map(|text| evaluator.flag("strategy.fail-fast", text)).transpose()?.unwrap_or(true);
+            let max_parallel =
+                job.strategy.max_parallel.as_deref().map(|text| evaluator.whole_number("strategy.max-parallel", text)).transpose()?;
+            let job_total = u32::try_from(combinations.len()).unwrap_or(u32::MAX);
+            let expansion = Expansion { combinations, fail_fast, max_parallel, job_total, need_names, needs };
+            let (templates, source) = match &job.call {
+                None => self.steps_job(workflow, job, run, scope, expansion)?,
+                Some(call) => self.call_job(workflow, job, call, run, scope, expansion)?,
+            };
+            sources.insert(job.id.clone(), source);
+            planned.insert(job.id.clone(), templates);
         }
-        let evaluator = Evaluator { job, contexts: &run };
-        let fail_fast =
-            job.strategy.fail_fast.as_deref().map(|text| evaluator.flag("strategy.fail-fast", text)).transpose()?.unwrap_or(true);
-        let max_parallel =
-            job.strategy.max_parallel.as_deref().map(|text| evaluator.whole_number("strategy.max-parallel", text)).transpose()?;
-        let job_total = u32::try_from(combinations.len()).unwrap_or(u32::MAX);
+        let mut all = Vec::new();
+        for job in &workflow.jobs {
+            all.extend(planned.remove(&job.id).unwrap_or_default());
+        }
+        Ok((all, sources))
+    }
+
+    /// The templates of a job that runs steps, one per matrix combination.
+    fn steps_job(
+        &mut self,
+        workflow: &Workflow,
+        job: &Job,
+        run: &ContextMap,
+        scope: &CallScope,
+        expansion: Expansion,
+    ) -> Result<(Vec<JobTemplate>, NeedSource), WorkflowError> {
+        let Expansion { combinations, fail_fast, max_parallel, job_total, need_names, needs } = expansion;
+        let mut templates = Vec::new();
+        if self.jobs + combinations.len() > self.limits.max_run_jobs {
+            return Err(WorkflowError::limit(format!("a run may have at most {} jobs", self.limits.max_run_jobs), Some(job.at)));
+        }
+        let key = scope.key(&job.id);
+        if key.len() > MAX_JOB_KEY_BYTES {
+            return Err(WorkflowError::plan(format!("job `{key}`: calls nest too deep for its key"), Some(job.at)));
+        }
+        let permissions = narrowed(job.permissions.or(workflow.permissions), scope.cap, &job.id, job.at)?;
         for (job_index, combination) in (0..).zip(combinations) {
-            deadline.check()?;
+            self.deadline.check()?;
             let strategy = Strategy { fail_fast, max_parallel, job_index, job_total };
-            planned.push(job_template(workflow, job, &run, combination, strategy, limits)?);
+            let mut template = job_template(workflow, job, run, combination, strategy, self.limits)?;
+            template.job_id.clone_from(&key);
+            template.needs.clone_from(&needs);
+            template.permissions = permissions.map(Into::into);
+            if !scope.calls.is_empty() || need_names.values().any(|source| matches!(source, NeedSource::Call { .. })) {
+                template.need_names.clone_from(&need_names);
+            }
+            if !scope.calls.is_empty() {
+                let callers: Vec<&str> = scope.calls.iter().map(|call| call.name.as_str()).collect();
+                template.name = format!("{} / {}", callers.join(" / "), template.name);
+                template.calls.clone_from(&scope.calls);
+            }
+            templates.push(template);
+            self.jobs += 1;
+        }
+        Ok((templates, NeedSource::Jobs(vec![key])))
+    }
+
+    /// The templates of the called workflow's jobs, for each matrix combination of the job
+    /// that calls it.
+    fn call_job(
+        &mut self,
+        workflow: &Workflow,
+        job: &Job,
+        call: &JobCall,
+        run: &ContextMap,
+        scope: &CallScope,
+        expansion: Expansion,
+    ) -> Result<(Vec<JobTemplate>, NeedSource), WorkflowError> {
+        let Expansion { combinations, fail_fast, max_parallel, job_total, need_names, needs } = expansion;
+        let matrix_job = job.strategy.matrix.is_some();
+        let mut templates = Vec::new();
+        if scope.depth >= MAX_CALL_DEPTH {
+            return Err(WorkflowError::plan(
+                format!("job `{}`: workflows call each other more than {MAX_CALL_DEPTH} levels deep", job.id),
+                Some(job.at),
+            ));
+        }
+        let (mut keys, mut jobs, mut outputs) = (Vec::new(), BTreeMap::new(), BTreeMap::new());
+        for (job_index, combination) in (0..).zip(combinations) {
+            self.deadline.check()?;
+            let strategy = Strategy { fail_fast, max_parallel, job_index, job_total };
+            let contexts = JobContexts { run, matrix: Value::Object(combination.clone()), strategy: strategy_context(strategy) };
+            let evaluator = Evaluator { job, contexts: &contexts };
+            let name = match &job.name {
+                Some(name) => evaluator.text("name", name)?,
+                None => String::new(),
+            };
+            let name = match name.trim() {
+                "" if combination.is_empty() => job.id.clone(),
+                "" => format!("{} {}", job.id, matrix_name(&combination)),
+                _ => name,
+            };
+            let loaded = self.loader.load(scope.origin.as_deref(), &call.target).map_err(|problem| evaluator.refuse("uses", &problem))?;
+            self.called.insert(loaded.id.clone());
+            if self.called.len() > MAX_CALLED_WORKFLOWS {
+                return Err(evaluator.refuse("uses", &format!("a run may call at most {MAX_CALLED_WORKFLOWS} different workflows")));
+            }
+            let Some(declared) = &loaded.workflow.on.workflow_call else {
+                return Err(evaluator.refuse("uses", &format!("`{}` does not run on `workflow_call`", call.uses)));
+            };
+            let (inputs, deferred) = call_inputs(&evaluator, &call.with, declared)?;
+            let secrets = passed_secrets(&evaluator, &call.secrets, declared)?;
+            let level = CallLevel {
+                name,
+                condition: job.condition.clone(),
+                matrix: combination.clone(),
+                strategy,
+                needs: need_names.clone(),
+                inputs: inputs.clone(),
+                deferred,
+                secrets,
+            };
+            let prefix = if matrix_job { scope.key(&format!("{}#{job_index}", job.id)) } else { scope.key(&job.id) };
+            let mut calls = scope.calls.clone();
+            calls.push(level);
+            let cap = narrowed(job.permissions.or(workflow.permissions), scope.cap, &job.id, job.at)?;
+            let inner =
+                CallScope { prefix, origin: Some(loaded.origin.clone()), depth: scope.depth + 1, calls, cap, root_needs: needs.clone() };
+            let inner_run = run.clone().with("inputs", inputs);
+            let (inner_templates, inner_sources) = self.workflow(&loaded.workflow, &inner_run, &inner)?;
+            keys.extend(inner_templates.iter().map(|template| template.job_id.clone()));
+            for (id, source) in inner_sources {
+                match (jobs.get_mut(&id), source) {
+                    (Some(NeedSource::Jobs(known)), NeedSource::Jobs(more)) => known.extend(more),
+                    (_, source) => {
+                        jobs.insert(id, source);
+                    }
+                }
+            }
+            outputs.clone_from(&declared.outputs);
+            templates.extend(inner_templates);
+        }
+        keys.dedup();
+        Ok((templates, NeedSource::Call { keys, outputs, jobs }))
+    }
+}
+
+/// What the planned copies of one job share: its matrix combinations, its strategy and what
+/// its `needs` stand for.
+struct Expansion {
+    combinations: Vec<Combination>,
+    fail_fast: bool,
+    max_parallel: Option<u32>,
+    job_total: u32,
+    need_names: BTreeMap<String, NeedSource>,
+    needs: Vec<String>,
+}
+
+/// The secrets a call passes, checked against those the called workflow declares.
+fn passed_secrets(
+    evaluator: &Evaluator<'_>,
+    secrets: &CallSecrets,
+    declared: &crate::model::WorkflowCall,
+) -> Result<PassedSecrets, WorkflowError> {
+    match secrets {
+        CallSecrets::Inherit => Ok(PassedSecrets::Inherit),
+        CallSecrets::Map(map) => {
+            if let Some(name) = map.keys().find(|name| !declared.secrets.contains_key(*name)) {
+                return Err(evaluator.refuse(&format!("secrets.{name}"), &"the called workflow has no such secret"));
+            }
+            if let Some(name) = declared.secrets.iter().find_map(|(name, required)| (*required && !map.contains_key(name)).then_some(name))
+            {
+                return Err(evaluator.refuse("secrets", &format!("the called workflow needs the secret `{name}`")));
+            }
+            Ok(PassedSecrets::Map(map.clone()))
         }
     }
-    Ok(planned)
+}
+
+/// The jobs of `workflow`, each after those it needs, otherwise in file order. Parsing
+/// refused cycles; a job left on one would come last.
+fn needs_order(workflow: &Workflow) -> Vec<&Job> {
+    let mut placed: BTreeSet<&str> = BTreeSet::new();
+    let mut order = Vec::new();
+    while order.len() < workflow.jobs.len() {
+        let before = order.len();
+        for job in &workflow.jobs {
+            if !placed.contains(job.id.as_str()) && job.needs.iter().all(|need| placed.contains(need.as_str())) {
+                placed.insert(&job.id);
+                order.push(job);
+            }
+        }
+        if order.len() == before {
+            order.extend(workflow.jobs.iter().filter(|job| !placed.contains(job.id.as_str())));
+            break;
+        }
+    }
+    order
+}
+
+/// The `strategy` context of `strategy`.
+fn strategy_context(strategy: Strategy) -> Value {
+    json!({
+        "fail-fast": strategy.fail_fast,
+        "job-index": strategy.job_index,
+        "job-total": strategy.job_total,
+        "max-parallel": strategy.max_parallel.unwrap_or(strategy.job_total),
+    })
+}
+
+/// `declared` permissions within `cap`: what a job gets (the cap when it declares none). A
+/// declaration past the cap fails planning, as on GitHub.
+fn narrowed(
+    declared: Option<Permissions>,
+    cap: Option<Permissions>,
+    job: &str,
+    at: Location,
+) -> Result<Option<Permissions>, WorkflowError> {
+    let (Some(declared), Some(cap)) = (declared, cap) else { return Ok(declared.or(cap)) };
+    let rank = |permission: Permission| match permission {
+        Permission::None => 0,
+        Permission::Read => 1,
+        Permission::Write => 2,
+    };
+    let name = |permission: Permission| match permission {
+        Permission::None => "none",
+        Permission::Read => "read",
+        Permission::Write => "write",
+    };
+    for (field, asked, allowed) in [
+        ("contents", declared.contents, cap.contents),
+        ("issues", declared.issues, cap.issues),
+        ("pull-requests", declared.pull_requests, cap.pull_requests),
+    ] {
+        if rank(asked) > rank(allowed) {
+            return Err(WorkflowError::plan(
+                format!(
+                    "job `{job}` asks for `{field}: {}`, but the workflow calling it allows only `{field}: {}`",
+                    name(asked),
+                    name(allowed)
+                ),
+                Some(at),
+            ));
+        }
+    }
+    Ok(Some(declared))
+}
+
+/// The called workflow's inputs: typed values known now, and the `with:` that read `needs`.
+/// The `inputs` context of a called workflow, and the inputs only its jobs' runner can
+/// evaluate.
+type CallInputs = (Map<String, Value>, BTreeMap<String, DeferredInput>);
+
+fn call_inputs(
+    evaluator: &Evaluator<'_>,
+    with: &BTreeMap<String, String>,
+    declared: &crate::model::WorkflowCall,
+) -> Result<CallInputs, WorkflowError> {
+    if let Some(name) = with.keys().find(|name| !declared.inputs.contains_key(*name)) {
+        return Err(evaluator.refuse(&format!("with.{name}"), &"the called workflow has no such input"));
+    }
+    let (mut inputs, mut deferred) = (Map::new(), BTreeMap::new());
+    for (name, input) in &declared.inputs {
+        let field = format!("with.{name}");
+        match with.get(name) {
+            Some(text) => {
+                let template = Template::parse(text).map_err(|problem| evaluator.refuse(&field, &problem))?;
+                if template.exprs().any(|expr| expr.contexts().contains(&"needs")) {
+                    deferred.insert(name.clone(), DeferredInput { value: text.clone(), kind: input.kind.as_str().to_owned() });
+                } else {
+                    let value = evaluator.text(&field, text)?;
+                    let typed = call_input_value(input.kind, &value)
+                        .ok_or_else(|| evaluator.refuse(&field, &format!("`{value}` is not a {}", input.kind.as_str())))?;
+                    inputs.insert(name.clone(), typed);
+                }
+            }
+            None => match (&input.default, input.required) {
+                (Some(default), _) => {
+                    inputs.insert(name.clone(), default.clone());
+                }
+                (None, true) => return Err(evaluator.refuse("with", &format!("the called workflow needs the input `{name}`"))),
+                (None, false) => {
+                    let empty = match input.kind {
+                        CallInputKind::Boolean => Value::Bool(false),
+                        CallInputKind::Number => json!(0),
+                        CallInputKind::String => Value::String(String::new()),
+                    };
+                    inputs.insert(name.clone(), empty);
+                }
+            },
+        }
+    }
+    Ok((inputs, deferred))
 }
 
 /// One job of one combination as a template.
@@ -217,6 +606,8 @@ fn job_template(
         steps: job.steps.iter().map(step_template).collect(),
         environment,
         environment_url: job.environment.as_ref().and_then(|environment| environment.url.clone()),
+        calls: Vec::new(),
+        need_names: std::collections::BTreeMap::new(),
     };
     template.validate().map_err(|problem| WorkflowError::plan(format!("job `{}`: {}", job.id, problem.message), Some(job.at)))?;
     Ok(template)
@@ -1103,5 +1494,161 @@ jobs:
             assert_eq!(actual, expected.replace("\r\n", "\n"), "{name}");
             assert_eq!(serde_json::from_str::<Vec<JobTemplate>>(expected).unwrap(), jobs, "{name}: the templates read back");
         }
+    }
+
+    // Actions: reusable workflows.
+    /// Workflows by path, all in one repository; a call outside it is not there.
+    struct Files(BTreeMap<&'static str, &'static str>);
+
+    impl Loader for Files {
+        fn load(&mut self, origin: Option<&str>, target: &CallTarget) -> Result<Loaded, String> {
+            let path = match target {
+                CallTarget::Local { path } => path.clone(),
+                CallTarget::Remote { owner, repo, path, reference } => format!("{owner}/{repo}/{path}@{reference}"),
+            };
+            let source = self.0.get(path.as_str()).ok_or_else(|| format!("`{path}` is not there"))?;
+            Ok(Loaded { workflow: workflow(source), origin: origin.unwrap_or("here").to_owned(), id: path })
+        }
+    }
+
+    fn planned_with(source: &str, files: &[(&'static str, &'static str)]) -> Result<Vec<JobTemplate>, WorkflowError> {
+        plan_with(&workflow(source), &run_context(), &Limits::default(), &Deadline::NONE, &mut Files(files.iter().copied().collect()))
+    }
+
+    const BUILD: &str = "on:
+  workflow_call:
+    inputs:
+      greeting: {type: string, required: true}
+      count: {type: number, default: 2}
+      debug: {type: boolean}
+      late: {type: string}
+    secrets:
+      key: {required: true}
+    outputs:
+      result: {value: '${{ jobs.build.outputs.out }}'}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ${{ inputs.greeting }}-runner
+    outputs: {out: '${{ steps.s.outputs.out }}'}
+    steps: [{id: s, run: x}]
+  test:
+    needs: build
+    runs-on: x
+    steps: [{run: x}]
+";
+
+    #[test]
+    fn called_workflows_become_jobs_of_the_run() {
+        let caller = "on: push
+jobs:
+  first:
+    runs-on: x
+    steps: [{run: x}]
+  call:
+    needs: first
+    if: github.ref == 'refs/heads/main'
+    uses: ./.rbit/workflows/build.yml
+    with: {greeting: hello, late: '${{ needs.first.outputs.x }}'}
+    secrets: {key: '${{ secrets.DEPLOY }}'}
+  after:
+    needs: call
+    runs-on: x
+    steps: [{run: x}]
+";
+        let jobs = planned_with(caller, &[(".rbit/workflows/build.yml", BUILD)]).unwrap();
+        let keys: Vec<_> = jobs.iter().map(|job| (job.job_id.as_str(), job.name.as_str())).collect();
+        assert_eq!(keys, [("first", "first"), ("call/build", "call / build"), ("call/test", "call / test"), ("after", "after")]);
+        let (build, test, after) = (&jobs[1], &jobs[2], &jobs[3]);
+        assert_eq!(build.runs_on, ["hello-runner"], "runs-on reads the inputs known when planning");
+        assert_eq!(build.needs, ["first"], "the called workflow waits for what its caller waits for");
+        assert_eq!(test.needs, ["call/build"]);
+        assert_eq!(test.need_names, BTreeMap::from([("build".to_owned(), NeedSource::Jobs(vec!["call/build".to_owned()]))]));
+        assert!(build.need_names.is_empty(), "a called workflow's first job sees no `needs`");
+        let level = &build.calls[0];
+        assert_eq!(level.inputs, json!({"greeting": "hello", "count": 2.0, "debug": false}).as_object().cloned().unwrap());
+        assert_eq!(level.deferred["late"], DeferredInput { value: "${{ needs.first.outputs.x }}".into(), kind: "string".into() });
+        assert_eq!(level.condition.as_deref(), Some("github.ref == 'refs/heads/main'"));
+        assert_eq!(level.secrets, PassedSecrets::Map(BTreeMap::from([("key".into(), "${{ secrets.DEPLOY }}".into())])));
+        assert_eq!(build.permissions.map(|permissions| permissions.contents), Some(crate::spec::Access::Read));
+        assert_eq!(after.needs, ["call/build", "call/test"]);
+        let NeedSource::Call { keys, outputs, jobs } = &after.need_names["call"] else { panic!("{:?}", after.need_names) };
+        assert_eq!((keys.len(), outputs["result"].as_str()), (2, "${{ jobs.build.outputs.out }}"));
+        assert_eq!(jobs["build"], NeedSource::Jobs(vec!["call/build".into()]));
+    }
+
+    #[test]
+    fn matrices_and_nesting_call_once_per_combination() {
+        let caller = "on: push
+jobs:
+  call:
+    strategy: {matrix: {flavor: [a, b]}}
+    uses: ./outer.yml
+    with: {flavor: '${{ matrix.flavor }}'}
+    secrets: inherit
+";
+        let outer = "on: {workflow_call: {inputs: {flavor: {type: string}}}}
+jobs:
+  inner:
+    uses: ./leaf.yml
+    with: {flavor: '${{ inputs.flavor }}'}
+";
+        let leaf = "on: {workflow_call: {inputs: {flavor: {type: string}}}}
+jobs:
+  leaf:
+    runs-on: ${{ inputs.flavor }}
+    steps: [{run: x}]
+";
+        let jobs = planned_with(caller, &[("outer.yml", outer), ("leaf.yml", leaf)]).unwrap();
+        let keys: Vec<_> = jobs.iter().map(|job| (job.job_id.as_str(), job.name.as_str(), job.runs_on[0].as_str())).collect();
+        assert_eq!(keys, [("call#0/inner/leaf", "call (a) / inner / leaf", "a"), ("call#1/inner/leaf", "call (b) / inner / leaf", "b")]);
+        assert_eq!(jobs[0].calls.len(), 2);
+        assert_eq!(jobs[0].calls[0].secrets, PassedSecrets::Inherit);
+    }
+
+    #[test]
+    fn calls_are_checked_when_the_run_is_planned() {
+        let call = |with: &str, secrets: &str| {
+            format!(
+                "on: push\npermissions: {{contents: read}}\njobs:\n  call:\n    uses: ./b.yml\n    with: {with}\n    secrets: {secrets}\n"
+            )
+        };
+        let files = [("b.yml", BUILD), ("plain.yml", "on: push\njobs:\n  a: {runs-on: x, steps: [{run: x}]}\n")];
+        for (source, message) in [
+            (call("{}", "{key: x}"), "needs the input `greeting`"),
+            (call("{greeting: hi, nope: 1}", "{key: x}"), "`with.nope`: the called workflow has no such input"),
+            (call("{greeting: hi, count: many}", "{key: x}"), "`many` is not a number"),
+            (call("{greeting: hi}", "{}"), "needs the secret `key`"),
+            (call("{greeting: hi}", "{key: x, other: y}"), "`secrets.other`: the called workflow has no such secret"),
+            ("on: push\njobs:\n  call: {uses: ./plain.yml}\n".to_owned(), "does not run on `workflow_call`"),
+            ("on: push\njobs:\n  call: {uses: ./missing.yml}\n".to_owned(), "`missing.yml` is not there"),
+        ] {
+            let error = planned_with(&source, &files).unwrap_err().to_string();
+            assert!(error.contains(message), "{source}\n{error}");
+        }
+        let writer = "on: workflow_call\njobs:\n  w:\n    runs-on: x\n    permissions: {contents: write}\n    steps: [{run: x}]\n";
+        let caller = "on: push\npermissions: {contents: read}\njobs:\n  call:\n    uses: ./w.yml\n";
+        let error = planned_with(caller, &[("w.yml", writer)]).unwrap_err().to_string();
+        assert!(error.contains("asks for `contents: write`, but the workflow calling it allows only `contents: read`"), "{error}");
+        assert!(
+            plan(&workflow("on: push\njobs:\n  call: {uses: ./b.yml}\n"), &run_context(), &Limits::default(), &Deadline::NONE).is_err()
+        );
+    }
+
+    #[test]
+    fn calls_nest_at_most_ten_levels_deep() {
+        let forever = |text: String| -> &'static str { Box::leak(text.into_boxed_str()) };
+        let leaf = "on: workflow_call\njobs:\n  leaf: {runs-on: x, steps: [{run: x}]}\n";
+        let deep = |called: usize| {
+            let mut files: Vec<(&'static str, &'static str)> = (1..called)
+                .map(|n| (forever(format!("w{n}.yml")), forever(format!("on: workflow_call\njobs:\n  d:\n    uses: ./w{}.yml\n", n + 1))))
+                .collect();
+            files.push((forever(format!("w{called}.yml")), leaf));
+            planned_with("on: push\njobs:\n  d:\n    uses: ./w1.yml\n", &files)
+        };
+        assert!(deep(9).is_ok(), "the run's workflow and nine called ones: ten levels");
+        let error = deep(10).unwrap_err().to_string();
+        assert!(error.contains("more than 10 levels deep"), "{error}");
     }
 }

@@ -513,7 +513,7 @@ impl JobRows {
                 permissions: self.permissions[index].as_deref(),
                 payload: &self.templates[index],
                 // Actions: join (J).
-                condition: job.condition.is_some(),
+                condition: super::calls::decided_by_server(job),
                 max_parallel: job.strategy.max_parallel,
                 group: job.concurrency.as_ref().map(|concurrency| concurrency.group.as_str()),
                 // Actions: environments.

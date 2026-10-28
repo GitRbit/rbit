@@ -13,6 +13,7 @@
 //! |---|---|
 //! | [`triggers`] | Domain events → runs, on the bounded evaluation semaphore |
 //! | [`chains`] | `workflow_run` and `repository_dispatch` runs |
+//! | [`calls`] | Reusable workflows: finding called workflows, and what their jobs get |
 //! | [`runs`] | Creating runs, concurrency, cancel, re-run, approval, listings |
 //! | [`context`] | The task context and GitHub-shaped event payloads |
 //! | [`dispatch`] | `workflow_dispatch` |
@@ -39,6 +40,8 @@
 // Actions: artifacts (A).
 pub mod artifacts;
 pub mod browse;
+// Actions: reusable workflows.
+pub mod calls;
 // Actions: workflow_run and repository_dispatch.
 pub mod chains;
 // Actions: join (J).

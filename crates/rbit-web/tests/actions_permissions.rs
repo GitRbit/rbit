@@ -228,6 +228,25 @@ async fn only_administrators_see_or_change_permissions() {
     assert_eq!(api(&fixture, Method::GET, "/orgs/nobody/actions/permissions", Some(&bob_token), None).await.0, StatusCode::NOT_FOUND);
 }
 
+// Actions: reusable workflows.
+#[tokio::test]
+async fn who_may_call_a_private_repositorys_workflows() {
+    let fixture = Fixture::new().await;
+    let admin = token(&fixture, &fixture.alice).await;
+    let path = "/repos/alice/rocket/actions/permissions/access";
+    assert_eq!(api(&fixture, Method::GET, path, Some(&admin), None).await, (StatusCode::OK, json!({"access_level": "none"})));
+    assert_eq!(api(&fixture, Method::PUT, path, Some(&admin), Some(json!({"access_level": "user"}))).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(api(&fixture, Method::GET, path, Some(&admin), None).await.1, json!({"access_level": "user"}));
+    let refused = api(&fixture, Method::PUT, path, Some(&admin), Some(json!({"access_level": "everyone"}))).await.0;
+    assert_eq!(refused, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(api(&fixture, Method::GET, path, None, None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        api(&fixture, Method::GET, "/user/actions/permissions/access", Some(&admin), None).await.0,
+        StatusCode::NOT_FOUND,
+        "repositories only"
+    );
+}
+
 // Actions: workflow_run and repository_dispatch.
 #[tokio::test]
 async fn writers_dispatch_repository_events() {

@@ -101,6 +101,81 @@ pub struct JobTemplate {
     /// `environment.url`, a template the runner evaluates after the steps.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_url: Option<String>,
+    // Actions: reusable workflows.
+    /// The calls that led to this job, outermost first; empty for a job of the run's own
+    /// workflow. A runner that predates reusable workflows refuses such a template.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calls: Vec<CallLevel>,
+    /// What each name of the `needs` context stands for, in a called workflow or where a
+    /// job needs one that calls a workflow. Empty otherwise: then each name of `needs` is
+    /// the jobs of that key, as before.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub need_names: BTreeMap<String, NeedSource>,
+}
+
+// Actions: reusable workflows.
+/// One call around a job: what the calling job decides and passes on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CallLevel {
+    /// The calling job's name, `call (linux)`.
+    pub name: String,
+    /// The calling job's `if:`, decided before the job's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    /// The calling job's matrix combination and strategy.
+    pub matrix: Map<String, Value>,
+    pub strategy: Strategy,
+    /// What the calling job's `needs` stand for: the `needs` of its `if`, `with` and
+    /// `secrets`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub needs: BTreeMap<String, NeedSource>,
+    /// The inputs known when the run was planned, typed.
+    pub inputs: Map<String, Value>,
+    /// The inputs whose `with` reads `needs`: evaluated when the job is handed out.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub deferred: BTreeMap<String, DeferredInput>,
+    pub secrets: PassedSecrets,
+}
+
+/// An input of a called workflow evaluated when its job is handed out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeferredInput {
+    /// The `with:` template.
+    pub value: String,
+    /// `boolean`, `number` or `string`.
+    pub kind: String,
+}
+
+/// The secrets a calling job passes on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum PassedSecrets {
+    /// `secrets: inherit`: all of the caller's.
+    Inherit,
+    /// Each by the called workflow's name, as a template over the caller's `secrets`.
+    Map(BTreeMap<String, String>),
+}
+
+/// What a name of the `needs` context stands for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum NeedSource {
+    /// Jobs of the run, by key: a job and its matrix instances.
+    Jobs(Vec<String>),
+    /// A job that called a workflow: every job of the call, and the called workflow's
+    /// `outputs` over a `jobs` context of what its jobs stand for.
+    Call { keys: Vec<String>, outputs: BTreeMap<String, String>, jobs: BTreeMap<String, NeedSource> },
+}
+
+impl NeedSource {
+    /// Every job key this stands for.
+    pub fn keys(&self) -> Vec<String> {
+        match self {
+            Self::Jobs(keys) | Self::Call { keys, .. } => keys.clone(),
+        }
+    }
 }
 
 /// Longest environment name.
@@ -730,6 +805,8 @@ mod tests {
             ],
             environment: None,
             environment_url: None,
+            calls: Vec::new(),
+            need_names: std::collections::BTreeMap::new(),
         }
     }
 

@@ -55,9 +55,13 @@ impl ActionsService {
         let Some(job) = store.job(id).await? else { return Ok(None) };
         let Some(run) = store.run(job.run_id).await? else { return Ok(None) };
         let decision = match self.template(&job).await? {
-            Some(template) => match &template.condition {
-                Some(condition) => self.evaluate_condition(&run, &job, &template, condition).await?,
-                None => Decision::Run,
+            // Actions: reusable workflows. The calls' own `if:` first, outermost first.
+            Some(template) => match self.calls_decision(&run, &template).await? {
+                Some(decision) => decision,
+                None => match &template.condition {
+                    Some(condition) => self.evaluate_condition(&run, &job, &template, condition).await?,
+                    None => Decision::Run,
+                },
             },
             None => Decision::Fail,
         };
@@ -65,6 +69,33 @@ impl ActionsService {
             tracing::info!(run = run.id.0, job = %job.key, ?decision, "job condition decided");
         }
         Ok(store.decide(id, decision, Timestamp::now()).await?)
+    }
+
+    // Actions: reusable workflows.
+    /// What the `if:` of the calls around a called job decide: `None` when all of them
+    /// let it run (or there are none).
+    async fn calls_decision(&self, run: &Run, template: &JobTemplate) -> Result<Option<Decision>, ServiceError> {
+        if template.calls.iter().all(|level| level.condition.is_none()) {
+            return Ok(None);
+        }
+        let (github, vars) = self.call_contexts(run).await?;
+        let inputs = self.run_inputs(run).await?;
+        Ok(match self.call_conditions(run, template, &github, &vars, inputs).await? {
+            Ok(true) => None,
+            Ok(false) => Some(Decision::Skip),
+            Err(error) => {
+                tracing::warn!(run = run.id.0, %error, "a calling job's condition cannot be evaluated; the job fails");
+                Some(Decision::Fail)
+            }
+        })
+    }
+
+    /// The run's own `inputs` (a dispatch's), as a map.
+    async fn run_inputs(&self, run: &Run) -> Result<Map<String, Value>, ServiceError> {
+        Ok(match self.ctx().database.actions_runs().event(run.id).await?.and_then(|(_, inputs)| inputs) {
+            Some(inputs) => serde_json::from_str::<Map<String, Value>>(&inputs).unwrap_or_default(),
+            None => Map::new(),
+        })
     }
 
     /// `condition` of `job` against the server's contexts.
@@ -83,18 +114,20 @@ impl ActionsService {
 
     /// The contexts a job-level `if:` may read (§12.4, second row of the table).
     async fn condition_contexts(&self, run: &Run, job: &Job, template: &JobTemplate) -> Result<ContextMap, ServiceError> {
-        let database = &self.ctx().database;
         let mut github = match self.task_context(run, job).await? {
             Value::Object(github) => github,
             _ => Map::new(),
         };
         github.retain(|key, _| !key.eq_ignore_ascii_case("token"));
-        let inputs = match database.actions_runs().event(run.id).await?.and_then(|(_, inputs)| inputs) {
-            Some(inputs) => serde_json::from_str::<Value>(&inputs).unwrap_or_else(|_| json!({})),
-            None => json!({}),
-        };
         let vars: Map<String, Value> =
             self.task_variables(run).await?.into_iter().map(|(name, value)| (name, Value::String(value))).collect();
+        // Actions: reusable workflows. A called job's inputs are its workflow's.
+        let inputs = self.run_inputs(run).await?;
+        let inputs = if template.calls.is_empty() {
+            Value::Object(inputs)
+        } else {
+            Value::Object(self.call_inputs(run, template, &github, &vars, inputs).await?.unwrap_or_default())
+        };
         let needs = self.needs(run, template).await?;
         let status = ExprStatus::of_needs(needs.values().map(|needed| needed.result));
         let needs: Map<String, Value> = needs

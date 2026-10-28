@@ -108,6 +108,8 @@ must not silently change what a job does.
 
 - **Workflow:** `name`, `run-name`, `on`, `env`, `defaults.run`, `permissions`,
   `concurrency`, `jobs`.
+- **Job that calls a workflow:** `name`, `uses`, `with`, `secrets` (or `secrets: inherit`),
+  `strategy`, `needs`, `if`, `permissions` (see [Reusable workflows](#reusable-workflows)).
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
   `outputs`, `timeout-minutes` (default 360), `continue-on-error`, `concurrency`,
   `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `container`
@@ -126,6 +128,43 @@ default) a failed matrix job cancels its unfinished siblings, and the jobs that 
 it as failed. A job with `continue-on-error: true` that fails counts as succeeded: it fails
 neither the run nor the jobs that need it, and cancels no siblings; its failed steps still
 show.
+
+### Reusable workflows
+
+A workflow with `on: workflow_call` can be called by a job of another workflow, as on
+GitHub:
+
+```yaml
+jobs:
+  build:
+    uses: ./.rbit/workflows/build.yml          # or owner/repo/path/to/build.yml@v1
+    with: {target: release, version: '${{ needs.prepare.outputs.version }}'}
+    secrets: inherit                           # or {deploy-key: '${{ secrets.DEPLOY_KEY }}'}
+  publish:
+    needs: build
+    runs-on: linux
+    steps:
+      - run: echo "${{ needs.build.outputs.artifact }}"
+```
+
+- `./path` is read from the calling workflow's repository and commit; `owner/repo/path@ref`
+  from a repository of this rbit instance, at a branch, tag or commit. A public
+  repository's workflows can be called by anyone who may read it; a private one's only by
+  the same owner's other private repositories, and only once **access** (`PUT
+  …/actions/permissions/access` with `user` or `organization`) allows it. A workflow that
+  cannot be read or used is a workflow error that never says which.
+- The called workflow's jobs run as jobs of the caller's run, named `caller / job`, and
+  wait for what the calling job waits for. Its `inputs` (`string`, `number`, `boolean`;
+  required ones, defaults) and declared `secrets` are checked when the run starts; a
+  `with:` that reads `needs` is evaluated when the job is handed out. Its `outputs` are
+  what jobs that need the calling job read in `needs.<caller>.outputs`.
+- The called workflow sees the caller's `github` context and `vars`, its own `inputs` and
+  `env` (not the caller's). Secrets reach it only through `secrets:` (all of them with
+  `inherit`). Its jobs may lower the token's permissions but never ask for more than the
+  calling job (or the calling workflow) allows.
+- Calls nest up to ten levels deep, the run's own workflow included, and a run may call
+  at most 50 different workflows, GitHub's limits. A calling job's `strategy.matrix` calls
+  the workflow once per combination, `call (a) / job`.
 
 ### Built-in actions
 
@@ -341,7 +380,10 @@ to `workflow_run` and `workflow_job`.
 
 ## Differences from GitHub Actions
 
-- No reusable workflows (`workflow_call`, `jobs.<id>.uses`).
+- A called workflow is read from this rbit instance, never from github.com. A calling job
+  takes no `concurrency` yet (set it on the called workflow's jobs), and a called job's
+  `runs-on` and matrix can use only the inputs known when the run starts, not those a
+  `with:` reads from `needs`.
 - Actions are fetched when their step comes, not all at the start of the job, so an
   action's `pre` script runs right before its `main`. Problem matchers
   (`::add-matcher::`) are accepted and ignored. GitHub's cache and artifact services that
@@ -349,8 +391,8 @@ to `workflow_run` and `workflow_job`.
   `actions/cache` and `actions/*-artifact`.
 - Environments have no wait timer, team reviewers or custom protection rules, and runs
   create no deployment objects (the Deployments API).
-- No `secrets: inherit`, `container.options`, service `options`/`volumes`, or
-  custom shells (`shell: my {0}`): each is a readable error.
+- No `container.options`, service `options`/`volumes`, or custom shells (`shell: my
+  {0}`): each is a readable error.
 - `permissions:` can only lower the repository's default token permission (**Settings →
   Actions**, or `PUT …/actions/permissions/workflow`), never raise it: a workflow that
   publishes releases needs that default set to write.

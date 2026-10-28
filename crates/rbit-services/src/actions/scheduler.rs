@@ -292,6 +292,17 @@ impl ActionsService {
             Some(inputs) => serde_json::from_str::<Map<String, Value>>(&inputs).unwrap_or_default(),
             None => Map::new(),
         };
+        // Actions: reusable workflows. A called job's inputs are its workflow's.
+        let run_inputs = inputs.clone();
+        let inputs = if template.calls.is_empty() {
+            inputs
+        } else {
+            let (call_github, call_vars) = self.call_contexts(&run).await?;
+            match self.call_inputs(&run, &template, &call_github, &call_vars, inputs).await? {
+                Ok(inputs) => inputs,
+                Err(reason) => return Ok(Err(reason)),
+            }
+        };
         let (secrets, vars) = if run.trusted {
             let secrets = self.task_secrets(&run).await?.into_iter().map(|(name, value)| (name, Secret::new(value))).collect();
             let vars = database
@@ -304,6 +315,18 @@ impl ActionsService {
             (secrets, vars)
         } else {
             (BTreeMap::new(), BTreeMap::new())
+        };
+        // Actions: reusable workflows. A called job gets the secrets its calls pass on.
+        let secrets: BTreeMap<String, Secret> = if template.calls.is_empty() {
+            secrets
+        } else {
+            let plain = secrets.iter().map(|(name, value): (&String, &Secret)| (name.clone(), value.expose().to_owned())).collect();
+            let (call_github, call_vars) = self.call_contexts(&run).await?;
+            self.call_secrets(&run, &template, &call_github, &call_vars, run_inputs, plain)
+                .await?
+                .into_iter()
+                .map(|(name, value)| (name, Secret::new(value)))
+                .collect()
         };
         // Actions: environments. Its branch policy decides now; its values win over the
         // repository's and owner's.
@@ -343,6 +366,20 @@ impl ActionsService {
     /// The `needs` context: for every needed job, its result over all its matrix instances
     /// and their outputs merged.
     pub(super) async fn needs(&self, run: &Run, template: &JobTemplate) -> Result<BTreeMap<String, Needed>, ServiceError> {
+        // Actions: reusable workflows. Names that stand for a job that called a workflow, or
+        // the needs of a job in a called workflow.
+        if !template.calls.is_empty() || !template.need_names.is_empty() {
+            if template.need_names.is_empty() {
+                return Ok(BTreeMap::new());
+            }
+            let jobs = self.run_jobs_with_outputs(run).await?;
+            let (github, vars) = self.call_contexts(run).await?;
+            return Ok(template
+                .need_names
+                .iter()
+                .map(|(name, source)| (name.clone(), super::calls::need(source, &jobs, &github, &vars)))
+                .collect());
+        }
         if template.needs.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -431,6 +468,26 @@ fn step_name(index: usize, step: &rbit_workflow::spec::StepTemplate) -> String {
             .map_or_else(|| format!("Step {}", index + 1), |line| format!("Run {line}")),
     };
     super::runs::truncate_chars(&name, MAX_STEP_NAME_CHARS)
+}
+
+impl ActionsService {
+    // Actions: reusable workflows.
+    /// The `github` (without the token) and `vars` a call's expressions read: the run's.
+    pub(super) async fn call_contexts(&self, run: &Run) -> Result<(Map<String, Value>, Map<String, Value>), ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        let github = match store.jobs(run.id).await?.first() {
+            Some(job) => match self.task_context(run, job).await? {
+                Value::Object(mut github) => {
+                    github.retain(|key, _| !key.eq_ignore_ascii_case("token"));
+                    github
+                }
+                _ => Map::new(),
+            },
+            None => Map::new(),
+        };
+        let vars = self.task_variables(run).await?.into_iter().map(|(name, value)| (name, Value::String(value))).collect();
+        Ok((github, vars))
+    }
 }
 
 // Actions: settings API.

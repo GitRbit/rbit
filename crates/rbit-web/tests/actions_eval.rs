@@ -1325,6 +1325,8 @@ fn job(key: &str, needs: &[&str], environment: Option<&str>) -> JobTemplate {
         steps: vec![step(Some("Build"), "make"), step(None, "make test")],
         environment: environment.map(str::to_owned),
         environment_url: None,
+        calls: Vec::new(),
+        need_names: std::collections::BTreeMap::new(),
     }
 }
 

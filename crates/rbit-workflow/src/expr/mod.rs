@@ -91,7 +91,9 @@ pub const MAX_RESULT_BYTES: usize = 1024 * 1024;
 
 /// Every context name an expression may use. Which of them a side supplies is up to its
 /// [`Contexts`].
-pub const CONTEXTS: [&str; 11] = ["github", "env", "vars", "job", "steps", "runner", "secrets", "strategy", "matrix", "needs", "inputs"];
+// Actions: reusable workflows. `jobs` is only for a called workflow's `outputs`.
+pub const CONTEXTS: [&str; 12] =
+    ["github", "env", "vars", "job", "steps", "runner", "secrets", "strategy", "matrix", "needs", "inputs", "jobs"];
 
 /// Why an expression cannot be parsed or evaluated, for the workflow's author.
 #[derive(Debug, Clone, PartialEq, Eq)]

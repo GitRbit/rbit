@@ -165,6 +165,29 @@ impl ActionsSettingsStore {
         Ok(())
     }
 
+    // Actions: reusable workflows.
+    /// Who may call the repository's workflows when it is private: `none`, `user` or
+    /// `organization`.
+    pub async fn access_level(&self, repo: RepoId) -> Result<String, StorageError> {
+        let level: Option<String> = sqlx::query_scalar("SELECT access_level FROM actions_repositories WHERE repo_id = ?")
+            .bind(repo.0)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(level.unwrap_or_else(|| "none".to_owned()))
+    }
+
+    pub async fn set_access_level(&self, repo: RepoId, level: &str, now: Timestamp) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO actions_repositories (repo_id, access_level, updated_at) VALUES (?1, ?2, ?3)              ON CONFLICT (repo_id) DO UPDATE SET access_level = ?2, updated_at = ?3",
+        )
+        .bind(repo.0)
+        .bind(level)
+        .bind(now.0)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// The owner's settings; [`OwnerActionsSettings::default`] (no ceiling) when it never
     /// stored any.
     pub async fn owner_settings(&self, owner: AccountId) -> Result<OwnerActionsSettings, StorageError> {
