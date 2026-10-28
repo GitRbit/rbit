@@ -205,7 +205,8 @@ pub fn limits(config: &ContainerConfig) -> Vec<String> {
         config.pids_limit.to_string(),
     ];
     if let Some(memory) = &config.memory {
-        args.extend(["--memory".into(), memory.clone()]);
+        // Swap included: Docker would otherwise allow as much swap again.
+        args.extend(["--memory".into(), memory.clone(), "--memory-swap".into(), memory.clone()]);
     }
     if let Some(cpus) = config.cpus {
         args.extend(["--cpus".into(), cpus.to_string()]);
@@ -973,7 +974,7 @@ mod tests {
             "--mount type=bind,source=/work/externals,target=/__e,readonly",
             "--workdir /__w/app",
             "--label rbit.task=42 --label rbit.runner=build-1",
-            "--security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --memory 4g --cpus 2",
+            "--security-opt no-new-privileges --cap-drop MKNOD --pids-limit 4096 --memory 4g --memory-swap 4g --cpus 2",
             "--env-file /p/job.env -e KEY",
         ] {
             assert!(line.contains(part), "{part:?} missing from {line}");

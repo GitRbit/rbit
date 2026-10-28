@@ -144,6 +144,9 @@ pub async fn execute(
     let mut printed_outputs = BTreeMap::new();
     let mut printed_state = BTreeMap::new();
     let mut matchers = std::mem::take(&mut job.matchers);
+    // A container job's matcher files are read once the step is over, with its container
+    // paused, so nothing in it can swap a link in while the runner reads them.
+    let mut pending_matchers = Vec::new();
     let exit = {
         let reporter = &job.reporter;
         let mut commands = Commands::new(job.step_debug);
@@ -157,10 +160,9 @@ pub async fn execute(
                     reporter.log(&annotation);
                 }
             }
+            Line::AddMatcher(seen) if !host => pending_matchers.push(seen),
             Line::AddMatcher(seen) => match read_matcher(&seen, &view, &dirs, host).and_then(|text| matchers.add(&text)) {
                 Ok(owners) => reporter.log(&format!("Added matchers: {}", owners.join(", "))),
-                // A container job's file is read on the host: what it holds is never echoed.
-                Err(_) if !host => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}")),
                 Err(error) => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}: {error}")),
             },
             Line::RemoveMatcher(owner) => matchers.remove(&owner),
@@ -185,6 +187,7 @@ pub async fn execute(
         })
         .await
     };
+    read_matchers_paused(job, &mut matchers, pending_matchers).await;
     job.matchers = matchers;
     // The step's env file is deleted as soon as the step has ended.
     drop(prepared.env_file);
@@ -209,6 +212,26 @@ pub async fn execute(
         }
         Err(error) => (job.fail(&error), BTreeMap::new()),
     }
+}
+
+/// Reads a container job's matcher files `pending` with its container paused.
+async fn read_matchers_paused(job: &Job, matchers: &mut crate::matchers::Matchers, pending: Vec<String>) {
+    if pending.is_empty() {
+        return;
+    }
+    if let Err(error) = job.backend.pause(&job.reporter).await {
+        job.reporter.log(&format!("##[warning]cannot pause the job container to read its problem matchers: {error}"));
+        return;
+    }
+    let (view, dirs) = (job.backend.view(), &job.dirs);
+    for seen in pending {
+        match read_matcher(&seen, view, dirs, false).and_then(|text| matchers.add(&text)) {
+            Ok(owners) => job.reporter.log(&format!("Added matchers: {}", owners.join(", "))),
+            // The file is read on the host: what it holds is never echoed.
+            Err(_) => job.reporter.log(&format!("##[warning]cannot add the problem matcher {seen}")),
+        }
+    }
+    let _ = job.backend.resume().await;
 }
 
 /// Reads the matcher file a step named `seen`, as the runner host finds it: a path in the

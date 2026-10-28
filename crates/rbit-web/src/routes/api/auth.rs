@@ -198,7 +198,7 @@ impl Caller {
     pub async fn open_repo(&self, state: &AppState, owner: &str, name: &str) -> ApiResult<RepoContext> {
         // Actions: S. A task: its own repository at its grant, others public and read-only.
         if let (Some((grant, need)), Some(actions)) = (&self.task, &state.services.actions) {
-            let ctx = if *need == TaskNeed::Comment {
+            let ctx = if matches!(need, TaskNeed::Comment | TaskNeed::IssuesRead) {
                 actions.open_for_task_comment(grant, owner, name).await?
             } else {
                 actions.open_for_task(grant, owner, name).await?

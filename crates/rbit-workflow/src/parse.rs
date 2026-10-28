@@ -2,8 +2,7 @@
 //!
 //! Every key of §12.2 is read into the typed model, and every other key is an error at
 //! every level, because a typo must not silently change what a job does. GitHub keys rbit
-//! deliberately lacks (`workflow_call`, `jobs.<id>.uses`, `environment`, `secrets: inherit`,
-//! `container.options`, `services.*.options` and `services.*.volumes`, …) say "not supported
+//! lacks (container `ports`, runner groups, `cancel-timeout-minutes`, …) say "not supported
 //! by rbit".
 //!
 //! Structural checks: the shape of `on`, filters that compile, job ids, `runs-on`, `needs`

@@ -220,7 +220,7 @@ impl Planner<'_> {
                 needs.extend(scope.root_needs.iter().cloned());
             }
             // Actions: plans from needs. Planned once its needs are done (`plan_deferred`).
-            if job.call.is_some() && reads_needs(job) {
+            if job.call.is_some() && strategy_reads_needs(job) {
                 return Err(WorkflowError::plan(
                     format!("job `{}`: a job that calls a workflow cannot read `needs` in its `strategy` yet", job.id),
                     Some(job.at),
@@ -454,8 +454,30 @@ fn reads_needs(job: &Job) -> bool {
     if let Some(environment) = &job.environment {
         texts.push(&environment.name);
     }
-    // Context names are matched without regard to case.
-    texts.iter().any(|text| text.contains("${{") && text.to_ascii_lowercase().contains("needs"))
+    texts.iter().any(|text| mentions_needs(text))
+}
+
+/// Whether `text` has an expression that reads the `needs` context (names ignore case).
+fn mentions_needs(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    text.contains("${{") && (text.contains("needs.") || text.contains("needs["))
+}
+
+/// Whether a job's `strategy` reads `needs`.
+fn strategy_reads_needs(job: &Job) -> bool {
+    let matrix = job.strategy.matrix.as_ref().filter(|matrix| matrix.has_expressions).map(|matrix| matrix.value.to_string());
+    matrix
+        .iter()
+        .map(String::as_str)
+        .chain(job.strategy.fail_fast.as_deref())
+        .chain(job.strategy.max_parallel.as_deref())
+        .any(mentions_needs)
+}
+
+/// Whether `condition` calls `success()`, `failure()`, `always()` or `cancelled()`.
+fn has_status_function(condition: &str) -> bool {
+    let condition = condition.to_ascii_lowercase();
+    ["success(", "failure(", "always(", "cancelled("].iter().any(|function| condition.contains(function))
 }
 
 /// Whether a job's `if:` reads `matrix` or `strategy`.
@@ -474,7 +496,9 @@ fn deferred_template(job: &Job, key: &str, needs: &[String]) -> JobTemplate {
         needs: needs.to_vec(),
         condition: Some(match &job.condition {
             // Its matrix is not known yet: each planned job decides its `if:` (`plan_deferred`).
-            Some(condition) if reads_matrix(condition) => "always()".to_owned(),
+            // Without a status function an `if:` means `success() && …`: that gate stays.
+            Some(condition) if reads_matrix(condition) && has_status_function(condition) => "always()".to_owned(),
+            Some(condition) if reads_matrix(condition) => "success()".to_owned(),
             Some(condition) => condition.clone(),
             None => "success()".to_owned(),
         }),

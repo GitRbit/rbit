@@ -132,7 +132,7 @@ impl ActionsService {
     /// `pull-requests: write`) reads its own repository's threads whatever its `contents`
     /// permission, as `permissions: {pull-requests: write}` alone allows on GitHub.
     pub async fn open_for_task_comment(&self, grant: &TaskGrant, owner: &str, name: &str) -> Result<RepoContext, ServiceError> {
-        let own = if grant.can_comment() { grant.contents().max(RepoAccess::Read) } else { grant.contents() };
+        let own = if grant.can_comment() || grant.can_read_issues() { grant.contents().max(RepoAccess::Read) } else { grant.contents() };
         self.open_as_task(grant, owner, name, own).await
     }
 

@@ -85,7 +85,7 @@ repository can keep GitHub's workflows and add rbit's own beside them.
 |---|---|
 | `push` | `branches`, `branches-ignore`, `tags`, `tags-ignore`, `paths`, `paths-ignore` |
 | `pull_request` | `types` (default `opened`, `reopened`, `synchronize`) and the same filters |
-| `workflow_dispatch` | `inputs` of type `string`, `boolean`, `number`, `choice`; started with **Run workflow** on the workflow's page or through the REST API |
+| `workflow_dispatch` | `inputs` of type `string`, `boolean`, `number`, `choice`, `environment`; started with **Run workflow** on the workflow's page or through the REST API |
 | `schedule` | `cron`, in UTC |
 | `workflow_run` | `workflows` (by `name:`), `types` (`requested`, `in_progress`, `completed`; all when absent), `branches`, `branches-ignore` (the triggering run's branch); the event carries `github.event.workflow_run` (`conclusion`, `head_sha`, `id`, …) |
 | `repository_dispatch` | `types`; started with `POST /repos/{owner}/{repo}/dispatches` by a writer, `event_type` up to 100 characters and `client_payload` (at most 10 top-level properties, 65,535 characters) in `github.event` |
@@ -115,15 +115,16 @@ must not silently change what a job does.
   `strategy`, `needs`, `if`, `permissions` (see [Reusable workflows](#reusable-workflows)).
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
   `outputs`, `timeout-minutes` (default 360), `continue-on-error`, `concurrency`,
-  `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `container`
+  `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `environment`
+  (a name, or `{name, url}`), `container`
   (`image`, `env`, `credentials`, `options`, `volumes`), `services` (`image`, `env`,
   `credentials`, `options`, `volumes`; container runners only), `steps` (at most 256).
 - **Step:** `id`, `name`, `if`, `run` or `uses`, `shell`, `working-directory`, `env`, `with`,
   `continue-on-error`, `timeout-minutes`.
 - **Container options:** `options` passes what shapes a container (`--user`, `--hostname`,
   `--env NAME=value` (its value goes into the env file), the `--health-*` checks, `--memory`,
-  `--cpus` and other limits (when `[container] memory` or `cpus` is set, the runner's value
-  comes after and wins), `--ulimit`, `--shm-size`, `--tmpfs`, `--add-host`, `--dns`,
+  `--cpus`, `--pids-limit` and other limits (the runner's own `[container]` limits come
+  after and win), `--ulimit`, `--shm-size`, `--tmpfs`, `--add-host`, `--dns`,
   `--label` (except `rbit.*`),
   `--init`, `--read-only`, stop options, and `--entrypoint` for services). Anything that
   could give a job the runner host (`--privileged`, `--cap-add`, `--device`, `--network`,
@@ -283,7 +284,7 @@ equality (strings compare case-insensitively), `&&`, `||`, and the functions `co
 | Context | Where |
 |---|---|
 | `github`, `inputs`, `vars`, `matrix`, `strategy` | everywhere |
-| `needs` | job `if`, and in steps |
+| `needs` | job `if`, `name`, `runs-on`, `strategy`, `timeout-minutes`, `continue-on-error`, `concurrency`, `container`, `services`, `environment`, a calling job's `with:`, and in steps |
 | `env`, `secrets`, `steps`, `job`, `runner` | steps, `container`/`services` env and credentials, job `outputs` |
 
 The server never evaluates `secrets`. A secret reaches a step only where the step maps it,
@@ -305,6 +306,8 @@ work with a warning, while `::set-env` and `::add-path` are refused, as on GitHu
 `::add-matcher::<file>` adds GitHub's problem matchers (one-line and looping patterns): for
 the rest of the job, a line a matcher matches is followed by its `##[error]`, `##[warning]` or
 `##[notice]` annotation with the file, line and column, until `::remove-matcher owner=…::`.
+In a container job a matcher file is read when its step ends, with the container paused, so
+the matcher applies from the next step on.
 The environment has
 `CI=true`, `GITHUB_ACTIONS=true`, `RBIT_ACTIONS=true` and the usual `GITHUB_*` and `RUNNER_*`
 variables.
@@ -430,11 +433,18 @@ to `workflow_run` and `workflow_job`.
 
 - A called workflow is read from this rbit instance, never from github.com. A calling job
   takes no `concurrency` yet (set it on the called workflow's jobs), and a called job's
-  `runs-on` and matrix can use only the inputs known when the run starts, not those a
-  `with:` reads from `needs`; nor can a calling job's own `strategy` read `needs`. A
+  fields (`runs-on`, the matrix, containers, …) can use only the inputs known when the run
+  starts, not `needs` nor inputs a `with:` reads from `needs`; nor can a calling job's own
+  `strategy` read `needs`. A
   `workflow_call` input's `default` is taken as written, not evaluated.
 - The `workflow_run` payload has the run's `head_branch`, `head_sha`, `conclusion` and
   repository, but no `head_repository` or `head_commit`.
+- Events other than those under [Triggers](#triggers) (`release`, `issues`,
+  `pull_request_target`, …) are accepted in `on:` and never start a run.
+- `permissions:` scopes other than `contents`, `issues` and `pull-requests` are accepted and
+  have no effect: there is no OIDC token (`id-token: write`), for instance.
+- Runner groups (`runs-on: {group: …}`), `cancel-timeout-minutes` and `snapshot` are
+  refused with a readable error.
 - Artifact names may use letters, digits, `.`, `_` and `-` only; GitHub also allows spaces
   and most punctuation.
 - Actions are fetched when their step comes, not all at the start of the job, so an
@@ -502,7 +512,7 @@ to `workflow_run` and `workflow_job`.
 - Masking covers what GitHub's runner masks: each secret, each line of a multi-line one,
   its base64 in every alignment, and its URL-, JSON-, XML-, expression- and command-line-
   escaped forms. It works on each printed line, so a secret split across two lines, or
-  across the 64 KiB cut of one very long line, is not masked.
+  across the 1 MiB cut of one very long line, is not masked.
 - Values shorter than four characters are not masked on their own lines or in their
   encodings, so that masking a short secret such as `1` cannot hide every number in a log;
   the whole value is still masked.

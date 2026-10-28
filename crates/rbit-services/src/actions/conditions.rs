@@ -117,7 +117,9 @@ impl ActionsService {
         };
         if settled.is_some() {
             tracing::info!(run = run.id.0, job = %job.key, jobs = planned.len(), "job planned from its needs");
-            self.announce(run.id).await?;
+            if let Err(error) = self.announce(run.id).await {
+                tracing::warn!(run = run.id.0, %error, "the planned jobs could not be announced");
+            }
         }
         Ok(settled)
     }

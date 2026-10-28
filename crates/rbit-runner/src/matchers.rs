@@ -125,9 +125,16 @@ impl Matchers {
         if self.list.is_empty() || line.len() > MAX_MATCHED_BYTES {
             return None;
         }
-        // As GitHub's runner: the first matcher with a problem takes the line, and the
-        // later ones do not see it.
-        self.list.iter_mut().find_map(|matcher| matcher.feed(line))
+        // Every matcher sees every line, so none loses its place in a multi-line problem;
+        // the first one's problem is shown.
+        let mut found = None;
+        for matcher in &mut self.list {
+            let problem = matcher.feed(line);
+            if found.is_none() {
+                found = problem;
+            }
+        }
+        found
     }
 }
 
