@@ -93,11 +93,11 @@ impl Backend {
     }
 
     /// Pauses the job container, if there is one, while a built-in step works on its
-    /// directories from the host.
-    pub async fn pause(&self) -> Result<(), String> {
+    /// directories from the host, and hands them back to the runner's user first.
+    pub async fn pause(&self, reporter: &crate::task::Reporter) -> Result<(), String> {
         match self {
             Self::Host(_) => Ok(()),
-            Self::Container(container) => container.pause().await,
+            Self::Container(container) => container.pause(reporter).await,
         }
     }
 

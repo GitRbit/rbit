@@ -415,9 +415,16 @@ to `workflow_run` and `workflow_job`.
   your own.
 - Jobs keep Docker's default capabilities (only `MKNOD` is dropped) and have no memory or
   CPU limit unless `[container] memory` and `cpus` are set.
-- The job's files are given back to the runner's user by `chown` inside the job's own
-  container, which the job could have replaced; on a rootful engine they can then stay
-  owned by root. The runner keeps `<work_dir>/tasks` private to its user.
+- A rootful engine's containers write the task's files as root. Before each built-in step
+  works on them, after each Docker action and when the job ends, a helper container gives
+  them back to the runner's user: `chown`, set-user-ID and set-group-ID bits cleared, and
+  every directory opened to its owner. The helper is never the job's image or container
+  (which could have replaced `chown`): it runs `[container] helper_image`, a `busybox`
+  pinned by digest, with no network, only the `CHOWN`, `FOWNER` and `DAC_OVERRIDE`
+  capabilities and nothing mounted but the task's directories. Under rootless Docker or
+  Podman it hands them to the container's root, which is the runner's user. An engine
+  with `userns-remap` is not supported. The runner keeps `<work_dir>/tasks` private to its
+  user.
 - A Docker action's `Dockerfile` is built without limits and with the network, and the
   default `[actions] allow = ["*"]` lets any workflow use any action or image; narrow it
   for runners that take pull requests from forks.

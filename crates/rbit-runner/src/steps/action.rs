@@ -146,7 +146,7 @@ pub fn action<'a>(
         // A local action is in the workspace, which a container job can change: it is read
         // while the container is paused.
         let local = matches!(action.source, ActionSource::Local { .. });
-        if local && let Err(error) = job.backend.pause().await {
+        if local && let Err(error) = job.backend.pause(&job.reporter).await {
             return job.fail(&format!("cannot pause the job container to read `{}`: {error}", action.uses));
         }
         let manifest = read_manifest(&located.source);
@@ -387,7 +387,7 @@ async fn repository(job: &Job, owner: &str, repo: &str, path: &str, reference: &
     // The job gets a copy in a fresh directory of its `temp`, made while its container is
     // paused: a container job can change `temp`, so it can neither have planted links on the
     // way nor race the copy.
-    job.backend.pause().await.map_err(|error| format!("cannot pause the job container to copy the action: {error}"))?;
+    job.backend.pause(&job.reporter).await.map_err(|error| format!("cannot pause the job container to copy the action: {error}"))?;
     let copied = {
         let (from, temp) = (cache.clone(), job.dirs.temp.clone());
         tokio::task::spawn_blocking(move || copy_into_task(&from, &temp)).await.map_err(|error| error.to_string())
@@ -924,7 +924,7 @@ async fn run_docker(
             // A local action's Dockerfile is in the workspace, which a container job can
             // change: it is built while the job's container is paused.
             let local = context.starts_with(&job.dirs.workspace);
-            if local && let Err(error) = job.backend.pause().await {
+            if local && let Err(error) = job.backend.pause(&job.reporter).await {
                 return job.fail(&format!("cannot pause the job container to build the action: {error}"));
             }
             let built = build_image(job, &program, dockerfile, context, timeout).await;
@@ -938,6 +938,24 @@ async fn run_docker(
         }
     };
     let outcome = run_image(job, index, run, &program, network, &image, step_env, timeout).await;
+    // The action's container wrote the task's directories as its own user, root mostly.
+    match &job.backend {
+        Backend::Container(container) => container.wrote(),
+        Backend::Host(_) => {
+            if let Some(owner) = crate::backend::container::file_owner(&program).await {
+                let args = crate::backend::container::reclaim_run(
+                    job.spec.task_id,
+                    &job.runner_name,
+                    &job.container.helper_image,
+                    &job.dirs,
+                    &owner,
+                );
+                if let Err(error) = crate::backend::container::reclaim(process::command(&program), &args).await {
+                    job.reporter.log(&format!("##[warning]cannot hand the task's files back to the runner's user: {error}"));
+                }
+            }
+        }
+    }
     if built {
         // Each build is the job's own; leaving it would fill the engine's storage.
         let mut command = process::command(&program);

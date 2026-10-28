@@ -366,9 +366,12 @@ async fn container_jobs_drive_the_cli() {
         "create --name rbit-1-job",
         "start rbit-1-job",
         "exec rbit-1-job sh -c",
+        "info --format",
         "exec --env-file",
-        // The cache step works on the workspace from the host, with the container paused.
+        // The cache step works on the workspace from the host, with the container paused
+        // and the files handed back to the runner's user first.
         "pause rbit-1-job",
+        "run --rm --label rbit.task=1",
         "unpause rbit-1-job",
         "rm --force rbit-1-postgres rbit-1-job",
         "network rm rbit-1",
@@ -377,6 +380,11 @@ async fn container_jobs_drive_the_cli() {
     assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{calls}");
     assert!(!calls.contains(SECRET), "no secret in any argument: {calls}");
     assert_eq!(lines.iter().filter(|line| **line == "pause rbit-1-job").count(), 2, "the step, then the post-job save: {calls}");
+    // Before each of the two pauses' work, and once the containers are gone.
+    let reclaims: Vec<usize> = (0..lines.len()).filter(|&at| lines[at].starts_with("run --rm --label rbit.task=1")).collect();
+    assert_eq!(reclaims.len(), 3, "{calls}");
+    assert!(reclaims[2] > position("rm --force") && reclaims[2] < position("network rm"), "{calls}");
+    assert!(lines[reclaims[0]].contains(&format!("--entrypoint sh {}", crate::backend::container::HELPER_IMAGE)), "{calls}");
     assert!(
         lines[position("exec --env-file")]
             .contains("--workdir /__w/app rbit-1-job bash --noprofile --norc -eo pipefail /__w/_temp/step-0-"),

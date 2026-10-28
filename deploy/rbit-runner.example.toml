@@ -36,6 +36,9 @@ cpus = 2
 pids_limit = 4096
 # The driver of the network each task gets. Never "host".
 network = "bridge"
+# The image that hands a task's files back to the runner's user after the job's containers
+# wrote them as root; pinned by digest. Point it at a mirror when Docker Hub is out of reach.
+# helper_image = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
 
 [cache]
 # Least-recently-used cache entries are evicted beyond this size (10 GiB).

@@ -88,7 +88,7 @@ pub async fn builtin(job: &mut Job, builtin: &Builtin, timeout: Option<Duration>
         Err(error) => return job.fail(&error),
     };
     // The container must not change the files the built-in works on (`crate::untrusted`).
-    if let Err(error) = job.backend.pause().await {
+    if let Err(error) = job.backend.pause(&job.reporter).await {
         return job.fail(&format!("cannot pause the job container for `{}`: {error}", builtin.uses));
     }
     let outcome = match builtin.kind {

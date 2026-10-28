@@ -326,7 +326,7 @@ impl Job {
             self.reporter.log("Not saving caches: the job did not succeed");
             return;
         }
-        if let Err(error) = self.backend.pause().await {
+        if let Err(error) = self.backend.pause(&self.reporter).await {
             self.reporter.log(&format!("##[warning]Not saving caches: cannot pause the job container: {error}"));
             return;
         }

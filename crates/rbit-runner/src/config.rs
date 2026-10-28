@@ -121,11 +121,23 @@ pub struct ContainerConfig {
     /// The driver of the per-task networks (`bridge`). Never `host`.
     #[serde(default = "default_network")]
     pub network: String,
+    /// The image that hands a task's files back to the runner's user (`chown`), never the
+    /// job's: it needs `sh`, `chown`, `find` and `chmod`. Pinned by digest; point it at a
+    /// mirror on a runner without access to Docker Hub.
+    #[serde(default = "default_helper_image", skip_serializing_if = "is_default_helper_image")]
+    pub helper_image: String,
 }
 
 impl Default for ContainerConfig {
     fn default() -> Self {
-        Self { program: default_program(), memory: None, cpus: None, pids_limit: default_pids_limit(), network: default_network() }
+        Self {
+            program: default_program(),
+            memory: None,
+            cpus: None,
+            pids_limit: default_pids_limit(),
+            network: default_network(),
+            helper_image: default_helper_image(),
+        }
     }
 }
 
@@ -165,6 +177,12 @@ fn default_pids_limit() -> u32 {
 }
 fn default_network() -> String {
     "bridge".to_owned()
+}
+fn default_helper_image() -> String {
+    crate::backend::container::HELPER_IMAGE.to_owned()
+}
+fn is_default_helper_image(image: &String) -> bool {
+    image == crate::backend::container::HELPER_IMAGE
 }
 fn default_actions_url() -> String {
     "https://github.com".to_owned()

@@ -30,6 +30,14 @@
 //! Every container drops `MKNOD`: a job cannot make device nodes in the directories the
 //! runner works on from the host.
 //!
+//! A rootful engine's containers write the mounted directories as root. Before the runner
+//! works on them from the host, and once more when the job ends, a helper container hands
+//! them back to the runner's user ([`reclaim_run`]): `chown`, and set-user-ID and
+//! set-group-ID bits cleared, so no file the job planted runs with another user's rights on
+//! the host. The helper is never the job's image or container (a job could replace its
+//! `chown`): it runs a pinned image ([`HELPER_IMAGE`]) with no network, only the
+//! capabilities `chown` and `chmod` need, and nothing mounted but the three directories.
+//!
 //! The backend never uses `--privileged`, never mounts the Docker socket and never uses
 //! the host's network. Everything it creates is labelled `rbit.task` and `rbit.runner`;
 //! [`janitor`] removes what a crashed runner left behind. Each command line is built by a
@@ -39,6 +47,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write as _,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -58,6 +67,16 @@ pub const MOUNT_ROOT: &str = "/__w";
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 /// How long a short CLI command (a probe, `rm`) may take.
 const SHORT: Duration = Duration::from_secs(120);
+/// The `busybox` image, multi-platform, for [`reclaim_run`] (`[container] helper_image`).
+pub const HELPER_IMAGE: &str = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e";
+/// How long handing a task's files back may take: a pull, then a walk of the workspace.
+const RECLAIM_TIMEOUT: Duration = Duration::from_mins(10);
+/// What the helper runs, with the owner as `$1`: `chown` without following links, the
+/// set-ID bits off everything but links (`chown` clears them on executables only), and
+/// every directory open to its owner, so the runner can read and remove it.
+const RECLAIM_SCRIPT: &str = "chown -hR \"$1\" /r/w /r/t /r/f \
+    && find /r/w /r/t /r/f -xdev ! -type l -perm /6000 -exec chmod ug-s {} + \
+    && find /r/w /r/t /r/f -xdev -type d ! -perm -700 -exec chmod u+rwx {} +";
 
 /// A container to start: the job's or a service's.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +106,12 @@ pub struct Container {
     base_path: String,
     started: Vec<String>,
     network_created: bool,
+    /// Who [`reclaim_run`] hands the directories back to; none where ownership means
+    /// nothing to the engine's bind mounts.
+    owner: Option<String>,
+    /// Whether a container may have written the directories since they were last handed
+    /// back: a step or a Docker action ran, or the job container was resumed.
+    written: AtomicBool,
 }
 
 /// The names of a task's containers and network.
@@ -227,6 +252,61 @@ fn env_args(env_file: &Path, inherited: &[String]) -> Vec<String> {
         args.extend(["-e".into(), name.clone()]);
     }
     args
+}
+
+/// `run` of the helper that hands `dirs` back to `owner` (`uid:gid`) and clears their
+/// set-user-ID and set-group-ID bits: `image` (never the job's), no network, every
+/// capability dropped but the three `chown` and `chmod` need, a read-only root and nothing
+/// mounted but the directories.
+pub fn reclaim_run(task: TaskId, runner: &str, image: &str, dirs: &Dirs, owner: &str) -> Vec<String> {
+    let mut args = vec!["run".into(), "--rm".into()];
+    args.extend(task_labels(task, runner));
+    args.extend(["--network".into(), "none".into(), "--cap-drop".into(), "ALL".into()]);
+    for capability in ["CHOWN", "FOWNER", "DAC_OVERRIDE"] {
+        args.extend(["--cap-add".into(), capability.into()]);
+    }
+    args.extend(["--security-opt".into(), "no-new-privileges".into(), "--pids-limit".into(), "64".into()]);
+    args.extend(["--read-only".into(), "--user".into(), "0:0".into()]);
+    for (source, target) in [(&dirs.workspace, "/r/w"), (&dirs.temp, "/r/t"), (&dirs.files, "/r/f")] {
+        args.extend(["--mount".into(), format!("type=bind,source={},target={target}", source.display())]);
+    }
+    args.extend(["--entrypoint".into(), "sh".into(), image.to_owned()]);
+    args.extend(["-c".into(), RECLAIM_SCRIPT.into(), "reclaim".into(), owner.to_owned()]);
+    args
+}
+
+/// Runs `command` (the engine's CLI) with the [`reclaim_run`] arguments `args`.
+pub async fn reclaim(mut command: Command, args: &[String]) -> Result<(), String> {
+    command.args(args);
+    let output = process::capture(command, None, RECLAIM_TIMEOUT).await.map_err(|error| error.to_string())?;
+    if output.success {
+        Ok(())
+    } else {
+        let detail = output.stderr.lines().chain(output.stdout.lines()).find(|line| !line.trim().is_empty()).unwrap_or_default();
+        Err(detail.trim().to_owned())
+    }
+}
+
+/// Who a task's files are handed back to, as the engine's containers name users: the
+/// runner's `uid:gid`, or `0:0` under a rootless engine, whose root is the runner's user.
+/// `None` on Windows, or when the engine does not answer.
+pub async fn file_owner(program: &Path) -> Option<String> {
+    if !cfg!(unix) {
+        return None;
+    }
+    let mut command = process::command(program);
+    command.args(["info", "--format", "{{json .}}"]);
+    let info = process::capture(command, None, SHORT).await.ok().filter(|info| info.success)?;
+    if rootless(&info.stdout) {
+        return Some("0:0".to_owned());
+    }
+    owner().await.map(|(uid, gid)| format!("{uid}:{gid}"))
+}
+
+/// Whether `info` (the engine's `info` as JSON) is a rootless engine's: Docker lists
+/// `name=rootless` among its security options, Podman says `"rootless": true`.
+fn rootless(info: &str) -> bool {
+    info.contains("name=rootless") || info.split_whitespace().collect::<String>().contains("\"rootless\":true")
 }
 
 /// `rm -f` of the task's containers.
@@ -392,6 +472,8 @@ impl Container {
             base_path: DEFAULT_PATH.to_owned(),
             started: Vec::new(),
             network_created: false,
+            owner: None,
+            written: AtomicBool::new(false),
         })
     }
 
@@ -495,6 +577,7 @@ impl Container {
         drop(env);
         self.run(reporter, &["start".to_owned(), self.names.job.clone()], &[]).await?;
         self.probe().await;
+        self.owner = file_owner(&self.program).await;
         Ok(())
     }
 
@@ -514,14 +597,39 @@ impl Container {
         }
     }
 
-    /// Freezes the job container's processes, while the runner works on its directories.
-    pub async fn pause(&self) -> Result<(), String> {
-        self.pause_command("pause").await
+    /// Freezes the job container's processes, while the runner works on its directories,
+    /// and hands those back to the runner's user if a container wrote them since.
+    pub async fn pause(&self, reporter: &Reporter) -> Result<(), String> {
+        self.pause_command("pause").await?;
+        self.reclaim(reporter).await;
+        Ok(())
     }
 
-    /// Lets the job container's processes go on.
+    /// Notes that a container (a step's, a Docker action's) may have written the task's
+    /// directories.
+    pub fn wrote(&self) {
+        self.written.store(true, Ordering::SeqCst);
+    }
+
+    /// Hands the directories back ([`reclaim_run`]) if a container wrote them since the
+    /// last time; a failure is a warning, and the next pause tries again.
+    async fn reclaim(&self, reporter: &Reporter) {
+        let Some(owner) = &self.owner else { return };
+        if !self.written.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let args = reclaim_run(self.names.task, &self.names.runner, &self.config.helper_image, &self.dirs, owner);
+        if let Err(error) = reclaim(self.cli(), &args).await {
+            self.written.store(true, Ordering::SeqCst);
+            reporter.log(&format!("##[warning]cannot hand the task's files back to the runner's user: {error}"));
+        }
+    }
+
+    /// Lets the job container's processes go on; from then on they may write again.
     pub async fn resume(&self) -> Result<(), String> {
-        self.pause_command("unpause").await
+        let resumed = self.pause_command("unpause").await;
+        self.wrote();
+        resumed
     }
 
     async fn pause_command(&self, verb: &str) -> Result<(), String> {
@@ -553,23 +661,16 @@ impl Container {
         let env = EnvFile::write(&self.private.join(format!("step-{}.env", crate::client::idempotency_key())), &step.env)?;
         let mut command = self.cli_with(&env.inherited);
         command.args(step_exec(&self.names, step, env.path(), &env.names()));
+        self.wrote();
         Ok((command, env))
     }
 
-    /// Hands the mounted directories back to the runner's user (a rootful engine's steps
-    /// write them as root), then removes the containers and the network.
+    /// Removes the containers, hands the mounted directories back to the runner's user
+    /// (once nothing of the job's runs, nothing can race that), then removes the network.
     pub async fn stop(&self, reporter: &Reporter) {
         if self.started.contains(&self.names.job) {
             // In case a built-in step was interrupted while the container was paused.
             let _ = self.resume().await;
-        }
-        if self.started.contains(&self.names.job)
-            && let Some((uid, gid)) = owner().await
-        {
-            let mut command = self.cli();
-            let owner = format!("{uid}:{gid}");
-            command.args(["exec", &self.names.job, "chown", "-R", &owner, &self.view.workspace, &self.view.temp, &self.view.files]);
-            let _ = process::capture(command, None, SHORT).await;
         }
         if !self.started.is_empty() {
             let mut command = self.cli();
@@ -578,6 +679,7 @@ impl Container {
                 reporter.log(&format!("##[warning]cannot remove the task's containers: {error}"));
             }
         }
+        self.reclaim(reporter).await;
         if self.network_created {
             let mut command = self.cli();
             command.args(["network", "rm", &self.names.network]);
@@ -733,6 +835,35 @@ mod tests {
         }
         drop(file);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_pinned_helper_with_no_network_hands_the_files_back() {
+        let args = reclaim_run(TaskId(42), "build-1", HELPER_IMAGE, &dirs(), "1000:1000");
+        let line = args.join(" ");
+        for part in [
+            "run --rm --label rbit.task=42 --label rbit.runner=build-1",
+            "--network none --cap-drop ALL --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE",
+            "--security-opt no-new-privileges --pids-limit 64 --read-only --user 0:0",
+            "--mount type=bind,source=/work/tasks/42/workspace,target=/r/w",
+            "--mount type=bind,source=/work/tasks/42/temp,target=/r/t",
+            "--mount type=bind,source=/work/tasks/42/files,target=/r/f",
+        ] {
+            assert!(line.contains(part), "{part:?} missing from {line}");
+        }
+        let entrypoint = args.iter().position(|arg| arg == "--entrypoint").unwrap();
+        assert_eq!(args[entrypoint..entrypoint + 4], ["--entrypoint", "sh", HELPER_IMAGE, "-c"]);
+        assert_eq!(args[entrypoint + 5..], ["reclaim", "1000:1000"], "the owner is an argument, never part of the script");
+        assert!(HELPER_IMAGE.contains("@sha256:"), "pinned by digest");
+        assert!(!line.contains("privileged") && !line.contains("docker.sock") && !line.contains("--network host"));
+    }
+
+    #[test]
+    fn rootless_engines_are_told_apart() {
+        assert!(rootless(r#"{"SecurityOptions":["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]}"#));
+        assert!(rootless(r#"{"host":{"security":{"rootless": true,"selinuxEnabled":false}}}"#));
+        assert!(!rootless(r#"{"SecurityOptions":["name=seccomp,profile=builtin","name=cgroupns"]}"#));
+        assert!(!rootless(r#"{"host":{"security":{"rootless":false}}}"#));
     }
 
     #[test]
