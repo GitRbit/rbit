@@ -156,8 +156,14 @@ async fn untrusted_runs_meet_their_concurrency_group_only_when_approved() {
     let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
     assert_eq!(store.find_run(repo, first.id).await.unwrap().unwrap().status, Status::AwaitingApproval, "an awaiting run cancels nothing");
 
-    // A writer's trusted run of the same pull request is in another group.
-    let trusted = fixture
+    let writer = fixture.repo(&fixture.carol).await;
+    let approved = fixture.actions().approve(&fixture.carol, &writer, second.id, false).await.unwrap();
+    assert_eq!(approved.status, Status::Waiting);
+    assert_eq!(store.find_run(repo, first.id).await.unwrap().unwrap().status, Status::Cancelled, "approval applies cancel-in-progress");
+
+    // A writer's push to the fork's head skips the wait but stays untrusted, in the
+    // pull request's own namespace.
+    let pushed = fixture
         .actions()
         .handle_pull_request(
             repo,
@@ -168,13 +174,8 @@ async fn untrusted_runs_meet_their_concurrency_group_only_when_approved() {
         .await
         .unwrap()
         .remove(0);
-    assert_eq!((trusted.concurrency_group.as_deref(), trusted.status), (Some("ci-1"), Status::Waiting));
-
-    let writer = fixture.repo(&fixture.carol).await;
-    let approved = fixture.actions().approve(&fixture.carol, &writer, second.id, false).await.unwrap();
-    assert_eq!(approved.status, Status::Waiting);
-    assert_eq!(store.find_run(repo, first.id).await.unwrap().unwrap().status, Status::Cancelled, "approval applies cancel-in-progress");
-    assert_eq!(store.find_run(repo, trusted.id).await.unwrap().unwrap().status, Status::Waiting, "never another group");
+    assert_eq!((pushed.concurrency_group.as_deref(), pushed.status, pushed.trusted), (Some("pr-1/ci-1"), Status::Waiting, false));
+    assert_eq!(store.find_run(repo, second.id).await.unwrap().unwrap().status, Status::Cancelled, "the newer run cancels the approved one");
 }
 
 #[tokio::test]

@@ -406,7 +406,7 @@ impl ActionsService {
             return Ok(false);
         }
         let author = self.pull_author(repo.repo.id, run).await?.map(|author| author.id);
-        let trust = self.classify_pull_request(repo, run.actor, author).await?;
+        let trust = self.classify_pull_request(repo, run.actor, author, run.is_fork).await?;
         Ok(matches!(trust, RunTrust::Untrusted { awaits_approval: true }))
     }
 

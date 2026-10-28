@@ -131,6 +131,19 @@ async fn trigger_filters_decide_which_pushes_start_runs() {
 }
 
 #[tokio::test]
+async fn a_force_push_of_an_unrelated_history_passes_paths_filters() {
+    let fixture = Fixture::new().await;
+    let docs = workflow("Docs", "{ push: { paths: ['docs/**'] } }");
+    let source = user_push(&fixture);
+    push(&fixture, &[(".forgejo/workflows/docs.yml", &docs)], "Add the workflow", "refs/heads/main", source).await;
+    // A new root commit shares nothing with what main held: what changed is unknown.
+    crate::actions_fixture::git(&fixture.work, &["checkout", "-q", "--orphan", "rewrite"]);
+    let runs =
+        push(&fixture, &[(".forgejo/workflows/docs.yml", &docs), ("docs/new.md", "# New\n")], "Rewrite", "refs/heads/main", source).await;
+    assert_eq!(runs.iter().map(|run| run.workflow_name.as_str()).collect::<Vec<_>>(), ["Docs"]);
+}
+
+#[tokio::test]
 async fn one_push_of_several_refs_starts_a_run_per_ref() {
     let fixture = Fixture::new().await;
     fixture.commit(&[(CI, &workflow("CI", "push"))], "CI");

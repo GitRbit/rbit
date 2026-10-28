@@ -101,7 +101,7 @@ async fn synchronize_is_judged_by_whoever_pushed_the_new_head() {
     let fixture = Box::pin(fixture()).await;
     let fork = open(&fixture, &fixture.bob, "bob:fix", "From a fork").await;
     let runs = event(&fixture, fork, &fixture.carol, synchronize(PushSource::User(fixture.carol.id()))).await;
-    assert_eq!((runs[0].trusted, runs[0].status), (true, Status::Waiting), "a writer pushed the head");
+    assert_eq!((runs[0].trusted, runs[0].status), (false, Status::Waiting), "a writer pushed: no wait, but a fork's head gets no secrets");
     let runs = event(&fixture, fork, &fixture.bob, synchronize(PushSource::User(fixture.bob.id()))).await;
     assert_eq!((runs[0].trusted, runs[0].status), (false, Status::AwaitingApproval));
     let repo = fixture.repo(&fixture.alice).await.repo.repo.id;
@@ -171,7 +171,7 @@ async fn the_trust_table() {
                     ];
                     for (who, actor, trusted, skips_wait) in cases {
                         let expected = if trusted { RunTrust::Trusted } else { RunTrust::Untrusted { awaits_approval: !skips_wait } };
-                        let got = fixture.actions().classify_pull_request(&owned, actor, Some(author.id())).await.unwrap();
+                        let got = fixture.actions().classify_pull_request(&owned, actor, Some(author.id()), false).await.unwrap();
                         assert_eq!(
                             got,
                             expected,
@@ -184,8 +184,10 @@ async fn the_trust_table() {
         }
         fixture.database.admin().set_suspended(author.id(), false).await.unwrap();
     }
-    let gone = fixture.actions().classify_pull_request(&owned, None, None).await.unwrap();
+    let gone = fixture.actions().classify_pull_request(&owned, None, None, false).await.unwrap();
     assert_eq!(gone, RunTrust::Untrusted { awaits_approval: true }, "a deleted author is nobody");
+    let forked = fixture.actions().classify_pull_request(&owned, Some(alice.id()), Some(bob.id()), true).await.unwrap();
+    assert_eq!(forked, RunTrust::Untrusted { awaits_approval: false }, "an admin's push to a fork's head grants no secrets");
 }
 
 #[tokio::test]

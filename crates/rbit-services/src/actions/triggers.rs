@@ -266,7 +266,7 @@ impl ActionsService {
         }
         // The author for everything but `synchronize`, whose actor pushed the new head.
         let cause = pusher.unwrap_or(thread.author);
-        let trust = self.classify_pull_request(&owned, cause, thread.author).await?;
+        let trust = self.classify_pull_request(&owned, cause, thread.author, pull.is_cross_repository()).await?;
 
         let reader = self.reader(&owned);
         let reference = format!("refs/pull/{number}/head");
@@ -532,7 +532,9 @@ pub(super) fn changed_paths(handle: &Handle, reader: &RepositoryReader, base: Op
             return None;
         }
     };
-    if comparison.files.len() > MAX_CHANGED_PATHS {
+    // Without a merge base (a force push of an unrelated history) the comparison lists
+    // nothing although files changed: they are unknown.
+    if comparison.files.len() > MAX_CHANGED_PATHS || comparison.merge_base.is_none() {
         return None;
     }
     Some(comparison.files.into_iter().flat_map(|file| iter::once(file.path).chain(file.old_path)).collect())

@@ -679,6 +679,9 @@ false. Every `pull_request` run is classified when it is created:
 - **Trusted** when the actor who caused the event has **write access to the base repository
   now**: the author for `opened`/`reopened`/`ready_for_review`/`edited`, the **pusher** of the
   new head for `synchronize` (from the push that moved the head; unknown pusher ⇒ untrusted).
+  A **fork's** pull request is never trusted, as on GitHub: its head holds commits from
+  outside the repository whoever pushed last, so a writer causing the event only skips the
+  approval wait.
 - Otherwise **untrusted** — this covers fork pull requests *and* same-repository pull
   requests from readers or from former writers. An untrusted run always gets a **read-only
   token, no secrets and no variables**, whoever approves it.

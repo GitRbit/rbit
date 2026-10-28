@@ -7,6 +7,8 @@
 //!   clicked, so closing a fork's pull request cannot run its code with secrets — and the
 //!   pusher of the new head for `synchronize` (unknown for a deploy key: untrusted).
 //! * Access is read now, not when the pull request was opened: a former writer is a reader.
+//! * A fork's pull request is never trusted: its head holds commits from outside the
+//!   repository whoever pushed last. A writer causing the event only skips the wait.
 //! * An untrusted run gets a read-only token, no secrets and no variables
 //!   (`Run::trusted == false`), whoever approves it. It waits for approval unless its author
 //!   is vouched for — a trusted user of the repository, or the author of a merged pull
@@ -27,12 +29,14 @@ use crate::{ServiceError, repositories::viewer_grants};
 
 impl ActionsService {
     /// How a `pull_request` run of `repo` may run: `actor` caused the event (`None` when
-    /// unknown) and `author` opened the pull request (`None` once their account is gone).
+    /// unknown), `author` opened the pull request (`None` once their account is gone) and
+    /// `is_fork` says its head is in another repository.
     pub async fn classify_pull_request(
         &self,
         repo: &OwnedRepository,
         actor: Option<AccountId>,
         author: Option<AccountId>,
+        is_fork: bool,
     ) -> Result<RunTrust, ServiceError> {
         let actor = match actor {
             Some(id) => self.triggering_actor(repo, id, author).await?,
@@ -42,7 +46,10 @@ impl ActionsService {
             Some(id) => self.author_standing(repo, id).await?,
             None => AuthorStanding::Unknown,
         };
-        Ok(classify_pull_request(actor, standing))
+        Ok(match classify_pull_request(actor, standing) {
+            RunTrust::Trusted if is_fork => RunTrust::Untrusted { awaits_approval: false },
+            trust => trust,
+        })
     }
 
     async fn triggering_actor(
