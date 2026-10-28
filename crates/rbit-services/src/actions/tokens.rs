@@ -74,6 +74,13 @@ impl TaskGrant {
     }
 
     // Actions: task tokens.
+    /// Whether it may read issues and pull requests and their comments: `issues` or
+    /// `pull-requests` at `read` or more.
+    pub fn can_read_issues(&self) -> bool {
+        self.permissions.issues >= PermissionLevel::Read || self.permissions.pull_requests >= PermissionLevel::Read
+    }
+
+    // Actions: task tokens.
     /// Whether it may comment on a thread of `kind`: an issue needs `issues: write`, a pull
     /// request `pull-requests: write` or `issues: write` (its conversation is an issue's).
     pub fn can_comment_on(&self, kind: rbit_core::IssueKind) -> bool {

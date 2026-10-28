@@ -111,7 +111,7 @@ async fn the_api_accepts_task_tokens_on_its_allowlist_only() {
     for (method, path) in [
         (Method::GET, "/api/v1/user"),
         (Method::GET, "/api/v1/user/repos"),
-        (Method::GET, "/api/v1/repos/alice/rocket/issues"),
+        (Method::POST, "/api/v1/repos/alice/rocket/issues"),
         (Method::POST, "/api/v1/repos/alice/rocket/forks"),
         (Method::GET, "/api/v1/repos/alice/rocket/hooks"),
         (Method::DELETE, "/api/v1/repos/alice/rocket"),
@@ -315,13 +315,31 @@ async fn tasks_that_may_comment_write_as_rbit_actions() {
     let stored = fixture.database.issues().find_comment(issue.id, id).await.unwrap().unwrap();
     assert_eq!((stored.author, stored.source), (None, rbit_core::CommentSource::Actions));
 
-    // Reading it back shows the bot too; editing it stays with no one.
-    assert_eq!(send(&fixture, Method::GET, &path, Some(&bearer), None).await.0, StatusCode::FORBIDDEN, "listing is not on the allowlist");
+    // Reading it back shows the bot too; no person may edit it.
     let thread = fixture.services.timeline.open(Some(&fixture.alice), repo.clone(), issue.number).await.unwrap();
     let (comment, author) = fixture.services.timeline.find_comment(&thread, id).await.unwrap();
     assert_eq!((comment.source, author.is_none()), (rbit_core::CommentSource::Actions, true));
     let edited = fixture.services.timeline.edit_comment(&fixture.alice, &thread, id, "mine now").await;
     assert!(matches!(edited, Err(rbit_services::ServiceError::Forbidden)), "{edited:?}");
+
+    // A comment bot: list the thread, find its own comment, edit it, delete it. Only rbit
+    // Actions' comments, never a person's.
+    let alices = fixture.services.timeline.comment(&fixture.alice, &thread, "a person's").await.unwrap();
+    let (status, listed) = send(&fixture, Method::GET, &path, Some(&bearer), None).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    let bodies: Vec<&str> = listed.as_array().unwrap().iter().filter_map(|comment| comment["body"].as_str()).collect();
+    assert_eq!(bodies, ["3% faster than main", "a person's"]);
+    let one = |id: i64| format!("/api/v1/repos/alice/rocket/issues/comments/{id}");
+    assert_eq!(send(&fixture, Method::GET, &one(id.0), Some(&bearer), None).await.0, StatusCode::OK);
+    let (status, json) = send(&fixture, Method::PATCH, &one(id.0), Some(&bearer), Some(json!({"body": "5% faster"}))).await;
+    assert_eq!(
+        (status, json["body"].as_str(), json["user"]["login"].as_str()),
+        (StatusCode::OK, Some("5% faster"), Some("rbit-actions[bot]"))
+    );
+    let (status, json) = send(&fixture, Method::PATCH, &one(alices.id.0), Some(&bearer), Some(json!({"body": "rewritten"}))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a person's comment: {json}");
+    assert_eq!(send(&fixture, Method::DELETE, &one(alices.id.0), Some(&bearer), None).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(send(&fixture, Method::DELETE, &one(id.0), Some(&bearer), None).await.0, StatusCode::NO_CONTENT);
 
     // Another repository's threads stay out of reach.
     assert_eq!(

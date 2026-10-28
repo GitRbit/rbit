@@ -1,7 +1,7 @@
 {
   "feature": "permissions-raise",
   "split": "test",
-  "why": "one job asks for `issues: write` above a read default; its sibling keeps the default",
+  "why": "one job asks for `issues: write` above a read default to comment; its sibling keeps the default",
   "setup": [
     {
       "http": {
@@ -9,6 +9,15 @@
         "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
         "body": {
           "default_workflow_permissions": "read"
+        }
+      }
+    },
+    {
+      "http": {
+        "method": "POST",
+        "path": "/repos/{owner}/{repo}/issues",
+        "body": {
+          "title": "bot thread"
         }
       }
     }
@@ -20,7 +29,7 @@
         "name": "triage",
         "conclusion": "success",
         "contains": [
-          "opened"
+          "commented"
         ]
       }
     },

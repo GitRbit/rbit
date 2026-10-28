@@ -341,7 +341,9 @@ the default branch are listed on the Actions tab even before they ever ran.
 their files (a release may create its tag from a branch); and commenting on issues (with
 `issues: write`) and pull requests (with `issues: write` or `pull-requests: write`).
 Statuses, releases, files and comments it writes show as `rbit-actions[bot]`, and a tag it
-creates starts no runs, as on GitHub. It cannot list or edit comments yet.
+creates starts no runs, as on GitHub. With `issues` or `pull-requests: read` it reads issues
+and their comments; with `write` it also edits and deletes the comments rbit Actions wrote
+(a person's comment stays theirs). It cannot open issues yet.
 Untrusted runs (forks, outside authors) get a read-only token.
 
 ## Permissions
@@ -410,7 +412,8 @@ to `workflow_run` and `workflow_job`.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
 - A workflow is identified by its file name in the API.
 - A job's log and an artifact are downloaded directly from the API, not through a redirect.
-- The workflow's token cannot list and edit comments yet.
+- The workflow's token edits and deletes only rbit Actions' own comments, where GitHub's may
+  change anyone's, and cannot open issues.
 
 ### Known limits of the container backend
 

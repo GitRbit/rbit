@@ -11,6 +11,15 @@
           "default_workflow_permissions": "write"
         }
       }
+    },
+    {
+      "http": {
+        "method": "POST",
+        "path": "/repos/{owner}/{repo}/issues",
+        "body": {
+          "title": "bot thread"
+        }
+      }
     }
   ],
   "expect": [

@@ -90,6 +90,12 @@ pub(super) async fn edit_comment(
     ApiJson(body): ApiJson<CommentBody>,
 ) -> ApiResult<Json<Value>> {
     let (ctx, id) = comment_thread(&state, &caller, &path).await?;
+    // Actions: task tokens. A workflow edits only the comments rbit Actions wrote.
+    if let Some(grant) = caller.task() {
+        let comment =
+            state.services.timeline.edit_comment_for_task(grant, &ctx, id, &body.body).await.map_err(|e| ApiError::service(e, "body"))?;
+        return Ok(Json(issue_json::comment(&comment, None, &ctx.issue, &ctx.repo.repo, base(&state))));
+    }
     let user = caller.require(TokenScope::Write)?;
     let comment = state.services.timeline.edit_comment(user, &ctx, id, &body.body).await.map_err(|e| ApiError::service(e, "body"))?;
     Ok(Json(issue_json::comment(&comment, Some(&user.account), &ctx.issue, &ctx.repo.repo, base(&state))))
@@ -98,6 +104,10 @@ pub(super) async fn edit_comment(
 /// `DELETE /repos/{owner}/{repo}/issues/comments/{id}`: its author or a moderator.
 pub(super) async fn delete_comment(State(state): State<AppState>, caller: Caller, Path(path): Path<IdPath>) -> ApiResult<StatusCode> {
     let (ctx, id) = comment_thread(&state, &caller, &path).await?;
+    if let Some(grant) = caller.task() {
+        state.services.timeline.delete_comment_for_task(grant, &ctx, id).await?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
     let user = caller.require(TokenScope::Write)?;
     state.services.timeline.delete_comment(user, &ctx, id).await?;
     Ok(StatusCode::NO_CONTENT)

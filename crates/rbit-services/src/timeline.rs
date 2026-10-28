@@ -292,6 +292,53 @@ impl TimelineService {
         Ok(comment)
     }
 
+    // Actions: task tokens.
+    /// Replaces the text of comment `id` for a workflow task: only a comment rbit Actions
+    /// wrote, on the task's own repository, with the permission commenting there needs.
+    pub async fn edit_comment_for_task(
+        &self,
+        grant: &TaskGrant,
+        ctx: &IssueContext,
+        id: CommentId,
+        body: &str,
+    ) -> Result<Comment, ServiceError> {
+        let store = self.ctx.database.issues();
+        let comment = self.task_comment(grant, ctx, id).await?;
+        let body = IssueText::comment(body)?;
+        if body == comment.body {
+            return Ok(comment);
+        }
+        let edited = store.edit_comment(id, &body, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
+        tracing::info!(repo = grant.repo.0, issue = ctx.issue.number.get(), task = grant.task.0, "comment edited by a workflow task");
+        self.publish_comment(ctx, id, None, CommentAction::Edited { previous_body: comment.body.into() });
+        Ok(edited)
+    }
+
+    // Actions: task tokens.
+    /// Deletes comment `id` for a workflow task, as [`Self::edit_comment_for_task`] allows.
+    pub async fn delete_comment_for_task(&self, grant: &TaskGrant, ctx: &IssueContext, id: CommentId) -> Result<(), ServiceError> {
+        self.task_comment(grant, ctx, id).await?;
+        if let Some(snapshot) = self.ctx.database.issues().delete_comment(id).await? {
+            tracing::info!(repo = grant.repo.0, issue = ctx.issue.number.get(), task = grant.task.0, "comment deleted by a workflow task");
+            self.publish_comment(ctx, id, None, CommentAction::Deleted { snapshot });
+        }
+        Ok(())
+    }
+
+    /// Comment `id` if `grant` may change it: rbit Actions wrote it, on the task's own
+    /// repository, and the task may comment on this thread.
+    async fn task_comment(&self, grant: &TaskGrant, ctx: &IssueContext, id: CommentId) -> Result<Comment, ServiceError> {
+        if ctx.repo.repo.repo.id != grant.repo || !grant.can_comment_on(ctx.issue.kind) {
+            return Err(ServiceError::Forbidden);
+        }
+        let comment = self.ctx.database.issues().find_comment(ctx.issue.id, id).await?.ok_or(ServiceError::NotFound)?;
+        if comment.source != rbit_core::CommentSource::Actions {
+            return Err(ServiceError::Forbidden);
+        }
+        ctx.repo.ensure_writable()?;
+        Ok(comment)
+    }
+
     /// Replaces the text of the actor's own comment `id` on this thread.
     pub async fn edit_comment(&self, actor: &User, ctx: &IssueContext, id: CommentId, body: &str) -> Result<Comment, ServiceError> {
         let store = self.ctx.database.issues();

@@ -17,8 +17,10 @@
 //! A workflow task's token (`rbat_…`) is a caller kind of its own, never a user
 //! (`docs/design/actions.md` §11.3): it is accepted only on the endpoints of
 //! [`TASK_ROUTES`] — reading contents, refs, commits and releases; creating statuses, and
-//! creating, editing and deleting releases and their files with `contents: write`; commenting with `issues` or
-//! `pull-requests: write` — and everywhere else answers 403. It opens its own repository at
+//! creating, editing and deleting releases and their files with `contents: write`; reading
+//! issues and their comments with `issues` or `pull-requests: read`; commenting, and editing
+//! and deleting rbit Actions' own comments, with `issues` or `pull-requests: write` — and
+//! everywhere else answers 403. It opens its own repository at
 //! its grant and other public ones read-only, writes only to its own, and is re-checked on
 //! every request. With Actions disabled it is refused before anything is looked up.
 #![allow(unknown_lints, clippy::unused_async_trait_impl)]
@@ -60,6 +62,8 @@ pub enum TaskNeed {
     ContentsWrite,
     /// `issues: write` or `pull-requests: write`, on its own repository.
     Comment,
+    /// `issues: read` or `pull-requests: read`, on its own repository.
+    IssuesRead,
 }
 
 impl TaskNeed {
@@ -68,12 +72,13 @@ impl TaskNeed {
             Self::Read => true,
             Self::ContentsWrite => grant.contents().can_write(),
             Self::Comment => grant.can_comment(),
+            Self::IssuesRead => grant.can_read_issues(),
         }
     }
 
     /// Whether the endpoint changes the repository, which a task may only do to its own.
     fn writes(self) -> bool {
-        !matches!(self, Self::Read)
+        matches!(self, Self::ContentsWrite | Self::Comment)
     }
 }
 
@@ -102,6 +107,14 @@ pub const TASK_ROUTES: &[(ApiMethod, &str, TaskNeed)] = &[
     (ApiMethod::Delete, "/repos/{owner}/{repo}/releases/{release_id}", TaskNeed::ContentsWrite),
     (ApiMethod::Delete, "/repos/{owner}/{repo}/releases/assets/{asset_id}", TaskNeed::ContentsWrite),
     (ApiMethod::Post, "/repos/{owner}/{repo}/issues/{number}/comments", TaskNeed::Comment),
+    // Actions: task tokens. What comment bots do: find the thread and their own comment, then
+    // edit or delete it (only comments rbit Actions wrote, `TimelineService::edit_comment_for_task`).
+    (ApiMethod::Get, "/repos/{owner}/{repo}/issues", TaskNeed::IssuesRead),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/issues/{number}", TaskNeed::IssuesRead),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/issues/{number}/comments", TaskNeed::IssuesRead),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/issues/comments/{id}", TaskNeed::IssuesRead),
+    (ApiMethod::Patch, "/repos/{owner}/{repo}/issues/comments/{id}", TaskNeed::Comment),
+    (ApiMethod::Delete, "/repos/{owner}/{repo}/issues/comments/{id}", TaskNeed::Comment),
 ];
 
 /// What `method path` (a route of [`super::table`]) needs of a task; `None` when tasks may

@@ -8,13 +8,13 @@ jobs:
       - shell: bash
         env: {TOKEN: '${{ github.token }}'}
         run: |
-          curl -sSf -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues" -d '{"title":"triage"}' > /dev/null
-          echo opened
+          curl -sSf -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/1/comments" -d '{"body":"triaged"}' > /dev/null
+          echo commented
   reader:
     runs-on: self-hosted
     steps:
       - shell: bash
         env: {TOKEN: '${{ github.token }}'}
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues" -d '{"title":"no"}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/1/comments" -d '{"body":"no"}')
           echo "refused $code"
