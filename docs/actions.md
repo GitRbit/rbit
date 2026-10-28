@@ -114,7 +114,8 @@ must not silently change what a job does.
 - **Job that calls a workflow:** `name`, `uses`, `with`, `secrets` (or `secrets: inherit`),
   `strategy`, `needs`, `if`, `permissions` (see [Reusable workflows](#reusable-workflows)).
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
-  `outputs`, `timeout-minutes` (default 360), `continue-on-error`, `concurrency`,
+  `outputs`, `timeout-minutes` (default 360, capped by `[actions] endless_timeout_seconds`,
+  3 hours unless set higher), `continue-on-error`, `concurrency`,
   `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `environment`
   (a name, or `{name, url}`), `container`
   (`image`, `env`, `credentials`, `options`, `volumes`), `services` (`image`, `env`,
@@ -225,7 +226,7 @@ Any other `uses:` is an action rbit-runner fetches and runs, as GitHub's runner 
 
 - `owner/repo@ref` or `owner/repo/path@ref` (`actions/setup-node@v4`,
   `github/codeql-action/init@v3`, or pinned: `actions/setup-python@<sha>`) is fetched with
-  `git` from the runner's own rbit instance, so a runner depends on nothing outside it:
+  `git` from the runner's own rbit instance, so actions need nothing outside it:
   mirror the actions your workflows use there as public repositories (a pull mirror of
   `https://github.com/actions/setup-node` named `actions/setup-node`, kept current by the
   mirror's schedule). `[actions] url = "https://github.com"` in `runner.toml` fetches them
@@ -445,6 +446,8 @@ to `workflow_run` and `workflow_job`.
   have no effect: there is no OIDC token (`id-token: write`), for instance.
 - Runner groups (`runs-on: {group: …}`), `cancel-timeout-minutes` and `snapshot` are
   refused with a readable error.
+- A job runs at most `[actions] endless_timeout_seconds` (3 hours by default), where GitHub
+  allows 6 hours; raise it for longer jobs.
 - Artifact names may use letters, digits, `.`, `_` and `-` only; GitHub also allows spaces
   and most punctuation.
 - Actions are fetched when their step comes, not all at the start of the job, so an

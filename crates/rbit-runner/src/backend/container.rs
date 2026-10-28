@@ -371,6 +371,9 @@ pub fn build_limits(help: &str, config: &ContainerConfig) -> (Vec<String>, Vec<&
     if let Some(memory) = &config.memory {
         if takes("--memory") {
             args.extend(["--memory".into(), memory.clone()]);
+            if takes("--memory-swap") {
+                args.extend(["--memory-swap".into(), memory.clone()]);
+            }
         } else {
             missing.push("memory");
         }

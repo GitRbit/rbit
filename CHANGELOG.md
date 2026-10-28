@@ -63,7 +63,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Upgrade notes
 
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
-  and comments, step summaries, the Actions permissions and owner policies, the
+  and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
   environment wait timers. Nothing changes until an administrator enables Actions; with it off no Actions
   table is written and `<data_dir>/actions` is not created.

@@ -457,10 +457,16 @@ fn reads_needs(job: &Job) -> bool {
     texts.iter().any(|text| mentions_needs(text))
 }
 
-/// Whether `text` has an expression that reads the `needs` context (names ignore case).
+/// Whether `text` has an expression that reads the `needs` context (names ignore case); a
+/// text that does not parse (a matrix's JSON, quotes escaped) is searched instead.
 fn mentions_needs(text: &str) -> bool {
-    let text = text.to_ascii_lowercase();
-    text.contains("${{") && (text.contains("needs.") || text.contains("needs["))
+    if !text.contains("${{") {
+        return false;
+    }
+    match Template::parse(text) {
+        Ok(template) => template.contexts().contains(&"needs"),
+        Err(_) => text.to_ascii_lowercase().contains("needs"),
+    }
 }
 
 /// Whether a job's `strategy` reads `needs`.
@@ -474,16 +480,20 @@ fn strategy_reads_needs(job: &Job) -> bool {
         .any(mentions_needs)
 }
 
+/// A job's `if:` as an expression (with or without `${{ }}`), `None` when it does not parse.
+fn condition_expr(condition: &str) -> Option<crate::expr::Expr> {
+    let text = condition.trim();
+    if text.contains("${{") { Template::parse(text).ok()?.as_single_expr().cloned() } else { crate::expr::Expr::parse(text).ok() }
+}
+
 /// Whether `condition` calls `success()`, `failure()`, `always()` or `cancelled()`.
 fn has_status_function(condition: &str) -> bool {
-    let condition = condition.to_ascii_lowercase();
-    ["success(", "failure(", "always(", "cancelled("].iter().any(|function| condition.contains(function))
+    condition_expr(condition).is_some_and(|expr| expr.uses_status())
 }
 
 /// Whether a job's `if:` reads `matrix` or `strategy`.
 fn reads_matrix(condition: &str) -> bool {
-    let condition = condition.to_ascii_lowercase();
-    condition.contains("matrix") || condition.contains("strategy")
+    condition_expr(condition).is_some_and(|expr| expr.contexts().iter().any(|name| matches!(*name, "matrix" | "strategy")))
 }
 
 /// The blocked stand-in of a job planned once its needs are done ([`JobTemplate::deferred`]):
@@ -567,9 +577,11 @@ pub fn plan_deferred(
     let (mut templates, _) = planner.steps_job(workflow, job, run, &scope, expansion)?;
     // The stand-in's decision stands for the planned jobs, unless their `if:` reads the
     // matrix they only now have: then each decides its own.
+    // A stand-in that ran past a failed need (`if: failure()`) must not be gated by
+    // `success()` again: its planned jobs are decided with `always()`.
     for template in &mut templates {
         if !template.condition.as_deref().is_some_and(reads_matrix) {
-            template.condition = None;
+            template.condition = Some("always()".to_owned());
         }
     }
     Ok(templates)

@@ -884,7 +884,7 @@ about inputs the action does not declare, as GitHub does.
 
 On the runner (`rbit-runner::steps::action`):
 
-- **Fetching.** `[actions] url` (default `https://github.com`) with `git`, with no credential
+- **Fetching.** `[actions] url` (default: the runner's own rbit instance) with `git`, with no credential
   (the task token never leaves for the action source), only that URL's scheme, and no hook.
   A tag or branch is resolved with `ls-remote` (a peeled tag first); the commit is fetched
   shallowly, checked, stripped of `.git` and kept under `<work_dir>/actions/<owner>/<repo>/<sha>`.

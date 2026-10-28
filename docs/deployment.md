@@ -586,7 +586,12 @@ secrets and no variables, and wait for a writer's approval. Instance runners (re
 `instance_runners_for_all` is set.
 
 **Network.** Runners connect to rbit over HTTPS (plain HTTP only with `--insecure-http`, for a
-server on the same machine). rbit makes no outbound connections for Actions.
+server on the same machine). rbit makes no outbound connections of its own for Actions
+(webhooks subscribed to `workflow_run` and `workflow_job` are sent like any other). A runner
+fetches actions from its rbit instance unless `[actions] url` names another, downloads
+Node.js from `nodejs.org` for JavaScript actions unless `[actions] node` names a local one,
+and pulls container images (its `busybox` helper included, `[container] helper_image`) from
+their registries.
 
 **Storage.** Job logs (gzipped once a job ends) and artifacts live under `actions/` in the data
 directory and are not backed up; the sweeper deletes them after their retention and keeps the

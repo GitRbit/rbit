@@ -160,7 +160,8 @@ pub async fn execute(
                     reporter.log(&annotation);
                 }
             }
-            Line::AddMatcher(seen) if !host => pending_matchers.push(seen),
+            Line::AddMatcher(seen) if !host => pending_matchers.push((seen, true)),
+            Line::RemoveMatcher(owner) if !host => pending_matchers.push((owner, false)),
             Line::AddMatcher(seen) => match read_matcher(&seen, &view, &dirs, host).and_then(|text| matchers.add(&text)) {
                 Ok(owners) => reporter.log(&format!("Added matchers: {}", owners.join(", "))),
                 Err(error) => reporter.log(&format!("##[warning]cannot add the problem matcher {seen}: {error}")),
@@ -215,7 +216,7 @@ pub async fn execute(
 }
 
 /// Reads a container job's matcher files `pending` with its container paused.
-async fn read_matchers_paused(job: &Job, matchers: &mut crate::matchers::Matchers, pending: Vec<String>) {
+async fn read_matchers_paused(job: &Job, matchers: &mut crate::matchers::Matchers, pending: Vec<(String, bool)>) {
     if pending.is_empty() {
         return;
     }
@@ -224,14 +225,23 @@ async fn read_matchers_paused(job: &Job, matchers: &mut crate::matchers::Matcher
         return;
     }
     let (view, dirs) = (job.backend.view(), &job.dirs);
-    for seen in pending {
+    // Adds (`true`) and removes, in the order the step printed them.
+    for (seen, add) in pending {
+        if !add {
+            matchers.remove(&seen);
+            continue;
+        }
         match read_matcher(&seen, view, dirs, false).and_then(|text| matchers.add(&text)) {
             Ok(owners) => job.reporter.log(&format!("Added matchers: {}", owners.join(", "))),
             // The file is read on the host: what it holds is never echoed.
             Err(_) => job.reporter.log(&format!("##[warning]cannot add the problem matcher {seen}")),
         }
     }
-    let _ = job.backend.resume().await;
+    if job.backend.resume().await.is_err()
+        && let Err(error) = job.backend.resume().await
+    {
+        job.reporter.log(&format!("##[error]cannot resume the job container: {error}"));
+    }
 }
 
 /// Reads the matcher file a step named `seen`, as the runner host finds it: a path in the

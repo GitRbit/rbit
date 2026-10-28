@@ -106,3 +106,13 @@ async fn an_if_that_reads_the_matrix_is_decided_per_combination() {
     let builds: Vec<_> = listed.iter().filter(|(key, ..)| key == "build").map(|(_, name, status)| (name.as_str(), *status)).collect();
     assert_eq!(builds, [("build (apple)", Status::Waiting), ("build (pear)", Status::Skipped)], "{listed:?}");
 }
+
+#[tokio::test]
+async fn a_failure_handler_planned_from_needs_runs_after_a_failure() {
+    let fixture = Fixture::new().await;
+    let workflow = "on: push\njobs:\n  setup:\n    runs-on: x\n    steps: [{run: x}]\n  notify:\n    needs: setup\n    if: failure()\n    runs-on: ${{ needs.setup.outputs.label || 'x' }}\n    steps: [{run: x}]\n";
+    let run = pushed(&fixture, &[(".rbit/workflows/ci.yml", workflow)]).await;
+    run_next(&fixture, &["x"], 1, &[], Status::Failure).await;
+    let listed = jobs(&fixture, &run).await;
+    assert_eq!(listed.iter().find(|(key, ..)| key == "notify").unwrap().2, Status::Waiting, "{listed:?}");
+}

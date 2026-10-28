@@ -2,8 +2,8 @@
 //!
 //! A step's `uses:` names one of three kinds of action ([`ActionSource`]):
 //!
-//! * `owner/repo[/path]@ref`: fetched with `git` from `[actions] url` (`https://github.com`
-//!   by default), without the task's token or any other credential. The reference is
+//! * `owner/repo[/path]@ref`: fetched with `git` from `[actions] url` (the runner's own
+//!   rbit instance by default), without the task's token or any other credential. The reference is
 //!   resolved to its commit first (`git ls-remote`; a 40-hex reference is used as it is),
 //!   and the action is kept at that commit under `<work_dir>/actions/<owner>/<repo>/<sha>`,
 //!   so a moved tag is fetched again and a pinned commit never is. The log names the commit.
