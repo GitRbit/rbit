@@ -8,7 +8,7 @@
 //! |---|---|---|
 //! | `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `ref`, `path`, `fetch-depth`, `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
 //! | `rbit/cache@v1` (also `/restore`, `/save`) | `actions/cache@v3` to `@v4` (also `/restore`, `/save`) | `key`, `path`, `restore-keys`, `fail-on-cache-miss` |
-//! | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite` |
+//! | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite`, `include-hidden-files`, `compression-level` |
 //! | `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple` |
 //!
 //! The aliases take any later major version too (`actions/checkout@v6`), and a commit SHA
@@ -73,12 +73,15 @@ const CACHE: [Input; 4] = [
     input("fail-on-cache-miss", Some("false"), InputKind::Boolean),
 ];
 const CACHE_SAVE: [Input; 2] = [required("key"), required("path")];
-const UPLOAD_ARTIFACT: [Input; 5] = [
+const UPLOAD_ARTIFACT: [Input; 7] = [
     input("name", Some("artifact"), InputKind::Text),
     required("path"),
     input("if-no-files-found", Some("warn"), InputKind::Choice(&["warn", "error", "ignore"])),
     input("retention-days", None, InputKind::Number(1)),
     input("overwrite", Some("false"), InputKind::Boolean),
+    // Actions: glob paths of the cache and artifacts.
+    input("include-hidden-files", Some("false"), InputKind::Boolean),
+    input("compression-level", Some("6"), InputKind::Choice(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])),
 ];
 const DOWNLOAD_ARTIFACT: [Input; 4] = [
     input("name", None, InputKind::Text),
@@ -448,7 +451,7 @@ mod tests {
             ("actions/cache/save@v4", with(&[("key", "k"), ("path", "p"), ("restore-keys", "r")]), "has no input `restore-keys`"),
             ("actions/upload-artifact@v4", with(&[("name", "x")]), "needs `with.path`"),
             ("actions/upload-artifact@v4", with(&[("path", "x"), ("retention-days", "0")]), "at least 1"),
-            ("actions/upload-artifact@v4", with(&[("path", "x"), ("compression-level", "9")]), "no input `compression-level`"),
+            ("actions/upload-artifact@v4", with(&[("path", "x"), ("compression-level", "10")]), "`compression-level` must be 0, 1"),
             ("actions/download-artifact@v4", with(&[("github-token", "x")]), "no input `github-token`"),
         ];
         for (uses, with, message) in refused {

@@ -15,11 +15,12 @@
 //! key that exists in the write scope is skipped. `rbit/cache` saves after the last step,
 //! only when the job succeeded and the key was not an exact hit.
 //!
-//! Paths are listed one per line. They are relative to the workspace or, on the host
-//! backend, start with `~/` for the runner user's home; container jobs can cache only
-//! what is inside the mounted workspace. Glob patterns and exclusions are not supported
-//! yet. Archives store symbolic links as links, never what they point to (and pipes and
-//! device nodes as such, never their content), and a restore never writes through a
+//! Paths are listed one per line, as paths or glob patterns with `!` exclusions, the
+//! syntax of GitHub's `@actions/glob` ([`rbit_workflow::glob`]). They are relative to the
+//! workspace or, on the host backend, start with `~/` for the runner user's home; container
+//! jobs can cache only what is inside the mounted workspace. Archives store symbolic links
+//! as links, never what they point to (and pipes and device nodes as such, never their
+//! content); selecting never walks into a link, and a restore never writes through a
 //! symbolic link or into anything but a new file: a job cannot use the cache to write
 //! outside the directories it names.
 
@@ -31,7 +32,7 @@ use std::{
     time::SystemTime,
 };
 
-use rbit_workflow::spec::BuiltinKind;
+use rbit_workflow::{glob::GlobSet, spec::BuiltinKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -212,38 +213,141 @@ impl Area {
     }
 }
 
-/// The `path` input's lines, resolved: each a root and a path inside it.
-pub fn resolve(lines: &[String], roots: &Roots, workspace_view: &str, container: bool) -> Result<Vec<(Area, PathBuf)>, String> {
+/// One line of a `path` input, resolved: the root it is under, its pattern relative to that
+/// root (`/`-separated; `**` for the root itself), and whether it excludes (`!`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathLine {
+    pub area: Area,
+    pub pattern: String,
+    pub exclude: bool,
+}
+
+/// The `path` input's lines, resolved and checked; nothing is read yet ([`select`] walks).
+/// A line is a path or a glob pattern (`rbit_workflow::glob`), relative to the workspace,
+/// below the job's view of it, or on the host backend `~/…` or an absolute path in the
+/// runner user's home.
+pub fn resolve(lines: &[String], roots: &Roots, workspace_view: &str, container: bool) -> Result<Vec<PathLine>, String> {
     let mut resolved = Vec::new();
     for line in lines {
-        if line.starts_with('!') || line.contains(['*', '?', '[']) {
-            return Err(format!("`{line}`: glob patterns and exclusions are not supported by rbit's cache yet; list the paths"));
-        }
-        let (area, relative) = if let Some(rest) = line.strip_prefix("~/").or_else(|| (line == "~").then_some("")) {
+        let (exclude, body) = match line.strip_prefix('!') {
+            Some(rest) => (true, rest.trim_start()),
+            None => (false, line.as_str()),
+        };
+        let (area, relative) = if let Some(rest) = body.strip_prefix("~/").or_else(|| (body == "~").then_some("")) {
             if container {
                 return Err(format!("`{line}`: container jobs can cache only paths inside the workspace"));
             }
             if roots.home.is_none() {
                 return Err(format!("`{line}`: the runner user has no home directory"));
             }
-            (Area::Home, PathBuf::from(rest))
-        } else if let Some(rest) = line.strip_prefix(workspace_view).filter(|rest| rest.is_empty() || rest.starts_with(['/', '\\'])) {
-            (Area::Workspace, PathBuf::from(rest.trim_start_matches(['/', '\\'])))
-        } else if Path::new(line).is_absolute() || line.starts_with('/') {
-            let inside = roots.home.as_ref().and_then(|home| Path::new(line).strip_prefix(home).ok().map(Path::to_path_buf));
+            (Area::Home, rest.to_owned())
+        } else if let Some(rest) = body.strip_prefix(workspace_view).filter(|rest| rest.is_empty() || rest.starts_with(['/', '\\'])) {
+            (Area::Workspace, rest.trim_start_matches(['/', '\\']).to_owned())
+        } else if Path::new(body).is_absolute() || body.starts_with('/') {
+            let inside = roots
+                .home
+                .as_ref()
+                .and_then(|home| Path::new(body).strip_prefix(home).ok().map(|rest| rest.to_string_lossy().into_owned()));
             match inside {
                 Some(rest) if !container => (Area::Home, rest),
-                _ => return Err(format!("`{line}` is outside the workspace; cache paths are relative to it")),
+                _ => return Err(format!("`{line}` is outside the workspace; paths are relative to it")),
             }
         } else {
-            (Area::Workspace, PathBuf::from(line))
+            (Area::Workspace, body.to_owned())
         };
-        if !relative.components().all(|component| matches!(component, Component::Normal(_) | Component::CurDir)) {
-            return Err(format!("`{line}` leaves its directory"));
-        }
-        resolved.push((area, relative));
+        let relative = relative.replace('\\', "/");
+        let pattern = if relative.split('/').all(|part| part.is_empty() || part == ".") { "**".to_owned() } else { relative };
+        GlobSet::compile([pattern.as_str()], false).map_err(|error| format!("`{line}`: {error}"))?;
+        resolved.push(PathLine { area, pattern, exclude });
     }
     Ok(resolved)
+}
+
+/// What [`select`] found: files (and links) below their roots, and the directories or
+/// files it searched, each pattern's literal start (an artifact's root is their least
+/// common ancestor).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Selection {
+    pub files: Vec<(Area, PathBuf)>,
+    pub search_paths: Vec<(Area, String)>,
+}
+
+/// The most files one `path` input selects.
+pub const MAX_SELECTED_FILES: usize = 500_000;
+
+/// The files `lines` select, GitHub's way: the last matching line decides, a directory brings
+/// what is in it, `!` excludes. Nothing is reached through a symbolic link: a link is a file
+/// of its own and never walked into. Names starting with a dot, and what is in such
+/// directories, are left out unless `include_hidden` (as `actions/upload-artifact` does;
+/// the cache keeps them).
+pub fn select(lines: &[PathLine], roots: &Roots, include_hidden: bool, case_insensitive: bool) -> Result<Selection, String> {
+    let mut selection = Selection::default();
+    for area in [Area::Workspace, Area::Home] {
+        let patterns: Vec<String> = lines
+            .iter()
+            .filter(|line| line.area == area)
+            .map(|line| if line.exclude { format!("!{}", line.pattern) } else { line.pattern.clone() })
+            .collect();
+        let globs = GlobSet::compile(patterns.iter().map(String::as_str), case_insensitive).map_err(|error| error.to_string())?;
+        if globs.is_empty() {
+            continue;
+        }
+        let Some(base) = root(area, roots) else { continue };
+        let mut found = std::collections::BTreeSet::new();
+        for search in globs.search_paths() {
+            selection.search_paths.push((area, search.clone()));
+            let relative = PathBuf::from(&search);
+            if !search.is_empty() && crosses_link(base, &relative) {
+                continue;
+            }
+            let hidden = |name: &str| !include_hidden && name.starts_with('.');
+            if relative.file_name().is_some_and(|name| hidden(&name.to_string_lossy())) {
+                continue;
+            }
+            let Ok(metadata) = fs::symlink_metadata(base.join(&relative)) else { continue };
+            if metadata.is_dir() {
+                walk(base, &relative, &search, &globs, &hidden, &mut found)?;
+            } else if globs.matches(&search) {
+                found.insert(relative);
+            }
+        }
+        selection.files.extend(found.into_iter().map(|path| (area, path)));
+        if selection.files.len() > MAX_SELECTED_FILES {
+            return Err(format!("the paths select more than {MAX_SELECTED_FILES} files"));
+        }
+    }
+    Ok(selection)
+}
+
+fn walk(
+    base: &Path,
+    dir: &Path,
+    name: &str,
+    globs: &GlobSet,
+    hidden: &dyn Fn(&str) -> bool,
+    found: &mut std::collections::BTreeSet<PathBuf>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(base.join(dir)).map_err(|error| format!("cannot list {}: {error}", base.join(dir).display()))?;
+    for entry in entries.flatten() {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if hidden(&file_name) {
+            continue;
+        }
+        let relative = dir.join(entry.file_name());
+        let text = if name.is_empty() { file_name } else { format!("{name}/{file_name}") };
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_dir() {
+            if globs.may_contain(&text) {
+                walk(base, &relative, &text, globs, hidden, found)?;
+            }
+        } else if globs.matches(&text) {
+            if found.len() >= MAX_SELECTED_FILES {
+                return Err(format!("the paths select more than {MAX_SELECTED_FILES} files"));
+            }
+            found.insert(relative);
+        }
+    }
+    Ok(())
 }
 
 fn root(area: Area, roots: &Roots) -> Option<&Path> {
@@ -256,8 +360,13 @@ fn root(area: Area, roots: &Roots) -> Option<&Path> {
 /// Writes the tar.gz of `resolved` to `out`; its size. Paths that do not exist are
 /// skipped; links are stored as links.
 pub(super) fn write_archive(out: &Path, resolved: &[(Area, PathBuf)], roots: &Roots) -> io::Result<u64> {
+    write_archive_at(out, resolved, roots, 1)
+}
+
+/// [`write_archive`] at gzip `level` (0 to 9).
+pub(super) fn write_archive_at(out: &Path, resolved: &[(Area, PathBuf)], roots: &Roots, level: u32) -> io::Result<u64> {
     let file = File::create(out)?;
-    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
+    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::new(level.min(9)));
     let mut builder = tar::Builder::new(encoder);
     builder.follow_symlinks(false);
     for (area, relative) in resolved {
@@ -430,11 +539,14 @@ pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Resu
         return Ok(());
     }
     let roots = roots(job);
-    let resolved = resolve(paths, &roots, &job.backend.view().workspace, matches!(job.backend, Backend::Container(_)))?;
-    let (store, key_owned, paths_owned) = (job.cache.clone(), key.to_owned(), paths.to_vec());
-    let size = tokio::task::spawn_blocking(move || store.save(repository, &scope, &key_owned, &paths_owned, &resolved, &roots))
-        .await
-        .map_err(|error| error.to_string())??;
+    let lines = resolve(paths, &roots, &job.backend.view().workspace, matches!(job.backend, Backend::Container(_)))?;
+    let (store, key_owned, paths_owned, windows) = (job.cache.clone(), key.to_owned(), paths.to_vec(), job.backend.windows());
+    let size = tokio::task::spawn_blocking(move || {
+        let selected = select(&lines, &roots, true, windows)?;
+        store.save(repository, &scope, &key_owned, &paths_owned, &selected.files, &roots)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     job.reporter.log(&format!("Saved the cache entry `{key}` ({size} bytes)"));
     Ok(())
 }
@@ -456,8 +568,9 @@ mod tests {
 
     fn save(store: &Store, roots: &Roots, scope: &str, key: &str, paths: &[&str]) -> u64 {
         let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
-        let resolved = resolve(&paths, roots, "/__w/app", false).unwrap();
-        store.save(5, scope, key, &paths, &resolved, roots).unwrap()
+        let lines = resolve(&paths, roots, "/__w/app", false).unwrap();
+        let selected = select(&lines, roots, true, false).unwrap();
+        store.save(5, scope, key, &paths, &selected.files, roots).unwrap()
     }
 
     #[test]
@@ -511,8 +624,8 @@ mod tests {
         assert!(!limited.entry(5, "s", "two").1.exists(), "the entry's metadata goes too");
         let tiny = store(dir.path(), 10);
         let paths = vec!["blob".to_owned()];
-        let resolved = resolve(&paths, &roots, "/__w/app", false).unwrap();
-        assert!(tiny.save(5, "s", "four", &paths, &resolved, &roots).unwrap_err().contains("more than cache.max_bytes"));
+        let selected = select(&resolve(&paths, &roots, "/__w/app", false).unwrap(), &roots, true, false).unwrap();
+        assert!(tiny.save(5, "s", "four", &paths, &selected.files, &roots).unwrap_err().contains("more than cache.max_bytes"));
     }
 
     #[test]
@@ -520,21 +633,94 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let roots = roots(dir.path());
         let lines = |list: &[&str]| list.iter().map(|line| (*line).to_owned()).collect::<Vec<_>>();
-        let ok = resolve(&lines(&["target", "/__w/app/node_modules", "~/.cargo/registry"]), &roots, "/__w/app", false).unwrap();
+        let ok = resolve(
+            &lines(&["target", "/__w/app/node_modules", "~/.cargo/registry", "!target/tmp", "**/*.rlib", "."]),
+            &roots,
+            "/__w/app",
+            false,
+        )
+        .unwrap();
+        let line = |area, pattern: &str, exclude| PathLine { area, pattern: pattern.to_owned(), exclude };
         assert_eq!(
             ok,
-            [(Area::Workspace, "target".into()), (Area::Workspace, "node_modules".into()), (Area::Home, PathBuf::from(".cargo/registry"))]
+            [
+                line(Area::Workspace, "target", false),
+                line(Area::Workspace, "node_modules", false),
+                line(Area::Home, ".cargo/registry", false),
+                line(Area::Workspace, "target/tmp", true),
+                line(Area::Workspace, "**/*.rlib", false),
+                line(Area::Workspace, "**", false),
+            ]
         );
         for (line, container, message) in [
-            ("../escape", false, "leaves"),
+            ("../escape", false, "leave"),
+            ("dist/../../x", false, "leave"),
             ("~/.cargo", true, "container jobs"),
-            ("**/node_modules", false, "glob"),
-            ("!target/tmp", false, "glob"),
+            ("dist/[abc", false, "not closed"),
             ("/etc", false, "outside the workspace"),
         ] {
             let error = resolve(&lines(&[line]), &roots, "/__w/app", container).unwrap_err();
             assert!(error.contains(message), "{line}: {error}");
         }
+    }
+
+    #[test]
+    fn selections_follow_githubs_globs() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = roots(dir.path());
+        let ws = &roots.workspace;
+        for file in [
+            "dist/a.zip",
+            "dist/a.zip.sha256",
+            "dist/b.txt",
+            "dist/sub/c.zip",
+            "dist/sub/skip.zip",
+            "dist/.env",
+            ".git/config",
+            "docs/readme.md",
+        ] {
+            let path = ws.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, file).unwrap();
+        }
+        let pick = |list: &[&str], hidden: bool| {
+            let lines: Vec<String> = list.iter().map(|line| (*line).to_owned()).collect();
+            let selected = select(&resolve(&lines, &roots, "/__w/app", false).unwrap(), &roots, hidden, false).unwrap();
+            let files: Vec<String> = selected.files.iter().map(|(_, path)| path.to_string_lossy().replace('\\', "/")).collect();
+            let search: Vec<String> = selected.search_paths.into_iter().map(|(_, path)| path).collect();
+            (files, search)
+        };
+        assert_eq!(pick(&["dist/*.zip*"], false), (vec!["dist/a.zip".into(), "dist/a.zip.sha256".into()], vec!["dist".into()]));
+        let (files, search) = pick(&["dist/**/*.zip", "!dist/sub/skip.zip", "docs/readme.md"], false);
+        assert_eq!(files, ["dist/a.zip", "dist/sub/c.zip", "docs/readme.md"]);
+        assert_eq!(search, ["dist", "docs/readme.md"]);
+        assert_eq!(
+            pick(&["."], false).0,
+            ["dist/a.zip", "dist/a.zip.sha256", "dist/b.txt", "dist/sub/c.zip", "dist/sub/skip.zip", "docs/readme.md"],
+            "no hidden files"
+        );
+        let (all, _) = pick(&["."], true);
+        assert!(all.contains(&".git/config".to_owned()) && all.contains(&"dist/.env".to_owned()), "{all:?}");
+        assert_eq!(pick(&["dist", "!dist/sub"], false).0, ["dist/a.zip", "dist/a.zip.sha256", "dist/b.txt"]);
+        assert_eq!(pick(&["nothing/**"], false).0, Vec::<String>::new());
+        assert_eq!(pick(&[".git"], false).0, Vec::<String>::new(), "a hidden search path is hidden too, as on GitHub");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn selections_never_walk_into_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = roots(dir.path());
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret"), "x").unwrap();
+        fs::create_dir_all(roots.workspace.join("dist")).unwrap();
+        std::os::unix::fs::symlink(&outside, roots.workspace.join("dist/link")).unwrap();
+        std::os::unix::fs::symlink(&outside, roots.workspace.join("via")).unwrap();
+        let lines = resolve(&["dist/**".to_owned(), "via/**".to_owned()], &roots, "/__w/app", false).unwrap();
+        let selected = select(&lines, &roots, true, false).unwrap();
+        let files: Vec<_> = selected.files.iter().map(|(_, path)| path.clone()).collect();
+        assert_eq!(files, [PathBuf::from("dist/link")], "the link itself, never what is behind it");
     }
 
     #[cfg(unix)]

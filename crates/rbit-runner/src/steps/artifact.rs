@@ -1,19 +1,23 @@
 //! The built-in `rbit/upload-artifact` and `rbit/download-artifact` (§12.2, §12.7), and
 //! their `actions/*` aliases.
 //!
-//! * Upload packs the `path` lines (inside the workspace, as for the cache) into one tar.gz
-//!   in the task's temp directory, then sends it with its SHA-256 through the task, with
-//!   `retention-days` and `overwrite`. `if-no-files-found` decides what nothing to upload
-//!   means: a warning (the default), an error, or nothing.
+//! * Upload packs the files the `path` lines select (paths or glob patterns inside the
+//!   workspace, `!` excluding: `cache::select`) into one tar.gz in the task's temp
+//!   directory, then sends it with its SHA-256 through the task, with `retention-days` and
+//!   `overwrite`. Names starting with a dot are left out unless `include-hidden-files`, as
+//!   in `actions/upload-artifact` v4.4 and later, so `path: .` never takes `.git` along.
+//!   `if-no-files-found` decides what nothing to upload means: a warning (the default), an
+//!   error, or nothing. `compression-level` is the gzip level.
 //! * Download fetches the run's artifacts — one by `name`, those matching `pattern` (`*` and
 //!   `?`), or all — checks each against its digest and unpacks it into `path` (the
 //!   workspace by default). Several artifacts each get a directory of their name unless
 //!   `merge-multiple` is set or one was asked for by name.
 //!
-//! Archives keep paths relative to the deepest directory holding every uploaded path (as
-//! `actions/upload-artifact` does: `path: dist` stores `dist`'s files at the top), and unpacking never writes outside the
-//! destination or through a link (`cache::extract`); a `path` that goes through a link is
-//! refused. The archives themselves are packed and downloaded into the task's private
+//! Archives keep paths relative to the root `actions/upload-artifact` uses: the least common
+//! ancestor of the lines' search paths (each pattern's literal start: `dist` for
+//! `dist/*.zip`), or the directory of a single file, so `path: dist` stores `dist`'s files
+//! at the top. Unpacking never writes outside the destination or through a link
+//! (`cache::extract`); a `path` that goes through a link is refused. The archives themselves are packed and downloaded into the task's private
 //! directory, which no container mounts, so a job cannot plant a link where one is written. Without a server (`rbit-runner exec`)
 //! both steps fail and say why.
 
@@ -28,7 +32,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     Inputs, Outcome,
-    cache::{Area, Roots, extract, lines, resolve, write_archive},
+    cache::{Area, Roots, Selection, extract, lines, resolve, select, write_archive_at},
 };
 use crate::{backend::Backend, job::Job, untrusted::crosses_link};
 
@@ -87,29 +91,54 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
     let container = matches!(job.backend, Backend::Container(_));
     let resolved = match resolve(&paths, &workspace_roots(job), &job.backend.view().workspace, container) {
         Ok(resolved) => resolved,
-        Err(error) => return job.fail(&error.replace("rbit's cache", "rbit's artifacts").replace("cache paths", "artifact paths")),
+        Err(error) => return job.fail(&error.replace("cache paths", "artifact paths")),
     };
+    if resolved.iter().any(|line| line.area != Area::Workspace) {
+        return job.fail("artifact paths are relative to the workspace");
+    }
     let workspace = workspace_roots(job);
-    if !resolved.iter().any(|(_, relative)| workspace.workspace.join(relative).exists()) {
-        let message = format!("no files were found for the artifact `{name}`");
+    let (hidden, windows) = (inputs.flag("include-hidden-files"), job.backend.windows());
+    let selected = {
+        let (resolved, workspace) = (resolved.clone(), workspace.clone());
+        tokio::task::spawn_blocking(move || select(&resolved, &workspace, hidden, windows)).await
+    };
+    let selected = match selected {
+        Ok(Ok(selected)) => selected,
+        Ok(Err(error)) => return job.fail(&format!("cannot find the artifact's files: {error}")),
+        Err(error) => return job.fail(&format!("cannot find the artifact's files: {error}")),
+    };
+    if selected.files.is_empty() {
+        let message = format!("No files were found with the provided path: {}. No artifacts will be uploaded.", paths.join(", "));
         return match inputs.get("if-no-files-found") {
             "error" => job.fail(&message),
             "ignore" => Outcome::success(BTreeMap::new()),
             _ => {
-                job.reporter.log(&format!("##[warning]{message}; nothing was uploaded"));
+                job.reporter.log(&format!("##[warning]{message}"));
                 Outcome::success(BTreeMap::new())
             }
         };
     }
-    let (roots, resolved) = archive_root(&workspace.workspace, resolved);
+    let (roots, files) = archive_root(&workspace.workspace, &selected);
+    let level = inputs.get("compression-level").parse().unwrap_or(6);
     let archive = match job.private_dir() {
         Ok(dir) => dir.join(format!("artifact-{}.tar.gz", crate::client::idempotency_key())),
         Err(error) => return job.fail(&format!("cannot pack the artifact: {error}")),
     };
+    job.reporter.log(&format!(
+        "Packing {} file(s) from `{}`",
+        files.len(),
+        if roots.workspace == workspace.workspace {
+            ".".to_owned()
+        } else {
+            roots.workspace.strip_prefix(&workspace.workspace).unwrap_or(&roots.workspace).to_string_lossy().replace('\\', "/")
+        }
+    ));
     let packed = {
-        let (archive, resolved, roots) = (archive.clone(), resolved.clone(), roots.clone());
-        tokio::task::spawn_blocking(move || write_archive(&archive, &resolved, &roots).and_then(|size| Ok((size, file_digest(&archive)?))))
-            .await
+        let (archive, files, roots) = (archive.clone(), files, roots.clone());
+        tokio::task::spawn_blocking(move || {
+            write_archive_at(&archive, &files, &roots, level).and_then(|size| Ok((size, file_digest(&archive)?)))
+        })
+        .await
     };
     let (size, digest) = match packed {
         Ok(Ok(packed)) => packed,
@@ -129,30 +158,23 @@ pub async fn upload(job: &mut Job, inputs: &Inputs) -> Outcome {
     }
 }
 
-/// The archive's root and `resolved` relative to it: the deepest directory holding every
-/// path that exists (a directory itself, a file its parent), as `actions/upload-artifact`
-/// does, so `path: dist` stores `dist`'s files at the top. The workspace when that
-/// directory is reached through a link.
-fn archive_root(workspace: &Path, resolved: Vec<(Area, PathBuf)>) -> (Roots, Vec<(Area, PathBuf)>) {
-    let mut common: Option<PathBuf> = None;
-    for (_, relative) in &resolved {
-        let source = workspace.join(relative);
-        let directory = if source.is_dir() {
-            relative.clone()
-        } else if source.exists() {
-            relative.parent().map(Path::to_path_buf).unwrap_or_default()
-        } else {
-            continue;
-        };
-        common = Some(match common {
-            None => directory,
-            Some(common) => common.components().zip(directory.components()).take_while(|(a, b)| a == b).map(|(a, _)| a).collect(),
-        });
-    }
-    let base = common.filter(|base| !crosses_link(workspace, base)).unwrap_or_default();
-    let resolved =
-        resolved.into_iter().filter_map(|(area, relative)| Some((area, relative.strip_prefix(&base).ok()?.to_path_buf()))).collect();
-    (Roots { workspace: workspace.join(&base), home: None }, resolved)
+/// The archive's root, as `actions/upload-artifact` finds it, and the selected files
+/// relative to it. With several search paths, their least common ancestor; with one that
+/// is the only file, its directory; otherwise the one search path. The workspace when the
+/// root is reached through a link.
+fn archive_root(workspace: &Path, selected: &Selection) -> (Roots, Vec<(Area, PathBuf)>) {
+    let search: Vec<&str> = selected.search_paths.iter().map(|(_, path)| path.as_str()).collect();
+    let base = match search.as_slice() {
+        [one] if selected.files.len() == 1 && Path::new(one) == selected.files[0].1 => {
+            Path::new(one).parent().map(Path::to_path_buf).unwrap_or_default()
+        }
+        [one] => PathBuf::from(one),
+        many => PathBuf::from(rbit_workflow::glob::common_ancestor(many.iter().copied())),
+    };
+    let base = Some(base).filter(|base| base.as_os_str().is_empty() || !crosses_link(workspace, base)).unwrap_or_default();
+    let files =
+        selected.files.iter().filter_map(|(area, relative)| Some((*area, relative.strip_prefix(&base).ok()?.to_path_buf()))).collect();
+    (Roots { workspace: workspace.join(&base), home: None }, files)
 }
 
 /// Runs `rbit/download-artifact`.
@@ -292,22 +314,25 @@ mod tests {
     fn archives_are_rooted_where_their_paths_meet() {
         let dir = tempfile::tempdir().unwrap();
         let workspace = dir.path();
-        fs::create_dir_all(workspace.join("dist/linux")).unwrap();
-        fs::create_dir_all(workspace.join("docs")).unwrap();
-        fs::write(workspace.join("dist/app.txt"), "app").unwrap();
-        fs::write(workspace.join("dist/linux/app"), "bin").unwrap();
-        fs::write(workspace.join("README.md"), "readme").unwrap();
+        for file in ["dist/app.txt", "dist/linux/app", "docs/guide.md", "README.md"] {
+            fs::create_dir_all(workspace.join(file).parent().unwrap()).unwrap();
+            fs::write(workspace.join(file), file).unwrap();
+        }
+        let roots = Roots { workspace: workspace.to_path_buf(), home: None };
         let root = |paths: &[&str]| {
-            let resolved = paths.iter().map(|path| (Area::Workspace, PathBuf::from(path))).collect();
-            let (roots, resolved) = archive_root(workspace, resolved);
-            let relative: Vec<_> = resolved.into_iter().map(|(_, path)| path).collect();
-            (roots.workspace.strip_prefix(workspace).unwrap().to_path_buf(), relative)
+            let lines: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
+            let selected = select(&resolve(&lines, &roots, "/__w/app", false).unwrap(), &roots, false, false).unwrap();
+            let (base, files) = archive_root(workspace, &selected);
+            let relative: Vec<String> = files.into_iter().map(|(_, path)| path.to_string_lossy().replace('\\', "/")).collect();
+            (base.workspace.strip_prefix(workspace).unwrap().to_string_lossy().replace('\\', "/"), relative)
         };
-        assert_eq!(root(&["dist"]), (PathBuf::from("dist"), vec![PathBuf::new()]), "a directory's files go at the top");
-        assert_eq!(root(&["dist/app.txt"]), (PathBuf::from("dist"), vec![PathBuf::from("app.txt")]), "so does a file");
-        assert_eq!(root(&["dist/app.txt", "dist/linux"]), (PathBuf::from("dist"), vec![PathBuf::from("app.txt"), PathBuf::from("linux")]));
-        assert_eq!(root(&["dist", "docs"]), (PathBuf::new(), vec![PathBuf::from("dist"), PathBuf::from("docs")]));
-        assert_eq!(root(&["README.md", "dist"]).0, PathBuf::new());
-        assert_eq!(root(&["dist", "missing/file"]), (PathBuf::from("dist"), vec![PathBuf::new()]), "missing paths do not count");
+        assert_eq!(root(&["dist"]), ("dist".into(), vec!["app.txt".into(), "linux/app".into()]), "a directory's files go at the top");
+        assert_eq!(root(&["dist/app.txt"]), ("dist".into(), vec!["app.txt".into()]), "so does a single file");
+        assert_eq!(root(&["dist/app.txt", "dist/linux"]), ("dist".into(), vec!["app.txt".into(), "linux/app".into()]));
+        assert_eq!(root(&["dist", "docs"]).0, "");
+        assert_eq!(root(&["README.md", "dist"]).0, "");
+        assert_eq!(root(&["dist/*.txt"]), ("dist".into(), vec!["app.txt".into()]), "a pattern's literal start");
+        assert_eq!(root(&["dist/**/app*", "!dist/linux"]), ("dist".into(), vec!["app.txt".into()]), "exclusions do not move the root");
+        assert_eq!(root(&["dist", "missing/file"]).0, "", "every search path counts, found or not, as on GitHub");
     }
 }

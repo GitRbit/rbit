@@ -31,6 +31,8 @@ pub mod builtins;
 pub mod cron;
 pub mod error;
 pub mod expr;
+// Actions: glob paths of the cache and artifacts.
+pub mod glob;
 pub mod limits;
 pub mod model;
 pub mod parse;
