@@ -673,7 +673,7 @@ fn parse_concurrency(node: &Node, path: &str, scope: Scope) -> Result<Concurrenc
     let concurrency = match &node.value {
         Value::Scalar(_) => {
             let group = node.as_text().ok_or_else(|| error(format!("`{path}` must not be empty"), node.at))?;
-            Concurrency { group, cancel_in_progress: false, at: node.at }
+            Concurrency { group, cancel_in_progress: "false".into(), at: node.at }
         }
         Value::Mapping(config) => {
             check_keys(config, path, &["group", "cancel-in-progress"], &[])?;
@@ -683,14 +683,8 @@ fn parse_concurrency(node: &Node, path: &str, scope: Scope) -> Result<Concurrenc
                 .filter(|group| !group.is_empty())
                 .ok_or_else(|| error(format!("`{path}` needs a `group`"), node.at))?;
             let cancel_in_progress = match config.get("cancel-in-progress") {
-                None => false,
-                Some(value) if value.as_scalar().is_some_and(|scalar| matches!(scalar.value, ScalarValue::String(_))) => {
-                    return Err(error(
-                        format!("`{path}.cancel-in-progress` must be true or false; rbit does not evaluate expressions there"),
-                        value.at,
-                    ));
-                }
-                Some(value) => boolean(value, &format!("{path}.cancel-in-progress"))?,
+                None => "false".into(),
+                Some(value) => flag(value, &format!("{path}.cancel-in-progress"), scope)?,
             };
             Concurrency { group, cancel_in_progress, at: node.at }
         }
@@ -1457,7 +1451,7 @@ jobs:
         );
         assert_eq!(
             workflow.concurrency,
-            Some(Concurrency { group: "ci-${{ github.ref }}".into(), cancel_in_progress: true, at: Location::new(26, 3) })
+            Some(Concurrency { group: "ci-${{ github.ref }}".into(), cancel_in_progress: "true".into(), at: Location::new(26, 3) })
         );
         let ids: Vec<_> = workflow.jobs.iter().map(|job| job.id.as_str()).collect();
         assert_eq!(ids, ["build", "deploy"]);
@@ -1554,8 +1548,8 @@ jobs:
             ),
             ("on: push\nconcurrency: {cancel-in-progress: true}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n", "needs a `group`", (2, 14)),
             (
-                "on: push\nconcurrency: {group: g, cancel-in-progress: '${{ x }}'}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n",
-                "true or false",
+                "on: push\nconcurrency: {group: g, cancel-in-progress: maybe}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n",
+                "true, false or an expression",
                 (2, 45),
             ),
             (
@@ -1705,7 +1699,10 @@ jobs:
         assert_eq!(test.timeout_minutes.as_deref(), Some("30"));
         assert_eq!(test.continue_on_error.as_deref(), Some("${{ matrix.experimental }}"));
         let concurrency = test.concurrency.as_ref().unwrap();
-        assert_eq!((concurrency.group.as_str(), concurrency.cancel_in_progress), ("test-${{ github.ref }}-${{ matrix.os }}", true));
+        assert_eq!(
+            (concurrency.group.as_str(), concurrency.cancel_in_progress.as_str()),
+            ("test-${{ github.ref }}-${{ matrix.os }}", "true")
+        );
         assert_eq!((test.strategy.fail_fast.as_deref(), test.strategy.max_parallel.as_deref()), (Some("false"), Some("2")));
         assert_eq!(test.strategy.matrix.as_ref().map(|matrix| matrix.value.clone()), Some(serde_json::json!({"os": ["linux", "windows"]})));
         let container = test.container.as_ref().unwrap();

@@ -436,7 +436,7 @@ fn reads_needs(job: &Job) -> bool {
     texts.extend(job.name.as_deref());
     texts.extend(job.timeout_minutes.as_deref());
     texts.extend(job.continue_on_error.as_deref());
-    texts.extend(job.concurrency.as_ref().map(|concurrency| concurrency.group.as_str()));
+    texts.extend(job.concurrency.iter().flat_map(|concurrency| [concurrency.group.as_str(), concurrency.cancel_in_progress.as_str()]));
     let matrix = job.strategy.matrix.as_ref().filter(|matrix| matrix.has_expressions).map(|matrix| matrix.value.to_string());
     texts.extend(matrix.as_deref());
     texts.extend(job.strategy.fail_fast.as_deref());
@@ -771,7 +771,8 @@ fn job_template(
             if group.is_empty() {
                 return Err(evaluator.refuse("concurrency.group", &"evaluates to an empty group"));
             }
-            Some(ConcurrencyGroup { group, cancel_in_progress: concurrency.cancel_in_progress })
+            let cancel_in_progress = evaluator.flag("concurrency.cancel-in-progress", &concurrency.cancel_in_progress)?;
+            Some(ConcurrencyGroup { group, cancel_in_progress })
         }
         None => None,
     };
@@ -1232,7 +1233,17 @@ pub fn concurrency_group(workflow: &Workflow, context: &RunContext) -> Result<Op
     if group.is_empty() {
         return Err(refuse(&"evaluates to an empty group"));
     }
-    Ok(Some((group, concurrency.cancel_in_progress)))
+    // `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`, as rbit's own CI has.
+    let cancel = Template::parse(&concurrency.cancel_in_progress)
+        .and_then(|template| template.evaluate(&context.contexts()))
+        .map_err(|problem| refuse(&problem))?;
+    let cancel = match cancel {
+        Value::Bool(value) => value,
+        Value::String(text) if text.eq_ignore_ascii_case("true") => true,
+        Value::String(text) if text.eq_ignore_ascii_case("false") => false,
+        other => return Err(refuse(&format!("cancel-in-progress must be true or false, not `{}`", to_text(&other)))),
+    };
+    Ok(Some((group, cancel)))
 }
 
 #[cfg(test)]
@@ -1680,6 +1691,12 @@ jobs:
         );
         let source = "on: push\nconcurrency: '${{ vars.RUNNER }}-${{ inputs.target }}'\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n";
         assert_eq!(concurrency_group(&workflow(source), &run_context()).unwrap(), Some(("big-arm64".into(), false)));
+        // rbit's own CI: only pull requests cancel their runs in progress.
+        let source = "on: [push, pull_request]\nconcurrency:\n  group: ci\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\njobs: {a: {runs-on: x, steps: [{run: x}]}}\n";
+        let pull = GroupContext { event_name: "pull_request".into(), ..GroupContext::default() };
+        assert_eq!(concurrency_group(&workflow(source), &pull.run_context()).unwrap(), Some(("ci".into(), true)));
+        let pushed = GroupContext { event_name: "push".into(), ..push };
+        assert_eq!(concurrency_group(&workflow(source), &pushed.run_context()).unwrap(), Some(("ci".into(), false)));
     }
 
     /// Each case plans a workflow and compares its job templates, as pretty JSON, with the

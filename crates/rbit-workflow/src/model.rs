@@ -348,7 +348,8 @@ impl Permissions {
 pub struct Concurrency {
     /// The group, as written (it may contain expressions).
     pub group: String,
-    pub cancel_in_progress: bool,
+    /// `cancel-in-progress`: `true`, `false` or one expression, as text.
+    pub cancel_in_progress: String,
     pub at: Location,
 }
 
