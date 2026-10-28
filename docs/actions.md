@@ -374,7 +374,9 @@ the default branch are listed on the Actions tab even before they ever ran.
 ## The workflow's token
 
 `secrets.GITHUB_TOKEN` (or `RBIT_TOKEN`) works with `git` and with a part of the REST API at
-`GITHUB_API_URL`: reading the repository, its refs, commits and releases; with
+`GITHUB_API_URL`: reading the repository, its refs, commits and releases, and listing and
+downloading workflow runs' artifacts (a `workflow_run` job fetching what the run that
+started it uploaded, `github.event.workflow_run.id`); with
 `contents: write`, posting commit statuses and creating, editing and deleting releases and
 their files (a release may create its tag from a branch); and commenting on issues (with
 `issues: write`) and pull requests (with `issues: write` or `pull-requests: write`).

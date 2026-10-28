@@ -108,7 +108,11 @@ async fn the_api_accepts_task_tokens_on_its_allowlist_only() {
     let (status, json) = send(&fixture, Method::GET, "/api/v1/repos/alice/rocket", Some(&bearer), None).await;
     assert_eq!((status, json["full_name"].as_str()), (StatusCode::OK, Some("alice/rocket")));
     assert_eq!(send(&fixture, Method::GET, "/api/v1/repos/alice/rocket/branches", Some(&bearer), None).await.0, StatusCode::OK);
+    let (status, json) = send(&fixture, Method::GET, "/api/v1/repos/alice/rocket/actions/artifacts", Some(&bearer), None).await;
+    assert_eq!((status, json["total_count"].as_i64()), (StatusCode::OK, Some(0)), "{json}");
     for (method, path) in [
+        (Method::DELETE, "/api/v1/repos/alice/rocket/actions/artifacts/1"),
+        (Method::GET, "/api/v1/repos/alice/rocket/actions/runs"),
         (Method::GET, "/api/v1/user"),
         (Method::GET, "/api/v1/user/repos"),
         (Method::POST, "/api/v1/repos/alice/rocket/issues"),

@@ -57,6 +57,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   branch or tag; workflows on the default branch are listed before they ever ran.
 - Workflows post commit statuses and comment on issues and pull requests with their token,
   shown as `rbit-actions[bot]`.
+  The token also lists and downloads runs' artifacts, as a `workflow_run` job needs.
 - What steps write to `GITHUB_STEP_SUMMARY` is shown as Markdown on the run page.
 - `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
   log bytes, workflow errors, waiting jobs and online runners.

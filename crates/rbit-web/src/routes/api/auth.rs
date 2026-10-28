@@ -16,7 +16,7 @@
 //!
 //! A workflow task's token (`rbat_…`) is a caller kind of its own, never a user
 //! (`docs/design/actions.md` §11.3): it is accepted only on the endpoints of
-//! [`TASK_ROUTES`] — reading contents, refs, commits and releases; creating statuses, and
+//! [`TASK_ROUTES`] — reading contents, refs, commits, releases and run artifacts; creating statuses, and
 //! creating, editing and deleting releases and their files with `contents: write`; reading
 //! issues and their comments with `issues` or `pull-requests: read`; commenting, and editing
 //! and deleting rbit Actions' own comments, with `issues` or `pull-requests: write` — and
@@ -97,6 +97,12 @@ pub const TASK_ROUTES: &[(ApiMethod, &str, TaskNeed)] = &[
     (ApiMethod::Get, "/repos/{owner}/{repo}/releases/{release_id}", TaskNeed::Read),
     (ApiMethod::Get, "/repos/{owner}/{repo}/releases/{release_id}/assets", TaskNeed::Read),
     (ApiMethod::Get, "/repos/{owner}/{repo}/releases/assets/{asset_id}", TaskNeed::Read),
+    // Actions: workflow_run. What GitHub's default `actions: read` lets a run do: fetch the
+    // artifacts of the run that started it, or of any other.
+    (ApiMethod::Get, "/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts", TaskNeed::Read),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/actions/artifacts", TaskNeed::Read),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}", TaskNeed::Read),
+    (ApiMethod::Get, "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}", TaskNeed::Read),
     // A status can satisfy a required check, so a read-only (untrusted) task may not post one.
     (ApiMethod::Post, "/repos/{owner}/{repo}/statuses/{sha}", TaskNeed::ContentsWrite),
     (ApiMethod::Post, "/repos/{owner}/{repo}/releases", TaskNeed::ContentsWrite),
