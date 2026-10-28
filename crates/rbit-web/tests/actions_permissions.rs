@@ -46,7 +46,10 @@ async fn a_repositorys_permissions_read_back_and_reach_its_runs() {
     let base = "/repos/alice/rocket/actions/permissions";
     let get = |path: &'static str| api(&fixture, Method::GET, path, Some(&admin), None);
 
-    assert_eq!(get("/repos/alice/rocket/actions/permissions").await, (StatusCode::OK, json!({"enabled": true, "allowed_actions": "all"})));
+    assert_eq!(
+        get("/repos/alice/rocket/actions/permissions").await,
+        (StatusCode::OK, json!({"enabled": true, "allowed_actions": "all", "sha_pinning_required": false}))
+    );
     assert_eq!(
         get("/repos/alice/rocket/actions/permissions/workflow").await,
         (StatusCode::OK, json!({"default_workflow_permissions": "read", "can_approve_pull_request_reviews": false}))
@@ -140,7 +143,7 @@ async fn owners_cap_their_repositories() {
     // The user's own ceilings: nothing capped until set.
     assert_eq!(
         api(&fixture, Method::GET, "/user/actions/permissions", Some(&admin), None).await,
-        (StatusCode::OK, json!({"enabled_repositories": "all", "allowed_actions": "all"}))
+        (StatusCode::OK, json!({"enabled_repositories": "all", "allowed_actions": "all", "sha_pinning_required": false}))
     );
     assert_eq!(
         api(&fixture, Method::GET, "/user/actions/permissions/workflow", Some(&admin), None).await.1,

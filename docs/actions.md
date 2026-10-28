@@ -62,10 +62,13 @@ administrator allows.
      "host — no isolation". Jobs of untrusted runs (pull requests from forks and from
      people without write access) are never given to a runner through a host label, even
      once approved; they wait for a container label. A runner with both kinds of label
-     shares its work directory (Node.js, fetched actions, the cache) between them, so a
-     host job can change what later container jobs run.
+     shares its work directory between them: Node.js and fetched actions are checked at
+     each use, but a host job can still write the `rbit/cache` entries a later container
+     job restores.
 
 `rbit-runner run --once` makes an ephemeral runner that takes one job and unregisters.
+`rbit-runner install`, `uninstall`, `start`, `stop` and `status` run it in the background
+with the system's service manager (see [Deployment](deployment.md#actions-and-runners)).
 `rbit-runner check` reports whether Docker or Podman, Git and the shells are usable.
 `rbit-runner exec .rbit/workflows/ci.yml` runs a workflow from a local checkout without a
 server, using the same parser and executor.
@@ -118,8 +121,10 @@ must not silently change what a job does.
 - **Step:** `id`, `name`, `if`, `run` or `uses`, `shell`, `working-directory`, `env`, `with`,
   `continue-on-error`, `timeout-minutes`.
 - **Container options:** `options` passes what shapes a container (`--user`, `--hostname`,
-  `--env`, the `--health-*` checks, `--memory`, `--cpus` and other limits within the
-  runner's own, `--ulimit`, `--shm-size`, `--tmpfs`, `--add-host`, `--dns`, `--label`,
+  `--env NAME=value` (its value goes into the env file), the `--health-*` checks, `--memory`,
+  `--cpus` and other limits (when `[container] memory` or `cpus` is set, the runner's value
+  comes after and wins), `--ulimit`, `--shm-size`, `--tmpfs`, `--add-host`, `--dns`,
+  `--label` (except `rbit.*`),
   `--init`, `--read-only`, stop options, and `--entrypoint` for services). Anything that
   could give a job the runner host (`--privileged`, `--cap-add`, `--device`, `--network`,
   `-v`/`--mount`, `--security-opt`, `--pid`, …) is an error. Services with a health check are
@@ -320,7 +325,7 @@ administrators manage environments in **Settings → Actions → Environments**:
   job needs a new approval. **Prevent self-review** stops whoever started the run from
   reviewing it.
 - **Wait timer**: minutes (up to 43200, 30 days) a job in the environment waits once it is
-  ready, and approved when there are reviewers, before a runner may take it (`wait_timer` in
+  ready (after review, if the environment has reviewers), before a runner may take it (`wait_timer` in
   the API).
 - **Deployment branches and tags**: any ref, protected branches only, or refs matching
   patterns: a plain pattern names branches (`release/*`), a tag pattern starts with
@@ -374,7 +379,9 @@ Untrusted runs (forks, outside authors) get a read-only token.
 **Settings → Actions** (or the REST API below) decides, for a repository, whether workflows
 run, which actions they may use, the workflow token's default permission and which pull
 requests wait for approval. An organisation, or a user for their own repositories, sets the
-same policies as ceilings their repositories can only narrow, and chooses which repositories
+same policies as ceilings their repositories can only narrow (for the workflow token, a
+ceiling on the default; a workflow's own `permissions:` replace it, as on GitHub), and
+chooses which repositories
 may run workflows at all (all, none or selected ones).
 
 - **Allowed actions**: `all`; `local_only`, the repository's own actions (`./path`) only; or
@@ -486,7 +493,7 @@ to `workflow_run` and `workflow_job`.
 - Masking covers what GitHub's runner masks: each secret, each line of a multi-line one,
   its base64 in every alignment, and its URL-, JSON-, XML-, expression- and command-line-
   escaped forms. It works on each printed line, so a secret split across two lines, or
-  across the 1 MiB cut of one very long line, is not masked.
+  across the 64 KiB cut of one very long line, is not masked.
 - Values shorter than four characters are not masked on their own lines or in their
   encodings, so that masking a short secret such as `1` cannot hide every number in a log;
   the whole value is still masked.

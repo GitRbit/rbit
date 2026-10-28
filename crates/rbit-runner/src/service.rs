@@ -67,6 +67,13 @@ pub fn plan(config: &Path, mode: Mode, account: Option<String>, name: Option<Str
     if mode == Mode::Desktop && account.is_some() {
         bail!("a desktop runner runs as the user who logs in; --user is for --mode service");
     }
+    // As GitHub's `svc.sh`: a service installed with `sudo` runs as the user who ran it.
+    let account = account.or_else(|| {
+        (cfg!(unix) && mode == Mode::Service)
+            .then(|| std::env::var("SUDO_USER").ok())
+            .flatten()
+            .filter(|user| !user.is_empty() && user != "root")
+    });
     let config = std::fs::canonicalize(config).with_context(|| format!("cannot find {}", config.display()))?;
     let exe = std::env::current_exe().context("cannot tell where rbit-runner is")?;
     let exe = std::fs::canonicalize(&exe).unwrap_or(exe);

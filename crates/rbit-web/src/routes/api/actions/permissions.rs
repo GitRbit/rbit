@@ -126,7 +126,8 @@ pub async fn show(State(state): State<AppState>, caller: Caller, Path(path): Pat
     let owner = Owner::load(&state, &caller, &path).await?;
     let (policies, enabled, repositories) = policies(&state, &owner).await?;
     let url = permissions_url(&state, &path);
-    let mut body = json!({ "allowed_actions": policies.allowed_actions.as_str() });
+    // GitHub's `sha_pinning_required`: rbit has no such policy, so it is always false.
+    let mut body = json!({ "allowed_actions": policies.allowed_actions.as_str(), "sha_pinning_required": false });
     if let Some(enabled) = enabled {
         body["enabled"] = json!(enabled);
     }

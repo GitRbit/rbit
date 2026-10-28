@@ -521,7 +521,7 @@ sudo rbit-runner --config /var/lib/rbit-runner/runner.toml install --user rbit-r
 **Running in the background.** `rbit-runner install` registers the runner with the
 system's own service manager, starts it, and has it start again at boot or logon and
 restart when it fails. `uninstall`, `start`, `stop` and `status` take the same `--mode` and
-`--name`; `--config` picks the runner (its directory holds `runner.toml`, `.credential` and
+`--name` (`install --no-start` leaves it stopped); `--config` (or `RBIT_RUNNER_CONFIG`) picks the runner (its directory holds `runner.toml`, `.credential` and
 the work directory, and must stay where it is: `uninstall` before moving it).
 
 | `--mode` | Linux | macOS | Windows |
@@ -531,7 +531,7 @@ the work directory, and must stay where it is: `uninstall` before moving it).
 
 - `service` starts at boot, before anyone logs in, and needs root (an elevated prompt on
   Windows). It runs as `--user`: a system account such as `rbit-runner` on Linux and macOS
-  (root when omitted), and `NT AUTHORITY\NETWORK SERVICE` on Windows unless `--user` names
+  (the user who ran `sudo` when omitted, else root), and `NT AUTHORITY\NETWORK SERVICE` on Windows unless `--user` names
   another account, whose password is read from `RBIT_RUNNER_SERVICE_PASSWORD`. On Windows,
   `install` grants that account the right to change the runner's directory, as GitHub's
   runner does. The service is named `rbit-runner.<runner name>` (`--name` changes it) and

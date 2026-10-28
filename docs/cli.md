@@ -39,7 +39,8 @@ rbit run download [RUN] [-n NAME]... [-p PATTERN] [-D DIR]
 ```
 
 Without a run id, `view`, `watch` and `download` use the newest run. `--log-failed` prints
-the logs of the jobs that failed, each line prefixed with its job's name. `--exit-status`
+the logs of the jobs whose conclusion is `failure` (not cancelled ones), each line prefixed
+with its job's name. `rerun --job` wins over `--failed` when both are given. `--exit-status`
 exits with 1 when the run did not succeed, so `rbit run watch --exit-status` waits for CI in
 a script.
 
@@ -66,7 +67,9 @@ rbit pr checks NUMBER [--watch]
 
 `pr create` takes the current branch as the head unless `--head` names one. `pr checks`
 lists the commit statuses of the pull request's head, Actions jobs included, and exits with
-0 when all passed, 1 when one failed and 8 while some are pending, as `gh` does.
+0 when all passed, 1 when one failed and 8 while some are pending, as `gh` does; with no
+status at all it prints "no checks reported" and exits with 0. `--json` prints whole objects:
+unlike `gh`, it takes no field list, `--jq` or `--template`.
 
 ## Any API call
 

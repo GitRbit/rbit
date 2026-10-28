@@ -1407,6 +1407,10 @@
           "allowed_actions"
         ],
         "properties": {
+          "sha_pinning_required": {
+            "type": "boolean",
+            "description": "Always false: rbit has no SHA pinning policy."
+          },
           "enabled": {
             "type": "boolean",
             "description": "The repository's own switch."

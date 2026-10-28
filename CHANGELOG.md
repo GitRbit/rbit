@@ -17,6 +17,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
+  logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
+- `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with
+  systemd, launchd or Windows (a service, or a logon task for jobs that need the desktop).
+- Actions: reusable workflows (`workflow_call`, `jobs.<id>.uses`), `workflow_run` and
+  `repository_dispatch` triggers, environment reviewers and wait timers, container and
+  service `options` and named volumes, `runs-on` and matrices from earlier jobs' outputs,
+  problem matchers, custom shells, zip artifacts, status badges and the permissions API.
 - **rbit Actions**, rbit's own CI/CD, off unless `[actions] enabled = true`
   ([docs/actions.md](docs/actions.md)). Workflows in `.rbit/workflows` (or
   `.forgejo/workflows`, `.github/workflows`) use a GitHub-style subset: `push`,
@@ -54,8 +62,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
-- Migrations `0048` to `0051` add the Actions tables, a `source` column on commit statuses
-  and comments, and step summaries. Nothing changes until an administrator enables Actions; with it off no Actions
+- Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
+  and comments, step summaries, the Actions permissions and owner policies, the
+  `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
+  environment wait timers. Nothing changes until an administrator enables Actions; with it off no Actions
   table is written and `<data_dir>/actions` is not created.
 - With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
   copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not

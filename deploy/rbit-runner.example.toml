@@ -1,5 +1,6 @@
 # rbit-runner configuration. `rbit-runner register` writes this file (and the runner
-# credential, `.credential`, next to it); this example lists every setting. Unknown keys
+# credential, `.credential`, next to it); this example lists the common settings (the
+# `[actions]` table and `insecure_http` are in docs/actions.md). Unknown keys
 # are errors. Relative paths are relative to this file's directory.
 
 # The rbit instance. Must be https; `register --insecure-http` allows http for a server on
