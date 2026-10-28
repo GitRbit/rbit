@@ -2,7 +2,8 @@
 //!
 //! [`run`] gives the task a directory under `<work_dir>/tasks/<id>`, hands the job to an
 //! [`Executor`] and, while it runs, reports a heartbeat with the step states at least every
-//! [`MAX_HEARTBEAT_INTERVAL`], flushing the log first. The answer to every state call can
+//! [`MAX_HEARTBEAT_INTERVAL`], flushing the log first; log lines written in between are
+//! sent on their own within [`LOG_FLUSH_GAP`]. The answer to every state call can
 //! cancel the task; so can a `404`, which means the server no longer knows it. When the
 //! executor returns, the rest of the log and the final state are sent, retried with the
 //! reconnect backoff for up to [`FINAL_REPORT_DEADLINE`], and the directory is removed.
@@ -41,6 +42,9 @@ use crate::{
 pub const FINAL_REPORT_DEADLINE: Duration = Duration::from_mins(15);
 /// The shortest gap between two state calls, however often steps change.
 const MIN_REPORT_GAP: Duration = Duration::from_millis(500);
+/// How long new log lines gather before they are sent on their own, between state calls:
+/// a page watching the job sees them this much later at most.
+const LOG_FLUSH_GAP: Duration = Duration::from_secs(1);
 // Actions: step summaries.
 /// What ends a summary that had to be cut.
 const SUMMARY_CUT: &str = "\n\n*rbit: this summary was cut to fit its size limit.*\n";
@@ -92,6 +96,8 @@ pub struct Reporter {
     echo: Option<Echo>,
     progress: Mutex<Progress>,
     changed: Notify,
+    /// New log lines: they are sent soon, without a state call.
+    logged: Notify,
     cancel: CancellationToken,
 }
 
@@ -148,6 +154,7 @@ impl Reporter {
                 environment_url: None,
             }),
             changed: Notify::new(),
+            logged: Notify::new(),
             cancel: CancellationToken::new(),
         })
     }
@@ -220,6 +227,8 @@ impl Reporter {
         if let Some(index) = progress.current {
             progress.steps[index].log_length += kept;
         }
+        drop(progress);
+        self.logged.notify_one();
     }
 
     // Actions: third-party actions.
@@ -379,23 +388,30 @@ impl Reporter {
         self.cancel.cancel();
     }
 
-    /// One heartbeat: the log so far, then the state. `Err` when the call should be retried.
-    async fn report(&self, client: &Client, result: Option<TaskResult>) -> Result<(), ()> {
-        if self.is_gone() {
-            return Ok(());
-        }
+    /// The log so far. `Err` when the call should be retried; a log the server no longer
+    /// takes leaves the reporter gone.
+    async fn flush_log(&self, client: &Client) -> Result<(), ()> {
         if let Err(error) = self.log.flush(client, self.task_id).await {
             match error.disposition() {
                 Disposition::Retry => return Err(()),
-                Disposition::Gone | Disposition::Fatal => {
-                    self.forget(&format!("the server refused the task's log ({error})"));
-                    return Ok(());
-                }
+                Disposition::Gone | Disposition::Fatal => self.forget(&format!("the server refused the task's log ({error})")),
                 Disposition::Refused => {
                     tracing::error!(task = %self.task_id, %error, "the server refused the task's log; the rest of it is not sent");
                     self.log.give_up();
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// One heartbeat: the log so far, then the state. `Err` when the call should be retried.
+    async fn report(&self, client: &Client, result: Option<TaskResult>) -> Result<(), ()> {
+        if self.is_gone() {
+            return Ok(());
+        }
+        self.flush_log(client).await?;
+        if self.is_gone() {
+            return Ok(());
         }
         let state = self.snapshot(result);
         if let Err(error) = state.validate() {
@@ -507,7 +523,8 @@ pub async fn refuse(client: Client, work_dir: &Path, task: TaskId, error: &str, 
 }
 
 /// Reports `reporter` until `stop`: every heartbeat interval, soon after a change, and with
-/// the reconnect backoff while calls fail.
+/// the reconnect backoff while calls fail. New log lines alone are sent without a state
+/// call, gathered for [`LOG_FLUSH_GAP`].
 async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop: CancellationToken) {
     let mut backoff = pacing.backoff;
     let mut wait = Duration::ZERO;
@@ -519,18 +536,39 @@ async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop
         if reporter.is_gone() {
             return;
         }
-        if reporter.report(&client, None).await.is_ok() {
-            backoff.reset();
-            // The next report waits for the interval or a change, but leaves a gap.
-            tokio::select! {
-                () = stop.cancelled() => return,
-                () = tokio::time::sleep(pacing.heartbeat) => {}
-                () = reporter.changed.notified() => {}
-            }
-            wait = MIN_REPORT_GAP;
-        } else {
+        if reporter.report(&client, None).await.is_err() {
             wait = backoff.next_delay();
+            continue;
         }
+        backoff.reset();
+        // The next report waits for the interval or a change, but leaves a gap; the interval
+        // is kept however much is logged. A change goes before lines: its state says where a
+        // step's lines end, and the lines of the next step must not get there first.
+        let sent_at = tokio::time::Instant::now();
+        let due = sent_at + pacing.heartbeat;
+        let failed = loop {
+            tokio::select! {
+                biased;
+                () = stop.cancelled() => return,
+                () = reporter.changed.notified() => break false,
+                () = tokio::time::sleep_until(due) => break false,
+                () = reporter.logged.notified() => {}
+            }
+            tokio::select! {
+                biased;
+                () = stop.cancelled() => return,
+                () = reporter.changed.notified() => break false,
+                () = tokio::time::sleep_until(due) => break false,
+                () = tokio::time::sleep(LOG_FLUSH_GAP) => {}
+            }
+            if reporter.flush_log(&client).await.is_err() {
+                break true;
+            }
+            if reporter.is_gone() {
+                return;
+            }
+        };
+        wait = if failed { backoff.next_delay() } else { MIN_REPORT_GAP.saturating_sub(sent_at.elapsed()) };
     }
 }
 
@@ -652,5 +690,48 @@ mod tests {
         let last = reporter.snapshot(Some(TaskResult::Cancelled));
         last.validate().unwrap();
         assert_eq!(last.steps[2].status, StepStatus::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn lines_are_sent_between_heartbeats_without_state_calls() {
+        use crate::testing::{FakeServer, FnExecutor, job_spec};
+
+        let server = FakeServer::start().await;
+        let task = TaskId(3);
+        let executor = {
+            let server = server.clone();
+            FnExecutor::new(move |_, reporter| {
+                let server = server.clone();
+                async move {
+                    reporter.start_step(0);
+                    server
+                        .wait_for(|server| server.states(task).last().is_some_and(|state| state.steps[0].status == StepStatus::Running))
+                        .await;
+                    // The step's start may still be reported once more, a gap after the first call.
+                    tokio::time::sleep(MIN_REPORT_GAP * 2).await;
+                    let states = server.states(task).len();
+                    // Well within the 10 s heartbeat: once a line, then a burst.
+                    let soon = |lines: usize| {
+                        let server = server.clone();
+                        async move {
+                            tokio::time::timeout(Duration::from_secs(4), server.wait_for(|server| server.log(task).len() == lines)).await
+                        }
+                    };
+                    reporter.log("first");
+                    assert!(soon(1).await.is_ok(), "a line is sent before the next heartbeat");
+                    for line in 0..20 {
+                        reporter.log(&format!("line {line}"));
+                    }
+                    assert!(soon(21).await.is_ok(), "{:?}", server.log(task));
+                    assert_eq!(server.states(task).len(), states, "lines alone make no state call");
+                    reporter.finish_step(0, StepStatus::Success);
+                    TaskResult::Success
+                }
+            })
+        };
+        let work = tempfile::tempdir().unwrap();
+        run(server.client(), work.path(), job_spec(3, 1), Arc::new(executor), Pacing::new(10)).await;
+        assert_eq!(server.log(task).len(), 21);
+        assert_eq!(server.final_state(task).unwrap().result, Some(TaskResult::Success));
     }
 }
