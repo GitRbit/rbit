@@ -677,9 +677,12 @@ impl JobSpec {
         ensure(!self.contexts.github.keys().any(|key| key.eq_ignore_ascii_case("token")), || {
             "the `github` context must not carry the token".to_owned()
         })?;
-        ensure(self.contexts.needs.keys().eq(self.template.needs.iter().collect::<std::collections::BTreeSet<_>>()), || {
-            "the `needs` context must have one entry for every needed job".to_owned()
-        })?;
+        // Actions: reusable workflows. Where a call is involved the context is keyed by the
+        // names the workflow used (`need_names`), not by the jobs they stand for.
+        let named = !self.template.calls.is_empty() || !self.template.need_names.is_empty();
+        let expected: std::collections::BTreeSet<&String> =
+            if named { self.template.need_names.keys().collect() } else { self.template.needs.iter().collect() };
+        ensure(self.contexts.needs.keys().eq(expected), || "the `needs` context must have one entry for every needed job".to_owned())?;
         for needed in self.contexts.needs.values() {
             validate_outputs(&needed.outputs)?;
         }
@@ -1007,6 +1010,20 @@ mod tests {
         let mut sha256 = spec();
         sha256.checkout.sha = "ab".repeat(32);
         sha256.validate().unwrap();
+
+        // Actions: reusable workflows. A job after a call needs its jobs (`call/build`) and
+        // reads them as `needs.call`.
+        let mut after_call = spec();
+        let needed = after_call.contexts.needs.remove("build").unwrap();
+        after_call.contexts.needs.insert("call".into(), needed);
+        after_call.template.needs = vec!["call/build".into()];
+        after_call.template.need_names = BTreeMap::from([(
+            "call".into(),
+            NeedSource::Call { keys: vec!["call/build".into()], outputs: BTreeMap::new(), jobs: BTreeMap::new() },
+        )]);
+        after_call.validate().unwrap();
+        after_call.contexts.needs.clear();
+        assert!(after_call.validate().unwrap_err().message.contains("every needed job"));
     }
 
     #[test]
