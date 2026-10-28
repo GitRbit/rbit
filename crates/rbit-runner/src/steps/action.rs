@@ -368,15 +368,27 @@ async fn repository(job: &Job, owner: &str, repo: &str, path: &str, reference: &
     let sha = if is_commit(reference) { reference.to_ascii_lowercase() } else { resolve(&git, &env, &url, reference).await? };
     let actions = job.work_dir.join("actions");
     let cache = actions.join(owner.to_ascii_lowercase()).join(repo.to_ascii_lowercase()).join(&sha);
-    if complete(&cache).is_file() {
+    // Used only as this runner process fetched it (`crate::integrity`): a host job can
+    // change the cache for every later job.
+    if cached(&cache).await {
         job.reporter.log(&format!("Using action repository '{owner}/{repo}@{reference}' (SHA:{sha})"));
         // Kept in use: the oldest are pruned first.
         let _ = std::fs::write(complete(&cache), &sha);
     } else {
         let _fetching = FETCHING.lock().await;
-        if !complete(&cache).is_file() {
+        if !cached(&cache).await {
+            if complete(&cache).is_file() {
+                job.reporter
+                    .log(&format!("The cached '{owner}/{repo}' (SHA:{sha}) was not fetched by this runner process, or changed since"));
+            }
             job.reporter.log(&format!("Download action repository '{owner}/{repo}@{reference}' (SHA:{sha})"));
+            crate::integrity::forget(&cache);
             fetch(&git, &env, &url, &sha, &cache).await?;
+            let recorded = cache.clone();
+            tokio::task::spawn_blocking(move || crate::integrity::record(&recorded, crate::integrity::Kind::Tree))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| format!("cannot read the fetched action: {error}"))?;
             prune(&actions, MAX_CACHED_ACTIONS);
         }
     }
@@ -412,6 +424,13 @@ const MAX_CACHED_ACTIONS: usize = 200;
 /// carry a link where the mark would be written).
 fn complete(cache: &Path) -> PathBuf {
     cache.with_extension("complete")
+}
+
+/// Whether `cache` holds the action as this runner process fetched it.
+async fn cached(cache: &Path) -> bool {
+    let cache = cache.to_path_buf();
+    complete(&cache).is_file()
+        && tokio::task::spawn_blocking(move || crate::integrity::intact(&cache, crate::integrity::Kind::Tree)).await.unwrap_or(false)
 }
 
 fn is_commit(reference: &str) -> bool {

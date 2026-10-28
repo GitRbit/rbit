@@ -15,7 +15,10 @@
 //!   image, or a host label.
 //!
 //! Downloads are serialised, unpacked into a temporary directory and renamed into place,
-//! so an interrupted download leaves nothing half-written that a later job would use.
+//! so an interrupted download leaves nothing half-written that a later job would use. The
+//! `node` program is checked at each use against the SHA-256 this runner process recorded
+//! when it unpacked it ([`crate::integrity`]); one it did not unpack, or that changed, is
+//! downloaded again.
 
 use std::{
     io::Write as _,
@@ -107,12 +110,17 @@ pub async fn container_node(externals: &Path, log: impl Fn(&str)) -> Result<Stri
 async fn ensure(externals: &Path, platform: &str, log: impl Fn(&str)) -> Result<PathBuf, String> {
     let target = externals.join(directory_name(platform));
     let program = PathBuf::from(program_in(&target.display().to_string(), platform));
-    if program.is_file() {
+    if intact(&program).await {
         return Ok(target);
     }
     let _downloading = DOWNLOADING.lock().await;
-    if program.is_file() {
+    if intact(&program).await {
         return Ok(target);
+    }
+    if target.exists() {
+        log(&format!("{} was not unpacked by this runner process, or changed since; downloading it again", target.display()));
+        crate::integrity::forget(&program);
+        std::fs::remove_dir_all(&target).map_err(|error| format!("cannot replace {}: {error}", target.display()))?;
     }
     let (_, extension, digest) =
         DOWNLOADS.iter().find(|(name, ..)| *name == platform).ok_or_else(|| format!("no Node.js build for {platform}"))?;
@@ -138,7 +146,18 @@ async fn ensure(externals: &Path, platform: &str, log: impl Fn(&str)) -> Result<
     if !program.is_file() {
         return Err(format!("{} is missing after unpacking Node.js", program.display()));
     }
+    let recorded = program.clone();
+    tokio::task::spawn_blocking(move || crate::integrity::record(&recorded, crate::integrity::Kind::File))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| format!("cannot read {}: {error}", program.display()))?;
     Ok(target)
+}
+
+/// Whether `program` is the `node` this process unpacked, unchanged.
+async fn intact(program: &Path) -> bool {
+    let program = program.to_path_buf();
+    tokio::task::spawn_blocking(move || crate::integrity::intact(&program, crate::integrity::Kind::File)).await.unwrap_or(false)
 }
 
 /// Downloads `url` into `path`, failing unless its SHA-256 is `expected`.
@@ -233,12 +252,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unpacked_node_is_not_downloaded_again() {
+    async fn a_node_this_process_unpacked_is_not_downloaded_again() {
         let dir = tempfile::tempdir().unwrap();
         let platform = container_platform().unwrap();
         let bin = dir.path().join(directory_name(&platform)).join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("node"), "").unwrap();
+        // As `ensure` records it after unpacking; one changed since is not used
+        // (`crate::integrity`'s tests).
+        crate::integrity::record(&bin.join("node"), crate::integrity::Kind::File).unwrap();
         let node = container_node(dir.path(), |line| panic!("downloaded: {line}")).await.unwrap();
         assert_eq!(node, format!("/__e/{}/bin/node", directory_name(&platform)));
     }

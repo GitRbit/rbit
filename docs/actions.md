@@ -415,6 +415,15 @@ to `workflow_run` and `workflow_job`.
 
 ### Known limits of the container backend
 
+- A host label's job runs as the runner's own user, so it can read and change whatever
+  that user can: the runner's configuration and token, its work directory, and the files of
+  other jobs on the same runner, container jobs included. Separate directories for host and
+  container labels would not change that, as one user owns both. What the runner keeps
+  between jobs (Node.js for JavaScript actions, fetched actions) is checked at each use
+  against a SHA-256 the running process recorded, and downloaded again when it was changed,
+  so a job's changes do not reach later jobs through those caches. To run untrusted code in
+  containers next to host labels, give the host labels a runner of their own, under another
+  OS user or on another machine.
 - Containers reach the network like any Docker container, as on GitHub's runners: the
   internet, the host's addresses and cloud metadata endpoints (`169.254.169.254`). rbit
   does not filter it, since what a runner may reach depends on where it runs; on a cloud

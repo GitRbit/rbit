@@ -20,6 +20,7 @@ mod config;
 mod contexts;
 mod envfiles;
 mod exec;
+mod integrity;
 mod job;
 mod logs;
 mod mask;
