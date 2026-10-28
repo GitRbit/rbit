@@ -150,12 +150,28 @@ pub enum Stopper {
 }
 
 /// Puts a step's process in its own process group (Unix), so it can be stopped with
-/// everything it started.
+/// everything it started, without the runner's own variables.
 pub fn isolate(command: &mut Command) {
     #[cfg(unix)]
     command.process_group(0);
-    #[cfg(not(unix))]
-    let _ = command;
+    drop_runner_env(command);
+}
+
+/// A command for `program` without the runner's own variables.
+pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut command = Command::new(program);
+    drop_runner_env(&mut command);
+    command
+}
+
+/// Keeps the runner's `RBIT_RUNNER_*` variables (its registration token among them) from a
+/// child: no step, `git` or engine call needs them.
+fn drop_runner_env(command: &mut Command) {
+    for (name, _) in std::env::vars_os() {
+        if name.to_string_lossy().to_ascii_uppercase().starts_with("RBIT_RUNNER_") {
+            command.env_remove(name);
+        }
+    }
 }
 
 impl Stopper {
@@ -182,11 +198,11 @@ impl Stopper {
                 (program.clone(), ["exec", container, "kill", signal, "-1"].map(str::to_owned).to_vec(), env.as_slice())
             }
         };
-        let mut command = Command::new(&program);
+        let mut command = self::command(&program);
         command.args(&args).envs(env.iter().map(|(name, value)| (name, value)));
         let sent = capture(command, None, Duration::from_secs(30)).await.is_ok_and(|output| output.success);
         if let (Self::Container { program, env, container }, false, true) = (self, sent, force) {
-            let mut command = Command::new(program);
+            let mut command = self::command(program);
             command.args(["kill", container.as_str()]).envs(env.iter().map(|(name, value)| (name, value)));
             return capture(command, None, Duration::from_secs(30)).await.is_ok_and(|output| output.success);
         }

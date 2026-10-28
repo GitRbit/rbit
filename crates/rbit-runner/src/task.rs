@@ -57,6 +57,20 @@ pub fn task_dir(work_dir: &Path, task: TaskId) -> PathBuf {
     work_dir.join("tasks").join(task.to_string())
 }
 
+/// Creates `<work_dir>/tasks` for the runner's user alone (Unix): a job container on a
+/// rootful engine can leave files there owned by root, setuid ones included, and no other
+/// local user may reach them.
+pub fn prepare_tasks_dir(work_dir: &Path) -> std::io::Result<()> {
+    let tasks = work_dir.join("tasks");
+    std::fs::create_dir_all(&tasks)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&tasks, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
 /// A sink for log lines.
 struct Echo(Box<dyn Fn(&str) + Send + Sync>);
 

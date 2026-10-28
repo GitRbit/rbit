@@ -76,6 +76,16 @@ impl Options {
     }
 }
 
+/// Whether `ref` can be fetched as given: a name `git check-ref-format` would take, never an
+/// option (`--upload-pack=…`), a refspec (`+a:b`) or a pattern.
+fn valid_reference(reference: &str) -> bool {
+    !reference.starts_with(['-', '+', '/', '.'])
+        && !reference.ends_with(['/', '.'])
+        && !reference.contains("..")
+        && !reference.contains("@{")
+        && !reference.chars().any(|c| c.is_whitespace() || c.is_control() || matches!(c, ':' | '*' | '?' | '[' | '\\' | '^' | '~'))
+}
+
 /// The `git` argument lists of a checkout, in order. `existing` is whether the target
 /// already holds a repository.
 pub fn commands(source: &CheckoutSource, options: &Options, existing: bool) -> Vec<Vec<String>> {
@@ -267,6 +277,9 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
         return job.fail(&format!("cannot create {}: {error}", target.display()));
     }
     let options = Options::from_inputs(inputs);
+    if !valid_reference(&options.reference) {
+        return job.fail(&format!("`ref` `{}` is not a branch, tag or commit", options.reference));
+    }
     let source = job.spec.checkout.clone();
     // Host `git`'s hooks point at a private directory no container mounts, so none can run.
     let hooks = job.private_dir().ok();
@@ -297,11 +310,6 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
         let mut command = Command::new(&git);
         command.args(&args).current_dir(&target).envs(&env);
         process::isolate(&mut command);
-        for (name, _) in std::env::vars_os() {
-            if name.to_string_lossy().to_ascii_uppercase().starts_with("RBIT_RUNNER_") {
-                command.env_remove(name);
-            }
-        }
         let signal = job.stop_signal(timeout);
         let reporter = &job.reporter;
         match process::run_streaming(command, process::MAX_LINE_BYTES, signal.wait(), &Stopper::Host, |line| reporter.log(&line)).await {
@@ -389,6 +397,16 @@ mod tests {
         let other = lines(&commands(&source("refs/heads/main"), &other, false));
         assert!(other[2].ends_with("+refs/heads/dev:refs/remotes/origin/dev"), "{other:?}");
         assert_eq!(other[3], "checkout --force -B dev refs/remotes/origin/dev");
+    }
+
+    #[test]
+    fn refs_that_git_would_read_otherwise_are_refused() {
+        for good in ["", "main", "v1.0", "refs/heads/dev", "refs/pull/7/head", "release/2.x", SHA] {
+            assert!(valid_reference(good), "{good}");
+        }
+        for bad in ["--upload-pack=touch /tmp/x", "-b", "+refs/*:refs/*", "a:b", "refs/*", "a..b", "main@{1}", "a b", "a\nb", "/abs"] {
+            assert!(!valid_reference(bad), "{bad}");
+        }
     }
 
     #[test]

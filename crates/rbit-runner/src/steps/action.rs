@@ -932,7 +932,7 @@ async fn run_docker(
     let outcome = run_image(job, index, run, &program, network, &image, step_env, timeout).await;
     if built {
         // Each build is the job's own; leaving it would fill the engine's storage.
-        let mut command = Command::new(&program);
+        let mut command = process::command(&program);
         command.args(["rmi", "--force", &image]);
         let _ = process::capture(command, None, Duration::from_mins(1)).await;
     }
@@ -943,7 +943,7 @@ async fn run_docker(
 async fn build_image(job: &Job, program: &Path, dockerfile: &Path, context: &Path, timeout: Option<Duration>) -> Result<String, Outcome> {
     let tag = format!("rbit-action-{}", crate::client::idempotency_key().to_ascii_lowercase());
     job.reporter.log(&format!("Building the action's image {tag}"));
-    let mut command = Command::new(program);
+    let mut command = process::command(program);
     command.arg("build").arg("--tag").arg(&tag).arg("--file").arg(dockerfile).arg(context);
     let signal = job.stop_signal(timeout);
     let reporter = &job.reporter;
@@ -972,6 +972,9 @@ async fn run_image(
     step_env: &BTreeMap<String, String>,
     timeout: Option<Duration>,
 ) -> Outcome {
+    if !crate::backend::container::valid_image(image) {
+        return job.fail(&format!("`{image}` is not an image reference"));
+    }
     // The step's view of the task, as GitHub's runner mounts it.
     let files = match EnvFiles::create(&job.dirs.files, index) {
         Ok(files) => files,
@@ -1002,11 +1005,19 @@ async fn run_image(
             return job.fail(&format!("cannot write the action's environment: {error}"));
         }
     };
-    let mut args: Vec<String> = vec!["run".into(), "--rm".into()];
+    // Named and labelled: stopping the engine's CLI leaves the container running, so it is
+    // removed by name when the step ends, and by the janitor after a crash.
+    let name = format!("rbit-{}-step-{index}-{}", job.spec.task_id, crate::client::idempotency_key().to_ascii_lowercase());
+    let mut args: Vec<String> = vec!["run".into(), "--rm".into(), "--name".into(), name.clone()];
+    args.extend(crate::backend::container::task_labels(job.spec.task_id, &job.runner_name));
     if let Some(network) = network {
         args.extend(["--network".into(), network]);
     }
     for (source, target) in [(&job.dirs.workspace, DOCKER_WORKSPACE), (&job.dirs.files, DOCKER_FILES), (&job.dirs.temp, DOCKER_TEMP)] {
+        // A `,` would end the mount's source and add options of its own.
+        if source.to_string_lossy().contains(',') {
+            return job.fail(&format!("{} has a `,`, which `--mount` cannot take", source.display()));
+        }
         args.extend(["--mount".into(), format!("type=bind,source={},target={target}", source.display())]);
     }
     args.extend(["--workdir".into(), DOCKER_WORKSPACE.into()]);
@@ -1021,7 +1032,7 @@ async fn run_image(
     args.push(image.to_owned());
     args.extend(run.args.iter().cloned());
 
-    let mut command = Command::new(program);
+    let mut command = process::command(program);
     command.args(&args);
     command.envs(env_file.inherited.iter().map(|(name, value)| (name, value)));
     let signal = job.stop_signal(timeout);
@@ -1042,6 +1053,9 @@ async fn run_image(
         })
         .await
     };
+    let mut remove = process::command(program);
+    remove.args(["rm", "--force", &name]);
+    let _ = process::capture(remove, None, Duration::from_mins(1)).await;
     drop(env_file);
     let written = files.collect();
     let outcome = match exit {

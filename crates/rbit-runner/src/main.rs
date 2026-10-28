@@ -36,6 +36,7 @@ mod untrusted;
 
 use std::{io::IsTerminal as _, path::Path, sync::Arc};
 
+use anyhow::Context as _;
 use clap::Parser as _;
 use tracing_subscriber::EnvFilter;
 
@@ -66,6 +67,7 @@ async fn run(config_path: &Path, once: bool) -> anyhow::Result<()> {
         tracing::warn!("{warning}");
     }
     let client = Client::new(&config::server_url(&loaded.config.url, loaded.config.insecure_http)?, Some(credential))?;
+    task::prepare_tasks_dir(&loaded.work_dir).with_context(|| format!("cannot create {}", loaded.work_dir.join("tasks").display()))?;
     if loaded.config.backends().contains(&rbit_workflow::protocol::Backend::Container) {
         backend::container::janitor(&loaded.config).await;
     }

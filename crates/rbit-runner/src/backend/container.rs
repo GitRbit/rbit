@@ -109,14 +109,26 @@ impl Names {
 
     /// `--label` arguments marking a resource as this task's.
     fn labels(&self) -> Vec<String> {
-        vec!["--label".into(), format!("rbit.task={}", self.task), "--label".into(), format!("rbit.runner={}", self.runner)]
+        task_labels(self.task, &self.runner)
     }
+}
+
+/// `--label` arguments marking a resource as task `task`'s, so the janitor finds it.
+pub fn task_labels(task: TaskId, runner: &str) -> Vec<String> {
+    vec!["--label".into(), format!("rbit.task={task}"), "--label".into(), format!("rbit.runner={runner}")]
 }
 
 /// The task's directories inside the job container: `/__w/<repository name>`,
 /// `/__w/_temp` and `/__w/_files`.
 pub fn view(repository: &str) -> View {
-    let name = repository.rsplit('/').next().filter(|name| !name.is_empty() && !name.starts_with('_')).unwrap_or("workspace");
+    // The name goes into `--mount …,target=`: anything but a plain name (a `,` would add
+    // mount options) falls back to `workspace`.
+    let name = repository
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.starts_with(['_', '.']) && !name.is_empty())
+        .filter(|name| name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')))
+        .unwrap_or("workspace");
     View { workspace: format!("{MOUNT_ROOT}/{name}"), temp: format!("{MOUNT_ROOT}/_temp"), files: format!("{MOUNT_ROOT}/_files") }
 }
 
@@ -405,7 +417,7 @@ impl Container {
     /// The CLI with `inherited` (multi-line values, checked by [`EnvFile::write`]) and then
     /// this task's registry configuration, which nothing of the job's can replace.
     fn cli_with(&self, inherited: &[(String, String)]) -> Command {
-        let mut command = Command::new(&self.program);
+        let mut command = process::command(&self.program);
         command.envs(inherited.iter().map(|(name, value)| (name, value)));
         command.env("DOCKER_CONFIG", self.private.join("docker")).env("REGISTRY_AUTH_FILE", self.private.join("auth.json"));
         command
@@ -593,13 +605,13 @@ pub async fn janitor(config: &RunnerConfig) {
     for (list, remove) in
         [(["ps", "--all"].as_slice(), ["rm", "--force"].as_slice()), (["network", "ls"].as_slice(), ["network", "rm"].as_slice())]
     {
-        let mut command = Command::new(&program);
+        let mut command = process::command(&program);
         command.args(list).args(["--filter", &filter, "--format", "{{.ID}}"]);
         let Ok(output) = process::capture(command, None, SHORT).await else { continue };
         let ids: Vec<&str> = output.stdout.lines().map(str::trim).filter(|id| !id.is_empty()).collect();
         if output.success && !ids.is_empty() {
             tracing::info!(count = ids.len(), "removing containers and networks left by an earlier run");
-            let mut command = Command::new(&program);
+            let mut command = process::command(&program);
             command.args(remove).args(&ids);
             let _ = process::capture(command, None, SHORT).await;
         }
@@ -757,5 +769,7 @@ mod tests {
         assert_eq!(registry("library/ubuntu"), "docker.io");
         assert_eq!(registry("ubuntu:24.04"), "docker.io");
         assert_eq!(view("alice/_weird").workspace, "/__w/workspace");
+        assert_eq!(view("alice/a,source=x").workspace, "/__w/workspace", "no mount options from a name");
+        assert_eq!(view("alice/..").workspace, "/__w/workspace");
     }
 }

@@ -166,6 +166,8 @@ pub struct Job {
     pub actions: ActionsConfig,
     /// `[container]`, for Docker actions.
     pub container: ContainerConfig,
+    /// The runner's name, which labels the containers of Docker actions.
+    pub runner_name: String,
     /// Actions' `post` scripts, run after the last step in reverse order.
     pub post_steps: Vec<steps::action::PostStep>,
     /// `ACTIONS_STEP_DEBUG` is `true`: `::debug::` lines are printed.
@@ -300,6 +302,7 @@ impl Job {
             work_dir: loaded.work_dir.clone(),
             actions: loaded.config.actions.clone(),
             container: loaded.config.container.clone(),
+            runner_name: loaded.config.name.clone(),
             post_steps: Vec::new(),
             step_debug,
         };
