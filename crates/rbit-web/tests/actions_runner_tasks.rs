@@ -346,7 +346,11 @@ async fn a_called_job_gets_the_secrets_its_call_passes_under_any_case() {
     let fixture = quick().await;
     let credential = fixture.runner(&["linux"]).await;
     let repo = fixture.repo().await;
-    fixture.actions().put_secret(&fixture.alice, ActionsTarget::Repository(&repo), "DEPLOY", "s3cr3t", SecretVisibility::All).await.unwrap();
+    fixture
+        .actions()
+        .put_secret(&fixture.alice, ActionsTarget::Repository(&repo), "DEPLOY", "s3cr3t", SecretVisibility::All)
+        .await
+        .unwrap();
     let mut called = template("call/build", &["linux"], &[]);
     called.calls = vec![CallLevel {
         name: "call".into(),
