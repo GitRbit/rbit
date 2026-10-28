@@ -427,7 +427,12 @@ to `workflow_run` and `workflow_job`.
 - A called workflow is read from this rbit instance, never from github.com. A calling job
   takes no `concurrency` yet (set it on the called workflow's jobs), and a called job's
   `runs-on` and matrix can use only the inputs known when the run starts, not those a
-  `with:` reads from `needs`.
+  `with:` reads from `needs`; nor can a calling job's own `strategy` read `needs`. A
+  `workflow_call` input's `default` is taken as written, not evaluated.
+- The `workflow_run` payload has the run's `head_branch`, `head_sha`, `conclusion` and
+  repository, but no `head_repository` or `head_commit`.
+- Artifact names may use letters, digits, `.`, `_` and `-` only; GitHub also allows spaces
+  and most punctuation.
 - Actions are fetched when their step comes, not all at the start of the job, so an
   action's `pre` script runs right before its `main`. GitHub's cache and artifact services that
   actions reach through `ACTIONS_RUNTIME_*` do not exist; the built-ins stand in for
