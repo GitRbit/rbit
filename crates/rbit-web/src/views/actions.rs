@@ -521,6 +521,67 @@ impl ArtifactRow {
     }
 }
 
+// ------------------------------------------------------------------ status badges
+
+// Actions: workflow status badges.
+/// A workflow's status badge: the label on grey, then "passing" on green, "failing" on red
+/// or "no status" on grey, in the flat style READMEs show next to each other.
+pub fn badge_svg(label: &str, passing: Option<bool>) -> String {
+    let (message, color) = match passing {
+        Some(true) => ("passing", "#2ea44f"),
+        Some(false) => ("failing", "#cb2431"),
+        None => ("no status", "#9f9f9f"),
+    };
+    let label: String = label.chars().filter(|c| !c.is_control()).take(64).collect();
+    let (label_width, message_width) = (badge_text_width(&label) + 12, badge_text_width(message) + 12);
+    let width = label_width + message_width;
+    let (label_x, message_x) = (f64::from(label_width) / 2.0, f64::from(label_width) + f64::from(message_width) / 2.0);
+    let label = escape_xml(&label);
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"20\" role=\"img\" aria-label=\"{label}: {message}\">\
+         <title>{label}: {message}</title>\
+         <linearGradient id=\"s\" x2=\"0\" y2=\"100%\"><stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/><stop offset=\"1\" stop-opacity=\".1\"/></linearGradient>\
+         <clipPath id=\"r\"><rect width=\"{width}\" height=\"20\" rx=\"3\" fill=\"#fff\"/></clipPath>\
+         <g clip-path=\"url(#r)\"><rect width=\"{label_width}\" height=\"20\" fill=\"#555\"/>\
+         <rect x=\"{label_width}\" width=\"{message_width}\" height=\"20\" fill=\"{color}\"/><rect width=\"{width}\" height=\"20\" fill=\"url(#s)\"/></g>\
+         <g fill=\"#fff\" text-anchor=\"middle\" font-family=\"Verdana,Geneva,DejaVu Sans,sans-serif\" font-size=\"11\">\
+         <text x=\"{label_x}\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">{label}</text><text x=\"{label_x}\" y=\"14\">{label}</text>\
+         <text x=\"{message_x}\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">{message}</text><text x=\"{message_x}\" y=\"14\">{message}</text></g></svg>"
+    )
+}
+
+/// The width of `text` in 11px Verdana, near enough to size a badge: glyph widths by class.
+fn badge_text_width(text: &str) -> u32 {
+    let tenths: u32 = text
+        .chars()
+        .map(|c| match c {
+            'i' | 'j' | 'l' | '.' | ',' | ':' | ';' | '!' | '|' | '\'' | 'I' => 35,
+            ' ' | 'f' | 't' | 'r' | '(' | ')' | '[' | ']' | '-' | '/' => 45,
+            'm' | 'w' | 'M' | 'W' | '%' | '@' => 100,
+            'A'..='Z' => 75,
+            '0'..='9' => 70,
+            c if c.is_ascii() => 65,
+            _ => 90,
+        })
+        .sum();
+    tenths.div_ceil(10)
+}
+
+fn escape_xml(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 // ------------------------------------------------------------------ the job page
 
 /// Lines of one step shown on the job page; the step's log page shows up to
@@ -794,5 +855,32 @@ mod tests {
             let look = StateLook::of(status);
             assert!(!look.key.is_empty() && !look.label.is_empty() && look.tone.starts_with("text-"));
         }
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::badge_svg;
+
+    #[test]
+    fn badges_say_how_the_workflow_fares() {
+        let passing = badge_svg("CI", Some(true));
+        assert!(passing.starts_with("<svg") && passing.contains(">passing</text>") && passing.contains("#2ea44f"));
+        assert!(badge_svg("CI", Some(false)).contains(">failing</text>"));
+        assert!(badge_svg("CI", None).contains(">no status</text>"));
+    }
+
+    #[test]
+    fn labels_cannot_inject_markup() {
+        let svg = badge_svg("<script>alert(1)</script> & \"x\"", Some(true));
+        assert!(!svg.contains("<script>") && svg.contains("&lt;script&gt;") && svg.contains("&amp; &quot;x&quot;"));
+        let long = badge_svg(&"a".repeat(500), None);
+        assert!(long.len() < 4000, "labels are cut");
+    }
+
+    #[test]
+    fn wider_labels_make_wider_badges() {
+        let width = |svg: String| svg.split("width=\"").nth(1).unwrap().split('"').next().unwrap().parse::<u32>().unwrap();
+        assert!(width(badge_svg("Release pipeline", Some(true))) > width(badge_svg("CI", Some(true))));
     }
 }

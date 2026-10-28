@@ -1,6 +1,7 @@
 //! What the Actions pages read: a repository's runs (filtered, newest first, paged by
-//! keyset), one run with its jobs, and the workflows that have runs, with the people they
-//! name. The REST API reads the same, by id and paged by offset with a total.
+//! keyset), one run with its jobs, the workflows that have runs, with the people they name,
+//! and a workflow's status badge. The REST API reads the same, by id and paged by offset
+//! with a total.
 //!
 //! Every page needs a reader of a repository with Actions on; with Actions off for the
 //! repository the pages answer 404 like any unknown page, so a run's existence is never
@@ -21,6 +22,17 @@ use crate::{RepoContext, ServiceError};
 
 /// Runs on one page of the list.
 pub const RUNS_PER_PAGE: u32 = 25;
+
+// Actions: workflow status badges.
+/// What a workflow's status badge shows, as on GitHub.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Badge {
+    /// The workflow's `name:` as its newest run recorded it, or its file name.
+    pub label: String,
+    /// Whether the newest run that finished with success or failure succeeded; `None` when
+    /// no run did ("no status").
+    pub passing: Option<bool>,
+}
 
 /// The filters of the runs list, as GET parameters give them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -123,6 +135,51 @@ impl ActionsService {
         };
         let people = self.people(runs.iter().flat_map(|run| [run.actor, run.trigger_actor])).await?;
         Ok(RunListing { runs, people, next })
+    }
+
+    // Actions: workflow status badges.
+    /// The status badge of `workflow`, a file name such as `ci.yml`, for a reader of `repo`:
+    /// the newest run of it on `branch` (the default branch when `None`), started by `event`
+    /// when given, that succeeded or failed. Cancelled and skipped runs say nothing about
+    /// the branch's health, so they are passed over. `None` when `repo` has no such
+    /// workflow: neither a run of it nor the file on the default branch.
+    pub async fn badge(
+        &self,
+        repo: &RepoContext,
+        workflow: &str,
+        branch: Option<&str>,
+        event: Option<RunEvent>,
+    ) -> Result<Option<Badge>, ServiceError> {
+        self.require_pages(repo).await?;
+        if workflow.is_empty() || workflow.contains(['/', '\\']) || workflow.starts_with('.') {
+            return Ok(None);
+        }
+        let store = self.ctx().database.actions_runs();
+        let repo_id = repo.repo.repo.id;
+        let reference = format!("refs/heads/{}", branch.unwrap_or(&repo.repo.repo.default_branch));
+        let mut label = None;
+        for dir in super::triggers::WORKFLOW_DIRS {
+            let path = format!("{dir}/{workflow}");
+            let filter = RunFilter {
+                workflow_path: Some(&path),
+                event,
+                reference: Some(&reference),
+                statuses: &[Status::Success, Status::Failure],
+                limit: 1,
+                ..RunFilter::default()
+            };
+            if let Some(run) = store.list_runs(repo_id, &filter).await?.into_iter().next() {
+                return Ok(Some(Badge { label: badge_label(&run.workflow_name, workflow), passing: Some(run.status == Status::Success) }));
+            }
+            if label.is_none() {
+                let any = RunFilter { workflow_path: Some(&path), limit: 1, ..RunFilter::default() };
+                label = store.list_runs(repo_id, &any).await?.into_iter().next().map(|run| badge_label(&run.workflow_name, workflow));
+            }
+        }
+        if label.is_none() && !self.workflow_paths(repo).await?.iter().any(|path| path.rsplit('/').next() == Some(workflow)) {
+            return Ok(None);
+        }
+        Ok(Some(Badge { label: label.unwrap_or_else(|| workflow.to_owned()), passing: None }))
     }
 
     /// Run `#number` of `repo` with its jobs.
@@ -229,4 +286,10 @@ impl ActionsService {
         let tasks: Vec<TaskId> = jobs.iter().filter_map(|job| job.task_id).collect();
         Ok(self.ctx().database.actions_runs().steps_of_tasks(&tasks).await?)
     }
+}
+
+// Actions: workflow status badges.
+/// A badge's label: the workflow's name, or its file name when it has none.
+fn badge_label(name: &str, file: &str) -> String {
+    if name.trim().is_empty() { file.to_owned() } else { name.to_owned() }
 }

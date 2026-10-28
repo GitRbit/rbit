@@ -248,6 +248,22 @@ administrators manage environments in **Settings → Actions → Environments**:
 on the run's page. Deleting an environment, or removing its last reviewer, lets the jobs
 waiting for it run.
 
+## Status badges
+
+Each workflow has a badge for a README:
+
+```markdown
+![CI](https://git.example.com/owner/repo/actions/workflows/ci.yml/badge.svg)
+```
+
+It shows "passing" or "failing" for the newest run of the workflow that succeeded or failed
+on the default branch, or "no status" before one has; cancelled and skipped runs are passed
+over. `?branch=release` picks another branch and `?event=push` counts only runs that event
+started. A public repository's badge can be cached by anyone for a minute; a private
+repository's is shown only to people who may read the repository (in an image on rbit's own
+pages, their browser sends their session) and answers everyone else 404, exactly like a
+repository that does not exist.
+
 ## Running a workflow by hand
 
 A workflow with `on: workflow_dispatch` has **Run workflow** on its page for anyone who can

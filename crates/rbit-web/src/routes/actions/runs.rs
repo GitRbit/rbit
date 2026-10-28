@@ -298,6 +298,85 @@ fn run_number(run: &str) -> WebResult<i64> {
     run.parse().ok().filter(|number| *number > 0).ok_or(WebError::NotFound)
 }
 
+// Actions: workflow status badges.
+/// The parameters of a workflow's badge, as on GitHub.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct BadgeQuery {
+    /// A branch; the default branch when empty.
+    branch: String,
+    /// An event such as `push`; any when empty.
+    event: String,
+}
+
+/// How long a badge may be reused before it is asked for again.
+const BADGE_MAX_AGE: &str = "max-age=60";
+
+/// `GET /{owner}/{repo}/actions/workflows/{workflow}/badge.svg?branch=&event=`: the
+/// workflow's status as an SVG badge. Anyone who may read the repository gets it; a private
+/// repository's badge answers everyone else 404, exactly like a repository that does not
+/// exist. Public badges may be cached by anyone, private ones only by the viewer's browser;
+/// the `ETag` is the badge's content, so a revalidation that finds no change costs no body.
+pub async fn badge(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, workflow)): Path<(String, String, String)>,
+    Query(query): Query<BadgeQuery>,
+    headers: axum::http::HeaderMap,
+) -> WebResult<axum::response::Response> {
+    use axum::{
+        http::{HeaderValue, StatusCode, header},
+        response::IntoResponse as _,
+    };
+    let actions = actions(&state)?;
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let branch = Some(query.branch.trim()).filter(|branch| !branch.is_empty());
+    let badge = match query.event.trim() {
+        "" => actions.badge(&ctx, &workflow, branch, None).await?,
+        event => match RunEvent::parse(event) {
+            Some(event) => actions.badge(&ctx, &workflow, branch, Some(event)).await?,
+            // No run was ever started by an event rbit does not know.
+            None => actions
+                .badge(&ctx, &workflow, branch, None)
+                .await?
+                .map(|badge| rbit_services::actions::browse::Badge { passing: None, ..badge }),
+        },
+    }
+    .ok_or(WebError::NotFound)?;
+    let svg = crate::views::actions::badge_svg(&badge.label, badge.passing);
+    let etag = {
+        use sha2::{Digest as _, Sha256};
+        let digest = Sha256::digest(svg.as_bytes());
+        format!(
+            "\"{}\"",
+            digest.iter().take(12).fold(String::new(), |mut hex, byte| {
+                use std::fmt::Write as _;
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            })
+        )
+    };
+    let cache = if ctx.repo.repo.visibility.is_public() { format!("public, {BADGE_MAX_AGE}") } else { format!("private, {BADGE_MAX_AGE}") };
+    let fresh = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|tags| tags.split(',').any(|tag| tag.trim() == etag || tag.trim() == "*"));
+    let mut response = if fresh { StatusCode::NOT_MODIFIED.into_response() } else { svg.into_response() };
+    let out = response.headers_mut();
+    out.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/svg+xml; charset=utf-8"));
+    out.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    // An SVG opened on its own is a document: it may draw, never run script or load anything.
+    out.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'none'; style-src 'unsafe-inline'; sandbox"));
+    out.insert(header::VARY, HeaderValue::from_static("Cookie"));
+    if let Ok(value) = HeaderValue::from_str(&cache) {
+        out.insert(header::CACHE_CONTROL, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        out.insert(header::ETAG, value);
+    }
+    Ok(response)
+}
+
 /// `GET /{owner}/{repo}/actions/runs/{run}`
 pub async fn show(
     State(state): State<AppState>,

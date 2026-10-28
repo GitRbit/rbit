@@ -135,6 +135,53 @@ impl Fixture {
         };
         self.database.actions_runs().create_run(&new).await.unwrap()
     }
+
+    // Actions: workflow status badges.
+    /// A run of `workflow` on `reference` that failed before any job (a workflow error).
+    async fn failed_run(&self, workflow: &str, reference: &str, event: RunEvent) -> rbit_core::actions::Run {
+        self.failed_run_in(self.repo_id().await, workflow, reference, event).await
+    }
+
+    async fn failed_run_in(&self, repo: rbit_core::RepoId, workflow: &str, reference: &str, event: RunEvent) -> rbit_core::actions::Run {
+        let new = NewRun {
+            repo,
+            workflow_path: workflow,
+            workflow_name: "Build & <test>",
+            title: "broken",
+            event,
+            reference,
+            sha: "0123456789abcdef0123456789abcdef01234567",
+            actor: Some(self.alice.id()),
+            trigger_actor: Some(self.alice.id()),
+            pull_number: None,
+            is_fork: false,
+            trusted: true,
+            concurrency_group: None,
+            cancel_in_progress: false,
+            event_payload: "{}",
+            dispatch_inputs: None,
+            start: RunStart::Runnable,
+            jobs: &[],
+            error: Some("a broken workflow"),
+            now: Timestamp::now(),
+        };
+        self.database.actions_runs().create_run(&new).await.unwrap()
+    }
+
+    /// The status, headers and body of `path` for `cookie` (none when empty).
+    async fn get(&self, path: &str, cookie: &str, if_none_match: Option<&str>) -> (StatusCode, axum::http::HeaderMap, String) {
+        let mut request = Request::builder().uri(path).header(header::HOST, "localhost:3000");
+        if !cookie.is_empty() {
+            request = request.header(header::COOKIE, cookie);
+        }
+        if let Some(tag) = if_none_match {
+            request = request.header(header::IF_NONE_MATCH, tag);
+        }
+        let response = self.router.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        let (status, headers) = (response.status(), response.headers().clone());
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, headers, String::from_utf8_lossy(&body).into_owned())
+    }
 }
 
 #[tokio::test]
@@ -308,4 +355,72 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     let (_, inputs) = fixture.database.actions_runs().event(detail.run.id).await.unwrap().unwrap();
     let inputs: serde_json::Value = serde_json::from_str(&inputs.unwrap()).unwrap();
     assert_eq!(inputs, serde_json::json!({"version": "1.2.0", "channel": "beta", "dry-run": true}));
+}
+
+// Actions: workflow status badges.
+#[tokio::test]
+async fn workflow_badges_show_the_newest_finished_run_of_a_branch() {
+    let fixture = Fixture::new().await;
+    let badge = "/alice/rocket/actions/workflows/ci.yml/badge.svg";
+    let (status, ..) = fixture.get(badge, "", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "Actions is off");
+    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
+    let (status, ..) = fixture.get(badge, "", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "no such workflow: no run, no file");
+
+    // A run that has not finished says nothing yet.
+    fixture.run(".rbit/workflows/ci.yml", "running", RunEvent::Push).await;
+    let (status, headers, body) = fixture.get(badge, "", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(">no status</text>") && body.contains(">CI</text>"), "{body}");
+    assert_eq!(headers[header::CONTENT_TYPE], "image/svg+xml; charset=utf-8");
+    assert_eq!(headers[header::CACHE_CONTROL], "public, max-age=60");
+    assert!(headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap().starts_with("default-src 'none'"));
+
+    // The newest finished run of the default branch, from any event unless one is asked.
+    fixture.failed_run(".rbit/workflows/ci.yml", "refs/heads/main", RunEvent::Push).await;
+    let (_, headers, body) = fixture.get(badge, "", None).await;
+    assert!(body.contains(">failing</text>") && body.contains("Build &amp; &lt;test&gt;"), "names are escaped: {body}");
+    let (status, _, empty) = fixture.get(badge, "", Some(headers[header::ETAG].to_str().unwrap())).await;
+    assert_eq!((status, empty.as_str()), (StatusCode::NOT_MODIFIED, ""), "the ETag revalidates");
+    let (_, _, body) = fixture.get(&format!("{badge}?event=schedule"), "", None).await;
+    assert!(body.contains(">no status</text>"), "no scheduled run finished");
+    let (_, _, body) = fixture.get(&format!("{badge}?event=nonsense"), "", None).await;
+    assert!(body.contains(">no status</text>"));
+    let (_, _, body) = fixture.get(&format!("{badge}?branch=feature"), "", None).await;
+    assert!(body.contains(">no status</text>"), "another branch has no runs");
+    fixture.failed_run(".rbit/workflows/ci.yml", "refs/heads/feature", RunEvent::Push).await;
+    let (_, _, body) = fixture.get(&format!("{badge}?branch=feature&event=push"), "", None).await;
+    assert!(body.contains(">failing</text>"));
+
+    // A cancelled run is passed over.
+    let cancelled = fixture.run(".rbit/workflows/ci.yml", "cancelled", RunEvent::Push).await;
+    fixture.database.actions_runs().cancel_run(fixture.repo_id().await, cancelled.id, Timestamp::now()).await.unwrap();
+    let (_, _, body) = fixture.get(badge, "", None).await;
+    assert!(body.contains(">failing</text>"), "{body}");
+
+    // Names that are no workflow file.
+    for path in ["/alice/rocket/actions/workflows/..%2Fci.yml/badge.svg", "/alice/rocket/actions/workflows/.hidden/badge.svg"] {
+        assert_eq!(fixture.get(path, "", None).await.0, StatusCode::NOT_FOUND, "{path}");
+    }
+
+    // Private: readers see it, cached only by their browser; everyone else gets the same 404
+    // as a repository that does not exist.
+    let input = CreateRepository { name: "vault".into(), description: String::new(), visibility: rbit_core::Visibility::Private };
+    fixture.services.repositories.create(&fixture.alice, input).await.unwrap();
+    let vault = fixture.database.repositories().find_by_path("alice", "vault").await.unwrap().unwrap().repo.id;
+    fixture.database.actions_settings().set_enabled(vault, true, Timestamp::now()).await.unwrap();
+    fixture.failed_run_in(vault, ".rbit/workflows/ci.yml", "refs/heads/main", RunEvent::Push).await;
+    let badge = "/alice/vault/actions/workflows/ci.yml/badge.svg";
+    let (status, headers, body) = fixture.get(badge, &fixture.owner, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains(">failing</text>"));
+    assert_eq!(headers[header::CACHE_CONTROL], "private, max-age=60");
+    let (hidden, hidden_headers, hidden_body) = fixture.get(badge, "", None).await;
+    let (outsider, ..) = fixture.get(badge, &fixture.reader, None).await;
+    let (missing, missing_headers, missing_body) = fixture.get("/alice/nothing-here/actions/workflows/ci.yml/badge.svg", "", None).await;
+    assert_eq!((hidden, outsider, missing), (StatusCode::NOT_FOUND, StatusCode::NOT_FOUND, StatusCode::NOT_FOUND));
+    assert_eq!(hidden_headers[header::CONTENT_TYPE], missing_headers[header::CONTENT_TYPE], "the same page, not an image");
+    assert!(hidden_body.contains("Page not found") && missing_body.contains("Page not found"));
+    assert!(!hidden_body.contains("failing") && !hidden_body.contains("passing"), "nothing of the workflow shows");
 }
