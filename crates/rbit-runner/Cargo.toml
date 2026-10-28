@@ -43,6 +43,10 @@ tracing-subscriber.workspace = true
 # `O_NOFOLLOW` and `O_NONBLOCK` for files a container job can write (`untrusted`).
 libc.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# Running as a Windows Service: the service manager's dispatcher and stop requests.
+windows-service.workspace = true
+
 [dev-dependencies]
 # An in-process stand-in for the server's protocol endpoint.
 axum.workspace = true

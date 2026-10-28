@@ -515,9 +515,43 @@ sudo useradd --system --create-home --home-dir /var/lib/rbit-runner --shell /usr
 sudo usermod -aG docker rbit-runner   # container labels with rootful Docker
 sudo install -m 0755 rbit-runner /usr/local/bin/rbit-runner
 sudo -u rbit-runner sh -c 'cd /var/lib/rbit-runner && read -rs RBIT_RUNNER_TOKEN && export RBIT_RUNNER_TOKEN &&   rbit-runner register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04'
-sudo install -m 0644 deploy/rbit-runner.service /etc/systemd/system/rbit-runner.service
-sudo systemctl daemon-reload && sudo systemctl enable --now rbit-runner
+sudo rbit-runner --config /var/lib/rbit-runner/runner.toml install --user rbit-runner
 ```
+
+**Running in the background.** `rbit-runner install` registers the runner with the
+system's own service manager, starts it, and has it start again at boot or logon and
+restart when it fails. `uninstall`, `start`, `stop` and `status` take the same `--mode` and
+`--name`; `--config` picks the runner (its directory holds `runner.toml`, `.credential` and
+the work directory, and must stay where it is: `uninstall` before moving it).
+
+| `--mode` | Linux | macOS | Windows |
+|---|---|---|---|
+| `service` (default) | systemd unit in `/etc/systemd/system` | LaunchDaemon in `/Library/LaunchDaemons` | Windows Service (session 0) |
+| `desktop` | systemd `--user` unit | LaunchAgent in `~/Library/LaunchAgents` | Task Scheduler task at logon |
+
+- `service` starts at boot, before anyone logs in, and needs root (an elevated prompt on
+  Windows). It runs as `--user`: a system account such as `rbit-runner` on Linux and macOS
+  (root when omitted), and `NT AUTHORITY\NETWORK SERVICE` on Windows unless `--user` names
+  another account, whose password is read from `RBIT_RUNNER_SERVICE_PASSWORD`. On Windows,
+  `install` grants that account the right to change the runner's directory, as GitHub's
+  runner does. The service is named `rbit-runner.<runner name>` (`--name` changes it) and
+  logs to the journal on Linux, and to `runner.log` next to the configuration on macOS and
+  Windows.
+- `desktop` runs in the session of the user who installs it, from when they log in until
+  they log off. Pick it when jobs need that desktop: UI and browser tests that open windows,
+  screenshots, code signing with a key in the user's keychain or certificate store, or
+  anything that talks to the logged-in session. A Windows Service has no desktop at all
+  (session 0), and a LaunchDaemon cannot reach the logged-in user's GUI. The machine must
+  stay logged in (set it to log in automatically) for the runner to run.
+
+Every mode restarts the runner when it fails (systemd `Restart=on-failure`, launchd
+`KeepAlive`, the Windows Service's recovery actions, the task's restart on failure) and stops
+it gracefully: polling stops at once and running tasks get `shutdown_grace_seconds` (10
+minutes by default) before they are cancelled. systemd and launchd send SIGTERM and wait that
+long plus a minute; the Windows Service turns the service manager's stop and pre-shutdown
+notice into the same stop and reports itself stopping meanwhile; `rbit-runner stop` of a
+desktop task leaves a stop request in the work directory, and logging off stops it.
+`deploy/rbit-runner.service` remains an example unit for hosts set up by hand.
 
 `deploy/rbit-runner.example.toml` documents `runner.toml`: capacity, the work directory, labels
 and the container limits (memory, CPUs, pids). The container image keeps `runner.toml`, the

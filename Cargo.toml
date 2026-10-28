@@ -124,6 +124,8 @@ zeroize = "1.9"
 # rbit-runner's runner.toml is read and written as a document of its own; toml 0.8 is
 # already in the tree through figment, so writing it adds no crate.
 toml = "0.8"
+# rbit-runner's Windows Service (`rbit-runner install --mode service`), without unsafe code.
+windows-service = "0.8"
 # rbit-runner and the server's second pass mask every secret with one Aho-Corasick automaton
 # per task; aho-corasick is already in the tree (through regex), so masking adds no crate.
 aho-corasick = "1.1"
