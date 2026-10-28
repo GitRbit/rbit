@@ -497,29 +497,33 @@ pub async fn artifact(
     viewer: Viewer,
     Path((owner, repo, run, artifact)): Path<(String, String, String, String)>,
 ) -> WebResult<axum::response::Response> {
-    use axum::{
-        http::{HeaderValue, header},
-        response::IntoResponse as _,
-    };
-    let actions = actions(&state)?;
-    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
-    let detail = actions.run_detail(&ctx, run_number(&run)?).await?;
+    download(&state, &viewer, (&owner, &repo, &run, &artifact), super::ArtifactFormat::TarGz).await
+}
+
+/// `GET /{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}/{format}`: the artifact as a
+/// `zip` or a `tar.gz`.
+pub async fn artifact_as(
+    State(state): State<AppState>,
+    viewer: Viewer,
+    Path((owner, repo, run, artifact, format)): Path<(String, String, String, String, String)>,
+) -> WebResult<axum::response::Response> {
+    let format = super::ArtifactFormat::parse(&format).ok_or(WebError::NotFound)?;
+    download(&state, &viewer, (&owner, &repo, &run, &artifact), format).await
+}
+
+async fn download(
+    state: &AppState,
+    viewer: &Viewer,
+    (owner, repo, run, artifact): (&str, &str, &str, &str),
+    format: super::ArtifactFormat,
+) -> WebResult<axum::response::Response> {
+    let actions = actions(state)?;
+    let ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
+    let detail = actions.run_detail(&ctx, run_number(run)?).await?;
     let id = rbit_core::actions::ArtifactId(artifact.parse().map_err(|_| WebError::NotFound)?);
     let (artifact, file) = actions.open_artifact(&ctx, id).await?;
     if artifact.run_id != detail.run.id {
         return Err(WebError::NotFound);
     }
-    let mut response = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
-    let headers = response.headers_mut();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
-    if let Ok(value) = HeaderValue::from_str(&artifact.size.to_string()) {
-        headers.insert(header::CONTENT_LENGTH, value);
-    }
-    // Names are [A-Za-z0-9._-], so they need no quoting beyond the quotes.
-    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{}.tar.gz\"", artifact.name)) {
-        headers.insert(header::CONTENT_DISPOSITION, value);
-    }
-    Ok(response)
+    Ok(super::artifact_download(&artifact, file, format))
 }

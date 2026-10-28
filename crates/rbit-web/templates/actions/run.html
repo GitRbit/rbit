@@ -101,7 +101,8 @@
     {% for artifact in artifacts %}
     <li class="row gap-3 py-2.5">
       {% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-      <a class="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ artifact.url }}" hx-boost="false" download>{{ artifact.name }}</a>
+      <a class="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ artifact.url }}/zip" hx-boost="false" download>{{ artifact.name }}</a>
+      <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4" href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="Download as tar.gz">tar.gz</a>
       <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ artifact.size }} · expires <time datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time></span>
     </li>
     {% endfor %}

@@ -54,6 +54,9 @@ proptest.workspace = true
 tracing-subscriber.workspace = true
 rbit-storage.workspace = true
 tempfile.workspace = true
+# Actions: artifacts as the runner stores them, and the zip archives they download as.
+tar.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

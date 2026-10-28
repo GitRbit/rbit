@@ -181,7 +181,9 @@ The cache lives on the runner, so a hit needs the same runner. A run reads its o
 entries, then the default branch's, and writes only its own; pull requests from forks write
 only to their pull request's scope. Artifacts are stored by the server, listed on the run page
 and downloadable by anyone who may read the repository, for 90 days unless the workflow asks
-for fewer.
+for fewer. They download as a zip, as on GitHub (the run page's link, and the REST API's
+`archive_download_url`, `…/artifacts/{id}/zip`), or as a tar.gz (`…/tar.gz`), with the
+uploaded files at the top of either.
 
 ### Expressions
 
@@ -295,8 +297,7 @@ to `workflow_run` and `workflow_job`.
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
 - A workflow is identified by its file name in the API.
-- A job's log and an artifact are downloaded directly from the API, not through a redirect,
-  and artifacts are tar.gz archives (`…/artifacts/{id}/tar.gz`), not zip.
+- A job's log and an artifact are downloaded directly from the API, not through a redirect.
 - The workflow's token cannot list and edit comments yet.
 
 ### Known limits of the container backend

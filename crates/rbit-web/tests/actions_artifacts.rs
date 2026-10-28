@@ -50,6 +50,49 @@ async fn call(fixture: &Fixture, method: Method, path: &str, credential: &str, d
     Answer { status, headers, body: to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec() }
 }
 
+/// An artifact as rbit-runner uploads it: a tar.gz with `files` under `w/`.
+pub fn stored(files: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+    for (name, data) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append_data(&mut header, format!("w/{name}"), *data).unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+/// The files of a zip, by name.
+pub fn zip_files(bytes: &[u8]) -> Vec<(String, String)> {
+    use std::io::Read as _;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    (0..archive.len())
+        .map(|index| {
+            let mut file = archive.by_index(index).unwrap();
+            let mut text = String::new();
+            file.read_to_string(&mut text).unwrap();
+            (file.name().unwrap().into_owned(), text)
+        })
+        .collect()
+}
+
+/// The files of a tar.gz, by name.
+pub fn tar_gz_files(bytes: &[u8]) -> Vec<(String, String)> {
+    use std::io::Read as _;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    archive
+        .entries()
+        .unwrap()
+        .map(|entry| {
+            let mut entry = entry.unwrap();
+            let mut text = String::new();
+            entry.read_to_string(&mut text).unwrap();
+            (entry.path().unwrap().display().to_string(), text)
+        })
+        .collect()
+}
+
 pub async fn upload(fixture: &Fixture, credential: &str, task: i64, name: &str, query: &str, bytes: &[u8]) -> Answer {
     let digest = hex(bytes);
     call(fixture, Method::PUT, &format!("tasks/{task}/artifacts/{name}{query}"), credential, Some(&digest), bytes.to_vec()).await
@@ -143,7 +186,8 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
     let credential = fixture.runner(&["linux"]).await;
     let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
     let task = spec(&poll(&fixture, &credential, Some("a")).await.1).task_id.0;
-    assert_eq!(upload(&fixture, &credential, task, "dist-linux", "", b"archive").await.status, StatusCode::CREATED);
+    let archive = stored(&[("app", b"binary"), ("docs/README.md", b"read me")]);
+    assert_eq!(upload(&fixture, &credential, task, "dist-linux", "", &archive).await.status, StatusCode::CREATED);
     let run_url = format!("/alice/rocket/actions/runs/{}", run.number);
 
     let alice = fixture.alice.clone();
@@ -155,11 +199,21 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
     let download_url = format!("{run_url}/artifacts/{}", artifact.id.0);
     assert!(html.contains(&download_url));
 
-    let download = page(&fixture, &alice, &download_url).await;
+    assert!(html.contains(&format!("{download_url}/zip")) && html.contains(&format!("{download_url}/tar.gz")), "{html}");
+    let files = [("app".to_owned(), "binary".to_owned()), ("docs/README.md".to_owned(), "read me".to_owned())];
+    for path in [download_url.clone(), format!("{download_url}/tar.gz")] {
+        let download = page(&fixture, &alice, &path).await;
+        assert_eq!(download.status, StatusCode::OK, "{path}");
+        assert_eq!(tar_gz_files(&download.body), files, "{path}: the files at the top, without the runner's `w/`");
+        assert_eq!(download.headers[header::CONTENT_TYPE], "application/gzip");
+        assert_eq!(download.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist-linux.tar.gz\"");
+    }
+    let download = page(&fixture, &alice, &format!("{download_url}/zip")).await;
     assert_eq!(download.status, StatusCode::OK);
-    assert_eq!(download.body, b"archive");
-    assert_eq!(download.headers[header::CONTENT_TYPE], "application/gzip");
-    assert_eq!(download.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist-linux.tar.gz\"");
+    assert_eq!(zip_files(&download.body), files);
+    assert_eq!(download.headers[header::CONTENT_TYPE], "application/zip");
+    assert_eq!(download.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist-linux.zip\"");
+    assert_eq!(page(&fixture, &alice, &format!("{download_url}/rar")).await.status, StatusCode::NOT_FOUND);
     assert_eq!(
         page(&fixture, &alice, &format!("/alice/rocket/actions/runs/{}/artifacts/{}", run.number + 1, artifact.id.0)).await.status,
         StatusCode::NOT_FOUND

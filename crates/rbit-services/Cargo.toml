@@ -45,6 +45,8 @@ serde.workspace = true
 # Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
 aho-corasick.workspace = true
 flate2.workspace = true
+# Actions: artifacts, read to serve them as zip archives.
+tar.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
@@ -55,6 +57,8 @@ p256.workspace = true
 base64.workspace = true
 # M: a fake GitHub/Gitea server for the import tests.
 axum.workspace = true
+# Actions: reading the zip archives artifacts are served as.
+zip.workspace = true
 
 [lints]
 workspace = true

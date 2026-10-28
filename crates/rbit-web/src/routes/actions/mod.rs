@@ -24,6 +24,107 @@ use axum::{
 
 use crate::AppState;
 
+// Actions: artifacts (A).
+/// The formats an artifact downloads in: a zip, which is what GitHub serves, or a tar.gz.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArtifactFormat {
+    TarGz,
+    Zip,
+}
+
+impl ArtifactFormat {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
+        match text {
+            "tar.gz" => Some(Self::TarGz),
+            "zip" => Some(Self::Zip),
+            _ => None,
+        }
+    }
+}
+
+/// The download of `artifact`, whose stored file is `file`, in `format`. The archive is
+/// written as it is sent ([`rbit_services::actions::downloads`]), so it has no
+/// `Content-Length`; a broken stored archive ends the response with an error rather than
+/// finishing an archive that would look whole.
+pub(crate) fn artifact_download(
+    artifact: &rbit_core::actions::Artifact,
+    file: tokio::fs::File,
+    format: ArtifactFormat,
+) -> axum::response::Response {
+    use axum::{
+        body::{Body, Bytes},
+        http::{HeaderValue, header},
+        response::IntoResponse as _,
+    };
+    use rbit_services::actions::downloads;
+    let (kind, extension) = match format {
+        ArtifactFormat::TarGz => ("application/gzip", "tar.gz"),
+        ArtifactFormat::Zip => ("application/zip", "zip"),
+    };
+    let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(8);
+    tokio::spawn(async move {
+        let file = file.into_std().await;
+        let _ = tokio::task::spawn_blocking(move || {
+            let writer = ChunkWriter { sender: sender.clone(), chunk: Vec::with_capacity(ChunkWriter::SIZE) };
+            let source = std::io::BufReader::new(file);
+            let written = match format {
+                ArtifactFormat::TarGz => downloads::to_tar_gz(source, writer).map(drop),
+                ArtifactFormat::Zip => downloads::to_zip(source, writer).map(drop),
+            };
+            if let Err(error) = written {
+                let _ = sender.blocking_send(Err(error));
+            }
+        })
+        .await;
+    });
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
+    let mut response = Body::from_stream(stream).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
+    // Names are [A-Za-z0-9._-], so they need no quoting beyond the quotes.
+    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{}.{extension}\"", artifact.name)) {
+        headers.insert(header::CONTENT_DISPOSITION, value);
+    }
+    response
+}
+
+/// Sends what the zip writer writes as chunks of the response body; a closed response
+/// (the client went away) stops the conversion.
+struct ChunkWriter {
+    sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
+    chunk: Vec<u8>,
+}
+
+impl ChunkWriter {
+    const SIZE: usize = 64 * 1024;
+
+    fn send(&mut self) -> std::io::Result<()> {
+        if self.chunk.is_empty() {
+            return Ok(());
+        }
+        let chunk = std::mem::replace(&mut self.chunk, Vec::with_capacity(Self::SIZE));
+        self.sender
+            .blocking_send(Ok(chunk.into()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed"))
+    }
+}
+
+impl std::io::Write for ChunkWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.chunk.extend_from_slice(buf);
+        if self.chunk.len() >= Self::SIZE {
+            self.send()?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.send()
+    }
+}
+
 /// Every page of Actions, with the methods it answers.
 pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions", &[Method::GET]),
@@ -48,6 +149,7 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", &[Method::GET]),
     // Actions: artifacts (A).
     ("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", &[Method::GET]),
+    ("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}/{format}", &[Method::GET]),
     ("/{owner}/{repo}/settings/actions", &[Method::GET, Method::POST]),
     ("/{owner}/{repo}/settings/actions/runners", &[Method::GET, Method::POST]),
     ("/{owner}/{repo}/settings/actions/runners/{runner}", &[Method::POST]),
@@ -72,6 +174,7 @@ pub fn file_routes(state: &AppState) -> Router<AppState> {
     use axum::middleware::{from_fn, from_fn_with_state};
     Router::new()
         .route("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}", get(runs::artifact))
+        .route("/{owner}/{repo}/actions/runs/{run}/artifacts/{artifact}/{format}", get(runs::artifact_as))
         .layer(from_fn_with_state(state.clone(), crate::middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), crate::middleware::session))
         .layer(from_fn_with_state(state.clone(), crate::middleware::rate_limit))

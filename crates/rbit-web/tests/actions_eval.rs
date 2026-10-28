@@ -370,6 +370,26 @@ const CASES: &[Case] = &[
     )
     .tags(&["artifacts", "reads"]),
     case(
+        "artifact-download-zip-reader",
+        World::Base,
+        CAROL_READ,
+        "GET",
+        "/repos/alice/rocket/actions/artifacts/{artifact}/zip",
+        200,
+        "readers download an artifact as GitHub's zip, its archive_download_url",
+    )
+    .tags(&["artifacts", "reads"]),
+    case(
+        "artifact-download-zip-outsider",
+        World::Base,
+        EVE_READ,
+        "GET",
+        "/repos/alice/rocket/actions/artifacts/{artifact}/zip",
+        404,
+        "the zip of a private artifact is as hidden as the artifact",
+    )
+    .tags(&["artifacts", "privacy"]),
+    case(
         "artifact-show-outsider",
         World::Base,
         EVE_READ,
@@ -1469,7 +1489,16 @@ async fn build(world: World) -> (Fixture, Ids) {
     let log =
         send(&fx, "POST", &format!("runner:tasks/{}/logs?from=0", ids.task), Some(&ids.runner_a), b"compiling\n".to_vec(), None).await;
     assert_eq!(log.status, StatusCode::OK, "{}", log.json());
-    let artifact = b"tar.gz bytes".to_vec();
+    // An artifact as rbit-runner stores it: a tar.gz with the files under `w/`.
+    let artifact = {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast()));
+        let mut header = tar::Header::new_gnu();
+        header.set_size(5);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append_data(&mut header, "w/app.txt", &b"built"[..]).unwrap();
+        builder.into_inner().unwrap().finish().unwrap()
+    };
     let upload = send(
         &fx,
         "PUT",
@@ -1728,7 +1757,7 @@ async fn actions_http_eval() {
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), CASES.len(), "case ids are unique");
-    assert!((40..=80).contains(&CASES.len()), "{} cases", CASES.len());
+    assert!((40..=120).contains(&CASES.len()), "{} cases", CASES.len());
     for known in KNOWN_FAILURES {
         assert!(CASES.iter().any(|case| case.id == *known), "known failure `{known}` is a case");
     }

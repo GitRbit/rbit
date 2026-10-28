@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::{
-    actions_artifacts::{Answer, upload},
+    actions_artifacts::{Answer, stored, tar_gz_files, upload, zip_files},
     actions_runner::Fixture,
     actions_runner_tasks::{logs, payload, poll, seed, spec, state, template},
 };
@@ -54,25 +54,32 @@ async fn job_logs_and_artifacts_are_read_downloaded_and_deleted() {
     assert_eq!(api(&fixture, Method::GET, &format!("{actions}/jobs/{}/logs", job + 1000), &read).await.status, StatusCode::NOT_FOUND);
 
     // Artifacts: the run's, the repository's (by name), one, its file, and deleting it.
-    assert_eq!(upload(&fixture, &credential, task, "dist", "", b"tar.gz bytes").await.status, StatusCode::CREATED);
-    assert_eq!(upload(&fixture, &credential, task, "coverage", "", b"more bytes").await.status, StatusCode::CREATED);
+    let dist = stored(&[("dist/app.zip", b"zipped"), ("dist/app.zip.sha256", b"sum")]);
+    assert_eq!(upload(&fixture, &credential, task, "dist", "", &dist).await.status, StatusCode::CREATED);
+    assert_eq!(upload(&fixture, &credential, task, "coverage", "", &stored(&[("lcov.info", b"TN:")])).await.status, StatusCode::CREATED);
     let listed = api(&fixture, Method::GET, &format!("{actions}/runs/{}/artifacts", run.id.0), &read).await.json();
     assert_eq!(listed["total_count"], 2);
     let names: Vec<_> = listed["artifacts"].as_array().unwrap().iter().map(|artifact| artifact["name"].as_str().unwrap()).collect();
     assert_eq!(names, ["coverage", "dist"], "by name, as the run page");
     let all = api(&fixture, Method::GET, &format!("{actions}/artifacts?name=dist"), &read).await;
     assert_eq!(all.headers["x-total-count"], "1");
+    let size = dist.len() as u64;
     let dist = all.json()["artifacts"][0].clone();
-    assert_eq!((dist["size_in_bytes"].as_u64(), dist["expired"].as_bool()), (Some(12), Some(false)));
+    assert_eq!((dist["size_in_bytes"].as_u64(), dist["expired"].as_bool()), (Some(size), Some(false)));
     assert!(dist["digest"].as_str().unwrap().starts_with("sha256:"));
     assert_eq!(dist["workflow_run"]["id"], run.id.0);
     let url = dist["url"].as_str().unwrap().strip_prefix("https://git.example.com/api/v1").unwrap().to_owned();
     assert_eq!(api(&fixture, Method::GET, &url, &read).await.json()["name"], "dist");
-    assert_eq!(dist["archive_download_url"].as_str().unwrap(), format!("https://git.example.com/api/v1{url}/tar.gz"));
+    assert_eq!(dist["archive_download_url"].as_str().unwrap(), format!("https://git.example.com/api/v1{url}/zip"), "GitHub's format");
+    let files = [("dist/app.zip".to_owned(), "zipped".to_owned()), ("dist/app.zip.sha256".to_owned(), "sum".to_owned())];
+    let file = api(&fixture, Method::GET, &format!("{url}/zip"), &read).await;
+    assert_eq!((file.status, zip_files(&file.body)), (StatusCode::OK, files.to_vec()));
+    assert_eq!(file.headers[header::CONTENT_TYPE], "application/zip");
+    assert_eq!(file.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist.zip\"");
     let file = api(&fixture, Method::GET, &format!("{url}/tar.gz"), &read).await;
-    assert_eq!((file.status, file.body.as_slice()), (StatusCode::OK, b"tar.gz bytes".as_slice()));
+    assert_eq!((file.status, tar_gz_files(&file.body)), (StatusCode::OK, files.to_vec()));
     assert_eq!(file.headers[header::CONTENT_DISPOSITION], "attachment; filename=\"dist.tar.gz\"");
-    assert_eq!(api(&fixture, Method::GET, &format!("{url}/zip"), &read).await.status, StatusCode::NOT_FOUND, "tar.gz only");
+    assert_eq!(api(&fixture, Method::GET, &format!("{url}/7z"), &read).await.status, StatusCode::NOT_FOUND, "zip and tar.gz only");
     assert_eq!(api(&fixture, Method::DELETE, &url, &read).await.status, StatusCode::FORBIDDEN, "deleting needs the write scope");
     assert_eq!(api(&fixture, Method::DELETE, &url, &write).await.status, StatusCode::NO_CONTENT);
     assert_eq!(api(&fixture, Method::GET, &url, &read).await.status, StatusCode::NOT_FOUND);

@@ -2282,10 +2282,11 @@
           "name": "archive_format",
           "in": "path",
           "required": true,
-          "description": "`tar.gz`, the only format: rbit keeps artifacts as tar.gz archives, not GitHub's zip.",
+          "description": "`zip`, GitHub's format, or `tar.gz`. Either holds the artifact's files at its top.",
           "schema": {
             "type": "string",
             "enum": [
+              "zip",
               "tar.gz"
             ]
           }
@@ -2297,7 +2298,7 @@
           "actions"
         ],
         "summary": "Download an artifact",
-        "description": "The archive itself, not GitHub's redirect to a download URL. Any other format is 404.",
+        "description": "The archive itself, not GitHub's redirect to a download URL, written as it is sent (no `Content-Length`). Any other format is 404.",
         "security": [
           {},
           {
@@ -2306,8 +2307,14 @@
         ],
         "responses": {
           "200": {
-            "description": "The tar.gz",
+            "description": "The zip or tar.gz",
             "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              },
               "application/gzip": {
                 "schema": {
                   "type": "string",
@@ -3623,14 +3630,14 @@
           },
           "size_in_bytes": {
             "type": "integer",
-            "description": "Bytes of the tar.gz."
+            "description": "Bytes of the artifact as stored (gzip-compressed)."
           },
           "url": {
             "type": "string"
           },
           "archive_download_url": {
             "type": "string",
-            "description": "`…/tar.gz`: the archive."
+            "description": "`…/zip`: the archive, as on GitHub; `…/tar.gz` serves it as a tar.gz."
           },
           "expired": {
             "type": "boolean",

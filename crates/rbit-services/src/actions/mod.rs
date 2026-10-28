@@ -27,6 +27,7 @@
 //! | [`settings`] | A repository's switch, token permission and trusted authors |
 //! | [`conditions`] | Job `if:` once its needs are done, fail-fast |
 //! | [`artifacts`] | Artifacts: uploads, downloads, quota and retention |
+//! | [`downloads`] | Artifact downloads, as zip or tar.gz, rewritten as they are sent |
 //! | [`browse`] | What the pages read: runs, a run and its jobs |
 //! | [`sweeper`] | Zombie and endless tasks, abandoned jobs, log and run retention, the log budget, stale tokens |
 //! | [`hooks`] | `workflow_run` and `workflow_job` webhooks |
@@ -41,6 +42,8 @@ pub mod browse;
 pub mod conditions;
 pub mod context;
 pub mod dispatch;
+// Actions: artifact downloads as zip and tar.gz.
+pub mod downloads;
 pub mod environments;
 pub mod hooks;
 pub mod logs;

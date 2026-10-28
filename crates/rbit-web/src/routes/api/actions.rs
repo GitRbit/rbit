@@ -28,8 +28,9 @@
 //!   is no `…/secrets/public-key`.
 //! * Secrets and variables can be managed before a repository turns Actions on.
 //! * A job's log (`…/jobs/{job_id}/logs`) is the raw log itself, `text/plain`, not GitHub's
-//!   redirect to it. Artifacts are tar.gz, not zip: `…/artifacts/{artifact_id}/tar.gz`
-//!   downloads one, any other format is 404.
+//!   redirect to it. An artifact downloads as GitHub's zip (`…/artifacts/{artifact_id}/zip`,
+//!   its `archive_download_url`), made while it is sent, or as a tar.gz (`…/tar.gz`), both
+//!   with the files at the top; any other format is 404.
 
 use std::collections::BTreeMap;
 
@@ -456,7 +457,7 @@ fn artifact_json(artifact: &Artifact, ctx: &RepoContext, base: &str) -> Value {
         "name": artifact.name,
         "size_in_bytes": artifact.size,
         "url": url,
-        "archive_download_url": format!("{url}/tar.gz"),
+        "archive_download_url": format!("{url}/zip"),
         "expired": false,
         "digest": format!("sha256:{digest}"),
         "created_at": timestamp(artifact.created_at),
@@ -514,25 +515,18 @@ pub async fn show_artifact(State(state): State<AppState>, caller: Caller, Path(p
     Ok(Json(artifact_json(&artifact, &ctx, base_url(&state))))
 }
 
-/// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/tar.gz`: the file itself
-/// (GitHub's `zip` format does not exist here).
+/// `GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}`: the file
+/// itself, as a `zip` (GitHub's format) or the `tar.gz` it is stored as.
 pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
     let ctx = path.repo(&state, &caller).await?;
     let id = path.artifact()?;
-    if path.archive_format.as_deref() != Some("tar.gz") {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "Artifacts are tar.gz archives: download …/tar.gz"));
-    }
+    let format = path
+        .archive_format
+        .as_deref()
+        .and_then(crate::routes::actions::ArtifactFormat::parse)
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Artifacts download as …/zip or …/tar.gz"))?;
     let (artifact, file) = actions(&state)?.open_artifact(&ctx, id).await?;
-    let mut response = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
-    let headers = response.headers_mut();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::CONTENT_LENGTH, HeaderValue::from(artifact.size));
-    // Names are [A-Za-z0-9._-], so they need no quoting beyond the quotes.
-    if let Ok(value) = HeaderValue::from_str(&format!("attachment; filename=\"{}.tar.gz\"", artifact.name)) {
-        headers.insert(header::CONTENT_DISPOSITION, value);
-    }
-    Ok(response)
+    Ok(crate::routes::actions::artifact_download(&artifact, file, format))
 }
 
 /// `DELETE /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`: `204`; the file goes too.
