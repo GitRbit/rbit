@@ -415,12 +415,17 @@ to `workflow_run` and `workflow_job`.
 
 ### Known limits of the container backend
 
-- Containers reach the network like any Docker container: the internet, the host's
-  addresses and cloud metadata endpoints (`169.254.169.254`). Block what jobs should not
-  reach with firewall rules (Docker's `DOCKER-USER` chain) or a `[container] network` of
-  your own.
-- Jobs keep Docker's default capabilities (only `MKNOD` is dropped) and have no memory or
-  CPU limit unless `[container] memory` and `cpus` are set.
+- Containers reach the network like any Docker container, as on GitHub's runners: the
+  internet, the host's addresses and cloud metadata endpoints (`169.254.169.254`). rbit
+  does not filter it, since what a runner may reach depends on where it runs; on a cloud
+  host, block the metadata endpoint for containers, for example
+  `iptables -I DOCKER-USER -d 169.254.169.254 -j REJECT`, or give `[container] network` a
+  network of your own.
+- Jobs keep Docker's default capabilities, as GitHub's runner leaves them (so `ping`,
+  which needs `NET_RAW`, works); only `MKNOD` is dropped, and `no-new-privileges` is set.
+  They have no memory or CPU limit unless `[container] memory` and `cpus` are set, as a
+  hosted runner's job has its whole machine; set them on a runner that runs several jobs
+  at once.
 - A rootful engine's containers write the task's files as root. Before each built-in step
   works on them, after each Docker action and when the job ends, a helper container gives
   them back to the runner's user: `chown`, set-user-ID and set-group-ID bits cleared, and
@@ -446,7 +451,10 @@ to `workflow_run` and `workflow_job`.
   (`LD_*`, `DOCKER_*`, `BUILDKIT_*`, `BUILDX_*`, `OTEL_*`, `*_PROXY`, `PATH`, `GIT_CONFIG*`,
   …): the step fails and names it. Single-line values of any name, and multi-line values of
   any other name (a key in `SSH_KEY`, `GOOGLE_CREDENTIALS`), reach the container.
-- Masking works on each printed line: a secret split across two lines, or across the
-  1 MiB cut of a single very long line, or printed in another encoding (base64, URL), is
-  not masked.
-- Values shorter than four characters are never masked.
+- Masking covers what GitHub's runner masks: each secret, each line of a multi-line one,
+  its base64 in every alignment, and its URL-, JSON-, XML-, expression- and command-line-
+  escaped forms. It works on each printed line, so a secret split across two lines, or
+  across the 1 MiB cut of one very long line, is not masked.
+- Values shorter than four characters are not masked on their own lines or in their
+  encodings, so that masking a short secret such as `1` cannot hide every number in a log;
+  the whole value is still masked.

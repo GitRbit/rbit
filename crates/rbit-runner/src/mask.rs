@@ -9,7 +9,11 @@
 //!   script printing a key file line by line must not reveal it either;
 //! * the base64 encoding of each of those, in all three alignments, without the characters
 //!   that depend on the bytes around the value; these fragments are kept only when they are
-//!   at least [`MIN_BASE64_CHARS`] long, so they cannot match ordinary words.
+//!   at least [`MIN_BASE64_CHARS`] long, so they cannot match ordinary words;
+//! * the other forms GitHub's runner masks ([`escaped_forms`]): URL-encoded (as a URI
+//!   component, and as a form value with `+` for spaces), JSON- and XML-escaped, quoted
+//!   for an expression (`''`) or a command line (`\"`), and without surrounding double
+//!   quotes.
 //!
 //! All patterns go into one Aho-Corasick automaton per task, matched leftmost-longest, so
 //! overlapping values are masked as a whole. The automaton is rebuilt when a value is
@@ -112,8 +116,38 @@ fn patterns(value: &str) -> Vec<String> {
     let mut all = plain.clone();
     for text in &plain {
         all.extend(base64_forms(text.as_bytes()));
+        all.extend(escaped_forms(text).into_iter().filter(|form| form != text));
     }
     all
+}
+
+/// `text` as GitHub's runner also masks it: percent-encoded as a URI component (RFC 3986
+/// unreserved characters kept) and as a form value (`+` for a space), escaped for JSON, XML,
+/// an expression's single-quoted string and a double-quoted command-line argument, and with
+/// one pair of surrounding double quotes trimmed.
+fn escaped_forms(text: &str) -> Vec<String> {
+    let percent = |space_plus: bool| {
+        let mut out = String::with_capacity(text.len() * 3);
+        for byte in text.bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(char::from(byte)),
+                b' ' if space_plus => out.push('+'),
+                _ => {
+                    use std::fmt::Write as _;
+                    let _ = write!(out, "%{byte:02X}");
+                }
+            }
+        }
+        out
+    };
+    let json = serde_json::to_string(text).map(|quoted| quoted[1..quoted.len() - 1].to_owned()).unwrap_or_default();
+    let xml = text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;");
+    let mut forms = vec![percent(false), percent(true), json, xml, text.replace('\'', "''"), text.replace('"', "\\\"")];
+    if let Some(inner) = text.strip_prefix('"').and_then(|rest| rest.strip_suffix('"')).filter(|inner| !inner.is_empty()) {
+        forms.push(inner.to_owned());
+    }
+    forms.retain(|form| form.trim().chars().count() >= MIN_LINE_CHARS);
+    forms
 }
 
 /// The base64 of `bytes` as it appears inside a longer encoded text, for each of the three
@@ -157,6 +191,23 @@ mod tests {
         // Where two values overlap, the leftmost wins.
         let overlapping = Masker::new(["abcdef", "cdefgh"]);
         assert_eq!(overlapping.mask("xabcdefghx"), "x***ghx");
+    }
+
+    #[test]
+    fn escaped_forms_are_masked_as_on_github() {
+        let masker = Masker::new(["p@ss w/rd&more", "pa\"ss\\w0rd-42", "it's <ok>"]);
+        for printed in [
+            "p%40ss%20w%2Frd%26more",
+            "p%40ss+w%2Frd%26more",
+            "{\"password\": \"pa\\\"ss\\\\w0rd-42\"}",
+            "pa\\\"ss\\w0rd-42",
+            "it&apos;s &lt;ok&gt;",
+            "'it''s <ok>'",
+        ] {
+            assert!(masker.mask(printed).contains(MASK), "{printed} -> {}", masker.mask(printed));
+            assert!(!masker.mask(printed).contains("w0rd") && !masker.mask(printed).contains("rd%26"), "{}", masker.mask(printed));
+        }
+        assert_eq!(masker.mask("ok %40 plain"), "ok %40 plain");
     }
 
     #[test]
