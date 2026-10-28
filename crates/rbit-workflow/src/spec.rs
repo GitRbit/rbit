@@ -396,12 +396,28 @@ pub enum BuiltinKind {
     DownloadArtifact,
 }
 
+// Actions: reusable workflows.
+/// A job's key in its run: a job id, or for a called workflow's job the calling jobs' ids
+/// and its own, `/`-separated, a calling matrix job's with `#<index>` (`call#1/build`); at
+/// most [`crate::plan::MAX_JOB_KEY_BYTES`].
+pub fn valid_job_key(key: &str) -> bool {
+    key.len() <= crate::plan::MAX_JOB_KEY_BYTES
+        && key.split('/').all(|part| {
+            let id = match part.rsplit_once('#') {
+                Some((id, index)) if !index.is_empty() && index.bytes().all(|byte| byte.is_ascii_digit()) => id,
+                Some(_) => return false,
+                None => part,
+            };
+            valid_job_id(id)
+        })
+}
+
 impl JobTemplate {
     pub fn validate(&self) -> Result<(), ValidationError> {
         ensure(self.version == JOB_TEMPLATE_VERSION, || format!("job template version {} is not supported", self.version))?;
-        ensure(valid_job_id(&self.job_id), || format!("job id `{}` is malformed", self.job_id))?;
+        ensure(valid_job_key(&self.job_id), || format!("job id `{}` is malformed", self.job_id))?;
         for need in &self.needs {
-            ensure(valid_job_id(need) && *need != self.job_id, || format!("`needs` entry `{need}` is malformed"))?;
+            ensure(valid_job_key(need) && *need != self.job_id, || format!("`needs` entry `{need}` is malformed"))?;
         }
         ensure(unique(self.needs.iter()), || "`needs` must not repeat".to_owned())?;
         validate_labels(self.runs_on.iter().map(String::as_str))?;
@@ -768,6 +784,16 @@ mod tests {
     use crate::protocol::{PollResponse, tests::Refusal};
 
     const TOKEN: &str = "rbat_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+
+    #[test]
+    fn called_jobs_have_keys_of_their_calls() {
+        for key in ["build", "call/build", "call#1/build", "outer/inner#0/leaf"] {
+            assert!(valid_job_key(key), "{key}");
+        }
+        for key in ["", "call/", "/build", "call#/build", "call#x/build", "a b", &"x/".repeat(60)] {
+            assert!(!valid_job_key(key), "{key}");
+        }
+    }
     const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
 
     fn template() -> JobTemplate {
