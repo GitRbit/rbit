@@ -61,3 +61,8 @@ workspace = true
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# The HTTP eval of Actions' authorization and protocol rules (see tests/actions_eval.rs).
+[[test]]
+name = "actions_eval"
+path = "tests/actions_eval.rs"
