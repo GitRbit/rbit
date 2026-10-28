@@ -720,8 +720,8 @@ webhooks, runners or secrets, or open/close/reopen pull requests.
 - Each repository has a **default workflow token permission**, `read` (default) or `write`,
   in its Actions settings.
 - Top-level and job-level `permissions:` are honoured **coarsely**: `contents` and
-  `issues`/`pull-requests`, `read` or `write`, `read-all`/`write-all`/`{}`. They can only
-  **lower** the repository default, never raise it.
+  `issues`/`pull-requests`, `read` or `write`, `read-all`/`write-all`/`{}`. As on GitHub, a
+  declaration replaces the repository default, above or below it.
 - Untrusted runs are always read-only.
 - A task push that creates, changes or deletes anything under `.forgejo/workflows/` or
   `.github/workflows/` is refused, as GitHub refuses it without the `workflows` scope. The same

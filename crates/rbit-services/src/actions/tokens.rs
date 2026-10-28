@@ -5,8 +5,8 @@
 //!   one digest and one lookup of a *running* task with that digest (tokens of stopped and
 //!   cancelled tasks are cleared, so they find nothing), re-checked on every use against
 //!   the repository's existence and its Actions switch. What the grant may do is decided
-//!   then, from the repository's default token permission, the job's `permissions:` and the
-//!   run's trust (`rbit_core::actions::token_permissions`): untrusted runs read only.
+//!   then, from the job's `permissions:` (else the repository's default token permission)
+//!   and the run's trust (`rbit_core::actions::token_permissions`): untrusted runs read only.
 //! * [`ActionsService::open_for_task`] opens a repository for a grant: its own at the
 //!   granted `contents` level, any other only when public and only to read.
 //! * Pushes made with a task token never start runs (`PushSource::Task`), get the

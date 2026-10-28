@@ -358,8 +358,10 @@ may run workflows at all (all, none or selected ones).
   rbit's built-in checkout, cache and artifact actions always run. The owner's list and the
   repository's both apply, and the runner checks every action against them before fetching
   it, as well as against its own `[actions] allow`.
-- **Workflow token**: `read` (the default) or `write`. An owner set to `read` keeps every
-  repository's token read-only. `can_approve_pull_request_reviews` is kept and read back for
+- **Workflow token**: `read` (the default) or `write`: the token's permissions when a
+  workflow declares no `permissions:`. As on GitHub, a declaration replaces it, above or
+  below (a release workflow asks for `contents: write`); an owner set to `read` makes
+  `read` every repository's default. `can_approve_pull_request_reviews` is kept and read back for
   GitHub's tools, but has nothing to allow: the token cannot review pull requests.
 - **Pull requests from outside contributors** (`approval_policy`):
   `first_time_contributors` (the default) runs an author's pull requests without approval
@@ -403,9 +405,6 @@ to `workflow_run` and `workflow_job`.
   create no deployment objects (the Deployments API).
 - No `container.options`, service `options`/`volumes`, or custom shells (`shell: my
   {0}`): each is a readable error.
-- `permissions:` can only lower the repository's default token permission (**Settings →
-  Actions**, or `PUT …/actions/permissions/workflow`), never raise it: a workflow that
-  publishes releases needs that default set to write.
 - `runs-on` and matrices cannot depend on another job's outputs.
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.

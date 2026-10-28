@@ -561,19 +561,16 @@ impl DefaultTokenPermission {
     }
 }
 
-/// What a task token may do (§11.4): the repository default, lowered by the job's
-/// `permissions:` or else the workflow's, and read-only for untrusted runs. Declarations
-/// only ever lower the default.
+/// What a task token may do (§11.4), as on GitHub: the job's `permissions:`, else the
+/// workflow's, else the repository default; a declaration replaces the default, above it
+/// or below. Untrusted runs read at most.
 pub fn token_permissions(
     default: DefaultTokenPermission,
     workflow: Option<TokenPermissions>,
     job: Option<TokenPermissions>,
     trust: RunTrust,
 ) -> TokenPermissions {
-    let mut granted = default.permissions();
-    if let Some(declared) = job.or(workflow) {
-        granted = granted.at_most(declared);
-    }
+    let mut granted = job.or(workflow).unwrap_or_else(|| default.permissions());
     if !trust.is_trusted() {
         granted = granted.at_most(TokenPermissions::uniform(PermissionLevel::Read));
     }
@@ -812,7 +809,7 @@ mod tests {
     }
 
     #[test]
-    fn token_permissions_only_ever_lower() {
+    fn declarations_replace_the_default_and_untrusted_runs_read() {
         use PermissionLevel::{None as N, Read as R, Write as W};
         let p = |contents, issues, pull_requests| TokenPermissions { contents, issues, pull_requests };
         let all = [N, R, W];
@@ -830,9 +827,9 @@ mod tests {
                 for &job in &declared {
                     for trust in trusts {
                         let granted = token_permissions(default, workflow, job, trust);
-                        let ceiling = if trust.is_trusted() { default.permissions() } else { TokenPermissions::uniform(R) };
-                        assert_eq!(granted.at_most(ceiling), granted, "never above the default or read for untrusted runs");
-                        let effective = job.or(workflow).unwrap_or(TokenPermissions::uniform(W));
+                        let ceiling = if trust.is_trusted() { TokenPermissions::uniform(W) } else { TokenPermissions::uniform(R) };
+                        assert_eq!(granted.at_most(ceiling), granted, "read at most for untrusted runs");
+                        let effective = job.or(workflow).unwrap_or_else(|| default.permissions());
                         assert_eq!(granted, effective.at_most(ceiling), "{default:?} {workflow:?} {job:?} {trust:?}");
                     }
                 }
@@ -844,8 +841,19 @@ mod tests {
         assert_eq!(token_permissions(DefaultTokenPermission::Write, None, None, trusted), TokenPermissions::uniform(W));
         assert_eq!(
             token_permissions(DefaultTokenPermission::Read, Some(TokenPermissions::uniform(W)), None, trusted),
+            TokenPermissions::uniform(W),
+            "write-all raises a read default, as on GitHub"
+        );
+        assert_eq!(token_permissions(DefaultTokenPermission::Read, None, Some(p(W, N, N)), trusted), p(W, N, N));
+        assert_eq!(
+            token_permissions(
+                DefaultTokenPermission::Read,
+                Some(TokenPermissions::uniform(W)),
+                None,
+                RunTrust::Untrusted { awaits_approval: false }
+            ),
             TokenPermissions::uniform(R),
-            "write-all cannot raise a read default"
+            "but never for an untrusted run"
         );
         assert_eq!(
             token_permissions(DefaultTokenPermission::Write, Some(p(R, W, N)), Some(TokenPermissions::uniform(N)), trusted),
