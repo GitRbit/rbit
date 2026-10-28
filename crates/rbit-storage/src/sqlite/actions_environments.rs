@@ -19,6 +19,7 @@ struct EnvironmentRow {
     prevent_self_review: bool,
     branch_policy: String,
     branch_patterns: String,
+    wait_timer: i64,
     created_at: i64,
     updated_at: i64,
     reviewers: String,
@@ -43,6 +44,7 @@ impl TryFrom<EnvironmentRow> for Environment {
             reviewers: reviewers.into_iter().map(AccountId).collect(),
             prevent_self_review: row.prevent_self_review,
             branch_policy,
+            wait_timer: u32::try_from(row.wait_timer).map_err(|error| corrupt("wait timer", error))?,
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
         })
@@ -52,7 +54,8 @@ impl TryFrom<EnvironmentRow> for Environment {
 macro_rules! select_environment {
     ($clause:expr) => {
         concat!(
-            "SELECT e.id, e.repo_id, e.name, e.prevent_self_review, e.branch_policy, e.branch_patterns, e.created_at, e.updated_at, \
+            "SELECT e.id, e.repo_id, e.name, e.prevent_self_review, e.branch_policy, e.branch_patterns, e.wait_timer, e.created_at, \
+             e.updated_at, \
              (SELECT COALESCE(json_group_array(r.account_id), '[]') FROM \
               (SELECT account_id FROM actions_environment_reviewers WHERE environment_id = e.id ORDER BY account_id) r) AS reviewers \
              FROM actions_environments e ",
@@ -72,6 +75,8 @@ pub struct EnvironmentChanges<'a> {
     pub reviewers: &'a [AccountId],
     pub prevent_self_review: bool,
     pub branch_policy: &'a BranchPolicy,
+    /// Minutes, 0 to 43200.
+    pub wait_timer: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -123,11 +128,13 @@ impl ActionsEnvironmentStore {
             .await?;
         let id = if let Some(id) = existing {
             sqlx::query(
-                "UPDATE actions_environments SET prevent_self_review = ?, branch_policy = ?, branch_patterns = ?, updated_at = ? WHERE id = ?",
+                "UPDATE actions_environments SET prevent_self_review = ?, branch_policy = ?, branch_patterns = ?, wait_timer = ?, \
+                 updated_at = ? WHERE id = ?",
             )
             .bind(changes.prevent_self_review)
             .bind(changes.branch_policy.as_str())
             .bind(&patterns)
+            .bind(changes.wait_timer)
             .bind(now.0)
             .bind(id)
             .execute(&mut *tx)
@@ -140,14 +147,15 @@ impl ActionsEnvironmentStore {
                 return Err(StorageError::Conflict("a repository has at most 100 environments"));
             }
             sqlx::query_scalar(
-                "INSERT INTO actions_environments (repo_id, name, prevent_self_review, branch_policy, branch_patterns, created_at, \
-                 updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                "INSERT INTO actions_environments (repo_id, name, prevent_self_review, branch_policy, branch_patterns, wait_timer, \
+                 created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
             )
             .bind(repo.0)
             .bind(name)
             .bind(changes.prevent_self_review)
             .bind(changes.branch_policy.as_str())
             .bind(&patterns)
+            .bind(changes.wait_timer)
             .bind(now.0)
             .bind(now.0)
             .fetch_one(&mut *tx)

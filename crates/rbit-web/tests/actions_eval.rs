@@ -1463,8 +1463,10 @@ async fn build(world: World) -> (Fixture, Ids) {
     ids.garden_runner = garden_runner;
     ids.garden_credential = garden_credential;
 
-    let production = EnvironmentInput { reviewers: vec!["dave".into()], prevent_self_review: false, branch_policy: BranchPolicy::All };
-    let staging = EnvironmentInput { reviewers: vec!["alice".into()], prevent_self_review: true, branch_policy: BranchPolicy::All };
+    let production =
+        EnvironmentInput { reviewers: vec!["dave".into()], prevent_self_review: false, branch_policy: BranchPolicy::All, wait_timer: 0 };
+    let staging =
+        EnvironmentInput { reviewers: vec!["alice".into()], prevent_self_review: true, branch_policy: BranchPolicy::All, wait_timer: 0 };
     let production = fx.actions().put_environment(&fx.alice, &rocket, "production", &production).await.unwrap();
     let staging = fx.actions().put_environment(&fx.alice, &rocket, "staging", &staging).await.unwrap();
     ids.env_prod = production.id.0;

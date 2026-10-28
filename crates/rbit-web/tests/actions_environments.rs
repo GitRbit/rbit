@@ -159,6 +159,7 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
         reviewers: Vec::new(),
         prevent_self_review: false,
         branch_policy: BranchPolicy::Selected(vec!["release/*".into()]),
+        wait_timer: 0,
     };
     actions.put_environment(&fixture.alice, &repo, "production", &changes).await.unwrap();
     let refused = seed(&fixture, &[payload(&deploy("production"))]).await;
@@ -171,7 +172,8 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
     assert!(actions.put_environment(&fixture.alice, &repo, "production", &only_excluding).await.is_err(), "a pattern must admit something");
 
     // With self-review prevented, whoever started the run cannot approve it.
-    let changes = EnvironmentInput { reviewers: vec!["alice".into()], prevent_self_review: true, branch_policy: BranchPolicy::All };
+    let changes =
+        EnvironmentInput { reviewers: vec!["alice".into()], prevent_self_review: true, branch_policy: BranchPolicy::All, wait_timer: 0 };
     actions.put_environment(&fixture.alice, &repo, "production", &changes).await.unwrap();
     let held = seed(&fixture, &[payload(&deploy("production"))]).await;
     let held_run = fixture.database.actions_runs().run(held.id).await.unwrap().unwrap();

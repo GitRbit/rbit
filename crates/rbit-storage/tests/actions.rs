@@ -1047,7 +1047,7 @@ async fn jobs_of_a_protected_environment_wait_for_a_reviewer() {
     // Named for the first time, the environments exist, unprotected.
     let names: Vec<_> = environments.list(fx.rocket).await.unwrap().into_iter().map(|environment| environment.name).collect();
     assert_eq!(names, ["preview", "Production"]);
-    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All, wait_timer: 0 };
     environments.put(fx.rocket, "production", &changes, NOW).await.unwrap();
 
     let scope = RunnerScope::Repository(fx.rocket);
@@ -1092,13 +1092,13 @@ async fn jobs_of_a_protected_environment_wait_for_a_reviewer() {
 
     // Reviewers removed while a job waits: it runs without review.
     store.rerun(fx.rocket, run.id, Rerun::Job(deploy.id), RunStart::Runnable, NOW).await.unwrap().unwrap();
-    let changes = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    let changes = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All, wait_timer: 0 };
     environments.put(fx.rocket, "Production", &changes, NOW).await.unwrap();
     let released = store.release_reviews(fx.rocket, NOW).await.unwrap();
     assert_eq!(released.len(), 1);
     assert_eq!(released[0].now_waiting, [deploy.id]);
     // Reviewers added while it waits for a runner: no runner may take it any more.
-    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    let changes = EnvironmentChanges { reviewers: &[fx.bob], prevent_self_review: false, branch_policy: &BranchPolicy::All, wait_timer: 0 };
     environments.put(fx.rocket, "Production", &changes, NOW).await.unwrap();
     assert_eq!(store.release_reviews(fx.rocket, NOW).await.unwrap().len(), 1);
     let deploy = store.jobs(run.id).await.unwrap().into_iter().find(|job| job.key == "deploy").unwrap();
@@ -1108,7 +1108,7 @@ async fn jobs_of_a_protected_environment_wait_for_a_reviewer() {
     assert!(environments.delete(fx.rocket, "PRODUCTION").await.unwrap(), "names compare without case");
 
     // Workflows create environments only up to the repository's cap.
-    let unprotected = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All };
+    let unprotected = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All, wait_timer: 0 };
     for n in 1..100 {
         environments.put(fx.rocket, &format!("e{n}"), &unprotected, NOW).await.unwrap();
     }
@@ -1124,8 +1124,12 @@ async fn environment_secrets_and_variables_stay_in_their_environment() {
     use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
     let fx = Fixture::new().await;
     let secrets = fx.db.actions_secrets();
-    let changes =
-        EnvironmentChanges { reviewers: &[], prevent_self_review: true, branch_policy: &BranchPolicy::Selected(vec!["main".into()]) };
+    let changes = EnvironmentChanges {
+        reviewers: &[],
+        prevent_self_review: true,
+        branch_policy: &BranchPolicy::Selected(vec!["main".into()]),
+        wait_timer: 0,
+    };
     let production = fx.db.actions_environments().put(fx.rocket, "production", &changes, NOW).await.unwrap();
     assert_eq!((production.prevent_self_review, &production.branch_policy), (true, &BranchPolicy::Selected(vec!["main".into()])));
     let scope = SecretScope::Environment(production.id);
@@ -1151,4 +1155,24 @@ async fn environment_secrets_and_variables_stay_in_their_environment() {
     assert!(fx.db.actions_environments().delete(fx.rocket, "production").await.unwrap());
     assert!(secrets.secrets(scope).await.unwrap().is_empty() && secrets.variables(scope).await.unwrap().is_empty());
     assert!(!secrets.delete_secret(scope, &name).await.unwrap());
+}
+
+#[tokio::test]
+async fn a_wait_timer_holds_an_environments_jobs_until_it_is_over() {
+    use rbit_core::actions::BranchPolicy;
+    use rbit_storage::sqlite::actions_environments::EnvironmentChanges;
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let changes = EnvironmentChanges { reviewers: &[], prevent_self_review: false, branch_policy: &BranchPolicy::All, wait_timer: 1 };
+    let staging = fx.db.actions_environments().put(fx.rocket, "staging", &changes, NOW).await.unwrap();
+    assert_eq!(staging.wait_timer, 1);
+    let (none, linux) = (Vec::new(), strings(&["linux"]));
+    let jobs = [NewJob { environment: Some("staging"), ..job("deploy", &none, &linux) }];
+    store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    assert!(store.claim(&claim(runner, scope, &labels, &[60; 32])).await.unwrap().is_none(), "ten seconds in, the minute is not over");
+    let later = ClaimRequest { now: Timestamp(NOW.0 + 61), ..claim(runner, scope, &labels, &[61; 32]) };
+    let claimed = store.claim(&later).await.unwrap().expect("the wait is over");
+    assert_eq!(claimed.job.key, "deploy");
 }

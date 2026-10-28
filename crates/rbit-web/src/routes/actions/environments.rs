@@ -145,6 +145,7 @@ async fn environment_page(
         action_url: url,
         reviewers: people.iter().map(|account| account.name.to_string()).collect::<Vec<_>>().join("\n"),
         prevent_self_review: environment.prevent_self_review,
+        wait_timer: environment.wait_timer.to_string(),
         policy: policy.to_owned(),
         patterns,
         error: FormError::default(),
@@ -182,6 +183,7 @@ pub async fn to_environment(Path((owner, repo, name)): Path<(String, String, Str
 pub struct RulesForm {
     reviewers: String,
     prevent_self_review: Option<String>,
+    wait_timer: String,
     policy: String,
     patterns: String,
 }
@@ -203,7 +205,8 @@ pub async fn save(
         _ => BranchPolicy::All,
     };
     let reviewers = lines(&form.reviewers.replace(',', "\n"));
-    let input = EnvironmentInput { reviewers, prevent_self_review: form.prevent_self_review.is_some(), branch_policy };
+    let wait_timer = form.wait_timer.trim().parse().unwrap_or(if form.wait_timer.trim().is_empty() { 0 } else { u32::MAX });
+    let input = EnvironmentInput { reviewers, prevent_self_review: form.prevent_self_review.is_some(), branch_policy, wait_timer };
     match actions(&state)?.put_environment(&user, &loaded.ctx, &environment.name, &input).await {
         Ok(_) => Ok(done(&environment_url(&loaded, &environment.name), Notice::Saved)),
         Err(ServiceError::Invalid(message)) => {
@@ -211,6 +214,7 @@ pub async fn save(
             page.error = FormError::from_message(&message);
             page.reviewers = form.reviewers;
             page.prevent_self_review = form.prevent_self_review.is_some();
+            page.wait_timer = form.wait_timer;
             page.policy = form.policy;
             page.patterns = form.patterns;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())

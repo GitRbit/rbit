@@ -317,6 +317,9 @@ administrators manage environments in **Settings → Actions → Environments**:
   page (**Review deployments**) or through the API; rejecting it fails the job. Re-running a
   job needs a new approval. **Prevent self-review** stops whoever started the run from
   reviewing it.
+- **Wait timer**: minutes (up to 43200, 30 days) a job in the environment waits once it is
+  ready, and approved when there are reviewers, before a runner may take it (`wait_timer` in
+  the API).
 - **Deployment branches and tags**: any ref, protected branches only, or refs matching
   patterns: a plain pattern names branches (`release/*`), a tag pattern starts with
   `refs/tags/` (`refs/tags/v*`), and `!` excludes, the last matching pattern deciding. A job
@@ -420,8 +423,8 @@ to `workflow_run` and `workflow_job`.
   action's `pre` script runs right before its `main`. GitHub's cache and artifact services that
   actions reach through `ACTIONS_RUNTIME_*` do not exist; the built-ins stand in for
   `actions/cache` and `actions/*-artifact`.
-- Environments have no wait timer, team reviewers or custom protection rules, and runs
-  create no deployment objects (the Deployments API).
+- Environments have no team reviewers or custom protection rules, and runs create no
+  deployment objects: there is no Deployments API yet.
 - No custom shells (`shell: my {0}`), container `ports` or host-path `volumes`, and
   `options` take only what cannot give a job the runner host (see [Workflow
   syntax](#workflow-syntax)). Each is a readable error.

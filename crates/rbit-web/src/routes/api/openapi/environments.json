@@ -376,8 +376,13 @@
                   "type": "string",
                   "enum": [
                     "required_reviewers",
+                    "wait_timer",
                     "branch_policy"
                   ]
+                },
+                "wait_timer": {
+                  "type": "integer",
+                  "description": "Minutes, for a `wait_timer` rule."
                 },
                 "prevent_self_review": {
                   "type": "boolean"
@@ -460,6 +465,12 @@
           },
           "prevent_self_review": {
             "type": "boolean"
+          },
+          "wait_timer": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 43200,
+            "description": "Minutes a job waits, once ready, before it runs."
           },
           "deployment_branch_policy": {
             "$ref": "#/components/schemas/EnvironmentBranchPolicy"

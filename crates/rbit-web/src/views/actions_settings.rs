@@ -429,6 +429,8 @@ pub struct EnvironmentPage {
     /// The reviewers' usernames, one per line.
     pub reviewers: String,
     pub prevent_self_review: bool,
+    /// Minutes, as typed.
+    pub wait_timer: String,
     /// `all`, `protected` or `selected`.
     pub policy: String,
     /// The selected patterns, one per line.

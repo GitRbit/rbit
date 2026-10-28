@@ -22,6 +22,10 @@
         <span><span class="block font-medium">Prevent self-review</span><span class="block text-[13px] text-ink-muted">Whoever started a run cannot approve its deployments.</span></span>
       </label>
 
+      <label class="label mt-5" for="environment-wait-timer">Wait timer</label>
+      <input class="input w-32" id="environment-wait-timer" name="wait_timer" type="number" min="0" max="43200" inputmode="numeric" value="{{ wait_timer }}">
+      <p class="hint">Minutes a job in this environment waits, once it is ready and approved, before it runs. 0 for none; at most 43200 (30 days).</p>
+
       <fieldset class="mt-5">
         <legend class="label">Deployment branches and tags</legend>
         <div class="box overflow-hidden">

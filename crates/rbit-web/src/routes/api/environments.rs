@@ -92,6 +92,9 @@ async fn value(state: &AppState, ctx: &RepoContext, environment: &Environment) -
     if !reviewers.is_empty() {
         rules.push(json!({ "id": environment.id.0, "type": "required_reviewers", "prevent_self_review": environment.prevent_self_review, "reviewers": reviewers }));
     }
+    if environment.wait_timer > 0 {
+        rules.push(json!({ "id": environment.id.0, "type": "wait_timer", "wait_timer": environment.wait_timer }));
+    }
     let policy = match &environment.branch_policy {
         BranchPolicy::All => Value::Null,
         BranchPolicy::Protected => json!({ "protected_branches": true, "custom_branch_policies": false }),
@@ -160,6 +163,7 @@ pub struct EnvironmentBody {
     #[serde(deserialize_with = "present")]
     reviewers: Option<Option<Vec<Reviewer>>>,
     prevent_self_review: Option<bool>,
+    wait_timer: Option<u32>,
     #[serde(deserialize_with = "present")]
     deployment_branch_policy: Option<Option<BranchPolicyBody>>,
 }
@@ -202,7 +206,8 @@ pub async fn put(
     };
     let prevent_self_review =
         body.prevent_self_review.or_else(|| current.as_ref().map(|environment| environment.prevent_self_review)).unwrap_or(false);
-    let input = EnvironmentInput { reviewers, prevent_self_review, branch_policy };
+    let wait_timer = body.wait_timer.or_else(|| current.as_ref().map(|environment| environment.wait_timer)).unwrap_or(0);
+    let input = EnvironmentInput { reviewers, prevent_self_review, branch_policy, wait_timer };
     let environment =
         actions.put_environment(user, &ctx, path.name()?, &input).await.map_err(|error| ApiError::service(error, "environment"))?;
     Ok(Json(value(&state, &ctx, &environment).await?))
@@ -238,7 +243,7 @@ async fn pending_values(state: &AppState, ctx: &RepoContext, pending: &[PendingD
                 "url": url,
                 "html_url": html_url,
             },
-            "wait_timer": 0,
+            "wait_timer": deployment.environment.wait_timer,
             "wait_timer_started_at": null,
             "current_user_can_approve": deployment.can_review,
             "reviewers": reviewers,

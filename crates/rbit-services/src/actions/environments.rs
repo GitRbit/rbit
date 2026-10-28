@@ -9,6 +9,8 @@
 //!   approves or rejects the waiting jobs of a run per environment; with
 //!   `prevent_self_review`, not on a run they started. A rejected job fails, and the jobs
 //!   that need it are skipped.
+//! * With a wait timer, the job waits that many minutes once it is ready (after its review)
+//!   before any runner may take it (the claim query in `actions_runs`).
 //! * It runs only from the refs the branch policy allows (any; branches with a protection
 //!   rule; or branches and tags matching GitHub filter patterns), checked when a runner
 //!   takes it, so a changed policy applies at once.
@@ -38,7 +40,12 @@ pub struct EnvironmentInput {
     pub reviewers: Vec<String>,
     pub prevent_self_review: bool,
     pub branch_policy: BranchPolicy,
+    /// Minutes a job waits, once ready, before it may run; at most 43200 (30 days).
+    pub wait_timer: u32,
 }
+
+/// The longest wait timer, as on GitHub: 30 days.
+pub const MAX_WAIT_TIMER_MINUTES: u32 = 43_200;
 
 /// The jobs of a run that wait for one environment's reviewers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,10 +140,14 @@ impl ActionsService {
                 reviewers.push(account.id);
             }
         }
+        if input.wait_timer > MAX_WAIT_TIMER_MINUTES {
+            return Err(ServiceError::Invalid(format!("the wait timer is at most {MAX_WAIT_TIMER_MINUTES} minutes")));
+        }
         let changes = EnvironmentChanges {
             reviewers: &reviewers,
             prevent_self_review: input.prevent_self_review,
             branch_policy: &input.branch_policy,
+            wait_timer: input.wait_timer,
         };
         let environment =
             self.ctx().database.actions_environments().put(repo.repo.repo.id, name, &changes, Timestamp::now()).await.map_err(|error| {
@@ -145,7 +156,13 @@ impl ActionsService {
                     other => other.into(),
                 }
             })?;
-        let detail = format!("{} ({} reviewers, branches: {})", environment.name, reviewers.len(), environment.branch_policy.as_str());
+        let detail = format!(
+            "{} ({} reviewers, branches: {}, wait {} min)",
+            environment.name,
+            reviewers.len(),
+            environment.branch_policy.as_str(),
+            environment.wait_timer
+        );
         self.audit()
             .record(AuditEntry::new(AuditAction::ActionsEnvironmentChanged).by(actor).on(repo.repo.full_name()).detail(detail))
             .await;

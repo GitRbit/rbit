@@ -736,6 +736,8 @@ impl ActionsRunStore {
             .bind(request.instance_runners_for_all)
             .bind(labels)
             .bind(host_labels)
+            // Actions: environments. A wait timer holds a job until it is over.
+            .bind(request.now.0)
             .fetch_optional(&mut *tx)
             .await?;
         let Some(job_id) = candidate else {
@@ -1547,6 +1549,8 @@ const CLAIM_CANDIDATE: &str = "SELECT j.id FROM actions_jobs j \
          WHERE s.run_id = j.run_id AND s.job_key = j.job_key AND s.status = 6) < j.max_parallel) \
      AND (j.job_group IS NULL OR NOT EXISTS (SELECT 1 FROM actions_jobs g \
          WHERE g.repo_id = j.repo_id AND g.job_group = j.job_group AND g.status = 6)) \
+     AND (j.environment IS NULL OR NOT EXISTS (SELECT 1 FROM actions_environments e \
+         WHERE e.repo_id = j.repo_id AND e.name = j.environment AND e.wait_timer > 0 AND j.queued_at + e.wait_timer * 60 > ?7)) \
      ORDER BY j.queued_at, j.id LIMIT 1";
 
 /// A run's status before its first settling: held and awaiting runs keep theirs, which

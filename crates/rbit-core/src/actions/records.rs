@@ -474,6 +474,8 @@ pub struct Environment {
     /// Whoever started the run may not approve it.
     pub prevent_self_review: bool,
     pub branch_policy: BranchPolicy,
+    /// Minutes a job waits, once ready, before it may run (GitHub's wait timer); 0 for none.
+    pub wait_timer: u32,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
