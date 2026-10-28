@@ -129,6 +129,8 @@ must not silently change what a job does.
 - **Shells:** `bash` (`bash --noprofile --norc -eo pipefail`), `sh` (`sh -e`), `pwsh`,
   `powershell`, `cmd`, `python`. The default is `bash` (or `sh` without it), or `pwsh` (or
   `powershell` without it) on Windows hosts.
+  A custom shell is a command with `{0}` for the script's path, as on GitHub
+  (`shell: perl {0}`); the script is written as it is, to a file without an extension.
 
 A job's `name`, `runs-on`, `strategy` (a matrix from `fromJSON(needs.setup.outputs.matrix)`),
 `timeout-minutes`, `continue-on-error`, `concurrency`, `container`, `services` and
@@ -425,7 +427,7 @@ to `workflow_run` and `workflow_job`.
   `actions/cache` and `actions/*-artifact`.
 - Environments have no team reviewers or custom protection rules, and runs create no
   deployment objects: there is no Deployments API yet.
-- No custom shells (`shell: my {0}`), container `ports` or host-path `volumes`, and
+- No container `ports` or host-path `volumes`, and
   `options` take only what cannot give a job the runner host (see [Workflow
   syntax](#workflow-syntax)). Each is a readable error.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.

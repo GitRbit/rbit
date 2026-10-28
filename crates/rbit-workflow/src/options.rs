@@ -136,8 +136,8 @@ pub fn volume(text: &str) -> Result<Volume, String> {
 }
 
 /// `text` split as a shell splits words: spaces separate, `'…'` and `"…"` quote, `\` escapes
-/// outside single quotes.
-fn split(text: &str) -> Result<Vec<String>, String> {
+/// outside single quotes. Also how a custom `shell` (`perl {0}`) is read.
+pub fn split(text: &str) -> Result<Vec<String>, String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut started = false;

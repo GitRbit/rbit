@@ -49,6 +49,10 @@ pub async fn run(
         Err(error) => return job.fail(&format!("`working-directory`: {error}")),
     };
     let search_path = job.search_path(step_env);
+    // A custom shell (`perl {0}`): run as written, with `{0}` the script's path.
+    if let Some(template) = shell.as_deref().filter(|shell| shell.contains("{0}")) {
+        return custom_shell(job, index, step_env, timeout, &script, template, directory.as_deref(), &search_path).await;
+    }
     let (shell, program) = match choose_shell(shell.as_deref(), job.backend.windows(), |name| job.backend.find(name, &search_path)) {
         Ok(chosen) => chosen,
         Err(error) => return job.fail(&error),
@@ -224,6 +228,60 @@ fn read_matcher(seen: &str, view: &crate::backend::View, dirs: &crate::backend::
     let mut text = String::new();
     crate::untrusted::open(&path).and_then(|file| file.take(1 << 20).read_to_string(&mut text)).map_err(|error| error.to_string())?;
     Ok(text)
+}
+
+/// Runs `script` with a custom shell `template` (`perl {0}`), as GitHub does: the script is
+/// written as it is to a file without an extension, and the command runs with `{0}` its path.
+/// The program is found on the step's `PATH` on the host, and by the container's own.
+#[allow(clippy::too_many_arguments)] // the parts of one step
+async fn custom_shell(
+    job: &mut Job,
+    index: usize,
+    step_env: &BTreeMap<String, String>,
+    timeout: Option<Duration>,
+    script: &str,
+    template: &str,
+    directory: Option<&str>,
+    search_path: &str,
+) -> Outcome {
+    let words = match rbit_workflow::options::split(template) {
+        Ok(words) if words.first().is_some_and(|program| !program.contains("{0}")) => words,
+        Ok(_) => return job.fail(&format!("`shell: {template}` must start with the program that runs the script")),
+        Err(error) => return job.fail(&format!("`shell: {template}`: {error}")),
+    };
+    let windows = job.backend.windows();
+    let view = job.backend.view().clone();
+    let cwd = match directory {
+        Some(directory) if is_absolute(directory, windows) => directory.to_owned(),
+        Some(directory) => join(&view.workspace, directory, windows),
+        None => view.workspace.clone(),
+    };
+    job.reporter.log(&format!("##[group]Run {}", script.lines().find(|line| !line.trim().is_empty()).unwrap_or_default().trim()));
+    for line in script.lines() {
+        job.reporter.log(line);
+    }
+    job.reporter.log(&format!("shell: {template}"));
+    job.reporter.log("##[endgroup]");
+    let name = format!("step-{index}-{}", crate::client::idempotency_key());
+    let script_path = job.dirs.temp.join(&name);
+    let written = crate::untrusted::create(&script_path, false).and_then(|mut file| {
+        use std::io::Write as _;
+        file.write_all(script.as_bytes())
+    });
+    if let Err(error) = written {
+        return job.fail(&format!("cannot write the script: {error}"));
+    }
+    let script_view = join(&view.temp, &name, windows);
+    let program = match &job.backend {
+        crate::backend::Backend::Host(_) => crate::process::find_shell(&words[0], search_path)
+            .map_or_else(|| words[0].clone(), |found| found.to_string_lossy().into_owned()),
+        crate::backend::Backend::Container(_) => words[0].clone(),
+    };
+    let args = words[1..].iter().map(|word| word.replace("{0}", &script_view)).collect();
+    let process = StepProcess { program, args, raw_args: None, cwd, extra: Vec::new() };
+    let (outcome, _) = execute(job, index, process, step_env, timeout).await;
+    let _ = std::fs::remove_file(&script_path);
+    outcome
 }
 
 // Actions: third-party actions.

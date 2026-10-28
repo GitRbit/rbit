@@ -360,13 +360,18 @@ fn parse_shell(node: &Node, path: &str) -> Result<String, WorkflowError> {
     let name = node.as_text().ok_or_else(|| error(format!("`{path}` must be a string"), node.at))?;
     if name.contains("${{") {
         template(&name, Scope::Runner, path, node.at)?;
+    } else if name.contains("{0}") {
+        // A custom shell, as on GitHub: a command whose `{0}` is the script's path.
+        let words = crate::options::split(&name).map_err(|problem| error(format!("`{path}`: {problem}"), node.at))?;
+        if words.first().is_none_or(|program| program.contains("{0}")) {
+            return Err(error(format!("`{path}`: a custom shell starts with the program that runs the script"), node.at));
+        }
     } else if Shell::parse(&name).is_none() {
         let supported: Vec<&str> = Shell::ALL.iter().map(|shell| shell.name()).collect();
-        let message = if name.contains("{0}") {
-            format!("`{path}`: custom shell commands are not supported by rbit yet; use one of {}", supported.join(", "))
-        } else {
-            format!("`{path}`: `{name}` is not a shell rbit supports ({})", supported.join(", "))
-        };
+        let message = format!(
+            "`{path}`: `{name}` is not a shell rbit supports ({}), nor a command with `{{0}}` for the script",
+            supported.join(", ")
+        );
         return Err(error(message, node.at));
     }
     Ok(name)
@@ -1949,7 +1954,7 @@ jobs:
             ("    steps:\n      - {run: x, timeout-minutes: 0}\n", "a positive number or an expression", (6, 35)),
             ("    steps:\n      - {run: x, timeout-minutes: soon}\n", "a positive number or an expression", (6, 35)),
             ("    steps:\n      - {run: x, shell: fish}\n", "`fish` is not a shell rbit supports", (6, 25)),
-            ("    steps:\n      - {run: x, shell: 'perl {0}'}\n", "custom shell commands are not supported by rbit", (6, 25)),
+            ("    steps:\n      - {run: x, shell: '{0} perl'}\n", "a custom shell starts with the program", (6, 25)),
         ];
         assert_errors(cases.iter().map(|(steps, message, at)| (*steps, job_err(&format!("    runs-on: x\n{steps}")), *message, *at)));
         let steps = (0..=MAX_STEPS).map(|index| format!("      - run: echo {index}\n")).collect::<Vec<_>>().concat();

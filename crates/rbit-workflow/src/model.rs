@@ -469,8 +469,8 @@ pub struct Step {
     pub at: Location,
 }
 
-/// The shells a `run` step may name (§12.2). Custom `{0}` command templates are a later
-/// feature.
+/// The shells a `run` step may name (§12.2). A custom command template with `{0}` for the
+/// script's path (`perl {0}`) is a shell too; the runner runs it as written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Shell {
     Bash,

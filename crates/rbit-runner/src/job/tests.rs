@@ -585,3 +585,14 @@ async fn the_repositorys_actions_policy_refuses_other_actions() {
     );
     assert!(text.contains("own action ran"), "{text}");
 }
+
+#[tokio::test]
+async fn a_custom_shell_runs_the_script_through_its_command() {
+    let Some(sh) = find_program("sh") else { return };
+    let sh = sh.display().to_string().replace('\\', "/");
+    let steps = vec![with(step("echo from the script"), |step| step.shell = Some(format!("'{sh}' -e {{0}}")))];
+    let (result, reporter, _work) = execute(host_job(steps)).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(text.contains("from the script") && text.contains("shell: ") && text.contains("-e {0}"), "{text}");
+}
