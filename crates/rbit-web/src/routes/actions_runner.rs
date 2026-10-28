@@ -48,9 +48,9 @@ use rbit_services::{
     },
 };
 use rbit_workflow::protocol::{
-    ARTIFACTS_PATH, ArtifactInfo, ArtifactList, ArtifactQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest, Endpoint, ErrorBody,
-    ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest, PollResponse, RegisterRequest,
-    SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
+    ARTIFACTS_PATH, ArtifactInfo, ArtifactList, ArtifactQuery, ArtifactRunQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest,
+    Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest, PollResponse,
+    RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -276,23 +276,28 @@ async fn upload_artifact(
     Ok((StatusCode::CREATED, Json(artifact_info(&artifact))).into_response())
 }
 
-/// `GET tasks/{id}/artifacts`: the run's artifacts so far.
+/// `GET tasks/{id}/artifacts[?run_id=<run>]`: the run's artifacts so far, or another run's
+/// of the same repository.
 async fn list_artifacts(
     State(state): State<AppState>,
     RunnerCaller(runner): RunnerCaller,
     Path(id): Path<String>,
+    query: Result<Query<ArtifactRunQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let artifacts = actions(&state)?.task_artifacts(&runner, task_id(&id)?).await?;
+    let run = artifact_run(&query)?;
+    let artifacts = actions(&state)?.task_artifacts(&runner, task_id(&id)?, run).await?;
     Ok(Json(ArtifactList { artifacts: artifacts.iter().map(artifact_info).collect() }).into_response())
 }
 
-/// `GET tasks/{id}/artifacts/{name}`: one artifact's tar.gz, with its digest.
+/// `GET tasks/{id}/artifacts/{name}[?run_id=<run>]`: one artifact's tar.gz, with its digest.
 async fn download_artifact(
     State(state): State<AppState>,
     RunnerCaller(runner): RunnerCaller,
     Path((id, name)): Path<(String, String)>,
+    query: Result<Query<ArtifactRunQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Result<Response, Refusal> {
-    let (artifact, file) = actions(&state)?.open_task_artifact(&runner, task_id(&id)?, &name).await?;
+    let run = artifact_run(&query)?;
+    let (artifact, file) = actions(&state)?.open_task_artifact(&runner, task_id(&id)?, run, &name).await?;
     let info = artifact_info(&artifact);
     let mut response = Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
     let headers = response.headers_mut();
@@ -304,6 +309,16 @@ async fn download_artifact(
         headers.insert(header::CONTENT_LENGTH, value);
     }
     Ok(response)
+}
+
+/// The run an artifact query names, if any.
+fn artifact_run(
+    query: &Result<Query<ArtifactRunQuery>, axum::extract::rejection::QueryRejection>,
+) -> Result<Option<rbit_core::actions::RunId>, Refusal> {
+    let Ok(Query(query)) = query else {
+        return Err(RunnerError::bad_request("the query is `run_id=<run>`").into());
+    };
+    Ok(query.run_id.map(rbit_core::actions::RunId))
 }
 
 /// A task id from the path; anything else names no task.

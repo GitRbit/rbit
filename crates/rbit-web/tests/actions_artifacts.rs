@@ -151,6 +151,31 @@ async fn runners_upload_list_and_download_the_artifacts_of_their_run() {
     assert_eq!(fixture.database.actions_artifacts().stored_bytes(fixture.repo().await.repo.repo.id).await.unwrap(), 0);
 }
 
+// Actions: workflow_run. `actions/download-artifact`'s `run-id`.
+#[tokio::test]
+async fn runners_read_other_runs_of_the_same_repository() {
+    let fixture = Fixture::new().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let first = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let task = spec(&poll(&fixture, &credential, Some("a")).await.1).task_id.0;
+    assert_eq!(upload(&fixture, &credential, task, "dist", "", b"built").await.status, StatusCode::CREATED);
+
+    seed(&fixture, &[payload(&template("consume", &["linux"], &[]))]).await;
+    let later = spec(&poll(&fixture, &credential, Some("b")).await.1).task_id.0;
+    let own = call(&fixture, Method::GET, &format!("tasks/{later}/artifacts"), &credential, None, Vec::new()).await;
+    assert_eq!(own.json()["artifacts"], serde_json::json!([]), "its own run has none");
+    let path = format!("tasks/{later}/artifacts?run_id={}", first.id.0);
+    let list = call(&fixture, Method::GET, &path, &credential, None, Vec::new()).await;
+    assert_eq!(list.json()["artifacts"][0]["name"], "dist");
+    let path = format!("tasks/{later}/artifacts/dist?run_id={}", first.id.0);
+    let download = call(&fixture, Method::GET, &path, &credential, None, Vec::new()).await;
+    assert_eq!((download.status, download.body.as_slice()), (StatusCode::OK, b"built".as_slice()));
+    let unknown = call(&fixture, Method::GET, &format!("tasks/{later}/artifacts?run_id=999999"), &credential, None, Vec::new()).await;
+    assert_eq!(unknown.status, StatusCode::NOT_FOUND, "only runs of the task's repository");
+    let bad = call(&fixture, Method::GET, &format!("tasks/{later}/artifacts?run=1"), &credential, None, Vec::new()).await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn a_full_repository_takes_no_more_artifacts() {
     let fixture = Fixture::with(|config| {

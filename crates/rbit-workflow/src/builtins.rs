@@ -9,7 +9,7 @@
 //! | `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `ref`, `path`, `fetch-depth`, `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
 //! | `rbit/cache@v1` (also `/restore`, `/save`) | `actions/cache@v3` to `@v4` (also `/restore`, `/save`) | `key`, `path`, `restore-keys`, `fail-on-cache-miss` |
 //! | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite`, `include-hidden-files`, `compression-level` |
-//! | `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple` |
+//! | `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple`, `run-id`, `github-token`, `repository` |
 //!
 //! The aliases take any later major version too (`actions/checkout@v6`), and a commit SHA
 //! (`actions/checkout@<40 hex digits>`), which security-minded workflows pin to.
@@ -83,11 +83,16 @@ const UPLOAD_ARTIFACT: [Input; 7] = [
     input("include-hidden-files", Some("false"), InputKind::Boolean),
     input("compression-level", Some("6"), InputKind::Choice(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"])),
 ];
-const DOWNLOAD_ARTIFACT: [Input; 4] = [
+const DOWNLOAD_ARTIFACT: [Input; 7] = [
     input("name", None, InputKind::Text),
     input("path", None, InputKind::Text),
     input("pattern", None, InputKind::Text),
     input("merge-multiple", Some("false"), InputKind::Boolean),
+    // Actions: workflow_run. Another run of this repository; the token GitHub needs for it
+    // is accepted and not used, as the runner's own credential reads the run.
+    input("run-id", None, InputKind::Number(1)),
+    input("github-token", None, InputKind::Text),
+    input("repository", None, InputKind::Text),
 ];
 
 /// The `with:` inputs of a built-in.
@@ -452,7 +457,7 @@ mod tests {
             ("actions/upload-artifact@v4", with(&[("name", "x")]), "needs `with.path`"),
             ("actions/upload-artifact@v4", with(&[("path", "x"), ("retention-days", "0")]), "at least 1"),
             ("actions/upload-artifact@v4", with(&[("path", "x"), ("compression-level", "10")]), "`compression-level` must be 0, 1"),
-            ("actions/download-artifact@v4", with(&[("github-token", "x")]), "no input `github-token`"),
+            ("actions/download-artifact@v4", with(&[("artifact-ids", "x")]), "no input `artifact-ids`"),
         ];
         for (uses, with, message) in refused {
             let error = builtin(uses, with).unwrap_err();

@@ -362,14 +362,14 @@ impl Client {
     }
 
     /// `GET tasks/{id}/artifacts`: the run's artifacts so far.
-    pub async fn artifacts(&self, task: TaskId) -> Result<ArtifactList, CallError> {
-        self.json(self.request(Method::GET, &format!("tasks/{task}/artifacts"))).await
+    pub async fn artifacts(&self, task: TaskId, run: Option<i64>) -> Result<ArtifactList, CallError> {
+        self.json(self.request(Method::GET, &format!("tasks/{task}/artifacts{}", run_query(run)))).await
     }
 
     /// `GET tasks/{id}/artifacts/{name}` into a new file at `out`; the SHA-256 (hex) the
     /// server sent with it.
-    pub async fn download_artifact(&self, task: TaskId, name: &str, out: &std::path::Path) -> Result<String, CallError> {
-        let request = self.request(Method::GET, &format!("tasks/{task}/artifacts/{name}")).timeout(ARTIFACT_TIMEOUT);
+    pub async fn download_artifact(&self, task: TaskId, run: Option<i64>, name: &str, out: &std::path::Path) -> Result<String, CallError> {
+        let request = self.request(Method::GET, &format!("tasks/{task}/artifacts/{name}{}", run_query(run))).timeout(ARTIFACT_TIMEOUT);
         let mut response = self.send(request).await?;
         let digest = response.headers().get(CONTENT_SHA256_HEADER).and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
         let local = |error: std::io::Error| CallError::Unreachable(format!("cannot write the artifact: {error}"));
@@ -444,6 +444,12 @@ fn transport_message(error: &reqwest::Error) -> String {
         source = cause.source();
     }
     message
+}
+
+// Actions: workflow_run.
+/// `?run_id=<run>` for another run's artifacts, or nothing for the task's own.
+fn run_query(run: Option<i64>) -> String {
+    run.map(|run| format!("?run_id={run}")).unwrap_or_default()
 }
 
 #[cfg(test)]

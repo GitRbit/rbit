@@ -187,11 +187,26 @@ impl ActionsService {
     }
 
     /// The artifacts task `task`'s run has so far, the newest attempt's of each name.
-    pub async fn task_artifacts(&self, runner: &CachedRunner, task: rbit_core::actions::TaskId) -> Result<Vec<Artifact>, RunnerError> {
+    ///
+    /// `run` (`actions/download-artifact`'s `run-id`) reads another run of the task's
+    /// repository instead, as the task's token may on GitHub.
+    pub async fn task_artifacts(
+        &self,
+        runner: &CachedRunner,
+        task: rbit_core::actions::TaskId,
+        run: Option<RunId>,
+    ) -> Result<Vec<Artifact>, RunnerError> {
         let task = self.running_task(runner, task).await?;
-        let job =
-            self.ctx().database.actions_runs().job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
-        Ok(latest_per_name(self.ctx().database.actions_artifacts().of_run(job.run_id, Timestamp::now()).await?))
+        let store = self.ctx().database.actions_runs();
+        let job = store.job(task.job_id).await?.ok_or_else(|| RunnerError::not_found("there is no such job"))?;
+        let run = match run {
+            None => job.run_id,
+            Some(run) => {
+                store.find_run(job.repo_id, run).await?.ok_or_else(|| RunnerError::not_found("this repository has no such run"))?.id
+            }
+        };
+        let artifacts = self.ctx().database.actions_artifacts().of_run(run, Timestamp::now()).await?;
+        Ok(latest_per_name(artifacts.into_iter().filter(|artifact| artifact.repo_id == job.repo_id).collect()))
     }
 
     /// Artifact `name` of task `task`'s run, and its file.
@@ -199,10 +214,11 @@ impl ActionsService {
         &self,
         runner: &CachedRunner,
         task: rbit_core::actions::TaskId,
+        run: Option<RunId>,
         name: &str,
     ) -> Result<(Artifact, tokio::fs::File), RunnerError> {
         let artifact = self
-            .task_artifacts(runner, task)
+            .task_artifacts(runner, task, run)
             .await?
             .into_iter()
             .find(|artifact| artifact.name == name)

@@ -187,7 +187,21 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         Ok(destination) => destination,
         Err(error) => return job.fail(&error),
     };
-    let listed = match server.artifacts(job.spec.task_id).await {
+    // Actions: workflow_run. `run-id` reads another run of this repository; another
+    // repository's runs are out of reach of the runner's credential.
+    let repository = inputs.get("repository").trim();
+    let own = job.spec.contexts.github.get("repository").and_then(serde_json::Value::as_str).unwrap_or_default();
+    if !repository.is_empty() && !repository.eq_ignore_ascii_case(own) {
+        return job.fail(&format!("rbit downloads artifacts of this repository's runs only, not of `{repository}`"));
+    }
+    let run = match inputs.get("run-id").trim() {
+        "" => None,
+        text => match text.parse::<i64>() {
+            Ok(run) if run > 0 => Some(run),
+            _ => return job.fail(&format!("`run-id` must be a run's number id, not `{text}`")),
+        },
+    };
+    let listed = match server.artifacts(job.spec.task_id, run).await {
         Ok(list) => list.artifacts,
         Err(error) => return job.fail(&format!("cannot list the run's artifacts: {error}")),
     };
@@ -197,7 +211,8 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
         .collect();
     if wanted.is_empty() {
         let what = if name.is_empty() { "matching artifacts".to_owned() } else { format!("an artifact `{name}`") };
-        return job.fail(&format!("this run has no {what}"));
+        let whose = run.map_or_else(|| "this run".to_owned(), |run| format!("run {run}"));
+        return job.fail(&format!("{whose} has no {what}"));
     }
     let separate = name.is_empty() && !inputs.flag("merge-multiple");
     let private = match job.private_dir() {
@@ -210,7 +225,7 @@ pub async fn download(job: &mut Job, inputs: &Inputs) -> Outcome {
             return job.fail(&format!("the run has an artifact with an invalid name, `{}`", artifact.name.escape_debug()));
         }
         let archive = private.join(format!("download-{}.tar.gz", crate::client::idempotency_key()));
-        let digest = match server.download_artifact(job.spec.task_id, &artifact.name, &archive).await {
+        let digest = match server.download_artifact(job.spec.task_id, run, &artifact.name, &archive).await {
             Ok(digest) => digest,
             Err(error) => return job.fail(&format!("cannot download the artifact `{}`: {error}", artifact.name)),
         };

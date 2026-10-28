@@ -619,6 +619,16 @@ pub struct ArtifactQuery {
     pub overwrite: bool,
 }
 
+// Actions: workflow_run.
+/// The query of an artifact list or download: another run of the task's repository
+/// (`actions/download-artifact`'s `run-id`) instead of the task's own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArtifactRunQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<i64>,
+}
+
 /// One artifact of a run, as uploads answer and lists show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactInfo {
