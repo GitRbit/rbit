@@ -113,10 +113,19 @@ must not silently change what a job does.
 - **Job:** `name`, `needs`, `if`, `runs-on`, `permissions`, `env`, `defaults.run`,
   `outputs`, `timeout-minutes` (default 360), `continue-on-error`, `concurrency`,
   `strategy` (`matrix` with `include`/`exclude`, `fail-fast`, `max-parallel`), `container`
-  (`image`, `env`, `credentials`), `services` (`image`, `env`, `credentials`; container
-  runners only), `steps` (at most 256).
+  (`image`, `env`, `credentials`, `options`, `volumes`), `services` (`image`, `env`,
+  `credentials`, `options`, `volumes`; container runners only), `steps` (at most 256).
 - **Step:** `id`, `name`, `if`, `run` or `uses`, `shell`, `working-directory`, `env`, `with`,
   `continue-on-error`, `timeout-minutes`.
+- **Container options:** `options` passes what shapes a container (`--user`, `--hostname`,
+  `--env`, the `--health-*` checks, `--memory`, `--cpus` and other limits within the
+  runner's own, `--ulimit`, `--shm-size`, `--tmpfs`, `--add-host`, `--dns`, `--label`,
+  `--init`, `--read-only`, stop options, and `--entrypoint` for services). Anything that
+  could give a job the runner host (`--privileged`, `--cap-add`, `--device`, `--network`,
+  `-v`/`--mount`, `--security-opt`, `--pid`, …) is an error. Services with a health check are
+  waited for, as on GitHub, and an unhealthy one fails the job. `volumes` takes named volumes
+  (`data:/var/lib/data`, `:ro` for read-only), which the job's container and services share
+  and which go with the job; a host path is an error.
 - **Shells:** `bash` (`bash --noprofile --norc -eo pipefail`), `sh` (`sh -e`), `pwsh`,
   `powershell`, `cmd`, `python`. The default is `bash` (or `sh` without it), or `pwsh` (or
   `powershell` without it) on Windows hosts.
@@ -407,8 +416,9 @@ to `workflow_run` and `workflow_job`.
   `actions/cache` and `actions/*-artifact`.
 - Environments have no wait timer, team reviewers or custom protection rules, and runs
   create no deployment objects (the Deployments API).
-- No `container.options`, service `options`/`volumes`, or custom shells (`shell: my
-  {0}`): each is a readable error.
+- No custom shells (`shell: my {0}`), container `ports` or host-path `volumes`, and
+  `options` take only what cannot give a job the runner host (see [Workflow
+  syntax](#workflow-syntax)). Each is a readable error.
 - `runs-on` and matrices cannot depend on another job's outputs.
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
