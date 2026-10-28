@@ -56,7 +56,11 @@ administrator allows.
    - **host** runs the job as the runner's own user, with **no isolation**: a job can read
      everything that user can, the runner's credential included. Use it only for
      repository runners of repositories you trust. The runners page marks such runners
-     "host — no isolation".
+     "host — no isolation". Jobs of untrusted runs (pull requests from forks and from
+     people without write access) are never given to a runner through a host label, even
+     once approved; they wait for a container label. A runner with both kinds of label
+     shares its work directory (Node.js, fetched actions, the cache) between them, so a
+     host job can change what later container jobs run.
 
 `rbit-runner run --once` makes an ephemeral runner that takes one job and unregisters.
 `rbit-runner check` reports whether Docker or Podman, Git and the shells are usable.
@@ -291,3 +295,25 @@ to `workflow_run` and `workflow_job`.
 - A job's log and an artifact are downloaded directly from the API, not through a redirect,
   and artifacts are tar.gz archives (`…/artifacts/{id}/tar.gz`), not zip.
 - The workflow's token cannot list and edit comments yet.
+
+### Known limits of the container backend
+
+- Containers reach the network like any Docker container: the internet, the host's
+  addresses and cloud metadata endpoints (`169.254.169.254`). Block what jobs should not
+  reach with firewall rules (Docker's `DOCKER-USER` chain) or a `[container] network` of
+  your own.
+- Jobs keep Docker's default capabilities (only `MKNOD` is dropped) and have no memory or
+  CPU limit unless `[container] memory` and `cpus` are set.
+- The job's files are given back to the runner's user by `chown` inside the job's own
+  container, which the job could have replaced; on a rootful engine they can then stay
+  owned by root. The runner keeps `<work_dir>/tasks` private to its user.
+- A Docker action's `Dockerfile` is built without limits and with the network, and the
+  default `[actions] allow = ["*"]` lets any workflow use any action or image; narrow it
+  for runners that take pull requests from forks.
+- Masking works on each printed line: a secret split across two lines, or across the
+  1 MiB cut of a single very long line, or printed in another encoding (base64, URL), is
+  not masked.
+- `actions/checkout` keeps the task's token in `.git/config` unless
+  `persist-credentials: false`, as on GitHub; an artifact or cache of the workspace root
+  carries it (it stops working when the job ends).
+- Values shorter than four characters are never masked.
