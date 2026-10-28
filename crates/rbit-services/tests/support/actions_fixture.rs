@@ -171,6 +171,7 @@ impl Fixture {
             runner: runner.id,
             scope: runner.scope,
             labels: &labels,
+            host_labels: &[],
             ephemeral: false,
             instance_runners_for_all: false,
             token_digest: &[seed.wrapping_add(200); 32],

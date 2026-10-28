@@ -373,6 +373,9 @@ pub struct ClaimRequest<'a> {
     pub runner: RunnerId,
     pub scope: RunnerScope,
     pub labels: &'a [RunnerLabel],
+    /// Those of `labels` that run jobs on the host: a job of an untrusted run (a fork's
+    /// pull request) is never claimed through one of them.
+    pub host_labels: &'a [RunnerLabel],
     /// An ephemeral runner takes one task at most.
     pub ephemeral: bool,
     /// `[actions] instance_runners_for_all`.
@@ -522,8 +525,9 @@ impl ActionsRunStore {
             insert_labels(&mut tx, job_id, job.runs_on).await?;
             // Actions: environments. Named for the first time, an environment exists with no
             // protection, as on GitHub, so it can be configured; past the cap of a repository
-            // it is not created (and so has no protection to apply either).
-            if let Some(environment) = job.environment {
+            // it is not created (and so has no protection to apply either). An untrusted run
+            // (a fork's pull request) creates none, so it cannot fill the cap.
+            if let Some(environment) = job.environment.filter(|_| new.trusted) {
                 sqlx::query(
                     "INSERT INTO actions_environments (repo_id, name, created_at, updated_at) SELECT ?1, ?2, ?3, ?3                      WHERE (SELECT COUNT(*) FROM actions_environments WHERE repo_id = ?1) < ?4 ON CONFLICT DO NOTHING",
                 )
@@ -751,6 +755,7 @@ impl ActionsRunStore {
     pub async fn claim(&self, request: &ClaimRequest<'_>) -> Result<Option<Claimed>, StorageError> {
         let (kind, owner, repo) = runner_columns(request.scope);
         let labels = labels_json(request.labels)?;
+        let host_labels = labels_json(request.host_labels)?;
         let mut tx = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         if request.ephemeral {
             let busy: Option<i64> = sqlx::query_scalar("SELECT 1 FROM actions_tasks WHERE runner_id = ? AND status = 6 LIMIT 1")
@@ -767,6 +772,7 @@ impl ActionsRunStore {
             .bind(repo)
             .bind(request.instance_runners_for_all)
             .bind(labels)
+            .bind(host_labels)
             .fetch_optional(&mut *tx)
             .await?;
         let Some(job_id) = candidate else {
@@ -1529,7 +1535,7 @@ const CLAIM_CANDIDATE: &str = "SELECT j.id FROM actions_jobs j \
          WHEN 'owner' THEN r.owner_id = ?2 \
          ELSE j.repo_id = ?3 END \
      AND EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id) \
-     AND NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label NOT IN (SELECT value FROM json_each(?5))) \
+     AND NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label NOT IN (SELECT value FROM json_each(?5)))      AND (EXISTS (SELECT 1 FROM actions_runs ru WHERE ru.id = j.run_id AND ru.trusted = 1)          OR NOT EXISTS (SELECT 1 FROM actions_job_labels l WHERE l.job_id = j.id AND l.label IN (SELECT value FROM json_each(?6)))) \
      AND (j.max_parallel IS NULL OR (SELECT COUNT(*) FROM actions_jobs s \
          WHERE s.run_id = j.run_id AND s.job_key = j.job_key AND s.status = 6) < j.max_parallel) \
      AND (j.job_group IS NULL OR NOT EXISTS (SELECT 1 FROM actions_jobs g \

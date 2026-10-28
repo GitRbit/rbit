@@ -224,6 +224,7 @@ impl ActionsService {
                 runner: runner.id,
                 scope: runner.scope,
                 labels: &runner.labels,
+                host_labels: &runner.host_labels,
                 ephemeral: runner.ephemeral,
                 instance_runners_for_all: self.config().instance_runners_for_all,
                 token_digest: &token.digest(),

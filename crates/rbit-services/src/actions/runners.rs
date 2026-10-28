@@ -76,6 +76,8 @@ pub struct CachedRunner {
     pub name: String,
     pub scope: RunnerScope,
     pub labels: Vec<RunnerLabel>,
+    /// Its labels that run jobs on the host, with no isolation: never given untrusted runs.
+    pub host_labels: Vec<RunnerLabel>,
     /// The labels its registration token allowed, `None` for any.
     pub pinned_labels: Option<Vec<RunnerLabel>>,
     pub ephemeral: bool,
@@ -104,6 +106,7 @@ impl CachedRunner {
             name: runner.name.clone(),
             scope: runner.scope,
             labels: runner.labels.clone(),
+            host_labels: runner.capabilities.host_labels.clone(),
             pinned_labels: runner.pinned_labels.clone(),
             ephemeral: runner.ephemeral,
             disabled: runner.disabled,
@@ -475,10 +478,11 @@ impl ActionsService {
             self.runner_cache().await?.remove(runner.id);
             return Err(RunnerError::unauthenticated());
         };
-        let mut labels = declared.labels.clone();
-        let mut before = runner.labels.clone();
-        labels.sort();
-        before.sort();
+        let mut labels = (declared.labels.clone(), declared.capabilities.host_labels.clone());
+        let mut before = (runner.labels.clone(), runner.host_labels.clone());
+        for list in [&mut labels.0, &mut labels.1, &mut before.0, &mut before.1] {
+            list.sort();
+        }
         if labels != before {
             self.bump_tasks_version();
         }

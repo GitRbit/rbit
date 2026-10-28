@@ -170,6 +170,7 @@ fn claim<'a>(runner: RunnerId, scope: RunnerScope, labels: &'a [RunnerLabel], di
         runner,
         scope,
         labels,
+        host_labels: &[],
         ephemeral: false,
         instance_runners_for_all: false,
         token_digest: digest,
@@ -483,6 +484,27 @@ async fn claims_match_labels_scope_and_the_repository_switch() {
     let (owner_runner, owner_labels) = fx.runner(RunnerScope::Owner(fx.alice), &["linux", "x64"], 5).await;
     let next = store.claim(&claim(owner_runner, RunnerScope::Owner(fx.alice), &owner_labels, &[52; 32])).await.unwrap().unwrap();
     assert_eq!(next.job.run_id, first.id);
+}
+
+#[tokio::test]
+async fn untrusted_jobs_are_never_claimed_through_a_host_label() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let none: Vec<String> = Vec::new();
+    let linux = strings(&["linux"]);
+    let jobs = [NewJob { environment: Some("staging"), ..job("build", &none, &linux) }];
+    let fork = store.create_run(&NewRun { trusted: false, is_fork: true, ..new_run(fx.rocket, &jobs, RunStart::Runnable) }).await.unwrap();
+    assert!(fx.db.actions_environments().list(fx.rocket).await.unwrap().is_empty(), "a fork's run names no environment into being");
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 1).await;
+    let on_host = ClaimRequest { host_labels: &labels, ..claim(runner, scope, &labels, &[50; 32]) };
+    assert_eq!(store.claim(&on_host).await.unwrap(), None, "a fork's code never reaches the runner's host");
+
+    let trusted = store.create_run(&NewRun { now: Timestamp(NOW.0 + 1), ..new_run(fx.rocket, &jobs, RunStart::Runnable) }).await.unwrap();
+    let claimed = store.claim(&on_host).await.unwrap().unwrap();
+    assert_eq!(claimed.job.run_id, trusted.id, "trusted runs still use host labels");
+    let claimed = store.claim(&claim(runner, scope, &labels, &[51; 32])).await.unwrap().unwrap();
+    assert_eq!(claimed.job.run_id, fork.id, "a container label takes the untrusted job");
 }
 
 #[tokio::test]
