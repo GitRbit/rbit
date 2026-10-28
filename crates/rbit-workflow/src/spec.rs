@@ -393,6 +393,94 @@ pub struct JobSpec {
     pub token: Secret,
     pub checkout: CheckoutSource,
     pub cache: CacheScopes,
+    // Actions: settings API.
+    /// The actions its repository and owner allow. Sent only when it restricts something:
+    /// a runner that does not know the field refuses the whole spec rather than ignore it.
+    #[serde(default, skip_serializing_if = "ActionsPolicy::is_open")]
+    pub actions_policy: ActionsPolicy,
+}
+
+// Actions: settings API.
+/// Which actions a job may use besides rbit's built-ins and the workspace's own, from its
+/// repository's and owner's `allowed_actions`: an action runs only when every rule allows
+/// it, on top of the runner's own `[actions] allow`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionsPolicy {
+    pub rules: Vec<ActionsRule>,
+}
+
+/// One owner's or repository's rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum ActionsRule {
+    /// No action from outside the repository.
+    LocalOnly,
+    /// GitHub's own actions (`actions/*`, `github/*`) when `github_owned`, and those a
+    /// pattern matches: `owner/repo[/path]@ref` or, without `@`, any ref; `*` matches any
+    /// run of characters; `docker://image` patterns match Docker images. Case is ignored.
+    Selected { github_owned: bool, patterns: Vec<String> },
+}
+
+impl ActionsPolicy {
+    pub fn is_open(&self) -> bool {
+        self.rules.is_empty()
+    }
+
+    /// The first rule that refuses `source`, or `None` when it may run. The workspace's
+    /// own actions always may.
+    pub fn refuses(&self, source: &ActionSource) -> Option<&ActionsRule> {
+        self.rules.iter().find(|rule| !rule.allows(source))
+    }
+}
+
+impl ActionsRule {
+    fn allows(&self, source: &ActionSource) -> bool {
+        match (self, source) {
+            (_, ActionSource::Local { .. }) => true,
+            (Self::LocalOnly, _) => false,
+            (Self::Selected { github_owned, patterns }, ActionSource::Repository { owner, repo, path, reference }) => {
+                let owner = owner.to_ascii_lowercase();
+                if *github_owned && (owner == "actions" || owner == "github") {
+                    return true;
+                }
+                let name = if path.is_empty() { format!("{owner}/{repo}") } else { format!("{owner}/{repo}/{path}") }.to_ascii_lowercase();
+                let full = format!("{name}@{}", reference.to_ascii_lowercase());
+                patterns.iter().map(|pattern| pattern.to_ascii_lowercase()).any(|pattern| {
+                    !pattern.starts_with("docker://")
+                        && if pattern.contains('@') { wildcard(&pattern, &full) } else { wildcard(&pattern, &name) }
+                })
+            }
+            (Self::Selected { patterns, .. }, ActionSource::Docker { image }) => {
+                let image = format!("docker://{}", image.to_ascii_lowercase());
+                patterns.iter().any(|pattern| wildcard(&pattern.to_ascii_lowercase(), &image))
+            }
+        }
+    }
+}
+
+/// Whether `text` matches `pattern`, where `*` stands for any run of characters.
+fn wildcard(pattern: &str, text: &str) -> bool {
+    let (pattern, text) = (pattern.as_bytes(), text.as_bytes());
+    // The classic greedy match with one backtrack point: linear for these short strings.
+    let (mut p, mut t, mut star, mut mark) = (0, 0, None, 0);
+    while t < text.len() {
+        if p < pattern.len() && pattern[p] != b'*' && pattern[p] == text[t] {
+            p += 1;
+            t += 1;
+        } else if p < pattern.len() && pattern[p] == b'*' {
+            star = Some(p);
+            p += 1;
+            mark = t;
+        } else if let Some(at) = star {
+            p = at + 1;
+            mark += 1;
+            t = mark;
+        } else {
+            return false;
+        }
+    }
+    pattern[p..].iter().all(|&byte| byte == b'*')
 }
 
 /// The contexts the server supplies. `matrix` and `strategy` come from the template; `env`,
@@ -523,6 +611,56 @@ impl CacheScopes {
 }
 
 #[cfg(test)]
+mod policy_tests {
+    use super::{ActionSource, ActionsPolicy, ActionsRule};
+
+    fn repository(owner: &str, repo: &str, path: &str, reference: &str) -> ActionSource {
+        ActionSource::Repository { owner: owner.into(), repo: repo.into(), path: path.into(), reference: reference.into() }
+    }
+
+    #[test]
+    fn every_rule_must_allow_an_action() {
+        let open = ActionsPolicy::default();
+        assert!(open.is_open() && open.refuses(&repository("evil", "x", "", "v1")).is_none());
+        let local = ActionsPolicy { rules: vec![ActionsRule::LocalOnly] };
+        assert!(local.refuses(&ActionSource::Local { path: "x".into() }).is_none(), "the workspace's own always run");
+        assert!(local.refuses(&repository("actions", "setup-node", "", "v4")).is_some());
+        assert!(local.refuses(&ActionSource::Docker { image: "alpine".into() }).is_some());
+
+        let selected = ActionsRule::Selected {
+            github_owned: true,
+            patterns: vec!["octo-org/*".into(), "Deploy/Tool@V2".into(), "one/repo/sub@*".into(), "docker://alpine:*".into()],
+        };
+        let policy = ActionsPolicy { rules: vec![selected.clone()] };
+        for allowed in [
+            repository("actions", "setup-node", "", "v4"),
+            repository("github", "codeql-action", "init", "v3"),
+            repository("octo-org", "anything", "deep/path", "main"),
+            repository("deploy", "tool", "", "v2"),
+            repository("one", "repo", "sub", "abc123"),
+        ] {
+            assert!(policy.refuses(&allowed).is_none(), "{allowed:?}");
+        }
+        for refused in [repository("deploy", "tool", "", "v3"), repository("one", "repo", "", "v1"), repository("evil", "x", "", "v1")] {
+            assert!(policy.refuses(&refused).is_some(), "{refused:?}");
+        }
+        assert!(policy.refuses(&ActionSource::Docker { image: "alpine:3.20".into() }).is_none());
+        assert!(policy.refuses(&ActionSource::Docker { image: "ubuntu".into() }).is_some());
+
+        let both =
+            ActionsPolicy { rules: vec![selected, ActionsRule::Selected { github_owned: false, patterns: vec!["octo-org/*".into()] }] };
+        assert!(both.refuses(&repository("actions", "setup-node", "", "v4")).is_some(), "the owner's rule refuses it");
+        assert!(both.refuses(&repository("octo-org", "x", "", "v1")).is_none());
+    }
+
+    #[test]
+    fn a_restricted_spec_names_its_policy_and_an_open_one_does_not() {
+        let rule = serde_json::to_string(&ActionsPolicy { rules: vec![ActionsRule::LocalOnly] }).unwrap();
+        assert_eq!(rule, r#"{"rules":["local_only"]}"#);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use serde_json::json;
 
@@ -629,6 +767,7 @@ mod tests {
                 reference: "refs/heads/main".into(),
             },
             cache: CacheScopes { repository_id: 5, read: vec!["refs/heads/main".into()], write: "refs/heads/main".into() },
+            actions_policy: ActionsPolicy::default(),
         }
     }
 

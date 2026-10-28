@@ -258,7 +258,7 @@ impl ActionsTarget<'_> {
     }
 
     /// `owner/name` or the account's name, for audit entries.
-    fn name(&self) -> String {
+    pub(super) fn name(&self) -> String {
         match self {
             Self::Repository(repo) => repo.repo.full_name(),
             Self::Organization(org) => org.org.name().to_string(),

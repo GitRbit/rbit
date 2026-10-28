@@ -733,6 +733,10 @@ async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
          VALUES ('owner', 10, 'X', zeroblob(8), zeroblob(11), zeroblob(16), 1, 1)"
             .to_owned(),
         "INSERT INTO actions_repositories (repo_id, token_permission, updated_at) VALUES (6, 'admin', 1)".to_owned(),
+        // Actions: settings API.
+        "INSERT INTO actions_repositories (repo_id, allowed_actions, updated_at) VALUES (6, 'some', 1)".to_owned(),
+        "INSERT INTO actions_repositories (repo_id, approval_policy, updated_at) VALUES (6, 'nobody', 1)".to_owned(),
+        "INSERT INTO actions_owner_settings (owner_id, enabled_repositories, updated_at) VALUES (10, 'most', 1)".to_owned(),
     ];
     for sql in refused {
         assert!(sqlx::query(sqlx::AssertSqlSafe(sql.clone())).execute(&db.raw).await.is_err(), "{sql}");
@@ -762,7 +766,9 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
             "actions_job_labels",
             "actions_job_outputs",
             "actions_jobs",
+            "actions_owner_enabled_repositories",
             "actions_owner_policies",
+            "actions_owner_settings",
             "actions_registration_tokens",
             "actions_repositories",
             "actions_run_numbers",

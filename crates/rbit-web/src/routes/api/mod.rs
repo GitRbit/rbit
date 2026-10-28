@@ -220,8 +220,12 @@ fn actions_routes() -> Vec<ApiRoute> {
 
 /// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
 // Actions: integration (I).
-const ACTIONS_FRAGMENTS: [(&str, &str); 2] =
-    [("actions", include_str!("openapi/actions.json")), ("environments", include_str!("openapi/environments.json"))];
+const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
+    ("actions", include_str!("openapi/actions.json")),
+    ("environments", include_str!("openapi/environments.json")),
+    // Actions: settings API.
+    ("actions-permissions", include_str!("openapi/actions-permissions.json")),
+];
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.

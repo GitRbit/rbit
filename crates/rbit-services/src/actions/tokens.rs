@@ -91,16 +91,18 @@ impl ActionsService {
         let Some(token) = TaskTokenSecret::parse(secret) else { return Ok(None) };
         let database = &self.ctx().database;
         let Some((task, job)) = database.actions_runs().running_task_by_token(&token.digest()).await? else { return Ok(None) };
-        let Some(settings) = database.actions_settings().get(job.repo_id).await?.filter(|settings| settings.enabled) else {
+        if !database.actions_settings().is_enabled(job.repo_id).await? {
             return Ok(None);
-        };
+        }
         if database.admin().find_repository(job.repo_id).await?.is_none() {
             return Ok(None);
         }
         let Some(run) = database.actions_runs().run(job.run_id).await? else { return Ok(None) };
         let declared = job.permissions.as_deref().and_then(|json| serde_json::from_str::<TokenPermissions>(json).ok());
         let trust = if run.trusted { RunTrust::Trusted } else { RunTrust::Untrusted { awaits_approval: false } };
-        let permissions = token_permissions(settings.token_permission, None, declared, trust);
+        // The repository's default, capped by its owner's ceiling.
+        let default = self.effective_policies(job.repo_id).await?.token_permission;
+        let permissions = token_permissions(default, None, declared, trust);
         Ok(Some(TaskGrant { task: task.id, job: job.id, run: run.id, repo: job.repo_id, permissions }))
     }
 

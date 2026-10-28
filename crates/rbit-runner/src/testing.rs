@@ -95,6 +95,7 @@ pub fn job_spec(task_id: i64, steps: usize) -> JobSpec {
             reference: "refs/heads/main".into(),
         },
         cache: CacheScopes { repository_id: 1, read: vec!["refs/heads/main".into()], write: "refs/heads/main".into() },
+        actions_policy: rbit_workflow::spec::ActionsPolicy::default(),
     }
 }
 

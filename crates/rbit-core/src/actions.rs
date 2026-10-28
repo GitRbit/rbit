@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AccountId, RepoAccess, RepoId};
 
+// Actions: settings API.
+pub mod permissions;
 pub mod records;
 
 pub use records::{

@@ -12,7 +12,9 @@
 //! * An untrusted run gets a read-only token, no secrets and no variables
 //!   (`Run::trusted == false`), whoever approves it. It waits for approval unless its author
 //!   is vouched for — a trusted user of the repository, or the author of a merged pull
-//!   request into it — and pushed the head themselves. Suspended authors always wait.
+//!   request into it — and pushed the head themselves. Suspended authors always wait. The
+//!   repository's approval policy (GitHub's `fork-pr-contributor-approval`, capped by its
+//!   owner's) can make merged pull requests vouch for nobody (`all_external_contributors`).
 //!
 //! Workstream T (triggers and runs) owns this file.
 
@@ -74,9 +76,12 @@ impl ActionsService {
         if database.actions_settings().is_trusted(repo.repo.id, author).await? {
             return Ok(AuthorStanding::Vouched);
         }
-        let merged = PullFilter { state: PullStateFilter::Merged, author: Some(author), ..PullFilter::default() };
-        if database.pulls().count(repo.repo.id, &merged).await? > 0 {
-            return Ok(AuthorStanding::Vouched);
+        // Actions: settings API. Under `all_external_contributors` only the trusted list vouches.
+        if self.effective_policies(repo.repo.id).await?.approval_policy.merged_pull_vouches() {
+            let merged = PullFilter { state: PullStateFilter::Merged, author: Some(author), ..PullFilter::default() };
+            if database.pulls().count(repo.repo.id, &merged).await? > 0 {
+                return Ok(AuthorStanding::Vouched);
+            }
         }
         Ok(AuthorStanding::Unknown)
     }

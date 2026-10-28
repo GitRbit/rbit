@@ -70,6 +70,9 @@ use super::{
 };
 use crate::AppState;
 
+// Actions: settings API.
+mod permissions;
+
 /// Where secrets and variables are served: a repository, an organisation, the caller.
 const SETTINGS_PREFIXES: [&str; 3] = ["/repos/{owner}/{repo}/actions", "/orgs/{org}/actions", "/user/actions"];
 
@@ -113,6 +116,8 @@ pub(super) fn routes() -> Vec<ApiRoute> {
             route(Delete, path("/runners/{runner_id}"), delete_runner),
         ]);
     }
+    // Actions: settings API.
+    routes.extend(permissions::routes(&SETTINGS_PREFIXES));
     routes
 }
 
@@ -129,6 +134,8 @@ pub struct ActionsPath {
     artifact_id: Option<String>,
     archive_format: Option<String>,
     runner_id: Option<String>,
+    // Actions: settings API.
+    repository_id: Option<String>,
 }
 
 /// A positive numeric id from the path; anything else is 404.

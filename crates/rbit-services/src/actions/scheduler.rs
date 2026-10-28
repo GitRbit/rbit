@@ -334,6 +334,8 @@ impl ActionsService {
             },
             cache: cache_scopes(&run, &repo.repo.default_branch),
             template,
+            // Actions: settings API.
+            actions_policy: actions_policy(&self.effective_policies(run.repo_id).await?),
         };
         Ok(spec.validate().map(|()| spec).map_err(|error| format!("this job cannot be handed to a runner: {error}")))
     }
@@ -429,6 +431,25 @@ fn step_name(index: usize, step: &rbit_workflow::spec::StepTemplate) -> String {
             .map_or_else(|| format!("Step {}", index + 1), |line| format!("Run {line}")),
     };
     super::runs::truncate_chars(&name, MAX_STEP_NAME_CHARS)
+}
+
+// Actions: settings API.
+/// The spec's form of a repository's effective `allowed_actions`.
+fn actions_policy(policies: &rbit_core::actions::permissions::EffectivePolicies) -> rbit_workflow::spec::ActionsPolicy {
+    use rbit_core::actions::permissions::AllowedActions;
+    use rbit_workflow::spec::{ActionsPolicy, ActionsRule};
+    let rules = policies
+        .actions
+        .iter()
+        .filter_map(|(allowed, selected)| match allowed {
+            AllowedActions::All => None,
+            AllowedActions::LocalOnly => Some(ActionsRule::LocalOnly),
+            AllowedActions::Selected => {
+                Some(ActionsRule::Selected { github_owned: selected.github_owned_allowed, patterns: selected.patterns_allowed.clone() })
+            }
+        })
+        .collect();
+    ActionsPolicy { rules }
 }
 
 #[cfg(test)]

@@ -131,6 +131,8 @@ pub enum AuditAction {
     ActionsEnabled,
     ActionsDisabled,
     ActionsTokenPermissionChanged,
+    // Actions: settings API.
+    ActionsPermissionsChanged,
     ActionsUserUntrusted,
     // Actions: S.
     ActionsRegistrationTokenCreated,
@@ -144,7 +146,7 @@ pub enum AuditAction {
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 67] = [
+    pub const ALL: [Self; 68] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -205,6 +207,7 @@ impl AuditAction {
         Self::ActionsEnabled,
         Self::ActionsDisabled,
         Self::ActionsTokenPermissionChanged,
+        Self::ActionsPermissionsChanged,
         Self::ActionsUserUntrusted,
         // Actions: S.
         Self::ActionsRegistrationTokenCreated,
@@ -280,6 +283,7 @@ impl AuditAction {
             Self::ActionsEnabled => "actions_enabled",
             Self::ActionsDisabled => "actions_disabled",
             Self::ActionsTokenPermissionChanged => "actions_token_permission_changed",
+            Self::ActionsPermissionsChanged => "actions_permissions_changed",
             Self::ActionsUserUntrusted => "actions_user_untrusted",
             // Actions: S.
             Self::ActionsRegistrationTokenCreated => "actions_registration_token_created",
@@ -355,6 +359,7 @@ impl AuditAction {
             | Self::ActionsEnabled
             | Self::ActionsDisabled
             | Self::ActionsTokenPermissionChanged
+            | Self::ActionsPermissionsChanged
             | Self::ActionsUserUntrusted
             // Actions: S.
             | Self::ActionsRegistrationTokenCreated
@@ -430,6 +435,7 @@ impl AuditAction {
             Self::ActionsEnabled => "Turned Actions on for a repository",
             Self::ActionsDisabled => "Turned Actions off for a repository",
             Self::ActionsTokenPermissionChanged => "Changed the default workflow token permission",
+            Self::ActionsPermissionsChanged => "Changed Actions permissions",
             Self::ActionsUserUntrusted => "Stopped trusting a pull request author's workflow runs",
             // Actions: S.
             Self::ActionsRegistrationTokenCreated => "Created a runner registration token",

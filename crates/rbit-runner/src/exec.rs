@@ -316,6 +316,7 @@ fn job_spec(
             reference: checkout.reference.clone(),
         },
         cache: CacheScopes { repository_id: 0, read: vec![scope.clone()], write: scope },
+        actions_policy: rbit_workflow::spec::ActionsPolicy::default(),
     }
 }
 

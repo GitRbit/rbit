@@ -126,6 +126,14 @@ pub fn action<'a>(
         if let Some(pattern) = refused(&job.actions.allow, &action.source) {
             return job.fail(&format!("`{}` is not allowed on this runner ({pattern}); see `[actions] allow`", action.uses));
         }
+        // Actions: settings API.
+        if let Some(rule) = job.spec.actions_policy.refuses(&action.source) {
+            let why = match rule {
+                rbit_workflow::spec::ActionsRule::LocalOnly => "only the repository's own actions are allowed",
+                rbit_workflow::spec::ActionsRule::Selected { .. } => "it is not among the selected actions",
+            };
+            return job.fail(&format!("`{}` is not allowed by the repository's Actions permissions: {why}", action.uses));
+        }
         let located = match &action.source {
             ActionSource::Docker { image } => return docker_step(job, index, action, image, step_env, timeout).await,
             ActionSource::Local { path } => local(job, path),

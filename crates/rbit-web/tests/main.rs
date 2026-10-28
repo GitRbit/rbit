@@ -15,6 +15,8 @@ mod actions_environments;
 // Actions: interface and secrets (U).
 mod actions_job_pages;
 mod actions_pages;
+// Actions: settings API.
+mod actions_permissions;
 mod actions_settings;
 // Actions: S.
 mod actions_runner;

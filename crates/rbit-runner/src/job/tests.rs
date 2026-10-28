@@ -534,3 +534,39 @@ async fn actions_never_see_the_workflows_secrets_unless_given() {
     assert!(text.contains("given=[***] path-set=[yes]"), "only what the workflow passes reaches the action: {text}");
     assert!(!text.contains(SECRET), "{text}");
 }
+
+// Actions: settings API.
+/// A job whose repository allows only its own actions refuses another's before fetching
+/// it, and still runs the workspace's own.
+#[tokio::test]
+async fn the_repositorys_actions_policy_refuses_other_actions() {
+    if find_program("sh").is_none() {
+        return;
+    }
+    let action = |uses: &str| {
+        let rbit_workflow::builtins::Uses::Action(source) = rbit_workflow::builtins::resolve_uses(uses).unwrap() else { panic!() };
+        let mut step = step("");
+        step.action =
+            StepAction::Action(rbit_workflow::spec::ActionStep { uses: uses.to_owned(), source, with: std::collections::BTreeMap::new() });
+        step.continue_on_error = Some("true".into());
+        step
+    };
+    let setup = with(
+        step(
+            "mkdir -p own && printf 'runs:\n  using: composite\n  steps:\n    - shell: sh\n      run: echo own action ran\n' > own/action.yml",
+        ),
+        |step| {
+            step.shell = Some("sh".into());
+        },
+    );
+    let mut spec = host_job(vec![setup, action("evil/tool@v1"), action("./own")]);
+    spec.actions_policy = rbit_workflow::spec::ActionsPolicy { rules: vec![rbit_workflow::spec::ActionsRule::LocalOnly] };
+    let (result, reporter, _work) = execute(spec).await;
+    let text = reporter.lines().join("\n");
+    assert_eq!(result, TaskResult::Success, "{text}");
+    assert!(
+        text.contains("`evil/tool@v1` is not allowed by the repository's Actions permissions: only the repository's own actions"),
+        "{text}"
+    );
+    assert!(text.contains("own action ran"), "{text}");
+}

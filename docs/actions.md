@@ -282,6 +282,30 @@ Statuses, releases, files and comments it writes show as `rbit-actions[bot]`, an
 creates starts no runs, as on GitHub. It cannot list or edit comments yet.
 Untrusted runs (forks, outside authors) get a read-only token.
 
+## Permissions
+
+**Settings → Actions** (or the REST API below) decides, for a repository, whether workflows
+run, which actions they may use, the workflow token's default permission and which pull
+requests wait for approval. An organisation, or a user for their own repositories, sets the
+same policies as ceilings their repositories can only narrow, and chooses which repositories
+may run workflows at all (all, none or selected ones).
+
+- **Allowed actions**: `all`; `local_only`, the repository's own actions (`./path`) only; or
+  `selected`, GitHub's own actions (`actions/*`, `github/*`) if allowed and those matching a
+  pattern: `octo-org/*`, `octo-org/deploy@v2` (without `@`, any ref) or `docker://alpine:*`.
+  rbit's built-in checkout, cache and artifact actions always run. The owner's list and the
+  repository's both apply, and the runner checks every action against them before fetching
+  it, as well as against its own `[actions] allow`.
+- **Workflow token**: `read` (the default) or `write`. An owner set to `read` keeps every
+  repository's token read-only. `can_approve_pull_request_reviews` is kept and read back for
+  GitHub's tools, but has nothing to allow: the token cannot review pull requests.
+- **Pull requests from outside contributors** (`approval_policy`):
+  `first_time_contributors` (the default) runs an author's pull requests without approval
+  once a writer trusted them or one of their pull requests was merged;
+  `all_external_contributors` waits for everyone the repository has not trusted
+  explicitly. rbit cannot tell who is new to the platform, so
+  `first_time_contributors_new_to_github` waits like `first_time_contributors`.
+
 ## The REST API and webhooks
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
@@ -291,7 +315,11 @@ runners (with registration tokens), and reviews pending deployments
 `/api/v1/openapi.json`); organisations (`/orgs/{org}/actions/...`) and users
 (`/user/actions/...`) have their own secrets, variables and runners.
 `/api/v1/repos/{owner}/{repo}/environments[/{name}]` lists, creates, changes and deletes
-environments. Webhooks can subscribe
+environments. `…/actions/permissions`, `…/permissions/selected-actions`, `…/permissions/workflow`
+and `…/permissions/fork-pr-contributor-approval` read and change the permissions above for a
+repository (`/repos/{owner}/{repo}/actions/…`), an organisation (`/orgs/{org}/actions/…`, with
+`…/permissions/repositories` for its selected repositories) and the caller (`/user/actions/…`,
+rbit's own), with the `admin` scope; a value past the owner's ceiling is `409`. Webhooks can subscribe
 to `workflow_run` and `workflow_job`.
 
 ## Differences from GitHub Actions
@@ -307,8 +335,8 @@ to `workflow_run` and `workflow_job`.
 - No `secrets: inherit`, `container.options`, service `options`/`volumes`, or
   custom shells (`shell: my {0}`): each is a readable error.
 - `permissions:` can only lower the repository's default token permission (**Settings →
-  Actions**), never raise it: a workflow that publishes releases needs that default set to
-  write.
+  Actions**, or `PUT …/actions/permissions/workflow`), never raise it: a workflow that
+  publishes releases needs that default set to write.
 - `runs-on` and matrices cannot depend on another job's outputs.
 - `hashFiles` works in steps only.
 - Secrets are set through the API as plain values over TLS, not with GitHub's sealed box.
