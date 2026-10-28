@@ -156,6 +156,7 @@ pub fn github_context(input: &ContextInput<'_>) -> Value {
         "repository": full_name,
         "repository_owner": input.repo.owner.name.as_str(),
         "repository_id": input.repo.repo.id.0.to_string(),
+        "repository_owner_id": input.repo.owner.id.0.to_string(),
         "sha": run.sha,
         "ref": run.reference,
         "ref_name": ref_name(&run.reference),
@@ -166,6 +167,8 @@ pub fn github_context(input: &ContextInput<'_>) -> Value {
         "triggering_actor": input.triggering_actor,
         "workflow": run.workflow_name,
         "workflow_ref": format!("{full_name}/{}@{}", run.workflow_path, run.reference),
+        // The workflow file is read at the run's commit.
+        "workflow_sha": run.sha,
         "job": input.job,
         "run_id": run.id.0.to_string(),
         "run_number": run.number.to_string(),
@@ -176,6 +179,9 @@ pub fn github_context(input: &ContextInput<'_>) -> Value {
     });
     if let Some(inputs) = &input.inputs {
         context["inputs"] = inputs.clone();
+    }
+    if let Some(actor) = run.actor {
+        context["actor_id"] = Value::String(actor.0.to_string());
     }
     context
 }
@@ -350,6 +356,7 @@ mod tests {
             "repository": "alice/rocket",
             "repository_owner": "alice",
             "repository_id": "9",
+            "repository_owner_id": "1",
             "sha": "a".repeat(40),
             "ref": "refs/heads/main",
             "ref_name": "main",
@@ -357,9 +364,11 @@ mod tests {
             "head_ref": "",
             "base_ref": "",
             "actor": "alice",
+            "actor_id": "1",
             "triggering_actor": "bob",
             "workflow": "CI",
             "workflow_ref": "alice/rocket/.forgejo/workflows/ci.yml@refs/heads/main",
+            "workflow_sha": "a".repeat(40),
             "job": "build",
             "run_id": "41",
             "run_number": "7",

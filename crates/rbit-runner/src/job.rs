@@ -841,10 +841,11 @@ pub fn join(dir: &str, name: &str, windows: bool) -> String {
 /// The variables of §12.5.4: `CI`, `GITHUB_ACTIONS`, `RBIT_ACTIONS`, the `GITHUB_*` and
 /// `RBIT_*` names of the run, and `RUNNER_*`. The token is not among them.
 pub fn task_env(github: &Map<String, Value>, view: &View, runner: &str, os: &str, arch: &str) -> BTreeMap<String, String> {
-    const FROM_GITHUB: [&str; 21] = [
+    const FROM_GITHUB: [&str; 26] = [
         "repository",
         "repository_owner",
         "repository_id",
+        "repository_owner_id",
         "sha",
         "ref",
         "ref_name",
@@ -859,8 +860,12 @@ pub fn task_env(github: &Map<String, Value>, view: &View, runner: &str, os: &str
         "api_url",
         "event_name",
         "actor",
+        "actor_id",
         "triggering_actor",
         "workflow",
+        "workflow_ref",
+        "workflow_sha",
+        "retention_days",
         "workspace",
         "event_path",
     ];
@@ -872,6 +877,8 @@ pub fn task_env(github: &Map<String, Value>, view: &View, runner: &str, os: &str
         ("RUNNER_ARCH".to_owned(), arch.to_owned()),
         ("RUNNER_TEMP".to_owned(), view.temp.clone()),
         ("RUNNER_NAME".to_owned(), runner.to_owned()),
+        // As GitHub sets it for runners it does not host.
+        ("RUNNER_ENVIRONMENT".to_owned(), "self-hosted".to_owned()),
     ]);
     for key in FROM_GITHUB {
         if let Some(value) = github.get(key).filter(|value| !value.is_null() && !value.is_object() && !value.is_array()) {

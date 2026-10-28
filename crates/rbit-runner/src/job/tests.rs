@@ -596,3 +596,31 @@ async fn a_custom_shell_runs_the_script_through_its_command() {
     assert_eq!(result, TaskResult::Success, "{text}");
     assert!(text.contains("from the script") && text.contains("shell: ") && text.contains("-e {0}"), "{text}");
 }
+
+#[test]
+fn the_task_env_names_the_run_as_github_does() {
+    let github = json!({
+        "repository": "alice/rocket",
+        "repository_owner_id": "1",
+        "actor_id": "2",
+        "workflow_ref": "alice/rocket/.rbit/workflows/ci.yml@refs/heads/main",
+        "workflow_sha": "a".repeat(40),
+        "retention_days": "90",
+        "event": {"ref": "refs/heads/main"},
+    });
+    let view = crate::backend::View { workspace: "/w".into(), temp: "/t".into(), files: "/f".into() };
+    let env = task_env(github.as_object().unwrap(), &view, "box", "Linux", "X64");
+    for (name, value) in [
+        ("GITHUB_REPOSITORY", "alice/rocket"),
+        ("GITHUB_REPOSITORY_OWNER_ID", "1"),
+        ("GITHUB_ACTOR_ID", "2"),
+        ("GITHUB_WORKFLOW_REF", "alice/rocket/.rbit/workflows/ci.yml@refs/heads/main"),
+        ("GITHUB_RETENTION_DAYS", "90"),
+        ("RUNNER_ENVIRONMENT", "self-hosted"),
+        ("RUNNER_NAME", "box"),
+    ] {
+        assert_eq!(env.get(name).map(String::as_str), Some(value), "{name}");
+    }
+    assert_eq!(env["GITHUB_WORKFLOW_SHA"], "a".repeat(40));
+    assert!(!env.contains_key("GITHUB_EVENT"), "objects are not variables");
+}
