@@ -336,6 +336,35 @@ async fn variables_reach_trusted_runs_only() {
     assert_eq!(untrusted.cache.write, format!("untrusted/{}", run.id.0));
 }
 
+// Actions: reusable workflows.
+#[tokio::test]
+async fn a_called_job_gets_the_secrets_its_call_passes_under_any_case() {
+    use rbit_core::actions::SecretVisibility;
+    use rbit_services::actions::secrets::ActionsTarget;
+    use rbit_workflow::spec::{CallLevel, PassedSecrets};
+
+    let fixture = quick().await;
+    let credential = fixture.runner(&["linux"]).await;
+    let repo = fixture.repo().await;
+    fixture.actions().put_secret(&fixture.alice, ActionsTarget::Repository(&repo), "DEPLOY", "s3cr3t", SecretVisibility::All).await.unwrap();
+    let mut called = template("call/build", &["linux"], &[]);
+    called.calls = vec![CallLevel {
+        name: "call".into(),
+        condition: None,
+        matrix: serde_json::Map::new(),
+        strategy: Strategy::SINGLE,
+        needs: BTreeMap::new(),
+        inputs: serde_json::Map::new(),
+        deferred: BTreeMap::new(),
+        // `on.workflow_call.secrets` names may be lowercase; secrets.key reads them as on GitHub.
+        secrets: PassedSecrets::Map(BTreeMap::from([("key".into(), "${{ secrets.deploy }}".into())])),
+    }];
+    seed(&fixture, &[payload(&called)]).await;
+    let task = spec(&poll(&fixture, &credential, Some("c")).await.1);
+    assert_eq!(task.secrets.keys().collect::<Vec<_>>(), ["KEY"]);
+    assert_eq!(task.secrets["KEY"].expose(), "s3cr3t");
+}
+
 /// `POST tasks/{task}/state` with `body`.
 pub async fn state(fixture: &Fixture, credential: &str, task: impl std::fmt::Display, body: &Value) -> (StatusCode, Value) {
     let answer = fixture.call(&format!("tasks/{task}/state"), Some(credential), body.to_string()).await;

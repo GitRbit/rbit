@@ -209,7 +209,8 @@ impl ActionsService {
                     .iter()
                     .filter_map(|(name, value)| {
                         let rendered = Template::parse(value).and_then(|template| template.render(&contexts)).ok()?;
-                        (!rendered.is_empty()).then(|| (name.clone(), rendered))
+                        // Secret names ignore case, and a task carries them in capitals.
+                        (!rendered.is_empty()).then(|| (name.to_ascii_uppercase(), rendered))
                     })
                     .collect();
             }
