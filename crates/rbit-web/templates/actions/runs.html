@@ -47,6 +47,9 @@
       {% if filters.any %}<a href="{{ filters.action }}" class="btn btn-ghost h-10 sm:h-9">Clear</a>{% endif %}
     </form>
 
+    {#- The list refreshes itself (views::actions::runs_refresh), not the forms above it, so
+        nothing typed there is lost. -#}
+    <div id="runs" {% if let Some(every) = refresh %}hx-get="{{ self_url }}" hx-trigger="{{ every }}" hx-select="#runs" hx-target="this" hx-swap="outerHTML"{% endif %}>
     <div class="box">
       {% if runs.is_empty() %}
       {% if filters.any %}
@@ -86,6 +89,7 @@
       <a href="{{ url }}" class="btn" rel="next">Older runs{% call ui::icon("chevron-right", "size-3.5") %}{% endcall %}</a>
     </nav>
     {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

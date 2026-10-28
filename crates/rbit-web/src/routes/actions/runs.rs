@@ -30,7 +30,7 @@ use crate::{
     views::{
         actions::{
             ActionsUrls, ArtifactRow, DeploymentView, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary,
-            RunsPage, SummaryView, WorkflowLink, job_rows, workflow_file,
+            RunsPage, SummaryView, WorkflowLink, job_rows, runs_refresh, workflow_file,
         },
         layout::Page,
     },
@@ -157,10 +157,16 @@ async fn runs_page(
     };
     let listing = actions.list_runs(&loaded.ctx, &run_query).await?;
     let action = selected.as_ref().map_or_else(|| urls.runs(), |(path, _)| urls.workflow(path));
-    let next_url = listing.next.map(|before| {
+    let page_url = |before: Option<i64>| {
         let filters = query.encoded();
-        format!("{action}?{}before={}", if filters.is_empty() { String::new() } else { format!("{filters}&") }, before.0)
-    });
+        let params: Vec<String> = [filters, before.map(|before| format!("before={before}")).unwrap_or_default()]
+            .into_iter()
+            .filter(|param| !param.is_empty())
+            .collect();
+        if params.is_empty() { action.clone() } else { format!("{action}?{}", params.join("&")) }
+    };
+    let next_url = listing.next.map(|before| page_url(Some(before.0)));
+    let self_url = page_url(query.before);
     // The name the workflow file gives itself, when the form read it.
     let selected = selected.map(|(path, name)| (path, dispatch.as_ref().and_then(|form| form.name.clone()).unwrap_or(name)));
     let workflows = known
@@ -186,9 +192,11 @@ async fn runs_page(
         workflows,
         all_url: urls.runs(),
         workflow: selected.map(|(_, name)| name),
+        refresh: runs_refresh(&listing.runs, query.before.is_none()),
         filters: RunFilters::new(action, query.branch.trim(), query.actor.trim(), query.event(), query.status()),
         next_url,
         dispatch,
+        self_url,
     })
 }
 

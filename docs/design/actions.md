@@ -290,7 +290,8 @@ existing `macros.html` set plus `play`, `stop`, `rerun`, `clock`, `skip` if miss
   filters (workflow, branch, event, status, actor) as GET parameters, newest first, paged by
   keyset (`id < ?`). Each row: state icon, run title (commit subject / PR title / "Scheduled"),
   `#run_number`, workflow, event, branch, actor, relative time, duration. Workflow-error rows
-  show the error inline.
+  show the error inline. The list (not the filter or dispatch forms) refreshes itself every
+  3 s while a run on it is not finished, and every 10 s on the newest page otherwise.
 - **Run** `/{o}/{r}/actions/runs/{n}`: summary (trigger, commit, actor, total duration,
   attempt picker), jobs grouped in `needs` order as rows, buttons Cancel / Re-run all / Re-run
   failed / Approve (with the "always trust" checkbox) for writers; a warning box for awaiting

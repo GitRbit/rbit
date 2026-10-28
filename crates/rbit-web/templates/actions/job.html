@@ -5,7 +5,8 @@
 {% block content %}
 <p class="mb-3 truncate text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run_url }}">{{ run.workflow }} #{{ run.number }}</a> · {{ run.title }}</p>
 
-{#- While the job is not finished the whole section refreshes itself; a reload does the same. -#}
+{#- While the job is not finished the whole section refreshes itself; a reload does the same.
+    assets/actions-log.js keeps the steps the viewer opened or closed, by `data-step`. -#}
 <section id="job" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
   <div class="flex flex-wrap items-start gap-3">
     {% let look = look %}
@@ -34,7 +35,7 @@
   <ol class="box mt-6 divide-y divide-line overflow-hidden">
     {% for step in steps %}
     <li>
-      <details {% if step.open %}open{% endif %}>
+      <details {% if step.open %}open {% endif %}data-step="{{ step.number }}" data-state="{{ step.look.key }}">
         <summary class="flex min-h-11 cursor-pointer items-center gap-3 px-3 hover:bg-subtle">
           {% let look = step.look %}
           {% include "actions/state.html" %}

@@ -69,6 +69,7 @@ async fn a_job_shows_its_steps_and_logs_and_serves_the_raw_log() {
     assert!(page.contains(r#"<span class="text-danger">Error: it broke</span>"#));
     assert!(page.contains("second step"), "the running step reaches to the end of the log");
     assert_eq!(page.matches("<details open").count(), 1, "only the running step is open");
+    assert!(page.contains(r#"<details open data-step="1" data-state="running">"#), "steps are known across refreshes");
     assert!(page.contains(&format!("{job_url}/logs/raw")));
 
     let (status, _, step_page) = get(&fixture, &format!("{job_url}/logs?step=0"), false).await;

@@ -2,8 +2,10 @@
 //! steps and their logs.
 //!
 //! Colour marks state only (`text-success`, `text-danger`, `text-warning`); everything else
-//! stays monochrome. Every page works without JavaScript: the run page refreshes its job
-//! list with htmx while the run is not finished, and a reload does the same.
+//! stays monochrome. Every page works without JavaScript: the runs list, the run page and
+//! the job page refresh themselves with htmx while something on them is not finished, and a
+//! reload does the same. `assets/actions-log.js` keeps the job page's steps open or closed
+//! as the viewer left them across those refreshes.
 //!
 //! Workstream U (interface and secrets) owns this file and `templates/actions/**`.
 
@@ -235,6 +237,22 @@ pub struct RunsPage {
     // Actions: dispatch form.
     /// "Run workflow", on a `workflow_dispatch` workflow's page for writers.
     pub dispatch: Option<DispatchFormView>,
+    /// How often the list refreshes itself (an htmx trigger), when it does.
+    pub refresh: Option<&'static str>,
+    /// This list, with its filters and page.
+    pub self_url: String,
+}
+
+/// How often a runs list refreshes itself: often while a run on it is not finished, else
+/// now and then on the newest page only, where new runs appear.
+pub fn runs_refresh(runs: &[Run], newest: bool) -> Option<&'static str> {
+    if runs.iter().any(|run| !run.status.is_done()) {
+        Some("every 3s")
+    } else if newest {
+        Some("every 10s")
+    } else {
+        None
+    }
 }
 
 // Actions: dispatch form.

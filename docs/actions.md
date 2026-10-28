@@ -20,8 +20,11 @@ how it differs from GitHub. Operators should also read
 
 The **Actions** tab shows the repository's runs. A run page lists its jobs in `needs` order
 with Cancel, Re-run failed, Re-run all and per-job re-run buttons for writers. A job page
-shows each step's log as it runs and links to the raw log. Each job also reports a commit
-status, so required checks and the pull request merge box see Actions like any other CI.
+shows each step's log as it runs and links to the raw log. These pages refresh themselves
+every few seconds while something on them runs (the newest runs also look for new runs every
+10 seconds), and a step you open or close on a job page stays that way. Each job also
+reports a commit status, so required checks and the pull request merge box see Actions like
+any other CI.
 
 ## Runners
 

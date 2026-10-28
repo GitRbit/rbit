@@ -189,6 +189,11 @@ async fn writers_cancel_and_run_again_and_readers_only_look() {
     assert!(page.find(">build<").unwrap() < page.find(">test<").unwrap(), "jobs follow their needs");
     assert!(page.contains(&format!("{url}/cancel")));
     assert!(page.contains(r#"hx-trigger="every 3s""#), "a running run refreshes itself");
+    let list = fixture.page("/alice/rocket/actions?event=push", &fixture.reader).await;
+    assert!(
+        list.contains(r#"id="runs" hx-get="/alice/rocket/actions?event=push" hx-trigger="every 3s""#),
+        "the list follows its runs, filtered"
+    );
     let seen = fixture.page(&url, &fixture.reader).await;
     assert!(!seen.contains(&format!("{url}/cancel")), "readers get no buttons");
 
@@ -200,6 +205,10 @@ async fn writers_cancel_and_run_again_and_readers_only_look() {
     let page = fixture.page(&url, &fixture.owner).await;
     assert!(!page.contains(r#"hx-trigger="every 3s""#), "a finished run stays still");
     assert!(page.contains(&format!("{url}/rerun")) && page.contains(&format!("{url}/rerun-failed")));
+    let list = fixture.page("/alice/rocket/actions", &fixture.reader).await;
+    assert!(list.contains(r#"id="runs" hx-get="/alice/rocket/actions" hx-trigger="every 10s""#), "the newest runs look for new ones");
+    let older = fixture.page(&format!("/alice/rocket/actions?before={}", run.id.0 + 1), &fixture.reader).await;
+    assert!(older.contains("Change") && !older.contains(r#"id="runs" hx-get"#), "an older page of finished runs stays still");
 
     let (status, ..) = fixture.send(Method::POST, &format!("{url}/rerun-failed"), &fixture.owner, "").await;
     assert!(status.is_redirection());
