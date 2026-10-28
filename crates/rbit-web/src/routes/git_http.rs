@@ -521,12 +521,15 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
 }
 
 // Actions: S.
-/// A task token: only while Actions is enabled, throttled like other Git credentials, and
-/// only while its task runs.
+/// A task token: only while Actions is enabled and only while its task runs. Runners often
+/// share the server's address, so task tokens have a budget of their own per address
+/// (`task:<address>`), which only wrong ones spend.
 async fn authenticate_task(state: &AppState, client: &Client, token: &str) -> Result<GitCaller, Denied> {
     let Some(actions) = &state.services.actions else { return Err(Denied::Challenge) };
-    let ip = client.ip().map(|ip| ip.to_canonical().to_string()).unwrap_or_default();
-    if let Err(ServiceError::RateLimited { retry_after_seconds }) = state.services.throttle.check_client(ThrottleScope::GitAuth, &ip) {
+    let ip = client.ip().map(|ip| format!("task:{}", ip.to_canonical())).unwrap_or_default();
+    if let Err(ServiceError::RateLimited { retry_after_seconds }) =
+        state.services.throttle.check_client_failures(ThrottleScope::GitAuth, &ip)
+    {
         return Err(Denied::RateLimited { retry_after_seconds });
     }
     match actions.authenticate_task(token).await {

@@ -133,6 +133,47 @@ async fn the_api_accepts_task_tokens_on_its_allowlist_only() {
     assert_eq!(send(&fixture, Method::GET, "/api/v1/repos/alice/rocket", Some(&bearer), None).await.0, StatusCode::UNAUTHORIZED);
 }
 
+// Actions: S. Runners on the server's machine share its address with everyone else there.
+#[tokio::test]
+async fn task_tokens_have_their_own_budget_per_address() {
+    let fixture = Fixture::with(|config| {
+        config.actions.long_poll_seconds = 1;
+        config.security.rate_limit = true;
+    })
+    .await;
+    let (_, _, token) = running_task(&fixture).await;
+    let (repo, fetch) = ("/api/v1/repos/alice/rocket", "/alice/rocket/info/refs?service=git-upload-pack");
+    // Wrong personal access tokens empty the address's budget for the API and Git.
+    let forged = format!("Bearer rbit_{}", "B".repeat(40));
+    let mut status = StatusCode::UNAUTHORIZED;
+    for _ in 0..400 {
+        status = send(&fixture, Method::GET, repo, Some(&forged), None).await.0;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            break;
+        }
+    }
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    let forged_git = basic(&format!("rbit_{}", "B".repeat(40)));
+    for _ in 0..400 {
+        if send(&fixture, Method::GET, fetch, Some(&forged_git), None).await.0 == StatusCode::TOO_MANY_REQUESTS {
+            break;
+        }
+    }
+    // The task still reaches both.
+    assert_eq!(send(&fixture, Method::GET, repo, Some(&format!("Bearer {token}")), None).await.0, StatusCode::OK);
+    assert_eq!(send(&fixture, Method::GET, fetch, Some(&basic(&token)), None).await.0, StatusCode::OK);
+    // Wrong task tokens are throttled all the same.
+    let forged_task = format!("Bearer rbat_{}", "B".repeat(43));
+    let mut status = StatusCode::UNAUTHORIZED;
+    for _ in 0..400 {
+        status = send(&fixture, Method::GET, repo, Some(&forged_task), None).await.0;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            break;
+        }
+    }
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+}
+
 #[tokio::test]
 async fn lfs_transfers_carry_the_task_credential() {
     let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;

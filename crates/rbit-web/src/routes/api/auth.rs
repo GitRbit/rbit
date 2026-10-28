@@ -258,14 +258,19 @@ impl FromRequestParts<AppState> for Caller {
             throttle.check_client(ThrottleScope::ApiRequest, &address)?;
             return Ok(Self { request, ..Self::default() });
         };
-        throttle.check_client(ThrottleScope::ApiAuth, &address)?;
         let Some(token) = presented_token(authorization) else {
+            throttle.check_client(ThrottleScope::ApiAuth, &address)?;
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Use Authorization: Bearer <personal access token>"));
         };
         // Actions: foundation (F). No task token is valid while Actions is disabled, so it is
         // refused before anything is looked up.
         if rbit_core::actions::looks_like_task_token(token) {
+            // Actions: S. Runners often share the server's address, so task tokens have a
+            // budget of their own per address, which only wrong ones spend; each task also
+            // has its request budget, below.
+            let address = format!("task:{address}");
+            throttle.check_client_failures(ThrottleScope::ApiAuth, &address)?;
             let grant = match &state.services.actions {
                 Some(actions) => actions.authenticate_task(token).await?,
                 None => None,
@@ -289,6 +294,7 @@ impl FromRequestParts<AppState> for Caller {
             throttle.check(ThrottleScope::ApiRequest, &format!("task:{}", grant.task.0))?;
             return Ok(Self { task: Some((grant, need)), request, ..Self::default() });
         }
+        throttle.check_client(ThrottleScope::ApiAuth, &address)?;
         let Some((user, scope)) = state.services.tokens.authenticate(token).await? else {
             throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
             return Err(ApiError::unauthorized("Bad credentials"));
