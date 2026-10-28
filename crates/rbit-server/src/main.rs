@@ -5,10 +5,21 @@
 //! rbit migrate                               # apply database migrations and exit
 //! rbit backup --output DIR                  # write a consistent backup to a new directory
 //! rbit user create <name> <email> [--admin]  # create an account (password from stdin)
+//!
+//! rbit auth login --hostname https://git.example.com --with-token < token
+//! rbit run list | view [--log-failed] | watch | rerun | cancel | download
+//! rbit workflow list | run <file> [--ref r] [-f key=value]
+//! rbit artifact list | download <id or name>
+//! rbit pr create | list | view | merge | checks
+//! rbit api <path> [-X method] [-f key=value]
 //! ```
+//!
+//! The client commands talk to an instance's REST API (see [`client`]); the others run the
+//! server on this machine.
 
 mod backup;
 mod cli;
+mod client;
 mod config;
 mod serve;
 mod ssh;
@@ -24,10 +35,18 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    telemetry::init();
     // Before anything can open a TLS connection (webhook deliveries, mail, mirror checks):
     // every rustls user in the process then agrees on `ring`, whatever its features.
     rbit_services::webhooks::delivery::install_crypto_provider();
+    // The client needs no server configuration, and logs nothing of its own.
+    if let Some(Command::Client(command)) = cli.command {
+        let code = client::run(command).await.unwrap_or_else(|error| {
+            eprintln!("rbit: {error:#}");
+            1
+        });
+        std::process::exit(code);
+    }
+    telemetry::init();
     // `RUSTIT_CONFIG` is the variable's name from before the rename to rbit.
     let file = cli.config.or_else(|| std::env::var_os("RUSTIT_CONFIG").map(std::path::PathBuf::from));
     let config = config::load(file.as_deref()).await?;
@@ -39,5 +58,6 @@ async fn main() -> anyhow::Result<()> {
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await
         }
+        Command::Client(_) => unreachable!("handled before the configuration is loaded"),
     }
 }

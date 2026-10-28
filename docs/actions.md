@@ -364,6 +364,10 @@ may run workflows at all (all, none or selected ones).
 
 ## The REST API and webhooks
 
+The `rbit` binary is also a command-line client for this API, like GitHub's `gh`: `rbit run
+list`, `rbit run watch --exit-status`, `rbit run view --log-failed`, `rbit workflow run`,
+`rbit artifact download`, `rbit pr checks` and `rbit api` (see [the client's guide](cli.md)).
+
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
 runs, dispatches workflows, serves job logs and artifacts, and manages secrets, variables and
 runners (with registration tokens), and reviews pending deployments

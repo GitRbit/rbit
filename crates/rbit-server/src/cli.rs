@@ -33,6 +33,9 @@ pub enum Command {
         #[command(subcommand)]
         command: UserCommand,
     },
+    // The command-line client.
+    #[command(flatten)]
+    Client(crate::client::ClientCommand),
 }
 
 #[derive(Debug, Subcommand)]
