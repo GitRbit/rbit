@@ -16,7 +16,11 @@ output:
 Environment: RBIT_URL (default http://localhost:3000) and RBIT_TOKEN, an admin-scope token
 (or RBIT_TOKEN_FILE, a file whose first `rbit_...` word is the token). Repositories are
 created under the token's owner. The instance needs a runner with a `self-hosted` host label
-and an `ubuntu-latest` container label. Only the standard library is used.
+and an `ubuntu-latest` container label; the container security cases need a Linux runner
+with an `eval-linux` container label and an `eval-linux-host` host label on the same
+runner (on another system their runs wait, and are reported as plumbing). Shell checks run
+RBIT_CLI (the `rbit` binary) and RBIT_RUNNER_EXE (`rbit-runner`). Only the standard library
+is used.
 
 `case.json`:
 
@@ -243,7 +247,17 @@ def text_of(data: bytes) -> str:
 def observe(case_name: str, case: dict, out: Path) -> dict:
     case_dir = CASES / case_name
     stamp = time.strftime("%m%d%H%M%S")
-    names = {"owner": USER, "url": URL}
+    # Shell checks run the client and runner under test: RBIT_CLI and RBIT_RUNNER_EXE name
+    # them, and each case gets a scratch directory.
+    scratch = Path(tempfile.mkdtemp(prefix=f"rbit-eval-{case_name}-"))
+    names = {
+        "owner": USER,
+        "url": URL,
+        "cli": os.environ.get("RBIT_CLI", "rbit"),
+        "runner": os.environ.get("RBIT_RUNNER_EXE", "rbit-runner"),
+        "tmp": str(scratch),
+        "case": str(case_dir),
+    }
     repos = {}
     for key, spec in case.get("repos", {}).items():
         repos[key] = f"ev-{case_name}-{key}-{stamp}"[:90]
@@ -303,6 +317,7 @@ def observe(case_name: str, case: dict, out: Path) -> dict:
         observed["errors"].append(f"plumbing: {type(error).__name__}: {error} (at {where.name}:{where.lineno})")
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        shutil.rmtree(scratch, ignore_errors=True)
     print(f"observed {case_name}: {observed.get('settled', 'no wait')}, {len(observed['runs'])} runs", flush=True)
     (out / case_name).mkdir(parents=True, exist_ok=True)
     (out / case_name / "observed.json").write_text(json.dumps(observed, indent=1))
@@ -466,6 +481,12 @@ def main():
     args = parser.parse_args()
     names = args.cases or sorted(path.name for path in CASES.iterdir() if (path / "case.json").exists())
     names = [name for name in names if args.split == "all" or load(name)["split"] == args.split]
+    # Cases for one system (`"platform": "windows"`) are left out elsewhere, and said so.
+    here = "windows" if os.name == "nt" else sys.platform
+    elsewhere = [name for name in names if load(name).get("platform", here) != here]
+    if elsewhere:
+        print(f"not on this system: {', '.join(elsewhere)}")
+    names = [name for name in names if name not in elsewhere]
     check_splits()
     out = Path(args.regrade or args.out or tempfile.mkdtemp(prefix="rbit-eval-out-"))
     if not args.regrade:

@@ -1,0 +1,8 @@
+on: push
+jobs:
+  build:
+    runs-on: eval-linux
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo top-secret > workspace-secret.txt
+      - uses: ./act

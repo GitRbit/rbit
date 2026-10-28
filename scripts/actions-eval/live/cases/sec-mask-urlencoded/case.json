@@ -1,0 +1,33 @@
+{
+  "feature": "masking",
+  "split": "test",
+  "why": "attack: a secret printed URL-encoded in a request log",
+  "setup": [
+    {
+      "secret": {
+        "repo": "{repo}",
+        "name": "PASS",
+        "value": "p@ss w/rd&more"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "leak",
+        "conclusion": "success",
+        "lacks": [
+          "p@ss w/rd&more",
+          "p%40ss%20w%2Frd%26more",
+          "p%40ss+w%2Frd%26more"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "feature": "masking",
+  "split": "train",
+  "why": "attack: a multi-line secret, each line on its own, in base64 and URL-encoded",
+  "setup": [
+    {
+      "secret": {
+        "repo": "{repo}",
+        "name": "KEY",
+        "value": "-----BEGIN-----\nline-one-secret-value\nline-two-secret-value\n-----END-----"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "leak",
+        "conclusion": "success",
+        "contains": [
+          "***"
+        ],
+        "lacks": [
+          "line-one-secret-value",
+          "line-two-secret-value",
+          "bGluZS1vbmUtc2VjcmV0LXZhbHVl"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

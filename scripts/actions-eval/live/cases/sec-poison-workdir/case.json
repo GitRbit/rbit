@@ -1,0 +1,29 @@
+{
+  "feature": "container-security",
+  "split": "test",
+  "why": "attack: a host job rewrites the Node.js and actions the runner keeps; a later container job must not run them",
+  "wait": {
+    "runs": 1,
+    "timeout": 600
+  },
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "victim",
+        "conclusion": "success",
+        "contains": [
+          "clean run"
+        ],
+        "lacks": [
+          "POISONED"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

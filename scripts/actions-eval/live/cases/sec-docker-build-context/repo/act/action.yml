@@ -1,0 +1,4 @@
+name: list
+runs:
+  using: docker
+  image: Dockerfile

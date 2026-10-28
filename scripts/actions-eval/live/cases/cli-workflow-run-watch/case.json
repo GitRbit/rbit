@@ -1,0 +1,30 @@
+{
+  "feature": "cli",
+  "split": "train",
+  "why": "start a workflow by hand and wait for it in a script",
+  "wait": {
+    "runs": 0,
+    "settle": 3
+  },
+  "observe": [
+    {
+      "id": "run",
+      "timeout": 400,
+      "shell": "\"{cli}\" workflow run manual.yml -f who=eval -R {owner}/{repo} --hostname {url} && ping -n 8 127.0.0.1 >nul && \"{cli}\" run watch --exit-status -R {owner}/{repo} --hostname {url}"
+    }
+  ],
+  "expect": [
+    {
+      "obs": "run",
+      "exit": 0,
+      "contains": [
+        "success"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

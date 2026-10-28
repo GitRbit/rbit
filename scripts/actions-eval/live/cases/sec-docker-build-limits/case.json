@@ -1,0 +1,25 @@
+{
+  "feature": "docker-build",
+  "split": "test",
+  "why": "a Docker action's build runs with the runner's memory limit and network",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "build",
+        "conclusion": "success",
+        "contains": [
+          "memory-limit:"
+        ],
+        "lacks": [
+          "memory-limit: max"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

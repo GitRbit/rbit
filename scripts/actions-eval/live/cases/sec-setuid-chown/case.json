@@ -1,0 +1,38 @@
+{
+  "feature": "container-security",
+  "split": "train",
+  "why": "attack: a root container job replaces chown and leaves root-only and set-user-ID files for the host",
+  "observe": [
+    {
+      "id": "tgz",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "planted",
+        "format": "tar.gz"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "plant",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "tgz",
+      "status": 200,
+      "files": [
+        "rootonly",
+        "evil"
+      ],
+      "no_setid": true
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

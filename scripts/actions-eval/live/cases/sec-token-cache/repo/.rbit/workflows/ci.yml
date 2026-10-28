@@ -1,0 +1,18 @@
+on: push
+jobs:
+  save:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/save@v4
+        with: {key: 'git-${{ github.run_id }}', path: .git}
+  restore:
+    needs: save
+    runs-on: self-hosted
+    steps:
+      - uses: actions/cache/restore@v4
+        with: {key: 'git-${{ github.run_id }}', path: .git, fail-on-cache-miss: true}
+      - shell: bash
+        run: |
+          if grep -qi authorization .git/config; then echo "the token came back"; exit 1; fi
+          echo "no token in the cache"

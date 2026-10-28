@@ -1,0 +1,22 @@
+{
+  "feature": "token-leak",
+  "split": "train",
+  "why": "attack: a cache of .git must not carry the token into later runs and branches",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "restore",
+        "conclusion": "success",
+        "contains": [
+          "no token in the cache"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

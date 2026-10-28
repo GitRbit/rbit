@@ -1,0 +1,32 @@
+{
+  "feature": "cli",
+  "split": "train",
+  "why": "reading a run's log from a terminal, as `gh run view --log` does",
+  "observe": [
+    {
+      "id": "view",
+      "shell": "\"{cli}\" run view --log -R {owner}/{repo} --hostname {url}"
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "view",
+      "exit": 0,
+      "contains": [
+        "hello from ci",
+        "success"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+on: push
+jobs:
+  attack:
+    runs-on: eval-linux
+    steps:
+      - uses: docker://docker.io/library/alpine:3.20
+        env:
+          BUILDKIT_HOST: "tcp://attacker.example:1234\nsecond line"
+        with: {args: 'true'}

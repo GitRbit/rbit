@@ -1,0 +1,9 @@
+on: push
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: mkdir -p out/nested && echo bee > out/nested/b.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: out, path: out}

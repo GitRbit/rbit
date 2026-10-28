@@ -1,0 +1,22 @@
+{
+  "feature": "engine-env",
+  "split": "test",
+  "why": "attack: a multi-line OTEL_EXPORTER_OTLP_ENDPOINT would reach the Docker CLI's own environment",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "attack",
+        "conclusion": "failure",
+        "contains": [
+          "container engine"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

