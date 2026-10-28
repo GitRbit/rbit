@@ -1,0 +1,6 @@
+on: push
+permissions:
+  contents: read
+jobs:
+  call:
+    uses: ./.rbit/workflows/reader.yml

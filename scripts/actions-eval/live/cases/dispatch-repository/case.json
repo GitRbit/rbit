@@ -1,0 +1,53 @@
+{
+  "feature": "workflow-run",
+  "split": "test",
+  "why": "repository_dispatch starts default-branch workflows of a matching event_type with the payload",
+  "trigger": "push",
+  "setup": [],
+  "observe": [
+    {
+      "id": "send",
+      "http": {
+        "method": "POST",
+        "path": "/repos/{owner}/{repo}/dispatches",
+        "body": {
+          "event_type": "deploy",
+          "client_payload": {
+            "env": "staging"
+          }
+        }
+      }
+    },
+    {
+      "id": "wait",
+      "shell": "python -c \"import time; time.sleep(25)\""
+    },
+    {
+      "id": "runs",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/runs"
+      }
+    }
+  ],
+  "wait": {
+    "runs": 0,
+    "settle": 3
+  },
+  "expect": [
+    {
+      "obs": "send",
+      "status": 204
+    },
+    {
+      "obs": "runs",
+      "contains": [
+        "\"event\":\"repository_dispatch\""
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

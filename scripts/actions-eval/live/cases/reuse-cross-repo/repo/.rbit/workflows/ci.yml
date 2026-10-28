@@ -1,0 +1,4 @@
+on: push
+jobs:
+  shared:
+    uses: {owner}/{repo:lib}/.rbit/workflows/lint.yml@main

@@ -1,0 +1,47 @@
+{
+  "feature": "reusable",
+  "split": "test",
+  "why": "secrets: inherit passes the caller's secrets; a matrix calls the workflow once per value",
+  "setup": [
+    {
+      "secret": {
+        "repo": "{repo}",
+        "name": "SHARED",
+        "value": "inherited-value-123"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "call \\(a\\) / use",
+        "contains": [
+          "has-shared=yes",
+          "flavor=a"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "call \\(b\\) / use",
+        "contains": [
+          "has-shared=yes",
+          "flavor=b"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

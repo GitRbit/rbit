@@ -1,0 +1,49 @@
+{
+  "feature": "reusable",
+  "split": "train",
+  "why": "inputs, an explicit secret, outputs and a job that needs the called one",
+  "setup": [
+    {
+      "secret": {
+        "repo": "{repo}",
+        "name": "DEPLOY_KEY",
+        "value": "s3cr3t-value-xyz"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "call / build",
+        "contains": [
+          "greeting=hello",
+          "key-set=yes"
+        ],
+        "lacks": [
+          "s3cr3t-value-xyz"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "after",
+        "contains": [
+          "result=hello-built"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "feature": "workflow-run",
+  "split": "test",
+  "why": "the downstream workflow runs whatever the upstream result and branches on it",
+  "wait": {
+    "runs": 2
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "failure"
+      }
+    },
+    {
+      "job": {
+        "workflow": "notify.yml",
+        "name": "on-failure",
+        "conclusion": "success",
+        "contains": [
+          "upstream failed"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "notify.yml",
+        "name": "on-success",
+        "conclusion": "skipped"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

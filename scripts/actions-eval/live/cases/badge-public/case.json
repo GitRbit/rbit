@@ -1,0 +1,58 @@
+{
+  "feature": "badge",
+  "split": "train",
+  "repos": {
+    "main": {
+      "files": "repo",
+      "public": true
+    }
+  },
+  "observe": [
+    {
+      "id": "badge",
+      "http": {
+        "path": "/{owner}/{repo}/actions/workflows/ci.yml/badge.svg",
+        "api": false,
+        "auth": "none"
+      }
+    },
+    {
+      "id": "other",
+      "http": {
+        "path": "/{owner}/{repo}/actions/workflows/ci.yml/badge.svg?branch=nope",
+        "api": false,
+        "auth": "none"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "badge",
+      "status": 200,
+      "headers": {
+        "content-type": "image/svg+xml",
+        "cache-control": "max-age"
+      },
+      "contains": [
+        "passing",
+        "<svg"
+      ]
+    },
+    {
+      "obs": "other",
+      "status": 200,
+      "contains": [
+        "no status"
+      ],
+      "lacks": [
+        "passing"
+      ]
+    }
+  ]
+}

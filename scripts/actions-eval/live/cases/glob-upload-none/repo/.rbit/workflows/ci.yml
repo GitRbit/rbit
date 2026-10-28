@@ -1,0 +1,12 @@
+on: push
+jobs:
+  warn:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/upload-artifact@v4
+        with: {name: none, path: 'nothing/**/*.bin'}
+  error:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/upload-artifact@v4
+        with: {name: none2, path: 'nothing/*.bin', if-no-files-found: error}

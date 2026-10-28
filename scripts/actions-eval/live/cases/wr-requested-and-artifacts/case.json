@@ -1,0 +1,31 @@
+{
+  "feature": "workflow-run",
+  "split": "train",
+  "why": "types filter, and the downstream run fetches the upstream run's artifact by its id",
+  "wait": {
+    "runs": 2
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "consume.yml",
+        "count": 1,
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "consume.yml",
+        "name": "consume",
+        "contains": [
+          "payload=from-upstream"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

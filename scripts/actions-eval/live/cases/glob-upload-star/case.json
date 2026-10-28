@@ -1,0 +1,36 @@
+{
+  "feature": "globs",
+  "split": "train",
+  "why": "release workflows upload dist/*.zip* and expect the files at the archive's top",
+  "observe": [
+    {
+      "id": "zip",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "dist",
+        "format": "zip"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "zip",
+      "status": 200,
+      "exact_files": [
+        "a.zip",
+        "a.zip.sha256"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

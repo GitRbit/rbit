@@ -1,0 +1,6 @@
+name: hello
+runs:
+  using: composite
+  steps:
+    - run: echo local action ran
+      shell: bash

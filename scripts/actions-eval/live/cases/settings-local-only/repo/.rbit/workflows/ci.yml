@@ -1,0 +1,12 @@
+on: push
+jobs:
+  remote:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+  local:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/hello

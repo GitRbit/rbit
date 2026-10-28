@@ -1,0 +1,44 @@
+{
+  "feature": "reusable",
+  "split": "test",
+  "why": "a private repository's workflow, called by another of the same owner once its access allows it",
+  "repos": {
+    "main": {
+      "files": "repo"
+    },
+    "lib": {
+      "files": "lib"
+    }
+  },
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo:lib}/actions/permissions/access",
+        "body": {
+          "access_level": "user"
+        }
+      }
+    }
+  ],
+  "wait": {
+    "runs": 1
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "shared / lint",
+        "contains": [
+          "linting for {owner}/"
+        ]
+      }
+    }
+  ]
+}

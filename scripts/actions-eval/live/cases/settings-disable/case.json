@@ -1,0 +1,88 @@
+{
+  "feature": "settings-api",
+  "split": "test",
+  "why": "turning Actions off through the API must stop runs, and every setting must read back",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions",
+        "body": {
+          "enabled": false
+        }
+      }
+    }
+  ],
+  "wait": {
+    "runs": 0,
+    "settle": 20
+  },
+  "observe": [
+    {
+      "id": "get",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions"
+      }
+    },
+    {
+      "id": "approval",
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval",
+        "body": {
+          "approval_policy": "all_external_contributors"
+        }
+      }
+    },
+    {
+      "id": "approval-get",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval"
+      }
+    },
+    {
+      "id": "bad",
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "admin"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "no_run": {
+        "workflow": "ci.yml"
+      }
+    },
+    {
+      "obs": "get",
+      "status": 200,
+      "json": {
+        "enabled": false
+      }
+    },
+    {
+      "obs": "approval",
+      "status": 204
+    },
+    {
+      "obs": "approval-get",
+      "status": 200,
+      "json": {
+        "approval_policy": "all_external_contributors"
+      }
+    },
+    {
+      "obs": "bad",
+      "status": 422
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "feature": "reusable",
+  "split": "train",
+  "why": "should not run: a private repository's workflows stay private until its access setting shares them",
+  "repos": {
+    "main": {
+      "files": "repo"
+    },
+    "lib": {
+      "files": "lib"
+    }
+  },
+  "wait": {
+    "runs": 1
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "failure"
+      }
+    }
+  ]
+}

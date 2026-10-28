@@ -1,0 +1,9 @@
+on: push
+jobs:
+  call:
+    strategy:
+      matrix:
+        flavor: [a, b]
+    uses: ./.rbit/workflows/use.yml
+    with: {flavor: '${{ matrix.flavor }}'}
+    secrets: inherit

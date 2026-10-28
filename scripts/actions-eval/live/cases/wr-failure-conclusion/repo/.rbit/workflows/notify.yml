@@ -1,0 +1,15 @@
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+jobs:
+  on-failure:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: self-hosted
+    steps:
+      - run: echo upstream failed
+  on-success:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: self-hosted
+    steps:
+      - run: echo upstream passed

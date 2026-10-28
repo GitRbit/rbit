@@ -1,0 +1,24 @@
+on:
+  workflow_call:
+    inputs:
+      greeting: {type: string, required: true}
+      count: {type: number, default: 2}
+    secrets:
+      key: {required: true}
+    outputs:
+      result:
+        value: ${{ jobs.build.outputs.out }}
+jobs:
+  build:
+    runs-on: self-hosted
+    outputs:
+      out: ${{ steps.make.outputs.out }}
+    steps:
+      - id: make
+        shell: bash
+        env: {KEY: '${{ secrets.key }}'}
+        run: |
+          echo "greeting=${{ inputs.greeting }}"
+          test -n "$KEY" && echo "key-set=yes"
+          echo "$KEY"
+          echo "out=${{ inputs.greeting }}-built" >> "$GITHUB_OUTPUT"

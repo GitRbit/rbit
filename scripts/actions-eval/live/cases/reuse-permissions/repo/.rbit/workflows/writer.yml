@@ -1,0 +1,7 @@
+on: workflow_call
+jobs:
+  write:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+    steps: [{run: echo writing}]

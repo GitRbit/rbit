@@ -1,0 +1,4 @@
+on: workflow_call
+jobs:
+  d:
+    uses: ./.rbit/workflows/r5.yml

@@ -1,0 +1,29 @@
+{
+  "feature": "globs",
+  "split": "train",
+  "why": "actions/cache paths such as target/**/*.rlib with an exclusion",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "save",
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "restore",
+        "conclusion": "success",
+        "contains": [
+          "restored ok"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

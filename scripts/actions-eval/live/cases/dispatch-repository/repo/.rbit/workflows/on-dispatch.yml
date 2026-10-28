@@ -1,0 +1,8 @@
+on:
+  repository_dispatch:
+    types: [deploy]
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - run: echo "env=${{ github.event.client_payload.env }} type=${{ github.event.action }}"

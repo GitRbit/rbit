@@ -1,0 +1,65 @@
+{
+  "feature": "badge",
+  "split": "test",
+  "why": "a private repository's badge must not tell an anonymous caller that it exists or how it fares",
+  "observe": [
+    {
+      "id": "anon",
+      "http": {
+        "path": "/{owner}/{repo}/actions/workflows/ci.yml/badge.svg",
+        "api": false,
+        "auth": "none"
+      }
+    },
+    {
+      "id": "missing",
+      "http": {
+        "path": "/{owner}/no-such-repo-xyz/actions/workflows/ci.yml/badge.svg",
+        "api": false,
+        "auth": "none"
+      }
+    },
+    {
+      "id": "owner",
+      "http": {
+        "path": "/{owner}/{repo}/actions/workflows/ci.yml/badge.svg",
+        "api": false
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "failure"
+      }
+    },
+    {
+      "obs": "anon",
+      "status": 404,
+      "lacks": [
+        "failing",
+        "passing"
+      ]
+    },
+    {
+      "obs": "missing",
+      "status": 404
+    },
+    {
+      "obs": "owner",
+      "status": 200,
+      "headers": {
+        "cache-control": "private"
+      },
+      "contains": [
+        "failing"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

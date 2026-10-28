@@ -1,0 +1,9 @@
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: ['release/**']
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - run: echo deploying

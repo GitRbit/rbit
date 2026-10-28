@@ -1,0 +1,13 @@
+on:
+  workflow_call:
+    inputs:
+      flavor: {type: string, required: true}
+jobs:
+  use:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        env: {SHARED: '${{ secrets.SHARED }}'}
+        run: |
+          test -n "$SHARED" && echo has-shared=yes
+          echo "flavor=${{ inputs.flavor }}"

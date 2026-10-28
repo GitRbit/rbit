@@ -1,0 +1,36 @@
+{
+  "feature": "reusable",
+  "split": "test",
+  "why": "nesting works up to GitHub's ten levels and fails past them",
+  "wait": {
+    "runs": 2
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "deep.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "job": {
+        "workflow": "deep.yml",
+        "name": "l1 / l2 / l3 / leaf",
+        "contains": [
+          "leaf reached"
+        ]
+      }
+    },
+    {
+      "run": {
+        "workflow": "toodeep.yml",
+        "conclusion": "failure"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

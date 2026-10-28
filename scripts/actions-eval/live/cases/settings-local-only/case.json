@@ -1,0 +1,44 @@
+{
+  "feature": "settings-api",
+  "split": "test",
+  "why": "allowed_actions local_only must refuse a remote action but keep built-ins and local ones",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions",
+        "body": {
+          "enabled": true,
+          "allowed_actions": "local_only"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "remote",
+        "conclusion": "failure",
+        "contains": [
+          "actions/setup-node"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "local",
+        "conclusion": "success",
+        "contains": [
+          "local action ran"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

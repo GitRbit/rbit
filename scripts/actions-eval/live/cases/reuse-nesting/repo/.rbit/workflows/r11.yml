@@ -1,0 +1,5 @@
+on: workflow_call
+jobs:
+  d:
+    runs-on: self-hosted
+    steps: [{run: echo too deep}]

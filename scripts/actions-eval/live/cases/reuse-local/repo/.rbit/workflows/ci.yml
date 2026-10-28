@@ -1,0 +1,14 @@
+name: CI
+on: push
+jobs:
+  call:
+    uses: ./.rbit/workflows/build.yml
+    with:
+      greeting: hello
+    secrets:
+      key: ${{ secrets.DEPLOY_KEY }}
+  after:
+    needs: call
+    runs-on: self-hosted
+    steps:
+      - run: echo "result=${{ needs.call.outputs.result }}"

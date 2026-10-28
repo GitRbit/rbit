@@ -1,0 +1,26 @@
+on: push
+jobs:
+  save:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: mkdir -p target/x/y && echo 1 > target/x/y/one.rlib && echo 2 > target/x/two.rlib && echo no > target/x/skip.rlib
+      - uses: actions/cache@v4
+        with:
+          key: glob-${{ github.run_id }}
+          path: |
+            target/**/*.rlib
+            !target/x/skip.rlib
+  restore:
+    needs: save
+    runs-on: self-hosted
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          key: glob-${{ github.run_id }}
+          fail-on-cache-miss: true
+          path: |
+            target/**/*.rlib
+            !target/x/skip.rlib
+      - shell: bash
+        run: test -f target/x/y/one.rlib && test -f target/x/two.rlib && test ! -e target/x/skip.rlib && echo restored ok

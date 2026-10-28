@@ -1,0 +1,4 @@
+on: workflow_call
+jobs:
+  l2:
+    uses: ./.rbit/workflows/n2.yml
