@@ -9,7 +9,7 @@
         "name": "build",
         "conclusion": "success",
         "contains": [
-          "context:"
+          "action.yml"
         ],
         "lacks": [
           "workspace-secret.txt"
