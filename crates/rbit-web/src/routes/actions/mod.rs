@@ -92,13 +92,18 @@ pub(crate) fn artifact_download(
 
 /// Sends what the zip writer writes as chunks of the response body; a closed response
 /// (the client went away) stops the conversion.
-struct ChunkWriter {
+pub(crate) struct ChunkWriter {
     sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
     chunk: Vec<u8>,
 }
 
 impl ChunkWriter {
     const SIZE: usize = 64 * 1024;
+
+    // Actions: run logs.
+    pub(crate) fn new(sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>) -> Self {
+        Self { sender, chunk: Vec::with_capacity(Self::SIZE) }
+    }
 
     fn send(&mut self) -> std::io::Result<()> {
         if self.chunk.is_empty() {

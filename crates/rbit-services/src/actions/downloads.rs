@@ -121,21 +121,47 @@ pub fn to_zip<R: Read, W: Write>(source: R, out: W) -> io::Result<W> {
 }
 
 // Actions: run logs.
-/// Writes `files` (name, contents), changed at `mtime` (Unix seconds), as a zip to `out`.
-///
-/// # Errors
-///
-/// What writing `out` fails with.
-pub fn files_to_zip<W: Write>(files: &[(String, Vec<u8>)], mtime: u64, out: W) -> io::Result<W> {
-    let mut out = Counter { inner: out, count: 0 };
-    let dos = dos_time(mtime);
-    let mut written = Vec::with_capacity(files.len());
-    for (name, data) in files {
-        written.push(write_entry(&mut out, name.as_bytes().to_vec(), data.len() as u64, 0o644, dos, &mut data.as_slice())?);
+/// A zip written to `out` one file at a time, as the files become available, so only one
+/// is read at once.
+pub struct ZipWriter<W: Write> {
+    out: Counter<W>,
+    written: Vec<Written>,
+    dos: (u16, u16),
+}
+
+impl<W: Write> std::fmt::Debug for ZipWriter<W> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("ZipWriter").field("files", &self.written.len()).field("bytes", &self.out.count).finish_non_exhaustive()
     }
-    write_directory(&mut out, &written)?;
-    out.flush()?;
-    Ok(out.inner)
+}
+
+impl<W: Write> ZipWriter<W> {
+    /// A zip whose files all changed at `mtime` (Unix seconds).
+    pub fn new(out: W, mtime: u64) -> Self {
+        Self { out: Counter { inner: out, count: 0 }, written: Vec::new(), dos: dos_time(mtime) }
+    }
+
+    /// Adds file `name`: exactly `size` bytes of `data`.
+    ///
+    /// # Errors
+    ///
+    /// What reading `data` or writing fails with, and `data` ending before `size` bytes.
+    pub fn add(&mut self, name: &str, size: u64, data: &mut impl Read) -> io::Result<()> {
+        let entry = write_entry(&mut self.out, name.as_bytes().to_vec(), size, 0o644, self.dos, data)?;
+        self.written.push(entry);
+        Ok(())
+    }
+
+    /// Writes the central directory and returns `out`.
+    ///
+    /// # Errors
+    ///
+    /// What writing fails with.
+    pub fn finish(mut self) -> io::Result<W> {
+        write_directory(&mut self.out, &self.written)?;
+        self.out.flush()?;
+        Ok(self.out.inner)
+    }
 }
 
 /// Reads the stored tar.gz `source` and writes its files as a tar.gz to `out`, at its top.
@@ -461,8 +487,10 @@ mod tests {
     // Actions: run logs.
     #[test]
     fn files_become_a_zip() {
-        let files = vec![("0_build.txt".to_owned(), b"compiling\n".to_vec()), ("1_test.txt".to_owned(), Vec::new())];
-        let bytes = files_to_zip(&files, 1_700_000_000, Vec::new()).unwrap();
+        let mut zip = ZipWriter::new(Vec::new(), 1_700_000_000);
+        zip.add("0_build.txt", 10, &mut &b"compiling\n"[..]).unwrap();
+        zip.add("1_test.txt", 0, &mut io::empty()).unwrap();
+        let bytes = zip.finish().unwrap();
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         assert_eq!(archive.len(), 2);
         let mut text = String::new();

@@ -384,32 +384,16 @@ impl ActionsService {
     }
 
     // Actions: run logs.
-    /// The logs of run `run`'s jobs that have one, as `<n>_<job name>.txt` files in job
-    /// order, the text decompressed: GitHub's run log archive.
-    pub async fn run_logs(&self, repo: &RepoContext, run: rbit_core::actions::RunId) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+    /// The files of run `run`'s log archive, as GitHub names them (`<n>_<job name>.txt`, in
+    /// job order), with the task whose log each one is; jobs that never ran have none.
+    pub async fn run_log_files(&self, repo: &RepoContext, run: rbit_core::actions::RunId) -> Result<Vec<(String, TaskId)>, ServiceError> {
         let detail = self.run_by_id(repo, run).await?;
-        let mut files = Vec::new();
-        for (index, job) in detail.jobs.iter().enumerate() {
-            let Some(task) = job.task_id else { continue };
-            let Some(log) = self.raw_log(repo, task).await? else { continue };
-            let file = log.file.into_std().await;
-            let gzip = log.gzip;
-            let text = tokio::task::spawn_blocking(move || {
-                let mut text = Vec::new();
-                if gzip {
-                    flate2::read::GzDecoder::new(file).read_to_end(&mut text)?;
-                } else {
-                    let mut file = file;
-                    file.read_to_end(&mut text)?;
-                }
-                Ok::<_, std::io::Error>(text)
-            })
-            .await
-            .map_err(ServiceError::internal)?
-            .map_err(ServiceError::internal)?;
-            files.push((format!("{index}_{}.txt", log_file_name(&job.name)), text));
-        }
-        Ok(files)
+        Ok(detail
+            .jobs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, job)| Some((format!("{index}_{}.txt", log_file_name(&job.name)), job.task_id?)))
+            .collect())
     }
 
     /// Task `task` and its job, when the job is `repo`'s and the caller may read it.
@@ -636,6 +620,24 @@ fn read_window(
 }
 
 // Actions: run logs.
+/// Adds `log` (a raw log's file: gzip or not) to `zip` as `name`, decompressed and read
+/// once more to count its size first, so it never needs to be held in memory. A live log
+/// is taken as far as it is written now.
+///
+/// # Errors
+///
+/// What reading the log or writing the zip fails with.
+pub fn add_raw_log<W: Write>(zip: &mut super::downloads::ZipWriter<W>, name: &str, mut log: File, gzip: bool) -> std::io::Result<()> {
+    if gzip {
+        let size = std::io::copy(&mut flate2::read::GzDecoder::new(&log), &mut std::io::sink())?;
+        log.seek(SeekFrom::Start(0))?;
+        zip.add(name, size, &mut flate2::read::GzDecoder::new(log).take(size))
+    } else {
+        let size = log.metadata()?.len();
+        zip.add(name, size, &mut log.take(size))
+    }
+}
+
 /// A job name as a file name in the run log archive: no path separators or control
 /// characters, at most 100 characters.
 fn log_file_name(name: &str) -> String {

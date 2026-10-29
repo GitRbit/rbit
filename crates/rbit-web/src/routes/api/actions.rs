@@ -380,19 +380,41 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
     let ctx = path.repo(&state, &caller).await?;
     let actions = actions(&state)?;
     let run = actions.run_by_id(&ctx, path.run()?).await?.run;
-    let files = actions.run_logs(&ctx, run.id).await?;
+    let files = actions.run_log_files(&ctx, run.id).await?;
     if files.is_empty() {
         return Err(ApiError::not_found());
     }
     let mtime = u64::try_from(run.finished_at.unwrap_or(run.created_at).0).unwrap_or_default();
-    let built = tokio::task::spawn_blocking(move || rbit_services::actions::downloads::files_to_zip(&files, mtime, Vec::new())).await;
-    let zip = match built {
-        Ok(Ok(zip)) => zip,
-        Ok(Err(error)) => return Err(archive_error(&error)),
-        Err(error) => return Err(archive_error(&error)),
-    };
+    // One job's log is read at a time, straight into the response.
+    let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<axum::body::Bytes>>(8);
+    let (actions, writer) = (actions.clone(), crate::routes::actions::ChunkWriter::new(sender.clone()));
+    tokio::spawn(async move {
+        let mut zip = rbit_services::actions::downloads::ZipWriter::new(writer, mtime);
+        for (name, task) in files {
+            let log = match actions.raw_log(&ctx, task).await {
+                Ok(Some(log)) => log,
+                Ok(None) => continue,
+                Err(error) => return fail_archive(&sender, error.to_string()).await,
+            };
+            let (file, gzip) = (log.file.into_std().await, log.gzip);
+            let added = tokio::task::spawn_blocking(move || {
+                let added = rbit_services::actions::logs::add_raw_log(&mut zip, &name, file, gzip);
+                (zip, added)
+            })
+            .await;
+            zip = match added {
+                Ok((zip, Ok(()))) => zip,
+                Ok((_, Err(error))) => return fail_archive(&sender, error.to_string()).await,
+                Err(error) => return fail_archive(&sender, error.to_string()).await,
+            };
+        }
+        if let Ok(Err(error)) = tokio::task::spawn_blocking(move || zip.finish().map(drop)).await {
+            fail_archive(&sender, error.to_string()).await;
+        }
+    });
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
     let name = format!("attachment; filename=\"logs_{}.zip\"", run.id.0);
-    let mut response = zip.into_response();
+    let mut response = axum::body::Body::from_stream(stream).into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
@@ -402,9 +424,10 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
     Ok(response)
 }
 
-fn archive_error(error: &dyn std::error::Error) -> ApiError {
-    tracing::error!(%error, "cannot build a run's log archive");
-    ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "The log archive could not be built")
+/// Ends a log archive being sent with `error`, which the client sees as a broken download.
+async fn fail_archive(sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>, error: String) {
+    tracing::warn!(%error, "cannot send a run's log archive");
+    let _ = sender.send(Err(std::io::Error::other(error))).await;
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
