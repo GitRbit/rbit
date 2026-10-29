@@ -45,7 +45,7 @@ fn hex(digest: &[u8]) -> String {
 }
 
 /// The SHA-256 of the file at `path`, as hex.
-fn file_digest(path: &Path) -> std::io::Result<String> {
+pub(super) fn file_digest(path: &Path) -> std::io::Result<String> {
     let mut hasher = Sha256::new();
     let mut file = fs::File::open(path)?;
     let mut buffer = vec![0u8; 64 * 1024];

@@ -10,6 +10,8 @@ mod query_count;
 mod actions_api;
 // Actions: artifacts (A).
 mod actions_artifacts;
+// Actions: shared cache.
+mod actions_caches;
 mod actions_disabled;
 mod actions_environments;
 // Actions: interface and secrets (U).

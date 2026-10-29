@@ -39,7 +39,9 @@
 
 // Actions: artifacts (A).
 pub mod artifacts;
+// Actions: shared cache.
 pub mod browse;
+pub mod caches;
 // Actions: reusable workflows.
 pub mod calls;
 // Actions: workflow_run and repository_dispatch.

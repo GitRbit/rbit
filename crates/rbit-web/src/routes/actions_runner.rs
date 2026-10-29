@@ -48,9 +48,10 @@ use rbit_services::{
     },
 };
 use rbit_workflow::protocol::{
-    ARTIFACTS_PATH, ArtifactInfo, ArtifactList, ArtifactQuery, ArtifactRunQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest,
-    Endpoint, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest, PollResponse,
-    RegisterRequest, SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
+    ARTIFACTS_PATH, ArtifactInfo, ArtifactList, ArtifactQuery, ArtifactRunQuery, BASE_PATH, CACHES_PATH, CONTENT_SHA256_HEADER,
+    CacheEntryInfo, CacheLookupRequest, CacheLookupResponse, CacheSaveQuery, DeclareRequest, Endpoint, ErrorBody, ErrorCode,
+    IDEMPOTENCY_KEY_HEADER, LogsQuery, MAX_GZIP_RATIO, PROTOCOL_HEADER, PollRequest, PollResponse, RegisterRequest,
+    SUPPORTED_PROTOCOL_VERSIONS, TaskStateRequest, UnregisterRequest,
 };
 use serde::de::DeserializeOwned;
 use tower_http::timeout::TimeoutLayer;
@@ -71,7 +72,15 @@ pub const PATHS: &[&str] = &[
     // Actions: artifacts (A).
     "/api/actions/runner/v1/tasks/{id}/artifacts",
     "/api/actions/runner/v1/tasks/{id}/artifacts/{name}",
+    // Actions: shared cache.
+    "/api/actions/runner/v1/tasks/{id}/caches",
+    "/api/actions/runner/v1/tasks/{id}/caches/lookup",
+    "/api/actions/runner/v1/tasks/{id}/caches/{entry}",
 ];
+
+// Actions: shared cache.
+/// Largest cache lookup: a key and its restore keys, with room to spare.
+const CACHE_LOOKUP_BYTES: usize = 64 * 1024;
 
 // Actions: artifacts (A).
 /// Uploads and downloads stream up to `[actions] max_artifact_bytes`, so they get their
@@ -99,6 +108,10 @@ pub fn routes() -> Router<AppState> {
             Router::new()
                 .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}"), axum::routing::get(list_artifacts))
                 .route(&format!("{BASE_PATH}/{ARTIFACTS_PATH}/{{name}}"), axum::routing::get(download_artifact).put(upload_artifact))
+                // Actions: shared cache.
+                .route(&format!("{BASE_PATH}/{CACHES_PATH}"), axum::routing::put(save_cache))
+                .route(&format!("{BASE_PATH}/{CACHES_PATH}/lookup"), post(lookup_cache))
+                .route(&format!("{BASE_PATH}/{CACHES_PATH}/{{entry}}"), axum::routing::get(download_cache))
                 .layer(from_fn(require_protocol))
                 .layer(TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, ARTIFACT_TIMEOUT))
                 .layer(from_fn(count_call)),
@@ -125,6 +138,14 @@ fn call_name(path: &str, method: &axum::http::Method) -> &'static str {
             Endpoint::TaskState => "task_state",
             Endpoint::TaskLogs => "task_logs",
             Endpoint::Unregister => "unregister",
+        };
+    }
+    // Actions: shared cache.
+    if let Some(rest) = path.strip_prefix(CACHES_PATH) {
+        return match rest {
+            "/lookup" => "cache_lookup",
+            "" => "cache_save",
+            _ => "cache_download",
         };
     }
     match (path == ARTIFACTS_PATH, *method == axum::http::Method::PUT) {
@@ -311,6 +332,89 @@ async fn download_artifact(
     Ok(response)
 }
 
+// Actions: shared cache.
+fn cache_info(entry: &rbit_core::actions::CacheEntry) -> CacheEntryInfo {
+    let sha256 = entry.sha256.iter().fold(String::with_capacity(64), |mut hex, byte| {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    CacheEntryInfo { id: entry.id.0, key: entry.key.clone(), scope: entry.scope.clone(), size: entry.size, sha256 }
+}
+
+/// `POST tasks/{id}/caches/lookup`: the entry the task restores, if any.
+async fn lookup_cache(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path(id): Path<String>,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let bytes = axum::body::to_bytes(body, CACHE_LOOKUP_BYTES)
+        .await
+        .map_err(|_| RunnerError::too_large(format!("a cache lookup may be at most {CACHE_LOOKUP_BYTES} bytes")))?;
+    let request: CacheLookupRequest = parse_json(&bytes)?;
+    let lookup =
+        rbit_services::actions::caches::CacheLookup { key: &request.key, restore_keys: &request.restore_keys, version: &request.version };
+    let entry = actions(&state)?.find_task_cache(&runner, task, &lookup).await?;
+    Ok(Json(CacheLookupResponse { entry: entry.as_ref().map(cache_info) }).into_response())
+}
+
+/// `GET tasks/{id}/caches/{entry}`: one entry's tar.gz, with its digest.
+async fn download_cache(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path((id, entry)): Path<(String, String)>,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let entry = entry
+        .parse()
+        .ok()
+        .map(rbit_core::actions::CacheEntryId)
+        .ok_or_else(|| Refusal::from(RunnerError::not_found("there is no such cache entry")))?;
+    let (entry, file) = actions(&state)?.open_task_cache(&runner, task, entry).await?;
+    let info = cache_info(&entry);
+    let mut response = Body::from_stream(tokio_util::io::ReaderStream::new(file)).into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/gzip"));
+    if let Ok(value) = HeaderValue::from_str(&info.sha256) {
+        headers.insert(CONTENT_SHA256_HEADER, value);
+    }
+    if let Ok(value) = HeaderValue::from_str(&entry.size.to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+    Ok(response)
+}
+
+/// `PUT tasks/{id}/caches?key=…&version=…`: the tar.gz body, streamed; `201` with the
+/// entry, or `409` when the task's scope has the key already.
+async fn save_cache(
+    State(state): State<AppState>,
+    RunnerCaller(runner): RunnerCaller,
+    Path(id): Path<String>,
+    query: Result<Query<CacheSaveQuery>, axum::extract::rejection::QueryRejection>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<Response, Refusal> {
+    let task = task_id(&id)?;
+    let Ok(Query(query)) = query else {
+        return Err(RunnerError::bad_request("the query is `key=<key>&version=<version>&replace=<bool>`").into());
+    };
+    let digest = headers
+        .get(CONTENT_SHA256_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| RunnerError::bad_request(format!("a save needs the {CONTENT_SHA256_HEADER} header")))?;
+    let save =
+        rbit_services::actions::caches::CacheSave { key: &query.key, version: &query.version, sha256: digest, replace: query.replace };
+    let reader = tokio_util::io::StreamReader::new(futures_util::TryStreamExt::map_err(body.into_data_stream(), |error| {
+        std::io::Error::other(error.to_string())
+    }));
+    match actions(&state)?.save_task_cache(&runner, task, &save, reader).await? {
+        Some(entry) => Ok((StatusCode::CREATED, Json(cache_info(&entry))).into_response()),
+        None => Err(RunnerError::conflict(format!("the cache entry `{}` is saved already", query.key)).into()),
+    }
+}
+
 /// The run an artifact query names, if any.
 fn artifact_run(
     query: &Result<Query<ArtifactRunQuery>, axum::extract::rejection::QueryRejection>,
@@ -477,6 +581,12 @@ mod tests {
         let mut expected: Vec<String> = Endpoint::ALL.iter().map(|endpoint| path(*endpoint)).collect();
         // Actions: artifacts (A).
         expected.extend([format!("{BASE_PATH}/{ARTIFACTS_PATH}"), format!("{BASE_PATH}/{ARTIFACTS_PATH}/{{name}}")]);
+        // Actions: shared cache.
+        expected.extend([
+            format!("{BASE_PATH}/{CACHES_PATH}"),
+            format!("{BASE_PATH}/{CACHES_PATH}/lookup"),
+            format!("{BASE_PATH}/{CACHES_PATH}/{{entry}}"),
+        ]);
         assert_eq!(PATHS, expected);
     }
 

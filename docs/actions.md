@@ -201,7 +201,7 @@ aliases of them, in any later major version and when pinned to a commit
 | `uses:` | Also accepted as | `with:` |
 |---|---|---|
 | `rbit/checkout@v1` | `actions/checkout@v2` and later | `ref`, `path`, `fetch-depth` (1; 0 for all), `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
-| `rbit/cache@v1` | `actions/cache@v3` and later, `/restore`, `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; output `cache-hit` |
+| `rbit/cache@v1` | `actions/cache@v3` and later, `/restore`, `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; outputs `cache-hit`, `cache-primary-key`, `cache-matched-key` |
 | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` and later | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite`, `include-hidden-files`, `compression-level` |
 | `rbit/download-artifact@v1` | `actions/download-artifact@v3` and later | `name`, `path`, `pattern`, `merge-multiple`, `run-id` (another run of this repository, as a `workflow_run` job fetches its trigger's; `github-token` is accepted and not needed), `repository` (this one only) |
 
@@ -270,9 +270,17 @@ A runner's administrator decides which actions it runs with `[actions] allow`: `
 patterns such as `actions/*` or `my-org/*`, and `docker://` image patterns. The default,
 `["*"]`, allows every action; `[]` allows only the built-ins and the workspace's own.
 
-The cache lives on the runner, so a hit needs the same runner. A run reads its own branch's
-entries, then the default branch's, and writes only its own; pull requests from forks write
-only to their pull request's scope. Artifacts are stored by the server, listed on the run page
+The server keeps the cache, as GitHub does, so any runner of the repository restores what
+another saved. A run reads its own branch's entries, then the default branch's, and writes
+only its own; pull requests from forks write only to their pull request's scope. The server
+decides these scopes from the run, never from the runner. An entry matches its key, or the
+newest entry starting with a `restore-keys` prefix, and only with the same `path` list on
+the same kind of job (on a Windows host, another host, or in a container). Entries never change:
+a save of a key the scope has is skipped. Each repository keeps up to
+`[actions] max_cache_storage_bytes` (10 GiB), and saving beyond it removes the least
+recently used entries; an entry nobody restores for `cache_retention_days` (7) goes. A
+runner whose server is older keeps the cache itself, in `<work_dir>/cache`, bounded by its
+own `[cache] max_bytes`, which also caps the size of one entry either way. Artifacts are stored by the server, listed on the run page
 and downloadable by anyone who may read the repository, for 90 days unless the workflow asks
 for fewer. They download as a zip, as on GitHub (the run page's link, and the REST API's
 `archive_download_url`, `…/artifacts/{id}/zip`), or as a tar.gz (`…/tar.gz`), with the
@@ -422,8 +430,9 @@ list`, `rbit run watch --exit-status`, `rbit run view --log-failed`, `rbit workf
 `rbit artifact download`, `rbit pr checks` and `rbit api` (see [the client's guide](cli.md)).
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
-runs, dispatches workflows, serves job logs and artifacts, and manages secrets, variables and
-runners (with registration tokens), and reviews pending deployments
+runs, dispatches workflows, serves job logs and artifacts, lists and deletes cache entries
+(`…/actions/caches`, `…/actions/cache/usage`, as `gh cache` uses them), manages secrets,
+variables and runners (with registration tokens), and reviews pending deployments
 (`…/runs/{run_id}/pending_deployments`), in GitHub's shapes (see the OpenAPI document at
 `/api/v1/openapi.json`); organisations (`/orgs/{org}/actions/...`) and users
 (`/user/actions/...`) have their own secrets, variables and runners.

@@ -14,9 +14,11 @@
 //! * **Runs** finished more than `run_retention_days` ago are deleted, after their logs.
 //! * **Registration tokens** that expired or were revoked more than a day ago are deleted.
 //! * When runners were last seen is written ([`ActionsService::flush_seen`]).
+//! * **Cache entries** no job restored for `cache_retention_days` are deleted.
 //! * **Orphaned files**, once an hour: log files whose task and artifact files whose run is
 //!   gone (deleted with its repository, or by run retention before its artifacts expired),
-//!   and unfinished artifact uploads ([`ActionsService::remove_orphaned_files`]).
+//!   cache files whose entry is gone, and unfinished artifact and cache uploads
+//!   ([`ActionsService::remove_orphaned_files`]).
 //!
 //! The server side of the runner protocol (stream S) owns this file.
 
@@ -61,6 +63,9 @@ pub struct Swept {
     pub decided: usize, // Actions: artifacts (A).
     /// Artifacts that expired, removed with their files.
     pub expired_artifacts: usize,
+    // Actions: shared cache.
+    /// Cache entries no job restored for `cache_retention_days`, removed with their files.
+    pub expired_caches: usize,
     /// Files removed because what they belonged to is gone.
     pub orphaned_files: usize,
 }
@@ -121,6 +126,8 @@ impl ActionsService {
         swept.decided = self.decide_stragglers().await?;
         // Actions: artifacts (A).
         swept.expired_artifacts = self.expire_artifacts(now).await?;
+        // Actions: shared cache.
+        swept.expired_caches = self.expire_caches(now).await?;
         // Actions: metrics.
         self.record_gauges(now).await?;
 
@@ -233,6 +240,16 @@ impl ActionsService {
                 }
                 // Only once empty: a younger file stays, and so does its directory.
                 let _ = tokio::fs::remove_dir(&dir).await;
+            }
+        }
+        // Actions: shared cache. Saves cut short, and files of entries that went with their
+        // repository.
+        for dir in entries(&self.caches_dir(), true).await {
+            let stale = dir.file_name().is_some_and(|name| name == "tmp");
+            for file in old_files(&dir, if stale { STALE_UPLOAD_AGE } else { ORPHAN_AGE }).await {
+                if stale || self.orphaned_cache_file(&file).await? {
+                    removed += usize::from(remove(&file).await);
+                }
             }
         }
         Ok(removed)

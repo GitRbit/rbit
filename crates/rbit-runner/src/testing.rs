@@ -318,7 +318,7 @@ async fn declare(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(req
     }
     request.validate().expect("a valid declaration");
     shared.fake.lock().expect("the fake's lock").declares.push(request);
-    Json(DeclareResponse { runner_id: RunnerId(1), intervals: INTERVALS }).into_response()
+    Json(DeclareResponse { runner_id: RunnerId(1), intervals: INTERVALS, shared_cache: false }).into_response()
 }
 
 async fn poll(State(shared): State<Arc<Shared>>, headers: HeaderMap, Json(request): Json<PollRequest>) -> Response {

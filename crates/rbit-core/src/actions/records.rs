@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AccountId, RepoId, Timestamp,
     actions::{
-        ArtifactId, DefaultTokenPermission, DeploymentReviewId, EnvironmentId, JobId, JobStatus, RegistrationTokenId, RunId, RunStatus,
-        RunnerId, RunnerLabel, RunnerScope, SecretId, SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
+        ArtifactId, CacheEntryId, DefaultTokenPermission, DeploymentReviewId, EnvironmentId, JobId, JobStatus, RegistrationTokenId, RunId,
+        RunStatus, RunnerId, RunnerLabel, RunnerScope, SecretId, SecretName, SecretScope, Status, TaskId, VariableId, VariableName,
     },
 };
 
@@ -390,6 +390,26 @@ pub struct Artifact {
     pub sha256: [u8; 32],
     pub created_at: Timestamp,
     pub expires_at: Timestamp,
+}
+
+// Actions: shared cache.
+/// An `actions/cache` entry: one tar.gz saved under `key` in `scope` of a repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheEntry {
+    pub id: CacheEntryId,
+    pub repo_id: RepoId,
+    /// The scope it was saved in (`heads/main`, `untrusted/41`).
+    pub scope: String,
+    pub key: String,
+    /// What else must match for a restore: a digest of the cached paths and the runner's
+    /// platform, chosen by the runner.
+    pub version: String,
+    /// Bytes of the tar.gz.
+    pub size: u64,
+    pub sha256: [u8; 32],
+    pub created_at: Timestamp,
+    /// When a job last restored it, or its creation.
+    pub used_at: Timestamp,
 }
 
 #[cfg(test)]

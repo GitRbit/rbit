@@ -36,6 +36,10 @@
 //! max_artifact_bytes = 2147483648
 //! max_artifact_storage_bytes = 10737418240
 //! artifact_retention_days = 90
+//! # `actions/cache` bytes kept per repository for all its runners (the least recently used
+//! # entries go first), and days an entry is kept unused. Caches are not backed up.
+//! max_cache_storage_bytes = 10737418240
+//! cache_retention_days = 7
 //! # How long a runner's poll for work is held open, in seconds (at most 25).
 //! long_poll_seconds = 25
 //! # Runner polls held open at once across the instance; beyond it polls are refused (503).
@@ -106,6 +110,12 @@ pub struct ActionsConfig {
     pub max_artifact_storage_bytes: u64,
     /// Days artifacts are kept; a workflow's `retention-days` may only lower it.
     pub artifact_retention_days: u32,
+    // Actions: shared cache.
+    /// `actions/cache` bytes kept per repository; saving beyond it evicts the least
+    /// recently used entries.
+    pub max_cache_storage_bytes: u64,
+    /// Days a cache entry is kept without being restored.
+    pub cache_retention_days: u32,
 }
 
 // Actions: S.
@@ -139,6 +149,9 @@ impl Default for ActionsConfig {
             max_artifact_bytes: 2 * 1024 * 1024 * 1024,
             max_artifact_storage_bytes: 10 * 1024 * 1024 * 1024,
             artifact_retention_days: 90,
+            // Actions: shared cache. GitHub's limits.
+            max_cache_storage_bytes: 10 * 1024 * 1024 * 1024,
+            cache_retention_days: 7,
         }
     }
 }
@@ -172,6 +185,10 @@ impl ActionsConfig {
         // Actions: artifacts (A).
         if self.max_artifact_bytes == 0 || self.max_artifact_storage_bytes < self.max_artifact_bytes || self.artifact_retention_days == 0 {
             return Err("Actions artifact limits must not be zero, and a repository's artifact storage must hold one artifact".into());
+        }
+        // Actions: shared cache.
+        if self.max_cache_storage_bytes == 0 || self.cache_retention_days == 0 {
+            return Err("Actions cache storage and retention must not be zero".into());
         }
         if !EVALUATION_CONCURRENCY.contains(&self.evaluation_concurrency) {
             return Err(format!(

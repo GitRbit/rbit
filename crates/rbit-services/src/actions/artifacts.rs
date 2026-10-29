@@ -47,7 +47,7 @@ pub struct Upload<'a> {
 }
 
 /// `hex` as 32 bytes.
-fn digest_from_hex(hex: &str) -> Option<[u8; 32]> {
+pub(super) fn digest_from_hex(hex: &str) -> Option<[u8; 32]> {
     if hex.len() != 64 {
         return None;
     }
@@ -78,7 +78,7 @@ impl ActionsService {
     }
 
     /// Task `id` of `runner`, running.
-    async fn running_task(&self, runner: &CachedRunner, id: rbit_core::actions::TaskId) -> Result<Task, RunnerError> {
+    pub(super) async fn running_task(&self, runner: &CachedRunner, id: rbit_core::actions::TaskId) -> Result<Task, RunnerError> {
         let task = self.ctx().database.actions_runs().task(id).await?.ok_or_else(|| RunnerError::not_found("there is no such task"))?;
         if task.runner_id != Some(runner.id) {
             return Err(RunnerError::forbidden("this task belongs to another runner"));
@@ -293,7 +293,7 @@ impl ActionsService {
 
 /// Copies `body` into a new file at `path`, counting its size and SHA-256; `None` once it
 /// passes `limit` bytes.
-async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -> io::Result<Option<(u64, [u8; 32])>> {
+pub(super) async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -> io::Result<Option<(u64, [u8; 32])>> {
     let mut file = tokio::fs::OpenOptions::new().write(true).create_new(true).open(path).await?;
     let mut hasher = Sha256::new();
     let mut size = 0u64;
@@ -315,11 +315,11 @@ async fn receive(body: &mut (impl AsyncRead + Unpin), path: &Path, limit: u64) -
 }
 
 /// Removes `path`, logging anything but its absence.
-async fn remove_file(path: &Path) {
+pub(super) async fn remove_file(path: &Path) {
     if let Err(error) = tokio::fs::remove_file(path).await
         && error.kind() != io::ErrorKind::NotFound
     {
-        tracing::warn!(%error, path = %path.display(), "cannot remove an artifact file");
+        tracing::warn!(%error, path = %path.display(), "cannot remove an Actions file");
     }
 }
 

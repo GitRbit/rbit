@@ -834,7 +834,7 @@ These parts stay unchanged and binding:
 | Job-level `if:` | The **server** evaluates it when a job unblocks. Available contexts: `github`, `needs`, `vars`, `inputs`, `matrix`, `strategy` and the status functions. A false condition marks the job `skipped` without using a runner slot. |
 | Strategy | The server enforces `fail-fast` (default `true`) and `max-parallel`. This is possible now that rbit schedules its own jobs. |
 | Artifacts | **In scope**, as stream A (§12.7). Stored under `<data_dir>/actions/artifacts`, with a quota and retention, and not backed up. |
-| Cache | A runner-local `rbit/cache` (§12.5.6). A server-side cache is a later feature. |
+| Cache | `rbit/cache` entries kept by the server for all runners of a repository; a runner of an older server keeps its own (§12.5.6). |
 | Removed | Connect, protobuf and `tools/protogen`; `[actions] default_actions_url`; the `forgejo_*` / `gitea_*` context keys; the single-job YAML payload (`payload.rs`, `emit.rs`). |
 
 ### 12.2 Workflow subset
@@ -1125,14 +1125,24 @@ Submodules on this rbit instance use the token; all others use anonymous HTTPS o
 
 #### 12.5.6 Built-in cache
 
-Entries live at `<work_dir>/cache/<repo id>/<scope>/<sha256(key)>.tar.gz` (tar + flate2) and are evicted least-recently-used once they exceed `cache.max_bytes`.
+A server that keeps caches says so in its `declare` answer (`shared_cache: true`). Its runners
+then look entries up, download and save them through `tasks/{id}/caches` (§12.6), and the
+server keeps them at `<data_dir>/actions/caches/<repo id>/<entry id>.tar.gz` with a row each
+(repository, scope, key, version, size, digest, last use). The server derives the scopes from
+the task's run, never from the runner. The version is a SHA-256 of the cached path list and
+the kind of job (Windows host, other host, container), so an archive never restores where it
+would unpack wrongly. Entries are immutable; a repository keeps `max_cache_storage_bytes`,
+saving beyond it evicts the least recently used, and the sweeper removes entries unused for
+`cache_retention_days`.
+
+Without it (an older server), entries live at `<work_dir>/cache/<repo id>/<scope>/<sha256(key)>.tar.gz` (tar + flate2) and are evicted least-recently-used once they exceed `cache.max_bytes`.
 
 Scopes prevent cache poisoning:
 - A run reads its own ref's scope first, then the default branch's.
 - A run writes only to its own ref's scope.
 - An untrusted run writes only to `pull/<n>`.
 
-The cache is runner-local by design, so a hit needs the same runner.
+That runner-local cache needs the same runner for a hit.
 
 ### 12.6 Protocol v1
 
@@ -1166,6 +1176,9 @@ The cache is runner-local by design, so a hit needs the same runner.
 | `POST tasks/{id}/logs?from=<line>` | 8 MiB | `text/plain` lines, stored only from the server's current line count. A resend overlaps harmlessly; a gap answers `409 {next_line}`. |
 | `PUT tasks/{id}/artifacts/{name}` | `max_artifact_bytes` | Stream A: upload an artifact. |
 | `GET tasks/{id}/artifacts[/{name}]` | — | Stream A: this run's artifacts. |
+| `POST tasks/{id}/caches/lookup` | 64 KiB | Shared cache: the entry to restore for a key, restore keys and version. |
+| `GET tasks/{id}/caches/{entry}` | — | Shared cache: one entry's tar.gz, from the task's read scopes only. |
+| `PUT tasks/{id}/caches?key=&version=&replace=` | `max_cache_storage_bytes` | Shared cache: save to the task's write scope; `409` when the key is saved. |
 | `POST unregister` | 1 KiB | Used by ephemeral runners and by uninstalling `rbit-runner`. |
 
 **Long poll.** The handler checks the runner against the cache only, then loops:

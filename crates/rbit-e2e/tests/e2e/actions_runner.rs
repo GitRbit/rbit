@@ -1,7 +1,7 @@
 //! Actions end to end: a real `rbit-runner` on the host backend registers with a token made
 //! on the runners page, takes the jobs of a pushed workflow over the protocol, checks the
 //! repository out with its task token, runs bash steps with a secret and step outputs,
-//! hands an artifact from one job to the next, and reports back — the run, its jobs, the masked log, the job outputs passed to the next job,
+//! hands an artifact and a cache entry (kept by the server) from one job to the next, and reports back — the run, its jobs, the masked log, the job outputs passed to the next job,
 //! a skipped `failure()` job and the commit status all come out as on GitHub.
 //!
 //! The container backend is not exercised here: it needs Docker or Podman, which test hosts
@@ -67,9 +67,15 @@ jobs:
           echo "greeting is $GREETING"
           echo "region is ${{ vars.REGION }}"
           echo "answer=42" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ github.sha }}
       - name: Build
         shell: bash
-        run: mkdir -p dist && echo "built at $GITHUB_SHA" > dist/app.txt
+        run: |
+          mkdir -p dist deps && echo "built at $GITHUB_SHA" > dist/app.txt
+          echo "fetched once" > deps/lib.txt
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -81,10 +87,17 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
+      - id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: deps
+          key: deps-${{ github.sha }}
+          fail-on-cache-miss: true
       - shell: bash
         run: |
           echo "the answer is ${{ needs.build.outputs.answer }}"
           cat app.txt
+          echo "cache hit ${{ steps.deps.outputs.cache-hit }}: $(cat deps/lib.txt)"
   on-failure:
     needs: build
     if: failure()
@@ -188,6 +201,8 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     let report = alice.get(&raw(job_id("report"))).await.body;
     assert!(report.contains("the answer is 42"), "{report}");
     assert!(report.contains(&format!("built at {sha}")), "the artifact reached the next job: {report}");
+    assert!(report.contains("cache hit true: fetched once"), "the cache entry reached the next job: {report}");
+    assert!(!home.path().join("work/cache").exists(), "the server kept the cache, not the runner");
 
     // The run reported its jobs as commit statuses.
     let status = json(&api, &server.url(&format!("/api/v1/repos/alice/rocket/commits/{sha}/status"))).await;

@@ -23,9 +23,9 @@ pub mod permissions;
 pub mod records;
 
 pub use records::{
-    Artifact, BranchPolicy, DeploymentReview, Environment, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken, RepoActionsSettings,
-    ReviewDecision, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities, ScheduleEntry, SealedSecret, SecretInfo, SecretVisibility,
-    Step, Task, TrustedUser, Variable,
+    Artifact, BranchPolicy, CacheEntry, DeploymentReview, Environment, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken,
+    RepoActionsSettings, ReviewDecision, Run, RunEvent, Runner, RunnerBackend, RunnerCapabilities, ScheduleEntry, SealedSecret, SecretInfo,
+    SecretVisibility, Step, Task, TrustedUser, Variable,
 };
 
 macro_rules! id {
@@ -83,6 +83,11 @@ id!(
 id!(
     /// Files a job uploaded.
     ArtifactId
+);
+// Actions: shared cache.
+id!(
+    /// An `actions/cache` entry kept by the server for every runner of a repository.
+    CacheEntryId
 );
 
 /// The life cycle of a run or a job, with Forgejo's numbers (`0` is Forgejo's "unknown"

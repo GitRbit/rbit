@@ -32,7 +32,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   triggers, matrices, `needs`, job and step
   `if:` with GitHub's expressions, `fail-fast`, `max-parallel`, concurrency groups,
   containers and services, and the built-in `rbit/checkout`, `rbit/cache`,
-  `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases).
+  `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases). The server
+  keeps `actions/cache` entries for every runner of a repository, as GitHub does, within
+  `[actions] max_cache_storage_bytes` and `cache_retention_days`.
 - **rbit-runner**, shipped in every release archive and as `ghcr.io/gitrbit/rbit-runner`:
   registers with a single-use token, runs jobs in Docker or Podman containers (no privileges,
   no Docker socket, a network per job) or on the host, masks secrets in logs, and offers

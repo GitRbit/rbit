@@ -1,7 +1,11 @@
 //! `rbit/cache` (restore now, save after the job), `rbit/cache/restore` and
 //! `rbit/cache/save`, and their `actions/cache` aliases (§12.5.6).
 //!
-//! The cache is local to the runner: entries live at
+//! When the server keeps caches for all its runners (it says so when the runner declares
+//! itself), entries go to the server and any runner of the repository restores them; the
+//! server picks the scopes from the task's run, matches the version [`version`] derives
+//! from the paths and the platform, and evicts. Otherwise the cache is local to the
+//! runner, and what follows describes it: entries live at
 //! `<work_dir>/cache/<repository id>/<scope>/<sha256(key)>.tar.gz` (tar and gzip), with a
 //! small `.json` beside each naming its key and paths, and are evicted least recently used
 //! once all of them together exceed `cache.max_bytes`. A restore touches the entry it
@@ -469,6 +473,57 @@ fn roots(job: &Job) -> Roots {
     Roots { workspace: job.dirs.workspace.clone(), home: matches!(job.backend, Backend::Host(_)).then(home).flatten() }
 }
 
+// Actions: shared cache.
+/// The server, when it keeps caches for all runners.
+fn shared(job: &Job) -> Option<crate::client::Client> {
+    job.server.clone().filter(crate::client::Client::shared_cache)
+}
+
+/// What a restore from the server's cache must match besides the key: the paths, and where
+/// the archive was made (a Windows archive, or one with home paths, unpacks wrongly
+/// elsewhere).
+pub fn version(paths: &[String], windows: bool, container: bool) -> String {
+    let platform = match (windows, container) {
+        (true, _) => "windows",
+        (false, true) => "posix-container",
+        (false, false) => "posix",
+    };
+    hex(&Sha256::digest(format!("{}\n{platform}", paths.join("\n")).as_bytes()))
+}
+
+fn job_version(job: &Job, paths: &[String]) -> String {
+    version(paths, job.backend.windows(), matches!(job.backend, Backend::Container(_)))
+}
+
+/// The entry the server's cache has for `key`, downloaded into the job's private
+/// directory and checked against its digest.
+async fn fetch(
+    job: &Job,
+    server: &crate::client::Client,
+    key: &str,
+    restore_keys: &[String],
+    paths: &[String],
+) -> Result<Option<Found>, String> {
+    let request = rbit_workflow::protocol::CacheLookupRequest {
+        key: key.to_owned(),
+        restore_keys: restore_keys.to_vec(),
+        version: job_version(job, paths),
+    };
+    let Some(entry) = server.cache_lookup(job.spec.task_id, &request).await.map_err(|error| error.to_string())? else {
+        return Ok(None);
+    };
+    let private = job.private_dir().map_err(|error| error.to_string())?;
+    let archive = private.join(format!("cache-{}.tar.gz", crate::client::idempotency_key()));
+    let sent = server.download_cache(job.spec.task_id, entry.id, &archive).await.map_err(|error| error.to_string())?;
+    let checked = archive.clone();
+    let actual = tokio::task::spawn_blocking(move || super::artifact::file_digest(&checked)).await.map_err(|error| error.to_string());
+    if !matches!(&actual, Ok(Ok(digest)) if *digest == entry.sha256 && (sent.is_empty() || sent == entry.sha256)) {
+        let _ = fs::remove_file(&archive);
+        return Err("the downloaded entry does not match its digest".to_owned());
+    }
+    Ok(Some(Found { archive, key: entry.key, scope: entry.scope }))
+}
+
 /// Runs a cache step.
 pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome {
     let key = inputs.get("key").trim().to_owned();
@@ -487,7 +542,15 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
     }
     let restore_keys = lines(inputs.get("restore-keys"));
     let (store, scopes, repository, roots) = (job.cache.clone(), job.spec.cache.read.clone(), job.spec.cache.repository_id, roots(job));
-    let found = store.find(repository, &scopes, &key, &restore_keys, &paths);
+    let server = shared(job);
+    let found = match &server {
+        None => store.find(repository, &scopes, &key, &restore_keys, &paths),
+        // As with GitHub's cache service, one that cannot be reached is a miss.
+        Some(server) => fetch(job, server, &key, &restore_keys, &paths).await.unwrap_or_else(|error| {
+            job.reporter.log(&format!("##[warning]cannot restore from the server's cache, so it is a miss: {error}"));
+            None
+        }),
+    };
     let mut outputs = BTreeMap::from([("cache-primary-key".to_owned(), key.clone())]);
     let miss = |job: &mut Job, mut outputs: BTreeMap<String, String>, replace: bool| {
         if inputs.flag("fail-on-cache-miss") {
@@ -505,18 +568,24 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
     };
     job.reporter.log(&format!("Restoring the cache entry `{}` from scope `{}`", found.key, found.scope));
     let archive = found.archive.clone();
+    let downloaded = server.is_some();
     // As with GitHub's cache, an entry that cannot be restored (another job's save evicted
     // it meanwhile, it is damaged) is a miss, not a failed job, and the job's save replaces
     // it.
     let error = match tokio::task::spawn_blocking(move || extract(&archive, &roots)).await {
         Ok(Ok(files)) => {
             job.reporter.log(&format!("Restored {files} file(s)"));
-            touch(&found.archive);
+            if !downloaded {
+                touch(&found.archive);
+            }
             None
         }
         Ok(Err(error)) => Some(error.to_string()),
         Err(error) => Some(error.to_string()),
     };
+    if downloaded {
+        let _ = fs::remove_file(&found.archive);
+    }
     if let Some(error) = error {
         job.reporter.log(&format!("##[warning]cannot restore the cache entry `{}`, so it is a miss: {error}", found.key));
         return miss(job, outputs, true);
@@ -533,6 +602,9 @@ pub async fn cache(job: &mut Job, kind: BuiltinKind, inputs: &Inputs) -> Outcome
 /// Saves `paths` as `key` in the job's write scope; an entry already there stays unless
 /// `replace`.
 pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Result<(), String> {
+    if let Some(server) = shared(job) {
+        return save_shared(job, &server, key, paths, replace).await;
+    }
     let (repository, scope) = (job.spec.cache.repository_id, job.spec.cache.write.clone());
     if !replace && job.cache.exists(repository, &scope, key, paths) {
         job.reporter.log(&format!("The cache entry `{key}` already exists in scope `{scope}`; it is not saved again"));
@@ -551,9 +623,69 @@ pub async fn save(job: &Job, key: &str, paths: &[String], replace: bool) -> Resu
     Ok(())
 }
 
+// Actions: shared cache.
+/// [`save`] to the server's cache.
+async fn save_shared(job: &Job, server: &crate::client::Client, key: &str, paths: &[String], replace: bool) -> Result<(), String> {
+    let version = job_version(job, paths);
+    let write = &job.spec.cache.write;
+    if !replace {
+        // The write scope is the first one read, so an exact hit there means it is saved.
+        let request =
+            rbit_workflow::protocol::CacheLookupRequest { key: key.to_owned(), restore_keys: Vec::new(), version: version.clone() };
+        let found =
+            server.cache_lookup(job.spec.task_id, &request).await.map_err(|error| format!("cannot reach the server's cache: {error}"))?;
+        if found.is_some_and(|entry| entry.key == key && entry.scope == *write) {
+            job.reporter.log(&format!("The cache entry `{key}` already exists in scope `{write}`; it is not saved again"));
+            return Ok(());
+        }
+    }
+    let roots = roots(job);
+    let lines = resolve(paths, &roots, &job.backend.view().workspace, matches!(job.backend, Backend::Container(_)))?;
+    let private = job.private_dir().map_err(|error| error.to_string())?;
+    let archive = private.join(format!("cache-{}.tar.gz", crate::client::idempotency_key()));
+    let (path, windows, max_bytes) = (archive.clone(), job.backend.windows(), job.cache.max_bytes);
+    let written = tokio::task::spawn_blocking(move || {
+        let selected = select(&lines, &roots, true, windows)?;
+        let size = write_archive(&path, &selected.files, &roots).map_err(|error| format!("cannot write the cache entry: {error}"))?;
+        if size > max_bytes {
+            return Err(format!("the cache entry would be {size} bytes, more than cache.max_bytes ({max_bytes})"));
+        }
+        let digest = super::artifact::file_digest(&path).map_err(|error| error.to_string())?;
+        Ok((size, digest))
+    })
+    .await
+    .map_err(|error| error.to_string())
+    .and_then(|written| written);
+    let saved = match written {
+        Ok((size, digest)) => server
+            .save_cache(job.spec.task_id, key, &version, replace, &digest, &archive)
+            .await
+            .map(|entry| (size, entry))
+            .map_err(|error| format!("cannot save the cache entry `{key}`: {error}")),
+        Err(error) => Err(error),
+    };
+    let _ = fs::remove_file(&archive);
+    match saved? {
+        (size, Some(entry)) => job.reporter.log(&format!("Saved the cache entry `{key}` ({size} bytes) in scope `{}`", entry.scope)),
+        (_, None) => job.reporter.log(&format!("The cache entry `{key}` was saved meanwhile; it is not saved again")),
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn versions_tell_paths_and_platforms_apart() {
+        let paths = vec!["target".to_owned(), "~/.cargo".to_owned()];
+        let linux = version(&paths, false, false);
+        assert_eq!(linux.len(), 64);
+        assert_eq!(linux, version(&paths, false, false));
+        assert_ne!(linux, version(&paths, true, false));
+        assert_ne!(linux, version(&paths, false, true));
+        assert_ne!(linux, version(&paths[..1], false, false));
+    }
 
     fn store(dir: &Path, max_bytes: u64) -> Store {
         Store { root: dir.join("cache"), max_bytes }

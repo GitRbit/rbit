@@ -11,13 +11,21 @@
 //! caller keeps across retries of the same poll, so a task whose answer was lost comes
 //! back on the retry instead of waiting for the sweeper.
 
-use std::{fmt::Write as _, sync::Once, time::Duration};
+use std::{
+    fmt::Write as _,
+    sync::{
+        Arc, Once,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use rbit_workflow::{
     protocol::{
-        ArtifactInfo, ArtifactList, ArtifactQuery, BASE_PATH, CONTENT_SHA256_HEADER, DeclareRequest, DeclareResponse, ErrorBody, ErrorCode,
-        IDEMPOTENCY_KEY_HEADER, LogsResponse, PROTOCOL_HEADER, PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, TaskId,
-        TaskStateRequest, TaskStateResponse, USER_AGENT_PREFIX, UnregisterRequest,
+        ArtifactInfo, ArtifactList, ArtifactQuery, BASE_PATH, CONTENT_SHA256_HEADER, CacheEntryInfo, CacheLookupRequest,
+        CacheLookupResponse, DeclareRequest, DeclareResponse, ErrorBody, ErrorCode, IDEMPOTENCY_KEY_HEADER, LogsResponse, PROTOCOL_HEADER,
+        PROTOCOL_VERSION, PollRequest, RegisterRequest, RegisterResponse, TaskId, TaskStateRequest, TaskStateResponse, USER_AGENT_PREFIX,
+        UnregisterRequest,
     },
     secret::Secret,
     spec::JobSpec,
@@ -59,6 +67,10 @@ pub struct Client {
     /// `<server>/api/actions/runner/v1/`.
     base: Url,
     credential: Option<Secret>,
+    // Actions: shared cache.
+    /// Whether the server keeps caches for all runners, as its last `declare` answered;
+    /// shared by every clone.
+    shared_cache: Arc<AtomicBool>,
 }
 
 /// What to do about a failed call.
@@ -240,7 +252,7 @@ impl Client {
             .build()?;
         let mut base = server.clone();
         base.set_path(&format!("{}{BASE_PATH}/", server.path().trim_end_matches('/')));
-        Ok(Self { http, base, credential })
+        Ok(Self { http, base, credential, shared_cache: Arc::new(AtomicBool::new(false)) })
     }
 
     pub fn endpoint(&self, path: &str) -> Url {
@@ -250,7 +262,12 @@ impl Client {
 
     /// A request with the protocol headers and, when the client has one, the credential.
     pub fn request(&self, method: reqwest::Method, path: &str) -> RequestBuilder {
-        let request = self.http.request(method, self.endpoint(path)).header(PROTOCOL_HEADER, PROTOCOL_VERSION.to_string());
+        self.request_url(method, self.endpoint(path))
+    }
+
+    /// [`Self::request`] to `url`, an endpoint with its query.
+    fn request_url(&self, method: reqwest::Method, url: Url) -> RequestBuilder {
+        let request = self.http.request(method, url).header(PROTOCOL_HEADER, PROTOCOL_VERSION.to_string());
         match &self.credential {
             Some(credential) => request.bearer_auth(credential.expose()),
             None => request,
@@ -300,7 +317,58 @@ impl Client {
     pub async fn declare(&self, request: &DeclareRequest) -> Result<DeclareResponse, CallError> {
         let response: DeclareResponse = self.json(self.request(Method::POST, "declare").json(request)).await?;
         response.intervals.validate().map_err(|error| CallError::Malformed(error.message))?;
+        self.shared_cache.store(response.shared_cache, Ordering::SeqCst);
         Ok(response)
+    }
+
+    // Actions: shared cache.
+    /// Whether the server keeps `actions/cache` entries for all its runners.
+    pub fn shared_cache(&self) -> bool {
+        self.shared_cache.load(Ordering::SeqCst)
+    }
+
+    /// `POST tasks/{id}/caches/lookup`: the entry to restore, if any.
+    pub async fn cache_lookup(&self, task: TaskId, request: &CacheLookupRequest) -> Result<Option<CacheEntryInfo>, CallError> {
+        let response: CacheLookupResponse =
+            self.json(self.request(Method::POST, &format!("tasks/{task}/caches/lookup")).json(request)).await?;
+        Ok(response.entry)
+    }
+
+    /// `GET tasks/{id}/caches/{entry}` into a new file at `out`; the SHA-256 (hex) the server
+    /// sent with it.
+    pub async fn download_cache(&self, task: TaskId, entry: i64, out: &std::path::Path) -> Result<String, CallError> {
+        let request = self.request(Method::GET, &format!("tasks/{task}/caches/{entry}")).timeout(ARTIFACT_TIMEOUT);
+        self.download(request, out).await
+    }
+
+    /// `PUT tasks/{id}/caches`: saves the tar.gz at `archive` as `key`; `None` when the
+    /// task's scope has the key already.
+    pub async fn save_cache(
+        &self,
+        task: TaskId,
+        key: &str,
+        version: &str,
+        replace: bool,
+        sha256: &str,
+        archive: &std::path::Path,
+    ) -> Result<Option<CacheEntryInfo>, CallError> {
+        let file =
+            tokio::fs::File::open(archive).await.map_err(|error| CallError::Unreachable(format!("cannot read the archive: {error}")))?;
+        let length = file.metadata().await.map(|metadata| metadata.len()).unwrap_or_default();
+        let mut url = self.endpoint(&format!("tasks/{task}/caches"));
+        url.query_pairs_mut().append_pair("key", key).append_pair("version", version).append_pair("replace", &replace.to_string());
+        let request = self
+            .request_url(Method::PUT, url)
+            .header(CONTENT_SHA256_HEADER, sha256)
+            .header(header::CONTENT_TYPE, "application/gzip")
+            .header(header::CONTENT_LENGTH, length)
+            .timeout(ARTIFACT_TIMEOUT)
+            .body(reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(file)));
+        match self.json(request).await {
+            Ok(entry) => Ok(Some(entry)),
+            Err(CallError::Status { status: 409, .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     /// `POST poll`: a task, or `None` when the poll ended empty. The server holds the call
@@ -370,9 +438,15 @@ impl Client {
     /// server sent with it.
     pub async fn download_artifact(&self, task: TaskId, run: Option<i64>, name: &str, out: &std::path::Path) -> Result<String, CallError> {
         let request = self.request(Method::GET, &format!("tasks/{task}/artifacts/{name}{}", run_query(run))).timeout(ARTIFACT_TIMEOUT);
+        self.download(request, out).await
+    }
+
+    /// Sends `request` and writes its body into a new file at `out`; the SHA-256 (hex) the
+    /// server sent with it.
+    async fn download(&self, request: RequestBuilder, out: &std::path::Path) -> Result<String, CallError> {
         let mut response = self.send(request).await?;
         let digest = response.headers().get(CONTENT_SHA256_HEADER).and_then(|value| value.to_str().ok()).unwrap_or_default().to_owned();
-        let local = |error: std::io::Error| CallError::Unreachable(format!("cannot write the artifact: {error}"));
+        let local = |error: std::io::Error| CallError::Unreachable(format!("cannot write the download: {error}"));
         let mut file = tokio::fs::File::create(out).await.map_err(local)?;
         while let Some(chunk) = response.chunk().await.map_err(|error| CallError::Unreachable(transport_message(&error)))? {
             tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await.map_err(local)?;

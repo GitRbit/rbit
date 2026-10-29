@@ -15,7 +15,7 @@ use crate::{
     actions_runner_tasks::{payload, poll, seed, spec, template},
 };
 
-fn hex(bytes: &[u8]) -> String {
+pub fn hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().fold(String::new(), |mut hex, byte| {
         use std::fmt::Write as _;
         let _ = write!(hex, "{byte:02x}");
@@ -35,7 +35,7 @@ impl Answer {
     }
 }
 
-async fn call(fixture: &Fixture, method: Method, path: &str, credential: &str, digest: Option<&str>, body: Vec<u8>) -> Answer {
+pub async fn call(fixture: &Fixture, method: Method, path: &str, credential: &str, digest: Option<&str>, body: Vec<u8>) -> Answer {
     let mut request = Request::builder()
         .method(method)
         .uri(format!("/api/actions/runner/v1/{path}"))

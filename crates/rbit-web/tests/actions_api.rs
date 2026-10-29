@@ -16,12 +16,12 @@ use crate::{
     actions_runner_tasks::{logs, payload, poll, seed, spec, state, template},
 };
 
-async fn token(fixture: &Fixture, user: &User, scope: TokenScope) -> String {
+pub async fn token(fixture: &Fixture, user: &User, scope: TokenScope) -> String {
     let input = CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None };
     fixture.services.tokens.create(user, input).await.unwrap().1
 }
 
-async fn api(fixture: &Fixture, method: Method, path: &str, token: &str) -> Answer {
+pub async fn api(fixture: &Fixture, method: Method, path: &str, token: &str) -> Answer {
     let request = Request::builder()
         .method(method)
         .uri(format!("/api/v1{path}"))

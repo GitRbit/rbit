@@ -737,6 +737,9 @@ async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
         "INSERT INTO actions_repositories (repo_id, allowed_actions, updated_at) VALUES (6, 'some', 1)".to_owned(),
         "INSERT INTO actions_repositories (repo_id, approval_policy, updated_at) VALUES (6, 'nobody', 1)".to_owned(),
         "INSERT INTO actions_owner_settings (owner_id, enabled_repositories, updated_at) VALUES (10, 'most', 1)".to_owned(),
+        // Actions: shared cache.
+        "INSERT INTO actions_caches (repo_id, scope, key, version, size, sha256, created_at, used_at)          VALUES (6, 'heads/trunk', 'cargo', 'ABC', 3, zeroblob(32), 1, 1)"
+            .to_owned(),
     ];
     for sql in refused {
         assert!(sqlx::query(sqlx::AssertSqlSafe(sql.clone())).execute(&db.raw).await.is_err(), "{sql}");
@@ -758,6 +761,8 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
         tables,
         [
             "actions_artifacts",
+            // Actions: shared cache.
+            "actions_caches",
             "actions_deployment_reviews",
             "actions_environment_reviewers",
             "actions_environment_secrets",
@@ -815,7 +820,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
          INSERT INTO actions_owner_policies (owner_id, instance_runners, updated_by, updated_at) VALUES (10, 1, 2, 1); \
          INSERT INTO actions_registration_tokens (digest, scope_kind, repo_id, created_by, created_at, expires_at) \
              VALUES (zeroblob(32), 'repository', 6, 2, 1, 2); \
-         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);          INSERT INTO actions_environments (id, repo_id, name, created_at, updated_at) VALUES (1, 6, 'production', 1, 1);          INSERT INTO actions_environment_reviewers (environment_id, account_id) VALUES (1, 2);          INSERT INTO actions_environment_secrets (environment_id, name, key_id, nonce, ciphertext, created_at, updated_at, updated_by)              VALUES (1, 'KEY', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1, 2);          INSERT INTO actions_environment_variables (environment_id, name, value, created_at, updated_at) VALUES (1, 'A', 'b', 1, 1);          INSERT INTO actions_deployment_reviews (job_id, attempt, environment, reviewer_id, decision, created_at)              VALUES (1, 1, 'production', 2, 'approved', 1);",
+         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);          INSERT INTO actions_caches (repo_id, scope, key, version, size, sha256, created_at, used_at)              VALUES (6, 'heads/trunk', 'cargo', printf('%064d', 0), 3, zeroblob(32), 1, 1);          INSERT INTO actions_environments (id, repo_id, name, created_at, updated_at) VALUES (1, 6, 'production', 1, 1);          INSERT INTO actions_environment_reviewers (environment_id, account_id) VALUES (1, 2);          INSERT INTO actions_environment_secrets (environment_id, name, key_id, nonce, ciphertext, created_at, updated_at, updated_by)              VALUES (1, 'KEY', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1, 2);          INSERT INTO actions_environment_variables (environment_id, name, value, created_at, updated_at) VALUES (1, 'A', 'b', 1, 1);          INSERT INTO actions_deployment_reviews (job_id, attempt, environment, reviewer_id, decision, created_at)              VALUES (1, 1, 'production', 2, 'approved', 1);",
     )
     .execute(&db.raw)
     .await

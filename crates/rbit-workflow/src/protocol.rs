@@ -363,6 +363,11 @@ impl DeclareRequest {
 pub struct DeclareResponse {
     pub runner_id: RunnerId,
     pub intervals: Intervals,
+    // Actions: shared cache.
+    /// The server keeps `actions/cache` entries for all runners ([`CACHES_PATH`]); without
+    /// it (an older server) a runner keeps its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared_cache: bool,
 }
 
 /// `POST poll`, sent with an [`IDEMPOTENCY_KEY_HEADER`] and only while a slot is free.
@@ -629,6 +634,56 @@ pub struct ArtifactRunQuery {
     pub run_id: Option<i64>,
 }
 
+// Actions: shared cache.
+/// Where a task's cache entries are, below [`BASE_PATH`] (`{id}` is the task id), when the
+/// server declares [`DeclareResponse::shared_cache`]: `POST …/lookup` finds the entry to
+/// restore ([`CacheLookupRequest`], answered with [`CacheLookupResponse`]), `GET …/{entry}`
+/// downloads it (a tar.gz, with [`CONTENT_SHA256_HEADER`]), and `PUT` saves one (with
+/// [`CONTENT_SHA256_HEADER`] and [`CacheSaveQuery`]; `201` and its [`CacheEntryInfo`], or
+/// `409` when the key is saved already). The server picks the scopes from the task's run.
+pub const CACHES_PATH: &str = "tasks/{id}/caches";
+
+/// `POST tasks/{id}/caches/lookup`: the key, the `restore-keys` prefixes in order, and the
+/// version (64 lowercase hex digits, from the cached paths and the runner's platform).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CacheLookupRequest {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub restore_keys: Vec<String>,
+    pub version: String,
+}
+
+/// The answer to [`CacheLookupRequest`]: the entry to restore, if any.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheLookupResponse {
+    pub entry: Option<CacheEntryInfo>,
+}
+
+/// The query of a cache save.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CacheSaveQuery {
+    pub key: String,
+    pub version: String,
+    /// Replace an entry of the key that the job could not restore.
+    #[serde(default)]
+    pub replace: bool,
+}
+
+/// A cache entry, as lookups and saves answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheEntryInfo {
+    pub id: i64,
+    pub key: String,
+    /// The scope it was saved in (`heads/main`).
+    pub scope: String,
+    /// Bytes of the tar.gz.
+    pub size: u64,
+    /// Its SHA-256, as 64 lowercase hex digits.
+    pub sha256: String,
+}
+
 /// One artifact of a run, as uploads answer and lists show it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactInfo {
@@ -746,8 +801,21 @@ pub(crate) mod tests {
         declare.validate().unwrap();
         golden(&declare, &format!(r#"{{"name":"build-1","labels":{LABELS},"capabilities":{CAPABILITIES}}}"#));
         golden(
-            &DeclareResponse { runner_id: RunnerId(7), intervals: Intervals { long_poll_seconds: 25, heartbeat_seconds: 10 } },
+            &DeclareResponse {
+                runner_id: RunnerId(7),
+                intervals: Intervals { long_poll_seconds: 25, heartbeat_seconds: 10 },
+                shared_cache: false,
+            },
             r#"{"runner_id":7,"intervals":{"long_poll_seconds":25,"heartbeat_seconds":10}}"#,
+        );
+        // Actions: shared cache. Older runners read the answer without it.
+        golden(
+            &DeclareResponse {
+                runner_id: RunnerId(7),
+                intervals: Intervals { long_poll_seconds: 25, heartbeat_seconds: 10 },
+                shared_cache: true,
+            },
+            r#"{"runner_id":7,"intervals":{"long_poll_seconds":25,"heartbeat_seconds":10},"shared_cache":true}"#,
         );
         golden(&UnregisterRequest {}, "{}");
     }

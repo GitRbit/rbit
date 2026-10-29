@@ -2332,6 +2332,261 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/actions/caches": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getActionsCacheList",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's actions/cache entries, most recently used first",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "description": "Only keys starting with this.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "description": "Only entries of this ref (refs/heads/main, refs/pull/3/merge).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "The order.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "last_accessed_at",
+                "size_in_bytes"
+              ],
+              "default": "last_accessed_at"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "description": "The direction.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of cache entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteActionsCacheByKey",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete the entries of a key, of one ref when given (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "description": "The key.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "description": "Only entries of this ref.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheList"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/caches/{cache_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "cache_id",
+          "in": "path",
+          "required": true,
+          "description": "The cache entry's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "deleteActionsCacheById",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete a cache entry and its file (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/cache/usage": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getActionsCacheUsage",
+        "tags": [
+          "actions"
+        ],
+        "summary": "How many cache entries the repository keeps, and their bytes",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheUsage"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/actions/runners": {
       "parameters": [
         {
@@ -3760,6 +4015,82 @@
           }
         },
         "description": "GitHub's wrapped list"
+      },
+      "ActionsCache": {
+        "type": "object",
+        "required": [
+          "id",
+          "ref",
+          "key",
+          "version",
+          "last_accessed_at",
+          "created_at",
+          "size_in_bytes"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "last_accessed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "size_in_bytes": {
+            "type": "integer"
+          }
+        },
+        "description": "An actions/cache entry, kept by the server for every runner of the repository"
+      },
+      "ActionsCacheList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "actions_caches"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "actions_caches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsCache"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsCacheUsage": {
+        "type": "object",
+        "required": [
+          "full_name",
+          "active_caches_size_in_bytes",
+          "active_caches_count"
+        ],
+        "properties": {
+          "full_name": {
+            "type": "string"
+          },
+          "active_caches_size_in_bytes": {
+            "type": "integer"
+          },
+          "active_caches_count": {
+            "type": "integer"
+          }
+        }
       },
       "Runner": {
         "type": "object",

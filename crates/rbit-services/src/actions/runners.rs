@@ -514,7 +514,12 @@ impl ActionsService {
         if stored.capabilities.runs_on_host() {
             tracing::warn!(runner = stored.id.0, name = %stored.name, "runner declares host labels: their jobs run without isolation");
         }
-        Ok(DeclareResponse { runner_id: rbit_workflow::protocol::RunnerId(stored.id.0), intervals: self.intervals() })
+        Ok(DeclareResponse {
+            runner_id: rbit_workflow::protocol::RunnerId(stored.id.0),
+            intervals: self.intervals(),
+            // Actions: shared cache.
+            shared_cache: true,
+        })
     }
 
     /// `POST unregister`: the runner removes itself (an ephemeral runner after its task, or

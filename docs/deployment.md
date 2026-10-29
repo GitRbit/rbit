@@ -12,7 +12,7 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | `tmp/` | Scratch space: merges, web edits, cross-fork overlays, LFS uploads in progress | No (swept at start-up) |
 | `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
 | `actions/secrets.key` | The key that seals Actions secrets (only with Actions enabled) | **Separately**: not in `rbit backup` |
-| `actions/logs/`, `actions/artifacts/` | Job logs and workflow artifacts (only with Actions enabled) | No (kept for a retention period) |
+| `actions/logs/`, `actions/artifacts/`, `actions/caches/` | Job logs, workflow artifacts and `actions/cache` entries (only with Actions enabled) | No (kept for a retention period) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
 [Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),

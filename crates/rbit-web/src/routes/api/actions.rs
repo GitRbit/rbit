@@ -31,6 +31,8 @@
 //!   redirect to it. An artifact downloads as GitHub's zip (`…/artifacts/{artifact_id}/zip`,
 //!   its `archive_download_url`), made while it is sent, or as a tar.gz (`…/tar.gz`), both
 //!   with the files at the top; any other format is 404.
+//! * `actions/cache` entries are listed and deleted as on GitHub (`…/actions/caches`,
+//!   `…/actions/cache/usage`); deleting needs `write` and write access.
 
 use std::collections::BTreeMap;
 
@@ -42,12 +44,16 @@ use axum::{
 };
 use rbit_core::{
     RepoId, Timestamp, TokenScope, User,
-    actions::{Artifact, ArtifactId, JobId, RunEvent, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Status, Variable},
+    actions::{
+        Artifact, ArtifactId, CacheEntry, CacheEntryId, JobId, RunEvent, RunId, Runner, RunnerId, SecretScope, SecretVisibility, Status,
+        Variable,
+    },
 };
 use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
     actions::{
         browse::RunQuery,
+        caches::{CacheOrder, scope_ref},
         dispatch::DispatchRequest,
         hooks,
         runners::{ManagedScope, RegistrationOptions},
@@ -95,6 +101,11 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/artifacts/{artifact_id}"), show_artifact),
         route(Delete, repo("/artifacts/{artifact_id}"), delete_artifact),
         route(Get, repo("/artifacts/{artifact_id}/{archive_format}"), download_artifact),
+        // Actions: cache REST API.
+        route(Get, repo("/caches"), list_caches),
+        route(Delete, repo("/caches"), delete_caches_by_key),
+        route(Delete, repo("/caches/{cache_id}"), delete_cache),
+        route(Get, repo("/cache/usage"), cache_usage),
         route(Get, repo("/workflows"), workflows),
         route(Post, repo("/workflows/{workflow_id}/dispatches"), dispatch),
         // Actions: workflow_run and repository_dispatch.
@@ -136,6 +147,8 @@ pub struct ActionsPath {
     artifact_id: Option<String>,
     archive_format: Option<String>,
     runner_id: Option<String>,
+    // Actions: cache REST API.
+    cache_id: Option<String>,
     // Actions: settings API.
     repository_id: Option<String>,
 }
@@ -156,6 +169,11 @@ impl ActionsPath {
 
     fn artifact(&self) -> ApiResult<ArtifactId> {
         parse_id(self.artifact_id.as_deref()).map(ArtifactId)
+    }
+
+    // Actions: cache REST API.
+    fn cache(&self) -> ApiResult<CacheEntryId> {
+        parse_id(self.cache_id.as_deref()).map(CacheEntryId)
     }
 
     fn runner(&self) -> ApiResult<RunnerId> {
@@ -581,6 +599,108 @@ pub async fn delete_artifact(State(state): State<AppState>, caller: Caller, Path
     let user = require_writer(&caller, &ctx)?;
     actions.delete_artifact(user, &ctx, artifact.id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ------------------------------------------------------------------ caches
+
+// Actions: cache REST API.
+/// A cache entry, shaped like GitHub's.
+fn cache_json(entry: &CacheEntry) -> Value {
+    json!({
+        "id": entry.id.0,
+        "ref": scope_ref(&entry.scope),
+        "key": entry.key,
+        "version": entry.version,
+        "last_accessed_at": timestamp(entry.used_at),
+        "created_at": timestamp(entry.created_at),
+        "size_in_bytes": entry.size,
+    })
+}
+
+/// The filter and order of `GET …/actions/caches`, and the filter of `DELETE` by key.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct CachesQuery {
+    key: String,
+    #[serde(rename = "ref")]
+    reference: String,
+    sort: String,
+    direction: String,
+}
+
+impl CachesQuery {
+    fn order(&self) -> ApiResult<CacheOrder> {
+        let ascending = match self.direction.as_str() {
+            "" | "desc" => false,
+            "asc" => true,
+            _ => return Err(ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "direction is asc or desc")),
+        };
+        Ok(match (self.sort.as_str(), ascending) {
+            ("" | "last_accessed_at", false) => CacheOrder::UsedDesc,
+            ("" | "last_accessed_at", true) => CacheOrder::UsedAsc,
+            ("created_at", false) => CacheOrder::CreatedDesc,
+            ("created_at", true) => CacheOrder::CreatedAsc,
+            ("size_in_bytes", false) => CacheOrder::SizeDesc,
+            ("size_in_bytes", true) => CacheOrder::SizeAsc,
+            _ => return Err(ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "sort is created_at, last_accessed_at or size_in_bytes")),
+        })
+    }
+}
+
+/// `GET /repos/{owner}/{repo}/actions/caches`: least recently used last by default; `key`
+/// keeps keys starting with it, `ref` one branch's or pull request's.
+pub async fn list_caches(
+    State(state): State<AppState>,
+    caller: Caller,
+    pager: Pager,
+    Path(path): Path<ActionsPath>,
+    Query(query): Query<CachesQuery>,
+) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let order = query.order()?;
+    let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
+    let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
+    let (key, reference) = (non_empty(&query.key), non_empty(&query.reference));
+    let (entries, total) = actions(&state)?.repo_caches(&ctx, key.as_deref(), reference.as_deref(), order, offset, limit).await?;
+    Ok(wrapped("actions_caches", pager.paged(entries.iter().map(cache_json).collect(), Some(total), false)))
+}
+
+/// `DELETE /repos/{owner}/{repo}/actions/caches?key=…[&ref=…]`: the entries deleted.
+pub async fn delete_caches_by_key(
+    State(state): State<AppState>,
+    caller: Caller,
+    Path(path): Path<ActionsPath>,
+    Query(query): Query<CachesQuery>,
+) -> ApiResult<Json<Value>> {
+    let ctx = path.repo(&state, &caller).await?;
+    let user = require_writer(&caller, &ctx)?;
+    let key = non_empty(&query.key).ok_or_else(|| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "key is required"))?;
+    let reference = non_empty(&query.reference);
+    let deleted = actions(&state)?.delete_caches_by_key(user, &ctx, &key, reference.as_deref()).await?;
+    if deleted.is_empty() {
+        return Err(ApiError::not_found());
+    }
+    Ok(Json(json!({ "total_count": deleted.len(), "actions_caches": deleted.iter().map(cache_json).collect::<Vec<_>>() })))
+}
+
+/// `DELETE /repos/{owner}/{repo}/actions/caches/{cache_id}`: `204`; the file goes too.
+pub async fn delete_cache(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    let ctx = path.repo(&state, &caller).await?;
+    let id = path.cache()?;
+    let user = require_writer(&caller, &ctx)?;
+    actions(&state)?.delete_cache(user, &ctx, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /repos/{owner}/{repo}/actions/cache/usage`
+pub async fn cache_usage(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
+    let ctx = path.repo(&state, &caller).await?;
+    let (count, bytes) = actions(&state)?.cache_usage(&ctx).await?;
+    Ok(Json(json!({
+        "full_name": ctx.repo.full_name(),
+        "active_caches_size_in_bytes": bytes,
+        "active_caches_count": count,
+    })))
 }
 
 // ------------------------------------------------------------------ runners

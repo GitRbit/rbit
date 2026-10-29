@@ -325,3 +325,7 @@ instance_runners_for_all = false
 max_artifact_bytes = 2147483648
 max_artifact_storage_bytes = 10737418240
 artifact_retention_days = 90
+# actions/cache: bytes kept per repository for all its runners (least recently used go
+# first) and days an entry is kept unused. Not backed up.
+max_cache_storage_bytes = 10737418240
+cache_retention_days = 7

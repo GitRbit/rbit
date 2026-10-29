@@ -1152,6 +1152,23 @@ const ACTIONS: &[Spec] = &[
         optional: false,
         max: "4294967295",
     },
+    // Actions: shared cache.
+    Spec {
+        key: "max_cache_storage_bytes",
+        label: "Cache storage per repository (bytes)",
+        help: "actions/cache bytes kept per repository for all its runners; the least recently used entries go first. Caches are not backed up.",
+        kind: Kind::Number,
+        optional: false,
+        max: "18446744073709551615",
+    },
+    Spec {
+        key: "cache_retention_days",
+        label: "Cache retention (days)",
+        help: "Days a cache entry is kept without being restored.",
+        kind: Kind::Number,
+        optional: false,
+        max: "4294967295",
+    },
 ];
 
 pub(super) const PROVIDER: &[Spec] = &[
