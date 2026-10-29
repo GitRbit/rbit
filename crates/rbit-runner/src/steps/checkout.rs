@@ -394,6 +394,15 @@ fn persist(job: &Job, source: &CheckoutSource, token: &str, target: &Path) -> st
     // action's, which see the workspace and `temp` elsewhere.
     let host = |path: &Path| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()).to_string_lossy().replace('\\', "/");
     let mut views = vec![(host(&job.dirs.workspace), host(&job.dirs.temp), cfg!(windows))];
+    // Git matches `gitdir` against the path it found, which Git for Windows has already
+    // lengthened (`RUNNER~1` is `runneradmin` to it), and against that path's real path; a
+    // work directory given through a short name or a link would match neither.
+    if let Ok(real) = std::fs::canonicalize(&job.dirs.workspace) {
+        let real = host(&strip_verbatim(real));
+        if real != views[0].0 {
+            views.push((real, host(&job.dirs.temp), cfg!(windows)));
+        }
+    }
     if let Backend::Container(_) = &job.backend {
         let view = job.backend.view();
         views.push((view.workspace.clone(), view.temp.clone(), false));
@@ -408,6 +417,14 @@ fn persist(job: &Job, source: &CheckoutSource, token: &str, target: &Path) -> st
     }
     let config = target.join(".git").join("config");
     std::fs::OpenOptions::new().append(true).open(&config)?.write_all(includes.as_bytes())
+}
+
+/// `\\?\C:\x` as `C:\x`, as Git writes it; other verbatim paths (`\\?\UNC\…`) are kept.
+fn strip_verbatim(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
 }
 
 /// The credentials file: the header for `prefix`, as `actions/checkout` writes it.
@@ -550,6 +567,13 @@ mod tests {
         let plain = git_env(&CheckoutSource { url: "http://localhost:3000/alice/app".into(), ..source("refs/heads/main") }, token, None);
         assert!(config(&plain).contains(&"protocol.http.allow=always".to_owned()));
         assert_eq!(target(Path::new("/w"), "sub/dir"), Some(Path::new("/w").join("sub/dir")));
+    }
+
+    #[test]
+    fn verbatim_drive_paths_are_written_as_git_writes_them() {
+        assert_eq!(strip_verbatim(PathBuf::from(r"\\?\C:\work\app")), PathBuf::from(r"C:\work\app"));
+        assert_eq!(strip_verbatim(PathBuf::from(r"\\?\UNC\server\share")), PathBuf::from(r"\\?\UNC\server\share"));
+        assert_eq!(strip_verbatim(PathBuf::from("/work/app")), PathBuf::from("/work/app"));
     }
 
     fn git(dir: &Path, args: &[&str]) -> String {
