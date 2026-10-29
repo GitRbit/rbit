@@ -34,6 +34,11 @@
 //! set. Whatever the backend, checkout's `git` points its hooks at an empty private directory
 //! no container mounts and disables `fsmonitor`, so no repository hook or command runs on the
 //! host. A `path` that goes through a symbolic link is refused.
+//!
+//! `repository` checks out another repository of this rbit instance (`owner/name`), at its
+//! default branch unless `ref` names one, and `token` replaces the task token for the
+//! checkout and its persisted credentials. As on GitHub, the task token reads only the
+//! run's repository (and public ones), so another private repository needs a `token`.
 
 use std::{
     collections::BTreeMap,
@@ -283,10 +288,26 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
     if !valid_reference(&options.reference) {
         return job.fail(&format!("`ref` `{}` is not a branch, tag or commit", options.reference));
     }
-    let source = job.spec.checkout.clone();
+    // Actions: checkout of another repository.
+    let mut options = options;
+    let source = match other_repository(&job.spec.checkout, inputs.get("repository")) {
+        Ok(None) => job.spec.checkout.clone(),
+        Ok(Some(other)) => {
+            if options.reference.is_empty() {
+                // Its default branch: what the remote's HEAD names.
+                "HEAD".clone_into(&mut options.reference);
+            }
+            other
+        }
+        Err(message) => return job.fail(&message),
+    };
+    let token = match inputs.get("token").trim() {
+        "" => job.spec.token.expose().to_owned(),
+        token => token.to_owned(),
+    };
     // Host `git`'s hooks point at a private directory no container mounts, so none can run.
     let hooks = job.private_dir().ok();
-    let env = git_env(&source, job.spec.token.expose(), hooks.as_deref());
+    let env = git_env(&source, &token, hooks.as_deref());
     let mut existing = target.join(".git").exists();
     let mut discarded = false;
     if matches!(job.backend, Backend::Container(_)) {
@@ -326,20 +347,43 @@ pub async fn checkout(job: &mut Job, inputs: &Inputs, timeout: Option<Duration>)
         }
     }
     if inputs.flag("persist-credentials")
-        && let Err(error) = persist(job, &source, &target)
+        && let Err(error) = persist(job, &source, &token, &target)
     {
         return job.fail(&format!("cannot persist the credentials: {error}"));
     }
     Outcome::success(BTreeMap::new())
 }
 
+// Actions: checkout of another repository.
+/// The source of `repository` (`owner/name`) on the run's own instance, or `None` for the
+/// run's own repository.
+fn other_repository(own: &CheckoutSource, repository: &str) -> Result<Option<CheckoutSource>, String> {
+    let repository = repository.trim().trim_end_matches(".git");
+    if repository.is_empty() || repository.eq_ignore_ascii_case(&own.repository) {
+        return Ok(None);
+    }
+    let part = |part: &str| {
+        !part.is_empty()
+            && part != "."
+            && part != ".."
+            && part.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+    };
+    match repository.split_once('/') {
+        Some((owner, name)) if part(owner) && part(name) => {
+            let url = format!("{}{repository}", server_prefix(own));
+            Ok(Some(CheckoutSource { url, repository: repository.to_owned(), sha: String::new(), reference: String::new() }))
+        }
+        _ => Err(format!("`repository` must be `owner/name` of this rbit instance, not `{repository}`")),
+    }
+}
+
 /// Writes the header for later steps into a file of the task's `temp`, and has the
 /// checkout at `target` include it (see the module documentation).
-fn persist(job: &Job, source: &CheckoutSource, target: &Path) -> std::io::Result<()> {
+fn persist(job: &Job, source: &CheckoutSource, token: &str, target: &Path) -> std::io::Result<()> {
     use std::io::Write as _;
     let name = format!("git-credentials-{}.config", crate::client::idempotency_key());
     let mut file = crate::untrusted::create(&job.dirs.temp.join(&name), true)?;
-    file.write_all(credentials_config(&server_prefix(source), job.spec.token.expose()).as_bytes())?;
+    file.write_all(credentials_config(&server_prefix(source), token).as_bytes())?;
     let relative: Vec<String> = target
         .strip_prefix(&job.dirs.workspace)
         .unwrap_or(Path::new(""))
@@ -456,6 +500,20 @@ mod tests {
         }
         for bad in ["--upload-pack=touch /tmp/x", "-b", "+refs/*:refs/*", "a:b", "refs/*", "a..b", "main@{1}", "a b", "a\nb", "/abs"] {
             assert!(!valid_reference(bad), "{bad}");
+        }
+    }
+
+    // Actions: checkout of another repository.
+    #[test]
+    fn another_repository_is_on_the_same_instance() {
+        let own = source("refs/heads/main");
+        assert_eq!(other_repository(&own, ""), Ok(None));
+        assert_eq!(other_repository(&own, "Alice/App"), Ok(None), "the run's own, in any case");
+        let other = other_repository(&own, "bob/lib.git").unwrap().unwrap();
+        assert_eq!((other.url.as_str(), other.repository.as_str()), ("https://git.example.com/bob/lib", "bob/lib"));
+        assert_eq!(server_prefix(&other), server_prefix(&own), "the token's header stays scoped to the instance");
+        for bad in ["bob", "bob/lib/x", "../lib", "bob/..", "https://evil.example/bob/lib", "bob/l b"] {
+            assert!(other_repository(&own, bad).is_err(), "{bad}");
         }
     }
 

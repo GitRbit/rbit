@@ -200,7 +200,7 @@ aliases of them, in any later major version and when pinned to a commit
 
 | `uses:` | Also accepted as | `with:` |
 |---|---|---|
-| `rbit/checkout@v1` | `actions/checkout@v2` and later | `ref`, `path`, `fetch-depth` (1; 0 for all), `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
+| `rbit/checkout@v1` | `actions/checkout@v2` and later | `repository` (`owner/name` on this instance; another private one needs a `token`), `ref`, `token` (instead of the run's token, also for later pushes), `path`, `fetch-depth` (1; 0 for all), `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
 | `rbit/cache@v1` | `actions/cache@v3` and later, `/restore`, `/save` | `key`, `path`, `restore-keys`, `fail-on-cache-miss`; outputs `cache-hit`, `cache-primary-key`, `cache-matched-key` |
 | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` and later | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite`, `include-hidden-files`, `compression-level` |
 | `rbit/download-artifact@v1` | `actions/download-artifact@v3` and later | `name`, `path`, `pattern`, `merge-multiple`, `run-id` (another run of this repository, as a `workflow_run` job fetches its trigger's; `github-token` is accepted and not needed), `repository` (this one only) |

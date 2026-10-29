@@ -1934,8 +1934,8 @@ jobs:
             ("    steps:\n      - {uses: 'octo/repo@--upload-pack=x'}\n", "is not a branch, tag or commit", (6, 16)),
             ("    steps:\n      - {uses: actions/setup-node@v4, with: {'a b': x}}\n", "`a b` is not an input name", (6, 46)),
             (
-                "    steps:\n      - {uses: actions/checkout@v4, with: {token: x}}\n",
-                "`jobs.a.steps[0].with.token`: `actions/checkout@v4` has no input `token`",
+                "    steps:\n      - {uses: actions/checkout@v4, with: {ssh-key: x}}\n",
+                "`jobs.a.steps[0].with.ssh-key`: `actions/checkout@v4` has no input `ssh-key`",
                 (6, 44),
             ),
             ("    steps:\n      - {uses: actions/checkout@v4, with: {lfs: maybe}}\n", "`lfs` must be true or false", (6, 44)),

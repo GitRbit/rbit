@@ -6,7 +6,7 @@
 //!
 //! | `uses:` | Alias of | `with:` |
 //! |---|---|---|
-//! | `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `ref`, `path`, `fetch-depth`, `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
+//! | `rbit/checkout@v1` | `actions/checkout@v2` to `@v5` | `repository`, `ref`, `token`, `path`, `fetch-depth`, `fetch-tags`, `submodules`, `lfs`, `clean`, `persist-credentials` |
 //! | `rbit/cache@v1` (also `/restore`, `/save`) | `actions/cache@v3` to `@v4` (also `/restore`, `/save`) | `key`, `path`, `restore-keys`, `fail-on-cache-miss` |
 //! | `rbit/upload-artifact@v1` | `actions/upload-artifact@v3` to `@v4` | `name`, `path`, `if-no-files-found`, `retention-days`, `overwrite`, `include-hidden-files`, `compression-level` |
 //! | `rbit/download-artifact@v1` | `actions/download-artifact@v3` to `@v4` | `name`, `path`, `pattern`, `merge-multiple`, `run-id`, `github-token`, `repository` |
@@ -56,7 +56,11 @@ const fn required(name: &'static str) -> Input {
     Input { name, default: None, required: true, kind: InputKind::Text }
 }
 
-const CHECKOUT: [Input; 8] = [
+const CHECKOUT: [Input; 10] = [
+    // Actions: checkout of another repository. `owner/name` on this instance, and the token
+    // to fetch it (and push, with `persist-credentials`) instead of the task's.
+    input("repository", None, InputKind::Text),
+    input("token", None, InputKind::Text),
     input("ref", None, InputKind::Text),
     input("path", None, InputKind::Text),
     input("fetch-depth", Some("1"), InputKind::Number(0)),
@@ -448,7 +452,7 @@ mod tests {
         builtin("rbit/upload-artifact@v1", with(&[("path", "dist/"), ("retention-days", "7"), ("if-no-files-found", "error")])).unwrap();
         builtin("actions/download-artifact@v4", BTreeMap::new()).unwrap();
         let refused = [
-            ("actions/checkout@v4", with(&[("token", "x")]), "has no input `token` in rbit; it takes ref, path, fetch-depth"),
+            ("actions/checkout@v4", with(&[("ssh-key", "x")]), "has no input `ssh-key` in rbit; it takes repository, token, ref"),
             ("actions/checkout@v4", with(&[("fetch-depth", "-1")]), "`fetch-depth` must be a whole number of at least 0"),
             ("actions/checkout@v4", with(&[("submodules", "maybe")]), "`submodules` must be false, true, recursive"),
             ("actions/checkout@v4", with(&[("lfs", "yes")]), "`lfs` must be true or false"),
