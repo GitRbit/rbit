@@ -464,6 +464,14 @@ to `workflow_run` and `workflow_job`.
   `pull_request_target`, …) are accepted in `on:` and never start a run.
 - `permissions:` scopes other than `contents`, `issues` and `pull-requests` are accepted and
   have no effect: there is no OIDC token (`id-token: write`), for instance.
+- There is no Checks API (`check-runs`, `check-suites`): actions that report through it, such
+  as `dorny/test-reporter`, fail. Jobs report as commit statuses instead.
+- A runner has only the labels it declares; GitHub's automatic `self-hosted`, OS and
+  architecture labels are not added. Declare them (`--labels self-hosted:host,linux:host`) to
+  match `runs-on: [self-hosted, linux]`.
+- A runner talks plain HTTP only to a server on its own machine. A runner elsewhere needs the
+  server on HTTPS, or an encrypted tunnel (SSH, WireGuard) to the server's port on its own
+  loopback.
 - Runner groups (`runs-on: {group: …}`), `cancel-timeout-minutes` and `snapshot` are
   refused with a readable error.
 - A job runs at most `[actions] endless_timeout_seconds` (3 hours by default), where GitHub

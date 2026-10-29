@@ -1466,8 +1466,15 @@ and what is known to be missing. Where they disagree, this section and the code 
   new dependency.
 - **Fetch by SHA:** `uploadpack.allowReachableSHA1InWant` is not set, so protocol v0 fetches
   of a non-tip commit by task tokens may fail (protocol v2, Git's default, is unaffected).
-- **Environments** have no wait timer, team reviewers or custom protection rules, and create
-  no deployment objects or `deployment` events.
+- **Environments** have no team reviewers or custom protection rules, and create no deployment
+  objects or `deployment` events.
+- **GitHub services not built yet.** No Checks API (`check-runs`, `check-suites`), so
+  reporters such as `dorny/test-reporter` fail; no OIDC ID tokens (`id-token: write`), so cloud
+  logins that use them fail; the `issues` and `issue_comment` triggers parse but start no run;
+  and a self-hosted runner has only the labels it declares, not GitHub's automatic
+  `self-hosted`, OS and architecture labels.
+- **rbit-runner talks plain HTTP only to a server on the same machine.** A runner on another
+  machine needs HTTPS, or an encrypted tunnel to the server's port on its own loopback.
 - **Checked by hand** with CI's stylesheet on a seeded instance, with a host runner running a
   workflow with a matrix, a failing job, a masked secret and an artifact: the Actions tab, run,
   job and raw log pages and the repository, organisation, account and instance settings, at
@@ -1495,6 +1502,20 @@ workflow publishes with its token (shown as rbit-actions, as statuses and commen
 **`0053_actions_environments.sql`** adds environments, their reviewers, secrets and variables,
 deployment reviews, and the `environment`, `environment_url`, `review` and `approved_attempt`
 columns of `actions_jobs` (§12.2.2).
+
+**`0054_actions_permissions.sql`** adds the policies of GitHub's `actions/permissions`
+endpoints for repositories and owners, and an owner's selected repositories.
+
+**`0055_actions_run_events.sql`** rebuilds `actions_runs` so `event` also takes `workflow_run`
+and `repository_dispatch` (SQLite cannot change a `CHECK`).
+
+**`0056_actions_workflow_access.sql`** adds who may call a private repository's reusable
+workflows, and **`0057_actions_environment_wait_timer.sql`** an environment's wait timer.
+
+**`0058_actions_caches.sql`** adds `actions_caches`: `actions/cache` entries the server keeps for
+every runner of a repository (scope, key, version, size, digest, last use; files under
+`<data_dir>/actions/caches`, not backed up). **`0059_actions_disabled_workflows.sql`** adds
+the workflows a writer disabled, by path.
 
 ### 13.4 Commits
 
