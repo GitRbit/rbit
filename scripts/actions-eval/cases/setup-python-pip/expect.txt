@@ -1,0 +1,5 @@
+result: success
+split: test
+contains: Python 3.11
+contains: pip 
+skip: windows-host  # its Windows installer needs administrator rights, on GitHub's runner too

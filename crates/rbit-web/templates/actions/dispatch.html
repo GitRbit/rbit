@@ -1,0 +1,52 @@
+{#- "Run workflow" on a workflow's page; expects `form: DispatchFormView` (views::actions). The
+    first form reloads the page at another branch or tag (`?ref=`), so the inputs below are always
+    the workflow's at that ref; the second runs it. Works without JavaScript. -#}
+<details class="box mb-3" {% if form.open %}open{% endif %}>
+  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium hover:bg-subtle">{% call ui::icon("play", "size-4 shrink-0") %}{% endcall %}Run workflow</summary>
+  <div class="border-t border-line p-3 sm:p-4">
+    <form method="get" action="{{ form.page_url }}" class="flex flex-wrap items-end gap-2">
+      <div class="min-w-0 flex-1 basis-48">
+        <label class="label" for="dispatch-ref">Use the workflow from</label>
+        <input class="input font-mono" id="dispatch-ref" name="ref" value="{{ form.reference }}" list="dispatch-refs" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+        <datalist id="dispatch-refs">{% for name in form.refs %}<option value="{{ name }}"></option>{% endfor %}</datalist>
+      </div>
+      <button class="btn h-10 sm:h-9" type="submit">Change</button>
+    </form>
+
+    {% if let Some(error) = form.error %}
+    <div role="alert" class="mt-3 flex items-start gap-2 rounded-(--radius-ui) border border-danger/40 bg-danger-subtle px-3 py-2.5 text-[13px] text-danger">
+      {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
+      <span class="whitespace-pre-wrap break-words">{{ error }}</span>
+    </div>
+    {% endif %}
+
+    {% if form.can_run %}
+    <form method="post" action="{{ form.action }}" class="mt-4 flex flex-col gap-4">
+      <input type="hidden" name="ref" value="{{ form.reference }}">
+      {% for input in form.inputs %}
+      <div>
+        {% if input.kind == "boolean" %}
+        <input type="hidden" name="{{ input.field }}" value="false">
+        <label class="flex min-h-11 items-center gap-2 text-[13px]"><input class="accent-(--ink)" type="checkbox" id="{{ input.id }}" name="{{ input.field }}" value="true" {% if input.checked() %}checked{% endif %}><span class="font-mono">{{ input.name }}</span></label>
+        {% else %}
+        <label class="label" for="{{ input.id }}"><span class="font-mono">{{ input.name }}</span>{% if input.required %}<span class="text-danger" aria-hidden="true"> *</span>{% endif %}</label>
+        {% if input.kind == "choice" %}
+        <div class="relative">
+          <select class="input cursor-pointer appearance-none pr-9" id="{{ input.id }}" name="{{ input.field }}" {% if input.required %}required{% endif %}>
+            {% if !input.required %}<option value="">—</option>{% endif %}
+            {% for option in input.options %}<option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.value }}</option>{% endfor %}
+          </select>
+          {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
+        </div>
+        {% else %}
+        <input class="input" id="{{ input.id }}" name="{{ input.field }}" type="{% if input.kind == "number" %}number{% else %}text{% endif %}" {% if input.kind == "number" %}step="any"{% endif %} value="{{ input.value }}" autocomplete="off" {% if input.required %}required{% endif %}>
+        {% endif %}
+        {% endif %}
+        {% if let Some(description) = input.description %}<p class="mt-1 text-xs text-ink-muted">{{ description }}</p>{% endif %}
+      </div>
+      {% endfor %}
+      <div><button class="btn btn-primary w-full sm:w-auto" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}Run workflow</button></div>
+    </form>
+    {% endif %}
+  </div>
+</details>

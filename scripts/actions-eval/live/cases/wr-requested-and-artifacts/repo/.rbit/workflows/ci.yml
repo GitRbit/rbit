@@ -1,0 +1,10 @@
+name: Build
+on: push
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: echo from-upstream > payload.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: payload, path: payload.txt}

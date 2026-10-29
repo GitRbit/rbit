@@ -53,18 +53,36 @@ pub struct HookFrame {
     pub settings_url: String,
     /// `…/settings/hooks`.
     pub hooks_url: String,
+    // Actions: integration (I).
+    /// The instance has Actions: its events are offered.
+    pub actions: bool,
 }
 
 impl HookFrame {
     pub fn for_repository(header: RepoHeader) -> Self {
         let name = format!("{}/{}", header.owner, header.name);
         let settings_url = header.settings_url.clone();
-        Self { hooks_url: format!("{settings_url}/hooks"), settings_url, name, repo: Some(header), org: None }
+        Self { hooks_url: format!("{settings_url}/hooks"), settings_url, name, repo: Some(header), org: None, actions: false }
     }
 
     pub fn for_organization(header: OrgHeader) -> Self {
         let settings_url = header.settings_url.clone();
-        Self { hooks_url: format!("{settings_url}/hooks"), settings_url, name: header.name.clone(), repo: None, org: Some(header) }
+        Self {
+            hooks_url: format!("{settings_url}/hooks"),
+            settings_url,
+            name: header.name.clone(),
+            repo: None,
+            org: Some(header),
+            actions: false,
+        }
+    }
+
+    // Actions: integration (I).
+    /// Offers the Actions events when `on` (the instance has Actions).
+    #[must_use]
+    pub fn with_actions(mut self, on: bool) -> Self {
+        self.actions = on;
+        self
     }
 
     /// "repository" or "organization", for sentences.
@@ -198,18 +216,17 @@ pub struct HookForm {
 }
 
 impl HookForm {
-    /// A new hook: pushes only, active.
-    pub fn blank() -> Self {
-        Self::with(String::new(), &[WebhookEvent::Push], true, false)
+    /// A new hook: pushes only, active. `actions` offers the Actions events.
+    pub fn blank(actions: bool) -> Self {
+        Self::with(String::new(), &[WebhookEvent::Push], true, false, actions)
     }
 
-    pub fn for_hook(hook: &Webhook) -> Self {
-        Self::with(hook.url.as_str().to_owned(), &hook.events, hook.active, hook.has_secret)
+    pub fn for_hook(hook: &Webhook, actions: bool) -> Self {
+        Self::with(hook.url.as_str().to_owned(), &hook.events, hook.active, hook.has_secret, actions)
     }
 
-    pub fn with(url: String, events: &[WebhookEvent], active: bool, has_secret: bool) -> Self {
-        let events = WebhookEvent::SUBSCRIBABLE
-            .into_iter()
+    pub fn with(url: String, events: &[WebhookEvent], active: bool, has_secret: bool, actions: bool) -> Self {
+        let events = WebhookEvent::subscribable(actions)
             .map(|event| EventChoice {
                 field: event_field(event),
                 label: event.label(),
@@ -293,8 +310,8 @@ impl WebhookFormPage {
         Self {
             page: page.titled(format!("New webhook · {}", frame.name)),
             action_url: frame.hooks_url.clone(),
+            form: HookForm::blank(frame.actions),
             frame,
-            form: HookForm::blank(),
             error: FormError::default(),
             delete_error: FormError::default(),
             hook: None,
@@ -311,7 +328,7 @@ impl WebhookFormPage {
         Self {
             page: page.titled(format!("Webhook · {}", frame.name)),
             action_url: hook_url.clone(),
-            form: HookForm::for_hook(hook),
+            form: HookForm::for_hook(hook, frame.actions),
             error: FormError::default(),
             delete_error: FormError::default(),
             hook: Some(HookActions {
@@ -492,16 +509,25 @@ mod tests {
 
     #[test]
     fn forms_preselect_events_and_never_carry_the_secret() {
-        let blank = HookForm::blank();
+        let blank = HookForm::blank(false);
         let checked: Vec<_> = blank.events.iter().filter(|choice| choice.checked).map(|choice| choice.field.as_str()).collect();
         assert_eq!(checked, ["event_push"]);
         assert!(blank.active && !blank.has_secret);
 
-        let edit = HookForm::for_hook(&hook(None));
+        let edit = HookForm::for_hook(&hook(None), false);
         let checked: Vec<_> = edit.events.iter().filter(|choice| choice.checked).map(|choice| choice.label).collect();
         assert_eq!(checked, ["Pushes", "Releases"]);
         assert!(edit.has_secret);
         assert_eq!(edit.events.len(), WebhookEvent::SUBSCRIBABLE.len());
+    }
+
+    // Actions: integration (I).
+    #[test]
+    fn actions_events_are_offered_only_with_actions() {
+        let fields = |form: HookForm| form.events.into_iter().map(|choice| choice.field).collect::<Vec<_>>();
+        assert!(!fields(HookForm::blank(false)).iter().any(|field| field.starts_with("event_workflow")));
+        let on = fields(HookForm::blank(true));
+        assert!(on.ends_with(&["event_workflow_run".to_owned(), "event_workflow_job".to_owned()]));
     }
 
     #[test]

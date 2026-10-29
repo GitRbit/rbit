@@ -1,0 +1,22 @@
+on: push
+jobs:
+  pick:
+    runs-on: self-hosted
+    outputs:
+      label: ${{ steps.p.outputs.label }}
+      include: ${{ steps.p.outputs.include }}
+    steps:
+      - id: p
+        shell: bash
+        run: |
+          echo "label=self-hosted" >> "$GITHUB_OUTPUT"
+          echo 'include=[{"name":"one"},{"name":"two"}]' >> "$GITHUB_OUTPUT"
+  go:
+    needs: pick
+    runs-on: ${{ needs.pick.outputs.label }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.pick.outputs.include) }}
+    steps:
+      - shell: bash
+        run: echo "picked ${{ matrix.name }}"

@@ -1,0 +1,419 @@
+{
+  "cases": [
+    {
+      "id": "push-branch-match",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > push: branches lists the branches whose pushes start the workflow.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: [main]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/main"
+        }
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "push-tag-ignores-branch-filter",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A branches filter alone never matches a tag push, even one whose name would match the pattern.",
+      "source": "GitHub Docs, Events that trigger workflows > push: branches filters apply to branch names only; tag pushes are matched by tags.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: ['**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/tags/v1.0"
+        }
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "push-both-filters-decided-by-ref-kind",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "When both branches and tags are given, the filter for the kind of ref pushed decides; a tag push is not judged by the branch list.",
+      "source": "GitHub Docs, Events that trigger workflows > push: with both branches and tags, a push matches if the ref matches the filter for its kind.",
+      "split": "test",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: [main]",
+          "    tags: ['v*']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/tags/v2"
+        }
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "push-negated-pattern-excludes",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A ! pattern removes a branch that an earlier positive pattern had included.",
+      "source": "GitHub Docs, Workflow syntax > Filter pattern cheat sheet: a ! pattern excludes the branches it matches from the earlier patterns.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: ['feature/**', '!feature/wip/**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/feature/wip/x"
+        }
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "push-single-star-stops-at-slash",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "* matches within one path segment only, so feat* does not match feat/x.",
+      "source": "GitHub Docs, Workflow syntax > Filter pattern cheat sheet: * matches zero or more characters but does not match /.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    branches: [feat*]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/feat/x"
+        }
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "push-paths-match",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > push: paths restricts the push to changes under the listed paths.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    paths: ['src/**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/main"
+        },
+        "changed_paths": [
+          "src/a.rs"
+        ]
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "push-paths-no-match",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > push: a push that changes no listed path does not start the workflow.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    paths: ['src/**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/main"
+        },
+        "changed_paths": [
+          "docs/a.md"
+        ]
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "push-paths-only-excluded-changes",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "When the only changed file is excluded by a negated path, no file passes; the workflow must not start.",
+      "source": "GitHub Docs, Events that trigger workflows > push: paths with a ! pattern; the workflow runs only if at least one changed file matches.",
+      "split": "test",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  push:",
+          "    paths: ['**', '!docs/**']",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "push",
+          "ref": "refs/heads/main"
+        },
+        "changed_paths": [
+          "docs/a.md"
+        ]
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "pr-default-types-exclude-closed",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "closed is a real pull_request activity but not in the default list, so an unconfigured trigger ignores it.",
+      "source": "GitHub Docs, Events that trigger workflows > pull_request: the default activity types are opened, reopened and synchronize.",
+      "split": "test",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on: pull_request",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "pull_request",
+          "action": "closed",
+          "base": "main"
+        }
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "pr-explicit-types-closed",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > pull_request: types replaces the default list.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  pull_request:",
+          "    types: [closed]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "pull_request",
+          "action": "closed",
+          "base": "main"
+        }
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "pr-base-branch-filter",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Events that trigger workflows > pull_request: branches filters on the base branch of the pull request.",
+      "split": "train",
+      "kind": "trigger",
+      "input": {
+        "yaml": [
+          "on:",
+          "  pull_request:",
+          "    branches: [main]",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "event": {
+          "type": "pull_request",
+          "action": "opened",
+          "base": "develop"
+        }
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "pattern-question-mark-zero-or-one",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "? means zero or one of the preceding character, not any single character: ab?c matches ac and abc but not abbc.",
+      "source": "GitHub Docs, Workflow syntax > Filter pattern cheat sheet: ? matches zero or one of the preceding character.",
+      "split": "train",
+      "kind": "pattern",
+      "input": {
+        "patterns": [
+          "ab?c"
+        ],
+        "inputs": [
+          "ac"
+        ],
+        "mode": "include"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "pattern-plus-one-or-more",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "+ requires at least one of the preceding character, so ac does not match ab+c.",
+      "source": "GitHub Docs, Workflow syntax > Filter pattern cheat sheet: + matches one or more of the preceding character.",
+      "split": "test",
+      "kind": "pattern",
+      "input": {
+        "patterns": [
+          "ab+c"
+        ],
+        "inputs": [
+          "ac"
+        ],
+        "mode": "include"
+      },
+      "expect": {
+        "value": false
+      }
+    },
+    {
+      "id": "skip-marker-ci-skip",
+      "area": "triggers",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > Skipping workflow runs: a commit message containing [skip ci] skips the push's runs.",
+      "split": "test",
+      "kind": "skip_marker",
+      "input": {
+        "text": "fix typo [skip ci]"
+      },
+      "expect": {
+        "value": true
+      }
+    },
+    {
+      "id": "skip-marker-no-brackets-no-skip",
+      "area": "triggers",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The marker needs its square brackets; the same words without them do not skip.",
+      "source": "GitHub Docs, Workflow syntax > Skipping workflow runs: the skip marker is the exact bracketed text.",
+      "split": "test",
+      "kind": "skip_marker",
+      "input": {
+        "text": "please skip ci for this one"
+      },
+      "expect": {
+        "value": false
+      }
+    }
+  ]
+}

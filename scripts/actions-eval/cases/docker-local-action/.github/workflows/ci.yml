@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: say
+        uses: ./.github/actions/say
+        with:
+          word: container
+      - run: echo "said=${{ steps.say.outputs.said }}"
+        shell: bash

@@ -1,0 +1,15 @@
+name: After CI
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+jobs:
+  report:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: |
+          echo "conclusion=${{ github.event.workflow_run.conclusion }}"
+          echo "event=${{ github.event_name }}"
+          echo "workflow=${{ github.event.workflow_run.name }}"
+          echo "head=${{ github.event.workflow_run.head_sha }}"

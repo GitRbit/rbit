@@ -1,0 +1,32 @@
+{
+  "feature": "globs",
+  "split": "train",
+  "why": "a pattern that matches nothing follows if-no-files-found",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "warn",
+        "conclusion": "success",
+        "contains": [
+          "No files were found"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "error",
+        "conclusion": "failure",
+        "contains": [
+          "No files were found"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

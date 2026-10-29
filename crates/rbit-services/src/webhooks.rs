@@ -225,7 +225,7 @@ impl WebhookService {
         require_manager(target)?;
         let owner = target.owner();
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events)?;
+        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => validate_secret(&secret)?,
             SecretUpdate::Keep | SecretUpdate::Clear => None,
@@ -249,7 +249,7 @@ impl WebhookService {
     pub async fn update(&self, actor: &User, target: HookTarget<'_>, id: WebhookId, input: WebhookInput) -> Result<Webhook, ServiceError> {
         require_manager(target)?;
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events)?;
+        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => match validate_secret(&secret)? {
                 Some(secret) => SecretUpdate::Set(secret),
@@ -379,7 +379,9 @@ impl WebhookService {
     async fn queue_event(&self, event: &DomainEvent, newest: WebhookId) -> Result<usize, ServiceError> {
         let base = self.base_url().to_owned();
         let queued = match event {
-            DomainEvent::RepositoryPushed { repo, pusher, updates } => self.queue_push(*repo, *pusher, updates, newest, &base).await?,
+            DomainEvent::RepositoryPushed { repo, source, updates } => {
+                self.queue_push(*repo, source.pusher(), updates, newest, &base).await?
+            }
             DomainEvent::RepositoryCreated { repo, actor } => {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Repository).await?;
@@ -430,8 +432,15 @@ impl WebhookService {
                 let Some(owned) = self.repository(*repo).await? else { return Ok(0) };
                 let hooks = self.subscribed(newest, Some(*repo), &org_of(&owned.owner), WebhookEvent::Release).await?;
                 let Some(release) = self.release_json(&owned, *release, &base).await? else { return Ok(0) };
-                let sender = self.account(*actor).await?;
-                let payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
+                let sender = match actor {
+                    Some(actor) => self.account(*actor).await?,
+                    None => None,
+                };
+                let mut payload = payloads::release_published(&release, &owned, self.is_fork(*repo).await?, sender.as_ref(), &base);
+                // Actions: releases from workflows. A workflow's release is sent by rbit Actions.
+                if actor.is_none() {
+                    payload["sender"] = crate::statuses::hooks::actions_bot();
+                }
                 self.queue(hooks, WebhookEvent::Release, &payload).await?.len()
             }
             DomainEvent::CollaboratorChanged { repo, user, actor, change } => {
@@ -443,6 +452,10 @@ impl WebhookService {
             // Milestone 3: commit statuses (S).
             DomainEvent::CommitStatus { .. } => {
                 self.queue_payload(crate::statuses::hooks::payload(&self.inner.ctx, event, &base).await?, newest).await?
+            }
+            // Actions: integration (I). Published only while Actions is enabled.
+            DomainEvent::ActionsRun { .. } | DomainEvent::ActionsJob { .. } => {
+                self.queue_payload(crate::actions::hooks::payload(&self.inner.ctx, event, &base).await?, newest).await?
             }
             _ => 0,
         };
@@ -795,13 +808,18 @@ fn other_tips<'a>(tips: impl Iterator<Item = &'a str>, own: &str) -> Vec<String>
     .collect()
 }
 
-/// Subscribable events, sorted and de-duplicated. `ping` is implicit and dropped.
-fn parse_events(names: &[String]) -> Result<Vec<WebhookEvent>, ServiceError> {
+/// Subscribable events, sorted and de-duplicated. `ping` is implicit and dropped. The
+/// Actions events are refused while Actions is off (`actions_enabled`).
+fn parse_events(names: &[String], actions_enabled: bool) -> Result<Vec<WebhookEvent>, ServiceError> {
     let mut events = Vec::new();
     for name in names {
         let name = name.trim();
         match WebhookEvent::parse(name) {
             Some(WebhookEvent::Ping) => {}
+            // Actions: integration (I).
+            Some(event) if !actions_enabled && WebhookEvent::ACTIONS.contains(&event) => {
+                return Err(ServiceError::Invalid(format!("\"{name}\" needs Actions, which this instance does not have")));
+            }
             Some(event) => events.push(event),
             None => return Err(ServiceError::Invalid(format!("unknown event \"{name}\"; choose from push, repository, release and fork"))),
         }
@@ -839,13 +857,23 @@ mod tests {
     #[test]
     fn events_are_validated_sorted_and_deduplicated() {
         assert_eq!(
-            parse_events(&names(&["release", "push", "push", " fork "])).unwrap(),
+            parse_events(&names(&["release", "push", "push", " fork "]), false).unwrap(),
             [WebhookEvent::Push, WebhookEvent::Release, WebhookEvent::Fork]
         );
-        assert_eq!(parse_events(&names(&["ping", "repository"])).unwrap(), [WebhookEvent::Repository]);
-        assert!(matches!(parse_events(&names(&["discussion"])), Err(ServiceError::Invalid(message)) if message.contains("discussion")));
-        assert!(matches!(parse_events(&names(&["ping"])), Err(ServiceError::Invalid(_))));
-        assert!(matches!(parse_events(&[]), Err(ServiceError::Invalid(_))));
+        assert_eq!(parse_events(&names(&["ping", "repository"]), false).unwrap(), [WebhookEvent::Repository]);
+        assert!(
+            matches!(parse_events(&names(&["discussion"]), false), Err(ServiceError::Invalid(message)) if message.contains("discussion"))
+        );
+        assert!(matches!(parse_events(&names(&["ping"]), false), Err(ServiceError::Invalid(_))));
+        assert!(matches!(parse_events(&[], false), Err(ServiceError::Invalid(_))));
+        // Actions: integration (I).
+        assert!(
+            matches!(parse_events(&names(&["workflow_run"]), false), Err(ServiceError::Invalid(message)) if message.contains("needs Actions"))
+        );
+        assert_eq!(
+            parse_events(&names(&["workflow_job", "workflow_run"]), true).unwrap(),
+            [WebhookEvent::WorkflowRun, WebhookEvent::WorkflowJob]
+        );
     }
 
     #[test]

@@ -5,8 +5,8 @@
 use std::{path::Path, process::Command, sync::Arc};
 
 use rbit_core::{
-    Config, IssueKind, IssueNumber, IssueState, StateReason, TimelineEvent, User, Visibility, issue::IssueAction, issue_query::IssueQuery,
-    membership::Permission,
+    Config, IssueKind, IssueNumber, IssueState, PushSource, StateReason, TimelineEvent, User, Visibility, issue::IssueAction,
+    issue_query::IssueQuery, membership::Permission,
 };
 use rbit_services::{
     CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
@@ -334,6 +334,36 @@ async fn searches_with_queries_hints_and_counts() {
     assert_eq!((text.total, text.page), (1, 1), "pages past the end are clamped");
 }
 
+// Actions: task tokens.
+#[tokio::test]
+async fn workflow_comments_record_no_cross_reference_by_a_ghost() {
+    use rbit_core::actions::{JobId, PermissionLevel, RunId, TaskId, TokenPermissions};
+
+    let fixture = Fixture::new().await;
+    let target = fixture.create(&fixture.alice, "Target", "").await;
+    let source = fixture.create(&fixture.alice, "Source", "").await;
+    let source_ctx = fixture.open(&fixture.alice, source).await;
+    let grant = rbit_services::actions::tokens::TaskGrant {
+        task: TaskId(1),
+        job: JobId(1),
+        run: RunId(1),
+        repo: source_ctx.issue.repo_id,
+        permissions: TokenPermissions::uniform(PermissionLevel::Write),
+    };
+    let comment = fixture.services.timeline.comment_for_task(&grant, &source_ctx, "Regressed since #1").await.unwrap();
+    let commented = DomainEvent::IssueComment {
+        repo: source_ctx.issue.repo_id,
+        issue: source_ctx.issue.id,
+        number: source,
+        kind: IssueKind::Issue,
+        comment: comment.id,
+        actor: None,
+        action: rbit_core::issue::CommentAction::Created,
+    };
+    fixture.services.issues.handle_event(&commented).await.unwrap();
+    assert_eq!(fixture.events_of(&fixture.alice, target).await, [], "rbit Actions has no account to show for it");
+}
+
 #[tokio::test]
 async fn mentions_of_other_threads_become_cross_references_once() {
     let fixture = Fixture::new().await;
@@ -358,7 +388,7 @@ async fn mentions_of_other_threads_become_cross_references_once() {
         number: source,
         kind: IssueKind::Issue,
         comment: comment.id,
-        actor: fixture.bob.id(),
+        actor: Some(fixture.bob.id()),
         action: rbit_core::issue::CommentAction::Created,
     };
     issues.handle_event(&commented).await.unwrap();
@@ -409,12 +439,12 @@ async fn pushed_commits_reference_and_close_issues_on_the_default_branch_only() 
     let fix = git(work.path(), &["rev-parse", "HEAD"]);
     git(work.path(), &["push", "-q", &path, "feature"]);
 
-    let pushed = |name: &str, before: Option<&str>, after: &str, pusher| DomainEvent::RepositoryPushed {
+    let pushed = |name: &str, before: Option<&str>, after: &str, source| DomainEvent::RepositoryPushed {
         repo: repo.repo.repo.id,
-        pusher,
+        source,
         updates: vec![RefUpdate { name: name.to_owned(), before: before.map(str::to_owned), after: Some(after.to_owned()) }],
     };
-    issues.handle_event(&pushed("refs/heads/feature", None, &fix, Some(fixture.alice.id()))).await.unwrap();
+    issues.handle_event(&pushed("refs/heads/feature", None, &fix, PushSource::User(fixture.alice.id()))).await.unwrap();
     let ctx = fixture.open(&fixture.alice, first).await;
     assert_eq!(ctx.issue.state, IssueState::Open, "a feature branch only references");
     let referenced = TimelineEvent::CommitReferenced { commit: fix.clone(), summary: "Fix the crash".into() };
@@ -423,7 +453,7 @@ async fn pushed_commits_reference_and_close_issues_on_the_default_branch_only() 
 
     // The same commit reaching main (a deploy key: no pusher) closes #1, without a second reference.
     git(work.path(), &["push", "-q", &path, "feature:main"]);
-    issues.handle_event(&pushed("refs/heads/main", Some(&base), &fix, None)).await.unwrap();
+    issues.handle_event(&pushed("refs/heads/main", Some(&base), &fix, PushSource::DeployKey)).await.unwrap();
     let ctx = fixture.open(&fixture.alice, first).await;
     assert_eq!((ctx.issue.state, ctx.issue.closed_by), (IssueState::Closed, None));
     let closed = TimelineEvent::Closed { reason: StateReason::Completed, commit: Some(fix.clone()), pull: None };

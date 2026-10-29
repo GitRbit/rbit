@@ -31,7 +31,7 @@
 use std::time::Duration;
 
 use rbit_core::{
-    RefUpdate, Timestamp, User,
+    PushSource, RefUpdate, Timestamp, User,
     file_edit::{self, EditAction, FilePath, LineEnding, prepare_text, uploaded_file_name},
     pull::{CommitIdentity, noreply_domain},
 };
@@ -438,7 +438,7 @@ impl EditService {
             author: &checked.identity,
             at: Timestamp::now(),
         };
-        let pending = self.pushes.begin(repo, Some(actor.id())).await;
+        let pending = self.pushes.begin(repo, PushSource::User(actor.id())).await;
         let committed = match workspace.commit(&spec).await {
             Ok(committed) => committed,
             Err(EditError::Rejected(message)) => return Err(EditFailure::Invalid(message)),

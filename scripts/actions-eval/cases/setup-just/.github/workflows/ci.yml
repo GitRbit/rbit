@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Its default token is the workflow's, which api.github.com does not know; outside
+      # GitHub, pass none (or a GitHub token secret).
+      - uses: extractions/setup-just@v2
+        with:
+          github-token: ''
+      - run: just --version
+        shell: bash

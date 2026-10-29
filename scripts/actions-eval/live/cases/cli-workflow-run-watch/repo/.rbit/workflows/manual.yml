@@ -1,0 +1,9 @@
+on:
+  workflow_dispatch:
+    inputs:
+      who: {type: string, required: true}
+jobs:
+  greet:
+    runs-on: self-hosted
+    steps:
+      - run: echo "hello ${{ inputs.who }}"

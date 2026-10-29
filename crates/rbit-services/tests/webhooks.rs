@@ -10,7 +10,7 @@ use std::{
 };
 
 use rbit_core::{
-    Config, OrgRole, Timestamp, User, Visibility,
+    Config, OrgRole, PushSource, Timestamp, User, Visibility,
     membership::Permission,
     webhook::{DeliveryStatus, WebhookEvent, WebhookId, WebhookOwner, WebhookUrl},
 };
@@ -265,7 +265,7 @@ async fn a_push_is_signed_delivered_and_retried_after_a_server_error() {
 
     let head = push_two_commits(&repo);
     let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some(head.clone()) };
-    let event = DomainEvent::RepositoryPushed { repo: repo.repo.repo.id, pusher: Some(alice.id()), updates: vec![update] };
+    let event = DomainEvent::RepositoryPushed { repo: repo.repo.repo.id, source: PushSource::User(alice.id()), updates: vec![update] };
     assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
     assert_eq!(webhooks.deliver_due(far_future()).await.unwrap(), 2, "one failed attempt and its retry");
 
@@ -320,7 +320,7 @@ fn publish_push(fixture: &Fixture, repo: &RepoContext, pusher: &User, head: &str
     let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some(head.to_owned()) };
     fixture.services.events.publish(DomainEvent::RepositoryPushed {
         repo: repo.repo.repo.id,
-        pusher: Some(pusher.id()),
+        source: PushSource::User(pusher.id()),
         updates: vec![update],
     });
 }
@@ -374,7 +374,11 @@ async fn hooks_stored_before_start_up_receive_events_and_new_ids_go_above_them()
     let mut bus = services.events.subscribe_published();
     let head = push_two_commits(&repo);
     let update = RefUpdate { name: "refs/heads/main".to_owned(), before: None, after: Some(head) };
-    services.events.publish(DomainEvent::RepositoryPushed { repo: repo.repo.repo.id, pusher: Some(alice.id()), updates: vec![update] });
+    services.events.publish(DomainEvent::RepositoryPushed {
+        repo: repo.repo.repo.id,
+        source: PushSource::User(alice.id()),
+        updates: vec![update],
+    });
     let push = bus.recv().await.unwrap();
     let created = services.webhooks.create(&alice, HookTarget::Repository(&repo), input(&receiver.url, &["push"], None)).await.unwrap();
     assert_eq!(created.id, WebhookId(11), "new ids continue after the stored ones");
@@ -556,7 +560,7 @@ async fn release_payloads_describe_the_release_and_forks_say_so() {
     };
     let release = releases.create(&repo, &alice, release_input).await.unwrap();
     releases.upload_asset(&repo, &alice, release.id, "app.tar.gz", "application/gzip", &b"bytes"[..]).await.unwrap();
-    let event = DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: release.id, actor: alice.id() };
+    let event = DomainEvent::ReleasePublished { repo: repo.repo.repo.id, release: release.id, actor: Some(alice.id()) };
     assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
     webhooks.deliver_due(far_future()).await.unwrap();
 

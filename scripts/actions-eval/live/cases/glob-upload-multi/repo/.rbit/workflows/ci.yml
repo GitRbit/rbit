@@ -1,0 +1,18 @@
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        run: |
+          mkdir -p dist/sub docs
+          echo a > dist/a.zip; echo sum > dist/a.zip.sha256; echo b > dist/b.txt
+          echo c > dist/sub/c.zip; echo skip > dist/sub/skip.zip; echo readme > docs/readme.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist/**/*.zip
+            !dist/sub/skip.zip
+            docs/readme.md

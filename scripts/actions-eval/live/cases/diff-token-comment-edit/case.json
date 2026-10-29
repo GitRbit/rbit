@@ -1,0 +1,42 @@
+{
+  "feature": "token-comments",
+  "split": "test",
+  "why": "a sticky-comment bot: find its comment and edit it with the workflow's token",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "write"
+        }
+      }
+    },
+    {
+      "http": {
+        "method": "POST",
+        "path": "/repos/{owner}/{repo}/issues",
+        "body": {
+          "title": "bot thread"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "bot",
+        "conclusion": "success",
+        "contains": [
+          "now: edited"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

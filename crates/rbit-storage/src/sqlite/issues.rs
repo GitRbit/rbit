@@ -18,8 +18,8 @@ use super::{
     rows::AccountRow,
 };
 use rbit_core::{
-    Account, AccountId, AccountKind, Comment, CommentId, EventId, Issue, IssueId, IssueKind, IssueNumber, IssueState, IssueText,
-    IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp,
+    Account, AccountId, AccountKind, Comment, CommentId, CommentSource, EventId, Issue, IssueId, IssueKind, IssueNumber, IssueState,
+    IssueText, IssueTitle, RepoId, StateReason, TimelineEvent, Timestamp,
 };
 
 use crate::StorageError;
@@ -35,7 +35,7 @@ macro_rules! issue_columns {
 /// The `issue_comments` columns in [`CommentRow`] order.
 macro_rules! comment_columns {
     () => {
-        "id, issue_id, author_id, body, created_at, updated_at, edited_at"
+        "id, issue_id, author_id, body, created_at, updated_at, edited_at, source"
     };
 }
 
@@ -46,13 +46,13 @@ macro_rules! timeline_page {
     () => {
         concat!(
             "SELECT * FROM (",
-            "SELECT 0 AS rank, c.id, c.created_at, c.updated_at, c.edited_at, c.body, NULL AS kind, NULL AS data, ",
+            "SELECT 0 AS rank, c.id, c.created_at, c.updated_at, c.edited_at, c.body, c.source, NULL AS kind, NULL AS data, ",
             "c.author_id AS account_id, a.kind AS account_kind, a.name AS account_name, a.display_name AS account_display_name, ",
             "a.bio AS account_bio, a.created_at AS account_created_at ",
             "FROM issue_comments c LEFT JOIN accounts a ON a.id = c.author_id ",
             "WHERE c.issue_id = ?1 AND (c.created_at, 0, c.id) > (?2, ?3, ?4) ",
             "UNION ALL ",
-            "SELECT 1 AS rank, e.id, e.created_at, NULL, NULL, NULL, e.kind, e.data, ",
+            "SELECT 1 AS rank, e.id, e.created_at, NULL, NULL, NULL, NULL, e.kind, e.data, ",
             "e.actor_id, a.kind, a.name, a.display_name, a.bio, a.created_at ",
             "FROM issue_events e LEFT JOIN accounts a ON a.id = e.actor_id ",
             "WHERE e.issue_id = ?1 AND (e.created_at, 1, e.id) > (?2, ?3, ?4)",
@@ -158,6 +158,12 @@ struct CommentRow {
     created_at: i64,
     updated_at: i64,
     edited_at: Option<i64>,
+    source: String,
+}
+
+/// A stored comment source.
+fn comment_source(value: &str) -> Result<CommentSource, StorageError> {
+    CommentSource::parse(value).ok_or_else(|| corrupt("comment source", value))
 }
 
 impl TryFrom<CommentRow> for Comment {
@@ -172,6 +178,7 @@ impl TryFrom<CommentRow> for Comment {
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
             edited_at: row.edited_at.map(Timestamp),
+            source: comment_source(&row.source)?,
         })
     }
 }
@@ -216,6 +223,7 @@ struct TimelineRow {
     updated_at: Option<i64>,
     edited_at: Option<i64>,
     body: Option<String>,
+    source: Option<String>,
     kind: Option<String>,
     data: Option<String>,
     account_id: Option<i64>,
@@ -261,6 +269,7 @@ impl TimelineRow {
                 created_at: at,
                 updated_at: Timestamp(self.updated_at.unwrap_or(self.created_at)),
                 edited_at: self.edited_at.map(Timestamp),
+                source: comment_source(self.source.as_deref().unwrap_or_default())?,
             };
             return Ok(Some(StoredTimelineItem::Comment { comment, author: account }));
         }
@@ -684,6 +693,24 @@ impl IssueStore {
         body: &IssueText,
         at: Timestamp,
     ) -> Result<Option<Comment>, StorageError> {
+        self.insert_comment(issue, Some(author), CommentSource::User, body, at).await
+    }
+
+    // Actions: task tokens.
+    /// Adds a comment a workflow task wrote, with no author and `source = 'actions'`,
+    /// counting it on the thread. `None` when the thread does not exist.
+    pub async fn add_actions_comment(&self, issue: IssueId, body: &IssueText, at: Timestamp) -> Result<Option<Comment>, StorageError> {
+        self.insert_comment(issue, None, CommentSource::Actions, body, at).await
+    }
+
+    async fn insert_comment(
+        &self,
+        issue: IssueId,
+        author: Option<AccountId>,
+        source: CommentSource,
+        body: &IssueText,
+        at: Timestamp,
+    ) -> Result<Option<Comment>, StorageError> {
         let mut tx = self.pool.begin().await?;
         let updated = sqlx::query("UPDATE issues SET comment_count = comment_count + 1, updated_at = MAX(updated_at, ?) WHERE id = ?")
             .bind(at.0)
@@ -695,14 +722,15 @@ impl IssueStore {
             return Ok(None);
         }
         let row: CommentRow = sqlx::query_as(concat!(
-            "INSERT INTO issue_comments (issue_id, author_id, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?) RETURNING ",
+            "INSERT INTO issue_comments (issue_id, author_id, body, created_at, updated_at, source) VALUES (?, ?, ?, ?, ?, ?) RETURNING ",
             comment_columns!()
         ))
         .bind(issue.0)
-        .bind(author.0)
+        .bind(author.map(|author| author.0))
         .bind(body.as_str())
         .bind(at.0)
         .bind(at.0)
+        .bind(source.as_str())
         .fetch_one(&mut *tx)
         .await?;
         let comment = Comment::try_from(row)?;

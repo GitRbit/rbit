@@ -7,7 +7,7 @@ use std::{path::Path, process::Command, sync::Arc};
 use rbit_core::{
     Config, User, Visibility,
     membership::Permission,
-    status::{StatusId, StatusState},
+    status::{StatusId, StatusReport, StatusSource, StatusState},
     webhook::WebhookEvent,
 };
 use rbit_services::{
@@ -21,6 +21,7 @@ use serde_json::Value;
 struct Fixture {
     _dir: tempfile::TempDir,
     services: Services,
+    database: Database,
     /// Owns `alice/rocket` (private).
     alice: User,
     /// A collaborator with read access.
@@ -63,7 +64,7 @@ impl Fixture {
         services.collaborators.add(&alice, &repo, "rita", Permission::Read).await.unwrap();
         services.collaborators.add(&alice, &repo, "carol", Permission::Write).await.unwrap();
         let (first, head) = push_two_commits(&repo);
-        Self { _dir: dir, services, alice, rita, carol, head, first }
+        Self { _dir: dir, services, database, alice, rita, carol, head, first }
     }
 
     async fn repo(&self, viewer: &User) -> RepoContext {
@@ -133,7 +134,7 @@ async fn writers_post_statuses_and_readers_read_them() {
     assert_eq!((pending.state, pending.context.as_str(), pending.creator), (StatusState::Pending, "ci/build", Some(fixture.carol.id())));
     match events.recv().await.unwrap() {
         DomainEvent::CommitStatus { status, sha, actor, .. } => {
-            assert_eq!((status, sha, actor), (pending.id, fixture.head.clone(), fixture.carol.id()));
+            assert_eq!((status, sha, actor), (pending.id, fixture.head.clone(), Some(fixture.carol.id())));
         }
         other => panic!("expected the status event, got {other:?}"),
     }
@@ -193,10 +194,14 @@ async fn the_status_webhook_has_githubs_shape() {
 
     let status = fixture.post(&fixture.carol, &fixture.head, "success", Some("ci/build")).await.unwrap();
     let event =
-        DomainEvent::CommitStatus { repo: repo.repo.repo.id, status: status.id, sha: status.sha.clone(), actor: fixture.carol.id() };
+        DomainEvent::CommitStatus { repo: repo.repo.repo.id, status: status.id, sha: status.sha.clone(), actor: Some(fixture.carol.id()) };
     assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
-    let gone =
-        DomainEvent::CommitStatus { repo: repo.repo.repo.id, status: StatusId(999), sha: status.sha.clone(), actor: fixture.carol.id() };
+    let gone = DomainEvent::CommitStatus {
+        repo: repo.repo.repo.id,
+        status: StatusId(999),
+        sha: status.sha.clone(),
+        actor: Some(fixture.carol.id()),
+    };
     assert_eq!(webhooks.handle_event(&gone).await.unwrap(), 0, "a status that no longer exists sends nothing");
 
     let log = webhooks.deliveries(HookTarget::Repository(&repo), hook.id, 1, 10).await.unwrap();
@@ -219,4 +224,36 @@ async fn the_status_webhook_has_githubs_shape() {
     assert_eq!(payload["sender"]["login"], "carol");
     assert!(payload["created_at"].as_str().is_some_and(|at| at.ends_with('Z')));
     assert!(payload.get("organization").is_none(), "a personal repository");
+}
+
+// Actions: triggers (T).
+#[tokio::test]
+async fn statuses_from_actions_name_the_bot_as_creator_and_sender() {
+    let fixture = Fixture::new().await;
+    let repo = fixture.repo(&fixture.alice).await;
+    let webhooks = &fixture.services.webhooks;
+    let input = WebhookInput {
+        url: "http://127.0.0.1:9/hook".to_owned(),
+        events: vec!["status".to_owned()],
+        active: true,
+        secret: SecretUpdate::Keep,
+    };
+    let hook = webhooks.create(&fixture.alice, HookTarget::Repository(&repo), input).await.unwrap();
+    let report = StatusReport::parse("pending", Some("CI / build (push)"), Some("Queued"), None).unwrap();
+    let status =
+        fixture.database.commit_statuses().create_as_system(repo.repo.repo.id, &fixture.head, &report, 1000).await.unwrap().unwrap();
+    assert_eq!((status.creator, status.source), (None, StatusSource::Actions));
+
+    let event = DomainEvent::CommitStatus { repo: repo.repo.repo.id, status: status.id, sha: status.sha.clone(), actor: None };
+    assert_eq!(webhooks.handle_event(&event).await.unwrap(), 1);
+    let log = webhooks.deliveries(HookTarget::Repository(&repo), hook.id, 1, 10).await.unwrap();
+    let payload: Value = serde_json::from_str(&log.deliveries[0].payload).unwrap();
+    assert_eq!(payload["sender"]["login"], "rbit-actions[bot]");
+    assert_eq!((payload["sender"]["type"].as_str(), payload["sender"]["id"].as_i64()), (Some("Bot"), Some(0)));
+
+    let json = rbit_services::statuses::hooks::status(&status, None, &repo.repo, "https://git.example.com");
+    assert_eq!(json["creator"]["login"], "rbit-actions[bot]");
+    let person = fixture.post(&fixture.carol, &fixture.head, "success", None).await.unwrap();
+    assert_eq!(rbit_services::statuses::hooks::status(&person, None, &repo.repo, "https://git.example.com")["creator"], Value::Null);
+    assert!(fixture.services.statuses.creators(&[status]).await.unwrap().is_empty(), "the bot is no account");
 }

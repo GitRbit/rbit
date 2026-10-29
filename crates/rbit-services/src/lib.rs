@@ -5,6 +5,8 @@
 //! commands and background jobs all share exactly the same behaviour.
 
 pub mod accounts;
+// Actions: foundation (F).
+pub mod actions;
 pub mod admin;
 pub mod archives;
 pub mod audit;
@@ -65,6 +67,8 @@ use rbit_git::RepositoryStorage;
 use rbit_storage::{Database, KvStore};
 
 pub use accounts::{AccountService, SignUp};
+// Actions: foundation (F).
+pub use actions::ActionsService;
 pub use admin::AdminService;
 pub use archives::ArchiveService;
 pub use audit::AuditService;
@@ -185,6 +189,9 @@ pub struct Services {
     // Milestone 3: importing and push mirrors (M).
     pub imports: ImportService,
     pub push_mirrors: PushMirrorService,
+    // Actions: foundation (F). `None` unless `[actions] enabled`: then nothing of Actions
+    // runs, is routed or is written.
+    pub actions: Option<ActionsService>,
 }
 
 impl Services {
@@ -273,6 +280,8 @@ impl Services {
             // Milestone 3: importing and push mirrors (M).
             imports: ImportService::new(ctx.clone(), repositories.clone(), lfs, releases),
             push_mirrors: PushMirrorService::new(ctx.clone()),
+            // Actions: foundation (F).
+            actions: ActionsService::new(ctx.clone()),
             repositories,
             stars: StarService::new(ctx.clone()),
             tokens: AccessTokenService::new(database.access_tokens(), database.accounts()),
@@ -296,6 +305,15 @@ impl Services {
         // Milestone 3: importing and push mirrors (M).
         self.imports.spawn_background();
         self.push_mirrors.spawn_background();
+        // Actions: foundation (F).
+        if let Some(actions) = &self.actions {
+            actions.spawn_background();
+        }
+    }
+
+    /// Actions background tasks running now: always 0 with Actions disabled.
+    pub fn actions_background_tasks(&self) -> usize {
+        self.actions.as_ref().map_or(0, ActionsService::background_tasks)
     }
 
     /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
@@ -315,6 +333,12 @@ impl Services {
             // Milestone 3: importing and push mirrors (M).
             self.imports.shutdown(),
             self.push_mirrors.shutdown(),
+            // Actions: foundation (F).
+            async {
+                if let Some(actions) = &self.actions {
+                    actions.shutdown().await;
+                }
+            },
         );
     }
 }

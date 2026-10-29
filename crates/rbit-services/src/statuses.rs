@@ -16,6 +16,13 @@
 //! * Each new status publishes [`DomainEvent::CommitStatus`]: the `status` webhook
 //!   ([`hooks::payload`]) and the pull request service (which re-evaluates the pull
 //!   requests whose head it is) react to it.
+//! * rbit Actions posts the statuses of its jobs through the crate-private
+//!   [`StatusService::create_as_system`]: no creator, `source = actions`, and a webhook
+//!   `sender` of `rbit-actions[bot]`. A status must not look like something a person typed,
+//!   and the people behind a run (a fork's author, nobody for a schedule) may not be able to
+//!   write to the repository. Required checks treat these statuses like any other.
+//!   A workflow task posting through the API with its token (`contents: write`) is recorded
+//!   the same way, by [`StatusService::create_for_task`], after the checks people pass.
 //! * Reading resolves a branch, tag or commit id ([`StatusService::resolve`]); the
 //!   combined state is [`rbit_core::status::combined_state`] over the latest status of
 //!   each context.
@@ -28,12 +35,17 @@ pub mod hooks;
 use std::collections::HashMap;
 
 use rbit_core::{
-    Account, User,
+    Account, RepoId, User,
     status::{CommitStatus, MAX_STATUSES_PER_CONTEXT, StatusReport, StatusState, combined_state, parse_sha},
 };
 use rbit_git::GitError;
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError};
+use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
+
+/// A commit and context that already have [`MAX_STATUSES_PER_CONTEXT`] statuses.
+fn at_cap() -> ServiceError {
+    ServiceError::Invalid(format!("this SHA and context has reached the maximum number of statuses ({MAX_STATUSES_PER_CONTEXT})"))
+}
 
 /// A status as submitted (the REST API's body).
 #[derive(Debug, Clone, Default)]
@@ -81,25 +93,10 @@ impl StatusService {
 
     /// Records a status of commit `sha` (a full id) for `actor`, who needs write access.
     pub async fn create(&self, actor: &User, repo: &RepoContext, sha: &str, input: &NewStatus) -> Result<CommitStatus, ServiceError> {
-        if !repo.access.can_write() {
-            return Err(ServiceError::Forbidden);
-        }
-        repo.ensure_writable()?;
-        let invalid = |error: rbit_core::status::StatusError| ServiceError::Invalid(error.to_string());
-        let sha = parse_sha(sha).map_err(invalid)?;
-        let report = StatusReport::parse(&input.state, input.context.as_deref(), input.description.as_deref(), input.target_url.as_deref())
-            .map_err(invalid)?;
-        let no_commit = || ServiceError::Invalid(format!("no commit found for SHA {sha}"));
-        match repo.reader.commit_id(sha.clone()).await {
-            Ok(found) if found == sha => {}
-            Ok(_) | Err(GitError::NotFound(_)) => return Err(no_commit()),
-            Err(error) => return Err(error.into()),
-        }
+        let (sha, report) = self.checked(repo, sha, input).await?;
         let store = self.ctx.database.commit_statuses();
         let Some(status) = store.create(repo.repo.repo.id, &sha, &report, actor.id(), MAX_STATUSES_PER_CONTEXT).await? else {
-            return Err(ServiceError::Invalid(format!(
-                "this SHA and context has reached the maximum number of statuses ({MAX_STATUSES_PER_CONTEXT})"
-            )));
+            return Err(at_cap());
         };
         tracing::info!(
             repo = %repo.repo.full_name(),
@@ -113,9 +110,80 @@ impl StatusService {
             repo: repo.repo.repo.id,
             status: status.id,
             sha: status.sha.clone(),
-            actor: actor.id(),
+            actor: Some(actor.id()),
         });
         Ok(status)
+    }
+
+    // Actions: task tokens.
+    /// Records a status a workflow task posted through the API, with the checks of
+    /// [`create`](Self::create), as rbit Actions: no creator and `source = actions`, like the
+    /// statuses of its jobs. The run's people did not type it, and may not be able to write.
+    /// `repo` is the task's own repository, opened for it with its grant.
+    pub async fn create_for_task(
+        &self,
+        grant: &TaskGrant,
+        repo: &RepoContext,
+        sha: &str,
+        input: &NewStatus,
+    ) -> Result<CommitStatus, ServiceError> {
+        if repo.repo.repo.id != grant.repo {
+            return Err(ServiceError::Forbidden);
+        }
+        let (sha, report) = self.checked(repo, sha, input).await?;
+        let store = self.ctx.database.commit_statuses();
+        let Some(status) = store.create_as_system(grant.repo, &sha, &report, MAX_STATUSES_PER_CONTEXT).await? else {
+            return Err(at_cap());
+        };
+        tracing::info!(
+            repo = %repo.repo.full_name(),
+            sha = %status.sha,
+            context = %status.context,
+            state = %status.state,
+            task = grant.task.0,
+            "commit status created by a workflow task"
+        );
+        self.ctx.events.publish(DomainEvent::CommitStatus { repo: grant.repo, status: status.id, sha: status.sha.clone(), actor: None });
+        Ok(status)
+    }
+
+    /// The full commit id and the report of a status `repo`'s caller may post: write access,
+    /// a repository that is not archived, valid values and a commit that exists.
+    async fn checked(&self, repo: &RepoContext, sha: &str, input: &NewStatus) -> Result<(String, StatusReport), ServiceError> {
+        if !repo.access.can_write() {
+            return Err(ServiceError::Forbidden);
+        }
+        repo.ensure_writable()?;
+        let invalid = |error: rbit_core::status::StatusError| ServiceError::Invalid(error.to_string());
+        let sha = parse_sha(sha).map_err(invalid)?;
+        let report = StatusReport::parse(&input.state, input.context.as_deref(), input.description.as_deref(), input.target_url.as_deref())
+            .map_err(invalid)?;
+        let no_commit = || ServiceError::Invalid(format!("no commit found for SHA {sha}"));
+        match repo.reader.commit_id(sha.clone()).await {
+            Ok(found) if found == sha => Ok((sha, report)),
+            Ok(_) | Err(GitError::NotFound(_)) => Err(no_commit()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    // Actions: triggers (T).
+    /// Records `report` on commit `sha` (a full id of `repo`, not checked) as rbit Actions:
+    /// no creator and no permission check — the caller is the Actions service reporting its
+    /// own jobs. `None` when the commit already has the most statuses one context may have.
+    pub(crate) async fn create_as_system(
+        &self,
+        repo: RepoId,
+        sha: &str,
+        report: &StatusReport,
+    ) -> Result<Option<CommitStatus>, ServiceError> {
+        let store = self.ctx.database.commit_statuses();
+        let Some(status) = store.create_as_system(repo, sha, report, MAX_STATUSES_PER_CONTEXT).await? else {
+            tracing::warn!(repo = repo.0, sha, context = %report.context.as_str(), "commit status cap reached; Actions status dropped");
+            return Ok(None);
+        };
+        tracing::debug!(repo = repo.0, sha = %status.sha, context = %status.context, state = %status.state, "Actions commit status created");
+        self.ctx.events.publish(DomainEvent::CommitStatus { repo, status: status.id, sha: status.sha.clone(), actor: None });
+        Ok(Some(status))
     }
 
     /// The full id of the commit `reference` (a branch, tag or commit id) names;

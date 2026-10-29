@@ -306,3 +306,26 @@ check_for_updates = true
 # SSH version suffix and version numbers in integration User-Agents when false.
 # Administrators retain local diagnostics; CLI --version and backups stay accurate.
 report_version = true
+
+[actions]
+# CI/CD with rbit-runner (docs/actions.md). Off by default; when off, Actions is fully
+# absent: no pages, no runner endpoint, no background work, workflow files are ignored.
+# Changing it needs a restart.
+enabled = false
+# Turn Actions on for repositories created from now on (existing ones keep their setting).
+enable_for_new_repositories = false
+# The key that seals secrets; empty = <data_dir>/actions/secrets.key. `rbit backup` does
+# not copy it: back it up separately.
+secrets_key_file = ""
+log_retention_days = 90
+run_retention_days = 365
+# Instance runners serve only the owners an administrator allows, unless this is on.
+instance_runners_for_all = false
+# Artifacts: the largest one, the bytes kept per repository, and days kept. Not backed up.
+max_artifact_bytes = 2147483648
+max_artifact_storage_bytes = 10737418240
+artifact_retention_days = 90
+# actions/cache: bytes kept per repository for all its runners (least recently used go
+# first) and days an entry is kept unused. Not backed up.
+max_cache_storage_bytes = 10737418240
+cache_retention_days = 7

@@ -1,0 +1,79 @@
+{
+  "feature": "settings-api",
+  "split": "train",
+  "observe": [
+    {
+      "id": "user",
+      "http": {
+        "path": "/user/actions/permissions/workflow"
+      }
+    },
+    {
+      "id": "repo",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions"
+      }
+    },
+    {
+      "id": "allowed",
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions",
+        "body": {
+          "enabled": true,
+          "allowed_actions": "local_only"
+        }
+      }
+    },
+    {
+      "id": "allowed-get",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions"
+      }
+    },
+    {
+      "id": "anon",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions",
+        "auth": "none"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "obs": "user",
+      "status": 200,
+      "contains": [
+        "default_workflow_permissions"
+      ]
+    },
+    {
+      "obs": "repo",
+      "status": 200,
+      "json": {
+        "enabled": true,
+        "allowed_actions": "all"
+      }
+    },
+    {
+      "obs": "allowed",
+      "status": 204
+    },
+    {
+      "obs": "allowed-get",
+      "status": 200,
+      "json": {
+        "allowed_actions": "local_only"
+      }
+    },
+    {
+      "obs": "anon",
+      "status": 404
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

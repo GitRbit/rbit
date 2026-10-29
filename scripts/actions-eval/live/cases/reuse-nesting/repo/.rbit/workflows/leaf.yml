@@ -1,0 +1,5 @@
+on: workflow_call
+jobs:
+  leaf:
+    runs-on: self-hosted
+    steps: [{run: echo leaf reached}]

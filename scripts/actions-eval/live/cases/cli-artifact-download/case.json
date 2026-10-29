@@ -1,0 +1,30 @@
+{
+  "feature": "cli",
+  "split": "train",
+  "observe": [
+    {
+      "id": "download",
+      "shell": "\"{cli}\" run download -n out -D \"{tmp}\\out\" -R {owner}/{repo} --hostname {url} && type \"{tmp}\\out\\nested\\b.txt\""
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "download",
+      "exit": 0,
+      "contains": [
+        "bee"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

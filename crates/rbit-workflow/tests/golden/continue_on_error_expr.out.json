@@ -1,0 +1,96 @@
+[
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (false)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-22.04"
+    ],
+    "matrix": {
+      "experimental": false
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 2
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "echo hi"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (true)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-22.04"
+    ],
+    "matrix": {
+      "experimental": true
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 1,
+      "job_total": 2
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": true,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "echo hi"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  }
+]

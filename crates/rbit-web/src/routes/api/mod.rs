@@ -16,7 +16,8 @@
 //! modules (`issues`, `notifications`, `pulls`, `protection`), milestone 3 too
 //! (`collaborators`, `teams`, `releases`, `forks`). `openapi.json` plus one fragment per
 //! area (`openapi/<area>.json`, merged once at start-up) documents the same set, and a
-//! test keeps the two equal.
+//! test keeps the two equal. The table depends on the configuration: Actions routes and
+//! their fragments exist only when `[actions] enabled` is on.
 //!
 //! Streaming routes ([`ApiRoute::streaming`]: release file uploads and downloads) are
 //! served from the same table without the 1 MiB body limit, the 30 s timeout and
@@ -41,19 +42,23 @@ mod teams;
 mod test_support;
 // Milestone 3: commit statuses (S).
 mod statuses;
+// Actions: integration (I).
+mod actions;
+mod environments;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
 
 use auth::Caller;
 use axum::{
     Router,
-    extract::DefaultBodyLimit,
+    extract::{DefaultBodyLimit, State},
     handler::Handler,
     http::{HeaderValue, StatusCode, header},
     response::IntoResponse,
     routing::{MethodFilter, MethodRouter, any, on},
 };
 use error::ApiError;
+use rbit_core::Config;
 use serde_json::Value;
 use tower_http::{compression::CompressionLayer, set_header::SetResponseHeaderLayer, timeout::TimeoutLayer};
 
@@ -142,8 +147,8 @@ fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> A
     ApiRoute { method, path: path.into(), handler: None, streaming: false }
 }
 
-/// Every endpoint of the API.
-pub fn table() -> Vec<ApiRoute> {
+/// Every endpoint of the API under `config`.
+pub fn table(config: &Config) -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
     let mut routes = vec![
         route(Get, "/version", accounts::version),
@@ -196,8 +201,31 @@ pub fn table() -> Vec<ApiRoute> {
     routes.extend(forks::routes());
     // Milestone 3: commit statuses (S).
     routes.extend(statuses::routes());
+    // Actions: foundation (F). Only when Actions is enabled.
+    if config.actions.enabled {
+        routes.extend(actions_routes());
+    }
     routes
 }
+
+/// The Actions endpoints (served only when Actions is enabled). The integration workstream
+/// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
+fn actions_routes() -> Vec<ApiRoute> {
+    // Actions: integration (I).
+    let mut routes = actions::routes();
+    // Actions: environments.
+    routes.extend(environments::routes());
+    routes
+}
+
+/// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
+// Actions: integration (I).
+const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
+    ("actions", include_str!("openapi/actions.json")),
+    ("environments", include_str!("openapi/environments.json")),
+    // Actions: settings API.
+    ("actions-permissions", include_str!("openapi/actions-permissions.json")),
+];
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
@@ -216,16 +244,18 @@ const FRAGMENTS: [(&str, &str); 9] = [
 ];
 
 /// The served document: `openapi.json` with every fragment's paths and schemas merged in.
-/// Built once; a test checks it documents exactly [`table`] and that no fragment repeats a
-/// path or schema name.
-static DOCUMENT: LazyLock<String> = LazyLock::new(|| merged_document().0.to_string());
+/// Built once per Actions setting; a test checks each documents exactly [`table`] and that
+/// no fragment repeats a path or schema name.
+static DOCUMENT: LazyLock<String> = LazyLock::new(|| merged_document(false).0.to_string());
+static DOCUMENT_WITH_ACTIONS: LazyLock<String> = LazyLock::new(|| merged_document(true).0.to_string());
 
-/// The merged document and every path or schema name defined more than once (the first
-/// definition wins).
-fn merged_document() -> (Value, Vec<String>) {
+/// The merged document (with the Actions fragments when `actions`) and every path or schema
+/// name defined more than once (the first definition wins).
+fn merged_document(actions: bool) -> (Value, Vec<String>) {
     let mut document: Value = serde_json::from_str(OPENAPI).expect("openapi.json is valid JSON");
     let mut duplicates = Vec::new();
-    for (area, fragment) in FRAGMENTS {
+    let actions_fragments: &[(&str, &str)] = if actions { &ACTIONS_FRAGMENTS } else { &[] };
+    for (area, fragment) in FRAGMENTS.iter().chain(actions_fragments).copied() {
         let fragment: Value = serde_json::from_str(fragment).unwrap_or_else(|error| panic!("openapi/{area}.json is invalid: {error}"));
         for (section, pointer) in [("paths", "/paths"), ("schemas", "/components/schemas")] {
             let Some(entries) = fragment.pointer(pointer).and_then(Value::as_object) else { continue };
@@ -242,8 +272,8 @@ fn merged_document() -> (Value, Vec<String>) {
     (document, duplicates)
 }
 
-pub fn routes() -> Router<AppState> {
-    let (streaming, buffered): (Vec<_>, Vec<_>) = table().into_iter().partition(|entry| entry.streaming);
+pub fn routes(config: &Config) -> Router<AppState> {
+    let (streaming, buffered): (Vec<_>, Vec<_>) = table(config).into_iter().partition(|entry| entry.streaming);
     let mut router = Router::new();
     for entry in buffered {
         if let Some(handler) = entry.handler {
@@ -273,8 +303,9 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// `GET /openapi.json`
-async fn openapi(_caller: Caller) -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "application/json")], DOCUMENT.as_str())
+async fn openapi(State(state): State<AppState>, _caller: Caller) -> impl IntoResponse {
+    let document = if state.config.actions.enabled { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
+    ([(header::CONTENT_TYPE, "application/json")], document)
 }
 
 /// Every other path under `/api`.
@@ -299,10 +330,22 @@ mod tests {
 
     #[test]
     fn openapi_documents_exactly_the_routes() {
-        let (document, duplicates) = merged_document();
+        // Actions: foundation (F). Both with Actions disabled (the default) and enabled.
+        for actions in [false, true] {
+            let mut config = Config::default();
+            config.actions.enabled = actions;
+            documents_exactly_the_routes(&config);
+        }
+        let disabled = table(&Config::default());
+        assert!(disabled.iter().all(|route| !route.path.contains("/actions")), "no Actions route while Actions is disabled");
+    }
+
+    fn documents_exactly_the_routes(config: &Config) {
+        let (document, duplicates) = merged_document(config.actions.enabled);
         assert!(duplicates.is_empty(), "defined more than once: {duplicates:?}");
-        assert_eq!(serde_json::from_str::<Value>(&DOCUMENT).unwrap(), document, "the served document is the merged one");
-        for (area, fragment) in FRAGMENTS {
+        let served = if config.actions.enabled { &*DOCUMENT_WITH_ACTIONS } else { &*DOCUMENT };
+        assert_eq!(serde_json::from_str::<Value>(served).unwrap(), document, "the served document is the merged one");
+        for (area, fragment) in FRAGMENTS.iter().chain(&ACTIONS_FRAGMENTS).copied() {
             let fragment: Value = serde_json::from_str(fragment).unwrap();
             assert!(fragment["paths"].is_object() && fragment["components"]["schemas"].is_object(), "openapi/{area}.json shape");
         }
@@ -320,11 +363,11 @@ mod tests {
                 }
             }
         }
-        let routed: BTreeSet<_> = table().iter().map(|route| (route.method.as_str().to_owned(), openapi_path(&route.path))).collect();
+        let routed: BTreeSet<_> = table(config).iter().map(|route| (route.method.as_str().to_owned(), openapi_path(&route.path))).collect();
         let missing: Vec<_> = routed.difference(&documented).collect();
         let extra: Vec<_> = documented.difference(&routed).collect();
         assert!(missing.is_empty() && extra.is_empty(), "undocumented: {missing:?}; documented but not routed: {extra:?}");
-        assert_eq!(routed.len(), table().len(), "no route is listed twice");
+        assert_eq!(routed.len(), table(config).len(), "no route is listed twice");
     }
 
     #[tokio::test]

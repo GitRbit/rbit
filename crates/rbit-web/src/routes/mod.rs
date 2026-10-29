@@ -1,6 +1,9 @@
 //! URL map and middleware stack.
 
 mod account;
+// Actions: foundation (F). Public for the disabled-is-disabled tests' route inventory.
+pub mod actions;
+pub mod actions_runner;
 mod admin;
 mod api;
 mod archives;
@@ -77,13 +80,17 @@ pub fn router(state: AppState) -> Router {
         // compressed and large clones legitimately take minutes.
         .merge(git_routes())
         // Milestone 2: the REST API and large downloads/uploads bring their own layers.
-        .merge(api::routes())
+        .merge(api::routes(&state.config))
         .merge(archives::routes(&state))
         .merge(releases::file_routes(&state))
         // Milestone 3: editing files in the browser (E): streaming uploads.
         .merge(edits::upload_routes(&state))
         // Milestone 3: Git LFS (L). Streams like Git traffic: no page layers.
         .merge(lfs::routes())
+        // Actions: foundation (F). The runner endpoint exists only when Actions is enabled.
+        .merge(if state.services.actions.is_some() { actions_runner::routes() } else { Router::new() })
+        // Actions: artifacts (A). Downloads stream, so they sit outside the page router.
+        .merge(if state.services.actions.is_some() { actions::file_routes(&state) } else { Router::new() })
         // Before any route: a hover preload must never reach a side-effecting handler.
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))
@@ -158,6 +165,8 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         // Milestone 3: importing and push mirrors (M).
         .merge(imports::routes())
         .merge(push_mirrors::routes())
+        // Actions: foundation (F). The pages exist only when Actions is enabled.
+        .merge(if state.services.actions.is_some() { actions::routes() } else { Router::new() })
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
         .layer(from_fn_with_state(state.clone(), middleware::session))

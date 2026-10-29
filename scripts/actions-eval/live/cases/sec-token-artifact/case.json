@@ -1,0 +1,38 @@
+{
+  "feature": "token-leak",
+  "split": "test",
+  "why": "attack: an artifact of the whole workspace must not carry the token checkout keeps in .git/config",
+  "observe": [
+    {
+      "id": "zip",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "everything",
+        "format": "zip"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "zip",
+      "status": 200,
+      "files": [
+        ".git/config"
+      ],
+      "file_lacks": {
+        ".git/config": "AUTHORIZATION"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

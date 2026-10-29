@@ -1,0 +1,15 @@
+on: push
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p out && echo 1 > out/a1.log && echo 2 > out/a2.log && echo 3 > out/b1.log
+      - uses: actions/cache/save@v4
+        with: {key: 'q-${{ github.run_id }}', path: 'out/a?.log'}
+  restore:
+    needs: save
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with: {key: 'q-${{ github.run_id }}', path: 'out/a?.log', fail-on-cache-miss: true}
+      - run: test -f out/a1.log && test -f out/a2.log && test ! -e out/b1.log && echo restored ok

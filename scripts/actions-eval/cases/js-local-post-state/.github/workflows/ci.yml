@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: js
+        uses: ./.github/actions/js
+        with:
+          value: 21
+      - run: echo "doubled=${{ steps.js.outputs.doubled }}"
+        shell: bash

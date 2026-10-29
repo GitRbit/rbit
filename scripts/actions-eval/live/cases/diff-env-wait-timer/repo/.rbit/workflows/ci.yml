@@ -1,0 +1,12 @@
+on: push
+jobs:
+  deploy:
+    runs-on: self-hosted
+    environment: staging
+    steps:
+      - shell: bash
+        env: {PUSHED: '${{ github.event.head_commit.timestamp }}'}
+        run: |
+          waited=$(( $(date +%s) - $(date -d "$PUSHED" +%s) ))
+          echo "waited $waited seconds"
+          echo "waited-long-enough=$(( waited >= 55 ? 1 : 0 ))"

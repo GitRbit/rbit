@@ -1,0 +1,46 @@
+# rbit-runner configuration. `rbit-runner register` writes this file (and the runner
+# credential, `.credential`, next to it); this example lists the common settings (the
+# `[actions]` table is in docs/actions.md, `insecure_http = true` is what `register --insecure-http` writes). Unknown keys
+# are errors. Relative paths are relative to this file's directory.
+
+# The rbit instance. Must be https; `register --insecure-http` allows http for a server on
+# this machine and records it here as `insecure_http = true`.
+url = "https://git.example.com"
+name = "build-1"
+# Tasks run at once (1 to 64).
+capacity = 2
+# Task workspaces (removed after each task) and the cache.
+work_dir = "work"
+# After SIGTERM or Ctrl-C, running tasks get this long before they are cancelled; a second
+# signal cancels them at once.
+shutdown_grace_seconds = 600
+
+# Each `runs-on` label maps to exactly one backend.
+[[labels]]
+name = "ubuntu-latest"
+backend = "container"
+# The job container's image unless the workflow names a `container.image`.
+image = "docker.io/library/ubuntu:24.04"
+
+# The host backend runs jobs as the runner's user, with NO isolation: a job can read
+# everything that user can, including the runner credential. Trusted repositories only.
+# [[labels]]
+# name = "self-hosted"
+# backend = "host"
+
+[container]
+# "docker" or "podman" (rootless Podman is recommended), or a path to either.
+program = "docker"
+# Limits of every job and service container; memory and cpus are unlimited when unset.
+memory = "4g"
+cpus = 2
+pids_limit = 4096
+# The driver of the network each task gets. Never "host".
+network = "bridge"
+# The image that hands a task's files back to the runner's user after the job's containers
+# wrote them as root; pinned by digest. Point it at a mirror when Docker Hub is out of reach.
+# helper_image = "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+
+[cache]
+# Least-recently-used cache entries are evicted beyond this size (10 GiB).
+max_bytes = 10737418240

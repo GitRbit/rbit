@@ -35,6 +35,10 @@ for release history.
 - **Automation:** a versioned REST API (`/api/v1`, OpenAPI 3.1), including collaborators,
   teams, releases with assets and forks; signed, GitHub-shaped webhooks with a retrying
   delivery queue; commit statuses and required checks for external CI.
+- **Actions:** GitHub-style workflows on rbit's own runner, `rbit-runner` — container and host
+  backends, built-in checkout, cache and artifacts, secrets and variables, fork-safe pull
+  request runs, job logs, commit statuses, `workflow_run`/`workflow_job` webhooks and a REST
+  API. Off unless an administrator turns it on.
 - **Themes:** light, dark and about 500 tinted-theming schemes.
 - **Distribution:** community contribution files, release binaries for
   Linux, macOS and Windows, and a multi-architecture image at `ghcr.io/gitrbit/rbit`.
@@ -65,8 +69,6 @@ The current near-term priorities are implemented in the features above.
 
 Ideas with no schedule yet:
 
-- A runner protocol on top of the status API, so external CI runners can pick up jobs from
-  rbit (rbit itself still would not run builds).
 - A native gitoxide transport for `receive-pack`, behind a configuration switch, so pushes
   no longer need the `git` binary.
 - Git LFS over pure SSH (`git-lfs-transfer`); today SSH clients use
@@ -84,4 +86,7 @@ matters to you, open a discussion; the answer may change, but not soon:
 - `CODEOWNERS`, tag protection and commit signature verification.
 - Translations (i18n).
 - Databases other than SQLite (such as Postgres) and object storage for repositories or files.
-- A built-in Actions runner.
+- Running builds inside the rbit server process: builds run on `rbit-runner`, a separate
+  program, never in the forge.
+- A marketplace of downloadable actions: workflows use rbit's built-in actions, containers and
+  `run:` steps.

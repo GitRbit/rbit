@@ -691,6 +691,170 @@ async fn dashboard_mentions_start_empty_and_index_completion_persists() {
     assert!(db.database.issue_search().mentions_indexed().await.unwrap());
 }
 
+/// A full commit id, quoted for SQL.
+const ACTIONS_SHA: &str = "'0123456789abcdef0123456789abcdef01234567'";
+
+/// The CHECKs of the Actions tables refuse rows that contradict themselves.
+async fn actions_checks_refuse_inconsistent_rows(db: &Upgraded) {
+    let run = |sha: &str, event: &str, status: i64| {
+        format!(
+            "INSERT INTO actions_runs (repo_id, run_number, workflow_path, workflow_name, title, event, ref, sha, trusted, status, \
+             event_payload, created_at) VALUES (6, 1, 'a.yml', '', '', '{event}', 'refs/heads/main', {sha}, 1, {status}, '{{}}', 1)"
+        )
+    };
+    let refused = [
+        // A runner's scope columns must agree with its kind.
+        "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, owner_id, created_at) \
+         VALUES ('00000000-0000-0000-0000-000000000001', zeroblob(32), 'r', 'instance', 1, 1)"
+            .to_owned(),
+        "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, created_at) \
+         VALUES ('00000000-0000-0000-0000-000000000001', zeroblob(32), 'r', 'repository', 1)"
+            .to_owned(),
+        "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, created_at) VALUES ('short', zeroblob(32), 'r', 'instance', 1)"
+            .to_owned(),
+        "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, created_at) \
+         VALUES ('00000000-0000-0000-0000-000000000001', zeroblob(31), 'r', 'instance', 1)"
+            .to_owned(),
+        "INSERT INTO actions_runners (uuid, token_digest, name, scope_kind, labels, created_at) \
+         VALUES ('00000000-0000-0000-0000-000000000001', zeroblob(32), 'r', 'instance', '{}', 1)"
+            .to_owned(),
+        // Registration tokens always expire.
+        "INSERT INTO actions_registration_tokens (digest, scope_kind, created_at, expires_at) VALUES (zeroblob(32), 'instance', 5, 5)"
+            .to_owned(),
+        // Statuses are the known codes, events the supported ones, shas full commit ids.
+        run("'abc'", "push", 1),
+        run(ACTIONS_SHA, "push", 9),
+        run(ACTIONS_SHA, "issues", 1),
+        // A repository secret is visible to its repository only; nonces have 12 bytes.
+        "INSERT INTO actions_secrets (scope_kind, repo_id, name, visibility, key_id, nonce, ciphertext, created_at, updated_at) \
+         VALUES ('repository', 6, 'X', 'selected', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1)"
+            .to_owned(),
+        "INSERT INTO actions_secrets (scope_kind, owner_id, name, key_id, nonce, ciphertext, created_at, updated_at) \
+         VALUES ('owner', 10, 'X', zeroblob(8), zeroblob(11), zeroblob(16), 1, 1)"
+            .to_owned(),
+        "INSERT INTO actions_repositories (repo_id, token_permission, updated_at) VALUES (6, 'admin', 1)".to_owned(),
+        // Actions: settings API.
+        "INSERT INTO actions_repositories (repo_id, allowed_actions, updated_at) VALUES (6, 'some', 1)".to_owned(),
+        "INSERT INTO actions_repositories (repo_id, approval_policy, updated_at) VALUES (6, 'nobody', 1)".to_owned(),
+        "INSERT INTO actions_owner_settings (owner_id, enabled_repositories, updated_at) VALUES (10, 'most', 1)".to_owned(),
+        // Actions: shared cache.
+        "INSERT INTO actions_caches (repo_id, scope, key, version, size, sha256, created_at, used_at)          VALUES (6, 'heads/trunk', 'cargo', 'ABC', 3, zeroblob(32), 1, 1)"
+            .to_owned(),
+    ];
+    for sql in refused {
+        assert!(sqlx::query(sqlx::AssertSqlSafe(sql.clone())).execute(&db.raw).await.is_err(), "{sql}");
+    }
+    assert!(sqlx::query(sqlx::AssertSqlSafe(run(ACTIONS_SHA, "push", 1))).execute(&db.raw).await.is_ok(), "the template itself is valid");
+    sqlx::query("DELETE FROM actions_runs").execute(&db.raw).await.unwrap();
+}
+
+// Actions: foundation (F).
+#[tokio::test]
+async fn actions_tables_start_empty_with_their_checks_and_cascades() {
+    let db = upgraded().await;
+    let tables: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type = 'table' AND name GLOB 'actions_*' ORDER BY name")
+            .fetch_all(&db.raw)
+            .await
+            .unwrap();
+    assert_eq!(
+        tables,
+        [
+            "actions_artifacts",
+            // Actions: shared cache.
+            "actions_caches",
+            "actions_deployment_reviews",
+            // Actions: disabled workflows.
+            "actions_disabled_workflows",
+            "actions_environment_reviewers",
+            "actions_environment_secrets",
+            "actions_environment_variables",
+            "actions_environments",
+            "actions_job_labels",
+            "actions_job_outputs",
+            "actions_jobs",
+            "actions_owner_enabled_repositories",
+            "actions_owner_policies",
+            "actions_owner_settings",
+            "actions_registration_tokens",
+            "actions_repositories",
+            "actions_run_numbers",
+            "actions_runners",
+            "actions_runs",
+            "actions_schedules",
+            "actions_secret_repositories",
+            "actions_secrets",
+            "actions_step_summaries",
+            "actions_steps",
+            "actions_tasks",
+            "actions_trusted_users",
+            "actions_variables",
+        ]
+    );
+    for table in &tables {
+        assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, 0, "{table}");
+    }
+    assert!(!db.database.actions_settings().is_enabled(ROCKET).await.unwrap(), "no row: Actions is off");
+
+    actions_checks_refuse_inconsistent_rows(&db).await;
+
+    sqlx::raw_sql(
+        "INSERT INTO actions_repositories (repo_id, enabled, updated_at) VALUES (6, 1, 1); \
+         INSERT INTO actions_runners (id, uuid, token_digest, name, scope_kind, repo_id, created_at) \
+             VALUES (1, '00000000-0000-0000-0000-000000000001', zeroblob(32), 'r', 'repository', 6, 1); \
+         INSERT INTO actions_runs (id, repo_id, run_number, workflow_path, workflow_name, title, event, ref, sha, actor_id, trusted, \
+             status, event_payload, created_at) VALUES (1, 6, 1, 'a.yml', 'CI', 'x', 'push', 'refs/heads/trunk', \
+             '0123456789abcdef0123456789abcdef01234567', 2, 1, 6, '{}', 1); \
+         INSERT INTO actions_run_numbers (repo_id, last) VALUES (6, 1); \
+         INSERT INTO actions_jobs (id, run_id, repo_id, job_key, name, payload, status, runner_id, created_at) \
+             VALUES (1, 1, 6, 'build', 'build', x'00', 6, 1, 1); \
+         INSERT INTO actions_job_labels (job_id, label) VALUES (1, 'linux'); \
+         INSERT INTO actions_job_outputs (job_id, key, value) VALUES (1, 'version', '1'); \
+         INSERT INTO actions_tasks (id, job_id, attempt, runner_id, token_digest, status, started_at, heartbeat_at) \
+             VALUES (1, 1, 1, 1, zeroblob(32), 6, 1, 1); \
+         UPDATE actions_jobs SET task_id = 1 WHERE id = 1; \
+         INSERT INTO actions_steps (task_id, number, name, status) VALUES (1, 0, 'Checkout', 1); \
+         INSERT INTO actions_secrets (id, scope_kind, owner_id, name, visibility, key_id, nonce, ciphertext, created_at, updated_at, \
+             updated_by) VALUES (1, 'owner', 10, 'TOKEN', 'selected', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1, 2); \
+         INSERT INTO actions_secret_repositories (secret_id, repo_id) VALUES (1, 6); \
+         INSERT INTO actions_variables (scope_kind, repo_id, name, value, created_at, updated_at) VALUES ('repository', 6, 'A', 'b', 1, 1); \
+         INSERT INTO actions_trusted_users (repo_id, user_id, approved_by, created_at) VALUES (6, 2, 1, 1); \
+         INSERT INTO actions_owner_policies (owner_id, instance_runners, updated_by, updated_at) VALUES (10, 1, 2, 1); \
+         INSERT INTO actions_registration_tokens (digest, scope_kind, repo_id, created_by, created_at, expires_at) \
+             VALUES (zeroblob(32), 'repository', 6, 2, 1, 2); \
+         INSERT INTO actions_schedules (repo_id, workflow_path, cron, next_at) VALUES (6, 'a.yml', '@daily', 1);          INSERT INTO actions_artifacts (run_id, repo_id, attempt, job_id, name, size, sha256, created_at, expires_at)              VALUES (1, 6, 1, 1, 'dist', 3, zeroblob(32), 1, 2);          INSERT INTO actions_caches (repo_id, scope, key, version, size, sha256, created_at, used_at)              VALUES (6, 'heads/trunk', 'cargo', printf('%064d', 0), 3, zeroblob(32), 1, 1);          INSERT INTO actions_disabled_workflows (repo_id, path, disabled_at, disabled_by) VALUES (6, 'a.yml', 1, 2);          INSERT INTO actions_environments (id, repo_id, name, created_at, updated_at) VALUES (1, 6, 'production', 1, 1);          INSERT INTO actions_environment_reviewers (environment_id, account_id) VALUES (1, 2);          INSERT INTO actions_environment_secrets (environment_id, name, key_id, nonce, ciphertext, created_at, updated_at, updated_by)              VALUES (1, 'KEY', zeroblob(8), zeroblob(12), zeroblob(16), 1, 1, 2);          INSERT INTO actions_environment_variables (environment_id, name, value, created_at, updated_at) VALUES (1, 'A', 'b', 1, 1);          INSERT INTO actions_deployment_reviews (job_id, attempt, environment, reviewer_id, decision, created_at)              VALUES (1, 1, 'production', 2, 'approved', 1);",
+    )
+    .execute(&db.raw)
+    .await
+    .unwrap();
+
+    // Removing the runner keeps the job and task; removing a person keeps what they did.
+    sqlx::query("DELETE FROM actions_runners WHERE id = 1").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_tasks WHERE runner_id IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_jobs WHERE runner_id IS NULL").await, 1);
+    sqlx::query("DELETE FROM accounts WHERE id = 2").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_runs WHERE actor_id IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_secrets WHERE updated_by IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_registration_tokens WHERE created_by IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_owner_policies WHERE updated_by IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_trusted_users").await, 0, "a deleted user is no longer trusted");
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_environment_reviewers").await, 0, "nor a reviewer");
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_deployment_reviews WHERE reviewer_id IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_environment_secrets WHERE updated_by IS NULL").await, 1);
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_disabled_workflows WHERE disabled_by IS NULL").await, 1);
+
+    // Deleting the repository removes everything Actions kept for it but its owner's.
+    sqlx::query("DELETE FROM repositories WHERE id = 6").execute(&db.raw).await.unwrap();
+    for table in &tables {
+        let expected = i64::from(table == "actions_secrets" || table == "actions_owner_policies");
+        assert_eq!(db.count(&format!("SELECT COUNT(*) FROM {table}")).await, expected, "{table}");
+    }
+    assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&db.raw).await.unwrap().is_empty());
+    sqlx::query("DELETE FROM accounts WHERE id = 10").execute(&db.raw).await.unwrap();
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_secrets").await, 0, "owner secrets go with their owner");
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_owner_policies").await, 0);
+}
+
 #[tokio::test]
 async fn existing_repositories_upgrade_unarchived_and_can_be_archived() {
     let db = upgraded().await;
@@ -704,4 +868,22 @@ async fn existing_repositories_upgrade_unarchived_and_can_be_archived() {
     let rocket = repositories.find_by_path("ACME", "Rocket").await.unwrap().unwrap();
     assert_eq!(rocket.repo.archived_at, Some(Timestamp(1_800_000_000)));
     assert_eq!(rocket.repo.default_branch, "trunk", "the repository row is untouched");
+}
+
+// Actions: task tokens.
+#[tokio::test]
+async fn comments_upgrade_as_written_by_people() {
+    let db = upgraded().await;
+    sqlx::raw_sql(
+        "INSERT INTO issues (id, repo_id, number, kind, title, author_id, created_at, updated_at) VALUES (1, 6, 1, 'issue', 'x', 1, 10, 10); \
+         INSERT INTO issue_comments (id, issue_id, author_id, body, created_at, updated_at) VALUES (1, 1, 1, 'Existing', 11, 11);",
+    )
+    .execute(&db.raw)
+    .await
+    .unwrap();
+    let comment = db.database.issues().find_comment(rbit_core::IssueId(1), rbit_core::CommentId(1)).await.unwrap().unwrap();
+    assert_eq!(comment.source, rbit_core::CommentSource::User, "every comment so far was written by a person");
+    let insert = "INSERT INTO issue_comments (issue_id, body, created_at, updated_at, source) VALUES (1, 'x', 12, 12, ?)";
+    assert!(sqlx::query(insert).bind("robot").execute(&db.raw).await.is_err(), "only the known sources");
+    sqlx::query(insert).bind("actions").execute(&db.raw).await.unwrap();
 }

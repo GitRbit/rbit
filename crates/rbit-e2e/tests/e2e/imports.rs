@@ -116,8 +116,12 @@ async fn import_from_github_then_push_to_a_mirror() {
         )
         .await
         .expect_redirect("/alice/rocket/settings/push-mirrors?added=1");
-    let refs = wait_for_refs(&git, &mirror, |refs| refs.contains("refs/heads/main") && refs.contains("refs/heads/feature")).await;
-    assert!(refs.contains("refs/tags/v1.0") && !refs.contains("refs/pull/"), "{refs}");
+    // The mirror's refs are updated one by one, so wait for all of them.
+    let refs = wait_for_refs(&git, &mirror, |refs| {
+        refs.contains("refs/heads/main") && refs.contains("refs/heads/feature") && refs.contains("refs/tags/v1.0")
+    })
+    .await;
+    assert!(!refs.contains("refs/pull/"), "{refs}");
     let settings = wait_for_page(&alice, "/alice/rocket/settings/push-mirrors", "Last push").await;
     assert!(settings.contains("secret configured") && !settings.contains("hunter2"), "the secret is write-only");
 

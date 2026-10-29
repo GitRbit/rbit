@@ -1,0 +1,54 @@
+{
+  "feature": "zip",
+  "split": "test",
+  "why": "GitHub-oriented scripts follow archive_download_url, which must be the zip",
+  "observe": [
+    {
+      "id": "list",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/artifacts"
+      }
+    },
+    {
+      "id": "zip",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "report",
+        "format": "zip"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "list",
+      "status": 200,
+      "contains": [
+        "/zip\""
+      ],
+      "lacks": [
+        "/tar.gz\""
+      ]
+    },
+    {
+      "obs": "zip",
+      "status": 200,
+      "exact_files": [
+        "report.json"
+      ],
+      "file_contains": {
+        "report.json": "\"ok\": true"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

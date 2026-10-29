@@ -1,0 +1,22 @@
+{
+  "feature": "container-security",
+  "split": "test",
+  "why": "attack: a set-user-ID file must not survive into what the host stores and restores",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "check",
+        "conclusion": "success",
+        "contains": [
+          "no set-id bits"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

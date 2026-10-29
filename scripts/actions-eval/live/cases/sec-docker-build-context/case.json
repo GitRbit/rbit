@@ -1,0 +1,25 @@
+{
+  "feature": "docker-build",
+  "split": "train",
+  "why": "attack: an action's Dockerfile must not see the rest of the workspace",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "build",
+        "conclusion": "success",
+        "contains": [
+          "action.yml"
+        ],
+        "lacks": [
+          "workspace-secret.txt"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

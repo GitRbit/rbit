@@ -1,0 +1,10 @@
+name: JS
+inputs:
+  value: {required: true}
+outputs:
+  doubled: {description: twice the value}
+runs:
+  using: node20
+  pre: pre.js
+  main: index.js
+  post: post.js

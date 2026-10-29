@@ -1,0 +1,22 @@
+{
+  "feature": "engine-env",
+  "split": "train",
+  "why": "attack: a multi-line BUILDKIT_HOST would reach the Docker CLI's own environment",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "attack",
+        "conclusion": "failure",
+        "contains": [
+          "container engine"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

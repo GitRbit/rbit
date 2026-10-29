@@ -13,6 +13,9 @@
 //!   wins, and at most [`MAX_STATUSES_PER_CONTEXT`] reports are kept per triple;
 //! * the combined state is `failure` if any latest status is `failure` or `error`,
 //!   `pending` if there are none or any is `pending`, and `success` otherwise.
+//!
+//! A status is posted by a person (through the API) or by rbit Actions for its jobs
+//! ([`StatusSource`]); Actions' statuses have no creator.
 
 use std::fmt;
 
@@ -184,6 +187,32 @@ impl StatusReport {
     }
 }
 
+// Actions: triggers (T).
+/// Who posted a status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StatusSource {
+    /// A person, or CI acting with a person's credentials, through the API.
+    #[default]
+    User,
+    /// rbit Actions, for one of its jobs. Such a status has no creator.
+    Actions,
+}
+
+impl StatusSource {
+    /// The stored value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Actions => "actions",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        [Self::User, Self::Actions].into_iter().find(|source| source.as_str() == value)
+    }
+}
+
 /// One stored report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitStatus {
@@ -195,8 +224,9 @@ pub struct CommitStatus {
     pub context: StatusContext,
     pub description: Option<String>,
     pub target_url: Option<String>,
-    /// `None` once the account is deleted.
+    /// `None` once the account is deleted, and for statuses rbit Actions posted.
     pub creator: Option<AccountId>,
+    pub source: StatusSource,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -282,9 +312,19 @@ mod tests {
             description: None,
             target_url: None,
             creator: None,
+            source: StatusSource::User,
             created_at: Timestamp(id),
             updated_at: Timestamp(id),
         }
+    }
+
+    #[test]
+    fn sources_round_trip() {
+        for source in [StatusSource::User, StatusSource::Actions] {
+            assert_eq!(StatusSource::parse(source.as_str()), Some(source));
+        }
+        assert_eq!(StatusSource::parse("system"), None);
+        assert_eq!(StatusSource::default(), StatusSource::User);
     }
 
     #[test]

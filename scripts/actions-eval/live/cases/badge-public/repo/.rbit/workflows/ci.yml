@@ -1,0 +1,7 @@
+name: CI
+on: push
+jobs:
+  ok:
+    runs-on: self-hosted
+    steps:
+      - run: echo fine

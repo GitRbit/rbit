@@ -32,6 +32,7 @@ pub struct AssetLink {
 
 /// A release as shown in the list and on its own page.
 #[derive(Debug, Clone)]
+#[expect(clippy::struct_excessive_bools, reason = "independent display flags")]
 pub struct ReleaseCard {
     pub tag: String,
     pub name: String,
@@ -41,6 +42,9 @@ pub struct ReleaseCard {
     pub is_prerelease: bool,
     pub is_latest: bool,
     pub author: Option<String>,
+    // Actions: releases from workflows.
+    /// Made by a workflow with its token: shown as rbit-actions with a "bot" badge.
+    pub by_actions: bool,
     pub when: String,
     pub when_iso: String,
     pub url: String,
@@ -68,6 +72,7 @@ impl ReleaseCard {
             is_prerelease: release.is_prerelease,
             is_latest: latest.is_some_and(|l| l.id == release.id),
             author: release.author.as_ref().map(|a| a.name.clone()),
+            by_actions: release.source == rbit_core::release::ReleaseSource::Actions,
             when: shown.relative(),
             when_iso: shown.iso8601(),
             url: urls.release(tag),
@@ -202,6 +207,7 @@ mod tests {
             created_at: Timestamp(0),
             updated_at: Timestamp(0),
             published_at: Some(Timestamp(0)),
+            source: rbit_core::release::ReleaseSource::User,
         };
         let asset = ReleaseAsset {
             id: ReleaseAssetId(9),
@@ -213,6 +219,7 @@ mod tests {
             sha256: [0; 32],
             download_count: 4,
             uploader_id: None,
+            source: rbit_core::release::ReleaseSource::User,
             created_at: Timestamp(0),
         };
         ReleaseDetail { release, assets: vec![asset] }

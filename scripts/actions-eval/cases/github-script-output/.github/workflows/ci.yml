@@ -1,0 +1,13 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - id: gs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('sum', 1 + 2);
+            core.info('event ' + context.eventName);
+      - run: echo "sum=${{ steps.gs.outputs.sum }}"
+        shell: bash

@@ -19,7 +19,7 @@ use std::sync::{
 };
 
 use rbit_core::{
-    AccountId, CommentId, IssueId, IssueKind, IssueNumber, ReleaseId, RepoId, ReviewId,
+    AccountId, CommentId, IssueId, IssueKind, IssueNumber, PushSource, ReleaseId, RepoId, ReviewId,
     issue::{CommentAction, IssueAction, ReviewAction},
     membership::Permission,
     status::StatusId,
@@ -35,11 +35,13 @@ const CHANNEL_CAPACITY: usize = 1024;
 /// subscribers always read current state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainEvent {
-    /// A push (HTTP or SSH) was accepted. Published by [`crate::PushService::complete`].
+    /// Refs of a repository changed: a push over HTTP or SSH, a mirror fetch, or a
+    /// change made in the browser (a merge, a file edit, a release's tag). Published by
+    /// [`crate::PushService::complete`].
     RepositoryPushed {
         repo: RepoId,
-        /// The account that pushed; `None` for deploy keys.
-        pusher: Option<AccountId>,
+        /// Where the push came from; [`PushSource::pusher`] is the account, if any.
+        source: PushSource,
         /// The refs the push changed, ordered by name. Empty when nothing changed (or the
         /// refs could not be read; that is logged).
         updates: Vec<RefUpdate>,
@@ -65,8 +67,9 @@ pub enum DomainEvent {
     /// workstream.
     RepositoryForked { repo: RepoId, parent: RepoId, actor: AccountId },
     /// A release was published (created as non-draft, or a draft was published).
-    /// Published by the repository essentials workstream.
-    ReleasePublished { repo: RepoId, release: ReleaseId, actor: AccountId },
+    /// Published by the repository essentials workstream. `actor` is `None` when a
+    /// workflow task published it (Actions: releases from workflows).
+    ReleasePublished { repo: RepoId, release: ReleaseId, actor: Option<AccountId> },
     /// An account was created, by sign-up or by an administrator.
     UserSignedUp { user: AccountId },
     /// A user's password was changed (by them, by a reset link, or by an administrator).
@@ -91,7 +94,8 @@ pub enum DomainEvent {
         number: IssueNumber,
         kind: IssueKind,
         comment: CommentId,
-        actor: AccountId,
+        /// `None` for rbit Actions: a workflow task commenting with its token.
+        actor: Option<AccountId>,
         action: CommentAction,
     },
     /// A pull request review was submitted, edited or dismissed. Published by P.
@@ -102,8 +106,15 @@ pub enum DomainEvent {
     CollaboratorChanged { repo: RepoId, user: AccountId, actor: AccountId, change: CollaboratorChange },
     // Milestone 3: commit statuses (S).
     /// A commit status was created on commit `sha` (a full id). Published by
-    /// [`crate::StatusService::create`].
-    CommitStatus { repo: RepoId, status: StatusId, sha: String, actor: AccountId },
+    /// [`crate::StatusService::create`], and with no `actor` for the statuses rbit Actions
+    /// posts for its jobs (Actions: triggers (T)).
+    CommitStatus { repo: RepoId, status: StatusId, sha: String, actor: Option<AccountId> },
+    // Actions: integration (I).
+    /// A workflow run was requested, started or completed. Published by
+    /// `ActionsService::announce`, once per action.
+    ActionsRun { repo: RepoId, run: rbit_core::actions::RunId, action: crate::actions::hooks::RunAction },
+    /// A job of a workflow run waits for approval, was queued, started or completed.
+    ActionsJob { repo: RepoId, run: rbit_core::actions::RunId, job: rbit_core::actions::JobId, action: crate::actions::hooks::JobAction },
 }
 
 /// What happened to a collaborator ([`DomainEvent::CollaboratorChanged`]).
@@ -206,7 +217,7 @@ mod tests {
         bus.publish(DomainEvent::UserSignedUp { user: AccountId(1) });
 
         let mut subscriber = bus.subscribe();
-        let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), pusher: Some(AccountId(1)), updates: Vec::new() };
+        let pushed = DomainEvent::RepositoryPushed { repo: RepoId(7), source: PushSource::User(AccountId(1)), updates: Vec::new() };
         bus.publish(pushed.clone());
         assert_eq!(subscriber.recv().await.unwrap(), pushed);
     }

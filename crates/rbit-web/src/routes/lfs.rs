@@ -11,7 +11,11 @@
 //!   ([`git_http::authenticate`]: throttled, two-factor accounts need a token, a token's
 //!   scope caps access), or none for public repositories;
 //! * `Authorization: Bearer lfs1.…`, the short-lived signed header the batch API and
-//!   `git-lfs-authenticate` (SSH) hand out. Invalid ones count as failed attempts.
+//!   `git-lfs-authenticate` (SSH) hand out. Invalid ones count as failed attempts;
+//! * a workflow task's token (`rbat_…`), as for Git: its own repository at its grant
+//!   (downloads; uploads with `contents: write`), other public ones read-only. The batch
+//!   API hands a task back its own header for the transfers instead of a transfer token,
+//!   so every transfer re-checks that the task still runs (Actions: S).
 //!
 //! Downloads need read access, uploads and locks write access; pull mirrors refuse
 //! uploads. Hidden repositories answer `404` (`401` to anonymous callers, so clients ask
@@ -45,7 +49,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio_util::io::{ReaderStream, StreamReader};
 
-use super::git_http::{self, Denied};
+use super::git_http::{self, Denied, GitCaller};
 use crate::{AppState, client_ip::Client};
 
 /// The media type of every LFS request and response body.
@@ -164,6 +168,9 @@ pub(crate) struct Authorized {
     pub(crate) object: Option<(LfsOid, u64)>,
     /// Whether any credential was presented (anonymous callers get `401` instead of `403`).
     authenticated: bool,
+    // Actions: S.
+    /// Authorised by a workflow task's token.
+    task: bool,
 }
 
 impl Authorized {
@@ -220,22 +227,27 @@ pub(crate) async fn authorize(
         };
         let (subject, object) = (grant.subject, grant.object.clone());
         let granted = lfs.open_granted(grant, owner, repo).await?;
-        return Ok(Authorized { ctx: granted.ctx, user: granted.user, subject, object, authenticated: true });
+        return Ok(Authorized { ctx: granted.ctx, user: granted.user, subject, object, authenticated: true, task: false });
     }
 
     let caller = git_http::authenticate(state, client, headers).await?;
-    let user = caller.as_ref().map(|caller| &caller.user);
+    // Actions: S. A task opens its own repository at its grant, others only if public.
+    if let (Some(GitCaller::Task(grant)), Some(actions)) = (&caller, &state.services.actions) {
+        let ctx = actions.open_for_task(grant, owner, repo).await?;
+        return Ok(Authorized { ctx, user: None, subject: TokenSubject::Anonymous, object: None, authenticated: true, task: true });
+    }
+    let user = caller.as_ref().and_then(GitCaller::user);
     let mut ctx = match state.services.repositories.open_following_renames(user, owner, repo).await {
         Ok(ctx) => ctx,
         Err(ServiceError::NotFound) if user.is_none() => return Err(LfsError::Challenge),
         Err(error) => return Err(error.into()),
     };
-    if let Some(scope) = caller.as_ref().and_then(|caller| caller.token_scope) {
+    if let Some(scope) = caller.as_ref().and_then(GitCaller::token_scope) {
         ctx.access = scope.limit(ctx.access);
     }
     let subject = user.map_or(TokenSubject::Anonymous, |user| TokenSubject::User(user.id()));
     let authenticated = user.is_some();
-    Ok(Authorized { ctx, user: caller.map(|caller| caller.user), subject, object: None, authenticated })
+    Ok(Authorized { ctx, user: caller.and_then(GitCaller::into_user), subject, object: None, authenticated, task: false })
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -298,6 +310,12 @@ async fn batch(
     let objects: Vec<BatchRequestObject> = request.objects.into_iter().map(|o| BatchRequestObject { oid: o.oid, size: o.size }).collect();
     let answers = state.services.lfs.batch(&authorized.ctx, authorized.user.as_ref(), authorized.subject, operation, &objects).await?;
     let objects_url = format!("{}/objects", endpoint(&state, &authorized.ctx));
+    // Actions: S. A task's transfers carry its own credential, checked again on every one.
+    let task_header = authorized.task.then(|| headers.get(header::AUTHORIZATION).and_then(|value| value.to_str().ok())).flatten();
+    let action = |href: &str, token: &IssuedToken| match task_header {
+        Some(header) => json!({ "href": href, "header": { "Authorization": header } }),
+        None => action(href, token),
+    };
     let objects: Vec<Value> = answers
         .into_iter()
         .map(|answer| {

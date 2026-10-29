@@ -13,7 +13,7 @@
 //! and `organization` for organisation repositories.
 
 use rbit_core::{
-    Account, AccountId, Issue, IssueKind,
+    Account, AccountId, CommentSource, Issue, IssueKind,
     issue::{CommentAction, IssueAction},
     repository::OwnedRepository,
     webhook::WebhookEvent,
@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use super::{IssueMetadata, MilestoneRef, json as issue_json};
 use crate::{
     DomainEvent, ServiceContext, ServiceError,
+    statuses::hooks::actions_bot,
     webhooks::{
         HookPayload,
         payloads::{account, repository, with_organization},
@@ -102,7 +103,13 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
             if let CommentAction::Edited { previous_body } = action {
                 body["changes"] = json!({ "body": { "from": previous_body } });
             }
-            Ok(Some(finish(ctx, body, &repo, Some(*actor), WebhookEvent::IssueComment, base_url).await?))
+            let mut payload = finish(ctx, body, &repo, *actor, WebhookEvent::IssueComment, base_url).await?;
+            // Actions: task tokens. A workflow's comment is sent by rbit Actions; deleting it is
+            // the moderator's doing.
+            if stored.source == CommentSource::Actions && actor.is_none() {
+                payload.body["sender"] = actions_bot();
+            }
+            Ok(Some(payload))
         }
         _ => Ok(None),
     }
@@ -290,7 +297,7 @@ mod tests {
             number: pull.number,
             kind: IssueKind::Pull,
             comment: comment.id,
-            actor: fixture.alice.id(),
+            actor: Some(fixture.alice.id()),
             action,
         };
         let created = fixture.body(&event(CommentAction::Created)).await.unwrap();
@@ -304,5 +311,34 @@ mod tests {
         assert_eq!(fixture.body(&event(CommentAction::Created)).await, None, "the comment is gone");
         let deleted = fixture.body(&event(CommentAction::Deleted { snapshot: comment.clone() })).await.unwrap();
         assert_eq!(deleted["comment"]["id"], comment.id.0);
+
+        // Actions: task tokens. A workflow's comment is sent by rbit Actions, and deleting it by
+        // whoever deleted it.
+        let ctx = fixture.services.timeline.open(Some(&fixture.alice), ctx.repo.clone(), pull.number).await.unwrap();
+        let grant = crate::actions::tokens::TaskGrant {
+            task: rbit_core::actions::TaskId(1),
+            job: rbit_core::actions::JobId(1),
+            run: rbit_core::actions::RunId(1),
+            repo: pull.repo_id,
+            permissions: rbit_core::actions::TokenPermissions::uniform(rbit_core::actions::PermissionLevel::Write),
+        };
+        let bot = fixture.services.timeline.comment_for_task(&grant, &ctx, "3% faster").await.unwrap();
+        let by_bot = |action, actor| DomainEvent::IssueComment {
+            repo: pull.repo_id,
+            issue: pull.id,
+            number: pull.number,
+            kind: IssueKind::Pull,
+            comment: bot.id,
+            actor,
+            action,
+        };
+        let created = fixture.body(&by_bot(CommentAction::Created, None)).await.unwrap();
+        assert_eq!(
+            (created["sender"]["login"].as_str(), created["comment"]["user"]["login"].as_str()),
+            (Some("rbit-actions[bot]"), Some("rbit-actions[bot]"))
+        );
+        fixture.services.timeline.delete_comment(&fixture.alice, &ctx, bot.id).await.unwrap();
+        let deleted = fixture.body(&by_bot(CommentAction::Deleted { snapshot: bot.clone() }, Some(fixture.alice.id()))).await.unwrap();
+        assert_eq!(deleted["sender"]["login"], "alice", "the moderator, not the bot");
     }
 }

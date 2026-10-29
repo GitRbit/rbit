@@ -14,6 +14,11 @@ rbit-storage.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-mail.workspace = true
+# Actions: workflow parsing, triggers and planning.
+rbit-workflow.workspace = true
+# Actions: sealing secrets (U).
+aes-gcm.workspace = true
+zeroize.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
@@ -37,6 +42,11 @@ base64.workspace = true
 # Milestone 3: external sign-in (O): provider documents (discovery, tokens, GitHub's API).
 # M: importing (the source's API objects).
 serde.workspace = true
+# Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
+aho-corasick.workspace = true
+flate2.workspace = true
+# Actions: artifacts, read to serve them as zip archives.
+tar.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
@@ -47,6 +57,8 @@ p256.workspace = true
 base64.workspace = true
 # M: a fake GitHub/Gitea server for the import tests.
 axum.workspace = true
+# Actions: reading the zip archives artifacts are served as.
+zip.workspace = true
 
 [lints]
 workspace = true

@@ -9,13 +9,19 @@
 //! * [`totp`] — time-based one-time passwords (RFC 6238) and recovery codes.
 //! * [`webauthn`] — passkeys and security keys as a second factor.
 //! * [`oidc`] — external sign-in: sealed flow state, PKCE and ID token validation.
+//! * [`runner_token`], [`task_token`] — rbit Actions runner credentials (`rbrn_…`),
+//!   registration tokens (`rbrg_…`) and task tokens (`rbat_…`), stored as digests.
 
 pub mod access_token;
 pub mod oidc;
 pub mod password;
 pub mod policy;
+// Actions: S.
+pub mod runner_token;
 mod secret;
 pub mod session;
+// Actions: S.
+pub mod task_token;
 pub mod totp;
 pub mod webauthn;
 
@@ -23,7 +29,11 @@ pub use access_token::AccessTokenSecret;
 pub use oidc::{Flow, FlowKey, IdToken, IdTokenCheck, JwkSet, OidcError, Pkce};
 pub use password::{PasswordError, Passwords};
 pub use policy::{Grants, repo_access};
+// Actions: S.
+pub use runner_token::{RegistrationSecret, RunnerCredential};
 pub use secret::TokenDigest;
 pub use session::SessionToken;
+// Actions: S.
+pub use task_token::TaskTokenSecret;
 pub use totp::{RecoveryCode, TotpSecret};
 pub use webauthn::{Challenge, NewCredential, RelyingParty, WebauthnError};

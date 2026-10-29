@@ -1,0 +1,8 @@
+url = "http://localhost:3000"
+insecure_http = true
+name = "eval-service"
+work_dir = "work"
+
+[[labels]]
+name = "eval-nothing"
+backend = "host"

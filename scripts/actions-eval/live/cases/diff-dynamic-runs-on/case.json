@@ -1,0 +1,32 @@
+{
+  "feature": "dynamic-plan",
+  "split": "test",
+  "why": "`runs-on` and a matrix `include` read from an earlier job's outputs",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "go \\(one\\)",
+        "conclusion": "success",
+        "contains": [
+          "picked one"
+        ]
+      }
+    },
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "go \\(two\\)",
+        "conclusion": "success",
+        "contains": [
+          "picked two"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

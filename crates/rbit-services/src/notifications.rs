@@ -274,7 +274,10 @@ impl NotificationService {
             DomainEvent::IssueComment { repo, issue, comment, actor, action, .. } => {
                 let include = match action {
                     CommentAction::Created => {
-                        store.participate(*issue, *actor, NotificationReason::Comment, now).await?;
+                        // rbit Actions (no actor) is nobody to subscribe.
+                        if let Some(actor) = actor {
+                            store.participate(*issue, *actor, NotificationReason::Comment, now).await?;
+                        }
                         true
                     }
                     CommentAction::Edited { .. } => false,
@@ -283,7 +286,7 @@ impl NotificationService {
                 if let Some(comment) = self.ctx.database.issues().find_comment(*issue, *comment).await? {
                     self.new_mentions(*issue, comment.body.as_str(), &mut direct).await?;
                 }
-                (*repo, *issue, Some(*actor), include)
+                (*repo, *issue, *actor, include)
             }
             DomainEvent::PullRequestReview { repo, pull, actor, action: ReviewAction::Submitted, .. } => {
                 store.participate(*pull, *actor, NotificationReason::Reviewed, now).await?;

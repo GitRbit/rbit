@@ -1,0 +1,12 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            fs.writeFileSync('made-by-script.txt', 'contents ' + process.env.GITHUB_WORKSPACE.length);
+      - run: cat made-by-script.txt
+        shell: bash

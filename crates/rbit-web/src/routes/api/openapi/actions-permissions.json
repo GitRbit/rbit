@@ -1,0 +1,1622 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/actions/permissions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Whether the repository runs workflows, and which actions they may use (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsRepositoryPermissions"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change whether the repository runs workflows, and which actions they may use (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "`enabled` is required. Turning Actions on where the owner's policy does not let the repository run, or an `allowed_actions` wider than the owner's, is 409.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsRepositoryPermissionsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/permissions/selected-actions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The actions the repository allows when `allowed_actions` is `selected` (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The selected actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSelectedActions"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Choose the actions the repository allows (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "Only while `allowed_actions` is `selected` (409 otherwise). `verified_allowed` is accepted and has no effect: rbit has no verified creators.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSelectedActions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/permissions/workflow": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The default permission of the repository's workflow token (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token's defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change the default permission of the repository's workflow token (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Which outside contributors' pull request runs wait for approval in the repository (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The approval policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsForkPrApproval"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change which outside contributors' pull request runs wait for approval in the repository (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "rbit cannot tell who is new to the platform, so `first_time_contributors_new_to_github` waits like `first_time_contributors`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsForkPrApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "getOrgActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Whether the organization runs workflows, and which actions they may use (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsOwnerPermissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setOrgActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change whether the organization runs workflows, and which actions they may use (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "`enabled_repositories` is required. The owner's values are ceilings its repositories can only narrow.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsOwnerPermissionsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions/selected-actions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "getOrgSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The actions the organization allows when `allowed_actions` is `selected` (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The selected actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSelectedActions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setOrgSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Choose the actions the organization allows (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "Only while `allowed_actions` is `selected` (409 otherwise). `verified_allowed` is accepted and has no effect: rbit has no verified creators.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSelectedActions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions/workflow": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "getOrgWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The default permission of the organization's workflow token (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token's defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setOrgWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change the default permission of the organization's workflow token (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "An owner's values are ceilings: `read` keeps every repository's token read-only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions/fork-pr-contributor-approval": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "getOrgForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Which outside contributors' pull request runs wait for approval in the organization (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The approval policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsForkPrApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setOrgForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change which outside contributors' pull request runs wait for approval in the organization (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "rbit cannot tell who is new to the platform, so `first_time_contributors_new_to_github` waits like `first_time_contributors`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsForkPrApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions/repositories": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listOrgSelectedRepositories",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repositories of the organization that run workflows while `enabled_repositories` is `selected` (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The selected repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSelectedRepositories"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setOrgSelectedRepositories",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Replace the repositories of the organization that run workflows (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSelectedRepositoryIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/permissions/repositories/{repository_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "repository_id",
+          "in": "path",
+          "required": true,
+          "description": "One of the owner's repositories, by id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "enableOrgSelectedRepository",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Let one repository of the organization run workflows (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disableOrgSelectedRepository",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Stop one repository of the organization from running workflows (admin scope; organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions": {
+      "parameters": [],
+      "get": {
+        "operationId": "getUserActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Whether the caller's own account runs workflows, and which actions they may use (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsOwnerPermissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setUserActionsPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change whether the caller's own account runs workflows, and which actions they may use (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "`enabled_repositories` is required. The owner's values are ceilings its repositories can only narrow.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsOwnerPermissionsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions/selected-actions": {
+      "parameters": [],
+      "get": {
+        "operationId": "getUserSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The actions the caller's own account allows when `allowed_actions` is `selected` (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The selected actions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSelectedActions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setUserSelectedActions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Choose the actions the caller's own account allows (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "Only while `allowed_actions` is `selected` (409 otherwise). `verified_allowed` is accepted and has no effect: rbit has no verified creators.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSelectedActions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions/workflow": {
+      "parameters": [],
+      "get": {
+        "operationId": "getUserWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The default permission of the caller's own account's workflow token (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The token's defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setUserWorkflowPermissions",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change the default permission of the caller's own account's workflow token (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "An owner's values are ceilings: `read` keeps every repository's token read-only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsWorkflowPermissions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions/fork-pr-contributor-approval": {
+      "parameters": [],
+      "get": {
+        "operationId": "getUserForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Which outside contributors' pull request runs wait for approval in the caller's own account (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The approval policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsForkPrApproval"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setUserForkPrApproval",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change which outside contributors' pull request runs wait for approval in the caller's own account (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "description": "rbit cannot tell who is new to the platform, so `first_time_contributors_new_to_github` waits like `first_time_contributors`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsForkPrApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions/repositories": {
+      "parameters": [],
+      "get": {
+        "operationId": "listUserSelectedRepositories",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repositories of the caller's own account that run workflows while `enabled_repositories` is `selected` (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The selected repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSelectedRepositories"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setUserSelectedRepositories",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Replace the repositories of the caller's own account that run workflows (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSelectedRepositoryIds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/permissions/repositories/{repository_id}": {
+      "parameters": [
+        {
+          "name": "repository_id",
+          "in": "path",
+          "required": true,
+          "description": "One of the owner's repositories, by id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "enableUserSelectedRepository",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Let one repository of the caller's own account run workflows (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disableUserSelectedRepository",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Stop one repository of the caller's own account from running workflows (admin scope; the account itself)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/permissions/access": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getRepoWorkflowAccess",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Who may call the repository's reusable workflows while it is private (admin scope; repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The access level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsWorkflowAccess"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "setRepoWorkflowAccess",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change who may call the repository's reusable workflows while it is private (admin scope; repository administrator)",
+        "description": "`user` and `organization` both let the owner's other private repositories call its workflows; public repositories' workflows can be called by anyone who may read them.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsWorkflowAccess"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActionsRepositoryPermissions": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "allowed_actions"
+        ],
+        "properties": {
+          "sha_pinning_required": {
+            "type": "boolean",
+            "description": "Always false: rbit has no SHA pinning policy."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The repository's own switch."
+          },
+          "allowed_actions": {
+            "type": "string",
+            "enum": [
+              "all",
+              "local_only",
+              "selected"
+            ],
+            "description": "`local_only`: only the repository's own actions; rbit's built-ins (checkout, cache, artifacts) always run."
+          },
+          "selected_actions_url": {
+            "type": "string",
+            "description": "Present while `allowed_actions` is `selected`."
+          }
+        }
+      },
+      "ActionsRepositoryPermissionsInput": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowed_actions": {
+            "type": "string",
+            "enum": [
+              "all",
+              "local_only",
+              "selected"
+            ],
+            "description": "`local_only`: only the repository's own actions; rbit's built-ins (checkout, cache, artifacts) always run."
+          }
+        }
+      },
+      "ActionsOwnerPermissions": {
+        "type": "object",
+        "required": [
+          "enabled_repositories",
+          "allowed_actions"
+        ],
+        "properties": {
+          "enabled_repositories": {
+            "type": "string",
+            "enum": [
+              "all",
+              "none",
+              "selected"
+            ]
+          },
+          "allowed_actions": {
+            "type": "string",
+            "enum": [
+              "all",
+              "local_only",
+              "selected"
+            ],
+            "description": "`local_only`: only the repository's own actions; rbit's built-ins (checkout, cache, artifacts) always run."
+          },
+          "selected_repositories_url": {
+            "type": "string"
+          },
+          "selected_actions_url": {
+            "type": "string"
+          }
+        }
+      },
+      "ActionsOwnerPermissionsInput": {
+        "type": "object",
+        "required": [
+          "enabled_repositories"
+        ],
+        "properties": {
+          "enabled_repositories": {
+            "type": "string",
+            "enum": [
+              "all",
+              "none",
+              "selected"
+            ]
+          },
+          "allowed_actions": {
+            "type": "string",
+            "enum": [
+              "all",
+              "local_only",
+              "selected"
+            ],
+            "description": "`local_only`: only the repository's own actions; rbit's built-ins (checkout, cache, artifacts) always run."
+          }
+        }
+      },
+      "ActionsSelectedActions": {
+        "type": "object",
+        "properties": {
+          "github_owned_allowed": {
+            "type": "boolean",
+            "description": "Actions of GitHub's `actions` and `github` organizations."
+          },
+          "verified_allowed": {
+            "type": "boolean",
+            "description": "Always false: rbit has no verified creators."
+          },
+          "patterns_allowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`owner/repo[/path]@ref` (or without `@`, any ref) and `docker://image` patterns; `*` matches anything."
+          }
+        }
+      },
+      "ActionsWorkflowPermissions": {
+        "type": "object",
+        "properties": {
+          "default_workflow_permissions": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "can_approve_pull_request_reviews": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActionsForkPrApproval": {
+        "type": "object",
+        "required": [
+          "approval_policy"
+        ],
+        "properties": {
+          "approval_policy": {
+            "type": "string",
+            "enum": [
+              "first_time_contributors_new_to_github",
+              "first_time_contributors",
+              "all_external_contributors"
+            ]
+          }
+        }
+      },
+      "ActionsSelectedRepositories": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "repositories"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "full_name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ActionsSelectedRepositoryIds": {
+        "type": "object",
+        "required": [
+          "selected_repository_ids"
+        ],
+        "properties": {
+          "selected_repository_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "ActionsWorkflowAccess": {
+        "type": "object",
+        "required": [
+          "access_level"
+        ],
+        "properties": {
+          "access_level": {
+            "type": "string",
+            "enum": [
+              "none",
+              "user",
+              "organization"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -48,7 +48,7 @@ use rbit_core::{
 };
 use rbit_services::{
     RepoContext, ServiceError,
-    releases::{ReleaseDetail, ReleaseInput, human_bytes},
+    releases::{ReleaseActor, ReleaseDetail, ReleaseInput, human_bytes},
     webhooks::payloads,
 };
 use serde::Deserialize;
@@ -133,6 +133,16 @@ async fn asset_value(state: &AppState, ctx: &RepoContext, release: &ReleaseDetai
     assets.into_iter().find(|asset| asset["id"] == id.0).ok_or_else(ApiError::not_found)
 }
 
+// Actions: releases from workflows.
+/// Who writes: a workflow task (its route and permission were checked when it was
+/// authenticated), or a person with the `write` scope.
+fn writer(caller: &Caller) -> ApiResult<ReleaseActor<'_>> {
+    match caller.task() {
+        Some(grant) => Ok(ReleaseActor::Task(grant)),
+        None => caller.require(TokenScope::Write).map(ReleaseActor::User),
+    }
+}
+
 /// Writers only (403 for readers), with the `write` scope.
 fn require_writer(ctx: &RepoContext) -> ApiResult<()> {
     if ctx.access.can_write() { Ok(()) } else { Err(ApiError::forbidden("You need write access to this repository")) }
@@ -187,7 +197,7 @@ pub async fn create(
     ApiJson(body): ApiJson<ReleaseBody>,
 ) -> ApiResult<Response> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
+    let user = writer(&caller)?;
     require_writer(&ctx)?;
     let tag_name =
         body.tag_name.filter(|tag| !tag.trim().is_empty()).ok_or_else(|| ApiError::invalid("tag_name", "tag_name is required"))?;
@@ -238,7 +248,7 @@ pub async fn update(
     ApiJson(body): ApiJson<ReleaseBody>,
 ) -> ApiResult<Json<Value>> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
+    let user = writer(&caller)?;
     let releases = &state.services.releases;
     let current = releases.by_id(&ctx, path.release()?).await?.release;
     require_writer(&ctx)?;
@@ -259,7 +269,7 @@ pub async fn update(
 /// stays.
 pub async fn delete(State(state): State<AppState>, caller: Caller, Path(path): Path<ReleasePath>) -> ApiResult<StatusCode> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    caller.require(TokenScope::Write)?;
+    writer(&caller)?;
     let releases = &state.services.releases;
     let release = releases.by_id(&ctx, path.release()?).await?.release;
     require_writer(&ctx)?;
@@ -299,7 +309,7 @@ pub async fn upload(
     body: Body,
 ) -> ApiResult<Response> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    let user = caller.require(TokenScope::Write)?;
+    let user = writer(&caller)?;
     let releases = &state.services.releases;
     let release = releases.by_id(&ctx, path.release()?).await?.release;
     require_writer(&ctx)?;
@@ -380,7 +390,7 @@ pub async fn asset(
 /// `DELETE /repos/{owner}/{repo}/releases/assets/{asset_id}`: `204`.
 pub async fn delete_asset(State(state): State<AppState>, caller: Caller, Path(path): Path<ReleasePath>) -> ApiResult<StatusCode> {
     let ctx = caller.open_repo(&state, &path.owner, &path.repo).await?;
-    caller.require(TokenScope::Write)?;
+    writer(&caller)?;
     let releases = &state.services.releases;
     let (detail, asset) = releases.asset(&ctx, path.asset()?).await?;
     require_writer(&ctx)?;

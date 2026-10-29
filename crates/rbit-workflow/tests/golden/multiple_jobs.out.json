@@ -1,0 +1,227 @@
+[
+  {
+    "version": 1,
+    "job_id": "zzz",
+    "name": "zzz",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "echo zzz"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job2",
+    "name": "job2",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job3",
+    "name": "job3",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "aaa",
+    "name": "aaa",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  }
+]

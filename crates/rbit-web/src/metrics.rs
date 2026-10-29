@@ -19,6 +19,23 @@
 //! The `SQLite` pool records `rbit_sqlite_*` metrics (connection waits, write lock waits,
 //! write transaction durations and busy errors; see `rbit_storage::sqlite`), with buckets
 //! fine enough for microsecond timings.
+//!
+//! rbit Actions records its own (`docs/design/actions.md` §9), only while it is enabled:
+//! the service and the runner endpoint that record them do not exist otherwise.
+//!
+//! * `rbit_actions_runs_total{event, outcome}` and `rbit_actions_jobs_total{outcome}` —
+//!   finished runs and jobs (`outcome` is `success`, `failure`, `cancelled` or `skipped`),
+//!   counted once each, when their `workflow_run`/`workflow_job` `completed` is announced.
+//! * `rbit_actions_job_queue_seconds` — from queued to started, when a runner takes a job;
+//!   `rbit_actions_job_duration_seconds` — from started to finished.
+//! * `rbit_actions_rpc_total{method, code}` — runner protocol calls (see
+//!   `routes::actions_runner`).
+//! * `rbit_actions_log_bytes_total` — job log bytes written.
+//! * `rbit_actions_workflow_errors_total{reason}` — workflow-error runs; `reason` is
+//!   `parse`, `limit`, `plan` or `timeout`.
+//! * `rbit_actions_jobs_waiting` and `rbit_actions_runners_online` (gauges) — jobs waiting
+//!   for a runner and runners that called in the last 90 seconds, set by the once-a-minute
+//!   sweep.
 
 use std::{
     sync::OnceLock,

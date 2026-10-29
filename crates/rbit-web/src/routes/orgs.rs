@@ -309,6 +309,11 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
     let (header, repos) = header(state, Some(user), ctx, OrgTab::Settings).await?;
     let base = format!("/{}/settings", ctx.org.name());
     let base_permission = state.services.orgs.base_permission(&ctx.org).await?;
+    let mut cards = crate::views::org::org_settings_cards(&base);
+    // Actions: interface and secrets (U). Only when the instance has Actions.
+    if state.services.actions.is_some() {
+        cards.extend(crate::views::actions_settings::org_settings_cards(&base));
+    }
     Ok(OrgSettingsPage {
         page: page.titled(format!("Settings · {}", ctx.org.label())),
         header,
@@ -317,7 +322,7 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
         delete_error: FormError::default(),
         repo_count: repos.len(),
         delete_url: format!("{base}/delete"),
-        cards: crate::views::org::org_settings_cards(&base),
+        cards,
         permission_url: format!("{base}/permission"),
         base_permissions: BasePermissionOption::list(base_permission),
         permission_error: FormError::default(),

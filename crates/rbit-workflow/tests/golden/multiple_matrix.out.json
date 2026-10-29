@@ -1,0 +1,314 @@
+[
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-20.04, 1.17)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-20.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-20.04",
+      "version": 1.17
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.17",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-20.04, 1.18)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-20.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-20.04",
+      "version": 1.18
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 1,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.18",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-20.04, 1.19)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-20.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-20.04",
+      "version": 1.19
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 2,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.19",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-22.04, 1.17)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-22.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-22.04",
+      "version": 1.17
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 3,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.17",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-22.04, 1.18)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-22.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-22.04",
+      "version": 1.18
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 4,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.18",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "job1",
+    "name": "job1 (ubuntu-22.04, 1.19)",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "ubuntu-22.04"
+    ],
+    "matrix": {
+      "os": "ubuntu-22.04",
+      "version": 1.19
+    },
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 5,
+      "job_total": 6
+    },
+    "permissions": null,
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {},
+    "env": {},
+    "defaults": {
+      "shell": null,
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": {
+      "image": "golang:1.19",
+      "env": {},
+      "credentials": null
+    },
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "uname -a && go version"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  }
+]

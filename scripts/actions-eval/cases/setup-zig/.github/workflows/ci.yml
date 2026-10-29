@@ -1,0 +1,10 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+      - run: zig version
+        shell: bash

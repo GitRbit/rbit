@@ -1,0 +1,33 @@
+{
+  "feature": "runner-service",
+  "split": "test",
+  "platform": "windows",
+  "why": "install, report and remove the runner with the system's own service manager",
+  "wait": {
+    "runs": 0,
+    "settle": 1
+  },
+  "observe": [
+    {
+      "id": "cycle",
+      "timeout": 300,
+      "shell": "copy \"{case}\\runner.toml\" \"{tmp}\\runner.toml\" >nul && \"{runner}\" --config \"{tmp}\\runner.toml\" install --mode service --name rbit-runner.eval-service --no-start && \"{runner}\" --config \"{tmp}\\runner.toml\" status --mode service --name rbit-runner.eval-service & \"{runner}\" --config \"{tmp}\\runner.toml\" uninstall --mode service --name rbit-runner.eval-service & \"{runner}\" --config \"{tmp}\\runner.toml\" status --mode service --name rbit-runner.eval-service"
+    }
+  ],
+  "expect": [
+    {
+      "obs": "cycle",
+      "contains": [
+        "Installed rbit-runner.eval-service",
+        "rbit-runner.eval-service: installed, not running",
+        "Removed rbit-runner.eval-service",
+        "rbit-runner.eval-service: not installed"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

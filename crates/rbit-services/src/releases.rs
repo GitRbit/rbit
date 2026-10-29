@@ -12,6 +12,10 @@
 //!   new tag is reported like a push.
 //! * Publishing — creating a release as non-draft, or turning a draft into a release —
 //!   publishes [`DomainEvent::ReleasePublished`] once.
+//! * A workflow task may create and edit releases and upload their files with its token
+//!   ([`ReleaseActor::Task`]), on its own repository with `contents: write` only. It writes
+//!   as rbit Actions (no author, `source = actions`), and a tag it creates is its push
+//!   ([`PushSource::Task`]), which starts no runs.
 //!
 //! # Attached files
 //!
@@ -41,8 +45,10 @@ use std::{
 };
 
 use rbit_core::{
-    Account, RepoId, Timestamp, User,
-    release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseId, validate_asset_name, validate_release_name, validate_release_notes},
+    Account, AccountId, PushSource, RepoId, Timestamp, User,
+    release::{
+        Release, ReleaseAsset, ReleaseAssetId, ReleaseId, ReleaseSource, validate_asset_name, validate_release_name, validate_release_notes,
+    },
 };
 use rbit_git::GitError;
 use rbit_storage::sqlite::releases::{NewAsset, NewRelease, ReleaseChanges, ReleaseStore};
@@ -56,7 +62,54 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::uploads::{ReceivedUpload, receive};
-use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError};
+use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
+
+// Actions: releases from workflows.
+/// Who makes or changes a release: a person, or a running workflow task with its token.
+#[derive(Debug, Clone, Copy)]
+pub enum ReleaseActor<'a> {
+    User(&'a User),
+    Task(&'a TaskGrant),
+}
+
+impl<'a> From<&'a User> for ReleaseActor<'a> {
+    fn from(user: &'a User) -> Self {
+        Self::User(user)
+    }
+}
+
+impl ReleaseActor<'_> {
+    /// The person, recorded as author or uploader; `None` for a task.
+    fn account(self) -> Option<AccountId> {
+        match self {
+            Self::User(user) => Some(user.id()),
+            Self::Task(_) => None,
+        }
+    }
+
+    fn source(self) -> ReleaseSource {
+        match self {
+            Self::User(_) => ReleaseSource::User,
+            Self::Task(_) => ReleaseSource::Actions,
+        }
+    }
+
+    /// Where the push of a tag it creates comes from; a task's starts no runs.
+    fn push_source(self) -> PushSource {
+        match self {
+            Self::User(user) => PushSource::User(user.id()),
+            Self::Task(grant) => PushSource::Task(grant.task),
+        }
+    }
+
+    /// A task changes only its own repository, and only with `contents: write`.
+    fn check(self, repo: &RepoContext) -> Result<(), ServiceError> {
+        match self {
+            Self::Task(grant) if grant.repo != repo.repo.repo.id || !grant.contents().can_write() => Err(ServiceError::Forbidden),
+            _ => Ok(()),
+        }
+    }
+}
 
 /// Releases per page of the releases list.
 pub const RELEASES_PER_PAGE: u32 = 10;
@@ -262,8 +315,8 @@ impl ReleaseService {
 
     /// Creates tag `tag` at `target` for a new release, reported like a push of the tag
     /// ([`DomainEvent::RepositoryPushed`]) so caches and webhooks see it.
-    async fn create_tag(&self, repo: &RepoContext, actor: &User, tag: &str, target: &str) -> Result<(), ServiceError> {
-        let pending = self.inner.pushes.begin(repo, Some(actor.id())).await;
+    async fn create_tag(&self, repo: &RepoContext, actor: ReleaseActor<'_>, tag: &str, target: &str) -> Result<(), ServiceError> {
+        let pending = self.inner.pushes.begin(repo, actor.push_source()).await;
         match repo.reader.create_tag(tag.to_owned(), target.to_owned()).await {
             Ok(_) => {
                 self.inner.pushes.complete(pending).await;
@@ -278,7 +331,14 @@ impl ReleaseService {
     }
 
     /// Creates a release; publishes [`DomainEvent::ReleasePublished`] unless it is a draft.
-    pub async fn create(&self, repo: &RepoContext, actor: &User, input: ReleaseInput) -> Result<Release, ServiceError> {
+    pub async fn create<'a>(
+        &self,
+        repo: &RepoContext,
+        actor: impl Into<ReleaseActor<'a>>,
+        input: ReleaseInput,
+    ) -> Result<Release, ServiceError> {
+        let actor = actor.into();
+        actor.check(repo)?;
         Self::require_writer(repo)?;
         let (tag, name) = Self::validated_text(&input)?;
         let repo_id = repo.repo.repo.id;
@@ -301,11 +361,12 @@ impl ReleaseService {
                 notes: &input.notes,
                 is_draft: input.is_draft,
                 is_prerelease: input.is_prerelease,
-                author_id: actor.id(),
+                author_id: actor.account(),
+                source: actor.source(),
             })
             .await?;
         if !input.is_draft {
-            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.id() });
+            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.account() });
         }
         tracing::info!(repo = %repo.repo.full_name(), tag, draft = input.is_draft, "release created");
         self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)
@@ -313,7 +374,15 @@ impl ReleaseService {
 
     /// Edits release `id`. Turning a draft into a release publishes it (once: the first
     /// publication date is kept if it is made a draft again and re-published).
-    pub async fn update(&self, repo: &RepoContext, actor: &User, id: ReleaseId, input: ReleaseInput) -> Result<Release, ServiceError> {
+    pub async fn update<'a>(
+        &self,
+        repo: &RepoContext,
+        actor: impl Into<ReleaseActor<'a>>,
+        id: ReleaseId,
+        input: ReleaseInput,
+    ) -> Result<Release, ServiceError> {
+        let actor = actor.into();
+        actor.check(repo)?;
         Self::require_writer(repo)?;
         let repo_id = repo.repo.repo.id;
         let current = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
@@ -333,7 +402,7 @@ impl ReleaseService {
             )
             .await?;
         if publishing {
-            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.id() });
+            self.inner.ctx.events.publish(DomainEvent::ReleasePublished { repo: repo_id, release: id, actor: actor.account() });
         }
         self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)
     }
@@ -365,15 +434,17 @@ impl ReleaseService {
     /// Stores `body` as the file `name` of release `id` (see the module docs for the
     /// procedure). Fails with [`ServiceError::Invalid`] for a bad name, too many files or
     /// a file over the size limit, and [`ServiceError::Conflict`] when the name is taken.
-    pub async fn upload_asset(
+    pub async fn upload_asset<'a>(
         &self,
         repo: &RepoContext,
-        actor: &User,
+        actor: impl Into<ReleaseActor<'a>>,
         id: ReleaseId,
         name: &str,
         content_type: &str,
         mut body: impl AsyncRead + Unpin + Send,
     ) -> Result<ReleaseAsset, ServiceError> {
+        let actor = actor.into();
+        actor.check(repo)?;
         Self::require_writer(repo)?;
         let repo_id = repo.repo.repo.id;
         let release = self.store().find(repo_id, id).await?.ok_or(ServiceError::NotFound)?;
@@ -403,7 +474,7 @@ impl ReleaseService {
         };
         let content_type: String = content_type.trim().chars().filter(|c| !c.is_control()).take(MAX_CONTENT_TYPE_LEN).collect();
         let name = name.to_owned();
-        let uploader_id = actor.id();
+        let (uploader_id, source) = (actor.account(), actor.source());
         let limit = config.max_assets_per_release;
         let service = self.clone();
         // Once bytes are complete, own the row-and-file placement independently of the
@@ -420,6 +491,7 @@ impl ReleaseService {
                     content_type: if content_type.is_empty() { "application/octet-stream" } else { &content_type },
                     sha256: received.digest,
                     uploader_id,
+                    source,
                 };
                 service.place_asset(new, received, tmp, limit).await
             })
@@ -720,7 +792,8 @@ mod tests {
                     notes: "",
                     is_draft: false,
                     is_prerelease: false,
-                    author_id: owner.id(),
+                    author_id: Some(owner.id()),
+                    source: ReleaseSource::User,
                 })
                 .await
                 .unwrap();
@@ -822,7 +895,8 @@ mod tests {
                 notes: "",
                 is_draft: false,
                 is_prerelease: false,
-                author_id: fixture.owner.id(),
+                author_id: Some(fixture.owner.id()),
+                source: ReleaseSource::User,
             })
             .await
             .unwrap();

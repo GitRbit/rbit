@@ -46,6 +46,12 @@ pub enum WebhookEvent {
     Ping,
     /// A commit status was created (milestone 3, S).
     Status,
+    // Actions: integration (I).
+    /// A workflow run was requested, started or completed. Offered only with Actions on.
+    WorkflowRun,
+    /// A workflow job was queued, waits for approval, started or completed. Offered only
+    /// with Actions on.
+    WorkflowJob,
 }
 
 impl WebhookEvent {
@@ -63,6 +69,18 @@ impl WebhookEvent {
         Self::Status,
     ];
 
+    // Actions: integration (I).
+    /// The events of rbit Actions. Hooks keep stored subscriptions to them when Actions is
+    /// turned off, but nothing fires them then and no form offers them.
+    pub const ACTIONS: [Self; 2] = [Self::WorkflowRun, Self::WorkflowJob];
+
+    /// The events a hook can subscribe to on this instance: [`Self::SUBSCRIBABLE`], and
+    /// [`Self::ACTIONS`] when `actions_enabled`.
+    pub fn subscribable(actions_enabled: bool) -> impl Iterator<Item = Self> {
+        let actions: &[Self] = if actions_enabled { &Self::ACTIONS } else { &[] };
+        Self::SUBSCRIBABLE.into_iter().chain(actions.iter().copied())
+    }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Push => "push",
@@ -76,11 +94,13 @@ impl WebhookEvent {
             Self::Member => "member",
             Self::Ping => "ping",
             Self::Status => "status",
+            Self::WorkflowRun => "workflow_run",
+            Self::WorkflowJob => "workflow_job",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
-        Self::SUBSCRIBABLE.into_iter().chain([Self::Ping]).find(|event| event.as_str() == value)
+        Self::subscribable(true).chain([Self::Ping]).find(|event| event.as_str() == value)
     }
 
     pub const fn label(self) -> &'static str {
@@ -96,6 +116,8 @@ impl WebhookEvent {
             Self::Member => "Collaborators",
             Self::Ping => "Pings",
             Self::Status => "Statuses",
+            Self::WorkflowRun => "Workflow runs",
+            Self::WorkflowJob => "Workflow jobs",
         }
     }
 
@@ -112,6 +134,8 @@ impl WebhookEvent {
             Self::Member => "Collaborators added, removed or given another permission.",
             Self::Ping => "Sent when the webhook is created.",
             Self::Status => "Commit statuses reported by CI.",
+            Self::WorkflowRun => "Actions workflow runs requested, started or completed.",
+            Self::WorkflowJob => "Actions jobs queued, waiting for approval, started or completed.",
         }
     }
 }
@@ -370,7 +394,7 @@ mod tests {
 
     #[test]
     fn events_round_trip() {
-        for event in WebhookEvent::SUBSCRIBABLE.into_iter().chain([WebhookEvent::Ping]) {
+        for event in WebhookEvent::subscribable(true).chain([WebhookEvent::Ping]) {
             assert_eq!(WebhookEvent::parse(event.as_str()), Some(event));
         }
         assert_eq!(WebhookEvent::parse("issues"), Some(WebhookEvent::Issues));
@@ -379,6 +403,15 @@ mod tests {
         assert_eq!(WebhookEvent::parse("pull_request_review_comment"), None, "out of scope in wave B");
         assert_eq!(WebhookEvent::parse("Push"), None);
         assert!(!WebhookEvent::SUBSCRIBABLE.contains(&WebhookEvent::Ping), "ping is implicit");
+    }
+
+    #[test]
+    fn actions_events_are_offered_only_with_actions_on() {
+        assert_eq!(WebhookEvent::subscribable(false).collect::<Vec<_>>(), WebhookEvent::SUBSCRIBABLE);
+        let on: Vec<_> = WebhookEvent::subscribable(true).collect();
+        assert!(on.ends_with(&WebhookEvent::ACTIONS));
+        assert_eq!(WebhookEvent::parse("workflow_run"), Some(WebhookEvent::WorkflowRun), "stored subscriptions still parse");
+        assert_eq!(WebhookEvent::parse("workflow_job"), Some(WebhookEvent::WorkflowJob));
     }
 
     #[test]

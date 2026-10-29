@@ -1,10 +1,12 @@
 name: Prepare build resources
-description: Provide swap for large Rust template compilations on Linux hosted runners.
+description: Provide swap for large Rust template compilations on GitHub-hosted Linux runners.
 runs:
   using: composite
   steps:
     - name: Add temporary Linux swap
-      if: runner.os == 'Linux'
+      # Only on GitHub's own machines, which are discarded after the job. A self-hosted
+      # runner keeps running, and a swap file left on would outlive the job.
+      if: runner.os == 'Linux' && runner.environment == 'github-hosted'
       shell: bash
       run: |
         # Hosted Linux machines can run out of RAM compiling the web templates.

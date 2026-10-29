@@ -1,0 +1,4 @@
+on: workflow_call
+jobs:
+  l3:
+    uses: ./.rbit/workflows/leaf.yml

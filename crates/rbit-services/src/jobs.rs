@@ -471,7 +471,11 @@ mod tests {
         let fixture = fixture(|_| {}).await;
         push_commit(&fixture.disk_path);
         fixture.services.jobs.spawn_background();
-        fixture.services.events.publish(DomainEvent::RepositoryPushed { repo: fixture.repo, pusher: None, updates: Vec::new() });
+        fixture.services.events.publish(DomainEvent::RepositoryPushed {
+            repo: fixture.repo,
+            source: rbit_core::PushSource::System,
+            updates: Vec::new(),
+        });
 
         let cache = fixture.kv.insights();
         let deadline = Instant::now() + Duration::from_secs(20);

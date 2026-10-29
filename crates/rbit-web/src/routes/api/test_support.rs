@@ -1,5 +1,6 @@
 //! A test fixture for the milestone 3 API areas (`collaborators`, `teams`, `releases`,
-//! `forks`): an isolated instance, its services and the full router, driven in-process.
+//! `forks`) and Actions: an isolated instance, its services, its database and the full
+//! router, driven in-process.
 
 use std::sync::Arc;
 
@@ -21,6 +22,8 @@ pub struct Fixture {
     _dir: tempfile::TempDir,
     pub services: Services,
     router: Router,
+    // Actions: integration (I). Runs are created in the store directly.
+    pub database: Database,
 }
 
 impl Fixture {
@@ -37,7 +40,7 @@ impl Fixture {
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         let router = crate::router(AppState::new(config, services.clone()));
-        Self { _dir: dir, services, router }
+        Self { _dir: dir, services, router, database }
     }
 
     pub async fn user(&self, name: &str) -> User {

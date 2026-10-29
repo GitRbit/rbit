@@ -30,7 +30,6 @@ use std::{
     time::Instant,
 };
 
-use rbit_core::User;
 use rbit_services::{
     ConcurrencySlot, PendingPush, RepoContext, ServiceError, ThrottleScope, lfs::TokenSubject, protection::PushActor, ssh_keys::SshIdentity,
 };
@@ -628,7 +627,7 @@ where
         };
 
     // Taken after the verdict, before git changes anything.
-    let pending = shared.services.pushes.begin(ctx, user.map(User::id)).await;
+    let pending = shared.services.pushes.begin(ctx, identity.push_source()).await;
     let status = shared.transport.receive_pack(&ctx.disk_path, protocol, options, input, stdout, stderr).await?;
     Ok(Exchanged { status: exit_code(status), push: Some(pending) })
 }

@@ -1,0 +1,88 @@
+//! Whether a pull request run is trusted (§11.1 of the Actions design), from the actor's
+//! current access, the repository's trusted users and earlier merged pull requests; the pure
+//! decision is `rbit_core::actions::classify_pull_request`.
+//!
+//! * The actor is whoever caused the event: the pull request's author for `opened`,
+//!   `reopened`, `edited`, `ready_for_review` and `closed` — never the maintainer who
+//!   clicked, so closing a fork's pull request cannot run its code with secrets — and the
+//!   pusher of the new head for `synchronize` (unknown for a deploy key: untrusted).
+//! * Access is read now, not when the pull request was opened: a former writer is a reader.
+//! * A fork's pull request is never trusted: its head holds commits from outside the
+//!   repository whoever pushed last. A writer causing the event only skips the wait.
+//! * An untrusted run gets a read-only token, no secrets and no variables
+//!   (`Run::trusted == false`), whoever approves it. It waits for approval unless its author
+//!   is vouched for — a trusted user of the repository, or the author of a merged pull
+//!   request into it — and pushed the head themselves. Suspended authors always wait. The
+//!   repository's approval policy (GitHub's `fork-pr-contributor-approval`, capped by its
+//!   owner's) can make merged pull requests vouch for nobody (`all_external_contributors`).
+//!
+//! Workstream T (triggers and runs) owns this file.
+
+use rbit_auth::repo_access;
+use rbit_core::{
+    AccountId,
+    actions::{AuthorStanding, RunTrust, TriggeringActor, classify_pull_request},
+    repository::OwnedRepository,
+};
+use rbit_storage::sqlite::pulls::{PullFilter, PullStateFilter};
+
+use super::ActionsService;
+use crate::{ServiceError, repositories::viewer_grants};
+
+impl ActionsService {
+    /// How a `pull_request` run of `repo` may run: `actor` caused the event (`None` when
+    /// unknown), `author` opened the pull request (`None` once their account is gone) and
+    /// `is_fork` says its head is in another repository.
+    pub async fn classify_pull_request(
+        &self,
+        repo: &OwnedRepository,
+        actor: Option<AccountId>,
+        author: Option<AccountId>,
+        is_fork: bool,
+    ) -> Result<RunTrust, ServiceError> {
+        let actor = match actor {
+            Some(id) => self.triggering_actor(repo, id, author).await?,
+            None => TriggeringActor::Unknown,
+        };
+        let standing = match author {
+            Some(id) => self.author_standing(repo, id).await?,
+            None => AuthorStanding::Unknown,
+        };
+        Ok(match classify_pull_request(actor, standing) {
+            RunTrust::Trusted if is_fork => RunTrust::Untrusted { awaits_approval: false },
+            trust => trust,
+        })
+    }
+
+    async fn triggering_actor(
+        &self,
+        repo: &OwnedRepository,
+        id: AccountId,
+        author: Option<AccountId>,
+    ) -> Result<TriggeringActor, ServiceError> {
+        let database = &self.ctx().database;
+        let Some(user) = database.accounts().find_user(id).await? else { return Ok(TriggeringActor::Unknown) };
+        let suspended = database.accounts().is_suspended(id).await?;
+        let grants = viewer_grants(&database.repositories(), Some(&user), repo).await?;
+        let access = repo_access(Some(&user), repo, &grants);
+        Ok(TriggeringActor::Known { access, suspended, is_author: author == Some(id) })
+    }
+
+    async fn author_standing(&self, repo: &OwnedRepository, author: AccountId) -> Result<AuthorStanding, ServiceError> {
+        let database = &self.ctx().database;
+        if database.accounts().is_suspended(author).await? {
+            return Ok(AuthorStanding::Suspended);
+        }
+        if database.actions_settings().is_trusted(repo.repo.id, author).await? {
+            return Ok(AuthorStanding::Vouched);
+        }
+        // Actions: settings API. Under `all_external_contributors` only the trusted list vouches.
+        if self.effective_policies(repo.repo.id).await?.approval_policy.merged_pull_vouches() {
+            let merged = PullFilter { state: PullStateFilter::Merged, author: Some(author), ..PullFilter::default() };
+            if database.pulls().count(repo.repo.id, &merged).await? > 0 {
+                return Ok(AuthorStanding::Vouched);
+            }
+        }
+        Ok(AuthorStanding::Unknown)
+    }
+}

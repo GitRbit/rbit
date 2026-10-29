@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use super::pool::Pool;
 use rbit_core::{
     AccountId, RepoId, Timestamp,
-    release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseAuthor, ReleaseId},
+    release::{Release, ReleaseAsset, ReleaseAssetId, ReleaseAuthor, ReleaseId, ReleaseSource},
 };
 
 use crate::StorageError;
@@ -17,7 +17,7 @@ macro_rules! select_release {
     ($($clause:expr),+) => {
         concat!(
             "SELECT r.id, r.repo_id, r.tag_name, r.name, r.notes, r.is_draft, r.is_prerelease, r.author_id, \
-             a.name AS author_name, r.created_at, r.updated_at, r.published_at \
+             a.name AS author_name, r.created_at, r.updated_at, r.published_at, r.source \
              FROM releases r LEFT JOIN accounts a ON a.id = r.author_id ",
             $($clause),+
         )
@@ -28,7 +28,7 @@ macro_rules! select_release {
 macro_rules! select_asset {
     ($clause:expr) => {
         concat!(
-            "SELECT id, release_id, repo_id, name, size, content_type, sha256, download_count, uploader_id, created_at \
+            "SELECT id, release_id, repo_id, name, size, content_type, sha256, download_count, uploader_id, created_at, source \
              FROM release_assets ",
             $clause
         )
@@ -49,6 +49,7 @@ struct ReleaseRow {
     created_at: i64,
     updated_at: i64,
     published_at: Option<i64>,
+    source: String,
 }
 
 impl From<ReleaseRow> for Release {
@@ -65,6 +66,8 @@ impl From<ReleaseRow> for Release {
             created_at: Timestamp(row.created_at),
             updated_at: Timestamp(row.updated_at),
             published_at: row.published_at.map(Timestamp),
+            // The column's CHECK allows only the two values.
+            source: ReleaseSource::parse(&row.source).unwrap_or_default(),
         }
     }
 }
@@ -81,6 +84,7 @@ struct AssetRow {
     download_count: i64,
     uploader_id: Option<i64>,
     created_at: i64,
+    source: String,
 }
 
 impl TryFrom<AssetRow> for ReleaseAsset {
@@ -98,6 +102,8 @@ impl TryFrom<AssetRow> for ReleaseAsset {
             download_count: u64::try_from(row.download_count).unwrap_or_default(),
             uploader_id: row.uploader_id.map(AccountId),
             created_at: Timestamp(row.created_at),
+            source: ReleaseSource::parse(&row.source)
+                .ok_or_else(|| StorageError::Corrupt(format!("release file source `{}`", row.source)))?,
         })
     }
 }
@@ -111,7 +117,9 @@ pub struct NewRelease<'a> {
     pub notes: &'a str,
     pub is_draft: bool,
     pub is_prerelease: bool,
-    pub author_id: AccountId,
+    /// `None` for a release a workflow task made.
+    pub author_id: Option<AccountId>,
+    pub source: ReleaseSource,
 }
 
 /// The editable fields of a release. `published_at` is only ever set once: pass the
@@ -135,7 +143,9 @@ pub struct NewAsset<'a> {
     pub size: u64,
     pub content_type: &'a str,
     pub sha256: [u8; 32],
-    pub uploader_id: AccountId,
+    /// `None` for a file a workflow task uploaded.
+    pub uploader_id: Option<AccountId>,
+    pub source: ReleaseSource,
 }
 
 #[derive(Debug, Clone)]
@@ -152,8 +162,8 @@ impl ReleaseStore {
     pub async fn create(&self, new: NewRelease<'_>) -> Result<ReleaseId, StorageError> {
         let now = Timestamp::now().seconds();
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO releases (repo_id, tag_name, name, notes, is_draft, is_prerelease, author_id, created_at, updated_at, published_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, CASE WHEN ?5 THEN NULL ELSE ?8 END) RETURNING id",
+            "INSERT INTO releases (repo_id, tag_name, name, notes, is_draft, is_prerelease, author_id, created_at, updated_at, published_at, source) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, CASE WHEN ?5 THEN NULL ELSE ?8 END, ?9) RETURNING id",
         )
         .bind(new.repo_id.0)
         .bind(new.tag_name)
@@ -161,8 +171,9 @@ impl ReleaseStore {
         .bind(new.notes)
         .bind(new.is_draft)
         .bind(new.is_prerelease)
-        .bind(new.author_id.0)
+        .bind(new.author_id.map(|id| id.0))
         .bind(now)
+        .bind(new.source.as_str())
         .fetch_one(&self.pool)
         .await
         .map_err(|e| StorageError::from_insert(e, "a release for this tag"))?;
@@ -257,10 +268,10 @@ impl ReleaseStore {
     pub async fn insert_asset_limited(&self, new: NewAsset<'_>, limit: u32) -> Result<Option<ReleaseAsset>, StorageError> {
         let size = i64::try_from(new.size).map_err(|_| StorageError::Corrupt("asset too large".to_owned()))?;
         let row: Option<AssetRow> = sqlx::query_as(
-            "INSERT INTO release_assets (release_id, repo_id, name, size, content_type, sha256, uploader_id, created_at) \
-             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 \
+            "INSERT INTO release_assets (release_id, repo_id, name, size, content_type, sha256, uploader_id, created_at, source) \
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10 \
              WHERE (SELECT COUNT(*) FROM release_assets WHERE release_id = ?1) < ?9 \
-             RETURNING id, release_id, repo_id, name, size, content_type, sha256, download_count, uploader_id, created_at",
+             RETURNING id, release_id, repo_id, name, size, content_type, sha256, download_count, uploader_id, created_at, source",
         )
         .bind(new.release_id.0)
         .bind(new.repo_id.0)
@@ -268,9 +279,10 @@ impl ReleaseStore {
         .bind(size)
         .bind(new.content_type)
         .bind(new.sha256.as_slice())
-        .bind(new.uploader_id.0)
+        .bind(new.uploader_id.map(|id| id.0))
         .bind(Timestamp::now().seconds())
         .bind(limit)
+        .bind(new.source.as_str())
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| StorageError::from_insert(e, "a file with this name"))?;

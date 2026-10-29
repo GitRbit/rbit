@@ -1,0 +1,16 @@
+on: push
+permissions:
+  issues: write
+jobs:
+  bot:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        env: {TOKEN: '${{ github.token }}'}
+        run: |
+          api() { curl -sSf -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" "$@"; }
+          repo="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          issue=1
+          id=$(api -X POST "$repo/issues/$issue/comments" -d '{"body":"draft"}' | python -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          api -X PATCH "$repo/issues/comments/$id" -d '{"body":"edited"}' > /dev/null
+          api "$repo/issues/comments/$id" | python -c "import json,sys; print('now:', json.load(sys.stdin)['body'])"

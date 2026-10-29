@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use rbit_auth::policy::{Grants, repo_access};
 use rbit_core::{
-    AccountId, StateReason, TimelineEvent, Timestamp, User,
+    AccountId, PushSource, StateReason, TimelineEvent, Timestamp, User,
     issue::MergeStrategy,
     protection::MergeRules,
     pull::{
@@ -307,7 +307,7 @@ impl PullService {
         };
         let env = self.merge_environment();
         let repo: &RepoContext = ctx.repo();
-        let pending = self.inner.pushes.begin(repo, Some(actor.id())).await;
+        let pending = self.inner.pushes.begin(repo, PushSource::User(actor.id())).await;
         let lease = self.ctx().repositories.lease(repo.repo.repo.id).await;
         let mut attempt = 0;
         let (commit, base_tip) = loop {
@@ -370,7 +370,7 @@ impl PullService {
             if !head_ctx.can_write_content() || !self.inner.protection.may_delete_branch(&head_ctx, actor, &ctx.pull.head_branch).await? {
                 return Ok(false);
             }
-            let pending = self.inner.pushes.begin(&head_ctx, Some(actor.id())).await;
+            let pending = self.inner.pushes.begin(&head_ctx, PushSource::User(actor.id())).await;
             let lease = self.ctx().repositories.lease(head_ctx.repo.repo.id).await;
             let deleted =
                 rbit_git::pull_refs::delete_branch(self.git_binary(), &head_ctx.disk_path, &ctx.pull.head_branch, &ctx.pull.head_sha)

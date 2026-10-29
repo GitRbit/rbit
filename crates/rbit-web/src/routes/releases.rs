@@ -287,7 +287,7 @@ async fn create(
 ) -> WebResult<Response> {
     let loaded = load_for_writer(&state, &viewer, &owner, &repo).await?;
     let input = form.into_input();
-    match state.services.releases.create(&loaded.ctx, &user, input.clone()).await {
+    match state.services.releases.create(&loaded.ctx, &*user, input.clone()).await {
         Ok(release) => Ok(Redirect::to(&loaded.urls.release(&release.tag_name)).into_response()),
         Err(error) => rejected_form(&state, &loaded, page, &input, None, error).await,
     }
@@ -344,7 +344,7 @@ async fn update(
     let loaded = load_for_writer(&state, &viewer, &owner, &repo).await?;
     let current = state.services.releases.by_id(&loaded.ctx, parse_id(&id)?).await?.release;
     let input = form.into_input();
-    match state.services.releases.update(&loaded.ctx, &user, current.id, input.clone()).await {
+    match state.services.releases.update(&loaded.ctx, &*user, current.id, input.clone()).await {
         Ok(release) => Ok(Redirect::to(&loaded.urls.release(&release.tag_name)).into_response()),
         Err(error) => rejected_form(&state, &loaded, page, &input, Some((current.id, !current.is_draft)), error).await,
     }

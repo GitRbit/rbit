@@ -91,6 +91,8 @@ fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     cards.extend(protection::repo_settings_cards(header));
     // Milestone 3: importing and push mirrors (M).
     cards.extend(super::push_mirrors::repo_settings_cards(header));
+    // Actions: interface and secrets (U). Only when the instance has Actions.
+    cards.extend(super::actions_settings::repo_settings_cards(header));
     cards
 }
 

@@ -1,0 +1,3 @@
+result: failure
+split: test
+contains: Input required and not supplied: script

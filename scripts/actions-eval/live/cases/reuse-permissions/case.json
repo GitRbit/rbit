@@ -1,0 +1,27 @@
+{
+  "feature": "reusable",
+  "split": "train",
+  "why": "a called workflow may lower the token's permissions but never raise them",
+  "wait": {
+    "runs": 1
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "failure"
+      }
+    },
+    {
+      "run": {
+        "workflow": "ok.yml",
+        "conclusion": "success"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

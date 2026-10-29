@@ -1,0 +1,22 @@
+{
+  "feature": "container-options",
+  "split": "test",
+  "why": "`container.options` with a user, a hostname and an environment variable",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "opts",
+        "conclusion": "success",
+        "contains": [
+          "uid=1000 host=buildbox env=yes"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

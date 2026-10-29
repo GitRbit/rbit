@@ -8,7 +8,7 @@
 //! [`IssueMetadata`]. Pull requests carry `pull_request: {url, html_url, merged_at}`, as
 //! GitHub's issue objects do. No email address appears anywhere.
 
-use rbit_core::{Account, Comment, Issue, IssueKind, StateReason, issue::LabelSnapshot, repository::OwnedRepository};
+use rbit_core::{Account, Comment, CommentSource, Issue, IssueKind, StateReason, issue::LabelSnapshot, repository::OwnedRepository};
 use rbit_storage::sqlite::issue_meta::{Label, MilestoneProgress};
 use serde_json::{Value, json};
 
@@ -133,7 +133,10 @@ pub fn comment(comment: &Comment, author: Option<&Account>, issue: &Issue, repo:
     json!({
         "id": comment.id.0,
         "body": comment.body.as_str(),
-        "user": author.map(|author| account(author, base_url)),
+        "user": match comment.source {
+            CommentSource::Actions => crate::statuses::hooks::actions_bot(),
+            CommentSource::User => author.map_or(Value::Null, |author| account(author, base_url)),
+        },
         "created_at": timestamp(comment.created_at),
         "updated_at": timestamp(comment.updated_at),
         "html_url": format!("{}#issuecomment-{}", html_url(issue, repo, base_url), comment.id.0),
@@ -270,10 +273,14 @@ mod tests {
             created_at: Timestamp(0),
             updated_at: Timestamp(0),
             edited_at: None,
+            source: CommentSource::User,
         };
         let value = comment(&stored, None, &thread(IssueKind::Issue, false), &repo(), BASE);
         assert_eq!(value["html_url"], "https://git.example.com/ada/demo/issues/3#issuecomment-7");
         assert_eq!(value["url"], "https://git.example.com/api/v1/repos/ada/demo/issues/comments/7");
         assert_eq!(value["user"], Value::Null, "a ghost");
+        let by_actions =
+            comment(&Comment { source: CommentSource::Actions, ..stored }, None, &thread(IssueKind::Issue, false), &repo(), BASE);
+        assert_eq!(by_actions["user"]["login"], "rbit-actions[bot]", "not a ghost");
     }
 }

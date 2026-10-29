@@ -1,0 +1,16 @@
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+jobs:
+  consume:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          url=$(curl -s -H "Authorization: Bearer $TOKEN" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$RUN/artifacts" | python -c "import json,sys;print(json.load(sys.stdin)['artifacts'][0]['archive_download_url'])")
+          curl -sL -H "Authorization: Bearer $TOKEN" -o a.zip "$url"
+          python -c "import zipfile;print('payload='+zipfile.ZipFile('a.zip').read('payload.txt').decode().strip())"

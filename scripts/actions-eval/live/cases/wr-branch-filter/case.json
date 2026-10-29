@@ -1,0 +1,27 @@
+{
+  "feature": "workflow-run",
+  "split": "test",
+  "why": "should not fire: the upstream ran on main, the filter asks for release branches",
+  "wait": {
+    "runs": 1,
+    "settle": 20
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "no_run": {
+        "workflow": "deploy.yml"
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

@@ -11,12 +11,14 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | `lfs/<aa>/<bb>/<oid>` | Git LFS objects, stored once however many repositories use them | **Yes** |
 | `tmp/` | Scratch space: merges, web edits, cross-fork overlays, LFS uploads in progress | No (swept at start-up) |
 | `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
+| `actions/secrets.key` | The key that seals Actions secrets (only with Actions enabled) | **Separately**: not in `rbit backup` |
+| `actions/logs/`, `actions/artifacts/`, `actions/caches/` | Job logs, workflow artifacts and `actions/cache` entries (only with Actions enabled) | No (kept for a retention period) |
 
 Run it behind a reverse proxy that terminates TLS. The sections below cover
 [Docker](#docker), [systemd](#systemd), [reverse proxies](#reverse-proxy-and-tls),
 [email](#email), [external sign-in](#external-sign-in), [health checks](#health-checks),
-[metrics](#metrics), [background jobs](#background-jobs), [backups and restore](#backups)
-and [upgrades](#upgrades-and-migrations).
+[metrics](#metrics), [background jobs](#background-jobs), [Actions and runners](#actions-and-runners),
+[backups and restore](#backups) and [upgrades](#upgrades-and-migrations).
 
 ## Configuration
 
@@ -419,6 +421,15 @@ or block `/metrics` at the proxy and scrape the loopback address.
 | `rbit_sqlite_write_transaction_seconds` | histogram | `store`, `outcome` (`commit`, `rollback`, `failed`) — from `BEGIN` to the end of the transaction |
 | `rbit_sqlite_busy_errors_total` | counter | `store`, `phase` (`begin`, `query`, `transaction`, `commit`), `code` (`busy`, `busy_snapshot`, `busy_timeout`, `busy_recovery`, `locked`) |
 | `rbit_notification_digests_total` | counter | `outcome` (`sent`, `failed`) — one per email digest handed to the mail transport |
+| `rbit_actions_runs_total` | counter | `event` (`push`, `pull_request`, `workflow_dispatch`, `schedule`), `outcome` (`success`, `failure`, `cancelled`, `skipped`) — finished runs, Actions only |
+| `rbit_actions_jobs_total` | counter | `outcome` — finished jobs |
+| `rbit_actions_job_queue_seconds` | histogram | — from queued to started, when a runner takes a job |
+| `rbit_actions_job_duration_seconds` | histogram | — from started to finished |
+| `rbit_actions_rpc_total` | counter | `method` (`register`, `declare`, `poll`, `task_state`, `task_logs`, `unregister`, `artifact_list`, `artifact_upload`, `artifact_download`), `code` (`ok` or the protocol's error code) — runner calls |
+| `rbit_actions_log_bytes_total` | counter | — job log bytes written |
+| `rbit_actions_workflow_errors_total` | counter | `reason` (`parse`, `limit`, `plan`, `timeout`) — runs that failed before any job |
+| `rbit_actions_jobs_waiting` | gauge | — jobs waiting for a runner (set once a minute) |
+| `rbit_actions_runners_online` | gauge | — runners that called in the last 90 seconds (set once a minute) |
 
 Labels never contain user-controlled values such as repository names or raw paths, so the
 number of series is bounded.
@@ -467,6 +478,127 @@ host needs outbound access to wherever users point them and to the configured pr
 Internal addresses are refused unless `allow_private_addresses` is set in `[webhooks]`,
 `[mirrors]`, `[imports]`, `[push_mirrors]` or `[auth]`; set it only on a trusted instance (for example to reach a CI server or an
 identity provider on the same network).
+
+## Actions and runners
+
+rbit Actions is off by default. With `[actions] enabled = true` (a restart is needed) rbit
+plans workflow runs and hands their jobs to **rbit-runner**, a separate program shipped in the
+same release archives and as the image `ghcr.io/gitrbit/rbit-runner`. The server never runs
+builds itself. [docs/actions.md](actions.md) covers workflows and registering runners; this
+section is about running them safely.
+
+```toml
+[actions]
+enabled = true
+enable_for_new_repositories = false
+# The key that seals secrets; empty means <data_dir>/actions/secrets.key.
+secrets_key_file = ""
+log_retention_days = 90
+artifact_retention_days = 90
+max_artifact_bytes = 2147483648          # per artifact
+max_artifact_storage_bytes = 10737418240 # per repository
+instance_runners_for_all = false         # instance runners serve only owners you allow
+endless_timeout_seconds = 10800          # the longest a job may run (3 hours)
+```
+
+**The secrets key.** rbit creates `actions/secrets.key` (mode `0600` on Unix) the first time it
+starts with Actions on, and refuses a key group or others can read. It is never created while
+sealed secrets exist, so a lost key cannot be replaced silently: restore it, or delete the
+secrets and set them again. `rbit backup` does not copy it — the point of the key is to keep
+secrets out of the database and its backups — so back it up separately, or point
+`secrets_key_file` at a systemd credential or another secret store. On Windows, restrict the
+data directory's ACLs.
+
+**Runners.** Install `rbit-runner` on dedicated machines or VMs, not on the rbit server:
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/rbit-runner --shell /usr/sbin/nologin rbit-runner
+sudo usermod -aG docker rbit-runner   # container labels with rootful Docker
+sudo install -m 0755 rbit-runner /usr/local/bin/rbit-runner
+sudo -u rbit-runner bash -c 'cd /var/lib/rbit-runner && read -rs RBIT_RUNNER_TOKEN && export RBIT_RUNNER_TOKEN &&   rbit-runner register --url https://git.example.com --labels ubuntu-latest:container:docker.io/library/ubuntu:24.04'
+sudo rbit-runner --config /var/lib/rbit-runner/runner.toml install --user rbit-runner
+```
+
+**Running in the background.** `rbit-runner install` registers the runner with the
+system's own service manager, starts it, and has it start again at boot or logon and
+restart when it fails. `uninstall`, `start`, `stop` and `status` take the same `--mode` and
+`--name` (`install --no-start` leaves it stopped); `--config` (or `RBIT_RUNNER_CONFIG`) picks the runner (its directory holds `runner.toml`, `.credential` and
+the work directory, and must stay where it is: `uninstall` before moving it).
+
+| `--mode` | Linux | macOS | Windows |
+|---|---|---|---|
+| `service` (default) | systemd unit in `/etc/systemd/system` | LaunchDaemon in `/Library/LaunchDaemons` | Windows Service (session 0) |
+| `desktop` | systemd `--user` unit | LaunchAgent in `~/Library/LaunchAgents` | Task Scheduler task at logon |
+
+- `service` starts at boot, before anyone logs in, and needs root (an elevated prompt on
+  Windows). It runs as `--user`: a system account such as `rbit-runner` on Linux and macOS
+  (the user who ran `sudo` when omitted, else root), and `NT AUTHORITY\NETWORK SERVICE` on Windows unless `--user` names
+  another account, whose password is read from `RBIT_RUNNER_SERVICE_PASSWORD`. On Windows,
+  `install` grants that account the right to change the runner's directory, as GitHub's
+  runner does. The service is named `rbit-runner.<runner name>` (`--name` changes it) and
+  logs to the journal on Linux, and to `runner.log` next to the configuration on macOS and
+  Windows.
+- `desktop` runs in the session of the user who installs it, from when they log in until
+  they log off. Pick it when jobs need that desktop: UI and browser tests that open windows,
+  screenshots, code signing with a key in the user's keychain or certificate store, or
+  anything that talks to the logged-in session. A Windows Service has no desktop at all
+  (session 0), and a LaunchDaemon cannot reach the logged-in user's GUI. The machine must
+  stay logged in (set it to log in automatically) for the runner to run.
+
+Every mode restarts the runner when it fails (systemd `Restart=on-failure`, launchd
+`KeepAlive`, the Windows Service's recovery actions, the task's restart on failure) and stops
+it gracefully: polling stops at once and running tasks get `shutdown_grace_seconds` (10
+minutes by default) before they are cancelled. systemd and launchd send SIGTERM and wait that
+long plus a minute; the Windows Service turns the service manager's stop and pre-shutdown
+notice into the same stop and reports itself stopping meanwhile; `rbit-runner stop` of a
+desktop task leaves a stop request in the work directory, and logging off stops it.
+`deploy/rbit-runner.service` remains an example unit for hosts set up by hand.
+
+`deploy/rbit-runner.example.toml` documents `runner.toml`: capacity, the work directory, labels
+and the container limits (memory, CPUs, pids). The container image keeps `runner.toml`, the
+credential and the work directory in its `/var/lib/rbit-runner` volume.
+
+**Isolation.** Each label runs its jobs one way:
+
+- `container` (Docker or Podman, through their CLI): each job gets its own container and
+  network, `--security-opt no-new-privileges`, pids, memory and CPU limits, and never
+  `--privileged`, the Docker socket or host networking. Secrets reach containers through
+  `--env-file`s that are deleted after each step, never through command lines. Rootless Podman
+  is the strongest setup; a container escape is a kernel or runtime bug, so prefer one runner
+  host or VM per trust level, and ephemeral runners (`rbit-runner run --once`) for public
+  repositories.
+  The runner works on a job's files from the host only through checks that refuse links,
+  pipes and device nodes (containers also drop `MKNOD`), and a job's environment variables
+  never reach the container CLI's own process unless they are harmless there.
+
+  What containers can still reach: the network the runner host is on, including a cloud
+  provider's metadata endpoint (`169.254.169.254`), which hands out the VM's credentials. Block
+  it for the runner's networks (an `iptables` rule on the bridge, or the provider's setting that
+  turns the endpoint off or requires a token), and keep the VM's role free of permissions jobs
+  should not have. `memory` has no default: set one, or a single job can exhaust the host.
+- `host`: jobs run as the runner's user, with no isolation — they can read the runner's
+  credential and anything else that user can. `rbit-runner` warns at registration and at every
+  start, and the runners pages say "host — no isolation". Use it only for repository runners of
+  repositories you trust.
+
+Pull requests from forks and from people without write access get a read-only token, no
+secrets and no variables, and wait for a writer's approval as the repository's
+`approval_policy` decides (see `docs/actions.md`). Instance runners (registered under
+**Administration → Runners**) serve only the owners an administrator allows, unless
+`instance_runners_for_all` is set.
+
+**Network.** Runners connect to rbit over HTTPS (plain HTTP only with `--insecure-http`, for a
+server on the same machine). rbit makes no outbound connections of its own for Actions
+(webhooks subscribed to `workflow_run` and `workflow_job` are sent like any other). A runner
+fetches actions from its rbit instance unless `[actions] url` names another, downloads
+Node.js from `nodejs.org` for JavaScript actions (on the host unless `[actions] node` names a
+local one; container jobs always use the downloaded Linux build),
+and pulls container images (its `busybox` helper included, `[container] helper_image`) from
+their registries.
+
+**Storage.** Job logs (gzipped once a job ends) and artifacts live under `actions/` in the data
+directory and are not backed up; the sweeper deletes them after their retention and keeps the
+instance within `max_log_storage_bytes` by expiring the oldest finished runs' logs first.
 
 ## Backups
 

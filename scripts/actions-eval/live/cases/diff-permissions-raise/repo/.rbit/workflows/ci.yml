@@ -1,0 +1,13 @@
+on: push
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: |
+          git tag v1.0.0
+          git push origin v1.0.0
+          echo tagged

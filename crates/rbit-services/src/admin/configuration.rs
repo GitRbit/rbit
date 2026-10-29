@@ -110,6 +110,8 @@ pub fn validate_configuration(config: &Config) -> Result<(), String> {
     if config.mail.transport == rbit_core::config::MailTransport::Smtp && config.mail.smtp_host.trim().is_empty() {
         return Err("SMTP transport requires an SMTP host".into());
     }
+    // Actions: foundation (F).
+    config.actions.validate()?;
     Ok(())
 }
 
@@ -179,6 +181,14 @@ fn restore_secrets(value: &mut Value, existing: &Value) -> Result<(), ServiceErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actions_settings_are_validated() {
+        let mut config = Config::default();
+        assert_eq!(validate_configuration(&config), Ok(()));
+        config.actions.evaluation_concurrency = 0;
+        assert!(validate_configuration(&config).is_err());
+    }
 
     #[test]
     fn provider_credentials_follow_ids_when_reordered() {

@@ -1,0 +1,33 @@
+{
+  "feature": "cli",
+  "split": "test",
+  "observe": [
+    {
+      "id": "list",
+      "shell": "\"{cli}\" run list --json -R {owner}/{repo} --hostname {url}"
+    },
+    {
+      "id": "nowhere",
+      "shell": "\"{cli}\" run list -R {owner}/no-such-repo-xyz --hostname {url}"
+    }
+  ],
+  "expect": [
+    {
+      "obs": "list",
+      "exit": 0,
+      "contains": [
+        "\"conclusion\": \"success\"",
+        "\"event\": \"push\""
+      ]
+    },
+    {
+      "obs": "nowhere",
+      "exit": 1
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

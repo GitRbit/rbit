@@ -7,6 +7,76 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Update `zstd` to 0.14.3, `zstd-safe` to 8.2.0 and `zstd-sys` to 2.1.2 for
+  RUSTSEC-2026-0391, RUSTSEC-2026-0398, RUSTSEC-2026-0403 and RUSTSEC-2026-0410; they reach
+  rbit through `async-compression`.
+- Update `pulldown-cmark` to 0.13.5 for RUSTSEC-2026-0414. rbit's Markdown never enables
+  wikilinks, the only affected option.
+
+### Added
+
+- `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
+  logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
+- `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with
+  systemd, launchd or Windows (a service, or a logon task for jobs that need the desktop).
+- Actions: reusable workflows (`workflow_call`, `jobs.<id>.uses`), `workflow_run` and
+  `repository_dispatch` triggers, environment reviewers and wait timers, container and
+  service `options` and named volumes, `runs-on` and matrices from earlier jobs' outputs,
+  problem matchers, custom shells, zip artifacts, status badges and the permissions API.
+- **rbit Actions**, rbit's own CI/CD, off unless `[actions] enabled = true`
+  ([docs/actions.md](docs/actions.md)). Workflows in `.rbit/workflows` (or
+  `.forgejo/workflows`, `.github/workflows`) use a GitHub-style subset: `push`,
+  `pull_request`, `workflow_dispatch`, `schedule`, `workflow_run` and `repository_dispatch`
+  triggers, matrices, `needs`, job and step
+  `if:` with GitHub's expressions, `fail-fast`, `max-parallel`, concurrency groups,
+  containers and services, and the built-in `rbit/checkout`, `rbit/cache`,
+  `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases). The server
+  keeps `actions/cache` entries for every runner of a repository, as GitHub does, within
+  `[actions] max_cache_storage_bytes` and `cache_retention_days`, and restores files
+  with their saved modification times. Writers can disable and
+  enable a workflow from its page or the REST API, as on GitHub.
+- **rbit-runner**, shipped in every release archive and as `ghcr.io/gitrbit/rbit-runner`:
+  registers with a single-use token, runs jobs in Docker or Podman containers (no privileges,
+  no Docker socket, a network per job) or on the host, masks secrets in logs, and offers
+  `rbit-runner exec` to run a workflow locally. With the container backend the runner
+  follows no link and opens no pipe or device a job leaves in its mounted directories, trusts
+  no `.git` there (every one under a container checkout's path, so a planted submodule
+  `.git` cannot run hooks on the host), and pauses the job's container while built-in steps
+  work on them; containers drop `MKNOD`, no job variable reaches the container engine's own
+  process, and checkout's `git` uses only HTTPS (and the instance's own scheme) with hooks and
+  `fsmonitor` disabled, submodules included.
+- An **Actions** tab with runs, run pages, job pages with live logs and raw downloads, and
+  artifacts; settings for the repository switch, the default token permission, secrets
+  (sealed with AES-256-GCM under a key file kept out of the database), variables, trusted
+  authors and runners at repository, organisation, account and instance level.
+- Pull requests from forks and from people without write access run read-only, without
+  secrets or variables, after a writer approves them as the approval policy decides.
+- `workflow_run` and `workflow_job` webhooks, and `/api/v1/repos/{owner}/{repo}/actions/…`
+  endpoints for runs, jobs, job logs, artifacts, workflows, dispatch, secrets, variables,
+  runners and registration tokens (runners, secrets and variables for organisations and users
+  too).
+- **Run workflow** on a `workflow_dispatch` workflow's page, with its inputs at the chosen
+  branch or tag; workflows on the default branch are listed before they ever ran.
+- Workflows post commit statuses and comment on issues and pull requests with their token,
+  shown as `rbit-actions[bot]`.
+  The token also lists and downloads runs' artifacts, as a `workflow_run` job needs.
+- What steps write to `GITHUB_STEP_SUMMARY` is shown as Markdown on the run page.
+- `rbit_actions_*` metrics: finished runs and jobs, queue and job durations, runner calls,
+  log bytes, workflow errors, waiting jobs and online runners.
+
+### Upgrade notes
+
+- Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
+  and comments (and releases), step summaries, the Actions permissions and owner policies, the
+  `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
+  environment wait timers. Nothing changes until an administrator enables Actions; with it off no Actions
+  table is written and `<data_dir>/actions` is not created.
+- With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
+  copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
+  backed up.
+
 ## [0.1.5] - 2026-10-25
 
 ### Security

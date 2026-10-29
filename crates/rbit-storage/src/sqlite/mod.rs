@@ -2,6 +2,18 @@
 
 mod access_tokens;
 mod accounts;
+// Actions: foundation (F).
+mod actions_rows;
+// Actions: artifacts (A).
+pub mod actions_artifacts;
+// Actions: shared cache.
+pub mod actions_caches;
+pub mod actions_environments;
+pub mod actions_runners;
+pub mod actions_runs;
+pub mod actions_schedules;
+pub mod actions_secrets;
+pub mod actions_settings;
 pub mod admin;
 pub mod audit;
 pub mod collaborators;
@@ -291,6 +303,43 @@ impl Database {
 
     pub fn push_mirrors(&self) -> push_mirrors::PushMirrorStore {
         push_mirrors::PushMirrorStore::new(self.store("push_mirrors"), self.key.clone())
+    }
+
+    // Actions: foundation (F).
+
+    pub fn actions_settings(&self) -> actions_settings::ActionsSettingsStore {
+        actions_settings::ActionsSettingsStore::new(self.pool.clone())
+    }
+
+    pub fn actions_runners(&self) -> actions_runners::ActionsRunnerStore {
+        actions_runners::ActionsRunnerStore::new(self.pool.clone())
+    }
+
+    pub fn actions_runs(&self) -> actions_runs::ActionsRunStore {
+        actions_runs::ActionsRunStore::new(self.pool.clone())
+    }
+
+    pub fn actions_secrets(&self) -> actions_secrets::ActionsSecretStore {
+        actions_secrets::ActionsSecretStore::new(self.pool.clone())
+    }
+
+    // Actions: environments.
+    pub fn actions_environments(&self) -> actions_environments::ActionsEnvironmentStore {
+        actions_environments::ActionsEnvironmentStore::new(self.pool.clone())
+    }
+
+    pub fn actions_schedules(&self) -> actions_schedules::ActionsScheduleStore {
+        actions_schedules::ActionsScheduleStore::new(self.pool.clone())
+    }
+
+    // Actions: artifacts (A).
+    pub fn actions_artifacts(&self) -> actions_artifacts::ActionsArtifactStore {
+        actions_artifacts::ActionsArtifactStore::new(self.pool.clone())
+    }
+
+    // Actions: shared cache.
+    pub fn actions_caches(&self) -> actions_caches::ActionsCacheStore {
+        actions_caches::ActionsCacheStore::new(self.pool.clone())
     }
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.

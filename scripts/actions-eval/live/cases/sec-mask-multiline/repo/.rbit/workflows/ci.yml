@@ -1,0 +1,11 @@
+on: push
+jobs:
+  leak:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        env: {KEY: '${{ secrets.KEY }}'}
+        run: |
+          echo "$KEY"
+          echo "$KEY" | sed -n 2p
+          printf 'line-one-secret-value' | base64

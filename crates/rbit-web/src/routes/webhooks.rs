@@ -106,6 +106,8 @@ impl Owner {
             Self::Repository(loaded) => HookFrame::for_repository(loaded.header(state, "settings")),
             Self::Organization(ctx) => HookFrame::for_organization(OrgHeader::new(ctx, OrgTab::Settings)),
         }
+        // Actions: integration (I).
+        .with_actions(state.services.actions.is_some())
     }
 }
 
@@ -129,6 +131,9 @@ pub struct HookFormInput {
     event_member: Option<String>,
     // Milestone 3: commit statuses (S).
     event_status: Option<String>,
+    // Actions: integration (I).
+    event_workflow_run: Option<String>,
+    event_workflow_job: Option<String>,
 }
 
 impl HookFormInput {
@@ -144,6 +149,8 @@ impl HookFormInput {
             (WebhookEvent::PullRequestReview, &self.event_pull_request_review),
             (WebhookEvent::Member, &self.event_member),
             (WebhookEvent::Status, &self.event_status),
+            (WebhookEvent::WorkflowRun, &self.event_workflow_run),
+            (WebhookEvent::WorkflowJob, &self.event_workflow_job),
         ];
         ticked.into_iter().filter(|(_, value)| value.is_some()).map(|(event, _)| event).collect()
     }
@@ -165,8 +172,8 @@ impl HookFormInput {
     }
 
     /// The form as submitted, for re-rendering (the secret is never echoed back).
-    fn form(&self) -> HookForm {
-        HookForm::with(self.url.clone(), &self.events(), self.active.is_some(), false)
+    fn form(&self, actions: bool) -> HookForm {
+        HookForm::with(self.url.clone(), &self.events(), self.active.is_some(), false, actions)
     }
 }
 
@@ -203,7 +210,8 @@ pub async fn create(
     match state.services.webhooks.create(&user, owner.target(), form.input()).await {
         Ok(hook) => Ok(Redirect::to(&format!("{}/{}", owner.frame(&state).hooks_url, hook.id.0)).into_response()),
         Err(ServiceError::Invalid(message)) => {
-            let rendered = WebhookFormPage::new_hook(page, owner.frame(&state)).rejected(form.form(), FormError::from_message(&message));
+            let rendered = WebhookFormPage::new_hook(page, owner.frame(&state))
+                .rejected(form.form(state.services.actions.is_some()), FormError::from_message(&message));
             Ok((StatusCode::UNPROCESSABLE_ENTITY, rendered).into_response())
         }
         Err(other) => Err(other.into()),
@@ -256,7 +264,9 @@ pub async fn update(
     match state.services.webhooks.update(&user, owner.target(), id, form.input()).await {
         Ok(hook) => Ok(Redirect::to(&format!("{}/{}?saved=1", owner.frame(&state).hooks_url, hook.id.0)).into_response()),
         Err(ServiceError::Invalid(message)) => {
-            let rendered = edit_page(&state, &owner, page, &path, 1).await?.rejected(form.form(), FormError::from_message(&message));
+            let rendered = edit_page(&state, &owner, page, &path, 1)
+                .await?
+                .rejected(form.form(state.services.actions.is_some()), FormError::from_message(&message));
             Ok((StatusCode::UNPROCESSABLE_ENTITY, rendered).into_response())
         }
         Err(other) => Err(other.into()),

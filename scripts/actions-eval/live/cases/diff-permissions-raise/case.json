@@ -1,0 +1,33 @@
+{
+  "feature": "permissions-raise",
+  "split": "train",
+  "why": "a release workflow asks for `contents: write` in a repository whose default is read",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "read"
+        }
+      }
+    }
+  ],
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "release",
+        "conclusion": "success",
+        "contains": [
+          "tagged"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

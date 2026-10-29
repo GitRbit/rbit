@@ -4,7 +4,7 @@
 
 use std::{path::Path, process::Command, sync::Arc};
 
-use rbit_core::{Config, Timestamp, User, Visibility, membership::Permission, protection::RuleSettings};
+use rbit_core::{Config, PushSource, Timestamp, User, Visibility, membership::Permission, protection::RuleSettings};
 use rbit_services::{
     CreateRepository, DomainEvent, RepoContext, ServiceError, Services,
     edits::{CommitInput, CommitTarget, EditAccess, EditFailure, MIRROR_READ_ONLY},
@@ -140,10 +140,10 @@ async fn a_writer_commits_once_and_the_push_is_announced() {
     assert!(commit.contains("author bob <bob@noreply.code.example.com>"), "the noreply address: {commit}");
     assert!(commit.ends_with("Explain the demo\n\nFixes #1"), "{commit}");
 
-    let DomainEvent::RepositoryPushed { repo: pushed, pusher, updates } = events.recv().await.unwrap() else {
+    let DomainEvent::RepositoryPushed { repo: pushed, source, updates } = events.recv().await.unwrap() else {
         panic!("expected a push event");
     };
-    assert_eq!((pushed, pusher), (repo.repo.repo.id, Some(fixture.bob.id())));
+    assert_eq!((pushed, source), (repo.repo.repo.id, PushSource::User(fixture.bob.id())), "a browser edit is its author's push");
     assert_eq!(updates.len(), 1);
     assert_eq!(updates[0].branch(), Some("main"));
     assert_eq!((updates[0].before.as_deref(), updates[0].after.as_deref()), (Some(parent.as_str()), Some(edited.commit.as_str())));

@@ -23,6 +23,8 @@ mod security;
 mod ssh;
 mod updates;
 mod webhooks;
+// Actions: foundation (F).
+mod actions;
 
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
@@ -46,6 +48,8 @@ pub use security::{ProxyNetwork, ProxyNetworkError, SecurityConfig};
 pub use ssh::SshConfig;
 pub use updates::UpdateConfig;
 pub use webhooks::WebhookConfig;
+// Actions: foundation (F).
+pub use actions::{ActionsConfig, EVALUATION_CONCURRENCY};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -76,6 +80,8 @@ pub struct Config {
     // Milestone 3: importing and push mirrors (M).
     pub imports: ImportConfig,
     pub push_mirrors: PushMirrorConfig,
+    // Actions: foundation (F).
+    pub actions: ActionsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

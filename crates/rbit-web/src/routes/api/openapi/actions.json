@@ -1,0 +1,4545 @@
+{
+  "paths": {
+    "/repos/{owner}/{repo}/actions/runs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listWorkflowRuns",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's workflow runs, newest first",
+        "description": "404 unless the repository has Actions on. Each filter narrows the list; an event or status no run can have lists nothing.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Runs for this branch (without `refs/heads/`).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "description": "Runs started by this event: `push`, `pull_request`, `workflow_dispatch` or `schedule` (other events start no runs).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Runs with this GitHub status or conclusion. `queued` (also `requested`, `pending`) covers runs waiting for a runner or for other runs; `waiting` (also `action_required`) runs awaiting approval; `completed` every finished run. `neutral`, `stale` and `timed_out` are accepted and match nothing. Anything else is a 422.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "requested",
+                "pending",
+                "waiting",
+                "action_required",
+                "in_progress",
+                "completed",
+                "success",
+                "failure",
+                "cancelled",
+                "skipped",
+                "neutral",
+                "stale",
+                "timed_out"
+              ]
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Runs caused by this user (login).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runs; `total_count` counts every matching run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A workflow run",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRun"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/jobs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listJobsForWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The jobs of a run (its latest attempt), in the workflow's order",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of jobs; `total_count` counts every job of the run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowJobList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/logs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadWorkflowRunLogs",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Every job's log of the run, as a zip of <n>_<job name>.txt files (sent itself, not redirected)",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The logs",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "cancelWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Cancel a run (write scope and write access)",
+        "description": "Jobs not yet running are cancelled at once; running jobs stop when their runner next reports.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run has already finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/rerun": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "reRunWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Run every job of a finished run again (write scope and write access)",
+        "description": "The run keeps its number and gets a new attempt. A run of an untrusted pull request waits for approval again unless its author would not wait today.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run has not finished, or is a workflow error without jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "reRunWorkflowFailedJobs",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Run the failed and cancelled jobs of a finished run again, with the jobs that need them (write scope and write access)",
+        "description": "As `…/rerun`, for the failed and cancelled jobs only.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run has not finished, has no failed job, or is a workflow error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/approve": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "approveWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Approve a pull request run that waits for approval (write scope and write access)",
+        "description": "The run starts, still with a read-only token and without secrets or variables. Approvals are audited.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run does not wait for approval",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getJobForWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A job with the steps of its current attempt",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowJob"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/rerun": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "reRunJobForWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Run one job of a finished run again, with the jobs that need it (write scope and write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "The run has not finished",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listRepoWorkflows",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The workflows that have runs, by path",
+        "description": "A workflow's `id` is its file name, which `…/workflows/{workflow_id}/dispatches` takes; its `name` is that of its newest run.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of workflows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A workflow",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "disableWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Disable a workflow: it starts no run until enabled (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "enableWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Enable a disabled workflow (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (`ci.yml`), or its path (`.forgejo/workflows/ci.yml`).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "createWorkflowDispatch",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Run a workflow that has `on: workflow_dispatch` (write scope and write access)",
+        "description": "The workflow is read at `ref`, a branch or tag of the repository itself (never a pull request head or a commit id); `inputs` are checked against the workflow's `inputs`. 404 unless the repository has Actions on.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDispatchBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "The run was created"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listWorkflowRuns",
+        "tags": [
+          "actions"
+        ],
+        "summary": "One workflow's runs, newest first",
+        "description": "404 unless the repository has Actions on. Each filter narrows the list; an event or status no run can have lists nothing.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Runs for this branch (without `refs/heads/`).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "description": "Runs started by this event: `push`, `pull_request`, `workflow_dispatch` or `schedule` (other events start no runs).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Runs with this GitHub status or conclusion. `queued` (also `requested`, `pending`) covers runs waiting for a runner or for other runs; `waiting` (also `action_required`) runs awaiting approval; `completed` every finished run. `neutral`, `stale` and `timed_out` are accepted and match nothing. Anything else is a 422.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "requested",
+                "pending",
+                "waiting",
+                "action_required",
+                "in_progress",
+                "completed",
+                "success",
+                "failure",
+                "cancelled",
+                "skipped",
+                "neutral",
+                "stale",
+                "timed_out"
+              ]
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Runs caused by this user (login).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runs; `total_count` counts every matching run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/secrets": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listRepoSecrets",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's Actions secrets, names only (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSecretList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/secrets/{name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRepoSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions secret without its value (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsSecret"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "createOrUpdateRepoSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create or replace an Actions secret (admin scope; a repository administrator)",
+        "description": "rbit takes the secret's plain `value` over TLS and seals it on the server (AES-256-GCM with a key outside the database); unlike GitHub there is no libsodium sealed box, so `encrypted_value`, `key_id` and `…/secrets/public-key` do not exist, and a body with `encrypted_value` but no `value` is refused. Values are never returned. A repository secret is visible to its repository only.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsSecretBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "The secret has a new value"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRepoSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions secret (admin scope; a repository administrator)",
+        "description": "Works without the secrets key, so secrets sealed with a lost key can be removed.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/variables": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listRepoVariables",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's Actions variables (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of variables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsVariableList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRepoVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create an Actions variable (admin scope; a repository administrator)",
+        "description": "Runs see it as `vars.<NAME>`; an account's variables are visible to all its repositories (only `visibility: all` is accepted).",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A variable with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/variables/{name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRepoVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions variable (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The variable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsVariable"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateRepoVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change an Actions variable's value (admin scope; a repository administrator)",
+        "description": "Unlike GitHub, a variable cannot be renamed: a `name` other than its own is a 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableChanges"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRepoVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions variable (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/secrets": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listOrgSecrets",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The organization's Actions secrets, names only (admin scope; an organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountSecretList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/secrets/{name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getOrgSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions secret without its value (admin scope; an organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "createOrUpdateOrgSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create or replace an Actions secret (admin scope; an organization owner)",
+        "description": "rbit takes the secret's plain `value` over TLS and seals it on the server (AES-256-GCM with a key outside the database); unlike GitHub there is no libsodium sealed box, so `encrypted_value`, `key_id` and `…/secrets/public-key` do not exist, and a body with `encrypted_value` but no `value` is refused. Values are never returned. An account's secret is visible to every repository of the account (`visibility: all`, the default) or to `selected_repository_ids` (`visibility: selected`; only the account's own repositories are kept). Without `visibility`, an existing secret keeps its own.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsAccountSecretBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "The secret has a new value"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrgSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions secret (admin scope; an organization owner)",
+        "description": "Works without the secrets key, so secrets sealed with a lost key can be removed.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/variables": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listOrgVariables",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The organization's Actions variables (admin scope; an organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of variables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountVariableList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrgVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create an Actions variable (admin scope; an organization owner)",
+        "description": "Runs see it as `vars.<NAME>`; an account's variables are visible to all its repositories (only `visibility: all` is accepted).",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A variable with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/variables/{name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getOrgVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions variable (admin scope; an organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The variable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountVariable"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateOrgVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change an Actions variable's value (admin scope; an organization owner)",
+        "description": "Unlike GitHub, a variable cannot be renamed: a `name` other than its own is a 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableChanges"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrgVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions variable (admin scope; an organization owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/secrets": {
+      "get": {
+        "operationId": "listAuthenticatedUserSecrets",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The authenticated user's Actions secrets, names only (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountSecretList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/secrets/{name}": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getAuthenticatedUserSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions secret without its value (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The secret",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "operationId": "createOrUpdateAuthenticatedUserSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create or replace an Actions secret (admin scope; the user themselves)",
+        "description": "rbit takes the secret's plain `value` over TLS and seals it on the server (AES-256-GCM with a key outside the database); unlike GitHub there is no libsodium sealed box, so `encrypted_value`, `key_id` and `…/secrets/public-key` do not exist, and a body with `encrypted_value` but no `value` is refused. Values are never returned. An account's secret is visible to every repository of the account (`visibility: all`, the default) or to `selected_repository_ids` (`visibility: selected`; only the account's own repositories are kept). Without `visibility`, an existing secret keeps its own.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsAccountSecretBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "The secret has a new value"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAuthenticatedUserSecret",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions secret (admin scope; the user themselves)",
+        "description": "Works without the secrets key, so secrets sealed with a lost key can be removed.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/variables": {
+      "get": {
+        "operationId": "listAuthenticatedUserVariables",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The authenticated user's Actions variables (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of variables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountVariableList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAuthenticatedUserVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Create an Actions variable (admin scope; the user themselves)",
+        "description": "Runs see it as `vars.<NAME>`; an account's variables are visible to all its repositories (only `visibility: all` is accepted).",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "An empty object, `{}`."
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "A variable with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/user/actions/variables/{name}": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "description": "The name; case-insensitive (names are stored upper-cased).",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getAuthenticatedUserVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An Actions variable (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The variable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsAccountVariable"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateAuthenticatedUserVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Change an Actions variable's value (admin scope; the user themselves)",
+        "description": "Unlike GitHub, a variable cannot be renamed: a `name` other than its own is a 422.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionsVariableChanges"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Changed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteAuthenticatedUserVariable",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an Actions variable (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/jobs/{job_id}/logs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "The job's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadJobLogsForWorkflowRun",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The raw log of a job's current attempt",
+        "description": "The log itself as `text/plain` (gzip-encoded when the request accepts it), not GitHub's redirect to a download URL. 404 before the job started and once its log expired.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The log",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listWorkflowRunArtifacts",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The artifacts of a run: the newest attempt's of each name, by name",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of artifacts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listArtifactsForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's artifacts that have not expired, newest first",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "Only artifacts with this name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of artifacts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "artifact_id",
+          "in": "path",
+          "required": true,
+          "description": "The artifact's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "An artifact",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The artifact",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Artifact"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete an artifact and its file (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "artifact_id",
+          "in": "path",
+          "required": true,
+          "description": "The artifact's id.",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "archive_format",
+          "in": "path",
+          "required": true,
+          "description": "`zip`, GitHub's format, or `tar.gz`. Either holds the artifact's files at its top.",
+          "schema": {
+            "type": "string",
+            "enum": [
+              "zip",
+              "tar.gz"
+            ]
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadArtifact",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Download an artifact",
+        "description": "The archive itself, not GitHub's redirect to a download URL, written as it is sent (no `Content-Length`). Any other format is 404.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zip or tar.gz",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              },
+              "application/gzip": {
+                "schema": {
+                  "type": "string",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/caches": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getActionsCacheList",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The repository's actions/cache entries, most recently used first",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "description": "Only keys starting with this.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "description": "Only entries of this ref (refs/heads/main, refs/pull/3/merge).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "The order.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "last_accessed_at",
+                "size_in_bytes"
+              ],
+              "default": "last_accessed_at"
+            }
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "description": "The direction.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of cache entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteActionsCacheByKey",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete the entries of a key, of one ref when given (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "description": "The key.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ref",
+            "in": "query",
+            "required": false,
+            "description": "Only entries of this ref.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheList"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/caches/{cache_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "cache_id",
+          "in": "path",
+          "required": true,
+          "description": "The cache entry's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "delete": {
+        "operationId": "deleteActionsCacheById",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Delete a cache entry and its file (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/cache/usage": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "getActionsCacheUsage",
+        "tags": [
+          "actions"
+        ],
+        "summary": "How many cache entries the repository keeps, and their bytes",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionsCacheUsage"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "get": {
+        "operationId": "listSelfHostedRunnersForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners/registration-token": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "createRegistrationTokenForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; a repository administrator)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; a repository administrator)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromRepo",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; a repository administrator)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "get": {
+        "operationId": "listSelfHostedRunnersForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; an organisation owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners/registration-token": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        }
+      ],
+      "post": {
+        "operationId": "createRegistrationTokenForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; an organisation owner)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/orgs/{org}/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/org"
+        },
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; an organisation owner)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromOrg",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; an organisation owner)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners": {
+      "get": {
+        "operationId": "listSelfHostedRunnersForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "The runners registered here, oldest first (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners/registration-token": {
+      "post": {
+        "operationId": "createRegistrationTokenForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A registration token for a new runner (admin scope; the user themselves)",
+        "description": "Single-use and valid for an hour, as the runners pages make them by default. The token is shown this once.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerRegistrationToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/user/actions/runners/{runner_id}": {
+      "parameters": [
+        {
+          "name": "runner_id",
+          "in": "path",
+          "required": true,
+          "description": "The runner's id.",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getSelfHostedRunnerForAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A runner registered here (admin scope; the user themselves)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runner"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSelfHostedRunnerFromAuthenticatedUser",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Remove a runner (admin scope; the user themselves)",
+        "description": "Its credential stops working at once and the tasks it was running fail.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/dispatches": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        }
+      ],
+      "post": {
+        "operationId": "createRepositoryDispatch",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Start the default branch's workflows that run on repository_dispatch (write scope; a writer)",
+        "description": "Workflows whose `on.repository_dispatch.types` list `event_type`, or that list none, run at the default branch's newest commit with `client_payload` in `github.event`. `event_type` is 1 to 100 characters; `client_payload` an object of at most 10 top-level properties and 65,535 characters.",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_type"
+                ],
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "client_payload": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Dispatched"
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WorkflowRun": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "display_title",
+          "path",
+          "workflow_id",
+          "run_number",
+          "run_attempt",
+          "event",
+          "status",
+          "conclusion",
+          "head_branch",
+          "head_sha",
+          "pull_requests",
+          "html_url",
+          "url",
+          "jobs_url",
+          "cancel_url",
+          "rerun_url",
+          "created_at",
+          "run_started_at",
+          "updated_at",
+          "actor",
+          "triggering_actor",
+          "is_schedule"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "The id the API names the run by."
+          },
+          "name": {
+            "type": "string",
+            "description": "The workflow's name."
+          },
+          "display_title": {
+            "type": "string",
+            "description": "The commit subject, pull request title or \"Scheduled\"."
+          },
+          "path": {
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string",
+            "description": "The workflow's file name (GitHub: a number)."
+          },
+          "run_number": {
+            "type": "integer",
+            "description": "`#n` in the repository, as the pages show it."
+          },
+          "run_attempt": {
+            "type": "integer"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "push",
+              "pull_request",
+              "workflow_dispatch",
+              "schedule"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "waiting",
+              "in_progress",
+              "completed"
+            ],
+            "description": "`queued`: waiting for a runner, for needed jobs or for other runs of its concurrency group; `waiting`: awaiting approval."
+          },
+          "conclusion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "success",
+              "failure",
+              "cancelled",
+              "skipped",
+              null
+            ],
+            "description": "How it finished; null until then."
+          },
+          "head_branch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The branch or tag; null for pull request refs."
+          },
+          "head_sha": {
+            "type": "string"
+          },
+          "pull_requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "number"
+              ],
+              "properties": {
+                "number": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "html_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "jobs_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "cancel_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "rerun_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "run_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "triggering_actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "is_schedule": {
+            "type": "boolean"
+          }
+        },
+        "description": "A run, as the `workflow_run` webhook sends it. A workflow that failed to parse is a completed run with conclusion failure and no jobs."
+      },
+      "WorkflowRunList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "workflow_runs"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "workflow_runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRun"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "WorkflowStep": {
+        "type": "object",
+        "required": [
+          "name",
+          "number",
+          "status",
+          "conclusion",
+          "started_at",
+          "completed_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "number": {
+            "type": "integer",
+            "description": "From 1."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "waiting",
+              "in_progress",
+              "completed"
+            ],
+            "description": "`queued`: waiting for a runner, for needed jobs or for other runs of its concurrency group; `waiting`: awaiting approval."
+          },
+          "conclusion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "success",
+              "failure",
+              "cancelled",
+              "skipped",
+              null
+            ],
+            "description": "How it finished; null until then."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "WorkflowJob": {
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "run_attempt",
+          "url",
+          "run_url",
+          "html_url",
+          "name",
+          "workflow_name",
+          "head_sha",
+          "head_branch",
+          "status",
+          "conclusion",
+          "labels",
+          "runner_id",
+          "steps",
+          "created_at",
+          "started_at",
+          "completed_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "run_id": {
+            "type": "integer"
+          },
+          "run_attempt": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "run_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "html_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "name": {
+            "type": "string"
+          },
+          "workflow_name": {
+            "type": "string"
+          },
+          "head_sha": {
+            "type": "string"
+          },
+          "head_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "waiting",
+              "in_progress",
+              "completed"
+            ],
+            "description": "`queued`: waiting for a runner, for needed jobs or for other runs of its concurrency group; `waiting`: awaiting approval."
+          },
+          "conclusion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "success",
+              "failure",
+              "cancelled",
+              "skipped",
+              null
+            ],
+            "description": "How it finished; null until then."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The `runs-on` labels."
+          },
+          "runner_id": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStep"
+            },
+            "description": "The steps of the current attempt, as its runner last reported them."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "description": "A job, as the `workflow_job` webhook sends it."
+      },
+      "WorkflowJobList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "jobs"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowJob"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "Workflow": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "state",
+          "html_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The file name (GitHub: a number)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled_manually"
+            ]
+          },
+          "html_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "badge_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "WorkflowList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "workflows"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Workflow"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "WorkflowDispatchBody": {
+        "type": "object",
+        "required": [
+          "ref"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "A branch or tag: `main`, `refs/heads/main`, `v1.0`, `refs/tags/v1.0`. A branch wins over a tag of the same name."
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "boolean",
+                "number"
+              ]
+            },
+            "description": "At most 10, each at most 1 KiB; booleans and numbers may be given as JSON or as strings."
+          }
+        }
+      },
+      "ActionsSecret": {
+        "type": "object",
+        "required": [
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A secret without its value."
+      },
+      "ActionsSecretList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "secrets"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsSecret"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsAccountSecret": {
+        "type": "object",
+        "required": [
+          "name",
+          "created_at",
+          "updated_at",
+          "visibility"
+        ],
+        "description": "An organization's or user's secret without its value.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all",
+              "selected"
+            ]
+          },
+          "selected_repository_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "With `selected` visibility only (GitHub: `selected_repositories_url`)."
+          }
+        }
+      },
+      "ActionsAccountSecretList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "secrets"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "secrets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsAccountSecret"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsSecretBody": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "description": "rbit takes the secret's plain `value` over TLS and seals it on the server (AES-256-GCM with a key outside the database); unlike GitHub there is no libsodium sealed box, so `encrypted_value`, `key_id` and `…/secrets/public-key` do not exist, and a body with `encrypted_value` but no `value` is refused. Values are never returned.",
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The plain value: at most 64 KiB, no NUL characters."
+          }
+        }
+      },
+      "ActionsAccountSecretBody": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "description": "rbit takes the secret's plain `value` over TLS and seals it on the server (AES-256-GCM with a key outside the database); unlike GitHub there is no libsodium sealed box, so `encrypted_value`, `key_id` and `…/secrets/public-key` do not exist, and a body with `encrypted_value` but no `value` is refused. Values are never returned.",
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The plain value: at most 64 KiB, no NUL characters."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all",
+              "selected"
+            ]
+          },
+          "selected_repository_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "With `selected` visibility only; replaces the list."
+          }
+        }
+      },
+      "ActionsVariable": {
+        "type": "object",
+        "required": [
+          "name",
+          "value",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ActionsVariableList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "variables"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsVariable"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsAccountVariable": {
+        "type": "object",
+        "required": [
+          "name",
+          "value",
+          "created_at",
+          "updated_at",
+          "visibility"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all"
+            ]
+          }
+        }
+      },
+      "ActionsAccountVariableList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "variables"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsAccountVariable"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsVariableBody": {
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Letters, digits and `_`, not starting with a digit or GITHUB_, GITEA_, FORGEJO_ or RBIT_; upper-cased."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "description": "At most 64 KiB, no NUL characters."
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all"
+            ]
+          }
+        }
+      },
+      "ActionsVariableChanges": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Accepted only if it is the variable's own name."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all"
+            ]
+          }
+        }
+      },
+      "Artifact": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "size_in_bytes",
+          "url",
+          "archive_download_url",
+          "expired",
+          "digest",
+          "created_at",
+          "updated_at",
+          "expires_at",
+          "workflow_run"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size_in_bytes": {
+            "type": "integer",
+            "description": "Bytes of the artifact as stored (gzip-compressed)."
+          },
+          "url": {
+            "type": "string"
+          },
+          "archive_download_url": {
+            "type": "string",
+            "description": "`…/zip`: the archive, as on GitHub; `…/tar.gz` serves it as a tar.gz."
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Always `false`: expired artifacts are gone."
+          },
+          "digest": {
+            "type": "string",
+            "description": "`sha256:` and the archive's SHA-256 in hex."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workflow_run": {
+            "type": "object",
+            "required": [
+              "id",
+              "repository_id"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "repository_id": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "description": "A workflow artifact, shaped like GitHub's."
+      },
+      "ArtifactList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "artifacts"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsCache": {
+        "type": "object",
+        "required": [
+          "id",
+          "ref",
+          "key",
+          "version",
+          "last_accessed_at",
+          "created_at",
+          "size_in_bytes"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "last_accessed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "size_in_bytes": {
+            "type": "integer"
+          }
+        },
+        "description": "An actions/cache entry, kept by the server for every runner of the repository"
+      },
+      "ActionsCacheList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "actions_caches"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "actions_caches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionsCache"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "ActionsCacheUsage": {
+        "type": "object",
+        "required": [
+          "full_name",
+          "active_caches_size_in_bytes",
+          "active_caches_count"
+        ],
+        "properties": {
+          "full_name": {
+            "type": "string"
+          },
+          "active_caches_size_in_bytes": {
+            "type": "integer"
+          },
+          "active_caches_count": {
+            "type": "integer"
+          }
+        }
+      },
+      "Runner": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "os",
+          "arch",
+          "status",
+          "busy",
+          "disabled",
+          "ephemeral",
+          "version",
+          "labels",
+          "last_seen_at",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string",
+            "description": "`linux`, `macos` or `windows`, as the runner declared it; empty before it first started."
+          },
+          "arch": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline"
+            ],
+            "description": "Online when it reported in the last 90 seconds."
+          },
+          "busy": {
+            "type": "boolean",
+            "description": "Running a task now."
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "Takes no new jobs."
+          },
+          "ephemeral": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "custom"
+                  ]
+                }
+              }
+            }
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A runner, shaped like GitHub's self-hosted runner, with what rbit adds."
+      },
+      "RunnerList": {
+        "type": "object",
+        "required": [
+          "total_count",
+          "runners"
+        ],
+        "properties": {
+          "total_count": {
+            "type": "integer"
+          },
+          "runners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Runner"
+            }
+          }
+        },
+        "description": "GitHub's wrapped list"
+      },
+      "RunnerRegistrationToken": {
+        "type": "object",
+        "required": [
+          "token",
+          "expires_at"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "`rbrg_…`, for `rbit-runner register`; never shown again."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "description": "A runner registration token."
+      }
+    }
+  }
+}

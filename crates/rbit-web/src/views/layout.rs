@@ -29,6 +29,9 @@ pub struct NavUser {
     pub is_admin: bool,
     /// Instance settings may restrict organisation creation to administrators.
     pub can_create_org: bool,
+    // Actions: interface and secrets (U).
+    /// The instance has Actions: personal settings list their Actions section.
+    pub has_actions: bool,
 }
 
 impl Page {
@@ -46,6 +49,7 @@ impl Page {
                 avatar: Avatar::for_account(&user.account),
                 is_admin: user.is_admin,
                 can_create_org: state.services.orgs.can_create(user),
+                has_actions: state.services.actions.is_some(),
             }),
             path: path.to_owned(),
             has_unread_notifications: false,
@@ -97,6 +101,12 @@ impl Page {
 
     pub fn is_signed_in(&self) -> bool {
         self.viewer.is_some()
+    }
+
+    // Actions: interface and secrets (U).
+    /// Whether a signed-in viewer is on an instance with Actions (settings navigation).
+    pub fn has_actions(&self) -> bool {
+        self.viewer.as_ref().is_some_and(|viewer| viewer.has_actions)
     }
 
     /// Whether the current path is `prefix` or below it (for active nav styling).

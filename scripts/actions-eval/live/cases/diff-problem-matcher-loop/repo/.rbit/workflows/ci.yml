@@ -1,0 +1,14 @@
+on: push
+jobs:
+  lint:
+    runs-on: self-hosted
+    steps:
+      - shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/eslint.json" <<'EOF'
+          {"problemMatcher":[{"owner":"eslint-stylish","pattern":[{"regexp":"^([^\\s].*)$","file":1},{"regexp":"^\\s+(\\d+):(\\d+)\\s+(error|warning|info)\\s+(.*)\\s\\s+(.*)$","line":1,"column":2,"severity":3,"message":4,"code":5,"loop":true}]}]}
+          EOF
+          echo "::add-matcher::$RUNNER_TEMP/eslint.json"
+          echo "src/app.js"
+          echo "  3:7  error  'x' is never used  no-unused-vars"
+          echo "  9:1  warning  Unexpected console  no-console"

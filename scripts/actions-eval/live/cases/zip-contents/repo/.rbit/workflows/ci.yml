@@ -1,0 +1,8 @@
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mkdir -p out/nested/deep && echo ay > out/a.txt && echo bee > out/nested/deep/b.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: out, path: out}

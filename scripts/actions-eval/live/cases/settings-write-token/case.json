@@ -1,0 +1,56 @@
+{
+  "feature": "settings-api",
+  "split": "train",
+  "why": "publishing releases needs the default token raised to write, which used to need the web UI",
+  "setup": [
+    {
+      "http": {
+        "method": "PUT",
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow",
+        "body": {
+          "default_workflow_permissions": "write",
+          "can_approve_pull_request_reviews": false
+        }
+      }
+    }
+  ],
+  "observe": [
+    {
+      "id": "get",
+      "http": {
+        "path": "/repos/{owner}/{repo}/actions/permissions/workflow"
+      }
+    },
+    {
+      "id": "release",
+      "http": {
+        "path": "/repos/{owner}/{repo}/releases/tags/v0.0.1-eval"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "get",
+      "status": 200,
+      "json": {
+        "default_workflow_permissions": "write",
+        "can_approve_pull_request_reviews": false
+      }
+    },
+    {
+      "obs": "release",
+      "status": 200
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

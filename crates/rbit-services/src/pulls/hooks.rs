@@ -68,7 +68,8 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
 }
 
 /// The payload for `event` whether or not any hook subscribes to it (see [`payload`]).
-pub(super) async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
+/// rbit Actions stores it as a pull request run's event (Actions: triggers (T)).
+pub(crate) async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
     match event {
         DomainEvent::Issue { repo, issue, kind: IssueKind::Pull, actor, action, .. } => {
             let Some(name) = pull_request_action(action) else { return Ok(None) };
@@ -88,7 +89,7 @@ pub(super) async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &
                     }
                     body["changes"] = Value::Object(changes);
                 }
-                IssueAction::Synchronized { before, after } => {
+                IssueAction::Synchronized { before, after, .. } => {
                     body["before"] = json!(before);
                     body["after"] = json!(after);
                 }
@@ -187,7 +188,14 @@ mod tests {
 
     #[test]
     fn actions_follow_github() {
-        assert_eq!(pull_request_action(&IssueAction::Synchronized { before: String::new(), after: String::new() }), Some("synchronize"));
+        assert_eq!(
+            pull_request_action(&IssueAction::Synchronized {
+                before: String::new(),
+                after: String::new(),
+                source: rbit_core::PushSource::System,
+            }),
+            Some("synchronize")
+        );
         assert_eq!(pull_request_action(&IssueAction::Closed { reason: rbit_core::StateReason::Merged }), Some("closed"));
         assert_eq!(pull_request_action(&IssueAction::ReadyForReview), Some("ready_for_review"));
     }

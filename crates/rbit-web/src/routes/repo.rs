@@ -106,6 +106,8 @@ pub(super) struct RepoPage {
     forked_from: Option<ForkedFrom>,
     mirror: Option<Mirror>,
     open_counts: OpenCounts,
+    // Actions: interface and secrets (U).
+    actions_on: bool,
 }
 
 impl RepoPage {
@@ -115,7 +117,16 @@ impl RepoPage {
         let (mut ctx, header) = state.services.repositories.open_page(viewer.user(), owner, repo).await?;
         ctx.reader = ctx.reader.pinned();
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
-        let refs = ctx.reader.refs().await.map_err(ServiceError::from)?;
+        // Actions: interface and secrets (U). Only an instance with Actions asks the
+        // repository whether it has them on, beside reading the refs.
+        let actions_on = async {
+            match &state.services.actions {
+                Some(actions) => actions.enabled_for(ctx.repo.repo.id).await,
+                None => Ok(false),
+            }
+        };
+        let (refs, actions_on) = tokio::join!(ctx.reader.refs(), actions_on);
+        let refs = refs.map_err(ServiceError::from)?;
         let forked_from = header.parent.map(|parent| ForkedFrom { url: format!("/{}", parent.full_name()), full_name: parent.full_name() });
         Ok(Self {
             ctx,
@@ -126,6 +137,7 @@ impl RepoPage {
             forked_from,
             mirror: header.mirror,
             open_counts: header.open_counts,
+            actions_on: actions_on?,
         })
     }
 
@@ -191,6 +203,9 @@ impl RepoPage {
             pulls_url: format!("{}/pulls", self.urls.home()),
             open_issues: self.open_counts.issues,
             open_pulls: self.open_counts.pulls,
+            actions_url: self.actions_on.then(|| format!("{}/actions", self.urls.home())),
+            actions_settings_url: (state.services.actions.is_some() && self.ctx.access.can_admin())
+                .then(|| format!("{}/settings/actions", self.urls.home())),
             active_tab,
         }
     }

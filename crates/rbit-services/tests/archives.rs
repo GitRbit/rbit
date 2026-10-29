@@ -140,7 +140,7 @@ fn archived<T: std::fmt::Debug>(result: &Result<T, ServiceError>) {
 
 #[tokio::test]
 async fn administrators_archive_and_unarchive_with_an_audit_entry_and_an_event() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     let settings = &fixture.services.repo_settings;
     let as_carol = fixture.repo(&fixture.carol).await;
     assert!(matches!(settings.set_archived(&fixture.carol, &as_carol, true).await, Err(ServiceError::Forbidden)), "writers may not");
@@ -166,7 +166,7 @@ async fn administrators_archive_and_unarchive_with_an_audit_entry_and_an_event()
 
 #[tokio::test]
 async fn archived_repositories_refuse_pushes_and_edits() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     fixture.archive(true).await;
     let repo = fixture.repo(&fixture.alice).await;
     let update = RefUpdate { name: "refs/heads/main".into(), before: Some(fixture.main.clone()), after: Some("1".repeat(40)) };
@@ -189,7 +189,7 @@ async fn archived_repositories_refuse_pushes_and_edits() {
 
 #[tokio::test]
 async fn archived_repositories_refuse_issue_and_pull_request_changes() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     fixture.archive(true).await;
     let (alice, carol, dave) = (&fixture.alice, &fixture.carol, &fixture.dave);
     let repo = fixture.repo(carol).await;
@@ -234,7 +234,7 @@ async fn archived_repositories_refuse_issue_and_pull_request_changes() {
 
 #[tokio::test]
 async fn archived_repositories_refuse_releases_statuses_and_lfs_writes() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     fixture.archive(true).await;
     let repo = fixture.repo(&fixture.carol).await;
 
@@ -253,7 +253,7 @@ async fn archived_repositories_refuse_releases_statuses_and_lfs_writes() {
 
 #[tokio::test]
 async fn archived_repositories_stay_readable_forkable_and_starrable() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     fixture.archive(true).await;
     let dave = &fixture.dave;
     let repo = fixture.repo(dave).await;
@@ -272,7 +272,7 @@ async fn archived_repositories_stay_readable_forkable_and_starrable() {
 
 #[tokio::test]
 async fn unarchiving_restores_writes() {
-    let fixture = Fixture::new().await;
+    let fixture = Box::pin(Fixture::new()).await;
     fixture.archive(true).await;
     fixture.archive(false).await;
     let carol = &fixture.carol;

@@ -1,0 +1,43 @@
+{
+  "feature": "workflow-run",
+  "split": "train",
+  "why": "deploy-after-CI pipelines read the upstream run's conclusion and commit",
+  "wait": {
+    "runs": 2
+  },
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "run": {
+        "workflow": "after.yml",
+        "conclusion": "success",
+        "event": "workflow_run",
+        "count": 1
+      }
+    },
+    {
+      "job": {
+        "workflow": "after.yml",
+        "name": "report",
+        "contains": [
+          "conclusion=success",
+          "event=workflow_run",
+          "workflow=CI"
+        ],
+        "matches": [
+          "head=[0-9a-f]{40}"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

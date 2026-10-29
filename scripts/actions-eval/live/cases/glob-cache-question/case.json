@@ -1,0 +1,22 @@
+{
+  "feature": "globs",
+  "split": "test",
+  "why": "? and a cache key the restore must hit in a container job",
+  "expect": [
+    {
+      "job": {
+        "workflow": "ci.yml",
+        "name": "restore",
+        "conclusion": "success",
+        "contains": [
+          "restored ok"
+        ]
+      }
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

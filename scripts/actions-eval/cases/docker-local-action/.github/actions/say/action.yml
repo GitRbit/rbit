@@ -1,0 +1,9 @@
+name: Say
+inputs:
+  word: {required: true}
+outputs:
+  said: {description: what was said}
+runs:
+  using: docker
+  image: Dockerfile
+  args: ['${{ inputs.word }}']

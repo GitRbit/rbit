@@ -1,0 +1,5 @@
+on: push
+jobs:
+  a:
+    runs-on: self-hosted
+    steps: [{run: echo should not run}]

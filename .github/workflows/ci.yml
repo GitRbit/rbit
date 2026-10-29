@@ -123,10 +123,26 @@ jobs:
         with:
           key: release
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo build --release --locked --package rbit-server
+      # rbit-runner is not a default member: name both, as the release does.
+      - run: cargo build --release --locked --package rbit-server --package rbit-runner
       - run: ./target/release/rbit --version
+      - run: ./target/release/rbit-runner --version
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: rbit-linux-x86_64
-          path: target/release/rbit
+          path: |
+            target/release/rbit
+            target/release/rbit-runner
           retention-days: 7
+
+  runner-image:
+    name: Runner image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The image the release publishes, compiled from source: its packages must install
+      # and the runner must start inside it.
+      - run: docker build --file Dockerfile.runner --tag rbit-runner:ci .
+      - run: docker run --rm rbit-runner:ci --version
+      - run: docker run --rm --entrypoint git rbit-runner:ci --version
+      - run: docker run --rm --entrypoint docker rbit-runner:ci --version

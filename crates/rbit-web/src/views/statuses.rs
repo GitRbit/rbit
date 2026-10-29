@@ -149,6 +149,7 @@ mod tests {
             description: Some(format!("{context} says {state}")),
             target_url: Some("https://ci.example/1".to_owned()),
             creator: None,
+            source: rbit_core::status::StatusSource::User,
             created_at: Timestamp(0),
             updated_at: Timestamp(0),
         }

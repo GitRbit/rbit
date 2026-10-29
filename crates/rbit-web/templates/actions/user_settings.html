@@ -1,0 +1,21 @@
+{% extends "settings/layout.html" %}
+{% import "macros.html" as ui %}
+{% block settings_content %}
+{#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
+<div hx-history="false">
+  <h2 class="text-xl font-semibold tracking-tight">Actions</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">Secrets and variables for the workflows of your own repositories. A repository's own secret or variable of the same name wins.</p>
+
+  {% include "actions/notice.html" %}
+
+  <a class="box mt-8 flex min-h-11 items-center gap-3 px-4 py-3 hover:bg-subtle" href="{{ runners_url }}">
+    {% call ui::icon("server", "size-4 text-ink-muted") %}{% endcall %}
+    <span class="min-w-0 flex-1"><span class="block font-medium">Runners</span><span class="block text-[13px] text-ink-muted">Runners for every repository of your account, and registration tokens.</span></span>
+    {% call ui::icon("chevron-right", "size-4 text-ink-muted") %}{% endcall %}
+  </a>
+
+  {% include "actions/secrets.html" %}
+
+  {% include "actions/variables.html" %}
+</div>
+{% endblock %}

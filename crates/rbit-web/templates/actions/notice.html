@@ -1,0 +1,7 @@
+{#- What the last settings form did; expects `notice: Option<Notice>` (views::actions_settings). -#}
+{% import "macros.html" as ui %}
+{% if let Some(notice) = notice %}
+<p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
+  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ notice.message() }}
+</p>
+{% endif %}

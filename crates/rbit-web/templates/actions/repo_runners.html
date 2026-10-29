@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
+{% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
+{% block content %}
+{#- hx-history="false": a registration token is shown here once and must not be cached. -#}
+<div class="mx-auto max-w-3xl" hx-history="false">
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ header.settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> Runners</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">Runners</h1>
+  {% include "actions/runners_section.html" %}
+</div>
+{% endblock %}

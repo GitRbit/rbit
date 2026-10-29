@@ -1,0 +1,58 @@
+{
+  "feature": "zip",
+  "split": "train",
+  "why": "the zip must keep nested paths and the upload's root, like GitHub's",
+  "observe": [
+    {
+      "id": "zip",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "out",
+        "format": "zip"
+      }
+    },
+    {
+      "id": "tgz",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "out",
+        "format": "tar.gz"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "zip",
+      "status": 200,
+      "headers": {
+        "content-type": "zip"
+      },
+      "exact_files": [
+        "a.txt",
+        "nested/deep/b.txt"
+      ],
+      "file_contains": {
+        "nested/deep/b.txt": "bee"
+      }
+    },
+    {
+      "obs": "tgz",
+      "status": 200,
+      "exact_files": [
+        "a.txt",
+        "nested/deep/b.txt"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

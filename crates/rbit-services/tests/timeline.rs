@@ -157,11 +157,11 @@ async fn comments_follow_the_permission_table_and_publish_events() {
         })
         .collect();
     assert_eq!(actions.len(), 4);
-    assert_eq!(actions[0], (fixture.bob.id(), CommentAction::Created));
-    assert_eq!(actions[1], (fixture.bob.id(), CommentAction::Edited { previous_body: "Same here\n".to_owned() }));
-    assert_eq!(actions[2], (fixture.alice.id(), CommentAction::Created));
+    assert_eq!(actions[0], (Some(fixture.bob.id()), CommentAction::Created));
+    assert_eq!(actions[1], (Some(fixture.bob.id()), CommentAction::Edited { previous_body: "Same here\n".to_owned() }));
+    assert_eq!(actions[2], (Some(fixture.alice.id()), CommentAction::Created));
     assert!(
-        matches!(&actions[3], (actor, CommentAction::Deleted { snapshot }) if *actor == fixture.alice.id() && snapshot.id == comment.id)
+        matches!(&actions[3], (actor, CommentAction::Deleted { snapshot }) if *actor == Some(fixture.alice.id()) && snapshot.id == comment.id)
     );
 
     assert_eq!(fixture.open(&fixture.alice, number).await.issue.comment_count, 1);

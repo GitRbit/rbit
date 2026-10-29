@@ -1,0 +1,4 @@
+result: success
+split: train
+contains: loud-info-line
+lacks: ##[debug]quiet-debug-line

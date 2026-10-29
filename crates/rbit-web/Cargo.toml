@@ -44,11 +44,19 @@ time.workspace = true
 tracing.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
+# Actions: S. The runner protocol's wire types, and gzip bodies within a decompressed cap.
+rbit-workflow.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+# Actions (F): the query counter shared with rbit-storage's tests.
+tracing-subscriber.workspace = true
 rbit-storage.workspace = true
 tempfile.workspace = true
+# Actions: artifacts as the runner stores them, and the zip archives they download as.
+tar.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true
@@ -56,3 +64,8 @@ workspace = true
 [[test]]
 name = "integration"
 path = "tests/main.rs"
+
+# The HTTP eval of Actions' authorization and protocol rules (see tests/actions_eval.rs).
+[[test]]
+name = "actions_eval"
+path = "tests/actions_eval.rs"

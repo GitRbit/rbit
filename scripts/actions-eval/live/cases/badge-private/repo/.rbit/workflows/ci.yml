@@ -1,0 +1,7 @@
+name: CI
+on: push
+jobs:
+  broken:
+    runs-on: self-hosted
+    steps:
+      - run: exit 3

@@ -1,0 +1,716 @@
+{
+  "cases": [
+    {
+      "id": "matrix-cartesian-product",
+      "area": "matrix",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, Workflow syntax > jobs.<job_id>.strategy.matrix: each job runs once per combination of the matrix values.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  build:",
+          "    runs-on: ${{ matrix.os }}",
+          "    strategy:",
+          "      matrix:",
+          "        os: [ubuntu, macos]",
+          "        node: [18, 20]",
+          "    steps:",
+          "      - run: make"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "job_id": "build",
+            "runs_on": [
+              "ubuntu"
+            ],
+            "matrix": {
+              "os": "ubuntu",
+              "node": 18
+            }
+          },
+          {
+            "job_id": "build",
+            "runs_on": [
+              "ubuntu"
+            ],
+            "matrix": {
+              "os": "ubuntu",
+              "node": 20
+            }
+          },
+          {
+            "job_id": "build",
+            "runs_on": [
+              "macos"
+            ],
+            "matrix": {
+              "os": "macos",
+              "node": 18
+            }
+          },
+          {
+            "job_id": "build",
+            "runs_on": [
+              "macos"
+            ],
+            "matrix": {
+              "os": "macos",
+              "node": 20
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-include-augments-existing",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An include entry whose keys match an existing combination augments that combination instead of adding a job, so the job count stays 2.",
+      "source": "GitHub Docs, jobs.<job_id>.strategy.matrix.include: the include entries augment a matching combination when no original value is overwritten.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        os: [a, b]",
+          "        include:",
+          "          - os: a",
+          "            experimental: true",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "matrix": {
+              "os": "a",
+              "experimental": true
+            }
+          },
+          {
+            "matrix": {
+              "os": "b"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-include-adds-combination",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An include entry that matches no original combination becomes a new job of its own.",
+      "source": "GitHub Docs, jobs.<job_id>.strategy.matrix.include: an include entry that matches no combination is added as a new combination.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        os: [a, b]",
+          "        include:",
+          "          - os: c",
+          "            extra: 1",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "matrix": {
+              "os": "a"
+            }
+          },
+          {
+            "matrix": {
+              "os": "b"
+            }
+          },
+          {
+            "matrix": {
+              "os": "c",
+              "extra": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-exclude-exact-combination",
+      "area": "matrix",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.strategy.matrix.exclude: removes the combinations that match every key of an exclude entry.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        os: [a, b]",
+          "        node: [1, 2]",
+          "        exclude:",
+          "          - os: a",
+          "            node: 2",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "matrix": {
+              "os": "a",
+              "node": 1
+            }
+          },
+          {
+            "matrix": {
+              "os": "b",
+              "node": 1
+            }
+          },
+          {
+            "matrix": {
+              "os": "b",
+              "node": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-exclude-partial-key",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "An exclude entry with fewer keys matches every combination that agrees on those keys, so one entry can remove several jobs.",
+      "source": "GitHub Docs, jobs.<job_id>.strategy.matrix.exclude: an exclude entry removes every combination it matches on its keys.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        os: [a, b]",
+          "        node: [1, 2]",
+          "        exclude:",
+          "          - os: a",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "matrix": {
+              "os": "b",
+              "node": 1
+            }
+          },
+          {
+            "matrix": {
+              "os": "b",
+              "node": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-fail-fast-default",
+      "area": "matrix",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.strategy.fail-fast: defaults to true.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        os: [a, b]",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "strategy": {
+              "fail_fast": true,
+              "job_total": 2
+            }
+          },
+          {
+            "strategy": {
+              "fail_fast": true,
+              "job_total": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-max-parallel",
+      "area": "matrix",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.strategy.max-parallel: limits how many matrix jobs run at once.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      max-parallel: 2",
+          "      matrix:",
+          "        os: [a, b, c]",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "strategy": {
+              "max_parallel": 2,
+              "job_total": 3
+            }
+          },
+          {
+            "strategy": {
+              "max_parallel": 2,
+              "job_total": 3
+            }
+          },
+          {
+            "strategy": {
+              "max_parallel": 2,
+              "job_total": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-from-vars-fromjson",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "A matrix value is an expression evaluated at planning time; the matrix is built from a JSON string, not written out.",
+      "source": "GitHub Docs, jobs.<job_id>.strategy.matrix: matrix values may be expressions, and fromJSON() builds a list from a JSON string.",
+      "split": "test",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: ${{ matrix.os }}",
+          "    strategy:",
+          "      matrix:",
+          "        os: ${{ fromJSON(vars.OSES) }}",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "vars": {
+            "OSES": "[\"debian\",\"alpine\"]"
+          }
+        }
+      },
+      "expect": {
+        "jobs": [
+          {
+            "runs_on": [
+              "debian"
+            ],
+            "matrix": {
+              "os": "debian"
+            }
+          },
+          {
+            "runs_on": [
+              "alpine"
+            ],
+            "matrix": {
+              "os": "alpine"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "matrix-too-many-jobs-error",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The limit is on jobs after expansion, so 17 x 16 = 272 combinations is refused even though each axis alone is small.",
+      "source": "GitHub Docs, Actions limits: a matrix generates a maximum of 256 jobs per workflow run.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    strategy:",
+          "      matrix:",
+          "        a: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]",
+          "        b: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "matrix-continue-on-error-expression",
+      "area": "matrix",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "continue-on-error is an expression evaluated per combination. Each combination sets experimental explicitly, so the expression is a boolean for every job and only the flagged job continues on error.",
+      "source": "GitHub Docs, jobs.<job_id>.continue-on-error: accepts an expression, which may use the matrix context.",
+      "split": "test",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: x",
+          "    continue-on-error: ${{ matrix.experimental }}",
+          "    strategy:",
+          "      matrix:",
+          "        os: [stable]",
+          "        experimental: [false]",
+          "        include:",
+          "          - os: beta",
+          "            experimental: true",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "continue_on_error": false,
+            "matrix": {
+              "os": "stable",
+              "experimental": false
+            }
+          },
+          {
+            "continue_on_error": true,
+            "matrix": {
+              "os": "beta",
+              "experimental": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "job-runs-on-from-vars",
+      "area": "jobs",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.runs-on: may be an expression using the vars context.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    runs-on: ${{ vars.RUNNER }}",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "vars": {
+            "RUNNER": "big"
+          }
+        }
+      },
+      "expect": {
+        "jobs": [
+          {
+            "runs_on": [
+              "big"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "job-name-from-dispatch-input",
+      "area": "jobs",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.name: the name may use the inputs context of a workflow_dispatch run.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: workflow_dispatch",
+          "jobs:",
+          "  t:",
+          "    name: deploy ${{ inputs.target }}",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ],
+        "run": {
+          "inputs": {
+            "target": "arm64"
+          }
+        }
+      },
+      "expect": {
+        "jobs": [
+          {
+            "name": "deploy arm64"
+          }
+        ]
+      }
+    },
+    {
+      "id": "job-needs-stored",
+      "area": "needs",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.needs: lists the jobs that must finish first.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x",
+          "  b:",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x",
+          "  c:",
+          "    needs: [a, b]",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "job_id": "a"
+          },
+          {
+            "job_id": "b"
+          },
+          {
+            "job_id": "c",
+            "needs": [
+              "a",
+              "b"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "job-if-always-kept-as-written",
+      "area": "needs",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.if: the condition is evaluated by the server when the needs finish; the plan keeps it as written.",
+      "split": "test",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    if: always()",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "if": "always()"
+          }
+        ]
+      }
+    },
+    {
+      "id": "job-if-env-context-rejected",
+      "area": "needs",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The env context exists in steps but not in a job's if; GitHub rejects the workflow when it is read there.",
+      "source": "GitHub Docs, Workflow syntax > Contexts > Context availability: jobs.<job_id>.if can read github, needs, strategy, matrix, vars and inputs, not env.",
+      "split": "test",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    if: env.X == 'y'",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "job-name-steps-context-rejected",
+      "area": "needs",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "The steps context exists only once a job is running; a job name cannot read it.",
+      "source": "GitHub Docs, Workflow syntax > Contexts > Context availability: jobs.<job_id>.name cannot use the steps context.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  t:",
+          "    name: ${{ steps.x.outputs.y }}",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "needs-cycle-error",
+      "area": "needs",
+      "tags": [
+        "hard"
+      ],
+      "why_hard": "Each job is valid alone; only the pair forms a cycle, so the check must be over the whole graph.",
+      "source": "GitHub Docs, jobs.<job_id>.needs: a workflow with circular job dependencies is invalid.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  a:",
+          "    needs: b",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x",
+          "  b:",
+          "    needs: a",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "error": true
+      }
+    },
+    {
+      "id": "concurrency-job-level-object",
+      "area": "concurrency",
+      "tags": [
+        "easy"
+      ],
+      "source": "GitHub Docs, jobs.<job_id>.concurrency: a job-level group and cancel-in-progress are stored on that job.",
+      "split": "train",
+      "kind": "plan",
+      "input": {
+        "yaml": [
+          "on: push",
+          "jobs:",
+          "  deploy:",
+          "    concurrency:",
+          "      group: deploy-prod",
+          "      cancel-in-progress: false",
+          "    runs-on: x",
+          "    steps:",
+          "      - run: x"
+        ]
+      },
+      "expect": {
+        "jobs": [
+          {
+            "concurrency": {
+              "group": "deploy-prod",
+              "cancel_in_progress": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

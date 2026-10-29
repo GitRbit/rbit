@@ -14,6 +14,46 @@ following material from other projects, under their own licenses.
 The vendored script is copied unmodified from `node_modules` by `scripts/vendor.mjs`
 (`npm run vendor`); its version is pinned in `package.json`.
 
+## Ported source code
+
+| What | Where | Source | License |
+|---|---|---|---|
+| GitHub Actions filter patterns (`workflowpattern`: pattern translation, `Skip`, `Filter`, and its test table) | `crates/rbit-workflow/src/pattern.rs` | [nektos/act](https://github.com/nektos/act) `pkg/workflowpattern`, © 2019 the act authors | MIT |
+| Job parser test workflows (inputs of the planning golden tests, given an `on:` key, with `actions/setup-go` replaced by a job `container`) | `crates/rbit-workflow/tests/golden/*.in.yaml` except `include_exclude` | [go-gitea/gitea](https://github.com/go-gitea/gitea) `modules/actions/jobparser/testdata`, © The Gitea Authors | MIT |
+
+Ported code is a translation to Rust that keeps the original's behaviour and tests; the MIT
+license text is reproduced below (Gitea's is the same text with "Copyright (c) 2016 The
+Gitea Authors").
+
+<details>
+<summary>MIT license (nektos/act)</summary>
+
+```text
+MIT License
+
+Copyright (c) 2019
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
 ## Generated at build time
 
 | What | Where | Source | License |

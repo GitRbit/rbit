@@ -1,0 +1,4 @@
+on: push
+jobs:
+  d:
+    uses: ./.rbit/workflows/r1.yml

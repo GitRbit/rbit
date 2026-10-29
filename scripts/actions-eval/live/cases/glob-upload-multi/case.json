@@ -1,0 +1,37 @@
+{
+  "feature": "globs",
+  "split": "test",
+  "why": "several lines, ** and ! exclusions, and the least common ancestor as the root",
+  "observe": [
+    {
+      "id": "zip",
+      "artifact": {
+        "workflow": "ci.yml",
+        "name": "dist",
+        "format": "zip"
+      }
+    }
+  ],
+  "expect": [
+    {
+      "run": {
+        "workflow": "ci.yml",
+        "conclusion": "success"
+      }
+    },
+    {
+      "obs": "zip",
+      "status": 200,
+      "exact_files": [
+        "dist/a.zip",
+        "dist/sub/c.zip",
+        "docs/readme.md"
+      ]
+    }
+  ],
+  "repos": {
+    "main": {
+      "files": "repo"
+    }
+  }
+}

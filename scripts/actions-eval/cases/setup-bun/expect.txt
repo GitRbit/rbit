@@ -1,0 +1,4 @@
+result: success
+split: test
+contains: Run bun --version
+skip: windows-host  # bun's installer creates symlinks, which Windows allows admins only

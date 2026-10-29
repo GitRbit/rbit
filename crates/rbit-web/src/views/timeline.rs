@@ -19,7 +19,7 @@
 //! as **ghost**: no link, a neutral avatar.
 
 use rbit_core::{
-    Account, CommentId, EventId, Issue, IssueKind, IssueNumber, IssueState, StateReason, TimelineEvent, Timestamp, User,
+    Account, CommentId, CommentSource, EventId, Issue, IssueKind, IssueNumber, IssueState, StateReason, TimelineEvent, Timestamp, User,
     issue::{LabelSnapshot, MergeStrategy},
 };
 use rbit_services::{
@@ -116,10 +116,13 @@ impl ThreadUrls {
 #[derive(Debug, Clone)]
 pub struct ActorView {
     pub name: String,
-    /// The profile; `None` for a ghost.
+    /// The profile; `None` for a ghost and for rbit Actions.
     pub url: Option<String>,
     pub avatar: Avatar,
     pub is_ghost: bool,
+    // Actions: task tokens.
+    /// rbit Actions, for a workflow's comment: no account, shown with a "bot" badge.
+    pub is_bot: bool,
 }
 
 impl ActorView {
@@ -130,14 +133,27 @@ impl ActorView {
                 url: Some(format!("/{}", account.name)),
                 avatar: Avatar::for_account(account),
                 is_ghost: false,
+                is_bot: false,
             },
             None => Self::ghost(),
         }
     }
 
+    // Actions: task tokens.
+    /// rbit Actions, the author of comments workflows write with their token.
+    pub fn actions() -> Self {
+        Self {
+            name: "rbit-actions".to_owned(),
+            url: None,
+            avatar: Avatar { initials: "RA".to_owned(), palette: 5 },
+            is_ghost: false,
+            is_bot: true,
+        }
+    }
+
     pub fn ghost() -> Self {
         // Palette 5 is the neutral one (subtle background, muted ink).
-        Self { name: "ghost".to_owned(), url: None, avatar: Avatar { initials: "?".to_owned(), palette: 5 }, is_ghost: true }
+        Self { name: "ghost".to_owned(), url: None, avatar: Avatar { initials: "?".to_owned(), palette: 5 }, is_ghost: true, is_bot: false }
     }
 }
 
@@ -466,7 +482,10 @@ pub fn items(ctx: &IssueContext, timeline: &Timeline, refs: &RefContext, options
                 TimelineItemView {
                     cursor: entry.cursor(),
                     comment: Some(CommentView {
-                        author: ActorView::new(author.as_ref()),
+                        author: match comment.source {
+                            CommentSource::Actions => ActorView::actions(),
+                            CommentSource::User => ActorView::new(author.as_ref()),
+                        },
                         by_thread_author: comment.author.is_some() && comment.author == ctx.issue.author,
                         body_html: render_issue_markdown(comment.body.as_str(), refs),
                         source: comment.body.to_string(),
@@ -760,6 +779,7 @@ mod tests {
                 created_at: Timestamp(200),
                 updated_at: Timestamp(200),
                 edited_at: None,
+                source: rbit_core::CommentSource::User,
             },
             author: author.cloned(),
             can_edit: true,
@@ -1045,6 +1065,21 @@ mod tests {
         assert!(html.contains(r#"value="close_completed""#) && html.contains(r#"value="close_not_planned""#));
         assert!(html.contains("Lock conversation") && html.contains(r#"action="/alice/demo/issues/12/lock""#));
         assert!(!html.contains("style="), "no inline styles under the CSP");
+    }
+
+    // Actions: task tokens.
+    #[test]
+    fn workflow_comments_are_rbit_actions_not_a_ghost() {
+        let ctx = context(IssueKind::Pull, all());
+        let mut entry = comment(9, None, "Benchmarks: 3% faster");
+        if let TimelineEntry::Comment { comment, .. } = &mut entry {
+            comment.source = rbit_core::CommentSource::Actions;
+        }
+        let timeline = Timeline { entries: vec![entry], next: None };
+        let html = ThreadFixture { thread: build_thread(&ctx, None, &timeline, &refs(), TimelineOptions::default()) }.render().unwrap();
+        assert!(html.contains(r#"<span class="font-medium text-ink">rbit-actions</span>"#), "{html}");
+        assert!(html.contains(r#"<span class="badge">bot</span>"#));
+        assert!(!html.contains(">ghost<"), "not a deleted account");
     }
 
     #[test]

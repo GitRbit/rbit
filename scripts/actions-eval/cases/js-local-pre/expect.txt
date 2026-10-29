@@ -1,0 +1,5 @@
+result: success
+split: test
+contains: pre ran
+contains: main ran with 5
+contains: post saw state=5

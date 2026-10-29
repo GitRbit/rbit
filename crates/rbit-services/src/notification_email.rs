@@ -45,7 +45,7 @@ use std::{
 pub use digests::{DigestRun, period_start};
 use hmac::{Hmac, KeyInit, Mac};
 use rbit_core::{
-    AccountId, Email, Issue, IssueId, IssueKind, RepoId, StateReason, Timestamp, User,
+    AccountId, CommentSource, Email, Issue, IssueId, IssueKind, RepoId, StateReason, Timestamp, User,
     config::{EmailDelivery, EmailPreference},
     issue::{CommentAction, IssueAction, ReviewAction, ReviewState},
     repository::OwnedRepository,
@@ -408,13 +408,17 @@ impl NotificationEmailService {
                 _ => None,
             },
             DomainEvent::IssueComment { issue, comment, action, .. } => {
+                if matches!(action, CommentAction::Deleted { .. }) {
+                    return Ok(None);
+                }
+                let Some(row) = self.ctx.database.issues().find_comment(*issue, *comment).await? else { return Ok(None) };
+                // Actions: task tokens. A workflow's comment has no author; rbit Actions wrote it.
+                let who = if row.source == CommentSource::Actions { "rbit Actions" } else { who };
                 let headline = match action {
-                    CommentAction::Created => format!("{who} commented on {what}."),
                     // Only users newly mentioned by the edit receive it.
                     CommentAction::Edited { .. } => format!("{who} mentioned you in a comment on {what}."),
-                    CommentAction::Deleted { .. } => return Ok(None),
+                    _ => format!("{who} commented on {what}."),
                 };
-                let Some(row) = self.ctx.database.issues().find_comment(*issue, *comment).await? else { return Ok(None) };
                 Some(activity(
                     format!("comment-{}", comment.0),
                     headline,

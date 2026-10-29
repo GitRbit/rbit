@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -21,6 +21,7 @@ rbit-services = { path = "crates/rbit-services" }
 rbit-web = { path = "crates/rbit-web" }
 rbit-ssh = { path = "crates/rbit-ssh" }
 rbit-mail = { path = "crates/rbit-mail" }
+rbit-workflow = { path = "crates/rbit-workflow" }
 
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }
@@ -110,8 +111,39 @@ proptest = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 # --- R: repository essentials (archives, releases, blame, compare, forks, mirrors) ---
 
+# --- Actions ---
+# GitHub filter patterns compile to anchored expressions; regex-automata is already in the
+# tree (through fancy-regex and tracing-subscriber), so the patterns add no crate.
+regex-automata = "0.4"
+# Workflow files: a panic-free YAML deserializer with budgets (depth, nodes, alias replays)
+# and source locations. Only its deserializer: rbit-workflow reads YAML and writes none.
+serde-saphyr = { version = "2.0", default-features = false, features = ["deserialize"] }
+# Secrets in job specifications and runner messages are zeroed on drop; zeroize is already
+# in the tree through argon2.
+zeroize = "1.9"
+# rbit-runner's runner.toml is read and written as a document of its own; toml 0.8 is
+# already in the tree through figment, so writing it adds no crate.
+toml = "0.8"
+# rbit-runner's Windows Service (`rbit-runner install --mode service`), without unsafe code.
+windows-service = "0.8"
+# rbit-runner and the server's second pass mask every secret with one Aho-Corasick automaton
+# per task; aho-corasick is already in the tree (through regex), so masking adds no crate.
+aho-corasick = "1.1"
+# rbit-runner's local cache stores tar.gz archives, runner bodies may arrive gzipped and the
+# server gzips finished task logs. flate2 is already in the tree (through async-compression);
+# tar is new, without its xattr feature, and brings no other crate. The server reads stored
+# artifacts with it to serve them as zip archives.
+flate2 = "1.1"
+tar = { version = "0.4", default-features = false }
+# rbit-runner opens files a container job can write with `O_NOFOLLOW`; libc is already in the
+# tree (through tokio and getrandom), so this adds no crate.
+libc = "0.2"
+
 # Testing
 tempfile = "3"
+# A zip reader for the tests of the server's zip artifact downloads, which are written
+# without it.
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

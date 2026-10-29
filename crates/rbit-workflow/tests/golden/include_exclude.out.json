@@ -1,0 +1,363 @@
+[
+  {
+    "version": 1,
+    "job_id": "test",
+    "name": "test (macos, stable)",
+    "needs": [
+      "lint"
+    ],
+    "if": null,
+    "runs_on": [
+      "self-hosted",
+      "macos"
+    ],
+    "matrix": {
+      "os": "macos",
+      "rust": "stable"
+    },
+    "strategy": {
+      "fail_fast": false,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 4
+    },
+    "permissions": {
+      "contents": "read",
+      "issues": "none",
+      "pull_requests": "none"
+    },
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {
+      "CARGO_TERM_COLOR": "always"
+    },
+    "env": {},
+    "defaults": {
+      "shell": "bash",
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "uses": {
+            "uses": "actions/checkout@v4",
+            "kind": "checkout",
+            "version": 1,
+            "with": {}
+          }
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      },
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "cargo +${{ matrix.rust }} test"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {
+          "RUST_BACKTRACE": "1"
+        },
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "test",
+    "name": "test (true, linux, 1.94)",
+    "needs": [
+      "lint"
+    ],
+    "if": null,
+    "runs_on": [
+      "self-hosted",
+      "linux"
+    ],
+    "matrix": {
+      "experimental": true,
+      "os": "linux",
+      "rust": 1.94
+    },
+    "strategy": {
+      "fail_fast": false,
+      "max_parallel": null,
+      "job_index": 1,
+      "job_total": 4
+    },
+    "permissions": {
+      "contents": "read",
+      "issues": "none",
+      "pull_requests": "none"
+    },
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {
+      "CARGO_TERM_COLOR": "always"
+    },
+    "env": {},
+    "defaults": {
+      "shell": "bash",
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "uses": {
+            "uses": "actions/checkout@v4",
+            "kind": "checkout",
+            "version": 1,
+            "with": {}
+          }
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      },
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "cargo +${{ matrix.rust }} test"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {
+          "RUST_BACKTRACE": "1"
+        },
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "test",
+    "name": "test (true, linux, stable)",
+    "needs": [
+      "lint"
+    ],
+    "if": null,
+    "runs_on": [
+      "self-hosted",
+      "linux"
+    ],
+    "matrix": {
+      "experimental": true,
+      "os": "linux",
+      "rust": "stable"
+    },
+    "strategy": {
+      "fail_fast": false,
+      "max_parallel": null,
+      "job_index": 2,
+      "job_total": 4
+    },
+    "permissions": {
+      "contents": "read",
+      "issues": "none",
+      "pull_requests": "none"
+    },
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {
+      "CARGO_TERM_COLOR": "always"
+    },
+    "env": {},
+    "defaults": {
+      "shell": "bash",
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "uses": {
+            "uses": "actions/checkout@v4",
+            "kind": "checkout",
+            "version": 1,
+            "with": {}
+          }
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      },
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "cargo +${{ matrix.rust }} test"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {
+          "RUST_BACKTRACE": "1"
+        },
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "test",
+    "name": "test (windows, stable)",
+    "needs": [
+      "lint"
+    ],
+    "if": null,
+    "runs_on": [
+      "self-hosted",
+      "windows"
+    ],
+    "matrix": {
+      "os": "windows",
+      "rust": "stable"
+    },
+    "strategy": {
+      "fail_fast": false,
+      "max_parallel": null,
+      "job_index": 3,
+      "job_total": 4
+    },
+    "permissions": {
+      "contents": "read",
+      "issues": "none",
+      "pull_requests": "none"
+    },
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {
+      "CARGO_TERM_COLOR": "always"
+    },
+    "env": {},
+    "defaults": {
+      "shell": "bash",
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "uses": {
+            "uses": "actions/checkout@v4",
+            "kind": "checkout",
+            "version": 1,
+            "with": {}
+          }
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      },
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "cargo +${{ matrix.rust }} test"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {
+          "RUST_BACKTRACE": "1"
+        },
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "job_id": "lint",
+    "name": "lint",
+    "needs": [],
+    "if": null,
+    "runs_on": [
+      "linux"
+    ],
+    "matrix": {},
+    "strategy": {
+      "fail_fast": true,
+      "max_parallel": null,
+      "job_index": 0,
+      "job_total": 1
+    },
+    "permissions": {
+      "contents": "read",
+      "issues": "none",
+      "pull_requests": "none"
+    },
+    "concurrency": null,
+    "timeout_minutes": 360,
+    "continue_on_error": false,
+    "workflow_env": {
+      "CARGO_TERM_COLOR": "always"
+    },
+    "env": {},
+    "defaults": {
+      "shell": "bash",
+      "working_directory": null
+    },
+    "outputs": {},
+    "container": null,
+    "services": [],
+    "steps": [
+      {
+        "id": null,
+        "name": null,
+        "if": null,
+        "action": {
+          "run": "cargo clippy -- -D warnings"
+        },
+        "shell": null,
+        "working_directory": null,
+        "env": {},
+        "continue_on_error": null,
+        "timeout_minutes": null
+      }
+    ]
+  }
+]
