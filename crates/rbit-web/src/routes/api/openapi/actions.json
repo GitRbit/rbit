@@ -225,6 +225,57 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/actions/runs/{run_id}/logs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "run_id",
+          "in": "path",
+          "required": true,
+          "description": "The run's id (`id` of a run, not its `run_number`).",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "downloadWorkflowRunLogs",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Every job's log of the run, as a zip of <n>_<job name>.txt files (sent itself, not redirected)",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The logs",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/actions/runs/{run_id}/cancel": {
       "parameters": [
         {

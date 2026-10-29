@@ -89,6 +89,8 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Get, repo("/runs"), list_runs),
         route(Get, repo("/runs/{run_id}"), show_run),
         route(Get, repo("/runs/{run_id}/jobs"), run_jobs),
+        // Actions: run logs.
+        route(Get, repo("/runs/{run_id}/logs"), run_logs),
         route(Post, repo("/runs/{run_id}/cancel"), cancel),
         route(Post, repo("/runs/{run_id}/rerun"), rerun),
         route(Post, repo("/runs/{run_id}/rerun-failed-jobs"), rerun_failed),
@@ -369,6 +371,40 @@ pub async fn job_logs(
     let log = actions.raw_log(&ctx, task).await?.ok_or_else(ApiError::not_found)?;
     let file_name = format!("{}-run-{}-{}.log", ctx.repo.repo.name, detail.run.number, detail.job.key);
     Ok(crate::routes::actions::jobs::raw_log_response(log, &headers, &file_name))
+}
+
+// Actions: run logs.
+/// `GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs`: a zip with each job's log as
+/// `<n>_<job name>.txt`, sent itself rather than through GitHub's redirect.
+pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let actions = actions(&state)?;
+    let run = actions.run_by_id(&ctx, path.run()?).await?.run;
+    let files = actions.run_logs(&ctx, run.id).await?;
+    if files.is_empty() {
+        return Err(ApiError::not_found());
+    }
+    let mtime = u64::try_from(run.finished_at.unwrap_or(run.created_at).0).unwrap_or_default();
+    let built = tokio::task::spawn_blocking(move || rbit_services::actions::downloads::files_to_zip(&files, mtime, Vec::new())).await;
+    let zip = match built {
+        Ok(Ok(zip)) => zip,
+        Ok(Err(error)) => return Err(archive_error(&error)),
+        Err(error) => return Err(archive_error(&error)),
+    };
+    let name = format!("attachment; filename=\"logs_{}.zip\"", run.id.0);
+    let mut response = zip.into_response();
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("private, no-cache"));
+    if let Ok(value) = HeaderValue::from_str(&name) {
+        headers.insert(header::CONTENT_DISPOSITION, value);
+    }
+    Ok(response)
+}
+
+fn archive_error(error: &dyn std::error::Error) -> ApiError {
+    tracing::error!(%error, "cannot build a run's log archive");
+    ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "The log archive could not be built")
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs

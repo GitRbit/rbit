@@ -120,6 +120,24 @@ pub fn to_zip<R: Read, W: Write>(source: R, out: W) -> io::Result<W> {
     Ok(out.inner)
 }
 
+// Actions: run logs.
+/// Writes `files` (name, contents), changed at `mtime` (Unix seconds), as a zip to `out`.
+///
+/// # Errors
+///
+/// What writing `out` fails with.
+pub fn files_to_zip<W: Write>(files: &[(String, Vec<u8>)], mtime: u64, out: W) -> io::Result<W> {
+    let mut out = Counter { inner: out, count: 0 };
+    let dos = dos_time(mtime);
+    let mut written = Vec::with_capacity(files.len());
+    for (name, data) in files {
+        written.push(write_entry(&mut out, name.as_bytes().to_vec(), data.len() as u64, 0o644, dos, &mut data.as_slice())?);
+    }
+    write_directory(&mut out, &written)?;
+    out.flush()?;
+    Ok(out.inner)
+}
+
 /// Reads the stored tar.gz `source` and writes its files as a tar.gz to `out`, at its top.
 ///
 /// # Errors
@@ -438,6 +456,18 @@ mod tests {
             })
             .collect();
         assert_eq!(entries, [("dist/a.zip".to_owned(), 0o755, "zip".to_owned())]);
+    }
+
+    // Actions: run logs.
+    #[test]
+    fn files_become_a_zip() {
+        let files = vec![("0_build.txt".to_owned(), b"compiling\n".to_vec()), ("1_test.txt".to_owned(), Vec::new())];
+        let bytes = files_to_zip(&files, 1_700_000_000, Vec::new()).unwrap();
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
+        assert_eq!(archive.len(), 2);
+        let mut text = String::new();
+        archive.by_name("0_build.txt").unwrap().read_to_string(&mut text).unwrap();
+        assert_eq!(text, "compiling\n");
     }
 
     #[test]

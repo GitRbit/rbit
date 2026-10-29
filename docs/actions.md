@@ -435,8 +435,8 @@ list`, `rbit run watch --exit-status`, `rbit run view --log-failed`, `rbit workf
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
 runs, dispatches workflows, shows, disables and enables workflows and lists their runs
-(`…/actions/workflows/{file}`, `…/disable`, `…/enable`, `…/runs`), serves job logs and
-artifacts, lists and deletes cache entries
+(`…/actions/workflows/{file}`, `…/disable`, `…/enable`, `…/runs`), serves job logs (one job's
+as text, a run's as a zip: `…/runs/{run_id}/logs`) and artifacts, lists and deletes cache entries
 (`…/actions/caches`, `…/actions/cache/usage`, as `gh cache` uses them), manages secrets,
 variables and runners (with registration tokens), and reviews pending deployments
 (`…/runs/{run_id}/pending_deployments`), in GitHub's shapes (see the OpenAPI document at

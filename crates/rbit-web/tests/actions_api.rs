@@ -52,6 +52,13 @@ async fn job_logs_and_artifacts_are_read_downloaded_and_deleted() {
     assert_eq!(log.headers[header::CONTENT_TYPE], "text/plain; charset=utf-8");
     assert!(String::from_utf8_lossy(&log.body).contains("compiling\nlinking"), "{:?}", String::from_utf8_lossy(&log.body));
     assert_eq!(api(&fixture, Method::GET, &format!("{actions}/jobs/{}/logs", job + 1000), &read).await.status, StatusCode::NOT_FOUND);
+    // Actions: run logs. The whole run's, as the zip `gh run view --log` reads.
+    let zipped = api(&fixture, Method::GET, &format!("{actions}/runs/{}/logs", run.id.0), &read).await;
+    assert_eq!((zipped.status, zipped.headers[header::CONTENT_TYPE].to_str().unwrap()), (StatusCode::OK, "application/zip"));
+    let files = zip_files(&zipped.body);
+    assert_eq!(files.len(), 1);
+    let extension = std::path::Path::new(&files[0].0).extension().and_then(|extension| extension.to_str());
+    assert!(files[0].0.starts_with("0_") && extension == Some("txt") && files[0].1.contains("compiling\nlinking"), "{files:?}");
 
     // Artifacts: the run's, the repository's (by name), one, its file, and deleting it.
     let dist = stored(&[("dist/app.zip", b"zipped"), ("dist/app.zip.sha256", b"sum")]);

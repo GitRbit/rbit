@@ -383,6 +383,35 @@ impl ActionsService {
         }
     }
 
+    // Actions: run logs.
+    /// The logs of run `run`'s jobs that have one, as `<n>_<job name>.txt` files in job
+    /// order, the text decompressed: GitHub's run log archive.
+    pub async fn run_logs(&self, repo: &RepoContext, run: rbit_core::actions::RunId) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+        let detail = self.run_by_id(repo, run).await?;
+        let mut files = Vec::new();
+        for (index, job) in detail.jobs.iter().enumerate() {
+            let Some(task) = job.task_id else { continue };
+            let Some(log) = self.raw_log(repo, task).await? else { continue };
+            let file = log.file.into_std().await;
+            let gzip = log.gzip;
+            let text = tokio::task::spawn_blocking(move || {
+                let mut text = Vec::new();
+                if gzip {
+                    flate2::read::GzDecoder::new(file).read_to_end(&mut text)?;
+                } else {
+                    let mut file = file;
+                    file.read_to_end(&mut text)?;
+                }
+                Ok::<_, std::io::Error>(text)
+            })
+            .await
+            .map_err(ServiceError::internal)?
+            .map_err(ServiceError::internal)?;
+            files.push((format!("{index}_{}.txt", log_file_name(&job.name)), text));
+        }
+        Ok(files)
+    }
+
     /// Task `task` and its job, when the job is `repo`'s and the caller may read it.
     async fn readable_task(&self, repo: &RepoContext, task: TaskId) -> Result<(Task, Job), ServiceError> {
         if !repo.access.can_read() {
@@ -606,9 +635,30 @@ fn read_window(
     Ok(())
 }
 
+// Actions: run logs.
+/// A job name as a file name in the run log archive: no path separators or control
+/// characters, at most 100 characters.
+fn log_file_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c })
+        .take(100)
+        .collect();
+    let safe = safe.trim().trim_matches('.').to_owned();
+    if safe.is_empty() { "job".to_owned() } else { safe }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Actions: run logs.
+    #[test]
+    fn job_names_become_safe_file_names() {
+        assert_eq!(log_file_name("build (ubuntu-latest, 1.80)"), "build (ubuntu-latest, 1.80)");
+        assert_eq!(log_file_name("a/b\\c:d"), "a_b_c_d");
+        assert_eq!(log_file_name(".."), "job");
+    }
 
     #[test]
     fn secrets_and_their_lines_are_masked() {
