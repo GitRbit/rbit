@@ -274,6 +274,20 @@ pub fn read(path: &str) -> Option<Cow<'static, [u8]>> {
     EmbeddedAssets::get(path).map(|file| file.data)
 }
 
+/// Checks that the generated stylesheet (`npm run build`, not in Git) was there when this
+/// binary was built: every page inlines it, so a server without it could serve no page.
+///
+/// # Errors
+///
+/// What to do about it, when it is missing.
+pub fn ensure_built() -> Result<(), String> {
+    match served("app.css") {
+        Some(_) => Ok(()),
+        None => Err("this rbit was built without its stylesheet (crates/rbit-web/assets/app.css); run `npm run build` and build it again"
+            .to_owned()),
+    }
+}
+
 /// Trusted embedded CSS, emitted verbatim inside a style element. Never accepts user CSS.
 ///
 /// Renders straight from the shared, memoised file: a page writes the stylesheet into its
@@ -423,6 +437,11 @@ fn matching_etag(tags: &HeaderValue, hash: &str) -> Option<HeaderValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_built_server_has_its_stylesheet() {
+        assert_eq!(ensure_built(), Ok(()));
+    }
 
     #[tokio::test]
     async fn mermaid_style_permissions_are_confined_to_a_sandboxed_frame() {

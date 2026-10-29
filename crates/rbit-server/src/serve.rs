@@ -36,6 +36,8 @@ async fn open_database(config: &Config) -> anyhow::Result<Database> {
 }
 
 pub async fn run(config: Config) -> anyhow::Result<()> {
+    // Refuse to start rather than fail every page.
+    rbit_web::assets::ensure_built().map_err(anyhow::Error::msg)?;
     let config = Arc::new(config);
     let storage = open_storage(&config).await?;
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
