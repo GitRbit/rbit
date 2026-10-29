@@ -239,6 +239,11 @@ pub struct RunsPage {
     // Actions: dispatch form.
     /// "Run workflow", on a `workflow_dispatch` workflow's page for writers.
     pub dispatch: Option<DispatchFormView>,
+    // Actions: disabled workflows.
+    /// The selected workflow is disabled: it starts no run.
+    pub disabled: bool,
+    /// Where writers disable or enable the selected workflow.
+    pub switch_url: Option<String>,
     /// How often the list refreshes itself (an htmx trigger), when it does.
     pub refresh: Option<&'static str>,
     /// This list, with its filters and page.

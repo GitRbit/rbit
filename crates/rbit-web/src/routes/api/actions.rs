@@ -52,7 +52,7 @@ use rbit_core::{
 use rbit_services::{
     ActionsService, OrgContext, RepoContext, ServiceError,
     actions::{
-        browse::RunQuery,
+        browse::{RunQuery, WorkflowState},
         caches::{CacheOrder, scope_ref},
         dispatch::DispatchRequest,
         hooks,
@@ -107,6 +107,11 @@ pub(super) fn routes() -> Vec<ApiRoute> {
         route(Delete, repo("/caches/{cache_id}"), delete_cache),
         route(Get, repo("/cache/usage"), cache_usage),
         route(Get, repo("/workflows"), workflows),
+        // Actions: disabled workflows.
+        route(Get, repo("/workflows/{workflow_id}"), show_workflow),
+        route(Put, repo("/workflows/{workflow_id}/disable"), disable_workflow),
+        route(Put, repo("/workflows/{workflow_id}/enable"), enable_workflow),
+        route(Get, repo("/workflows/{workflow_id}/runs"), workflow_runs),
         route(Post, repo("/workflows/{workflow_id}/dispatches"), dispatch),
         // Actions: workflow_run and repository_dispatch.
         route(Post, "/repos/{owner}/{repo}/dispatches".to_owned(), repository_dispatch),
@@ -281,6 +286,17 @@ pub async fn list_runs(
     Query(filters): Query<RunsQuery>,
 ) -> ApiResult<Response> {
     let ctx = path.repo(&state, &caller).await?;
+    runs_page(&state, &ctx, pager, &filters, None).await
+}
+
+/// A page of `ctx`'s runs matching `filters`, of workflow `workflow` when given.
+async fn runs_page(
+    state: &AppState,
+    ctx: &RepoContext,
+    pager: Pager,
+    filters: &RunsQuery,
+    workflow: Option<String>,
+) -> ApiResult<Response> {
     let statuses = match non_empty(&filters.status) {
         Some(status) => github_statuses(&status).ok_or_else(|| ApiError::invalid("status", format!("unknown status `{status}`")))?,
         None => &[],
@@ -289,18 +305,19 @@ pub async fn list_runs(
     let matches_nothing = (!filters.status.trim().is_empty() && statuses.is_empty())
         || event.as_deref().is_some_and(|event| RunEvent::parse(event).is_none());
     let query = RunQuery {
+        workflow,
         branch: non_empty(&filters.branch),
         event: event.as_deref().and_then(RunEvent::parse),
         actor: non_empty(&filters.actor),
         ..RunQuery::default()
     };
-    let actions = actions(&state)?;
+    let actions = actions(state)?;
     let limit = u32::try_from(pager.limit()).unwrap_or(u32::MAX);
     let offset = u32::try_from(pager.offset()).unwrap_or(u32::MAX);
     // An event or status no run can have still needs the repository to have Actions on.
-    let page = actions.page_runs(&ctx, &query, statuses, offset, if matches_nothing { 0 } else { limit }).await?;
+    let page = actions.page_runs(ctx, &query, statuses, offset, if matches_nothing { 0 } else { limit }).await?;
     let total = if matches_nothing { 0 } else { page.total };
-    let base = base_url(&state);
+    let base = base_url(state);
     let items = page.runs.iter().map(|run| hooks::workflow_run(run, &ctx.repo, &page.people, base)).collect();
     Ok(wrapped("workflow_runs", pager.paged(items, Some(total), false)))
 }
@@ -410,16 +427,69 @@ pub async fn approve(State(state): State<AppState>, caller: Caller, Path(path): 
 /// `GET /repos/{owner}/{repo}/actions/workflows`: the workflows that have runs, by path.
 pub async fn workflows(State(state): State<AppState>, caller: Caller, pager: Pager, Path(path): Path<ActionsPath>) -> ApiResult<Response> {
     let ctx = path.repo(&state, &caller).await?;
-    let known = actions(&state)?.workflows(&ctx).await?;
-    let html = format!("{}/{}/actions/workflows", base_url(&state), ctx.repo.full_name());
-    let items = known
-        .iter()
-        .map(|(path, name)| {
-            let file = hooks::workflow_file(path);
-            json!({ "id": file, "name": name, "path": path, "state": "active", "html_url": format!("{html}/{file}") })
-        })
-        .collect();
+    let known = actions(&state)?.workflow_states(&ctx).await?;
+    let base = base_url(&state);
+    let items = known.iter().map(|workflow| workflow_json(workflow, &ctx, base)).collect();
     Ok(wrapped("workflows", pager.page_of(items)))
+}
+
+// Actions: disabled workflows.
+/// A workflow, shaped like GitHub's; its id is its file name (`ci.yml`), which GitHub's
+/// endpoints also take.
+fn workflow_json(workflow: &WorkflowState, ctx: &RepoContext, base: &str) -> Value {
+    let file = hooks::workflow_file(&workflow.path);
+    let full_name = ctx.repo.full_name();
+    json!({
+        "id": file,
+        "name": workflow.name,
+        "path": workflow.path,
+        "state": if workflow.disabled { "disabled_manually" } else { "active" },
+        "url": format!("{base}/api/v1/repos/{full_name}/actions/workflows/{file}"),
+        "html_url": format!("{base}/{full_name}/actions/workflows/{file}"),
+        "badge_url": format!("{base}/{full_name}/actions/workflows/{file}/badge.svg"),
+    })
+}
+
+/// `GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}`: by file name or path.
+pub async fn show_workflow(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<Json<Value>> {
+    let ctx = path.repo(&state, &caller).await?;
+    let workflow = actions(&state)?.workflow_state(&ctx, path.workflow_id.as_deref().unwrap_or_default()).await?;
+    Ok(Json(workflow_json(&workflow, &ctx, base_url(&state))))
+}
+
+/// `PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable`: `204`; it starts no
+/// run until enabled.
+pub async fn disable_workflow(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    switch_workflow(&state, &caller, &path, true).await
+}
+
+/// `PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable`: `204`.
+pub async fn enable_workflow(State(state): State<AppState>, caller: Caller, Path(path): Path<ActionsPath>) -> ApiResult<StatusCode> {
+    switch_workflow(&state, &caller, &path, false).await
+}
+
+async fn switch_workflow(state: &AppState, caller: &Caller, path: &ActionsPath, disabled: bool) -> ApiResult<StatusCode> {
+    let ctx = path.repo(state, caller).await?;
+    let actions = actions(state)?;
+    let workflow = path.workflow_id.as_deref().unwrap_or_default();
+    actions.workflow_state(&ctx, workflow).await?;
+    let user = require_writer(caller, &ctx)?;
+    actions.set_workflow_disabled(user, &ctx, workflow, disabled).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs`: as `…/actions/runs`,
+/// for one workflow.
+pub async fn workflow_runs(
+    State(state): State<AppState>,
+    caller: Caller,
+    pager: Pager,
+    Path(path): Path<ActionsPath>,
+    Query(filters): Query<RunsQuery>,
+) -> ApiResult<Response> {
+    let ctx = path.repo(&state, &caller).await?;
+    let workflow = actions(&state)?.workflow_state(&ctx, path.workflow_id.as_deref().unwrap_or_default()).await?;
+    runs_page(&state, &ctx, pager, &filters, Some(workflow.path)).await
 }
 
 /// The body of `POST …/workflows/{workflow_id}/dispatches`.
@@ -1285,7 +1355,9 @@ mod tests {
                 "name": "CI",
                 "path": CI,
                 "state": "active",
+                "url": "https://git.example.com/api/v1/repos/alice/rocket/actions/workflows/ci.yml",
                 "html_url": "https://git.example.com/alice/rocket/actions/workflows/ci.yml",
+                "badge_url": "https://git.example.com/alice/rocket/actions/workflows/ci.yml/badge.svg",
             })
         );
         assert_eq!(json["workflows"][1]["id"], "nightly.yml");

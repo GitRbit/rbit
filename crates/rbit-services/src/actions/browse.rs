@@ -49,6 +49,17 @@ pub struct RunQuery {
     pub before: Option<RunId>,
 }
 
+// Actions: disabled workflows.
+/// A workflow of a repository, as the workflow endpoints show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowState {
+    /// `.github/workflows/ci.yml`.
+    pub path: String,
+    pub name: String,
+    /// Disabled by hand: it starts no run.
+    pub disabled: bool,
+}
+
 /// One page of runs.
 #[derive(Debug, Clone)]
 pub struct RunListing {
@@ -99,6 +110,54 @@ impl ActionsService {
     pub async fn workflows(&self, repo: &RepoContext) -> Result<Vec<(String, String)>, ServiceError> {
         self.require_pages(repo).await?;
         Ok(self.ctx().database.actions_runs().workflows(repo.repo.repo.id).await?)
+    }
+
+    // Actions: disabled workflows.
+    /// `repo`'s workflows as GitHub lists them, by path: those that ran and those on the
+    /// default branch, each with its name (its newest run's, else its path) and whether it
+    /// is disabled.
+    pub async fn workflow_states(&self, repo: &RepoContext) -> Result<Vec<WorkflowState>, ServiceError> {
+        let mut named: BTreeMap<String, String> = self.workflows(repo).await?.into_iter().collect();
+        for path in self.workflow_paths(repo).await? {
+            named.entry(path.clone()).or_insert(path);
+        }
+        let disabled = self.ctx().database.actions_settings().disabled_workflows(repo.repo.repo.id).await?;
+        Ok(named.into_iter().map(|(path, name)| WorkflowState { disabled: disabled.binary_search(&path).is_ok(), path, name }).collect())
+    }
+
+    /// `repo`'s workflow `workflow`: its file name (`ci.yml`) or its path.
+    pub async fn workflow_state(&self, repo: &RepoContext, workflow: &str) -> Result<WorkflowState, ServiceError> {
+        let workflow = workflow.trim();
+        self.workflow_states(repo)
+            .await?
+            .into_iter()
+            .find(|state| state.path == workflow || hooks::workflow_file(&state.path) == workflow)
+            .ok_or(ServiceError::NotFound)
+    }
+
+    /// Disables or enables `repo`'s workflow `workflow` for `actor`, who needs write access.
+    pub async fn set_workflow_disabled(
+        &self,
+        actor: &rbit_core::User,
+        repo: &RepoContext,
+        workflow: &str,
+        disabled: bool,
+    ) -> Result<WorkflowState, ServiceError> {
+        let state = self.workflow_state(repo, workflow).await?;
+        if !repo.access.can_write() {
+            return Err(ServiceError::Forbidden);
+        }
+        repo.ensure_writable()?;
+        let changed = self
+            .ctx()
+            .database
+            .actions_settings()
+            .set_workflow_disabled(repo.repo.repo.id, &state.path, disabled, Some(actor.id()), rbit_core::Timestamp::now())
+            .await?;
+        if changed {
+            tracing::info!(repo = %repo.repo.full_name(), workflow = %state.path, disabled, by = %actor.name(), "workflow switched");
+        }
+        Ok(WorkflowState { disabled, ..state })
     }
 
     /// One page of `repo`'s runs matching `query`, newest first.

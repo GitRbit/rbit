@@ -18,7 +18,17 @@
   <div class="min-w-0 flex-1">
     <div class="mb-3 flex min-h-8 items-center gap-3">
       <h1 class="text-[13px] font-medium text-ink-muted">{% if let Some(name) = workflow %}{{ name }}{% else %}All workflow runs{% endif %}</h1>
+      {% if let Some(url) = switch_url %}
+      <form method="post" action="{{ url }}" class="ml-auto">
+        <input type="hidden" name="disabled" value="{% if disabled %}false{% else %}true{% endif %}">
+        <button class="btn h-10 sm:h-8" type="submit">{% if disabled %}Enable workflow{% else %}Disable workflow{% endif %}</button>
+      </form>
+      {% endif %}
     </div>
+
+    {% if disabled %}
+    <p class="mb-3 rounded-md border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="status">This workflow is disabled: it starts no run, for any event, until it is enabled.</p>
+    {% endif %}
 
     {% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
 

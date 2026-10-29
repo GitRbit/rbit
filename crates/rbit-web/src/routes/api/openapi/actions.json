@@ -672,6 +672,152 @@
         }
       }
     },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "A workflow",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workflow"
+                }
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "disableWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Disable a workflow: it starts no run until enabled (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "enableWorkflow",
+        "tags": [
+          "actions"
+        ],
+        "summary": "Enable a disabled workflow (write scope; write access)",
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done"
+          },
+          "307": {
+            "$ref": "#/components/responses/TemporaryRedirect"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches": {
       "parameters": [
         {
@@ -724,6 +870,124 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/owner"
+        },
+        {
+          "$ref": "#/components/parameters/repo"
+        },
+        {
+          "name": "workflow_id",
+          "in": "path",
+          "required": true,
+          "description": "The workflow's file name (ci.yml) or path.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listWorkflowRuns",
+        "tags": [
+          "actions"
+        ],
+        "summary": "One workflow's runs, newest first",
+        "description": "404 unless the repository has Actions on. Each filter narrows the list; an event or status no run can have lists nothing.",
+        "security": [
+          {},
+          {
+            "token": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Runs for this branch (without `refs/heads/`).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "description": "Runs started by this event: `push`, `pull_request`, `workflow_dispatch` or `schedule` (other events start no runs).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Runs with this GitHub status or conclusion. `queued` (also `requested`, `pending`) covers runs waiting for a runner or for other runs; `waiting` (also `action_required`) runs awaiting approval; `completed` every finished run. `neutral`, `stale` and `timed_out` are accepted and match nothing. Anything else is a 422.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "requested",
+                "pending",
+                "waiting",
+                "action_required",
+                "in_progress",
+                "completed",
+                "success",
+                "failure",
+                "cancelled",
+                "skipped",
+                "neutral",
+                "stale",
+                "timed_out"
+              ]
+            }
+          },
+          {
+            "name": "actor",
+            "in": "query",
+            "description": "Runs caused by this user (login).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/page"
+          },
+          {
+            "$ref": "#/components/parameters/per_page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of runs; `total_count` counts every matching run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunList"
+                }
+              }
+            },
+            "headers": {
+              "Link": {
+                "$ref": "#/components/headers/Link"
+              },
+              "X-Total-Count": {
+                "$ref": "#/components/headers/X-Total-Count"
+              }
+            }
+          },
+          "301": {
+            "$ref": "#/components/responses/MovedPermanently"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -3598,10 +3862,19 @@
           "state": {
             "type": "string",
             "enum": [
-              "active"
+              "active",
+              "disabled_manually"
             ]
           },
           "html_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "badge_url": {
             "type": "string",
             "format": "uri"
           }

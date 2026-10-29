@@ -284,6 +284,54 @@ impl ActionsSettingsStore {
         Ok(result.rows_affected() == 1)
     }
 
+    // Actions: disabled workflows.
+    /// The paths of `repo`'s disabled workflows, sorted.
+    pub async fn disabled_workflows(&self, repo: RepoId) -> Result<Vec<String>, StorageError> {
+        Ok(sqlx::query_scalar("SELECT path FROM actions_disabled_workflows WHERE repo_id = ? ORDER BY path")
+            .bind(repo.0)
+            .fetch_all(&self.pool)
+            .await?)
+    }
+
+    /// Whether workflow `path` of `repo` is disabled.
+    pub async fn is_workflow_disabled(&self, repo: RepoId, path: &str) -> Result<bool, StorageError> {
+        let found: Option<i64> = sqlx::query_scalar("SELECT 1 FROM actions_disabled_workflows WHERE repo_id = ? AND path = ?")
+            .bind(repo.0)
+            .bind(path)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(found.is_some())
+    }
+
+    /// Disables (or enables) workflow `path` of `repo`; whether that changed anything.
+    pub async fn set_workflow_disabled(
+        &self,
+        repo: RepoId,
+        path: &str,
+        disabled: bool,
+        by: Option<AccountId>,
+        now: Timestamp,
+    ) -> Result<bool, StorageError> {
+        let result = if disabled {
+            sqlx::query(
+                "INSERT INTO actions_disabled_workflows (repo_id, path, disabled_at, disabled_by) VALUES (?, ?, ?, ?)                  ON CONFLICT (repo_id, path) DO NOTHING",
+            )
+            .bind(repo.0)
+            .bind(path)
+            .bind(now.0)
+            .bind(by.map(|by| by.0))
+            .execute(&self.pool)
+            .await?
+        } else {
+            sqlx::query("DELETE FROM actions_disabled_workflows WHERE repo_id = ? AND path = ?")
+                .bind(repo.0)
+                .bind(path)
+                .execute(&self.pool)
+                .await?
+        };
+        Ok(result.rows_affected() == 1)
+    }
+
     /// Turns Actions on or off for the repository.
     pub async fn set_enabled(&self, repo: RepoId, enabled: bool, now: Timestamp) -> Result<(), StorageError> {
         sqlx::query(

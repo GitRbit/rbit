@@ -143,8 +143,17 @@ async fn runs_page(
         Some(file) => Some(known.iter().find(|(path, _)| workflow_file(path) == file).ok_or(WebError::NotFound)?.clone()),
         None => None,
     };
+    // Actions: disabled workflows.
+    let disabled = match &selected {
+        Some((path, _)) => actions.workflow_state(&loaded.ctx, path).await?.disabled,
+        None => false,
+    };
+    let switch_url =
+        selected.as_ref().filter(|_| loaded.ctx.can_write_content()).map(|(path, _)| format!("{}/switch", urls.workflow(path)));
     let dispatch = match &selected {
-        Some((path, _)) if loaded.ctx.can_write_content() => dispatch_form(actions, &loaded, &urls, path, query, submitted).await?,
+        Some((path, _)) if loaded.ctx.can_write_content() && !disabled => {
+            dispatch_form(actions, &loaded, &urls, path, query, submitted).await?
+        }
         _ => None,
     };
     let run_query = RunQuery {
@@ -196,6 +205,8 @@ async fn runs_page(
         filters: RunFilters::new(action, query.branch.trim(), query.actor.trim(), query.event(), query.status()),
         next_url,
         dispatch,
+        disabled,
+        switch_url,
         self_url,
     })
 }
@@ -292,6 +303,29 @@ pub async fn dispatch(
         }
         Err(error) => Err(error.into()),
     }
+}
+
+// Actions: disabled workflows.
+/// The form of the workflow page's Disable / Enable button.
+#[derive(Debug, serde::Deserialize)]
+pub struct SwitchForm {
+    disabled: bool,
+}
+
+/// `POST /{owner}/{repo}/actions/workflows/{workflow}/switch`: disables or enables the
+/// workflow, then shows its page again.
+pub async fn switch(
+    State(state): State<AppState>,
+    SignedIn(user): SignedIn,
+    viewer: Viewer,
+    Path((owner, repo, workflow)): Path<(String, String, String)>,
+    Form(form): Form<SwitchForm>,
+) -> WebResult<Redirect> {
+    let actions = actions(&state)?;
+    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    let switched = actions.set_workflow_disabled(&user, &ctx, &workflow, form.disabled).await?;
+    let urls = ActionsUrls::new(&format!("/{}", ctx.repo.full_name()));
+    Ok(Redirect::to(&urls.workflow(&switched.path)))
 }
 
 fn run_number(run: &str) -> WebResult<i64> {

@@ -380,6 +380,10 @@ write to the repository. Choose the branch or tag to run it from (the form then 
 workflow's inputs at that ref), fill in the inputs and run it; the new run opens. Workflows on
 the default branch are listed on the Actions tab even before they ever ran.
 
+**Disable workflow** on the same page (or the REST API) stops a workflow without deleting
+its file: a disabled workflow starts no run for any event, on any branch, and cannot be run
+by hand until **Enable workflow**. Its page says so to everyone.
+
 ## The workflow's token
 
 `secrets.GITHUB_TOKEN` (or `RBIT_TOKEN`) works with `git` and with a part of the REST API at
@@ -430,7 +434,9 @@ list`, `rbit run watch --exit-status`, `rbit run view --log-failed`, `rbit workf
 `rbit artifact download`, `rbit pr checks` and `rbit api` (see [the client's guide](cli.md)).
 
 `/api/v1/repos/{owner}/{repo}/actions/...` lists runs and jobs, cancels, re-runs and approves
-runs, dispatches workflows, serves job logs and artifacts, lists and deletes cache entries
+runs, dispatches workflows, shows, disables and enables workflows and lists their runs
+(`…/actions/workflows/{file}`, `…/disable`, `…/enable`, `…/runs`), serves job logs and
+artifacts, lists and deletes cache entries
 (`…/actions/caches`, `…/actions/cache/usage`, as `gh cache` uses them), manages secrets,
 variables and runners (with registration tokens), and reviews pending deployments
 (`…/runs/{run_id}/pending_deployments`), in GitHub's shapes (see the OpenAPI document at

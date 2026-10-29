@@ -244,3 +244,29 @@ async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() 
     let page = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
     assert!(page.contains("summary of the first job") && page.contains("summary of the second job"), "{page}");
 }
+
+// Actions: disabled workflows.
+#[tokio::test]
+async fn workflows_are_shown_disabled_enabled_and_their_runs_listed() {
+    let fixture = Fixture::new().await;
+    seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let (read, write) = (token(&fixture, &fixture.alice, TokenScope::Read).await, token(&fixture, &fixture.alice, TokenScope::Write).await);
+    let workflows = "/repos/alice/rocket/actions/workflows";
+
+    let listed = api(&fixture, Method::GET, workflows, &read).await.json();
+    assert_eq!((listed["workflows"][0]["id"].as_str(), listed["workflows"][0]["state"].as_str()), (Some("ci.yml"), Some("active")));
+    let shown = api(&fixture, Method::GET, &format!("{workflows}/ci.yml"), &read).await.json();
+    assert_eq!(shown["path"], ".rbit/workflows/ci.yml");
+    let by_path = api(&fixture, Method::GET, &format!("{workflows}/.rbit%2Fworkflows%2Fci.yml"), &read).await;
+    assert_eq!(by_path.json()["id"], "ci.yml", "by path too");
+    let runs = api(&fixture, Method::GET, &format!("{workflows}/ci.yml/runs"), &read).await.json();
+    assert_eq!(runs["total_count"], 1);
+
+    let disable = format!("{workflows}/ci.yml/disable");
+    assert_eq!(api(&fixture, Method::PUT, &disable, &read).await.status, StatusCode::FORBIDDEN, "needs the write scope");
+    assert_eq!(api(&fixture, Method::PUT, &disable, &write).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(api(&fixture, Method::GET, &format!("{workflows}/ci.yml"), &read).await.json()["state"], "disabled_manually");
+    assert_eq!(api(&fixture, Method::PUT, &format!("{workflows}/ci.yml/enable"), &write).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(api(&fixture, Method::GET, workflows, &read).await.json()["workflows"][0]["state"], "active");
+    assert_eq!(api(&fixture, Method::PUT, &format!("{workflows}/nope.yml/disable"), &write).await.status, StatusCode::NOT_FOUND);
+}

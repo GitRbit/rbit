@@ -131,6 +131,8 @@ pub const PATHS: &[(&str, &[Method])] = &[
     ("/{owner}/{repo}/actions/workflows/{workflow}", &[Method::GET]),
     ("/{owner}/{repo}/actions/workflows/{workflow}/badge.svg", &[Method::GET]),
     ("/{owner}/{repo}/actions/workflows/{workflow}/dispatch", &[Method::POST]),
+    // Actions: disabled workflows.
+    ("/{owner}/{repo}/actions/workflows/{workflow}/switch", &[Method::POST]),
     ("/{owner}/{repo}/actions/runs/{run}", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/jobs", &[Method::GET]),
     ("/{owner}/{repo}/actions/runs/{run}/cancel", &[Method::POST]),
@@ -191,6 +193,8 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/actions/workflows/{workflow}", get(runs::workflow))
         .route("/{owner}/{repo}/actions/workflows/{workflow}/badge.svg", get(runs::badge))
         .route("/{owner}/{repo}/actions/workflows/{workflow}/dispatch", post(runs::dispatch))
+        // Actions: disabled workflows.
+        .route("/{owner}/{repo}/actions/workflows/{workflow}/switch", post(runs::switch))
         .route("/{owner}/{repo}/actions/runs/{run}", get(runs::show))
         .route("/{owner}/{repo}/actions/runs/{run}/jobs", get(runs::jobs))
         .route("/{owner}/{repo}/actions/runs/{run}/cancel", post(runs::cancel))

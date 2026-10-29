@@ -170,6 +170,10 @@ impl ActionsService {
             })
             .await?;
         let (candidate, inputs) = evaluated.map_err(ServiceError::Invalid)?;
+        // Actions: disabled workflows.
+        if self.ctx().database.actions_settings().is_workflow_disabled(owned.repo.id, &candidate.path).await? {
+            return Err(ServiceError::Invalid(format!("{} is disabled; enable it to run it", candidate.path)));
+        }
 
         let database = &self.ctx().database;
         let fork = database.forks().forks_among(&[owned.repo.id]).await?.contains(&owned.repo.id);

@@ -128,6 +128,11 @@ impl ActionsService {
             tracing::debug!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "the repository is archived; no run");
             return Ok(None);
         }
+        // Actions: disabled workflows. A disabled workflow starts nothing, for any event.
+        if self.ctx().database.actions_settings().is_workflow_disabled(trigger.repo.repo.id, &candidate.path).await? {
+            tracing::debug!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "the workflow is disabled; no run");
+            return Ok(None);
+        }
         if allowance.runs == 0 {
             tracing::warn!(repo = %trigger.repo.full_name(), workflow = %candidate.path, "an event may start at most {} runs; skipped", self.config().max_runs_per_event);
             return Ok(None);

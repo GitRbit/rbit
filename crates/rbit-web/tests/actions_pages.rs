@@ -357,6 +357,45 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     assert_eq!(inputs, serde_json::json!({"version": "1.2.0", "channel": "beta", "dry-run": true}));
 }
 
+// Actions: disabled workflows.
+#[tokio::test]
+async fn writers_disable_and_enable_a_workflow_from_its_page() {
+    let fixture = Fixture::new().await;
+    fixture.database.actions_settings().set_enabled(fixture.repo_id().await, true, Timestamp::now()).await.unwrap();
+    let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
+    push(&repo, &[(".rbit/workflows/release.yml", RELEASE)]);
+    let url = "/alice/rocket/actions/workflows/release.yml";
+    let switch = format!("{url}/switch");
+
+    let page = fixture.page(url, &fixture.owner).await;
+    assert!(page.contains("Disable workflow") && page.contains(&format!(r#"action="{switch}""#)) && page.contains("Run workflow"));
+    assert!(!fixture.page(url, &fixture.reader).await.contains("Disable workflow"), "readers cannot switch it");
+    let (status, ..) = fixture.send(Method::POST, &switch, &fixture.reader, "disabled=true").await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _, location) = fixture.send(Method::POST, &switch, &fixture.owner, "disabled=true").await;
+    assert!(status.is_redirection(), "{status}");
+    assert_eq!(location.as_deref(), Some(url));
+    let page = fixture.page(url, &fixture.owner).await;
+    assert!(page.contains("This workflow is disabled") && page.contains("Enable workflow") && !page.contains("Run workflow"));
+    assert!(fixture.page(url, &fixture.reader).await.contains("This workflow is disabled"), "everyone sees it");
+    let actions = fixture.services.actions.as_ref().unwrap();
+    let request = rbit_services::actions::dispatch::DispatchRequest {
+        workflow: "release.yml".into(),
+        reference: "main".into(),
+        inputs: [("version".to_owned(), "1.0.0".to_owned())].into(),
+    };
+    let refused = actions.dispatch(&fixture.alice, &repo, &request).await.unwrap_err();
+    assert!(refused.to_string().contains("is disabled"), "{refused}");
+
+    let (status, ..) = fixture.send(Method::POST, &switch, &fixture.owner, "disabled=false").await;
+    assert!(status.is_redirection(), "{status}");
+    assert!(fixture.page(url, &fixture.owner).await.contains("Disable workflow"));
+    assert_eq!(actions.dispatch(&fixture.alice, &repo, &request).await.unwrap().number, 1, "enabled, it runs again");
+    let (status, ..) = fixture.send(Method::POST, "/alice/rocket/actions/workflows/nope.yml/switch", &fixture.owner, "disabled=true").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
 // Actions: workflow status badges.
 #[tokio::test]
 async fn workflow_badges_show_the_newest_finished_run_of_a_branch() {
