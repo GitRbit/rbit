@@ -276,7 +276,8 @@ only its own; pull requests from forks write only to their pull request's scope.
 decides these scopes from the run, never from the runner. An entry matches its key, or the
 newest entry starting with a `restore-keys` prefix, and only with the same `path` list on
 the same kind of job (on a Windows host, another host, or in a container). Entries never change:
-a save of a key the scope has is skipped. Each repository keeps up to
+a save of a key the scope has is skipped. A restore gives files the modification times they
+were saved with, as GitHub's does, so a restored `target/` is not newer than the checkout. Each repository keeps up to
 `[actions] max_cache_storage_bytes` (10 GiB), and saving beyond it removes the least
 recently used entries; an entry nobody restores for `cache_retention_days` (7) goes. A
 runner whose server is older keeps the cache itself, in `<work_dir>/cache`, bounded by its

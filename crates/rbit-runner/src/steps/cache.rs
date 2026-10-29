@@ -33,7 +33,7 @@ use std::{
     fs::{self, File},
     io,
     path::{Component, Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use rbit_workflow::{glob::GlobSet, spec::BuiltinKind};
@@ -429,6 +429,11 @@ pub(super) fn extract(archive: &Path, roots: &Roots) -> io::Result<u64> {
                 // never opened: writing into it would block, or reach the host.
                 let mut file = crate::untrusted::create(&target, false)?;
                 io::copy(&mut entry, &mut file)?;
+                // The archive's time, as GitHub keeps it: a restored build output stamped
+                // now would look newer than the sources checked out before it.
+                if let Ok(mtime) = entry.header().mtime() {
+                    let _ = file.set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(mtime));
+                }
                 #[cfg(unix)]
                 if let Ok(mode) = entry.header().mode() {
                     use std::os::unix::fs::PermissionsExt as _;
@@ -853,6 +858,24 @@ mod tests {
         let selected = select(&lines, &roots, true, false).unwrap();
         let files: Vec<_> = selected.files.iter().map(|(_, path)| path.clone()).collect();
         assert_eq!(files, [PathBuf::from("dist/link")], "the link itself, never what is behind it");
+    }
+
+    #[test]
+    fn restores_keep_modification_times() {
+        // A restored build output must not look newer than the sources checked out after
+        // it, or cargo and make reuse it.
+        let dir = tempfile::tempdir().unwrap();
+        let (store, roots) = (store(dir.path(), 1 << 30), roots(dir.path()));
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_600_000_000);
+        fs::create_dir_all(roots.workspace.join("target")).unwrap();
+        let built = roots.workspace.join("target/built");
+        fs::write(&built, "stale").unwrap();
+        File::options().write(true).open(&built).unwrap().set_modified(old).unwrap();
+        save(&store, &roots, "s", "k", &["target"]);
+        fs::remove_dir_all(roots.workspace.join("target")).unwrap();
+        let archive = store.entry(5, "s", "k").0;
+        assert_eq!(extract(&archive, &roots).unwrap(), 1);
+        assert_eq!(fs::metadata(&built).unwrap().modified().unwrap(), old);
     }
 
     #[cfg(unix)]

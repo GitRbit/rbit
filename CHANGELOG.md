@@ -34,7 +34,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   containers and services, and the built-in `rbit/checkout`, `rbit/cache`,
   `rbit/upload-artifact` and `rbit/download-artifact` (with `actions/*` aliases). The server
   keeps `actions/cache` entries for every runner of a repository, as GitHub does, within
-  `[actions] max_cache_storage_bytes` and `cache_retention_days`. Writers can disable and
+  `[actions] max_cache_storage_bytes` and `cache_retention_days`, and restores files
+  with their saved modification times. Writers can disable and
   enable a workflow from its page or the REST API, as on GitHub.
 - **rbit-runner**, shipped in every release archive and as `ghcr.io/gitrbit/rbit-runner`:
   registers with a single-use token, runs jobs in Docker or Podman containers (no privileges,
