@@ -976,8 +976,8 @@ const LFS: &[Spec] = &[
 const ACTIONS: &[Spec] = &[
     Spec {
         key: "enabled",
-        label: "Enable this feature",
-        help: "Run workflows on rbit-runner. When off, Actions is fully absent: no pages, no runner endpoint, no background work, and workflow files are ignored. Restart required.",
+        label: "Startup default",
+        help: "Default until an administrator saves runtime intent. Use Admin → Plugins to enable or disable Actions immediately. Saved plugin intent survives restart and overrides this default.",
         kind: Kind::Toggle,
         optional: false,
         max: "",
