@@ -416,7 +416,7 @@ impl Reporter {
         let state = self.snapshot(result);
         if let Err(error) = state.validate() {
             tracing::error!(task = %self.task_id, %error, "the task's state is invalid and was not sent");
-            return Ok(());
+            return Err(());
         }
         match client.task_state(self.task_id, &state).await {
             Ok(answer) => {
@@ -437,7 +437,7 @@ impl Reporter {
                     Ok(())
                 }
                 Disposition::Refused => {
-                    tracing::error!(task = %self.task_id, %error, "the server refused the task's state");
+                    self.forget(&format!("the server refused the task's state ({error})"));
                     Ok(())
                 }
             },
@@ -453,6 +453,8 @@ fn now() -> i64 {
 #[derive(Debug, Clone)]
 pub struct Pacing {
     pub heartbeat: Duration,
+    /// Maximum time without an accepted state heartbeat before local execution stops.
+    pub authority_timeout: Duration,
     pub backoff: Backoff,
     pub final_deadline: Duration,
     /// The runner's shutdown: it cancels every running task, and then a final report is
@@ -463,11 +465,15 @@ pub struct Pacing {
 /// How long the end of a task is retried once the runner is shutting down.
 pub const SHUTDOWN_REPORT_DEADLINE: Duration = Duration::from_secs(30);
 
+/// A disconnected runner cannot retain task authority indefinitely after plugin disable.
+pub const TASK_AUTHORITY_TIMEOUT: Duration = Duration::from_secs(120);
+
 impl Pacing {
     /// The server's heartbeat interval, never longer than the protocol allows.
     pub fn new(heartbeat_seconds: u32) -> Self {
         Self {
             heartbeat: Duration::from_secs(heartbeat_seconds.into()).clamp(Duration::from_secs(1), MAX_HEARTBEAT_INTERVAL),
+            authority_timeout: TASK_AUTHORITY_TIMEOUT,
             backoff: Backoff::RECONNECT,
             final_deadline: FINAL_REPORT_DEADLINE,
             cancel_all: CancellationToken::new(),
@@ -528,18 +534,31 @@ pub async fn refuse(client: Client, work_dir: &Path, task: TaskId, error: &str, 
 async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop: CancellationToken) {
     let mut backoff = pacing.backoff;
     let mut wait = Duration::ZERO;
+    let mut authority_deadline = tokio::time::Instant::now() + pacing.authority_timeout;
     loop {
         tokio::select! {
             () = stop.cancelled() => return,
+            () = tokio::time::sleep_until(authority_deadline) => {
+                reporter.forget("the task authority heartbeat expired");
+                return;
+            }
             () = tokio::time::sleep(wait) => {}
         }
         if reporter.is_gone() {
             return;
         }
-        if reporter.report(&client, None).await.is_err() {
+        let Ok(report) = tokio::time::timeout_at(authority_deadline, reporter.report(&client, None)).await else {
+            reporter.forget("the task authority heartbeat expired");
+            return;
+        };
+        if reporter.is_gone() {
+            return;
+        }
+        if report.is_err() {
             wait = backoff.next_delay();
             continue;
         }
+        authority_deadline = tokio::time::Instant::now() + pacing.authority_timeout;
         backoff.reset();
         // The next report waits for the interval or a change, but leaves a gap; the interval
         // is kept however much is logged. A change goes before lines: its state says where a
@@ -550,6 +569,10 @@ async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return,
+                () = tokio::time::sleep_until(authority_deadline) => {
+                    reporter.forget("the task authority heartbeat expired");
+                    return;
+                }
                 () = reporter.changed.notified() => break false,
                 () = tokio::time::sleep_until(due) => break false,
                 () = reporter.logged.notified() => {}
@@ -557,11 +580,19 @@ async fn heartbeat(client: Client, reporter: Arc<Reporter>, pacing: Pacing, stop
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return,
+                () = tokio::time::sleep_until(authority_deadline) => {
+                    reporter.forget("the task authority heartbeat expired");
+                    return;
+                }
                 () = reporter.changed.notified() => break false,
                 () = tokio::time::sleep_until(due) => break false,
                 () = tokio::time::sleep(LOG_FLUSH_GAP) => {}
             }
-            if reporter.flush_log(&client).await.is_err() {
+            let Ok(flushed) = tokio::time::timeout_at(authority_deadline, reporter.flush_log(&client)).await else {
+                reporter.forget("the task authority heartbeat expired");
+                return;
+            };
+            if flushed.is_err() {
                 break true;
             }
             if reporter.is_gone() {
@@ -620,6 +651,32 @@ fn fit_summary(text: &str, budget: usize) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn expired_authority_cancels_execution_even_when_server_is_retryable() {
+        let server = crate::testing::FakeServer::start().await;
+        server.fail_next("state", 503, u32::MAX);
+        let directory = tempfile::tempdir().unwrap();
+        let reporter = Arc::new(Reporter::new(TaskId(41), directory.path(), 1).unwrap());
+        let mut pacing = Pacing::new(10);
+        pacing.authority_timeout = Duration::from_millis(50);
+        tokio::time::timeout(Duration::from_secs(2), heartbeat(server.client(), Arc::clone(&reporter), pacing, CancellationToken::new()))
+            .await
+            .unwrap();
+        assert!(reporter.cancellation().is_cancelled());
+        assert!(reporter.is_gone());
+    }
+
+    #[tokio::test]
+    async fn refused_state_authority_cancels_the_running_task() {
+        let server = crate::testing::FakeServer::start().await;
+        server.fail_next("state", 403, 1);
+        let directory = tempfile::tempdir().unwrap();
+        let reporter = Reporter::new(TaskId(42), directory.path(), 1).unwrap();
+        reporter.report(&server.client(), None).await.unwrap();
+        assert!(reporter.cancellation().is_cancelled());
+        assert!(reporter.is_gone());
+    }
 
     // Actions: step summaries.
     #[test]

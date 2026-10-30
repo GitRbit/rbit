@@ -278,6 +278,7 @@ fn error(status: u16, retry_after: Option<u64>) -> Response {
     let code = match status {
         400 => ErrorCode::BadRequest,
         401 => ErrorCode::Unauthenticated,
+        403 => ErrorCode::Forbidden,
         404 => ErrorCode::NotFound,
         409 => ErrorCode::Conflict,
         426 => return (StatusCode::UPGRADE_REQUIRED, Json(ErrorBody::unsupported_protocol())).into_response(),
