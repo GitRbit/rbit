@@ -40,7 +40,7 @@ use rbit_transport::{
 use russh::{
     Channel, ChannelId, ChannelMsg, ChannelOpenFailure, Pty,
     keys::PublicKey,
-    server::{Auth, ChannelOpenHandle, Handler, Msg, Session},
+    server::{Auth, ChannelOpenHandle, Handler, Msg, PublicKeyOffer, Session, VerifiedPublicKey},
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt, DuplexStream, duplex},
@@ -284,7 +284,8 @@ impl Handler for Connection {
     type Error = russh::Error;
 
     /// Called before the client proves it holds the private key: cheap refusals only.
-    async fn auth_publickey_offered(&mut self, _user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
+    async fn auth_publickey_offered(&mut self, _user: &str, offer: PublicKeyOffer<'_>) -> Result<Auth, Self::Error> {
+        let key = offer.public_key;
         if self.is_throttled() {
             return Ok(Auth::reject());
         }
@@ -298,7 +299,8 @@ impl Handler for Connection {
 
     /// Called once the signature is verified. The SSH user name is ignored: the key
     /// alone identifies the user (clone URLs say `git@`).
-    async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
+    async fn auth_publickey(&mut self, user: &str, verified: VerifiedPublicKey<'_>) -> Result<Auth, Self::Error> {
+        let key = verified.public_key;
         if self.is_throttled() {
             return Ok(Auth::reject());
         }
