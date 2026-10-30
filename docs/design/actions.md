@@ -26,7 +26,7 @@ actions-proto-def `76f6081`, as of 2026-10-23.
 | Question | Decision |
 |---|---|
 | Who runs builds? | **Superseded by §12** — rbit's own `rbit-runner`. *Was:* external Forgejo Runner (first target) and Gitea act_runner, speaking the Connect protocol with binary protobuf at `POST /api/actions/{service}/{method}`. One union `.proto` serves both forks (field numbers do not conflict). |
-| On by default? | **No.** `[actions] enabled = false`. Instance switch, read once at startup; a change needs a restart. Then **per repository**: repository administrators turn Actions on in the repository's settings (default off; `[actions] enable_for_new_repositories` changes the default for *new* repositories only). |
+| On by default? | **No.** `[actions] enabled = false`. Startup default until an administrator saves a persistent live override through Administration → Plugins. Then **per repository**: repository administrators turn Actions on in the repository's settings (default off; `[actions] enable_for_new_repositories` changes the default for *new* repositories only). |
 | What does "disabled" mean? | `Services::actions` is `None` — the service is never constructed. Its routers are not merged, no subscriber, sweeper or scheduler exists, no UI entry renders, no webhook event is offered, workflow files are ignored, task tokens are refused without a database lookup, and **nothing is written** to any `actions_*` table or under `<data_dir>/actions`. The schema still exists (migrations always run). §8 is the proof. |
 | Protocol code | **Superseded by §12** — JSON over HTTPS, types in `rbit-workflow::protocol`. *Was:* `prost` 0.14 types generated once by a pure-Rust tool (`protox` + `prost-build`, no `protoc`) and **checked in**. Normal builds have no `build.rs`. A test regenerates into a temp dir and fails on drift. |
 | Connect server | **Superseded by §12** — no Connect. *Was:* hand-written in Axum (~200 lines): `application/proto` only (415 otherwise), identity encoding only, a body cap per method, Connect JSON errors, `unimplemented` (501) for RPCs we don't serve. The official `connectrpc` crate is pre-1.0 and brings a second protobuf runtime. |
@@ -470,7 +470,7 @@ bounded by a 10 s budget on the blocking pool (exceeding it → workflow error).
 [actions]
 # CI/CD on external Forgejo or Gitea runners. Off by default; when off, Actions is fully
 # absent: no pages, no runner endpoint, no background work, workflow files are ignored.
-# Changing it needs a restart.
+# Startup default; Administration -> Plugins saves a live override that survives restarts.
 enabled = false
 # Turn Actions on for repositories created from now on (existing ones keep their setting).
 enable_for_new_repositories = false

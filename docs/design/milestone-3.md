@@ -47,7 +47,7 @@ The integrator did not pre-wire stubs. Instead, shared registration points are e
   `// Milestone 3: … (<letter>).` comment, construction, `spawn_background`/`shutdown` lines.
 - `crates/rbit-core/src/config/mod.rs` — a new submodule per section and one field at the end of `Config`.
 - `crates/rbit-storage` — store modules under `src/sqlite/<area>.rs` plus their accessor on `Database`.
-- `crates/rbit-services/src/events.rs` — new `DomainEvent` variants appended at the end of the enum.
+- `crates/rbit-services-base/src/events.rs` — new `DomainEvent` variants appended at the end of the enum.
 - Templates: navigation entries (settings sidebar, repository tabs) are one line each, appended.
 
 **Documentation is integrated by the integrator.** Do **not** edit `README.md`, `CHANGELOG.md`,
