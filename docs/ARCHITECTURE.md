@@ -48,6 +48,9 @@ rbit/
     ├── rbit-server/         # The `rbit` binary: CLI, config, wiring, backups, shutdown
     ├── rbit-workflow/       # Actions: workflow parsing, triggers, expressions, plans, runner protocol types
     ├── rbit-runner/         # The `rbit-runner` binary (not a default member): runs Actions jobs
+    ├── rbit-actions-core/   # Host-independent Actions configuration and workflow permission policy
+    ├── rbit-plugin-api/     # Validated manifests, service declarations and lifecycle contracts
+    ├── rbit-plugin-runtime/ # Embedded plugin controller, dependencies and generation scopes
     └── rbit-e2e/            # End-to-end and Git compatibility tests (test-only)
 ```
 
@@ -68,6 +71,11 @@ rbit-storage rbit-auth rbit-git rbit-mail   rbit-workflow
 `rbit-workflow` is pure (no I/O, no async, no other rbit crate) and shared by the server and
 `rbit-runner`, which depends on no server crate: the two agree on workflows, expressions and
 the runner protocol by compiling the same types.
+
+`rbit-core` reexports configuration and workflow permission types from the pure
+`rbit-actions-core` crate during extraction. `rbit-services` uses `rbit-plugin-runtime`
+for Actions background task admission; the runtime depends on `rbit-plugin-api` and has
+no dependency on forge services, storage or HTTP.
 
 Each crate exposes a small, documented public API from `lib.rs`; internals live in
 sub-modules grouped by concept (e.g. `storage::sqlite::repositories::users`).
@@ -1541,6 +1549,13 @@ rbit Actions ([docs/actions.md](actions.md), design contract
   checks out with the task token passed through `GIT_CONFIG_*`, never a URL or argument.
 
 ## 8. Extensibility
+
+The initial [plugin core](plugin-core.md) supplies validated declarations, dependency-aware
+embedded lifecycle management and generation-scoped task disposal. Actions configuration
+and workflow permission policy live in the standalone `rbit-actions-core` crate. Runtime
+route publication, package installation and i18n follow the
+[implementation plan](design/plugin-architecture.md); Actions remains configured at startup
+until those host integration boundaries are complete.
 
 - **Trait seams** at every external boundary: `GitTransport`, store traits in services,
   `PasswordHasher`. Swapping an implementation never changes callers.
