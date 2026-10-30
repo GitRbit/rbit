@@ -14,6 +14,8 @@ rbit-storage.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-mail.workspace = true
+rbit-plugin-api.workspace = true
+rbit-plugin-runtime.workspace = true
 # Actions: workflow parsing, triggers and planning.
 rbit-workflow.workspace = true
 # Actions: sealing secrets (U).

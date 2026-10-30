@@ -70,6 +70,7 @@ pub mod triggers;
 pub mod trust;
 
 use std::{
+    future::Future,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
@@ -78,8 +79,10 @@ use std::{
 };
 
 use rbit_core::config::ActionsConfig;
+use rbit_plugin_api::Generation;
+use rbit_plugin_runtime::{DrainError, PluginScope};
 use tokio::sync::Semaphore;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::sync::CancellationToken;
 
 use crate::ServiceContext;
 
@@ -96,7 +99,7 @@ pub struct ActionsService {
 struct Inner {
     ctx: ServiceContext,
     shutdown: CancellationToken,
-    tasks: TaskTracker,
+    scope: PluginScope,
     started: AtomicBool,
     /// The scheduler's version: moves whenever a job becomes waiting or a runner's labels
     /// change, so a poll that already looked at this version waits without SQLite.
@@ -136,7 +139,7 @@ impl ActionsService {
             inner: Arc::new(Inner {
                 ctx,
                 shutdown: CancellationToken::new(),
-                tasks: TaskTracker::new(),
+                scope: PluginScope::new(Generation::INITIAL),
                 started: AtomicBool::new(false),
                 tasks_version: AtomicI64::new(initial_tasks_version()),
                 evaluations,
@@ -157,38 +160,54 @@ impl ActionsService {
 
     /// Starts the subscriber, the schedule ticker and the sweeper. Call once, after start-up.
     pub fn spawn_background(&self) {
-        if self.inner.started.swap(true, Ordering::SeqCst) {
+        if self.inner.scope.is_closed() || self.inner.started.swap(true, Ordering::SeqCst) {
             return;
         }
         tracing::info!(evaluation_concurrency = self.config().evaluation_concurrency, "Actions is enabled");
         // Actions: triggers (T). Subscribed before anything else runs, so no event published
         // from here on is missed.
         let events = self.inner.ctx.events.subscribe();
-        self.inner.tasks.spawn(self.clone().follow_events(events));
-        self.inner.tasks.spawn(self.clone().run_schedules());
+        self.spawn_task(self.clone().follow_events(events));
+        self.spawn_task(self.clone().run_schedules());
         // Actions: interface and secrets (U). The key is created, or its problem logged, at
         // start-up rather than when a secret is first needed.
         let this = self.clone();
-        self.inner.tasks.spawn(async move {
+        self.spawn_task(async move {
             let _ = this.secrets_key().await;
         });
         // Actions: S. Stalled tasks, abandoned jobs, retention.
-        self.inner.tasks.spawn(self.clone().run_sweeper());
+        self.spawn_task(self.clone().run_sweeper());
     }
 
     /// Stops background work and waits (bounded) for it to finish. Called from
     /// [`crate::Services::shutdown`] before the stores close.
     pub async fn shutdown(&self) {
-        self.inner.shutdown.cancel();
-        self.inner.tasks.close();
-        if tokio::time::timeout(SHUTDOWN_GRACE, self.inner.tasks.wait()).await.is_err() {
-            tracing::warn!("Actions background work did not stop within {SHUTDOWN_GRACE:?}");
+        if let Err(error) = self.stop_background().await {
+            tracing::warn!(%error, "Actions background work did not stop within {SHUTDOWN_GRACE:?}");
         }
+    }
+
+    /// Closes task admission and verifies that background work has stopped.
+    ///
+    /// A timeout leaves surviving work tracked and admission closed. Runtime lifecycle
+    /// callers must preserve this failure instead of claiming successful disposal.
+    pub async fn stop_background(&self) -> Result<(), DrainError> {
+        self.inner.scope.quiesce();
+        self.inner.shutdown.cancel();
+        self.inner.scope.dispose(SHUTDOWN_GRACE).await
     }
 
     /// Background tasks running now (the disabled-is-disabled tests count them).
     pub fn background_tasks(&self) -> usize {
-        self.inner.tasks.len()
+        self.inner.scope.in_flight()
+    }
+
+    /// Every background task enters the generation gate, including work spawned by a
+    /// subscriber racing with shutdown. Refused futures are dropped without execution.
+    fn spawn_task(&self, task: impl Future<Output = ()> + Send + 'static) {
+        if let Err(error) = self.inner.scope.spawn(|_| task) {
+            tracing::debug!(%error, "Actions refused background work during shutdown");
+        }
     }
 
     pub fn config(&self) -> &ActionsConfig {

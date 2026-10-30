@@ -4371,6 +4371,8 @@ dependencies = [
  "rbit-core",
  "rbit-git",
  "rbit-mail",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
  "rbit-storage",
  "rbit-workflow",
  "reqwest",
