@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Initial plugin foundation: validated manifests, service dependency resolution, and a
+  lifecycle controller for trusted embedded plugins with generation-scoped task cleanup
+  ([docs/plugin-core.md](docs/plugin-core.md)). Actions configuration and permission
+  policy now live in a standalone crate, with existing imports preserved. Runtime plugin
+  administration, package installation, and i18n remain future work.
 - `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
   logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
 - `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with
