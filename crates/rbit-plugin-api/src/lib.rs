@@ -1,0 +1,12 @@
+//! Shared, validated plugin contracts without runtime, HTTP or storage dependencies.
+//!
+//! Deserialization validates identifiers and manifests. Hosts must also validate manifests
+//! constructed or modified by trusted code before admitting them to a registry.
+
+mod identifiers;
+mod lifecycle;
+mod manifest;
+
+pub use identifiers::{CapabilityId, IdentifierError, PluginId, ServiceId};
+pub use lifecycle::{DesiredState, Generation, GenerationError, PluginState};
+pub use manifest::{ManifestError, PluginManifest, ServiceDependency, ServiceProvided};
