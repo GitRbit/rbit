@@ -131,6 +131,23 @@ async fn plugin_administration_is_host_owned_and_requires_an_administrator() {
     }
 }
 
+#[tokio::test]
+async fn runtime_refusals_report_the_revision_needed_to_refresh_an_open_page() {
+    let fixture = Fixture::new().await;
+    let revision = fixture.services.plugin_revision().to_string();
+    let (status, _, headers) = fixture.get("/alice/rocket/actions").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers["rbit-plugin-revision"], revision);
+    for authorization in [format!("Bearer rbat_{}", "a".repeat(43)), format!("Bearer {}", "a".repeat(4097))] {
+        let request =
+            Request::builder().uri("/api/v1/repos/alice/rocket").header(header::AUTHORIZATION, authorization).body(Body::empty()).unwrap();
+        let response = fixture.router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.headers()["rbit-plugin-revision"], revision);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    }
+}
+
 #[cfg(feature = "actions")]
 #[tokio::test]
 async fn one_router_reflects_enable_and_disable_in_pages_navigation_and_openapi() {
