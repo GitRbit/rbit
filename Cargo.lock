@@ -4181,6 +4181,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-actions-core"
+version = "0.1.5"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rbit-auth"
 version = "0.1.5"
 dependencies = [
@@ -4207,6 +4215,7 @@ version = "0.1.5"
 dependencies = [
  "proptest",
  "pulldown-cmark",
+ "rbit-actions-core",
  "serde",
  "serde_json",
  "thiserror",
