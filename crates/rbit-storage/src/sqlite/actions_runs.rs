@@ -612,6 +612,22 @@ impl ActionsRunStore {
             .await?)
     }
 
+    /// All unfinished runs, used after request admission has closed during plugin disable.
+    pub async fn unfinished_all(&self) -> Result<Vec<(RepoId, RunId)>, StorageError> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT repo_id, id FROM actions_runs WHERE status IN (5, 6, 7, 8) ORDER BY id")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(repo, run)| (RepoId(repo), RunId(run))).collect())
+    }
+
+    /// Revokes every task token after admitted operations drain, including orphaned tasks.
+    pub async fn revoke_all_task_tokens(&self) -> Result<u64, StorageError> {
+        Ok(sqlx::query("UPDATE actions_tasks SET token_digest = NULL WHERE token_digest IS NOT NULL")
+            .execute(&self.pool)
+            .await?
+            .rows_affected())
+    }
+
     /// The runs of `repo` in concurrency group `group` that have not finished, oldest first.
     pub async fn unfinished_in_group(&self, repo: RepoId, group: &str) -> Result<Vec<Run>, StorageError> {
         let rows: Vec<RunRow> =

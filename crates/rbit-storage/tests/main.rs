@@ -23,6 +23,7 @@ mod notification_email;
 mod notifications;
 mod orgs;
 mod preferences;
+mod plugin_settings;
 mod protection;
 mod pulls;
 mod push_mirrors;

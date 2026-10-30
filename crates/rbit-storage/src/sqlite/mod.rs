@@ -35,6 +35,7 @@ pub mod notifications;
 pub mod orgs;
 mod pool;
 pub mod preferences;
+pub mod plugin_settings;
 pub mod profiles;
 pub mod protection;
 pub mod pulls;
@@ -229,6 +230,11 @@ impl Database {
 
     pub fn preferences(&self) -> preferences::PreferenceStore {
         preferences::PreferenceStore::new(self.store("preferences"))
+    }
+
+    /// Persisted desired state for optional plugins, independent of feature packages.
+    pub fn plugin_settings(&self) -> plugin_settings::PluginSettingsStore {
+        plugin_settings::PluginSettingsStore::new(self.store("plugin_settings"))
     }
 
     // Milestone 2 wave B: the shared issue core (T0), then the workstreams.
