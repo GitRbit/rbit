@@ -48,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # A prebuilt cargo-deny binary: compiling it would take longer than the check.
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-deny
       # deny.toml lists the allowed licenses and the ignored advisories (each with a reason).
@@ -82,7 +82,7 @@ jobs:
       - run: npm ci && npm run build
       # nextest runs every test binary in parallel, each test in its own process. The
       # workspace has no doctests, which nextest does not run.
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
       - run: cargo nextest run --workspace --locked --profile ci
