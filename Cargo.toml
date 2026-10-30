@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -24,6 +24,7 @@ rbit-mail = { path = "crates/rbit-mail" }
 rbit-workflow = { path = "crates/rbit-workflow" }
 rbit-actions-core = { path = "crates/rbit-actions-core" }
 rbit-plugin-api = { path = "crates/rbit-plugin-api" }
+rbit-plugin-runtime = { path = "crates/rbit-plugin-runtime" }
 
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }

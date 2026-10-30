@@ -17,6 +17,9 @@ pub struct GenerationError;
 pub struct Generation(NonZeroU64);
 
 impl Generation {
+    /// First activation in a fresh lifecycle; subsequent activations must advance it.
+    pub const INITIAL: Self = Self(NonZeroU64::MIN);
+
     pub fn new(value: u64) -> Result<Self, GenerationError> {
         NonZeroU64::new(value).map(Self).ok_or(GenerationError)
     }

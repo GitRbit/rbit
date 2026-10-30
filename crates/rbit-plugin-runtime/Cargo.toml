@@ -1,0 +1,16 @@
+[package]
+name = "rbit-plugin-runtime"
+description = "Generation admission and scoped asynchronous resource lifetimes for rbit plugins."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-plugin-api.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true

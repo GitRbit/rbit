@@ -4284,6 +4284,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-plugin-runtime"
+version = "0.1.5"
+dependencies = [
+ "rbit-plugin-api",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "rbit-runner"
 version = "0.1.5"
 dependencies = [
