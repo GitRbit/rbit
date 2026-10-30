@@ -11,10 +11,12 @@
 
 mod admission;
 pub mod graph;
+mod manager;
 mod scope;
 
 pub use admission::{Admission, AdmissionError, DrainError, OperationLease};
 pub use graph::{GraphError, MAX_PLUGINS, Resolution, resolve};
+pub use manager::{ManagerError, Plugin, PluginFuture, PluginManager, PluginStatus};
 pub use scope::PluginScope;
 
 #[cfg(test)]
