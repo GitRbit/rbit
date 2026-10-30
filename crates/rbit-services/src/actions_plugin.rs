@@ -118,8 +118,9 @@ async fn reconcile_pending(ctx: &ServiceContext) -> Result<(), ServiceError> {
 
 impl ActionsSlot {
     #[cfg(not(feature = "actions"))]
-    pub(crate) fn new(ctx: ServiceContext) -> std::future::Ready<Result<Self, ServiceError>> {
-        std::future::ready(if ctx.config.actions.enabled {
+    pub(crate) async fn new(ctx: ServiceContext) -> Result<Self, ServiceError> {
+        let enabled = ctx.database.plugin_settings().desired_enabled(ACTIONS_ID).await?.unwrap_or(ctx.config.actions.enabled);
+        if enabled {
             Err(ServiceError::Invalid("this distribution was built without Actions".to_owned()))
         } else {
             Ok(Self {
@@ -130,7 +131,7 @@ impl ActionsSlot {
                     status: RwLock::new(None),
                 }),
             })
-        })
+        }
     }
     #[cfg(feature = "actions")]
     pub(crate) async fn new(ctx: ServiceContext) -> Result<Self, ServiceError> {
