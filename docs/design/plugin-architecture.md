@@ -2,6 +2,11 @@
 
 Status: proposed implementation plan. Baseline: `main` at `9f07d6f`, inspected on October 30, 2026.
 
+Implementation progress: Actions is now an optional embedded plugin with live administrator
+controls, request and stream admission, persisted intent and crash-safe revocation. See
+[plugin core](../plugin-core.md) for the delivered behavior and remaining stages. Source
+reference links below follow their current crate locations.
+
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.
 
 The first extraction is an intermediate milestone. Cargo features alone do not meet the runtime installation requirement. An embedded Rust module can release its live resources, but its machine code stays in the binary. Separately managed plugin processes can release code and memory when terminated. These operations must have distinct descriptions in the administrator interface.
@@ -420,10 +425,10 @@ The final completion demonstration is a core-only Rbit process that keeps servin
 Repository references describe the inspected baseline; crate names and interfaces proposed above do not exist yet.
 
 - [Services and Actions wiring](../../crates/rbit-services/src/lib.rs)
-- [Current event bus](../../crates/rbit-services/src/events.rs)
-- [Actions trigger handling](../../crates/rbit-services/src/actions/triggers.rs)
-- [Task grants and workflow push restrictions](../../crates/rbit-services/src/actions/tokens.rs)
-- [Status service coupling](../../crates/rbit-services/src/statuses.rs)
+- [Current event bus](../../crates/rbit-services-base/src/events.rs)
+- [Actions trigger handling](../../crates/rbit-actions/src/actions/triggers.rs)
+- [Task grants and workflow push restrictions](../../crates/rbit-actions/src/actions/tokens.rs)
+- [Status service coupling](../../crates/rbit-services-base/src/statuses.rs)
 - [Web router composition](../../crates/rbit-web/src/routes/mod.rs)
 - [Shared page state](../../crates/rbit-web/src/views/layout.rs)
 - [HTML cache behavior](../../crates/rbit-web/src/middleware/cache.rs)

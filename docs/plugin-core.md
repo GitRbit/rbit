@@ -1,107 +1,134 @@
 # Plugin core
 
-The plugin core provides validated manifests, dependency resolution and an in-memory
-lifecycle controller for trusted embedded Rust plugins. Actions configuration and workflow
-permission policy now live in `rbit-actions-core`, with compatibility reexports from
-`rbit-core`. Actions background tasks use the same generation scope primitives.
+Actions is an optional first-party embedded plugin. Administrators can enable and disable
+it at **Admin → Plugins** without restarting Rbit. The control plane lives in `rbit-actions`;
+shared forge services live in `rbit-services-base`. The `rbit-services` facade composes them
+and publishes the active service through an owned snapshot.
 
-This is the first implementation slice of the [runtime plugin plan](design/plugin-architecture.md).
-The server still constructs Actions at startup. Administrator runtime controls, dynamic
-route/UI publication, persistent plugin state, executable package installation, i18n and
-language packs remain subsequent work. Installing an embedded implementation in the
-controller is distinct from installing an archive into the running forge.
+The plugin contracts and controller are reusable for other trusted embedded features.
+Independently installed executable packages, sandboxed plugins, general third-party UI
+contributions, i18n and language packs remain later stages of the
+[runtime plugin plan](design/plugin-architecture.md).
 
-## Contracts
+## Build profiles
 
-`rbit-plugin-api` has no HTTP, database or async runtime dependencies. Plugin, service and
-capability identifiers use bounded dotted lowercase names such as `rbit.actions`. Serde
-deserialization validates identifiers and manifests, including duplicate declarations,
-self-dependencies and bounded version metadata. Trusted code constructing a manifest
-directly must validate it at registry ingress; `PluginManager::install` does this.
-
-Manifests declare the required host API version, required services, provided services and
-requested capabilities. Capability requests are metadata and do not grant authority.
-Required service versions use SemVer matching. A missing provider makes an enabled plugin
-wait; ambiguous providers, incompatible versions and cycles reject the proposed graph.
-
-The lifecycle controller accepts one installed implementation per plugin ID, with a maximum
-of 128 installed plugins. It snapshots the manifest on installation so later interior
-mutation cannot change the admitted dependency graph. Installation inspects metadata and
-does not call the plugin's `start` callback.
-
-## Embedded lifecycle
-
-Implement `rbit_plugin_runtime::Plugin` with a manifest and owned asynchronous `start`
-callback. Optional `stop` cleanup must be safe to retry after a reported error. Register
-background work through the `PluginScope` passed to `start`; use its supplied cancellation
-token to stop cooperatively. Untracked native side effects are outside the runtime's
-cleanup guarantees.
-
-`PluginManager` serializes operations through mutable access. Enabling a provider activates
-waiting consumers in deterministic dependency order. Disabling a provider closes admission
-for it and its affected consumers before cleanup, then retires consumers before providers.
-Consumers retain enabled intent and can restart when the provider returns. Explicitly
-disabled plugins stay disabled. Reload creates fresh generations for a provider and its
-dependent consumers. Uninstall verifies disposal before removing the implementation.
-
-Startup and stop futures are retained in the controller while waiting. Cancelling the
-administrator's operation future must not erase the scope or cleanup state. A failed or
-timed-out cleanup retains the generation and prevents an overlapping activation. Call
-disable again to retry cleanup; never report a surviving generation as unloaded.
-
-The controller currently manages lifecycle ownership and declared dependency readiness.
-It does not yet publish typed service objects, routes, assets, capability grants or durable
-desired state. A host integrating those contributions must bind their visibility and
-authority to the generation admission gate.
-
-## Admission and resource ownership
-
-`Admission::try_acquire` checks the requested generation and acquires an `OperationLease`.
-Closing and acquiring use the same short critical section. Once closure returns, a stale
-request cannot acquire a new lease even if it retained an old routing snapshot. Keep the
-lease until the final side effect or streamed response body finishes or is dropped.
-
-`PluginScope::spawn` retains a lease for the complete asynchronous task, including when its
-join handle is dropped. Quiescing permanently closes admission and signals cancellation.
-Disposal waits for all leases with a deadline. On timeout, surviving work remains tracked
-and disposal can be retried. Cancelling the disposal future leaves admission closed.
-
-These primitives do not revoke repository permissions, force-stop blocking native code or
-unload machine code from an embedded binary. Scope cancellation is cooperative. In
-particular, a task that captures its own scope can keep it alive: retain the provided
-cancellation token instead. Independently terminated workers and capability enforcement
-are separate implementation stages.
-
-## Persisted intent and recovery
-
-The host storage layer provides `PluginSettingsStore` and migration `0060` for explicit
-plugin enablement intent and pending credential revocation. Recording an enable request
-preserves an unfinished disable marker; the host must complete revocation and reconcile
-unfinished work before clearing that marker. The embedded controller does not yet wire
-these records into runtime administration or startup reconciliation.
-
-## Actions integration
-
-All subscriber, schedule, sweeper, secrets initialization and trigger-spawned background
-tasks enter a private scope. `ActionsService::stop_background` closes admission, signals
-the existing shutdown token and returns a drain error if work survives the grace period.
-The existing server shutdown method logs that failure without changing its public return
-type. A disposed instance cannot start background work again; a future activation needs a
-new instance.
-
-This shutdown operation stops background work only. It is not a public runtime disable
-API: routes, task credentials and active runner jobs still need the broader lifecycle
-transaction described in the design before administrator disablement can be exposed.
-
-## Validation
-
-Run the standalone core checks without frontend assets or a forge database:
+The ordinary server includes Actions support and starts it disabled by default. Build it
+normally with `cargo build --release --package rbit-server`. Build a minimal server with:
 
 ```sh
-cargo test --locked -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-runtime
-cargo clippy --locked -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-runtime --all-targets -- -D warnings
+cargo build --release --package rbit-server --no-default-features
+node scripts/check-core-dependencies.mjs
 ```
 
-The workspace test suite additionally covers existing Actions behavior and the new
-shutdown-before-start and shutdown-after-start regressions. CI runs the standalone crates
-in their own job and retains the existing full workspace gates.
+The minimal server excludes `rbit-actions`, `rbit-workflow` and the workflow YAML parser
+from its normal dependency graph. The Plugins page remains available and explains that
+Actions is unavailable. Generic commit statuses, branch protection and external CI remain
+usable. Existing Actions tables and compatibility value types stay in core storage so old
+databases and migration checksums remain valid; they do not activate the control plane.
+
+Build a particular server package when checking this boundary. Building or testing the whole
+workspace includes the separately selected Actions and runner packages and unifies their
+features. CI validates the minimal package graph separately from the full workspace.
+
+## Runtime controls and persistence
+
+The administrator-only Plugins page shows availability and observed lifecycle state. Its
+forms use normal session authorization, Origin checks, security headers and auditing.
+Non-administrators cannot change plugin state through the service API either.
+
+`[actions] enabled` is the startup default until an administrator saves explicit intent.
+Saved enable or disable intent survives restarts and overrides the startup default. Other
+Actions limits, paths and policies remain deployment configuration and require restart.
+A build without Actions rejects effective enabled intent, whether it came from the startup
+default or persisted state. Explicit persisted disablement overrides an enabled startup
+default. Disable Actions in a full build before moving an enabled instance to a core-only
+build; saved state remains available when switching distributions.
+
+Lifecycle operations are serialized with bounded admission. A second change receives a
+conflict while one is running. Once admitted, the owned host operation continues if its
+HTTP client disconnects; shutdown waits for it before stopping shared forge services.
+Desired state is recorded and audited before lifecycle work, so a failed activation or
+cleanup does not erase what the administrator requested.
+
+## Disable and recovery
+
+Disable removes the active snapshot and closes its generation before waiting. Navigation,
+settings entries and OpenAPI reflect availability. Dedicated feature endpoints refuse new
+work; task credentials cannot enter Git, LFS or shared API handlers after admission closes.
+Old service snapshots also refuse credential authentication.
+
+Admitted requests retain operation leases through their final side effects. Incoming and
+outgoing streams observe cancellation. Outgoing streams have an independently driven,
+bounded supervisor so a client that stops reading cannot indefinitely retain a plugin
+lease. Git completion, archive producers and blocking plugin work retain their own leases
+until they stop. Ordinary forge traffic does not enter the Actions scope.
+
+After draining, disable cancels unfinished jobs, tasks and steps, revokes all task token
+digests, reports terminal checks and releases the active instance. History, repository
+policy, runner registrations, secrets and retained files remain stored. Re-enable creates
+a new generation; credentials from cancelled tasks do not regain authority. Work published
+while the plugin was absent does not start runs when it returns.
+
+Cleanup deadlines are explicit failures. Surviving work remains tracked, the generation
+stays closed, and a fresh activation cannot overlap it. Plugins shows incomplete cleanup
+and offers a retry. This is cooperative native disposal, not forced interruption of an
+arbitrary native thread or removal of machine code from the running server binary.
+
+Two append-only migrations support recovery. `0060_plugin_settings.sql` stores desired
+state and an incomplete-revocation marker. `0061_plugin_revocations.sql` journals affected
+run IDs until cancellation and terminal status reporting both succeed. Thus a crash after
+a run becomes Cancelled cannot cause its still-pending check report to be forgotten.
+Recovery revokes old task authority before publishing a fresh activation. Normal server
+shutdown preserves enabled intent and active-run recovery rather than cancelling every
+job as an explicit disable would.
+
+Online runners cancel when their task or endpoint is refused. Updated runners additionally
+stop local execution after 120 seconds without an accepted state heartbeat, including when
+the server is unreachable. Older offline runners may continue locally while disconnected;
+server-side credential revocation still takes effect. A runner process that exits after a
+disabled endpoint returns `404` may need restarting after re-enable.
+
+## UI and caching
+
+Actions pages and APIs remain registered in builds containing the plugin, under host-owned
+admission guards. Disabled paths preserve ordinary unknown-route behavior. Navigation and
+OpenAPI are generated from current availability rather than the immutable startup setting.
+A feature revision invalidates preloads and restored navigation snapshots. HTML reads that
+cross a revision transition refresh instead of caching an inconsistent shell.
+
+Actions log enhancements load only on job pages and dispose their listeners when those pages
+are replaced. The loader accepts only the trusted same-origin Actions asset; arbitrary
+third-party scripts do not gain access to the forge origin.
+
+## Contracts and dependency boundaries
+
+`rbit-plugin-api` validates bounded dotted identifiers, manifests, requested capabilities
+and service version requirements. A capability request is metadata, not authority.
+`rbit-plugin-runtime` resolves required providers, rejects cycles and ambiguous versions,
+and assigns non-reused generations within the process. Required consumers wait when a
+provider is missing and dispose before it is retired.
+
+`PluginScope` owns cooperative cancellation and task/operation leases. Closing and admitting
+work use one short critical section, so retained routing or service handles cannot acquire
+new authority after closure. Failed or cancelled lifecycle waits preserve cleanup state
+for retry. The controller currently supports trusted embedded implementations, not an
+untrusted native-code sandbox. Host authorization and the current generation remain
+mandatory when exposing an implementation to HTTP.
+
+## Verification
+
+The focused checks are:
+
+```sh
+cargo test --locked -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-actions-core
+cargo test --locked -p rbit-services --test integration actions_plugin
+cargo test --locked -p rbit-services --no-default-features --test integration actions_unavailable
+cargo check --locked -p rbit-server --no-default-features
+node scripts/check-core-dependencies.mjs
+```
+
+The broader workspace suite preserves workflow and runner behavior. Lifecycle tests exercise
+real minted task credentials, admitted body drains, stale handles, aborted waiters, restart
+precedence and interrupted cancellation/check reporting. Web tests cover the same bound
+router before and after enable/disable, administrator authorization, CSRF, API documentation,
+credential padding, paused stream cancellation and conditional enhancement cleanup.

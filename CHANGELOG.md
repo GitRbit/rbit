@@ -17,11 +17,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Initial plugin foundation: validated manifests, service dependency resolution, and a
-  lifecycle controller for trusted embedded plugins with generation-scoped task cleanup
-  ([docs/plugin-core.md](docs/plugin-core.md)). Actions configuration and permission
-  policy now live in a standalone crate, with existing imports preserved. Runtime plugin
-  administration, package installation, and i18n remain future work.
+- Plugin core with optional Actions: administrators can enable and disable Actions in
+  **Admin → Plugins** without restarting the forge. Persisted intent, scoped admission,
+  cancellable request/response streams and durable revocation/check-report recovery keep
+  runtime transitions separate from retained repository settings and history
+  ([docs/plugin-core.md](docs/plugin-core.md)).
+- A minimal server build (`--package rbit-server --no-default-features`) excludes the
+  Actions implementation and workflow parser. Shared forge services now live in
+  `rbit-services-base`, with Actions in its own optional `rbit-actions` crate. Installable
+  executable packages, sandboxed plugins and i18n remain later stages.
+- Updated runners stop local tasks after 120 seconds without an accepted state heartbeat,
+  including while disconnected. Runtime disable revokes task credentials independently.
 - `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
   logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
 - `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with
@@ -73,13 +79,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
-- Migration `0060` adds host-owned plugin settings and pending revocation markers, plus
-  an index for reconciling unfinished Actions runs during future runtime disablement.
+- Migrations `0060` and `0061` add persisted plugin intent, revocation recovery and a
+  cancellation-report journal. Saved intent overrides `[actions] enabled` after restart.
+  Disable Actions before switching an enabled instance to a core-only build. Interrupted
+  disable cleanup is reconciled before a fresh activation; retained data is not purged.
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
   and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
-  environment wait timers. Nothing changes until an administrator enables Actions; with it off no Actions
-  table is written and `<data_dir>/actions` is not created.
+  environment wait timers. A fresh disabled instance creates no Actions files or feature
+  records; explicit disablement may write terminal and revocation state during cleanup.
 - With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
   copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
   backed up.

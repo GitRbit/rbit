@@ -144,6 +144,9 @@ permissions keep their account identity.
   **rbit-runner**, a separate program, in Docker/Podman containers or on the host — with built-in checkout,
   cache and artifacts, sealed secrets, fork-safe pull request runs, live logs and commit statuses. See
   [docs/actions.md](docs/actions.md).
+- **Optional plugins**: enable and disable Actions at runtime in **Admin → Plugins**, with
+  persisted state and scoped cleanup. A minimal build excludes the Actions implementation
+  and workflow parser; see [plugin core](docs/plugin-core.md).
 - **External sign-in**: OpenID Connect providers and GitHub, with PKCE and verified ID tokens; link providers to
   existing accounts or let them register new ones.
 

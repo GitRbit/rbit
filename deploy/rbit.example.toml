@@ -310,7 +310,7 @@ report_version = true
 [actions]
 # CI/CD with rbit-runner (docs/actions.md). Off by default; when off, Actions is fully
 # absent: no pages, no runner endpoint, no background work, workflow files are ignored.
-# Changing it needs a restart.
+# Startup default until an administrator saves a runtime override in Admin -> Plugins.
 enabled = false
 # Turn Actions on for repositories created from now on (existing ones keep their setting).
 enable_for_new_repositories = false

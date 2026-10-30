@@ -41,7 +41,9 @@ rbit/
     ├── rbit-auth/           # Passwords, session/token secrets, TOTP, passkeys, permission rules
     ├── rbit-git/            # Repository read model, diffs, languages, maintenance (gitoxide)
     ├── rbit-transport/      # Git smart protocol: stateless (HTTP) and interactive (SSH)
-    ├── rbit-services/       # Application use-cases, domain events, background jobs
+    ├── rbit-services/       # Shared service composition and optional plugin activation
+    ├── rbit-services-base/  # Forge use-cases, domain events and jobs without Actions implementation
+    ├── rbit-actions/        # Optional Actions control plane behind the embedded plugin adapter
     ├── rbit-mail/           # Email rendering (Askama) and delivery (SMTP, log)
     ├── rbit-ssh/            # Built-in SSH server (russh) for Git over SSH
     ├── rbit-web/            # Axum router, handlers, Askama templates, assets, metrics
@@ -58,15 +60,23 @@ rbit/
 
 ```
                     rbit-server (bin)
-                   ┌────────┴─────────┐
-              rbit-web          rbit-ssh
-                   └────────┬─────────┘
-             rbit-services ─────── rbit-transport
-     ┌──────────┬───────┼─────────┬────────────┬──────────────┐
-rbit-storage rbit-auth rbit-git rbit-mail   rbit-workflow
-     └──────────┴───────┬─────────┴────────────┘     │
-                    rbit-core                 rbit-runner (bin)
+                   /                 \
+              rbit-web           rbit-ssh
+                   \                 /
+                     rbit-services (composition)
+                      /             \
+      optional rbit-actions      rbit-services-base
+             |          \       /       |       \
+       rbit-workflow     storage / auth / git / mail
+             |                    |
+       rbit-runner              rbit-core
+                                  |
+                           rbit-actions-core
 ```
+
+The composition facade hosts `rbit-plugin-runtime` and the embedded Actions adapter.
+`rbit-actions` depends on shared services, while shared services never import the Actions
+implementation or workflow parser. A server build can exclude that optional branch.
 
 `rbit-workflow` is pure (no I/O, no async, no other rbit crate) and shared by the server and
 `rbit-runner`, which depends on no server crate: the two agree on workflows, expressions and
@@ -169,7 +179,7 @@ deliveries concurrently. Best-effort notifications that exceed the queue are dro
 a warning and `rbit_mail_dropped_total`; account recovery and verification wait for a slot
 up to the configured timeout. Delivery's timeout includes waiting for a relay slot.
 
-**`rbit-services`** — Use-cases with business rules, one service per area, all built from
+**`rbit-services-base`** — Use-cases with business rules, one service per area, all built from
 a shared `ServiceContext` (config, database, key/value store, repository storage):
 `AccountService` (sign-up, sign-in, sessions, suspension), `RepositoryService` (create,
 membership-aware access, listings, explore search), `OrgService` (organisations, members,
@@ -1222,7 +1232,7 @@ the strongest reason (`review_requested` > `assigned` > `mention` > `author` > `
   than `[issues] notification_retention_days` (90) are pruned daily. The header's unread dot
   is one indexed `EXISTS`. `[issues] notifications = false` turns everything off.
 
-**Email (milestone 3).** `NotificationEmailService` (`rbit-services/src/notification_email.rs`)
+**Email (milestone 3).** `NotificationEmailService` (`rbit-services-base/src/notification_email.rs`)
 mails what the inbox fan-out writes: `NotificationService::handle_event` passes the
 recipients and reasons it stored to `deliver`, which keeps verified, non-suspended
 recipients other than the actor whose preference (`notification_email_settings`, default
@@ -1521,10 +1531,13 @@ labels keep `--ink` text with a coloured dot, legible in every theme. Icons and 
 rbit Actions ([docs/actions.md](actions.md), design contract
 [design/actions.md](design/actions.md)) is CI/CD in which the server is only the control plane:
 
-- **Off is absent.** `Services::actions` is `None` unless `[actions] enabled`: no routes are
-  merged, no subscriber, scheduler or sweeper runs, no page shows a tab, card or entry, task
-  tokens are refused before any lookup, and nothing is written to `actions_*` tables or
-  `<data_dir>/actions`. `rbit-web/tests/actions_disabled.rs` and the e2e suite prove it.
+- **Optional and live.** `rbit-actions` is an optional implementation crate. The shared
+  services facade publishes owned active snapshots through `Services::actions`; host
+  admission refuses inactive routes and task credentials before feature lookups. Admin
+  Plugins controls activate and disable the feature without restarting. Disabled state
+  has no subscriber, scheduler, sweeper or UI entry. Disable cleanup may write terminal
+  states and revocation records before becoming inactive. Saved intent overrides the
+  startup default. `rbit-web/tests/actions_disabled.rs` and lifecycle tests cover this boundary.
 - **Runs.** A subscriber turns pushes, pull requests, dispatches and schedule ticks into runs:
   workflows are read from the commit, parsed and planned by `rbit-workflow` on a bounded
   semaphore with a time budget, and stored as one `JobTemplate` (JSON) per job. Fork and
@@ -1550,12 +1563,13 @@ rbit Actions ([docs/actions.md](actions.md), design contract
 
 ## 8. Extensibility
 
-The initial [plugin core](plugin-core.md) supplies validated declarations, dependency-aware
-embedded lifecycle management and generation-scoped task disposal. Actions configuration
-and workflow permission policy live in the standalone `rbit-actions-core` crate. Runtime
-route publication, package installation and i18n follow the
-[implementation plan](design/plugin-architecture.md); Actions remains configured at startup
-until those host integration boundaries are complete.
+The [plugin core](plugin-core.md) supplies validated declarations, dependency-aware embedded
+lifecycle management and generation-scoped disposal. Actions is an optional crate over
+`rbit-services-base`; the `rbit-services` facade hosts its runtime activation and persistent
+intent. The UI and API documentation follow active publication. Request bodies, response
+streams, Git completion and blocking producers retain leases until cleanup completes.
+Package installation, sandboxed execution and i18n remain later stages of the
+[implementation plan](design/plugin-architecture.md).
 
 - **Trait seams** at every external boundary: `GitTransport`, store traits in services,
   `PasswordHasher`. Swapping an implementation never changes callers.
