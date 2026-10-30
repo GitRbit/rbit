@@ -11,9 +11,10 @@ how it differs from GitHub. Operators should also read
 
 ## Turning it on
 
-1. An administrator sets `[actions] enabled = true` in the configuration and restarts rbit.
-   While it is off, Actions does not exist: there are no pages, no runner endpoint and no
-   background work, and workflow files are ignored.
+1. An administrator opens **Admin → Plugins** and enables **Actions**, without restarting
+   the server. `[actions] enabled` remains a startup default until runtime intent is saved;
+   saved intent survives restart and overrides that default. A core-only build excludes
+   Actions and shows it as unavailable.
 2. In a repository, open **Settings → Actions** and turn on **Run workflows in this
    repository**. `[actions] enable_for_new_repositories` turns it on for new repositories.
 3. Register a runner (see below), then push a workflow under `.rbit/workflows/`.
@@ -25,6 +26,23 @@ every few seconds while something on them runs (the newest runs also look for ne
 10 seconds), and a step you open or close on a job page stays that way. Each job also
 reports a commit status, so required checks and the pull request merge box see Actions like
 any other CI.
+
+Disabling Actions immediately stops new admission, removes navigation and API documentation,
+and cancels readers and uploads. The host waits for admitted work, then cancels unfinished
+runs and tasks, revokes task tokens and reports terminal checks. History, repository settings,
+runner registrations, encrypted secrets and retained files stay on disk. Re-enabling creates
+a fresh activation; old task credentials remain revoked. Existing runner installations may
+need restarting after receiving the disabled endpoint's `404` response.
+
+Cleanup is bounded. If work cannot stop in time, Plugins reports incomplete cleanup and
+offers a retry; it does not report successful unload or start an overlapping activation.
+Interrupted cancellation and terminal status reporting are journaled for recovery. New
+runners also cancel local execution after 120 seconds without an accepted state heartbeat;
+an offline older runner may continue its process, but its server credentials are revoked.
+
+Other Actions configuration changes still take effect on server restart. Runtime disable
+does not uninstall the compiled plugin; the minimal server build excludes its implementation
+and parser entirely. See [plugin core](plugin-core.md) for build commands and lifecycle details.
 
 ## Runners
 
