@@ -4288,6 +4288,7 @@ name = "rbit-plugin-runtime"
 version = "0.1.5"
 dependencies = [
  "rbit-plugin-api",
+ "semver",
  "thiserror",
  "tokio",
  "tokio-util",

@@ -10,9 +10,11 @@
 //! arbitrary native code cannot be forcibly stopped by these primitives.
 
 mod admission;
+pub mod graph;
 mod scope;
 
 pub use admission::{Admission, AdmissionError, DrainError, OperationLease};
+pub use graph::{GraphError, MAX_PLUGINS, Resolution, resolve};
 pub use scope::PluginScope;
 
 #[cfg(test)]

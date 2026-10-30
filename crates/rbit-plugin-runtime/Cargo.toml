@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 rbit-plugin-api.workspace = true
+semver.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
