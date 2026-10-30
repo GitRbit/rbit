@@ -69,8 +69,8 @@ impl EnvironmentPath {
     }
 }
 
-fn actions(state: &AppState) -> ApiResult<&rbit_services::ActionsService> {
-    state.services.actions.as_ref().ok_or_else(ApiError::not_found)
+fn actions(state: &AppState) -> ApiResult<rbit_services::ActionsService> {
+    state.services.actions.snapshot().ok_or_else(ApiError::not_found)
 }
 
 /// An environment's API and settings URLs.

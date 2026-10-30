@@ -1,56 +1,35 @@
 [package]
 name = "rbit-services"
-description = "Application use-cases for rbit, combining storage, Git and authentication behind HTTP-agnostic APIs."
+description = "Forge service composition and optional plugin activation."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-# One integration-test binary (tests/main.rs) instead of one per file.
 autotests = false
 
+[features]
+default = ["actions"]
+actions = ["dep:rbit-actions"]
+
 [dependencies]
+rbit-services-base.workspace = true
+rbit-actions = { workspace = true, optional = true }
 rbit-core.workspace = true
 rbit-storage.workspace = true
-rbit-auth.workspace = true
-rbit-git.workspace = true
-rbit-mail.workspace = true
 rbit-plugin-api.workspace = true
 rbit-plugin-runtime.workspace = true
-# Actions: workflow parsing, triggers and planning.
-rbit-workflow.workspace = true
-# Actions: sealing secrets (U).
-aes-gcm.workspace = true
-zeroize.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
-getrandom.workspace = true
-# The first account's setup token is compared in constant time.
-subtle.workspace = true
-metrics.workspace = true
-tokio-util = { workspace = true, features = ["rt"] }
-ssh-key.workspace = true
-# W: webhook deliveries (signed JSON over HTTP(S), ring-backed rustls).
-reqwest = { workspace = true, features = ["rustls-no-provider"] }
-rustls.workspace = true
-hmac.workspace = true
-sha2.workspace = true
-same-file.workspace = true
-serde_json.workspace = true
 semver.workspace = true
-percent-encoding.workspace = true
-# L: Git LFS (signed transfer tokens).
-base64.workspace = true
-# Milestone 3: external sign-in (O): provider documents (discovery, tokens, GitHub's API).
-# M: importing (the source's API objects).
-serde.workspace = true
-# Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
-aho-corasick.workspace = true
-flate2.workspace = true
-# Actions: artifacts, read to serve them as zip archives.
-tar.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+sha2.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+reqwest.workspace = true
+tokio-util.workspace = true
+ssh-key.workspace = true
+tracing-subscriber.workspace = true
 tokio.workspace = true
 tempfile.workspace = true
 sqlx.workspace = true
@@ -61,6 +40,13 @@ base64.workspace = true
 axum.workspace = true
 # Actions: reading the zip archives artifacts are served as.
 zip.workspace = true
+
+rbit-auth.workspace = true
+rbit-git.workspace = true
+rbit-mail.workspace = true
+rbit-workflow.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

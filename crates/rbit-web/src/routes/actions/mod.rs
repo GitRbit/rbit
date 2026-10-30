@@ -47,6 +47,7 @@ impl ArtifactFormat {
 /// `Content-Length`; a broken stored archive ends the response with an error rather than
 /// finishing an archive that would look whole.
 pub(crate) fn artifact_download(
+    actions: &rbit_services::ActionsService,
     artifact: &rbit_core::actions::Artifact,
     file: tokio::fs::File,
     format: ArtifactFormat,
@@ -57,22 +58,30 @@ pub(crate) fn artifact_download(
         response::IntoResponse as _,
     };
     use rbit_services::actions::downloads;
+    let Ok(lease) = actions.admit() else { return crate::error::WebError::NotFound.into_response() };
+    let cancellation = actions.cancellation_token();
     let (kind, extension) = match format {
         ArtifactFormat::TarGz => ("application/gzip", "tar.gz"),
         ArtifactFormat::Zip => ("application/zip", "zip"),
     };
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<Bytes>>(8);
     tokio::spawn(async move {
+        let _lease = lease;
         let file = file.into_std().await;
         let _ = tokio::task::spawn_blocking(move || {
-            let writer = ChunkWriter { sender: sender.clone(), chunk: Vec::with_capacity(ChunkWriter::SIZE) };
+            let writer = ChunkWriter::new(sender.clone(), cancellation.clone());
             let source = std::io::BufReader::new(file);
             let written = match format {
                 ArtifactFormat::TarGz => downloads::to_tar_gz(source, writer).map(drop),
                 ArtifactFormat::Zip => downloads::to_zip(source, writer).map(drop),
             };
             if let Err(error) = written {
-                let _ = sender.blocking_send(Err(error));
+                tokio::runtime::Handle::current().block_on(async {
+                    tokio::select! {
+                        () = cancellation.cancelled() => {},
+                        _ = sender.send(Err(error)) => {},
+                    }
+                });
             }
         })
         .await;
@@ -95,14 +104,19 @@ pub(crate) fn artifact_download(
 pub(crate) struct ChunkWriter {
     sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
     chunk: Vec<u8>,
+    cancellation: tokio_util::sync::CancellationToken,
+    runtime: tokio::runtime::Handle,
 }
 
 impl ChunkWriter {
     const SIZE: usize = 64 * 1024;
 
     // Actions: run logs.
-    pub(crate) fn new(sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>) -> Self {
-        Self { sender, chunk: Vec::with_capacity(Self::SIZE) }
+    pub(crate) fn new(
+        sender: tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
+        cancellation: tokio_util::sync::CancellationToken,
+    ) -> Self {
+        Self { sender, chunk: Vec::with_capacity(Self::SIZE), cancellation, runtime: tokio::runtime::Handle::current() }
     }
 
     fn send(&mut self) -> std::io::Result<()> {
@@ -110,14 +124,20 @@ impl ChunkWriter {
             return Ok(());
         }
         let chunk = std::mem::replace(&mut self.chunk, Vec::with_capacity(Self::SIZE));
-        self.sender
-            .blocking_send(Ok(chunk.into()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed"))
+        self.runtime.block_on(async {
+            tokio::select! {
+                () = self.cancellation.cancelled() => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "plugin disabled")),
+                result = self.sender.send(Ok(chunk.into())) => result.map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed")),
+            }
+        })
     }
 }
 
 impl std::io::Write for ChunkWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.cancellation.is_cancelled() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "plugin disabled"));
+        }
         self.chunk.extend_from_slice(buf);
         if self.chunk.len() >= Self::SIZE {
             self.send()?;
@@ -237,4 +257,28 @@ pub fn routes() -> Router<AppState> {
         .route("/{owner}/{repo}/settings/actions/trusted", post(settings::untrust))
         .route("/{owner}/settings/actions", get(settings::organization).post(settings::save_organization))
         .route("/settings/actions", get(settings::personal).post(settings::save_personal))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChunkWriter;
+    use std::{io::Write as _, time::Duration};
+
+    #[tokio::test]
+    async fn disabling_interrupts_an_archive_writer_even_when_the_client_does_not_read() {
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        sender.try_send(Ok(axum::body::Bytes::from_static(b"full"))).unwrap();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let mut writer = ChunkWriter::new(sender, cancellation.clone());
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let mut producer = tokio::task::spawn_blocking(move || {
+            started.send(()).unwrap();
+            writer.write_all(&vec![0; ChunkWriter::SIZE])
+        });
+        ready.await.unwrap();
+        assert!(tokio::time::timeout(Duration::from_millis(20), &mut producer).await.is_err());
+        cancellation.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(5), producer).await.unwrap().unwrap();
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+    }
 }

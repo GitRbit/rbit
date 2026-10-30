@@ -39,18 +39,19 @@ use axum::{
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::TryStreamExt;
 use rbit_auth::AccessTokenSecret;
-use rbit_core::{PushSource, TokenScope, User};
+use rbit_core::{PushSource, TokenScope, User, actions::TaskGrant};
 use rbit_services::{
     ConcurrencySlot, RepoContext, ServiceError, ThrottleScope,
-    actions::tokens::TaskGrant,
     limits::{RETRY_AFTER_SECONDS, Refused},
     mirrors,
     protection::PushActor,
     two_factor::GitPasswordOutcome,
 };
+#[cfg(feature = "actions")]
+use rbit_transport::receive::Remaining;
 use rbit_transport::{
     ReceiveOptions, Service,
-    receive::{self, CommandLimits, Intercept, Remaining},
+    receive::{self, CommandLimits, Intercept},
 };
 use serde::Deserialize;
 use tokio::io::{AsyncRead, BufReader};
@@ -157,6 +158,19 @@ async fn run_service(
         Ok(authorized) => authorized,
         Err(denied) => return denied.into_response(),
     };
+    // A body can be dropped before receive-pack has exited or its push recorder has
+    // finished. Keep workload admission until those final side effects complete too.
+    #[cfg(feature = "actions")]
+    let completion_guard = if matches!(caller, Some(GitCaller::Task(_))) {
+        let Some(actions) = state.services.actions.snapshot() else { return Denied::Challenge.into_response() };
+        let Ok(lease) = actions.admit() else { return Denied::Challenge.into_response() };
+        Some(lease)
+    } else {
+        None
+    };
+    #[cfg(not(feature = "actions"))]
+    let completion_guard: Option<()> = None;
+
     // Held by the response stream until git is done or the exchange is stopped.
     let slot = match admit(&state, &client) {
         Ok(slot) => slot,
@@ -190,10 +204,13 @@ async fn run_service(
         }
     };
 
-    if let Some(pending) = pending {
+    if pending.is_some() || completion_guard.is_some() {
         let recorder = state.services.pushes.clone();
         tokio::spawn(async move {
-            if session_succeeded(session.completion).await {
+            let _completion_guard = completion_guard;
+            if session_succeeded(session.completion).await
+                && let Some(pending) = pending
+            {
                 recorder.complete(pending).await;
             }
         });
@@ -262,6 +279,7 @@ fn refused(commands: &receive::CommandList, refusals: &[receive::Refusal]) -> Ga
 /// A task's push, after branch protection: spooled to disk so its new commits are seen
 /// before git stores anything, refused when it moves a tag or changes workflow files,
 /// replayed to git otherwise.
+#[cfg(feature = "actions")]
 async fn task_push_gate(
     state: &AppState,
     ctx: &RepoContext,
@@ -269,7 +287,7 @@ async fn task_push_gate(
     input: receive::Replay<Request>,
     options: ReceiveOptions,
 ) -> Gate {
-    let Some(actions) = &state.services.actions else { return Gate::Answer(Denied::Forbidden.into_response()) };
+    let Some(actions) = state.services.actions.snapshot() else { return Gate::Answer(Denied::Forbidden.into_response()) };
     let pack = input.remaining() == Remaining::ToEnd;
     let offset = u64::try_from(input.pending().len()).unwrap_or(u64::MAX);
     let spooled = match actions.spool_task_push(input, offset).await {
@@ -296,6 +314,17 @@ async fn task_push_gate(
             Gate::Answer(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
+}
+
+#[cfg(not(feature = "actions"))]
+async fn task_push_gate(
+    _state: &AppState,
+    _ctx: &RepoContext,
+    _commands: &receive::CommandList,
+    _input: receive::Replay<Request>,
+    _options: ReceiveOptions,
+) -> Gate {
+    Gate::Answer(Denied::Forbidden.into_response())
 }
 
 async fn session_succeeded(completion: tokio::sync::oneshot::Receiver<std::process::ExitStatus>) -> bool {
@@ -384,6 +413,10 @@ pub(super) enum GitCaller {
     },
     // Actions: S.
     /// A running workflow task, by its token (`docs/design/actions.md` §11.3).
+    #[cfg_attr(
+        not(feature = "actions"),
+        allow(dead_code, reason = "retain the shared workload caller type and explicit fail-closed match arms in core-only builds")
+    )]
     Task(TaskGrant),
 }
 
@@ -436,10 +469,17 @@ async fn authorize(
     let user = caller.as_ref().and_then(GitCaller::user);
 
     // An old name from before a rename or transfer keeps working, so existing clones do.
-    let opened = match (&caller, &state.services.actions) {
+    #[cfg(feature = "actions")]
+    let opened = match (&caller, state.services.actions.snapshot()) {
         // Actions: S. A task opens its own repository at its grant, others only if public.
+        #[cfg(feature = "actions")]
         (Some(GitCaller::Task(grant)), Some(actions)) => actions.open_for_task(grant, owner, repo).await,
-        (Some(GitCaller::Task(_)), None) => Err(ServiceError::NotFound),
+        (Some(GitCaller::Task(_)), _) => Err(ServiceError::NotFound),
+        _ => state.services.repositories.open_following_renames(user, owner, repo).await,
+    };
+    #[cfg(not(feature = "actions"))]
+    let opened = match &caller {
+        Some(GitCaller::Task(_)) => Err(ServiceError::NotFound),
         _ => state.services.repositories.open_following_renames(user, owner, repo).await,
     };
     let mut ctx = match opened {
@@ -524,8 +564,9 @@ pub(super) async fn authenticate(state: &AppState, client: &Client, headers: &He
 /// A task token: only while Actions is enabled and only while its task runs. Runners often
 /// share the server's address, so task tokens have a budget of their own per address
 /// (`task:<address>`), which only wrong ones spend.
+#[cfg(feature = "actions")]
 async fn authenticate_task(state: &AppState, client: &Client, token: &str) -> Result<GitCaller, Denied> {
-    let Some(actions) = &state.services.actions else { return Err(Denied::Challenge) };
+    let Some(actions) = state.services.actions.snapshot() else { return Err(Denied::Challenge) };
     let ip = client.ip().map(|ip| format!("task:{}", ip.to_canonical())).unwrap_or_default();
     if let Err(ServiceError::RateLimited { retry_after_seconds }) =
         state.services.throttle.check_client_failures(ThrottleScope::GitAuth, &ip)
@@ -543,6 +584,11 @@ async fn authenticate_task(state: &AppState, client: &Client, token: &str) -> Re
             Err(Denied::Internal)
         }
     }
+}
+
+#[cfg(not(feature = "actions"))]
+async fn authenticate_task(_state: &AppState, _client: &Client, _token: &str) -> Result<GitCaller, Denied> {
+    Err(Denied::Challenge)
 }
 
 /// A task token sent as `Authorization: Bearer` (or `token`), as Git's `http.extraHeader`

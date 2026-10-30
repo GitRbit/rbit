@@ -20,6 +20,18 @@ import { installUpdateNotice } from "./update-notice.js";
 
 installUpdateNotice(document);
 
+// Runtime feature changes require a fresh shell, assets and navigation history.
+document.addEventListener("htmx:beforeOnLoad", (event) => {
+  const current = document.body?.dataset?.pluginRevision;
+  const next = event.detail.xhr?.getResponseHeader?.("Rbit-Plugin-Revision");
+  if (!current || !next || current === next) return;
+  event.preventDefault();
+  clearNavigationResponses();
+  try { localStorage.removeItem("htmx-history-cache"); } catch { /* Storage can be unavailable. */ }
+  location.assign(event.detail.xhr.responseURL || location.href);
+});
+
+
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
 const PARTIAL_HEADER = "Rbit-Partial";
@@ -55,6 +67,8 @@ function partialScope(url) {
  */
 export function navigationHeaders(url) {
   const headers = { "HX-Request": "true", [EPOCH_HEADER]: epoch };
+  const revision = document.body?.dataset?.pluginRevision;
+  if (revision) headers["Rbit-Plugin-Revision"] = revision;
   const scope = partialScope(url);
   if (scope) headers[PARTIAL_HEADER] = scope;
   return headers;
@@ -112,6 +126,8 @@ seedCurrentTab();
 document.addEventListener("htmx:configRequest", (event) => {
   const detail = event.detail;
   detail.headers[EPOCH_HEADER] = epoch;
+  const revision = document.body?.dataset?.pluginRevision;
+  if (revision) detail.headers["Rbit-Plugin-Revision"] = revision;
   if (!detail.boosted || detail.verb !== "get") return;
   const scope = partialScope(detail.path);
   if (scope) detail.headers[PARTIAL_HEADER] = scope;

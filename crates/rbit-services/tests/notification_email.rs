@@ -180,7 +180,7 @@ async fn workflow_comments_are_mailed_as_rbit_actions() {
     let issue = fixture.create_issue("Slow builds").await;
     fixture.deliver(&mut events).await;
     let as_alice = fixture.open(&fixture.alice, issue.number).await;
-    let grant = rbit_services::actions::tokens::TaskGrant {
+    let grant = rbit_core::actions::TaskGrant {
         task: TaskId(1),
         job: JobId(1),
         run: RunId(1),
@@ -201,7 +201,7 @@ Build took 41s"
         mail.text
     );
 
-    let read_only = rbit_services::actions::tokens::TaskGrant { permissions: TokenPermissions::uniform(PermissionLevel::Read), ..grant };
+    let read_only = rbit_core::actions::TaskGrant { permissions: TokenPermissions::uniform(PermissionLevel::Read), ..grant };
     let refused = fixture.services.timeline.comment_for_task(&read_only, &as_alice, "again").await;
     assert!(matches!(refused, Err(rbit_services::ServiceError::Forbidden)), "{refused:?}");
 }

@@ -80,7 +80,7 @@ impl RepoContext {
 
     /// Loads repository `id` for system work (background jobs), or `None` if it no
     /// longer exists. See [`Self::for_system`].
-    pub(crate) async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {
+    pub async fn load_for_system(ctx: &ServiceContext, id: RepoId) -> Result<Option<Self>, ServiceError> {
         let repo = ctx.database.admin().find_repository(id).await?;
         Ok(repo.map(|repo| Self::for_system(repo, &ctx.repositories)))
     }
@@ -90,7 +90,7 @@ impl RepoContext {
     /// There is no viewer, so the context grants exactly [`RepoAccess::Read`]: jobs may
     /// read Git data to warm caches, but anything that checks `access` for writing or
     /// administration refuses. It is crate-private so no request handler can obtain one.
-    pub(crate) fn for_system(repo: OwnedRepository, storage: &RepositoryStorage) -> Self {
+    pub fn for_system(repo: OwnedRepository, storage: &RepositoryStorage) -> Self {
         let disk_path = storage.path_for(repo.repo.owner_id, repo.repo.id);
         let reader = storage.reader(repo.repo.owner_id, repo.repo.id);
         Self { repo, access: RepoAccess::Read, viewer: None, collaborator: None, reader, disk_path }
@@ -355,7 +355,7 @@ pub(crate) async fn authorised_owner(store: &RepositoryStore, actor: &User, owne
 
 /// What `viewer` was granted on `repo`, for [`repo_access`]. Skips the query when the
 /// answer cannot change the outcome (anonymous viewers, site admins, the personal owner).
-pub(crate) async fn viewer_grants(store: &RepositoryStore, viewer: Option<&User>, repo: &OwnedRepository) -> Result<Grants, ServiceError> {
+pub async fn viewer_grants(store: &RepositoryStore, viewer: Option<&User>, repo: &OwnedRepository) -> Result<Grants, ServiceError> {
     let Some(user) = grant_holder(viewer, repo) else {
         return Ok(Grants::default());
     };

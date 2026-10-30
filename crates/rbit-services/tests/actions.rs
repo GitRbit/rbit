@@ -39,7 +39,7 @@ async fn enabled_actions_have_a_service_with_the_configured_limits() {
         config.actions.evaluation_concurrency = 3;
     })
     .await;
-    let actions = services.actions.as_ref().expect("the service exists when enabled");
+    let actions = services.actions.snapshot().expect("the service exists when enabled");
     assert_eq!(actions.limits().max_bytes, 4096);
     assert_eq!(actions.evaluations().available_permits(), 3);
     let version = actions.tasks_version();
@@ -54,7 +54,7 @@ async fn enabled_actions_have_a_service_with_the_configured_limits() {
 #[tokio::test]
 async fn shutdown_before_start_prevents_background_work_and_secret_key_creation() {
     let (_dir, config, services) = services(|config| config.actions.enabled = true).await;
-    let actions = services.actions.as_ref().unwrap();
+    let actions = services.actions.snapshot().unwrap();
     actions.stop_background().await.unwrap();
     actions.spawn_background();
     tokio::task::yield_now().await;
@@ -66,7 +66,7 @@ async fn shutdown_before_start_prevents_background_work_and_secret_key_creation(
 #[tokio::test]
 async fn shutdown_disposes_started_tasks_and_cannot_restart_the_same_scope() {
     let (_dir, _config, services) = services(|config| config.actions.enabled = true).await;
-    let actions = services.actions.as_ref().unwrap();
+    let actions = services.actions.snapshot().unwrap();
     actions.spawn_background();
     actions.stop_background().await.unwrap();
     assert_eq!(actions.background_tasks(), 0);

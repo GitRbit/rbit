@@ -198,6 +198,7 @@ mod tests {
                 database: database.clone(),
                 kv,
                 events: services.events.clone(),
+                actions_availability: crate::ActionsAvailability::default(),
             };
             let new = NewUser {
                 name: "alice".parse().unwrap(),
@@ -315,7 +316,7 @@ mod tests {
         // Actions: task tokens. A workflow's comment is sent by rbit Actions, and deleting it by
         // whoever deleted it.
         let ctx = fixture.services.timeline.open(Some(&fixture.alice), ctx.repo.clone(), pull.number).await.unwrap();
-        let grant = crate::actions::tokens::TaskGrant {
+        let grant = rbit_core::actions::TaskGrant {
             task: rbit_core::actions::TaskId(1),
             job: rbit_core::actions::JobId(1),
             run: rbit_core::actions::RunId(1),

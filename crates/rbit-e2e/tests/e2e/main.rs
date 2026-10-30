@@ -5,8 +5,10 @@
 mod access;
 mod accounts;
 // Actions: foundation (F).
+#[cfg(feature = "actions")]
 mod actions_container;
 mod actions_disabled;
+#[cfg(feature = "actions")]
 mod actions_runner;
 mod api;
 mod api_workflow;

@@ -343,6 +343,7 @@ mod tests {
             database,
             kv,
             events: crate::EventBus::default(),
+            actions_availability: crate::ActionsAvailability::default(),
         };
         let service = ContributionService::new(ctx.clone());
         let repo = dir.path().join("repo");

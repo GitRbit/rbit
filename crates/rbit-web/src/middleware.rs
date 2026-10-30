@@ -3,7 +3,9 @@
 mod auth;
 mod cache;
 mod errors;
+mod plugins;
 mod security;
+pub use plugins::plugin_admission;
 
 pub use auth::{LEGACY_SESSION_COOKIE, SESSION_COOKIE, session, session_token};
 pub(crate) use cache::is_immutable;
@@ -95,7 +97,7 @@ mod tests {
         let private = app.oneshot(get("/private")).await.unwrap();
         assert_eq!(private.headers()[header::CACHE_CONTROL], "private, no-cache");
         assert!(private.headers().contains_key(header::ETAG), "revalidated");
-        assert_eq!(private.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch");
+        assert_eq!(private.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch, Rbit-Plugin-Revision");
     }
 
     fn app() -> Router {
@@ -123,7 +125,7 @@ mod tests {
         let response = send("/page", &[]).await;
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache");
-        assert_eq!(response.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch");
+        assert_eq!(response.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch, Rbit-Plugin-Revision");
         assert!(response.headers()[header::ETAG].to_str().unwrap().starts_with("W/\""));
     }
 

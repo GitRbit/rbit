@@ -202,6 +202,7 @@ mod tests {
         Page {
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
@@ -246,7 +247,7 @@ mod tests {
             has_actions: false,
         };
         let signed_in = |unread| {
-            let page = Page { viewer: Some(viewer.clone()), has_unread_notifications: unread, ..page() };
+            let page = Page { plugin_revision: 0, viewer: Some(viewer.clone()), has_unread_notifications: unread, ..page() };
             DashboardPage { page, repos: Vec::new(), recent: Vec::new(), orgs: Vec::new(), can_create_org: false }.render().unwrap()
         };
         let read = signed_in(false);

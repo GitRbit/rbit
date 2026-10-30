@@ -77,7 +77,8 @@ impl AuditService {
         Self::from_store(database.audit())
     }
 
-    pub(crate) fn from_store(store: AuditStore) -> Self {
+    /// Creates a logger for trusted modules sharing the host audit store.
+    pub fn from_store(store: AuditStore) -> Self {
         Self { store }
     }
 

@@ -9,6 +9,7 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 pub struct Page {
     pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
+    pub plugin_revision: u64,
     pub branding: rbit_core::config::BrandingConfig,
     pub title: Option<String>,
     pub viewer: Option<NavUser>,
@@ -41,6 +42,7 @@ impl Page {
         Self {
             updates: state.services.updates.status(),
             site_name: settings.site_name,
+            plugin_revision: state.services.plugin_revision(),
             branding: settings.branding,
             title: None,
             viewer: viewer.map(|user| NavUser {
@@ -133,6 +135,7 @@ mod tests {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
                 updates: rbit_services::updates::UpdateStatus::default(),
+                plugin_revision: 0,
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
@@ -161,6 +164,7 @@ mod tests {
     fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
+            plugin_revision: 0,
             updates: rbit_services::updates::UpdateStatus {
                 revision: 1,
                 state: rbit_services::updates::UpdateState::Available,

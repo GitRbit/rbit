@@ -87,7 +87,7 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
     let (mut parts, body) = response.into_parts();
     // A response pinned by commit ids (`cache_pinned`) is the same in every epoch; varying
     // on it would throw a year-long cache entry away after every form post.
-    let vary = if is_immutable(&parts.headers) { "HX-Request" } else { "HX-Request, Rbit-Nav-Epoch" };
+    let vary = if is_immutable(&parts.headers) { "HX-Request" } else { "HX-Request, Rbit-Nav-Epoch, Rbit-Plugin-Revision" };
     append_vary(&mut parts.headers, vary);
     if parts.status != StatusCode::OK || parts.headers.contains_key(header::CACHE_CONTROL) || parts.headers.contains_key(header::SET_COOKIE)
     {

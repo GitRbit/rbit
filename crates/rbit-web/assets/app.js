@@ -23,7 +23,36 @@ import "./contributions.js";
 import "./branch-graph.js";
 import "./mirror-progress.js";
 // Actions job pages: steps keep the viewer's open or closed choice across refreshes.
-import "./actions-log.js";
+// Trusted enhancements are loaded only when their module is referenced by active UI.
+let actionsEnhancement = null;
+let actionsModuleUrl = null;
+let actionsMountRevision = 0;
+async function mountActionsEnhancement() {
+  const root = document.querySelector("#job[data-actions-module]");
+  const url = root?.getAttribute("data-actions-module");
+  const target = url ? new URL(url, location.href) : null;
+  const trusted = target && target.origin === location.origin && target.pathname === "/assets/actions-log.js";
+  if (!root || !trusted) {
+    actionsMountRevision += 1;
+    actionsEnhancement?.(); actionsEnhancement = null; actionsModuleUrl = null;
+    return;
+  }
+  if (actionsModuleUrl === url) return;
+  actionsEnhancement?.();
+  actionsEnhancement = null;
+  actionsModuleUrl = url;
+  const revision = ++actionsMountRevision;
+  try {
+    const module = await import(url);
+    if (actionsMountRevision !== revision || !document.querySelector("#job[data-actions-module]")) return;
+    actionsEnhancement = module.mount(document);
+  } catch {
+    // Enhancements are optional; the server-rendered job remains fully usable.
+    if (actionsMountRevision === revision) actionsModuleUrl = null;
+  }
+}
+mountActionsEnhancement();
+document.addEventListener("htmx:afterSettle", mountActionsEnhancement);
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";

@@ -407,6 +407,9 @@ impl ActionsService {
     /// `None` for a malformed or unknown credential; disabled runners are returned, so the
     /// caller decides what they may still do (report on their tasks, not take new ones).
     pub async fn authenticate_runner(&self, credential: &str) -> Result<Option<Arc<CachedRunner>>, ServiceError> {
+        if !self.is_active() {
+            return Ok(None);
+        }
         let Some(credential) = RunnerCredential::parse(credential) else { return Ok(None) };
         let runner = self.runner_cache().await?.get(&credential.digest());
         if let Some(runner) = &runner {

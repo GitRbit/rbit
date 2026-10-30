@@ -105,8 +105,8 @@ impl Fixture {
         self.database.repositories().find_by_path("alice", "rocket").await.unwrap().unwrap().repo.id
     }
 
-    fn actions(&self) -> &rbit_services::ActionsService {
-        self.services.actions.as_ref().unwrap()
+    fn actions(&self) -> rbit_services::ActionsService {
+        self.services.actions.snapshot().unwrap()
     }
 }
 

@@ -30,6 +30,7 @@
 //! process stopped are returned to the queue at start-up. With `[webhooks] enabled =
 //! false` hooks can still be configured, but no events are queued and nothing is sent.
 
+pub mod actions;
 pub mod delivery;
 pub mod payloads;
 
@@ -225,7 +226,7 @@ impl WebhookService {
         require_manager(target)?;
         let owner = target.owner();
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
+        let events = parse_events(&input.events, self.inner.ctx.actions_availability.is_enabled())?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => validate_secret(&secret)?,
             SecretUpdate::Keep | SecretUpdate::Clear => None,
@@ -249,7 +250,7 @@ impl WebhookService {
     pub async fn update(&self, actor: &User, target: HookTarget<'_>, id: WebhookId, input: WebhookInput) -> Result<Webhook, ServiceError> {
         require_manager(target)?;
         let url = self.validate_url(&input.url)?;
-        let events = parse_events(&input.events, self.inner.ctx.config.actions.enabled)?;
+        let events = parse_events(&input.events, self.inner.ctx.actions_availability.is_enabled())?;
         let secret = match input.secret {
             SecretUpdate::Set(secret) => match validate_secret(&secret)? {
                 Some(secret) => SecretUpdate::Set(secret),
@@ -455,7 +456,7 @@ impl WebhookService {
             }
             // Actions: integration (I). Published only while Actions is enabled.
             DomainEvent::ActionsRun { .. } | DomainEvent::ActionsJob { .. } => {
-                self.queue_payload(crate::actions::hooks::payload(&self.inner.ctx, event, &base).await?, newest).await?
+                self.queue_payload(crate::webhooks::actions::payload(&self.inner.ctx, event, &base).await?, newest).await?
             }
             _ => 0,
         };

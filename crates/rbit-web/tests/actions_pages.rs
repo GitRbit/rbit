@@ -259,7 +259,7 @@ async fn writers_cancel_and_run_again_and_readers_only_look() {
 
     let (status, ..) = fixture.send(Method::POST, &format!("{url}/rerun-failed"), &fixture.owner, "").await;
     assert!(status.is_redirection());
-    let again = fixture.services.actions.as_ref().unwrap();
+    let again = fixture.services.actions.snapshot().unwrap();
     let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
     assert_eq!(again.run_detail(&repo, run.number).await.unwrap().run.attempt, 2);
 
@@ -349,7 +349,7 @@ async fn writers_run_dispatch_workflows_from_their_page() {
     let (status, _, location) = fixture.send(Method::POST, &dispatch, &fixture.owner, good).await;
     assert!(status.is_redirection(), "{status}");
     assert_eq!(location.as_deref(), Some("/alice/rocket/actions/runs/1"));
-    let actions = fixture.services.actions.as_ref().unwrap();
+    let actions = fixture.services.actions.snapshot().unwrap();
     let detail = actions.run_detail(&repo, 1).await.unwrap();
     assert_eq!((detail.run.event, detail.run.title.as_str()), (RunEvent::WorkflowDispatch, "Release ran manually"));
     let (_, inputs) = fixture.database.actions_runs().event(detail.run.id).await.unwrap().unwrap();
@@ -379,7 +379,7 @@ async fn writers_disable_and_enable_a_workflow_from_its_page() {
     let page = fixture.page(url, &fixture.owner).await;
     assert!(page.contains("This workflow is disabled") && page.contains("Enable workflow") && !page.contains("Run workflow"));
     assert!(fixture.page(url, &fixture.reader).await.contains("This workflow is disabled"), "everyone sees it");
-    let actions = fixture.services.actions.as_ref().unwrap();
+    let actions = fixture.services.actions.snapshot().unwrap();
     let request = rbit_services::actions::dispatch::DispatchRequest {
         workflow: "release.yml".into(),
         reference: "main".into(),

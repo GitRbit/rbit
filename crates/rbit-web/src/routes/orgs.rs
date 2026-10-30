@@ -309,11 +309,15 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
     let (header, repos) = header(state, Some(user), ctx, OrgTab::Settings).await?;
     let base = format!("/{}/settings", ctx.org.name());
     let base_permission = state.services.orgs.base_permission(&ctx.org).await?;
-    let mut cards = crate::views::org::org_settings_cards(&base);
-    // Actions: interface and secrets (U). Only when the instance has Actions.
-    if state.services.actions.is_some() {
-        cards.extend(crate::views::actions_settings::org_settings_cards(&base));
-    }
+    let cards = crate::views::org::org_settings_cards(&base);
+    #[cfg(feature = "actions")]
+    let cards = {
+        let mut cards = cards;
+        if state.services.actions.is_some() {
+            cards.extend(crate::views::actions_settings::org_settings_cards(&base));
+        }
+        cards
+    };
     Ok(OrgSettingsPage {
         page: page.titled(format!("Settings · {}", ctx.org.label())),
         header,

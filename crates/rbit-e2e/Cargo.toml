@@ -9,6 +9,10 @@ publish = false
 
 # The harness in `src/lib.rs` is only used by this crate's tests, but it lives in the
 # library so every test module shares one copy; hence regular dependencies.
+[features]
+default = ["actions"]
+actions = ["rbit-services/actions", "rbit-web/actions"]
+
 [dependencies]
 rbit-core.workspace = true
 rbit-services.workspace = true

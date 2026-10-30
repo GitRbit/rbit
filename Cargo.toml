@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime", "crates/rbit-services-base", "crates/rbit-actions"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -17,8 +17,10 @@ rbit-storage = { path = "crates/rbit-storage" }
 rbit-auth = { path = "crates/rbit-auth" }
 rbit-git = { path = "crates/rbit-git" }
 rbit-transport = { path = "crates/rbit-transport" }
-rbit-services = { path = "crates/rbit-services" }
-rbit-web = { path = "crates/rbit-web" }
+rbit-services = { path = "crates/rbit-services", default-features = false }
+rbit-services-base = { path = "crates/rbit-services-base" }
+rbit-actions = { path = "crates/rbit-actions" }
+rbit-web = { path = "crates/rbit-web", default-features = false }
 rbit-ssh = { path = "crates/rbit-ssh" }
 rbit-mail = { path = "crates/rbit-mail" }
 rbit-workflow = { path = "crates/rbit-workflow" }

@@ -36,8 +36,8 @@ use crate::{
     },
 };
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or(WebError::NotFound)
+fn actions(state: &AppState) -> WebResult<ActionsService> {
+    state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
 /// The filters as GET parameters; empty values mean "any".
@@ -152,7 +152,7 @@ async fn runs_page(
         selected.as_ref().filter(|_| loaded.ctx.can_write_content()).map(|(path, _)| format!("{}/switch", urls.workflow(path)));
     let dispatch = match &selected {
         Some((path, _)) if loaded.ctx.can_write_content() && !disabled => {
-            dispatch_form(actions, &loaded, &urls, path, query, submitted).await?
+            dispatch_form(&actions, &loaded, &urls, path, query, submitted).await?
         }
         _ => None,
     };
@@ -638,5 +638,5 @@ async fn download(
     if artifact.run_id != detail.run.id {
         return Err(WebError::NotFound);
     }
-    Ok(super::artifact_download(&artifact, file, format))
+    Ok(super::artifact_download(&actions, &artifact, file, format))
 }

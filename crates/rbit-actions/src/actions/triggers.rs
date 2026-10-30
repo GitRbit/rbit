@@ -371,7 +371,9 @@ impl ActionsService {
             () = self.inner.shutdown.cancelled() => return Err(ServiceError::internal(std::io::Error::other("Actions is shutting down"))),
         };
         let handle = Handle::current();
+        let lease = self.admit().map_err(ServiceError::internal)?;
         tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             let _permit = permit;
             work(&handle, &Deadline::after(EVALUATION_BUDGET))
         })

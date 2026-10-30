@@ -34,8 +34,8 @@ use crate::{
     },
 };
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or(WebError::NotFound)
+fn actions(state: &AppState) -> WebResult<ActionsService> {
+    state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
 fn ids(run: &str, job: &str) -> WebResult<(i64, JobId)> {
@@ -79,7 +79,7 @@ pub async fn show(
     let mut steps = Vec::with_capacity(detail.steps.len());
     if let Some(task) = detail.job.task_id {
         for step in &detail.steps {
-            let log = step_log(actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
+            let log = step_log(&actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
             steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
         }
     }
@@ -133,7 +133,7 @@ pub async fn logs(
     let (Some(task), Some(step)) = (detail.job.task_id, detail.steps.iter().find(|step| step.number == wanted)) else {
         return Err(WebError::NotFound);
     };
-    let log = step_log(actions, &loaded.ctx, task, step, STEP_VIEW_LINES, STEP_VIEW_BYTES).await?;
+    let log = step_log(&actions, &loaded.ctx, task, step, STEP_VIEW_LINES, STEP_VIEW_BYTES).await?;
     let view = StepView::new(step, log, String::new());
     Ok(StepLogPage {
         page: page.titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),

@@ -56,6 +56,12 @@ impl PluginScope {
         self.inner.admission.in_flight()
     }
 
+    /// A child token signalled when this generation quiesces. Cancelling the returned
+    /// token cannot close the whole plugin generation.
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.inner.cancellation.child_token()
+    }
+
     /// Permanently closes admission and signals cancellation without waiting for work.
     ///
     /// A lifecycle controller can call this before plugin-specific asynchronous cleanup.

@@ -44,7 +44,8 @@ pub enum ServiceError {
 }
 
 impl ServiceError {
-    pub(crate) fn internal(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+    /// Wraps an implementation error for host diagnostics and generic error responses.
+    pub fn internal(error: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Internal(Box::new(error))
     }
 }

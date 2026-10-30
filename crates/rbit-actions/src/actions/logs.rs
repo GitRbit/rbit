@@ -265,10 +265,14 @@ impl ActionsService {
             truncated: task.log_truncated,
         };
         let (recover, max_bytes) = (!*checked, self.config().max_log_bytes);
-        let progress = tokio::task::spawn_blocking(move || append_lines(&files, stored, &lines, max_bytes, recover))
-            .await
-            .map_err(ServiceError::internal)?
-            .map_err(ServiceError::internal)?;
+        let lease = self.admit().map_err(ServiceError::internal)?;
+        let progress = tokio::task::spawn_blocking(move || {
+            let _lease = lease;
+            append_lines(&files, stored, &lines, max_bytes, recover)
+        })
+        .await
+        .map_err(ServiceError::internal)?
+        .map_err(ServiceError::internal)?;
         *checked = true;
         // Actions: metrics.
         metrics::counter!("rbit_actions_log_bytes_total").increment(progress.bytes.saturating_sub(stored.bytes));
@@ -302,7 +306,14 @@ impl ActionsService {
         if stored.log_state == LogState::Live {
             let job = store.job(stored.job_id).await?.ok_or(ServiceError::NotFound)?;
             let files = LogFiles::new(&self.logs_dir(), job.repo_id, task);
-            tokio::task::spawn_blocking(move || compress(&files)).await.map_err(ServiceError::internal)?.map_err(ServiceError::internal)?;
+            let lease = self.admit().map_err(ServiceError::internal)?;
+            tokio::task::spawn_blocking(move || {
+                let _lease = lease;
+                compress(&files)
+            })
+            .await
+            .map_err(ServiceError::internal)?
+            .map_err(ServiceError::internal)?;
             store.set_log_state(task, LogState::Final).await?;
         }
         drop(guard);
@@ -432,7 +443,9 @@ impl ActionsService {
         }
         let files = LogFiles::new(&self.logs_dir(), job.repo_id, task.id);
         let gzip = task.log_state == LogState::Final;
+        let lease = self.admit().map_err(ServiceError::internal)?;
         tokio::task::spawn_blocking(move || {
+            let _lease = lease;
             read_window(&files, gzip, start, end, range, max_lines.max(1), max_bytes, &mut window).map(|()| window)
         })
         .await

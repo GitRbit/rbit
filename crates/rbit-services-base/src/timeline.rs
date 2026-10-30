@@ -22,7 +22,9 @@ use rbit_core::{
 use rbit_storage::sqlite::issues::{NewIssue, StoredTimelineItem};
 pub use rbit_storage::sqlite::issues::{TimelineCursor, TimelineItemId};
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService, actions::tokens::TaskGrant};
+use rbit_core::actions::TaskGrant;
+
+use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, ThrottleScope, ThrottleService};
 
 /// Most entries one [`TimelineService::timeline`] call returns.
 pub const MAX_TIMELINE_PAGE: u32 = 200;

@@ -69,7 +69,7 @@ pub async fn payload(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) 
 
 /// The payload for `event` whether or not any hook subscribes to it (see [`payload`]).
 /// rbit Actions stores it as a pull request run's event (Actions: triggers (T)).
-pub(crate) async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
+pub async fn build(ctx: &ServiceContext, event: &DomainEvent, base_url: &str) -> Result<Option<HookPayload>, ServiceError> {
     match event {
         DomainEvent::Issue { repo, issue, kind: IssueKind::Pull, actor, action, .. } => {
             let Some(name) = pull_request_action(action) else { return Ok(None) };

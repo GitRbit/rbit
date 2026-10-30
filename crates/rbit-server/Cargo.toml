@@ -10,6 +10,10 @@ license.workspace = true
 name = "rbit"
 path = "src/main.rs"
 
+[features]
+default = ["actions"]
+actions = ["rbit-services/actions", "rbit-web/actions"]
+
 [dependencies]
 rbit-core.workspace = true
 rbit-storage.workspace = true

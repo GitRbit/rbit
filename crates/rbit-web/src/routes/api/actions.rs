@@ -201,8 +201,8 @@ impl ActionsPath {
 }
 
 /// The Actions service; it exists whenever these routes do.
-fn actions(state: &AppState) -> ApiResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or_else(ApiError::not_found)
+fn actions(state: &AppState) -> ApiResult<ActionsService> {
+    state.services.actions.snapshot().ok_or_else(ApiError::not_found)
 }
 
 fn base_url(state: &AppState) -> &str {
@@ -387,14 +387,17 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
     let mtime = u64::try_from(run.finished_at.unwrap_or(run.created_at).0).unwrap_or_default();
     // One job's log is read at a time, straight into the response.
     let (sender, receiver) = tokio::sync::mpsc::channel::<std::io::Result<axum::body::Bytes>>(8);
-    let (actions, writer) = (actions.clone(), crate::routes::actions::ChunkWriter::new(sender.clone()));
+    let lease = actions.admit().map_err(|_| ApiError::not_found())?;
+    let cancellation = actions.cancellation_token();
+    let writer = crate::routes::actions::ChunkWriter::new(sender.clone(), cancellation.clone());
     tokio::spawn(async move {
+        let _lease = lease;
         let mut zip = rbit_services::actions::downloads::ZipWriter::new(writer, mtime);
         for (name, task) in files {
             let log = match actions.raw_log(&ctx, task).await {
                 Ok(Some(log)) => log,
                 Ok(None) => continue,
-                Err(error) => return fail_archive(&sender, error.to_string()).await,
+                Err(error) => return fail_archive(&sender, error.to_string(), &cancellation).await,
             };
             let (file, gzip) = (log.file.into_std().await, log.gzip);
             let added = tokio::task::spawn_blocking(move || {
@@ -404,12 +407,12 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
             .await;
             zip = match added {
                 Ok((zip, Ok(()))) => zip,
-                Ok((_, Err(error))) => return fail_archive(&sender, error.to_string()).await,
-                Err(error) => return fail_archive(&sender, error.to_string()).await,
+                Ok((_, Err(error))) => return fail_archive(&sender, error.to_string(), &cancellation).await,
+                Err(error) => return fail_archive(&sender, error.to_string(), &cancellation).await,
             };
         }
         if let Ok(Err(error)) = tokio::task::spawn_blocking(move || zip.finish().map(drop)).await {
-            fail_archive(&sender, error.to_string()).await;
+            fail_archive(&sender, error.to_string(), &cancellation).await;
         }
     });
     let stream = futures_util::stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) });
@@ -425,9 +428,16 @@ pub async fn run_logs(State(state): State<AppState>, caller: Caller, Path(path):
 }
 
 /// Ends a log archive being sent with `error`, which the client sees as a broken download.
-async fn fail_archive(sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>, error: String) {
+async fn fail_archive(
+    sender: &tokio::sync::mpsc::Sender<std::io::Result<axum::body::Bytes>>,
+    error: String,
+    cancellation: &tokio_util::sync::CancellationToken,
+) {
     tracing::warn!(%error, "cannot send a run's log archive");
-    let _ = sender.send(Err(std::io::Error::other(error))).await;
+    tokio::select! {
+        () = cancellation.cancelled() => {},
+        _ = sender.send(Err(std::io::Error::other(error))) => {},
+    }
 }
 
 /// `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel`: `202 Accepted`; running jobs
@@ -716,8 +726,9 @@ pub async fn download_artifact(State(state): State<AppState>, caller: Caller, Pa
         .as_deref()
         .and_then(crate::routes::actions::ArtifactFormat::parse)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Artifacts download as …/zip or …/tar.gz"))?;
-    let (artifact, file) = actions(&state)?.open_artifact(&ctx, id).await?;
-    Ok(crate::routes::actions::artifact_download(&artifact, file, format))
+    let actions = actions(&state)?;
+    let (artifact, file) = actions.open_artifact(&ctx, id).await?;
+    Ok(crate::routes::actions::artifact_download(&actions, &artifact, file, format))
 }
 
 /// `DELETE /repos/{owner}/{repo}/actions/artifacts/{artifact_id}`: `204`; the file goes too.
@@ -878,7 +889,7 @@ pub async fn list_runners(
     let runners = actions.runners(user, owner.managed()).await?;
     let total = u64::try_from(runners.len()).unwrap_or(u64::MAX);
     let shown: Vec<_> = runners.into_iter().skip(pager.offset()).take(pager.limit()).collect();
-    let items = runners_json(actions, &shown).await?;
+    let items = runners_json(&actions, &shown).await?;
     Ok(wrapped("runners", pager.paged(items, Some(total), false)))
 }
 
@@ -893,7 +904,7 @@ pub async fn show_runner(State(state): State<AppState>, caller: Caller, Path(pat
     let owner = Owner::load(&state, &caller, &path).await?;
     let user = caller.require(TokenScope::Admin)?;
     let actions = actions(&state)?;
-    let runner = find_runner(actions, user, &owner, path.runner()?).await?;
+    let runner = find_runner(&actions, user, &owner, path.runner()?).await?;
     Ok(Json(runner_json(&runner, actions.runner_busy(runner.id).await?, Timestamp::now())))
 }
 

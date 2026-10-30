@@ -28,19 +28,21 @@ pub enum AdminSection {
     Settings,
     AuditLog,
     Configuration,
+    Plugins,
     // Actions: interface and secrets (U).
     /// Only on an instance with Actions: see [`AdminLink::needs_actions`].
     Runners,
 }
 
 impl AdminSection {
-    const ALL: [Self; 8] = [
+    const ALL: [Self; 9] = [
         Self::Dashboard,
         Self::Users,
         Self::Organizations,
         Self::Repositories,
         Self::Settings,
         Self::Configuration,
+        Self::Plugins,
         Self::AuditLog,
         Self::Runners,
     ];
@@ -54,6 +56,7 @@ impl AdminSection {
             Self::Settings => "Settings",
             Self::AuditLog => "Audit log",
             Self::Configuration => "Configuration",
+            Self::Plugins => "Plugins",
             Self::Runners => "Runners",
         }
     }
@@ -67,6 +70,7 @@ impl AdminSection {
             Self::Settings => "/admin/settings",
             Self::AuditLog => "/admin/audit",
             Self::Configuration => "/admin/configuration",
+            Self::Plugins => "/admin/plugins",
             Self::Runners => "/admin/runners",
         }
     }
@@ -786,6 +790,7 @@ mod tests {
         Page {
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

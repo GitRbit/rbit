@@ -20,7 +20,12 @@ use crate::{AccountId, RepoAccess, RepoId};
 
 // Actions: settings API.
 pub use rbit_actions_core::{DefaultTokenPermission, PermissionLevel, RunTrust, TokenPermissions, permissions, token_permissions};
+mod events;
+mod grant;
 pub mod records;
+
+pub use events::{JobAction, RunAction};
+pub use grant::TaskGrant;
 
 pub use records::{
     Artifact, BranchPolicy, CacheEntry, DeploymentReview, Environment, Job, LogState, RUNNER_ONLINE_SECONDS, RegistrationToken,

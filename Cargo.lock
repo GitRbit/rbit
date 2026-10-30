@@ -4181,6 +4181,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-actions"
+version = "0.1.5"
+dependencies = [
+ "aes-gcm",
+ "aho-corasick",
+ "axum",
+ "base64 0.23.1",
+ "flate2",
+ "getrandom 0.4.3",
+ "hmac",
+ "metrics",
+ "p256",
+ "percent-encoding",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-mail",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-services-base",
+ "rbit-storage",
+ "rbit-workflow",
+ "reqwest",
+ "rustls",
+ "same-file",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "ssh-key",
+ "subtle",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
 name = "rbit-actions-core"
 version = "0.1.5"
 dependencies = [
@@ -4357,11 +4400,42 @@ dependencies = [
 name = "rbit-services"
 version = "0.1.5"
 dependencies = [
- "aes-gcm",
- "aho-corasick",
  "axum",
  "base64 0.23.1",
- "flate2",
+ "getrandom 0.4.3",
+ "p256",
+ "rbit-actions",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-mail",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-services-base",
+ "rbit-storage",
+ "rbit-workflow",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "ssh-key",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
+name = "rbit-services-base"
+version = "0.1.5"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
  "getrandom 0.4.3",
  "hmac",
  "metrics",
@@ -4371,10 +4445,7 @@ dependencies = [
  "rbit-core",
  "rbit-git",
  "rbit-mail",
- "rbit-plugin-api",
- "rbit-plugin-runtime",
  "rbit-storage",
- "rbit-workflow",
  "reqwest",
  "rustls",
  "same-file",
@@ -4385,14 +4456,11 @@ dependencies = [
  "sqlx",
  "ssh-key",
  "subtle",
- "tar",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
- "zeroize",
- "zip",
 ]
 
 [[package]]
@@ -4461,6 +4529,7 @@ dependencies = [
  "brotli",
  "flate2",
  "futures-util",
+ "http-body",
  "metrics",
  "metrics-exporter-prometheus",
  "mime_guess",
@@ -4471,6 +4540,8 @@ dependencies = [
  "rbit-auth",
  "rbit-core",
  "rbit-git",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
  "rbit-services",
  "rbit-storage",
  "rbit-transport",

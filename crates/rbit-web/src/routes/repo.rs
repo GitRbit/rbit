@@ -119,12 +119,15 @@ impl RepoPage {
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());
         // Actions: interface and secrets (U). Only an instance with Actions asks the
         // repository whether it has them on, beside reading the refs.
+        #[cfg(feature = "actions")]
         let actions_on = async {
-            match &state.services.actions {
+            match state.services.actions.snapshot() {
                 Some(actions) => actions.enabled_for(ctx.repo.repo.id).await,
                 None => Ok(false),
             }
         };
+        #[cfg(not(feature = "actions"))]
+        let actions_on = async { Ok::<bool, ServiceError>(false) };
         let (refs, actions_on) = tokio::join!(ctx.reader.refs(), actions_on);
         let refs = refs.map_err(ServiceError::from)?;
         let forked_from = header.parent.map(|parent| ForkedFrom { url: format!("/{}", parent.full_name()), full_name: parent.full_name() });

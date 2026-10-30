@@ -1,42 +1,5 @@
-//! `workflow_run` and `workflow_job` webhooks (§4.11 of `docs/design/actions.md`).
-//!
-//! Every transition of a run's jobs ends in [`ActionsService::report_statuses`], which calls
-//! [`ActionsService::announce`] first: it compares what the run and each job show now with
-//! the action last announced for them (`announced` columns of `actions_runs` and
-//! `actions_jobs`) and publishes a [`DomainEvent::ActionsRun`] or
-//! [`DomainEvent::ActionsJob`] for each change. The compare-and-set in the store makes each
-//! action go out once, however many callers race. [`payload`] then builds GitHub's shapes
-//! (subsets) for [`crate::WebhookService::handle_event`]. The REST API returns runs and
-//! jobs with the same builders, [`workflow_run`] and [`workflow_job`], so the two never
-//! disagree.
-//!
-//! | Event | Action | When |
-//! |---|---|---|
-//! | `workflow_run` | `requested` | the run exists (again, after a re-run) and nothing runs yet |
-//! | `workflow_run` | `in_progress` | a job of it runs |
-//! | `workflow_run` | `completed` | it finished; `conclusion` says how |
-//! | `workflow_job` | `waiting` | its run awaits approval |
-//! | `workflow_job` | `queued` | it waits for a runner |
-//! | `workflow_job` | `in_progress` | a runner took it |
-//! | `workflow_job` | `completed` | it finished (skipped jobs too) |
-//!
-//! A job blocked on `needs` or a concurrency group is announced once it is queued. With
-//! Actions disabled there is no service, so nothing is announced and stored subscriptions
-//! never fire.
-//!
-//! The integration workstream (I) owns this file.
+//! Actions webhook and REST representations shared with the optional control plane.
 
-use std::collections::BTreeMap;
-
-use rbit_core::{
-    Account, AccountId, Timestamp,
-    actions::{Job, Run, RunEvent, RunId, Status, Step},
-    repository::OwnedRepository,
-    webhook::WebhookEvent,
-};
-use serde_json::{Value, json};
-
-use super::{ActionsService, statuses::job_url};
 use crate::{
     DomainEvent, ServiceContext, ServiceError,
     statuses::hooks::actions_bot,
@@ -45,69 +8,22 @@ use crate::{
         payloads::{account, repository, timestamp, with_organization},
     },
 };
+use rbit_core::{
+    Account, AccountId,
+    actions::{Job, JobId, Run, RunEvent, Status, Step},
+    repository::OwnedRepository,
+    webhook::WebhookEvent,
+};
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
-/// A `workflow_run` action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RunAction {
-    Requested,
-    InProgress,
-    Completed,
-}
-
-impl RunAction {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Requested => "requested",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-        }
-    }
-
-    /// What a run with `status` shows; `running` says whether a job of it runs.
-    pub const fn of(status: Status, running: bool) -> Self {
-        if status.is_done() {
-            Self::Completed
-        } else if running {
-            Self::InProgress
-        } else {
-            Self::Requested
-        }
-    }
-}
-
-/// A `workflow_job` action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum JobAction {
-    Waiting,
-    Queued,
-    InProgress,
-    Completed,
-}
-
-impl JobAction {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Waiting => "waiting",
-            Self::Queued => "queued",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-        }
-    }
-
-    /// What a job with `status` shows; `None` while it is blocked on `needs` or a group.
-    pub const fn of(status: Status) -> Option<Self> {
-        match status {
-            Status::AwaitingApproval => Some(Self::Waiting),
-            Status::Waiting => Some(Self::Queued),
-            Status::Running => Some(Self::InProgress),
-            Status::Blocked => None,
-            Status::Success | Status::Failure | Status::Cancelled | Status::Skipped => Some(Self::Completed),
-        }
-    }
+/// The job page linked by webhook and status representations.
+pub fn job_url(base_url: &str, repo: &OwnedRepository, run_number: i64, job: JobId) -> String {
+    format!("{base_url}/{}/actions/runs/{run_number}/jobs/{}", repo.full_name(), job.0)
 }
 
 /// GitHub's `status` field: `queued`, `waiting`, `in_progress` or `completed`.
-const fn github_status(status: Status) -> &'static str {
+pub const fn github_status(status: Status) -> &'static str {
     match status {
         Status::Waiting | Status::Blocked => "queued",
         Status::AwaitingApproval => "waiting",
@@ -117,74 +33,13 @@ const fn github_status(status: Status) -> &'static str {
 }
 
 /// GitHub's `conclusion` field, `null` until finished.
-const fn conclusion(status: Status) -> Option<&'static str> {
+pub const fn conclusion(status: Status) -> Option<&'static str> {
     match status {
         Status::Success => Some("success"),
         Status::Failure => Some("failure"),
         Status::Cancelled => Some("cancelled"),
         Status::Skipped => Some("skipped"),
         Status::Waiting | Status::Running | Status::Blocked | Status::AwaitingApproval => None,
-    }
-}
-
-impl ActionsService {
-    /// Publishes the `workflow_run` and `workflow_job` actions of run `id` that changed
-    /// since they were last announced.
-    pub async fn announce(&self, id: RunId) -> Result<(), ServiceError> {
-        let store = self.ctx().database.actions_runs();
-        let Some(run) = store.run(id).await? else { return Ok(()) };
-        let jobs = store.jobs(id).await?;
-        let running = jobs.iter().any(|job| job.status == Status::Running);
-        let action = RunAction::of(run.status, running);
-        // The run is requested before its jobs are announced, and completed after them.
-        if action != RunAction::Completed && store.announce_run(id, action.as_str()).await? {
-            self.ctx().events.publish(DomainEvent::ActionsRun { repo: run.repo_id, run: id, action });
-        }
-        for job in &jobs {
-            let Some(job_action) = JobAction::of(job.status) else { continue };
-            if store.announce_job(job.id, job_action.as_str()).await? {
-                self.ctx().events.publish(DomainEvent::ActionsJob { repo: run.repo_id, run: id, job: job.id, action: job_action });
-                record_job(job, job_action);
-            }
-        }
-        if action == RunAction::Completed {
-            // A run that finished without anyone seeing it start (a workflow error, or every
-            // job cancelled at once) is requested first, as GitHub always sends both.
-            if store.announce_run(id, RunAction::Requested.as_str()).await? {
-                self.ctx().events.publish(DomainEvent::ActionsRun { repo: run.repo_id, run: id, action: RunAction::Requested });
-            }
-            if store.announce_run(id, action.as_str()).await? {
-                self.ctx().events.publish(DomainEvent::ActionsRun { repo: run.repo_id, run: id, action });
-                // Actions: metrics.
-                let outcome = conclusion(run.status).unwrap_or("failure");
-                metrics::counter!("rbit_actions_runs_total", "event" => run.event.as_str(), "outcome" => outcome).increment(1);
-            }
-        }
-        Ok(())
-    }
-}
-
-// Actions: metrics.
-/// Records what `job` just did, announced once: the time it waited for a runner when one
-/// takes it, and its outcome and how long it ran when it finishes.
-fn record_job(job: &Job, action: JobAction) {
-    #[allow(clippy::cast_precision_loss)] // Seconds; precision beyond 2^53 of them is moot.
-    let seconds = |from: Timestamp, to: Timestamp| (to.seconds() - from.seconds()).max(0) as f64;
-    match action {
-        JobAction::InProgress => {
-            if let Some(started) = job.started_at {
-                let waited = seconds(job.queued_at.unwrap_or(job.created_at), started);
-                metrics::histogram!("rbit_actions_job_queue_seconds").record(waited);
-            }
-        }
-        JobAction::Completed => {
-            let outcome = conclusion(job.status).unwrap_or("failure");
-            metrics::counter!("rbit_actions_jobs_total", "outcome" => outcome).increment(1);
-            if let (Some(started), Some(finished)) = (job.started_at, job.finished_at) {
-                metrics::histogram!("rbit_actions_job_duration_seconds").record(seconds(started, finished));
-            }
-        }
-        JobAction::Waiting | JobAction::Queued => {}
     }
 }
 
@@ -336,6 +191,7 @@ pub fn workflow_job(job: &Job, run: &Run, repo: &OwnedRepository, steps: &[Step]
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rbit_core::actions::{JobAction, RunAction};
 
     #[test]
     fn actions_follow_the_status() {

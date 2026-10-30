@@ -62,7 +62,9 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::uploads::{ReceivedUpload, receive};
-use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
+use rbit_core::actions::TaskGrant;
+
+use crate::{DomainEvent, PushService, RepoContext, ServiceContext, ServiceError};
 
 // Actions: releases from workflows.
 /// Who makes or changes a release: a person, or a running workflow task with its token.

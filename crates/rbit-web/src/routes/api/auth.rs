@@ -31,8 +31,8 @@ use axum::{
     extract::{FromRequestParts, MatchedPath},
     http::{HeaderValue, Method, header, request::Parts},
 };
-use rbit_core::{RepoAccess, TokenScope, User};
-use rbit_services::{RepoContext, ServiceError, ThrottleScope, actions::tokens::TaskGrant};
+use rbit_core::{RepoAccess, TokenScope, User, actions::TaskGrant};
+use rbit_services::{RepoContext, ServiceError, ThrottleScope};
 
 use super::{
     ApiMethod, PREFIX,
@@ -77,6 +77,7 @@ impl TaskNeed {
     }
 
     /// Whether the endpoint changes the repository, which a task may only do to its own.
+    #[cfg(feature = "actions")]
     fn writes(self) -> bool {
         matches!(self, Self::ContentsWrite | Self::Comment)
     }
@@ -203,7 +204,8 @@ impl Caller {
     /// redirect to this endpoint under its current name.
     pub async fn open_repo(&self, state: &AppState, owner: &str, name: &str) -> ApiResult<RepoContext> {
         // Actions: S. A task: its own repository at its grant, others public and read-only.
-        if let (Some((grant, need)), Some(actions)) = (&self.task, &state.services.actions) {
+        #[cfg(feature = "actions")]
+        if let (Some((grant, need)), Some(actions)) = (&self.task, state.services.actions.snapshot()) {
             let ctx = if matches!(need, TaskNeed::Comment | TaskNeed::IssuesRead) {
                 actions.open_for_task_comment(grant, owner, name).await?
             } else {
@@ -213,6 +215,9 @@ impl Caller {
                 return Err(ApiError::forbidden("A workflow task may change only its own repository"));
             }
             return Ok(ctx);
+        }
+        if self.task.is_some() {
+            return Err(ApiError::unauthorized("Bad credentials"));
         }
         let repositories = &state.services.repositories;
         match repositories.open(self.user(), owner, name).await {
@@ -271,10 +276,13 @@ impl FromRequestParts<AppState> for Caller {
             // has its request budget, below.
             let address = format!("task:{address}");
             throttle.check_client_failures(ThrottleScope::ApiAuth, &address)?;
-            let grant = match &state.services.actions {
+            #[cfg(feature = "actions")]
+            let grant = match state.services.actions.snapshot() {
                 Some(actions) => actions.authenticate_task(token).await?,
                 None => None,
             };
+            #[cfg(not(feature = "actions"))]
+            let grant: Option<TaskGrant> = None;
             let Some(grant) = grant else {
                 throttle.record_client_failure(ThrottleScope::ApiAuth, &address);
                 return Err(ApiError::unauthorized("Bad credentials"));
@@ -325,6 +333,7 @@ mod tests {
     // Actions: S.
     /// §11.3: every route of the table either is on the task allowlist or refuses tasks, and
     /// the allowlist names only routes that exist; the dangerous ones are not on it.
+    #[cfg(feature = "actions")]
     #[test]
     fn the_task_allowlist_names_only_routes_of_the_table() {
         let mut config = rbit_core::Config::default();

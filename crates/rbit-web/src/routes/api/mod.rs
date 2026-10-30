@@ -43,7 +43,9 @@ mod test_support;
 // Milestone 3: commit statuses (S).
 mod statuses;
 // Actions: integration (I).
+#[cfg(feature = "actions")]
 mod actions;
+#[cfg(feature = "actions")]
 mod environments;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
@@ -148,7 +150,7 @@ fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> A
 }
 
 /// Every endpoint of the API under `config`.
-pub fn table(config: &Config) -> Vec<ApiRoute> {
+pub fn table(_config: &Config) -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
     let mut routes = vec![
         route(Get, "/version", accounts::version),
@@ -202,7 +204,8 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     // Milestone 3: commit statuses (S).
     routes.extend(statuses::routes());
     // Actions: foundation (F). Only when Actions is enabled.
-    if config.actions.enabled {
+    #[cfg(feature = "actions")]
+    if _config.actions.enabled {
         routes.extend(actions_routes());
     }
     routes
@@ -210,6 +213,7 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
 
 /// The Actions endpoints (served only when Actions is enabled). The integration workstream
 /// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
+#[cfg(feature = "actions")]
 fn actions_routes() -> Vec<ApiRoute> {
     // Actions: integration (I).
     let mut routes = actions::routes();
@@ -220,6 +224,7 @@ fn actions_routes() -> Vec<ApiRoute> {
 
 /// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
 // Actions: integration (I).
+#[cfg(feature = "actions")]
 const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
     ("actions", include_str!("openapi/actions.json")),
     ("environments", include_str!("openapi/environments.json")),
@@ -229,6 +234,9 @@ const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
+#[cfg(not(feature = "actions"))]
+const ACTIONS_FRAGMENTS: [(&str, &str); 0] = [];
+
 const FRAGMENTS: [(&str, &str); 9] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
@@ -273,7 +281,9 @@ fn merged_document(actions: bool) -> (Value, Vec<String>) {
 }
 
 pub fn routes(config: &Config) -> Router<AppState> {
-    let (streaming, buffered): (Vec<_>, Vec<_>) = table(config).into_iter().partition(|entry| entry.streaming);
+    let mut mounted = config.clone();
+    mounted.actions.enabled = cfg!(feature = "actions");
+    let (streaming, buffered): (Vec<_>, Vec<_>) = table(&mounted).into_iter().partition(|entry| entry.streaming);
     let mut router = Router::new();
     for entry in buffered {
         if let Some(handler) = entry.handler {
@@ -304,7 +314,7 @@ pub fn routes(config: &Config) -> Router<AppState> {
 
 /// `GET /openapi.json`
 async fn openapi(State(state): State<AppState>, _caller: Caller) -> impl IntoResponse {
-    let document = if state.config.actions.enabled { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
+    let document = if state.services.actions.is_some() { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
     ([(header::CONTENT_TYPE, "application/json")], document)
 }
 
@@ -491,4 +501,9 @@ mod tests {
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
         }
     }
+}
+
+#[cfg(feature = "actions")]
+pub(super) fn actions_paths() -> Vec<String> {
+    actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()
 }

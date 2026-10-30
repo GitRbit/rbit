@@ -1,0 +1,25 @@
+{% extends "admin/layout.html" %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+<h2 class="text-xl font-semibold tracking-tight">Plugins</h2>
+<p class="mt-1 text-[13px] text-ink-muted">Manage optional features without restarting Rbit.</p>
+{% if let Some(error) = error %}<p class="mt-4 text-[13px]" role="alert">{{ error }}</p>{% endif %}
+<section class="box mt-6" aria-labelledby="actions-plugin-title">
+  <div class="flex flex-wrap items-start justify-between gap-4 p-4">
+    <div class="min-w-0">
+      <h3 id="actions-plugin-title" class="font-medium">Actions</h3>
+      <p class="mt-1 text-[13px] text-ink-muted">Workflows, runners, logs and artifacts.</p>
+      <p class="mt-2 text-xs text-ink-muted">{{ status }}</p>
+      {% if let Some(generation) = generation %}<details class="mt-2 text-xs text-ink-muted"><summary>Diagnostics</summary><p class="mt-1">Activation {{ generation }}</p></details>{% endif %}
+      {% if !available %}<p class="mt-2 text-[13px] text-ink-muted">This build does not include Actions. Install a build with Actions support to enable it.</p>{% endif %}
+    </div>
+    {% if available %}
+    <form method="post" action="/admin/plugins/actions" hx-boost="false">
+      <input type="hidden" name="enabled" value="{% if active || retry_disable %}false{% else %}true{% endif %}">
+      <button {% if busy %}disabled{% endif %} class="btn {% if active %}btn-ghost{% else %}btn-primary{% endif %}" type="submit">{% if busy %}Changing Actions{% else if retry_disable %}Retry disabling Actions{% else if active %}Disable Actions{% else %}Enable Actions{% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if available %}<p class="border-t border-line px-4 py-3 text-xs text-ink-muted">Disabling Actions stops new work, cancels active jobs and keeps stored history and repository settings.</p>{% endif %}
+</section>
+{% endblock %}

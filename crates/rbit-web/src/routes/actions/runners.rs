@@ -44,8 +44,8 @@ use crate::{
 /// Most registration tokens listed (newest first).
 const LISTED_TOKENS: usize = 20;
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or(WebError::NotFound)
+fn actions(state: &AppState) -> WebResult<ActionsService> {
+    state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
 /// Forbidden reads like a page that does not exist.

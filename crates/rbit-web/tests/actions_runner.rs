@@ -69,8 +69,8 @@ impl Fixture {
         Self { _directory: directory, services, database, router, alice }
     }
 
-    pub fn actions(&self) -> &ActionsService {
-        self.services.actions.as_ref().unwrap()
+    pub fn actions(&self) -> ActionsService {
+        self.services.actions.snapshot().unwrap()
     }
 
     pub async fn repo(&self) -> RepoContext {

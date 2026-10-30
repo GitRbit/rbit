@@ -4,7 +4,7 @@
 //! [actions]
 //! # CI/CD with rbit-runner. Off by default; when off, Actions is fully
 //! # absent: no pages, no runner endpoint, no background work, workflow files are ignored.
-//! # Changing it needs a restart.
+//! # Startup default; administrator Plugins controls persist a runtime override.
 //! enabled = false
 //! # Turn Actions on for repositories created from now on (existing ones keep their setting).
 //! enable_for_new_repositories = false
@@ -46,9 +46,9 @@
 //! max_polls = 1024
 //! ```
 //!
-//! The switch is read once at start-up: with `enabled = false` the Actions service is never
-//! constructed, so nothing is written under the host Actions directory or to any
-//! `actions_*` table. Repositories are then switched on one by one in their settings.
+//! This is the startup default until an administrator saves runtime intent through Plugins.
+//! Explicit runtime intent survives restarts and overrides this default. Other configuration
+//! changes still require restart. Repositories are switched on individually in their settings.
 //!
 //! The Actions foundation (workstream F of `docs/design/actions.md`) owns this file.
 
@@ -69,7 +69,7 @@ pub const EVALUATION_CONCURRENCY: std::ops::RangeInclusive<usize> = 1..=16;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ActionsConfig {
-    /// Run Actions at all. Read once at start-up; a change needs a restart.
+    /// Startup default, overridden by persisted administrator plugin intent.
     pub enabled: bool,
     /// Default of the per-repository switch for repositories created from now on.
     pub enable_for_new_repositories: bool,

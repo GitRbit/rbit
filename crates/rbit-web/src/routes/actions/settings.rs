@@ -45,8 +45,8 @@ use crate::{
     },
 };
 
-pub(super) fn actions(state: &AppState) -> WebResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or(WebError::NotFound)
+pub(super) fn actions(state: &AppState) -> WebResult<ActionsService> {
+    state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
 /// `?done=` after a form's redirect.
@@ -205,7 +205,7 @@ async fn repo_page(state: &AppState, loaded: &RepoPage, page: Page, notice: Opti
     let settings = actions.repo_settings(&loaded.ctx).await?;
     let base = format!("{}/settings", loaded.urls.home());
     let action_url = format!("{base}/actions");
-    let (secrets, variables) = sections(actions, target, format!("{action_url}/secrets"), format!("{action_url}/variables")).await?;
+    let (secrets, variables) = sections(&actions, target, format!("{action_url}/secrets"), format!("{action_url}/variables")).await?;
     Ok(RepoActionsSettingsPage {
         page: page.titled(format!("Actions · Settings · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(state, "settings"),
@@ -309,9 +309,9 @@ async fn repository_entry(
     let actions = actions(state)?;
     let target = ActionsTarget::Repository(&loaded.ctx);
     let result = if form.kind == "variable" {
-        apply_variable(actions, user, target, form).await
+        apply_variable(&actions, user, target, form).await
     } else {
-        apply_secret(actions, user, target, form).await
+        apply_secret(&actions, user, target, form).await
     };
     match result {
         Ok(notice) => Ok(done(&format!("{}/settings/actions", loaded.urls.home()), notice)),
@@ -355,7 +355,7 @@ async fn managed_org(state: &AppState, user: &User, owner: &str) -> WebResult<Or
 
 async fn org_page(state: &AppState, ctx: &OrgContext, page: Page, notice: Option<Notice>) -> WebResult<OrgActionsSettingsPage> {
     let url = format!("/{}/settings/actions", ctx.org.name());
-    let (secrets, variables) = sections(actions(state)?, ActionsTarget::Organization(ctx), url.clone(), url).await?;
+    let (secrets, variables) = sections(&actions(state)?, ActionsTarget::Organization(ctx), url.clone(), url).await?;
     Ok(OrgActionsSettingsPage {
         page: page.titled(format!("Actions · Settings · {}", ctx.org.label())),
         header: OrgHeader::new(ctx, OrgTab::Settings),
@@ -388,7 +388,7 @@ pub async fn save_organization(
 ) -> WebResult<Response> {
     let ctx = managed_org(&state, &user, &owner).await?;
     let form = EntryForm::parse(pairs);
-    match apply(actions(&state)?, &user, ActionsTarget::Organization(&ctx), &form).await {
+    match apply(&actions(&state)?, &user, ActionsTarget::Organization(&ctx), &form).await {
         Ok(notice) => Ok(done(&format!("/{}/settings/actions", ctx.org.name()), notice)),
         Err(ServiceError::Invalid(message)) => {
             let mut settings = org_page(&state, &ctx, page, None).await?;
@@ -414,7 +414,7 @@ const PERSONAL_URL: &str = SettingsSection::Actions.url();
 
 async fn user_page(state: &AppState, user: &User, page: Page, notice: Option<Notice>) -> WebResult<UserActionsSettingsPage> {
     let (secrets, variables) =
-        sections(actions(state)?, ActionsTarget::User(user), PERSONAL_URL.to_owned(), PERSONAL_URL.to_owned()).await?;
+        sections(&actions(state)?, ActionsTarget::User(user), PERSONAL_URL.to_owned(), PERSONAL_URL.to_owned()).await?;
     Ok(UserActionsSettingsPage {
         page: page.titled("Actions"),
         settings_nav: SettingsSection::Actions.nav(),
@@ -443,7 +443,7 @@ pub async fn save_personal(
     Form(pairs): Form<Vec<(String, String)>>,
 ) -> WebResult<Response> {
     let form = EntryForm::parse(pairs);
-    match apply(actions(&state)?, &user, ActionsTarget::User(&user), &form).await {
+    match apply(&actions(&state)?, &user, ActionsTarget::User(&user), &form).await {
         Ok(notice) => Ok(done(PERSONAL_URL, notice)),
         Err(ServiceError::Invalid(message)) => {
             let mut settings = user_page(&state, &user, page, None).await?;

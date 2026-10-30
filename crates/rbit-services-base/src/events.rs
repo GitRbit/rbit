@@ -112,9 +112,9 @@ pub enum DomainEvent {
     // Actions: integration (I).
     /// A workflow run was requested, started or completed. Published by
     /// `ActionsService::announce`, once per action.
-    ActionsRun { repo: RepoId, run: rbit_core::actions::RunId, action: crate::actions::hooks::RunAction },
+    ActionsRun { repo: RepoId, run: rbit_core::actions::RunId, action: rbit_core::actions::RunAction },
     /// A job of a workflow run waits for approval, was queued, started or completed.
-    ActionsJob { repo: RepoId, run: rbit_core::actions::RunId, job: rbit_core::actions::JobId, action: crate::actions::hooks::JobAction },
+    ActionsJob { repo: RepoId, run: rbit_core::actions::RunId, job: rbit_core::actions::JobId, action: rbit_core::actions::JobAction },
 }
 
 /// What happened to a collaborator ([`DomainEvent::CollaboratorChanged`]).

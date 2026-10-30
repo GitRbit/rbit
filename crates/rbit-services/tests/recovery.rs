@@ -88,6 +88,7 @@ impl Fixture {
             kv,
             repositories: RepositoryStorage::new(config.storage.repositories_dir()),
             events: services.events.clone(),
+            actions_availability: services.actions_availability.clone(),
         };
         let outbox = MemoryMailer::new();
         let throttle = RecordingThrottle::default();

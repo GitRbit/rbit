@@ -31,8 +31,8 @@ use std::{
 
 use rbit_auth::TaskTokenSecret;
 use rbit_core::{
-    RefUpdate, RepoAccess, RepoId,
-    actions::{JobId, PermissionLevel, RunId, RunTrust, TaskId, TokenPermissions, token_permissions},
+    RefUpdate, RepoAccess,
+    actions::{RunTrust, TokenPermissions, token_permissions},
     protection::Refusal,
 };
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
@@ -46,55 +46,15 @@ pub const WORKFLOW_DIRECTORIES: [&str; 3] = super::triggers::WORKFLOW_DIRS;
 /// The largest push a task may make, spooled to disk before git sees it.
 pub const MAX_TASK_PUSH_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-/// What a running task's token grants, decided when it is presented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TaskGrant {
-    pub task: TaskId,
-    pub job: JobId,
-    pub run: RunId,
-    /// The task's own repository: the only one it may write to.
-    pub repo: RepoId,
-    pub permissions: TokenPermissions,
-}
-
-impl TaskGrant {
-    /// Access to its own repository's contents (Git, LFS, releases).
-    pub fn contents(&self) -> RepoAccess {
-        match self.permissions.contents {
-            PermissionLevel::None => RepoAccess::None,
-            PermissionLevel::Read => RepoAccess::Read,
-            PermissionLevel::Write => RepoAccess::Write,
-        }
-    }
-
-    /// Whether it may comment on some of its own repository's threads: an endpoint that
-    /// comments asks no less of a task's token.
-    pub fn can_comment(&self) -> bool {
-        self.permissions.issues == PermissionLevel::Write || self.permissions.pull_requests == PermissionLevel::Write
-    }
-
-    // Actions: task tokens.
-    /// Whether it may read issues and pull requests and their comments: `issues` or
-    /// `pull-requests` at `read` or more.
-    pub fn can_read_issues(&self) -> bool {
-        self.permissions.issues >= PermissionLevel::Read || self.permissions.pull_requests >= PermissionLevel::Read
-    }
-
-    // Actions: task tokens.
-    /// Whether it may comment on a thread of `kind`: an issue needs `issues: write`, a pull
-    /// request `pull-requests: write` or `issues: write` (its conversation is an issue's).
-    pub fn can_comment_on(&self, kind: rbit_core::IssueKind) -> bool {
-        match kind {
-            rbit_core::IssueKind::Issue => self.permissions.issues == PermissionLevel::Write,
-            rbit_core::IssueKind::Pull => self.can_comment(),
-        }
-    }
-}
+pub use rbit_core::actions::TaskGrant;
 
 impl ActionsService {
     /// The grant of a presented task token, or `None` when it is malformed, unknown, its
     /// task stopped, its repository is gone or has Actions switched off.
     pub async fn authenticate_task(&self, secret: &str) -> Result<Option<TaskGrant>, ServiceError> {
+        if !self.is_active() {
+            return Ok(None);
+        }
         let Some(token) = TaskTokenSecret::parse(secret) else { return Ok(None) };
         let database = &self.ctx().database;
         let Some((task, job)) = database.actions_runs().running_task_by_token(&token.digest()).await? else { return Ok(None) };
@@ -308,6 +268,10 @@ pub(super) fn random_name() -> Result<String, ServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rbit_core::{
+        RepoId,
+        actions::{JobId, PermissionLevel, RunId, TaskId},
+    };
 
     fn grant(contents: PermissionLevel, issues: PermissionLevel) -> TaskGrant {
         TaskGrant {

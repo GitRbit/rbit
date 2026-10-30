@@ -40,7 +40,9 @@ use rbit_core::{
 };
 use rbit_git::GitError;
 
-use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError, actions::tokens::TaskGrant};
+use rbit_core::actions::TaskGrant;
+
+use crate::{DomainEvent, RepoContext, ServiceContext, ServiceError};
 
 /// A commit and context that already have [`MAX_STATUSES_PER_CONTEXT`] statuses.
 fn at_cap() -> ServiceError {
@@ -87,7 +89,8 @@ pub struct StatusService {
 }
 
 impl StatusService {
-    pub(crate) fn new(ctx: ServiceContext) -> Self {
+    /// Creates a status service using the trusted host infrastructure.
+    pub fn new(ctx: ServiceContext) -> Self {
         Self { ctx }
     }
 
@@ -170,12 +173,7 @@ impl StatusService {
     /// Records `report` on commit `sha` (a full id of `repo`, not checked) as rbit Actions:
     /// no creator and no permission check — the caller is the Actions service reporting its
     /// own jobs. `None` when the commit already has the most statuses one context may have.
-    pub(crate) async fn create_as_system(
-        &self,
-        repo: RepoId,
-        sha: &str,
-        report: &StatusReport,
-    ) -> Result<Option<CommitStatus>, ServiceError> {
+    pub async fn create_as_system(&self, repo: RepoId, sha: &str, report: &StatusReport) -> Result<Option<CommitStatus>, ServiceError> {
         let store = self.ctx.database.commit_statuses();
         let Some(status) = store.create_as_system(repo, sha, report, MAX_STATUSES_PER_CONTEXT).await? else {
             tracing::warn!(repo = repo.0, sha, context = %report.context.as_str(), "commit status cap reached; Actions status dropped");

@@ -80,7 +80,7 @@ use std::{
 
 use rbit_core::config::ActionsConfig;
 use rbit_plugin_api::Generation;
-use rbit_plugin_runtime::{DrainError, PluginScope};
+use rbit_plugin_runtime::{AdmissionError, DrainError, OperationLease, PluginScope};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
@@ -134,12 +134,20 @@ impl ActionsService {
         if !ctx.config.actions.enabled {
             return None;
         }
+        ctx.actions_availability.set_enabled(true);
+        Some(Self::with_scope(ctx, PluginScope::new(Generation::INITIAL)))
+    }
+
+    /// Constructs a staged activation using the host's generation, independently of the
+    /// startup default. The host publishes it only after activation has succeeded.
+    pub fn with_scope(ctx: ServiceContext, scope: PluginScope) -> Self {
         let evaluations = Arc::new(Semaphore::new(ctx.config.actions.evaluation_concurrency));
-        Some(Self {
+        let shutdown = scope.cancellation_token();
+        Self {
             inner: Arc::new(Inner {
                 ctx,
-                shutdown: CancellationToken::new(),
-                scope: PluginScope::new(Generation::INITIAL),
+                shutdown,
+                scope,
                 started: AtomicBool::new(false),
                 tasks_version: AtomicI64::new(initial_tasks_version()),
                 evaluations,
@@ -155,7 +163,27 @@ impl ActionsService {
                 masks: std::sync::Mutex::default(),
                 log_locks: std::sync::Mutex::default(),
             }),
-        })
+        }
+    }
+
+    /// Admits a request for this generation. Keep the lease until its response body or
+    /// final mutation completes; retained clones cannot enter a quiesced generation.
+    pub fn admit(&self) -> Result<OperationLease, AdmissionError> {
+        self.inner.scope.try_acquire(self.inner.scope.generation())
+    }
+
+    pub fn is_active(&self) -> bool {
+        !self.inner.scope.is_closed()
+    }
+
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.inner.shutdown.child_token()
+    }
+
+    /// Stops admitting requests and wakes pollers/background loops synchronously.
+    pub fn quiesce(&self) {
+        self.inner.scope.quiesce();
+        self.inner.shutdown.cancel();
     }
 
     /// Starts the subscriber, the schedule ticker and the sweeper. Call once, after start-up.
@@ -192,9 +220,26 @@ impl ActionsService {
     /// A timeout leaves surviving work tracked and admission closed. Runtime lifecycle
     /// callers must preserve this failure instead of claiming successful disposal.
     pub async fn stop_background(&self) -> Result<(), DrainError> {
-        self.inner.scope.quiesce();
-        self.inner.shutdown.cancel();
+        self.quiesce();
         self.inner.scope.dispose(SHUTDOWN_GRACE).await
+    }
+
+    /// Cancels persisted work only after every admitted operation has drained. Reports
+    /// terminal statuses directly without releasing held concurrency groups.
+    pub async fn cancel_unfinished(&self) -> Result<(), crate::ServiceError> {
+        let store = self.ctx().database.actions_runs();
+        store.queue_plugin_revocations().await?;
+        store.revoke_all_task_tokens().await?;
+        for (repo, run) in store.pending_plugin_revocations().await? {
+            let now = rbit_core::Timestamp::now();
+            store.cancel_run(repo, run, now).await?;
+            store.terminalize_plugin_tasks(run, now).await?;
+            self.report_statuses(run).await?;
+            store.complete_plugin_revocation(run).await?;
+        }
+        metrics::gauge!("rbit_actions_jobs_waiting").set(0.0);
+        metrics::gauge!("rbit_actions_runners_online").set(0.0);
+        Ok(())
     }
 
     /// Background tasks running now (the disabled-is-disabled tests count them).

@@ -202,3 +202,14 @@ async fn abandoning_disposal_does_not_reopen_the_generation() {
     scope.dispose(Duration::from_secs(1)).await.unwrap();
     task.await.unwrap();
 }
+
+#[tokio::test]
+async fn external_cancellation_tokens_cannot_close_the_generation() {
+    let scope = PluginScope::new(generation(1));
+    scope.cancellation_token().cancel();
+    assert!(!scope.is_closed());
+    let observer = scope.cancellation_token();
+    scope.quiesce();
+    assert!(observer.is_cancelled());
+    scope.dispose(Duration::ZERO).await.unwrap();
+}
