@@ -72,6 +72,14 @@ particular, a task that captures its own scope can keep it alive: retain the pro
 cancellation token instead. Independently terminated workers and capability enforcement
 are separate implementation stages.
 
+## Persisted intent and recovery
+
+The host storage layer provides `PluginSettingsStore` and migration `0060` for explicit
+plugin enablement intent and pending credential revocation. Recording an enable request
+preserves an unfinished disable marker; the host must complete revocation and reconcile
+unfinished work before clearing that marker. The embedded controller does not yet wire
+these records into runtime administration or startup reconciliation.
+
 ## Actions integration
 
 All subscriber, schedule, sweeper, secrets initialization and trigger-spawned background

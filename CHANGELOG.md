@@ -73,6 +73,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
+- Migration `0060` adds host-owned plugin settings and pending revocation markers, plus
+  an index for reconciling unfinished Actions runs during future runtime disablement.
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
   and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
