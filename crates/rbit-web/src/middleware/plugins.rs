@@ -29,24 +29,37 @@ fn task_credential(request: &Request) -> bool {
     rbit_core::actions::looks_like_task_token(login) || rbit_core::actions::looks_like_task_token(password)
 }
 
-fn refused(task: bool, request: &Request) -> Response {
+fn with_revision(mut response: Response, revision: u64) -> Response {
+    if let Ok(value) = revision.to_string().parse() {
+        response.headers_mut().insert("rbit-plugin-revision", value);
+    }
+    response
+}
+
+fn refused(task: bool, request: &Request, revision: u64) -> Response {
     // These two-segment paths otherwise match the host's GET-only repository route.
     // Preserve its method-not-allowed behavior while optional routes are absent.
     if !task
         && !matches!(*request.method(), axum::http::Method::GET | axum::http::Method::HEAD)
         && matches!(request.uri().path(), "/admin/runners" | "/settings/actions")
     {
-        return (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET,HEAD"), (header::CACHE_CONTROL, "no-store")]).into_response();
+        return with_revision(
+            (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET,HEAD"), (header::CACHE_CONTROL, "no-store")]).into_response(),
+            revision,
+        );
     }
     let status = if task { StatusCode::UNAUTHORIZED } else { StatusCode::NOT_FOUND };
-    (status, [(header::CACHE_CONTROL, "no-store"), (header::X_CONTENT_TYPE_OPTIONS, "nosniff")]).into_response()
+    with_revision((status, [(header::CACHE_CONTROL, "no-store"), (header::X_CONTENT_TYPE_OPTIONS, "nosniff")]).into_response(), revision)
 }
 
 /// A plugin request owns admission until its response body completes or is dropped.
 pub async fn plugin_admission(State(state): State<AppState>, request: Request, next: Next) -> Response {
     // Padding cannot bypass classification and then be trimmed by an authenticator.
     if request.headers().get(header::AUTHORIZATION).is_some_and(|value| value.as_bytes().len() > 4096) {
-        return (StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")]).into_response();
+        return with_revision(
+            (StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")]).into_response(),
+            state.services.plugin_revision(),
+        );
     }
     let task = task_credential(&request);
     #[cfg(feature = "actions")]
@@ -55,15 +68,15 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
 
     #[cfg(feature = "actions")]
     let admitted = if dedicated || task {
-        let Some(actions) = state.services.actions.snapshot() else { return refused(task, &request) };
-        let Ok(lease) = actions.admit() else { return refused(task, &request) };
+        let Some(actions) = state.services.actions.snapshot() else { return refused(task, &request, state.services.plugin_revision()) };
+        let Ok(lease) = actions.admit() else { return refused(task, &request, state.services.plugin_revision()) };
         Some((lease, actions.cancellation_token()))
     } else {
         None
     };
     #[cfg(not(feature = "actions"))]
     if task {
-        return refused(true, &request);
+        return refused(true, &request, state.services.plugin_revision());
     }
 
     #[cfg(feature = "actions")]
@@ -93,11 +106,9 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
         let mut refresh = axum::response::Redirect::temporary(&target.to_string()).into_response();
         refresh.headers_mut().insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
         refresh.headers_mut().insert("hx-refresh", axum::http::HeaderValue::from_static("true"));
-        return refresh;
+        return with_revision(refresh, current_revision);
     }
-    if let Ok(value) = revision.to_string().parse() {
-        response.headers_mut().insert("rbit-plugin-revision", value);
-    }
+    response = with_revision(response, revision);
     #[cfg(feature = "actions")]
     if let Some((lease, cancellation)) = admitted {
         let (parts, body) = response.into_parts();
