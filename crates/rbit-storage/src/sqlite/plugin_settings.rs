@@ -22,13 +22,7 @@ impl PluginSettingsStore {
     }
 
     /// Records intent before lifecycle work. Enabling never clears incomplete revocation.
-    pub async fn set_desired_enabled(
-        &self,
-        id: &str,
-        enabled: bool,
-        actor: Option<AccountId>,
-        now: Timestamp,
-    ) -> Result<(), StorageError> {
+    pub async fn set_desired_enabled(&self, id: &str, enabled: bool, actor: Option<AccountId>, now: Timestamp) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO plugin_settings (plugin_id, enabled, revocation_pending, updated_by, updated_at) \
              VALUES (?1, ?2, NOT ?2, ?3, ?4) ON CONFLICT(plugin_id) DO UPDATE SET \
@@ -55,10 +49,7 @@ impl PluginSettingsStore {
 
     /// Called only after task credentials and unfinished work have been reconciled.
     pub async fn complete_disable(&self, id: &str) -> Result<(), StorageError> {
-        sqlx::query("UPDATE plugin_settings SET revocation_pending = 0 WHERE plugin_id = ?")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query("UPDATE plugin_settings SET revocation_pending = 0 WHERE plugin_id = ?").bind(id).execute(&self.pool).await?;
         Ok(())
     }
 }

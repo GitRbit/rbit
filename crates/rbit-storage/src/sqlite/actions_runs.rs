@@ -614,9 +614,8 @@ impl ActionsRunStore {
 
     /// All unfinished runs, used after request admission has closed during plugin disable.
     pub async fn unfinished_all(&self) -> Result<Vec<(RepoId, RunId)>, StorageError> {
-        let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT repo_id, id FROM actions_runs WHERE status IN (5, 6, 7, 8) ORDER BY id")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT repo_id, id FROM actions_runs WHERE status IN (5, 6, 7, 8) ORDER BY id").fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(|(repo, run)| (RepoId(repo), RunId(run))).collect())
     }
 
