@@ -24,6 +24,20 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  plugin-core:
+    name: Plugin core contracts and lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: plugin-core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # These contracts and lifecycle primitives must build without forge assets, a
+      # database, or the web application. The full workspace jobs still run below.
+      - run: cargo test --locked -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-runtime
+
   lint:
     name: Format and clippy
     runs-on: ubuntu-latest

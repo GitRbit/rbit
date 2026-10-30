@@ -208,8 +208,8 @@ mod tests {
     fn empty_collections_have_explicit_defaults() {
         let manifest: PluginManifest =
             serde_json::from_value(json!({ "id":"example.minimal", "version":"1.0.0", "host_api":"1" })).unwrap();
-        assert!(manifest.requires.is_empty());
-        assert!(manifest.provides.is_empty());
-        assert!(manifest.capabilities.is_empty());
+        assert_eq!(manifest.requires, Vec::<ServiceDependency>::new());
+        assert_eq!(manifest.provides, Vec::<ServiceProvided>::new());
+        assert_eq!(manifest.capabilities, Vec::<CapabilityId>::new());
     }
 }

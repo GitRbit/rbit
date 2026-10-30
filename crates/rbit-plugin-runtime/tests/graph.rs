@@ -33,7 +33,7 @@ fn installed(manifests: Vec<PluginManifest>) -> BTreeMap<PluginId, PluginManifes
 #[test]
 fn empty_registry_resolves() {
     let resolved = resolve(&BTreeMap::new(), &BTreeSet::new()).unwrap();
-    assert!(resolved.activation_order.is_empty());
+    assert_eq!(resolved.activation_order, Vec::<PluginId>::new());
     assert!(resolved.waiting.is_empty());
     assert!(resolved.dependencies.is_empty());
 }
