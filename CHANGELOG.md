@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Live administration monitoring: theme-aware request-rate and response-time charts,
+  HTTP response and Git activity tables, five-second updates, and pause/resume controls.
+  Five minutes of process-local history stay in bounded memory without a chart library.
+- A themed **Restart server** action beside the administration dashboard heading, with
+  administrator-only confirmation, audit logging, graceful shutdown and automatic reconnection.
 - `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
   logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
 - `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with

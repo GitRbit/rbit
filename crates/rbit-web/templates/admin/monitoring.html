@@ -1,0 +1,43 @@
+<div data-monitoring-snapshot>
+  <div class="monitor-summary">
+    <div><p class="monitor-label">Requests in window</p><p class="monitor-number">{{ requests }}</p></div>
+    <div><p class="monitor-label">Server error rate</p><p class="monitor-number">{{ errors }}</p></div>
+    <div><p class="monitor-label">Process uptime</p><p class="monitor-uptime">{{ uptime }}</p></div>
+  </div>
+  <div class="monitor-charts">
+    {% for chart in charts %}
+    <figure class="monitor-chart">
+      <figcaption><span>{{ chart.title }}</span><span class="monitor-chart-value">{{ chart.value }} <small>{{ chart.unit }}</small></span></figcaption>
+      <div class="monitor-scale"><span>{{ chart.ceiling }} {{ chart.unit }}</span><span>5-second samples</span></div>
+      <svg viewBox="0 0 600 140" role="img" aria-label="{{ chart.title }} over the last five minutes. Latest: {{ chart.value }} {{ chart.unit }}. No requests leave gaps in response time.">
+        <path class="monitor-grid" d="M10 15H590 M10 70H590 M10 125H590"/>
+        <path class="monitor-line" d="{{ chart.path }}"/>
+        {% if chart.has_point %}<circle class="monitor-point" cx="{{ chart.last_x }}" cy="{{ chart.last_y }}" r="3"/>{% endif %}
+      </svg>
+      <div class="monitor-scale"><span>5 minutes ago</span><span>Latest sample</span></div>
+    </figure>
+    {% endfor %}
+  </div>
+  {% if !ready %}<p class="monitor-note">Collecting the first sample. Charts begin after five seconds.</p>{% endif %}
+  <div class="monitor-tables">
+    <div class="min-w-0">
+      <table class="monitor-table">
+        <caption>HTTP responses <span>Current window</span></caption>
+        <thead><tr><th scope="col">Status</th><th scope="col">Requests</th><th scope="col">Share</th></tr></thead>
+        <tbody>{% for row in responses %}<tr>
+          <th scope="row"><span class="font-mono">{{ row.label }}</span> <span class="monitor-meaning">{{ row.meaning }}</span></th>
+          <td>{{ row.count }}</td><td><span class="monitor-share"><svg viewBox="0 0 100 4" aria-hidden="true"><rect class="monitor-bar-track" width="100" height="4" rx="2"/><rect class="monitor-bar" width="{{ row.width }}" height="4" rx="2"/></svg>{{ row.share }}</span></td>
+        </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="min-w-0">
+      <table class="monitor-table">
+        <caption>Git activity <span>Current window</span></caption>
+        <thead><tr><th scope="col">Operation</th><th scope="col">Exchanges</th></tr></thead>
+        <tbody><tr><th scope="row">Clone / fetch</th><td>{{ git[0] }}</td></tr><tr><th scope="row">Push</th><td>{{ git[1] }}</td></tr></tbody>
+      </table>
+      <p class="monitor-note">Smart HTTP exchanges, including failures. SSH and reference advertisements are excluded. Response time measures time to headers; streamed transfers may continue.</p>
+    </div>
+  </div>
+  <p class="monitor-footnote">{{ updated }} · {{ coverage }} · This process only; history resets on restart. Monitoring requests are excluded.</p>
+</div>

@@ -10,13 +10,17 @@ use rbit_services::Services;
 
 /// Spawns the SSH server in the background. A failure to start (port in use, unreadable
 /// host key) is logged; the web interface keeps running without SSH.
-pub fn start(config: &Arc<Config>, services: &Services) {
+pub fn start(
+    config: &Arc<Config>,
+    services: &Services,
+    restart: tokio::sync::watch::Receiver<bool>,
+) -> Option<tokio::task::JoinHandle<()>> {
     if !config.ssh.enabled {
-        return;
+        return None;
     }
     let config = Arc::clone(config);
     let services = services.clone();
-    tokio::spawn(async move {
+    Some(tokio::spawn(async move {
         let server = match rbit_ssh::start(config, services).await {
             Ok(server) => server,
             Err(error) => {
@@ -24,14 +28,14 @@ pub fn start(config: &Arc<Config>, services: &Services) {
                 return;
             }
         };
-        shutdown_signal().await;
+        shutdown_signal(restart).await;
         server.shutdown().await;
         tracing::info!("SSH server stopped");
-    });
+    }))
 }
 
 /// Resolves on Ctrl+C, or SIGTERM on Unix, like the HTTP server's shutdown signal.
-async fn shutdown_signal() {
+async fn shutdown_signal(mut restart: tokio::sync::watch::Receiver<bool>) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -48,5 +52,6 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+        _ = restart.wait_for(|requested| *requested) => {},
     }
 }

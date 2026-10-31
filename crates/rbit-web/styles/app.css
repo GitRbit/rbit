@@ -13,6 +13,7 @@
 @import "tailwindcss";
 @import "./branch-graph.css";
 @import "./repo-documents.css";
+@import "./monitoring.css";
 @plugin "@tailwindcss/typography";
 
 @source "../templates";

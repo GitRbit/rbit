@@ -149,7 +149,7 @@ permissions keep their account identity.
 
 **Running it**
 
-- **Operable**: background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
+- **Operable**: [live admin monitoring and graceful restarts](docs/admin-monitoring.md), background maintenance, Prometheus metrics, health checks, consistent backups, Docker and systemd.
 - **Mobile first & installable** as a progressive web app.
 - **Themes**: built-in light and dark plus ~500 tinted-theming schemes, remembered per account.
 
