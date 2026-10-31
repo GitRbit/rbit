@@ -156,7 +156,7 @@ async fn runtime_form_mutations_replacement_and_reused_generation_invalidate_old
 }
 
 #[tokio::test]
-async fn runtime_form_mutations_repository_id_prevents_delete_and_recreate_aba() {
+async fn runtime_form_mutations_reject_proofs_when_repository_id_changes() {
     let fixture = FormFixture::new(MutationAudience::RepositoryAdmin).await;
     let token = fixture.proof("rocket", &fixture.base.admin_cookie).await;
     let original = fixture.base.services.repositories.open(Some(&fixture.base.admin), "alice", "rocket").await.unwrap();

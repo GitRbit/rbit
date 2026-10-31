@@ -140,6 +140,10 @@ These proofs prevent cross-site request forgery. They are not one-use receipts o
 idempotency keys. A valid form may be submitted more than once before expiry;
 plugins must use transactional constraints or explicit domain idempotency where
 repeated effects would be harmful.
+Repository IDs bind the observed host row, not a durable incarnation: SQLite can
+reuse a deleted ID. These proofs therefore do not promise invalidation after
+every delete-and-recreate at the same path. The host still checks current access;
+plugins needing stale-object protection must enforce domain version preconditions.
 
 ## Cancellation and commit lifetime
 
