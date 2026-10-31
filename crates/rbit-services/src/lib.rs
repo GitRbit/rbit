@@ -9,12 +9,15 @@ use rbit_storage::{Database, KvStore};
 use std::{ops::Deref, sync::Arc};
 mod actions_plugin;
 pub use actions_plugin::ActionsSlot;
+mod i18n_plugin;
+pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
 
 /// Composition root. Core services never depend on optional plugin implementations.
 #[derive(Debug, Clone)]
 pub struct Services {
     core: Arc<rbit_services_base::Services>,
     pub actions: ActionsSlot,
+    pub i18n: I18nSlot,
 }
 
 impl Deref for Services {
@@ -26,10 +29,12 @@ impl Deref for Services {
 
 impl Services {
     pub async fn new(config: Arc<Config>, database: &Database, kv: &KvStore) -> Result<Self, ServiceError> {
+        config.i18n.validate().map_err(ServiceError::Invalid)?;
         // Feature preparation has large state; keep it out of every caller's async frame.
         let core = Arc::new(Box::pin(rbit_services_base::Services::new(config, database, kv)).await?);
         let actions = Box::pin(ActionsSlot::new(core.context().clone())).await?;
-        Ok(Self { core, actions })
+        let i18n = Box::pin(I18nSlot::new(core.context().clone())).await?;
+        Ok(Self { core, actions, i18n })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -45,7 +50,7 @@ impl Services {
     }
     /// Revision used to invalidate feature-dependent browser navigation snapshots.
     pub fn plugin_revision(&self) -> u64 {
-        self.actions.revision()
+        self.actions.revision().saturating_add(self.i18n.revision())
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
@@ -57,7 +62,74 @@ impl Services {
         }
         self.actions.set_enabled(actor, enabled, self.core.audit.clone()).await
     }
+
+    #[allow(clippy::unused_self)] // Uniform capability query in all distribution profiles.
+    pub const fn i18n_available(&self) -> bool {
+        cfg!(feature = "i18n")
+    }
+
+    pub fn i18n_enabled(&self) -> bool {
+        self.i18n.is_enabled()
+    }
+
+    pub fn i18n_revision(&self) -> u64 {
+        self.i18n.revision()
+    }
+
+    pub fn i18n_status(&self) -> std::future::Ready<Option<PluginStatus>> {
+        std::future::ready(self.i18n.status())
+    }
+
+    /// Resolves one immutable catalog identity entirely from the in-memory publication.
+    pub fn locale_snapshot(&self, account: Option<&str>, cookie: Option<&str>, accept: Option<&str>) -> rbit_messages::LocaleSnapshot {
+        self.i18n.snapshot(account, cookie, accept)
+    }
+
+    pub fn available_locales(&self) -> Vec<String> {
+        self.i18n.available_locales()
+    }
+
+    pub async fn set_i18n_enabled(&self, actor: &User, enabled: bool) -> Result<(), ServiceError> {
+        if !actor.is_admin {
+            return Err(ServiceError::Forbidden);
+        }
+        self.i18n.set_enabled(actor, enabled).await
+    }
+
+    /// Only administrators may replace text presented by trusted core UI components.
+    pub async fn install_language_pack(&self, actor: &User, bytes: &[u8]) -> Result<LanguagePackInfo, ServiceError> {
+        if !actor.is_admin {
+            return Err(ServiceError::Forbidden);
+        }
+        self.i18n.install(actor, bytes).await
+    }
+
+    pub async fn remove_language_pack(&self, actor: &User, id: &str) -> Result<bool, ServiceError> {
+        if !actor.is_admin {
+            return Err(ServiceError::Forbidden);
+        }
+        self.i18n.remove(actor, id).await
+    }
+
+    pub async fn language_packs(&self, actor: &User) -> Result<Vec<LanguagePackInfo>, ServiceError> {
+        if !actor.is_admin {
+            return Err(ServiceError::Forbidden);
+        }
+        Ok(self.core.context().database.language_packs().metadata().await?)
+    }
+
+    /// Preferences outlive both the provider and individual installed translations.
+    pub async fn set_account_locale(&self, actor: &User, locale: Option<&str>) -> Result<(), ServiceError> {
+        if locale.is_some_and(|locale| !rbit_core::config::valid_locale_preference(locale)) {
+            return Err(ServiceError::Invalid("locale must be a language tag of at most 64 ASCII characters".to_owned()));
+        }
+        if self.core.context().database.accounts().find_active_user(actor.id()).await?.is_none() {
+            return Err(ServiceError::Forbidden);
+        }
+        Ok(self.core.context().database.language_packs().set_account_locale(actor.id(), locale).await?)
+    }
     pub async fn shutdown(&self) {
+        self.i18n.shutdown().await;
         self.actions.shutdown().await;
         self.core.shutdown().await;
     }

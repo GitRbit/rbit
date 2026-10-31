@@ -28,6 +28,7 @@ pub mod instance;
 pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
+pub mod language_packs;
 pub mod lfs;
 pub mod mirrors;
 pub mod notification_email;
@@ -230,6 +231,11 @@ impl Database {
 
     pub fn preferences(&self) -> preferences::PreferenceStore {
         preferences::PreferenceStore::new(self.store("preferences"))
+    }
+
+    /// Installed language archives and account locale preferences.
+    pub fn language_packs(&self) -> language_packs::LanguagePackStore {
+        language_packs::LanguagePackStore::new(self.store("language_packs"))
     }
 
     /// Persisted desired state for optional plugins, independent of feature packages.

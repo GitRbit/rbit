@@ -11,8 +11,10 @@ name = "rbit"
 path = "src/main.rs"
 
 [features]
-default = ["actions"]
+default = ["actions", "i18n"]
 actions = ["rbit-services/actions", "rbit-web/actions"]
+
+i18n = ["rbit-services/i18n", "rbit-web/i18n"]
 
 [dependencies]
 rbit-core.workspace = true

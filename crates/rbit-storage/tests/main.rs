@@ -17,6 +17,7 @@ mod imports;
 mod issue_meta;
 mod issue_search;
 mod issues;
+mod language_packs;
 mod lfs;
 mod mirrors;
 mod notification_email;

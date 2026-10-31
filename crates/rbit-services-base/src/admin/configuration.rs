@@ -112,6 +112,7 @@ pub fn validate_configuration(config: &Config) -> Result<(), String> {
     }
     // Actions: foundation (F).
     config.actions.validate()?;
+    config.i18n.validate()?;
     Ok(())
 }
 

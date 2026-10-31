@@ -58,6 +58,10 @@ mod external_auth;
 #[path = "support/fake_forge.rs"]
 mod fake_forge;
 mod forks;
+#[cfg(feature = "i18n")]
+mod i18n_plugin;
+#[cfg(not(feature = "i18n"))]
+mod i18n_unavailable;
 mod imports;
 mod issues;
 mod lfs;

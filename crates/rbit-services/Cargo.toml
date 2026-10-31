@@ -8,10 +8,15 @@ license.workspace = true
 autotests = false
 
 [features]
-default = ["actions"]
+default = ["actions", "i18n"]
 actions = ["dep:rbit-actions"]
 
+i18n = ["dep:rbit-i18n"]
+
 [dependencies]
+getrandom.workspace = true
+rbit-i18n = { workspace = true, optional = true }
+rbit-messages.workspace = true
 rbit-services-base.workspace = true
 rbit-actions = { workspace = true, optional = true }
 rbit-core.workspace = true
@@ -45,7 +50,6 @@ rbit-auth.workspace = true
 rbit-git.workspace = true
 rbit-mail.workspace = true
 rbit-workflow.workspace = true
-getrandom.workspace = true
 zeroize.workspace = true
 
 [lints]

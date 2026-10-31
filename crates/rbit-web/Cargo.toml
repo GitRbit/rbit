@@ -9,10 +9,13 @@ license.workspace = true
 autotests = false
 
 [features]
-default = ["actions"]
+default = ["actions", "i18n"]
 actions = ["rbit-services/actions", "dep:rbit-workflow", "dep:rbit-plugin-runtime", "dep:http-body"]
 
+i18n = ["rbit-services/i18n"]
+
 [dependencies]
+rbit-messages.workspace = true
 rbit-plugin-api.workspace = true
 rbit-plugin-runtime = { workspace = true, optional = true }
 http-body = { version = "1", optional = true }
