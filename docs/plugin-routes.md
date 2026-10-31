@@ -17,9 +17,10 @@ repository mount is also separate from core settings, issues, files and Actions
 paths. Plugin IDs and page identifiers are validated before registration. Paths
 are exact literal suffixes, not regular expressions or route parameters: at most
 96 bytes, eight segments and 32 bytes per segment, using lowercase ASCII letters,
-digits, hyphens and underscores. This phase supports read-only GET pages and
-HEAD; plugin forms, mutation handlers and arbitrary dynamic mounts are outside
-the contract.
+digits, hyphens and underscores. GET pages and HEAD use the read-only renderer
+contract. Typed POST handlers and explicit GET form bindings are covered by
+[native plugin forms](plugin-mutations.md);
+arbitrary dynamic mounts remain outside the contract.
 
 One host-owned registry is shared across `Services` clones. Trusted composition
 code stages descriptors with the plugin ID, the manager-assigned scope and its

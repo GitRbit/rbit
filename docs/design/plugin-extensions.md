@@ -3,10 +3,11 @@
 This document specifies the common ownership rules for runtime extensions and the
 request-hook surface. It complements [the plugin architecture](plugin-architecture.md).
 Declarative UI registration, the generic scoped extension registry, metadata-only
-request hooks and namespaced compiled native GET pages are implemented. Arbitrary
-route mounts, mutation handlers, richer hook contexts and unrestricted middleware
-remain later stages. The [native page guide](../plugin-routes.md) documents the
-page API, host security profiles and measured rendering scope.
+request hooks, namespaced compiled native GET pages and typed POST mutations are
+implemented. Arbitrary route mounts, richer hook contexts and unrestricted
+middleware remain later stages. The [native page guide](../plugin-routes.md)
+documents rendering and host security profiles; [native plugin forms](../plugin-mutations.md)
+covers session-bound proofs, bounded schemas and owned commit lifetime.
 
 ## Ownership and publication
 

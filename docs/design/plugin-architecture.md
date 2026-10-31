@@ -9,7 +9,9 @@ use scoped registrations and compiled Askama host components, with a shared brow
 lifecycle; [UI extensions](../plugin-ui.md) records the supported slots and boundaries.
 [Scoped extension and middleware design](plugin-extensions.md) covers typed request hooks.
 [Native plugin pages](../plugin-routes.md) documents the namespaced compiled Askama GET
-registry and host-enforced permission profiles; legacy Actions routes remain in the host.
+registry and host-enforced permission profiles; [native plugin forms](../plugin-mutations.md)
+adds session-bound proofs, typed POST input and tracked commit lifetime. Legacy Actions
+routes remain in the host.
 See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
 Source reference links below follow their current crate locations.
 

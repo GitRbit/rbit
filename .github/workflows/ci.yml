@@ -50,8 +50,10 @@ jobs:
       - run: cargo clippy --locked --package rbit-server --package rbit-services --package rbit-web --no-default-features --all-targets -- -D warnings
       - run: cargo test --locked --package rbit-services --no-default-features --test integration actions_unavailable
       - run: cargo test --locked --package rbit-services --no-default-features --test integration i18n_unavailable
+      - run: cargo test --locked --package rbit-services --no-default-features --lib mutation_commit_survives_waiter_abort
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_ui_registration
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_route_registration
+      - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_form_mutations
 
   plugin-profiles:
     name: Optional plugin (${{ matrix.plugin }})
