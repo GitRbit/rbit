@@ -25,6 +25,7 @@ mod serve;
 mod ssh;
 mod telemetry;
 
+use anyhow::Context;
 use clap::Parser;
 
 use crate::cli::{Cli, Command, UserCommand};
@@ -52,12 +53,37 @@ async fn main() -> anyhow::Result<()> {
     let config = config::load(file.as_deref()).await?;
 
     match cli.command.unwrap_or(Command::Serve) {
-        Command::Serve => serve::run(config).await,
+        Command::Serve => match serve::run(config).await? {
+            serve::Stopped::Shutdown => Ok(()),
+            serve::Stopped::Restart => restart(),
+        },
         Command::Migrate => serve::migrate(config).await,
         Command::Backup { output } => backup::run(config, output).await,
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await
         }
         Command::Client(_) => unreachable!("handled before the configuration is loaded"),
+    }
+}
+
+/// Starts this executable again with the same arguments and environment, after `serve` has
+/// shut down cleanly, so the configuration is read afresh. On Unix the new program replaces
+/// this process and keeps its id: tini, systemd and container runtimes see no exit, whatever
+/// their restart policy.
+fn restart() -> anyhow::Result<()> {
+    let executable = std::env::current_exe().context("cannot find the rbit executable to restart")?;
+    tracing::info!(executable = %executable.display(), "restarting");
+    let mut command = std::process::Command::new(executable);
+    command.args(std::env::args_os().skip(1));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // Only returns on failure.
+        Err(command.exec()).context("cannot restart rbit")
+    }
+    #[cfg(not(unix))]
+    {
+        command.spawn().context("cannot restart rbit")?;
+        Ok(())
     }
 }

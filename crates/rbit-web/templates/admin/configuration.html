@@ -5,9 +5,13 @@
 {% block admin_content %}
 {% call admin::heading("Configuration", "Manage your self-hosted instance with settings organized by feature.") %}{% endcall %}
 {% if saved %}<div role="status" class="box mb-5 p-4 text-[13px]">Settings saved. Restart the server to apply deployment changes.</div>{% endif %}
+{% if restarted %}<div role="status" class="box mb-5 p-4 text-[13px]">The server restarted. Saved deployment settings are now in effect.</div>{% endif %}
 <div class="mb-6 flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
   <span class="badge">Restart required</span><span>Environment variables take precedence.</span>
   <a class="link" href="/admin/settings">Branding and policies — apply immediately</a>
+  <form method="post" action="/admin/configuration/restart" class="sm:ml-auto" hx-confirm="Restart the server now? Git operations and other requests in progress are interrupted while it starts again.">
+    <button class="btn" type="submit">Restart server</button>
+  </form>
 </div>
 <form method="get" action="/admin/configuration" class="mb-4 flex items-end gap-2 xl:hidden">
   <div class="min-w-0 flex-1"><label class="label" for="configuration-section">Settings section</label>

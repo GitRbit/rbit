@@ -1,5 +1,5 @@
 //! Starts the built-in SSH server when `[ssh] enabled = true`, and stops it on the same
-//! shutdown signals as the HTTP server (Ctrl+C, or SIGTERM on Unix).
+//! shutdown signals as the HTTP server (Ctrl+C, SIGTERM on Unix, or a restart).
 //!
 //! Milestone 1 workstream H owns this file.
 
@@ -7,15 +7,19 @@ use std::sync::Arc;
 
 use rbit_core::Config;
 use rbit_services::Services;
+use rbit_web::Restart;
+
+use crate::serve::shutdown_signal;
 
 /// Spawns the SSH server in the background. A failure to start (port in use, unreadable
 /// host key) is logged; the web interface keeps running without SSH.
-pub fn start(config: &Arc<Config>, services: &Services) {
+pub fn start(config: &Arc<Config>, services: &Services, restart: &Restart) {
     if !config.ssh.enabled {
         return;
     }
     let config = Arc::clone(config);
     let services = services.clone();
+    let restart = restart.clone();
     tokio::spawn(async move {
         let server = match rbit_ssh::start(config, services).await {
             Ok(server) => server,
@@ -24,29 +28,8 @@ pub fn start(config: &Arc<Config>, services: &Services) {
                 return;
             }
         };
-        shutdown_signal().await;
+        shutdown_signal(restart).await;
         server.shutdown().await;
         tracing::info!("SSH server stopped");
     });
-}
-
-/// Resolves on Ctrl+C, or SIGTERM on Unix, like the HTTP server's shutdown signal.
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            signal.recv().await;
-        }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        () = ctrl_c => {},
-        () = terminate => {},
-    }
 }

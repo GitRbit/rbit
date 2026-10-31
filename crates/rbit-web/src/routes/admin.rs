@@ -4,7 +4,7 @@
 //! never learn the panel exists. The routes are merged into the page router, so they get
 //! sessions, CSRF protection, security headers and error pages automatically.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use axum::{
     Form, Router,
@@ -27,7 +27,7 @@ use crate::{
     views::{
         admin::{
             AdminSection, ConfigurationPage, DashboardPage, DeleteRepositoryPage, DeleteUserPage, NewUserPage, OrganizationsPage,
-            RepositoriesPage, SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
+            RepositoriesPage, RestartPage, SetPasswordPage, SettingsForm, SettingsPage, UsersNotice, UsersPage, listing_url,
         },
         components::FormError,
         layout::Page,
@@ -50,6 +50,8 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/settings", get(settings).post(update_settings))
         .route("/admin/configuration", get(configuration).post(save_configuration))
         .route("/admin/configuration/reset", post(reset_configuration))
+        .route("/admin/configuration/restart", post(restart_server))
+        .route("/admin/configuration/restart/status", get(restart_status))
 }
 
 /// `?q=…&page=…` on listings. Both are lenient: anything unparsable means "first page".
@@ -495,6 +497,7 @@ pub async fn update_settings(
 pub struct ConfigurationParams {
     section: Option<String>,
     saved: Option<String>,
+    restarted: Option<String>,
 }
 
 pub async fn configuration(
@@ -504,7 +507,10 @@ pub async fn configuration(
     Query(params): Query<ConfigurationParams>,
 ) -> WebResult<ConfigurationPage> {
     let document = serde_json::from_str(&state.services.admin.configuration(&admin).await?).map_err(WebError::internal)?;
-    configuration_page(page, &document, params.section.as_deref().unwrap_or("server"), FormError::default(), params.saved.is_some())
+    let mut rendered =
+        configuration_page(page, &document, params.section.as_deref().unwrap_or("server"), FormError::default(), params.saved.is_some())?;
+    rendered.restarted = params.restarted.is_some();
+    Ok(rendered)
 }
 
 fn configuration_page(
@@ -520,6 +526,7 @@ fn configuration_page(
         form: crate::views::admin::configuration::ConfigurationForm::new(document, section)?,
         error,
         saved,
+        restarted: false,
     })
 }
 
@@ -554,6 +561,32 @@ pub async fn save_configuration(
 pub async fn reset_configuration(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin) -> WebResult<Redirect> {
     state.services.admin.reset_configuration(&admin).await?;
     Ok(Redirect::to("/admin/configuration?saved=1"))
+}
+
+/// How long the restart page has to reach the browser before the server stops listening.
+const RESTART_DELAY: Duration = Duration::from_millis(500);
+
+/// `POST /admin/configuration/restart`: answers with a page that waits for the new server,
+/// then restarts this one so saved deployment settings take effect.
+pub async fn restart_server(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, page: Page) -> WebResult<RestartPage> {
+    state.services.admin.restart(&admin).await?;
+    tracing::warn!(admin = admin.name().as_str(), "an administrator restarted the server");
+    let restart = state.restart.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(RESTART_DELAY).await;
+        restart.request();
+    });
+    Ok(RestartPage { page: page.titled("Restarting · Administration"), admin_nav: AdminSection::Configuration.nav() })
+}
+
+/// `GET /admin/configuration/restart/status`, polled by the restart page. The server that
+/// is shutting down answers 204; the restarted one sends the browser back to Configuration.
+pub async fn restart_status(State(state): State<AppState>, SiteAdmin(_): SiteAdmin) -> Response {
+    if state.restart.is_requested() {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        [("HX-Redirect", "/admin/configuration?restarted=1")].into_response()
+    }
 }
 
 #[cfg(test)]

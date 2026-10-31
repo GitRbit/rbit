@@ -722,6 +722,14 @@ pub struct ConfigurationPage {
     pub form: configuration::ConfigurationForm,
     pub error: FormError,
     pub saved: bool,
+    pub restarted: bool,
+}
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "admin/restart.html")]
+pub struct RestartPage {
+    pub page: Page,
+    pub admin_nav: Vec<AdminLink>,
 }
 
 #[cfg(test)]

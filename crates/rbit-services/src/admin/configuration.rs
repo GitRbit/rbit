@@ -83,6 +83,13 @@ impl AdminService {
             .await;
         Ok(())
     }
+
+    /// Checks and records an administrator's restart; the caller then restarts the server.
+    pub async fn restart(&self, actor: &User) -> Result<(), ServiceError> {
+        require_admin(actor)?;
+        self.audit.record(AuditEntry::new(AuditAction::InstanceSettingsChanged).by(actor).detail("server restart requested")).await;
+        Ok(())
+    }
 }
 
 /// Shared with the startup loader: malformed settings fail before services start.

@@ -32,4 +32,4 @@ pub mod urls;
 pub mod views;
 
 pub use routes::router;
-pub use state::AppState;
+pub use state::{AppState, Restart};

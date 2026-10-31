@@ -17,6 +17,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Restart server** on Site administration → Configuration restarts rbit after a
+  confirmation, so saved deployment settings take effect without `docker restart` or SSH
+  access ([#49](https://github.com/GitRbit/rbit/issues/49)). The page waits for the server
+  to come back, then returns to Configuration.
 - `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,
   logs, workflows, artifacts, pull requests and raw API calls (`docs/cli.md`).
 - `rbit-runner install`, `uninstall`, `start`, `stop` and `status` run the runner with

@@ -36,6 +36,13 @@ production-minded values. The ones that matter most:
   `data_dir`.
 - `repository.git_binary` — the `git` used for smart HTTP, `git gc` and backups.
 
+Administrators can also change deployment settings under **Site administration →
+Configuration**; they take effect at the next start. **Restart server** on that page (after
+a confirmation) shuts rbit down cleanly and starts the same executable again with the same
+arguments and environment, so no `docker restart` or `systemctl restart` is needed. On Linux
+and macOS the new program replaces the old one in the same process, so it works whatever the
+container's or unit's restart policy; open connections get up to 10 seconds to finish.
+
 ### Secret key
 
 Credentials rbit must be able to read back — TOTP seeds, webhook and push mirror secrets,

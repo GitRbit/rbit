@@ -7,11 +7,25 @@ use axum::serve::{ListenerExt, TapIo};
 use rbit_core::Config;
 use rbit_services::{Services, SignUp, accounts};
 use rbit_storage::{Database, KvStore};
-use rbit_web::AppState;
+use rbit_web::{AppState, Restart};
 use tokio::net::{TcpListener, TcpStream};
 
 /// How often expired sessions are purged from the key/value store.
 const SESSION_PURGE_INTERVAL: Duration = Duration::from_hours(1);
+
+/// How long open connections may take to finish once a restart is requested. Graceful
+/// shutdown otherwise waits for every connection, and a log stream or a slow clone could
+/// hold the restart up indefinitely.
+const RESTART_DRAIN: Duration = Duration::from_secs(10);
+
+/// Why [`run`] returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stopped {
+    /// Ctrl+C or SIGTERM: exit.
+    Shutdown,
+    /// An administrator asked for a restart: start again.
+    Restart,
+}
 
 /// Opened persistent stores.
 struct Storage {
@@ -35,7 +49,7 @@ async fn open_database(config: &Config) -> anyhow::Result<Database> {
     Database::open_with_key_file(&storage.sqlite_path(), &storage.secret_key_path()).await.context("cannot open SQLite database")
 }
 
-pub async fn run(config: Config) -> anyhow::Result<()> {
+pub async fn run(config: Config) -> anyhow::Result<Stopped> {
     // Refuse to start rather than fail every page.
     rbit_web::assets::ensure_built().map_err(anyhow::Error::msg)?;
     let config = Arc::new(config);
@@ -44,25 +58,34 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 
     spawn_session_purger(storage.kv.clone());
     services.spawn_background();
-    crate::ssh::start(&config, &services);
-
     let background = services.clone();
-    let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
+    let state = AppState::new(Arc::clone(&config), services);
+    let restart = state.restart.clone();
+    crate::ssh::start(&config, &background, &restart);
+
+    let app = rbit_web::router(state);
     let listener =
         http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
     tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
     log_setup_token(&config, &background);
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("server error")?;
+    let server = axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal(restart.clone()))
+        .into_future();
+    let drain_deadline = async {
+        restart.requested().await;
+        tokio::time::sleep(RESTART_DRAIN).await;
+    };
+    tokio::select! {
+        result = server => result.context("server error")?,
+        () = drain_deadline => tracing::warn!("connections still open after {RESTART_DRAIN:?}; restarting without them"),
+    }
 
     tracing::info!("shutting down");
     // Stop background work before closing the stores it writes to.
     background.shutdown().await;
     storage.database.close().await;
-    Ok(())
+    Ok(if restart.is_requested() { Stopped::Restart } else { Stopped::Shutdown })
 }
 
 /// On an instance without users, prints what the first (administrator) sign-up needs.
@@ -132,8 +155,9 @@ fn spawn_session_purger(kv: KvStore) {
     });
 }
 
-/// Resolves on Ctrl+C, or SIGTERM on Unix (as sent by systemd and container runtimes).
-async fn shutdown_signal() {
+/// Resolves on Ctrl+C, SIGTERM on Unix (as sent by systemd and container runtimes), or an
+/// administrator's restart.
+pub async fn shutdown_signal(restart: Restart) {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -150,6 +174,7 @@ async fn shutdown_signal() {
     tokio::select! {
         () = ctrl_c => {},
         () = terminate => {},
+        () = restart.requested() => {},
     }
 }
 

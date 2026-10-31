@@ -11,7 +11,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use rbit_core::{Config, User};
 use rbit_services::{Services, SignUp};
 use rbit_storage::{Database, KvStore};
-use rbit_web::AppState;
+use rbit_web::{AppState, Restart};
 use tower::ServiceExt;
 
 struct Fixture {
@@ -21,6 +21,7 @@ struct Fixture {
     router: Router,
     admin: User,
     cookie: String,
+    restart: Restart,
 }
 
 impl Fixture {
@@ -44,8 +45,10 @@ impl Fixture {
             .unwrap();
         let token = services.accounts.start_session(&admin).await.unwrap();
         let cookie = format!("rbit_session={}", token.encode());
-        let router = rbit_web::router(AppState::new(config, services.clone()));
-        Self { _directory: directory, database, services, router, admin, cookie }
+        let state = AppState::new(config, services.clone());
+        let restart = state.restart.clone();
+        let router = rbit_web::router(state);
+        Self { _directory: directory, database, services, router, admin, cookie, restart }
     }
 
     async fn get(&self, section: &str) -> Response {
@@ -404,4 +407,54 @@ async fn administrator_created_users_must_replace_their_initial_password_before_
     assert!(fixture.services.accounts.authenticate("newmember", replacement.into()).await.is_ok());
     assert!(fixture.services.tokens.authenticate(&token).await.unwrap().is_some());
     assert!(fixture.services.ssh_keys.find_by_fingerprint(&fingerprint).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn administrators_restart_the_server_from_the_configuration_page() {
+    let fixture = Fixture::new().await;
+    let request = |method: &str, uri: &str, cookie: &str| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::COOKIE, cookie)
+            .header(header::HOST, "localhost:3000")
+            .header(header::ORIGIN, "http://localhost:3000")
+            .body(Body::empty())
+            .unwrap()
+    };
+    let send = |request| fixture.router.clone().oneshot(request);
+
+    let markup = html(fixture.get("server").await).await;
+    assert!(markup.contains(r#"action="/admin/configuration/restart""#) && markup.contains("hx-confirm=\"Restart the server now?"));
+
+    let member = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "member".into(), email: "member@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    let member_cookie = format!("rbit_session={}", fixture.services.accounts.start_session(&member).await.unwrap().encode());
+    let response = send(request("POST", "/admin/configuration/restart", &member_cookie)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert!(!fixture.restart.is_requested(), "only administrators restart the server");
+
+    // A server that has not been asked to restart is the new one: the waiting page goes back.
+    let response = send(request("GET", "/admin/configuration/restart/status", &fixture.cookie)).await.unwrap();
+    assert_eq!(response.headers()["HX-Redirect"], "/admin/configuration?restarted=1");
+
+    let response = send(request("POST", "/admin/configuration/restart", &fixture.cookie)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(html(response).await.contains(r#"hx-get="/admin/configuration/restart/status""#));
+    tokio::time::timeout(std::time::Duration::from_secs(5), fixture.restart.requested())
+        .await
+        .expect("the restart is requested after the page is sent");
+
+    let response = send(request("GET", "/admin/configuration/restart/status", &fixture.cookie)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT, "the old server keeps the page waiting");
+
+    let response = send(request("GET", "/admin/configuration?restarted=1", &fixture.cookie)).await.unwrap();
+    assert!(html(response).await.contains("The server restarted."));
 }

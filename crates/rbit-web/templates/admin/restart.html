@@ -1,0 +1,9 @@
+{% extends "admin/layout.html" %}
+{% import "admin/components.html" as admin %}
+{% block admin_content %}
+{% call admin::heading("Restarting the server", "") %}{% endcall %}
+<div class="box max-w-xl p-4 text-[13px]" role="status" aria-busy="true" hx-get="/admin/configuration/restart/status" hx-trigger="every 2s" hx-swap="none">
+  <p>rbit is shutting down and starting again with the saved configuration. This page returns to Configuration when the server is back.</p>
+  <p class="mt-3 text-ink-muted">Without JavaScript, wait a few seconds, then <a class="link" href="/admin/configuration">open Configuration</a>. If the server does not come back, check its logs: a saved setting may prevent startup (see Recovery on the Configuration page).</p>
+</div>
+{% endblock %}
