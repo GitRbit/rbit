@@ -517,6 +517,7 @@ async fn runtime_ui_registration_renders_through_askama_and_cleans_up_on_one_rou
             Request::builder()
                 .uri("/alice/rocket")
                 .header("Rbit-Partial", "/alice/rocket")
+                .header("HX-Request", "true")
                 .header(header::COOKIE, &fixture.admin_cookie)
                 .body(Body::empty())
                 .unwrap(),
