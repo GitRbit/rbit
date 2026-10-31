@@ -1,12 +1,15 @@
 [package]
 name = "rbit-plugin-web"
-description = "Bounded generation-scoped request hooks for trusted embedded plugins."
+description = "Scoped request hooks and bounded compiled Askama pages for trusted embedded plugins."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+askama.workspace = true
+rbit-messages.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 rbit-plugin-api.workspace = true
 rbit-plugin-runtime.workspace = true
 tokio.workspace = true

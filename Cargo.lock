@@ -4422,10 +4422,13 @@ dependencies = [
 name = "rbit-plugin-web"
 version = "0.1.5"
 dependencies = [
+ "askama",
+ "rbit-messages",
  "rbit-plugin-api",
  "rbit-plugin-runtime",
  "thiserror",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
