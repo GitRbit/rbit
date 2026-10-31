@@ -48,6 +48,14 @@ pub enum MutationAudience {
     SiteAdmin,
     RepositoryWriter,
     RepositoryAdmin,
+    /// Only the sealed locale-preference callback may use this guest-capable policy.
+    LocalePreference,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MutationInputKind {
+    Form,
+    Upload { max_bytes: usize },
+    LocalePreference,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MutationDescriptor {
@@ -57,6 +65,7 @@ pub struct MutationDescriptor {
     audience: MutationAudience,
     deadline: Duration,
     form: FormSchema,
+    input_kind: MutationInputKind,
 }
 impl MutationDescriptor {
     pub fn new(
@@ -84,7 +93,34 @@ impl MutationDescriptor {
             audience,
             deadline,
             form,
+            input_kind: MutationInputKind::Form,
         })
+    }
+    pub fn with_upload(mut self, max_bytes: usize) -> Result<Self, MutationError> {
+        if self.scope != PageScope::Global
+            || self.audience != MutationAudience::SiteAdmin
+            || !self.form.fields().is_empty()
+            || max_bytes == 0
+            || max_bytes > crate::MAX_UPLOAD_BYTES
+        {
+            return Err(MutationError::Invalid("upload policy or limit"));
+        }
+        self.input_kind = MutationInputKind::Upload { max_bytes };
+        Ok(self)
+    }
+    pub fn locale_preference(id: &str, path: &str, deadline: Duration) -> Result<Self, MutationError> {
+        let form = FormSchema::new(vec![crate::FormField {
+            name: "locale".into(),
+            kind: crate::FormFieldKind::Text { max_bytes: 64, multiline: false },
+            required: false,
+        }])?;
+        let mut descriptor = Self::new(id, PageScope::Global, path, MutationAudience::SignedIn, deadline, form)?;
+        descriptor.audience = MutationAudience::LocalePreference;
+        descriptor.input_kind = MutationInputKind::LocalePreference;
+        Ok(descriptor)
+    }
+    pub const fn input_kind(&self) -> MutationInputKind {
+        self.input_kind
     }
     pub fn id(&self) -> &str {
         self.id.as_str()
@@ -131,17 +167,33 @@ pub struct MutationContext {
     pub locale: LocaleSnapshot,
     pub form: FormAction,
     cancellation: CancellationToken,
+    preference_principal: bool,
 }
 impl MutationContext {
     pub fn new(actor: PageActor, repository: Option<MutationRepository>, locale: LocaleSnapshot, form: FormAction) -> Self {
-        Self { actor, repository, locale, form, cancellation: CancellationToken::new() }
+        Self { actor, repository, locale, form, cancellation: CancellationToken::new(), preference_principal: false }
+    }
+    pub fn for_preference(actor: Option<PageActor>, locale: LocaleSnapshot, form: FormAction) -> Self {
+        Self {
+            actor: actor.unwrap_or(PageActor { account_id: 0, is_admin: false }),
+            repository: None,
+            locale,
+            form,
+            cancellation: CancellationToken::new(),
+            preference_principal: true,
+        }
     }
     pub fn cancellation_token(&self) -> CancellationToken {
         self.cancellation.child_token()
     }
 
     fn authorize(&self, descriptor: &MutationDescriptor) -> Result<(), MutationError> {
-        if self.actor.account_id <= 0 {
+        let preference =
+            descriptor.input_kind == MutationInputKind::LocalePreference && descriptor.audience == MutationAudience::LocalePreference;
+        if preference != self.preference_principal {
+            return Err(MutationError::Forbidden);
+        }
+        if self.actor.account_id < 0 || (self.actor.account_id == 0 && (!preference || self.actor.is_admin)) {
             return Err(MutationError::Invalid("actor identifier"));
         }
         if let Some(repo) = &self.repository
@@ -159,6 +211,7 @@ impl MutationContext {
             MutationAudience::SiteAdmin => self.actor.is_admin,
             MutationAudience::RepositoryWriter => self.repository.as_ref().is_some_and(|r| r.can_write),
             MutationAudience::RepositoryAdmin => self.repository.as_ref().is_some_and(|r| r.can_admin),
+            MutationAudience::LocalePreference => preference,
         };
         if allowed { Ok(()) } else { Err(MutationError::Forbidden) }
     }
@@ -188,10 +241,28 @@ pub enum MutationOutcome<T: Template> {
 pub enum MutationResponse {
     Redirect(PluginRedirect),
     Invalid(PageBody),
+    LocalePreference { choice: crate::LocaleChoice, redirect: PluginRedirect },
 }
+#[derive(Debug)]
+pub enum PreferenceOutcome<T: Template> {
+    Selected { choice: crate::LocaleChoice, redirect: PluginRedirect },
+    Invalid(CompiledPage<T>),
+}
+enum ValidatedInput {
+    Form(FormValues),
+    Upload(crate::UploadData),
+    LocalePreference(crate::LocaleChoice),
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FactoryKind {
+    Form,
+    Upload,
+    LocalePreference,
+}
+
 type MutationFuture<'a> = Pin<Box<dyn Future<Output = Result<MutationResponse, MutationError>> + Send + 'a>>;
 trait Mutator: Send + Sync {
-    fn execute(&self, context: MutationContext, form: FormValues) -> MutationFuture<'_>;
+    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_>;
 }
 struct TemplateMutator<F>(F);
 impl<T, F, Fut> Mutator for TemplateMutator<F>
@@ -200,8 +271,11 @@ where
     F: Fn(MutationContext, FormValues) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
 {
-    fn execute(&self, context: MutationContext, form: FormValues) -> MutationFuture<'_> {
+    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
         Box::pin(async move {
+            let ValidatedInput::Form(form) = input else {
+                return Err(MutationError::Invalid("factory input kind"));
+            };
             match (self.0)(context, form).await? {
                 MutationOutcome::Redirect(path) => Ok(MutationResponse::Redirect(path)),
                 MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
@@ -213,6 +287,7 @@ where
 pub struct MutationRegistration {
     descriptor: MutationDescriptor,
     callback: Arc<dyn Mutator>,
+    factory_kind: FactoryKind,
 }
 impl fmt::Debug for MutationRegistration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -235,7 +310,7 @@ where
     F: Fn(MutationContext, FormValues) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
 {
-    MutationRegistration { descriptor, callback: Arc::new(TemplateMutator(factory)) }
+    MutationRegistration { descriptor, callback: Arc::new(TemplateMutator(factory)), factory_kind: FactoryKind::Form }
 }
 #[derive(Debug, Clone)]
 struct Metadata {
@@ -247,6 +322,7 @@ pub struct MutationRegistry {
     inner: ScopedExtensionRegistry<MutationRegistration>,
     operations: Arc<Semaphore>,
     versions: Arc<AtomicU64>,
+    uploads: Arc<Semaphore>,
 }
 impl Default for MutationRegistry {
     fn default() -> Self {
@@ -259,6 +335,7 @@ impl MutationRegistry {
             inner: ScopedExtensionRegistry::with_capacity(MAX_MUTATION_ROUTES).expect("valid host capacity"),
             operations: Arc::new(Semaphore::new(MAX_CONCURRENT_MUTATIONS)),
             versions: Arc::new(AtomicU64::new(1)),
+            uploads: Arc::new(Semaphore::new(crate::MAX_CONCURRENT_UPLOADS)),
         }
     }
     pub fn close(&self) {
@@ -280,7 +357,7 @@ impl MutationRegistry {
         self.inner.snapshot().revision
     }
     pub fn snapshot(&self) -> MutationRouteSnapshot {
-        MutationRouteSnapshot { inner: self.inner.snapshot(), operations: Arc::clone(&self.operations) }
+        MutationRouteSnapshot { inner: self.inner.snapshot(), operations: Arc::clone(&self.operations), uploads: Arc::clone(&self.uploads) }
     }
     pub fn stage(
         &self,
@@ -303,6 +380,14 @@ fn prepare(entries: Vec<MutationRegistration>, versions: &AtomicU64) -> Result<V
     let mut ids = BTreeSet::new();
     let mut paths = BTreeSet::new();
     for entry in &entries {
+        if !matches!(
+            (entry.descriptor.input_kind, entry.factory_kind),
+            (MutationInputKind::Form, FactoryKind::Form)
+                | (MutationInputKind::Upload { .. }, FactoryKind::Upload)
+                | (MutationInputKind::LocalePreference, FactoryKind::LocalePreference)
+        ) {
+            return Err(MutationError::Invalid("factory and descriptor kind mismatch"));
+        }
         if !ids.insert((entry.descriptor.scope, entry.descriptor.id())) || !paths.insert((entry.descriptor.scope, entry.descriptor.path()))
         {
             return Err(MutationError::Invalid("duplicate mutation identifier or path"));
@@ -344,6 +429,7 @@ impl MutationRouteRegistration {
 pub struct MutationRouteSnapshot {
     inner: ExtensionSnapshot<MutationRegistration>,
     operations: Arc<Semaphore>,
+    uploads: Arc<Semaphore>,
 }
 impl MutationRouteSnapshot {
     pub fn len(&self) -> usize {
@@ -387,15 +473,21 @@ impl MutationRouteHandle {
         self.snapshot.inner.entries[self.index].generation
     }
     pub fn admit(&self) -> Result<MutationLease, MutationError> {
+        let upload_permit = if matches!(self.descriptor().input_kind, MutationInputKind::Upload { .. }) {
+            Some(Arc::clone(&self.snapshot.uploads).try_acquire_owned().map_err(|_| MutationError::Unavailable)?)
+        } else {
+            None
+        };
         let permit = Arc::clone(&self.snapshot.operations).try_acquire_owned().map_err(|_| MutationError::Unavailable)?;
         let inner = self.snapshot.inner.entries[self.index].admit().map_err(|_| MutationError::Unavailable)?;
-        Ok(MutationLease { inner, permit })
+        Ok(MutationLease { inner, permit, upload_permit })
     }
 }
 #[derive(Debug)]
 pub struct MutationLease {
     inner: ExtensionLease<MutationRegistration>,
     permit: OwnedSemaphorePermit,
+    upload_permit: Option<OwnedSemaphorePermit>,
 }
 impl MutationLease {
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -403,10 +495,33 @@ impl MutationLease {
     }
     /// Starts bounded scope-tracked native work. Dropping this HTTP waiter signals
     /// cancellation but never drops a callback in the middle of a possible commit.
-    pub async fn execute(self, mut context: MutationContext, input: FormData) -> Result<MutationExecution, MutationError> {
+    pub async fn execute(self, context: MutationContext, input: FormData) -> Result<MutationExecution, MutationError> {
         let entry = self.inner.value();
         context.authorize(&entry.descriptor)?;
-        let form = entry.descriptor.form.validate(input)?;
+        if matches!(entry.descriptor.input_kind, MutationInputKind::Upload { .. }) {
+            return Err(MutationError::Invalid("upload input required"));
+        }
+        let values = entry.descriptor.form.validate(input)?;
+        let input = if entry.descriptor.input_kind == MutationInputKind::LocalePreference {
+            ValidatedInput::LocalePreference(crate::LocaleChoice::new(values.text("locale").ok_or(MutationError::InvalidForm)?)?)
+        } else {
+            ValidatedInput::Form(values)
+        };
+        self.execute_validated(context, input).await
+    }
+    pub async fn execute_upload(self, context: MutationContext, input: crate::UploadData) -> Result<MutationExecution, MutationError> {
+        let entry = self.inner.value();
+        context.authorize(&entry.descriptor)?;
+        let MutationInputKind::Upload { max_bytes } = entry.descriptor.input_kind else {
+            return Err(MutationError::Invalid("unexpected upload"));
+        };
+        if input.bytes().len() > max_bytes {
+            return Err(MutationError::InvalidForm);
+        }
+        self.execute_validated(context, ValidatedInput::Upload(input)).await
+    }
+    async fn execute_validated(self, mut context: MutationContext, input: ValidatedInput) -> Result<MutationExecution, MutationError> {
+        let entry = self.inner.value();
         let deadline = Instant::now() + entry.descriptor.deadline;
         let cancellation = self.cancellation_token();
         if cancellation.is_cancelled() {
@@ -431,7 +546,7 @@ impl MutationLease {
                         return Err(MutationError::Timeout);
                     }
                     started.store(true, Ordering::Release);
-                    entry.callback.execute(context, form).await
+                    entry.callback.execute(context, input).await
                 };
                 tokio::pin!(callback);
                 tokio::select! {biased;
@@ -464,13 +579,14 @@ impl MutationLease {
     pub fn into_parts(self) -> (MutationOperation, CancellationToken) {
         let (registration, lease, cancellation) = self.inner.into_parts();
         drop(registration);
-        (MutationOperation { _lease: lease, _permit: self.permit }, cancellation)
+        (MutationOperation { _lease: lease, _permit: self.permit, _upload_permit: self.upload_permit }, cancellation)
     }
 }
 #[derive(Debug)]
 pub struct MutationOperation {
     _lease: OperationLease,
     _permit: OwnedSemaphorePermit,
+    _upload_permit: Option<OwnedSemaphorePermit>,
 }
 
 struct CancelWaiter(CancellationToken);
@@ -489,4 +605,69 @@ impl MutationExecution {
     pub fn into_parts(self) -> (MutationResponse, MutationOperation, CancellationToken) {
         (self.response, self.operation, self.cancellation)
     }
+}
+
+struct UploadMutator<F>(F);
+impl<T, F, Fut> Mutator for UploadMutator<F>
+where
+    T: Template + Send + 'static,
+    F: Fn(MutationContext, crate::UploadData) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
+{
+    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
+        Box::pin(async move {
+            let ValidatedInput::Upload(upload) = input else {
+                return Err(MutationError::Invalid("factory input kind"));
+            };
+            match (self.0)(context, upload).await? {
+                MutationOutcome::Redirect(path) => Ok(MutationResponse::Redirect(path)),
+                MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
+            }
+        })
+    }
+}
+/// Registers a compiled validation model and bounded bytes, not raw multipart data.
+pub fn compiled_upload<T, F, Fut>(descriptor: MutationDescriptor, factory: F) -> MutationRegistration
+where
+    T: Template + Send + 'static,
+    F: Fn(MutationContext, crate::UploadData) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
+{
+    MutationRegistration { descriptor, callback: Arc::new(UploadMutator(factory)), factory_kind: FactoryKind::Upload }
+}
+struct LocaleMutator<F>(F);
+impl<T, F, Fut> Mutator for LocaleMutator<F>
+where
+    T: Template + Send + 'static,
+    F: Fn(crate::PreferenceContext, crate::LocaleChoice) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<PreferenceOutcome<T>, MutationError>> + Send + 'static,
+{
+    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
+        Box::pin(async move {
+            let ValidatedInput::LocalePreference(choice) = input else {
+                return Err(MutationError::Invalid("factory input kind"));
+            };
+            let cancellation = context.cancellation_token();
+            let context = crate::PreferenceContext {
+                actor: (context.actor.account_id > 0).then_some(context.actor),
+                locale: context.locale,
+                form: context.form,
+                cancellation,
+            };
+            match (self.0)(context, choice).await? {
+                PreferenceOutcome::Selected { choice, redirect } => Ok(MutationResponse::LocalePreference { choice, redirect }),
+                PreferenceOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
+            }
+        })
+    }
+}
+/// Only this factory may produce the host's typed locale-cookie intent. It cannot
+/// choose cookie names/attributes or grant anonymous access to standard mutations.
+pub fn compiled_locale_preference<T, F, Fut>(descriptor: MutationDescriptor, factory: F) -> MutationRegistration
+where
+    T: Template + Send + 'static,
+    F: Fn(crate::PreferenceContext, crate::LocaleChoice) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<PreferenceOutcome<T>, MutationError>> + Send + 'static,
+{
+    MutationRegistration { descriptor, callback: Arc::new(LocaleMutator(factory)), factory_kind: FactoryKind::LocalePreference }
 }

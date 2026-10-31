@@ -4,7 +4,18 @@ use askama::Template;
 use askama_web::WebTemplate;
 use rbit_services::plugin_pages::PageBody;
 
-use super::{layout::Page, repo::RepoHeader};
+use super::{admin::AdminLink, layout::Page, repo::RepoHeader};
+
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "plugin_pages/admin.html")]
+pub struct AdminPluginPage {
+    pub page: Page,
+    pub admin_nav: Vec<AdminLink>,
+    pub owner: String,
+    pub route: String,
+    pub body: PageBody,
+    pub native_forms: bool,
+}
 
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "plugin_pages/global.html")]

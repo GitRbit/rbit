@@ -17,3 +17,6 @@ mod forms;
 mod mutations;
 pub use forms::*;
 pub use mutations::*;
+
+mod capabilities;
+pub use capabilities::*;

@@ -277,6 +277,8 @@ mod tests {
         assert!(!key.verify_browser(&browser, &PluginCsrfBinding { version: 5, ..binding }, &token, 1_001));
         // Even using exactly the same secret bytes cannot cross the two MAC domains.
         let session = SessionToken::parse(&browser.encode()).unwrap();
+        let wrong_domain = key.issue_bound(&session.digest(), &binding, 1_000, false);
+        assert!(!key.verify_browser(&browser, &binding, &wrong_domain, 1_001));
         assert!(!key.verify(&session, &binding, &token, 1_001));
         assert!(!key.verify(&session, &PluginCsrfBinding { actor_id: 1, ..binding }, &token, 1_001));
         assert!(key.issue(&session, &binding, 1_000).is_none());

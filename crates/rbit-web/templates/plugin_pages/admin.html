@@ -1,0 +1,7 @@
+{% extends "admin/layout.html" %}
+{% block admin_content %}
+<section data-plugin-page="{{ owner }}:{{ route }}" hx-history="false"{% if native_forms %} hx-boost="false"{% endif %} class="min-w-0">
+  <h2 class="mb-4 text-xl font-semibold tracking-tight">{{ body.title() }}</h2>
+  {{ body.html()|safe }}
+</section>
+{% endblock %}

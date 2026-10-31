@@ -60,7 +60,7 @@ fn mutation(
 
 fn mutation_scope(audience: MutationAudience) -> PageScope {
     match audience {
-        MutationAudience::SignedIn | MutationAudience::SiteAdmin => PageScope::Global,
+        MutationAudience::SignedIn | MutationAudience::SiteAdmin | MutationAudience::LocalePreference => PageScope::Global,
         MutationAudience::RepositoryWriter | MutationAudience::RepositoryAdmin => PageScope::Repository,
     }
 }

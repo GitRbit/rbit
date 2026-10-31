@@ -216,16 +216,25 @@ impl fmt::Debug for FormAction {
     }
 }
 #[derive(Debug, Clone, Default)]
-pub struct FormActions(Vec<FormAction>);
+pub struct FormActions {
+    actions: Vec<FormAction>,
+    locale_preference: Option<crate::LocaleChoice>,
+}
 impl FormActions {
     pub fn new(actions: Vec<FormAction>) -> Result<Self, crate::PageError> {
         if actions.len() > 8 || actions.iter().enumerate().any(|(i, a)| actions[..i].iter().any(|old| old.name == a.name)) {
             return Err(crate::PageError::Invalid("form action count or duplicates"));
         }
-        Ok(Self(actions))
+        Ok(Self { actions, locale_preference: None })
+    }
+    pub fn set_locale_preference(&mut self, choice: crate::LocaleChoice) {
+        self.locale_preference = Some(choice);
+    }
+    pub fn locale_preference(&self) -> Option<&crate::LocaleChoice> {
+        self.locale_preference.as_ref()
     }
     pub fn get(&self, name: &str) -> Option<&FormAction> {
-        self.0.iter().find(|action| action.name == name)
+        self.actions.iter().find(|action| action.name == name)
     }
 }
 

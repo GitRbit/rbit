@@ -1,7 +1,9 @@
 //! Runtime page and form dispatch inside the normal host browser security stack.
 
+mod browser_preference;
 mod form_input;
 mod forms;
+mod upload_input;
 
 use axum::{
     Router,
@@ -24,9 +26,14 @@ use crate::{
     extract::Viewer,
     views::{
         layout::Page,
-        plugin_pages::{GlobalPluginPage, RepositoryPluginPage},
+        plugin_pages::{AdminPluginPage, GlobalPluginPage, RepositoryPluginPage},
     },
 };
+
+struct ShellPolicy {
+    native_forms: bool,
+    administrator: bool,
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -100,6 +107,7 @@ async fn global(
     mut page: Page,
     OriginalUri(uri): OriginalUri,
     path: Result<Path<GlobalPath>, PathRejection>,
+    crate::client_ip::Https(https): crate::client_ip::Https,
     request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
@@ -112,7 +120,12 @@ async fn global(
         PageAudience::RepositoryReader | PageAudience::RepositoryAdmin => return Err(WebError::NotFound),
     }
     let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
-    render(route, page, &viewer, session.as_ref(), None, &state).await
+    let browser = if route.descriptor().forms().is_empty() {
+        browser_preference::BrowserForms::empty(https)
+    } else {
+        browser_preference::BrowserForms::new(&request, https)
+    };
+    render(route, page, &viewer, session.as_ref(), None, (&state, browser)).await
 }
 
 async fn repository(
@@ -121,6 +134,7 @@ async fn repository(
     mut page: Page,
     OriginalUri(uri): OriginalUri,
     path: Result<Path<RepositoryPath>, PathRejection>,
+    crate::client_ip::Https(https): crate::client_ip::Https,
     request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
@@ -133,7 +147,12 @@ async fn repository(
         _ => return Err(WebError::NotFound),
     }
     let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
-    render(route, page, &viewer, session.as_ref(), Some(loaded), &state).await
+    let browser = if route.descriptor().forms().is_empty() {
+        browser_preference::BrowserForms::empty(https)
+    } else {
+        browser_preference::BrowserForms::new(&request, https)
+    };
+    render(route, page, &viewer, session.as_ref(), Some(loaded), (&state, browser)).await
 }
 
 async fn render(
@@ -142,7 +161,7 @@ async fn render(
     viewer: &Viewer,
     session: Option<&crate::extract::CurrentSession>,
     repository: Option<RepoPage>,
-    state: &AppState,
+    (state, mut browser): (&AppState, browser_preference::BrowserForms),
 ) -> WebResult<Response> {
     let context = PageContext {
         actor: viewer.user().map(|user| PageActor { account_id: user.id().0, is_admin: user.is_admin }),
@@ -155,7 +174,7 @@ async fn render(
         locale: page.locale.clone(),
     };
     let native_forms = !route.descriptor().forms().is_empty();
-    let actions = forms::actions(&route, viewer, session, repository.as_ref(), state);
+    let actions = forms::actions(&route, viewer, session, repository.as_ref(), state, &mut browser);
     let Ok(mut lease) = route.admit() else { return Ok(unavailable()) };
     let body = match lease.render_with_forms(context, actions).await {
         Ok(body) => body,
@@ -164,11 +183,12 @@ async fn render(
     };
     let owner = route.owner().to_string();
     let path = route.descriptor().path().to_owned();
-    let response = shell(page, repository, owner, path, body, native_forms, state);
+    let policy = ShellPolicy { native_forms, administrator: route.descriptor().audience() == PageAudience::SiteAdmin };
+    let response = shell(page, repository, owner, path, body, policy, state);
     let (guard, cancellation) = lease.into_parts();
     let mut response = response;
     response.extensions_mut().insert(crate::middleware::PageResponseGuard::new(guard, cancellation));
-    Ok(response)
+    Ok(browser.apply(response))
 }
 
 fn shell(
@@ -177,12 +197,15 @@ fn shell(
     owner: String,
     path: String,
     body: rbit_services::plugin_pages::PageBody,
-    native_forms: bool,
+    ShellPolicy { native_forms, administrator }: ShellPolicy,
     state: &AppState,
 ) -> Response {
     let page = page.titled(body.title());
     if let Some(repository) = repository {
         RepositoryPluginPage { page, header: repository.header(state, ""), owner, route: path, body, native_forms }.into_response()
+    } else if administrator {
+        AdminPluginPage { page, admin_nav: crate::views::admin::AdminSection::Plugins.nav(), owner, route: path, body, native_forms }
+            .into_response()
     } else {
         GlobalPluginPage { page, owner, route: path, body, native_forms }.into_response()
     }
