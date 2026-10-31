@@ -40,6 +40,7 @@ COPY --from=assets /src/crates/rbit-web/assets/app.css crates/rbit-web/assets/ap
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/src/target \
+    --mount=type=cache,target=/src/.cargo-build \
     cargo build --release --locked --package rbit-server \
     && install -D -m 0755 target/release/rbit /out/rbit
 

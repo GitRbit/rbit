@@ -168,6 +168,10 @@ strip = "symbols"
 # File and line numbers for backtraces and panics, without the variable-level debug info
 # that makes rbit-web and every test binary slower to generate and link.
 debug = "line-tables-only"
+incremental = false
+
+[profile.dev.build-override]
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 # Dependencies (gix, syntect, argon2) are dramatically faster when optimised,
