@@ -41,11 +41,15 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
     let config = Arc::new(config);
     let storage = open_storage(&config).await?;
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
-
-    let purger = spawn_session_purger(storage.kv.clone());
-    services.spawn_background();
-    let background = services.clone();
     let state = AppState::new(Arc::clone(&config), services);
+    if let Err(error) = rbit_web::prepare_plugin_routes(&state).await {
+        state.services.shutdown().await;
+        storage.database.close().await;
+        return Err(error).context("cannot prepare native plugin routes");
+    }
+    let purger = spawn_session_purger(storage.kv.clone());
+    state.services.spawn_background();
+    let background = state.services.clone();
     let mut restart = state.restart.subscribe();
     let ssh = crate::ssh::start(&config, &background, restart.clone());
     let app = rbit_web::router(state);

@@ -22,7 +22,7 @@ async fn apply(registry: &RequestHookRegistry, request: Request, next: Next) -> 
     let route = request.extensions().get::<MatchedPath>().map_or("<unmatched>", MatchedPath::as_str);
     // Optional hooks cannot trap administrators or prevent the host from serving
     // its own authentication, recovery, diagnostics and embedded assets.
-    if reserved_host_route(route) {
+    if reserved_host_route(route) || reserved_i18n_management(route, request.uri().path()) {
         return next.run(request).await;
     }
     let snapshot = registry.snapshot();
@@ -48,6 +48,14 @@ async fn apply(registry: &RequestHookRegistry, request: Request, next: Next) -> 
     response
 }
 
+fn reserved_i18n_management(route: &str, path: &str) -> bool {
+    route == "/-/plugins/{plugin}/{*page}"
+        && matches!(
+            path,
+            "/-/plugins/rbit.i18n-admin/packs" | "/-/plugins/rbit.i18n-admin/packs/install" | "/-/plugins/rbit.i18n-admin/packs/remove"
+        )
+}
+
 fn reserved_host_route(route: &str) -> bool {
     matches!(
         route,
@@ -57,8 +65,6 @@ fn reserved_host_route(route: &str) -> bool {
             | "/admin/monitoring"
             | "/admin/plugins/actions"
             | "/admin/plugins/i18n"
-            | "/admin/plugins/i18n/packs"
-            | "/admin/plugins/i18n/packs/{id}/remove"
             | "/login"
             | "/login/two-factor"
             | "/login/{provider}"
@@ -320,5 +326,23 @@ mod tests {
         let response = router.oneshot(Request::builder().uri("/admin").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(calls.load(Ordering::SeqCst), 1, "no blanket admin exemption");
+    }
+}
+#[test]
+fn native_i18n_routes_recovery_allowlist_is_exact_and_global() {
+    let route = "/-/plugins/{plugin}/{*page}";
+    for path in ["/-/plugins/rbit.i18n-admin/packs", "/-/plugins/rbit.i18n-admin/packs/install", "/-/plugins/rbit.i18n-admin/packs/remove"]
+    {
+        assert!(reserved_i18n_management(route, path));
+        assert!(!reserved_i18n_management("/{owner}/{repo}/-/plugins/{plugin}/{*page}", path));
+        assert!(!reserved_i18n_management("<unmatched>", path));
+    }
+    for path in [
+        "/-/plugins/rbit.i18n-admin/packs/",
+        "/-/plugins/rbit.i18n-admin/packs/unknown",
+        "/-/plugins/rbit.i18n/language",
+        "/-/plugins/rbit%2Ei18n-admin/packs",
+    ] {
+        assert!(!reserved_i18n_management(route, path));
     }
 }

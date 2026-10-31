@@ -88,7 +88,7 @@ pub(crate) fn i18n() -> UiContributionSet {
         slot: UiSlot::AccountSettings,
         order: 90,
         visibility: UiVisibility::SignedIn,
-        content: UiContent::Link(link("locale-title", "Language", "/language", UiIcon::Globe)),
+        content: UiContent::Link(link("locale-title", "Language", "/-/plugins/rbit.i18n/language", UiIcon::Globe)),
     }])
 }
 

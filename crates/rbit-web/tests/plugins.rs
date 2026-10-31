@@ -1,5 +1,10 @@
 //! Plugin controls remain on one router across runtime transitions.
 
+#[cfg(feature = "i18n")]
+mod i18n_recovery;
+#[cfg(feature = "i18n")]
+mod i18n_security;
+
 use std::sync::Arc;
 
 use axum::{
@@ -33,9 +38,14 @@ impl Fixture {
     }
 
     async fn with_api(api_enabled: bool) -> Self {
+        Self::with_origin(api_enabled, "http://localhost:3000").await
+    }
+
+    async fn with_origin(api_enabled: bool, origin: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
         config.api.enabled = api_enabled;
+        origin.clone_into(&mut config.server.public_url);
         config.storage.data_dir = directory.path().join("data");
         config.security.rate_limit = false;
         config.updates.check_for_updates = false;
@@ -68,7 +78,9 @@ impl Fixture {
         let cookie = |token: rbit_auth::SessionToken| format!("rbit_session={}", token.encode());
         let admin_cookie = cookie(services.accounts.start_session(&admin).await.unwrap());
         let user_cookie = cookie(services.accounts.start_session(&user).await.unwrap());
-        let router = rbit_web::router(rbit_web::AppState::new(config.clone(), services.clone()));
+        let state = rbit_web::AppState::new(config.clone(), services.clone());
+        rbit_web::prepare_plugin_routes(&state).await.unwrap();
+        let router = rbit_web::router(state);
         Self {
             _directory: directory,
             services,
@@ -288,8 +300,51 @@ core="catalogs/core.ftl"
 }
 
 #[cfg(feature = "i18n")]
+const LANGUAGE: &str = "/-/plugins/rbit.i18n/language";
+#[cfg(feature = "i18n")]
+const PACKS: &str = "/-/plugins/rbit.i18n-admin/packs";
+#[cfg(feature = "i18n")]
+const INSTALL: &str = "/-/plugins/rbit.i18n-admin/packs/install";
+#[cfg(feature = "i18n")]
+const REMOVE: &str = "/-/plugins/rbit.i18n-admin/packs/remove";
+
+#[cfg(feature = "i18n")]
+fn native_proof(html: &str, action: &str) -> String {
+    html.split(&format!("action=\"{action}\""))
+        .nth(1)
+        .unwrap()
+        .split("</form>")
+        .next()
+        .unwrap()
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+#[cfg(feature = "i18n")]
+async fn native_form(fixture: &Fixture, page: &str, cookie: Option<&str>, action: &str) -> (String, axum::http::HeaderMap) {
+    let (status, body, headers) = fixture.request(Method::GET, page, cookie, &fixture.config.server.public_url, "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert!(body.contains("hx-history=\"false\""));
+    (native_proof(&body, action), headers)
+}
+
+#[cfg(feature = "i18n")]
+fn pack_wire(proof: &str, pack: &[u8]) -> Vec<u8> {
+    let mut wire = format!("--rbitpack\r\nContent-Disposition: form-data; name=\"_csrf\"\r\n\r\n{proof}\r\n--rbitpack\r\nContent-Disposition: form-data; name=\"pack\"; filename=\"ar.rbit-language\"\r\nContent-Type: application/zip\r\n\r\n").into_bytes();
+    wire.extend_from_slice(pack);
+    wire.extend_from_slice(b"\r\n--rbitpack--\r\n");
+    wire
+}
+
+#[cfg(feature = "i18n")]
 #[tokio::test]
-async fn one_router_negotiates_escaped_rtl_messages_and_retains_preferences_across_disable() {
+async fn native_i18n_routes_render_rtl_and_retain_preferences_across_disable() {
     let fixture = Fixture::new().await;
     fixture.services.install_language_pack(&fixture.admin, &language_pack("ar", "rtl", "<script>alert(1)</script>")).await.unwrap();
     fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
@@ -305,7 +360,8 @@ async fn one_router_negotiates_escaped_rtl_messages_and_retains_preferences_acro
     assert!(!headers[header::CACHE_CONTROL].to_str().unwrap().contains("immutable"));
     let old_revision = headers["rbit-locale-revision"].clone();
     let admin_page = fixture.get("/admin/plugins").await.1;
-    assert!(admin_page.contains("حزمة واحدة"));
+    assert!(!admin_page.contains("rbit.language.ar"), "pack data lives in the native management page");
+    assert!(fixture.get(PACKS).await.1.contains("حزمة واحدة"));
     assert!(admin_page.contains("data-plugin-status=\"i18n\">Enabled</p>"));
 
     // A mutation carrying the old request snapshot cannot deadlock its own disposal.
@@ -319,7 +375,7 @@ async fn one_router_negotiates_escaped_rtl_messages_and_retains_preferences_acro
     let (_, body, headers) = fixture.get("/").await;
     assert_eq!(headers[header::CONTENT_LANGUAGE], "en");
     assert_ne!(headers["rbit-locale-revision"], old_revision);
-    assert!(!body.contains("href=\"/language\""));
+    assert!(!body.contains(&format!("href=\"{LANGUAGE}\"")));
     assert_eq!(fixture.get("/language").await.0, StatusCode::NOT_FOUND);
     assert!(fixture.get("/admin/plugins").await.1.contains("data-plugin-status=\"i18n\">Disabled</p>"));
     fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
@@ -331,23 +387,47 @@ async fn one_router_negotiates_escaped_rtl_messages_and_retains_preferences_acro
 
 #[cfg(feature = "i18n")]
 #[tokio::test]
-async fn language_preference_and_pack_controls_use_host_authorization_and_origin_checks() {
+async fn native_i18n_routes_require_admin_controls_and_browser_proofs_for_guests() {
     let fixture = Fixture::new().await;
-    for path in ["/admin/plugins/i18n", "/admin/plugins/i18n/packs/rbit.language.ar/remove"] {
+    for path in [INSTALL, REMOVE] {
         assert_eq!(
-            fixture.request(Method::POST, path, Some(&fixture.user_cookie), "http://localhost:3000", "enabled=true").await.0,
+            fixture.request(Method::POST, path, Some(&fixture.user_cookie), "http://localhost:3000", "id=x").await.0,
             StatusCode::NOT_FOUND
         );
         assert_eq!(
-            fixture.request(Method::POST, path, Some(&fixture.admin_cookie), "https://attacker.example", "enabled=true").await.0,
+            fixture.request(Method::POST, path, Some(&fixture.admin_cookie), "https://attacker.example", "id=x").await.0,
             StatusCode::FORBIDDEN
         );
     }
     fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
-    assert_eq!(fixture.request(Method::POST, "/language", None, "https://attacker.example", "locale=en").await.0, StatusCode::FORBIDDEN);
-    let (status, _, headers) = fixture.request(Method::POST, "/language", None, "http://localhost:3000", "locale=en").await;
+    assert_eq!(fixture.get("/language").await.2[header::LOCATION], LANGUAGE);
+    assert_eq!(
+        fixture.request(Method::POST, "/language", None, "http://localhost:3000", "locale=en").await.0,
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    let (proof, headers) = native_form(&fixture, LANGUAGE, None, LANGUAGE).await;
+    let browser = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().unwrap();
+            value.starts_with("rbit-plugin-browser=").then(|| value.split(';').next().unwrap().to_owned())
+        })
+        .unwrap();
+    let body = format!("_csrf={proof}&locale=en");
+    assert_eq!(fixture.request(Method::POST, LANGUAGE, None, "http://localhost:3000", &body).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(fixture.request(Method::POST, LANGUAGE, Some(&browser), "https://attacker.example", &body).await.0, StatusCode::FORBIDDEN);
+    let (status, _, headers) = fixture.request(Method::POST, LANGUAGE, Some(&browser), "http://localhost:3000", &body).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
-    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
+    assert_eq!(headers[header::LOCATION], LANGUAGE);
+    let cookie = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().unwrap();
+            value.starts_with("rbit-locale=").then_some(value)
+        })
+        .unwrap();
     assert!(cookie.contains("rbit-locale=en") && cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"));
     fixture.services.shutdown().await;
 }
@@ -379,14 +459,11 @@ async fn locale_priority_and_bounded_browser_negotiation_are_visible_on_http_res
 
 #[cfg(feature = "i18n")]
 #[tokio::test]
-async fn trusted_pack_upload_and_removal_publish_without_rebinding_the_router() {
+async fn native_i18n_routes_install_and_remove_packs_while_provider_is_disabled() {
     let fixture = Fixture::new().await;
-    let pack = language_pack("ar", "rtl", "استكشاف");
-    let mut multipart =
-        b"--rbitpack\r\nContent-Disposition: form-data; name=\"pack\"; filename=\"ar.zip\"\r\nContent-Type: application/zip\r\n\r\n"
-            .to_vec();
-    multipart.extend_from_slice(&pack);
-    multipart.extend_from_slice(b"\r\n--rbitpack--\r\n");
+    assert!(!fixture.services.i18n_enabled());
+    let (proof, _) = native_form(&fixture, PACKS, Some(&fixture.admin_cookie), INSTALL).await;
+    let wire = pack_wire(&proof, &language_pack("ar", "rtl", "استكشاف"));
     for (cookie, origin, expected) in [
         (&fixture.user_cookie, "http://localhost:3000", StatusCode::NOT_FOUND),
         (&fixture.admin_cookie, "https://attacker.example", StatusCode::FORBIDDEN),
@@ -394,35 +471,50 @@ async fn trusted_pack_upload_and_removal_publish_without_rebinding_the_router() 
     ] {
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/admin/plugins/i18n/packs")
+            .uri(INSTALL)
             .header(header::HOST, "localhost:3000")
             .header(header::ORIGIN, origin)
             .header(header::COOKIE, cookie)
             .header(header::CONTENT_TYPE, "multipart/form-data; boundary=rbitpack")
-            .body(Body::from(multipart.clone()))
+            .body(Body::from(wire.clone()))
             .unwrap();
         let response = fixture.router.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), expected);
+        let _ = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     }
-    assert!(fixture.get("/admin/plugins").await.1.contains("rbit.language.ar"));
-    let status = fixture
-        .request(
-            Method::POST,
-            "/admin/plugins/i18n/packs/rbit.language.ar/remove",
-            Some(&fixture.admin_cookie),
-            "http://localhost:3000",
-            "",
-        )
-        .await
-        .0;
-    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (_, page, _) = fixture.get(PACKS).await;
+    assert!(page.contains("rbit.language.ar"));
+    let sidebar_link = page.split("href=\"/admin/plugins\"").nth(1).unwrap().split("</a>").next().unwrap();
+    assert!(sidebar_link.contains("aria-current=\"page\""));
+    assert!(page.contains("accept=\".rbit-language,.zip,application/zip\""));
     assert!(!fixture.get("/admin/plugins").await.1.contains("rbit.language.ar"));
+    let proof = native_proof(&page, REMOVE);
+    assert_eq!(
+        fixture
+            .request(
+                Method::POST,
+                REMOVE,
+                Some(&fixture.admin_cookie),
+                "http://localhost:3000",
+                &format!("_csrf={proof}&id=rbit.language.ar")
+            )
+            .await
+            .0,
+        StatusCode::SEE_OTHER
+    );
+    assert!(!fixture.get(PACKS).await.1.contains("rbit.language.ar"));
+    for path in ["/admin/plugins/i18n/packs", "/admin/plugins/i18n/packs/rbit.language.ar/remove"] {
+        assert_eq!(
+            fixture.request(Method::POST, path, Some(&fixture.admin_cookie), "http://localhost:3000", "").await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
     fixture.services.shutdown().await;
 }
 
 #[cfg(feature = "i18n")]
 #[tokio::test]
-async fn failed_language_startup_is_visible_and_repairable_in_the_admin_page() {
+async fn native_i18n_routes_failed_startup_is_visible_and_repairable() {
     use rbit_core::Timestamp;
     use rbit_storage::sqlite::language_packs::NewLanguagePack;
 
@@ -446,15 +538,20 @@ async fn failed_language_startup_is_visible_and_repairable_in_the_admin_page() {
     fixture.database.plugin_settings().set_desired_enabled("rbit.i18n", true, Some(fixture.admin.id()), Timestamp::now()).await.unwrap();
     fixture.services.shutdown().await;
     let resumed = Services::new(Arc::clone(&fixture.config), &fixture.database, &fixture.kv).await.unwrap();
-    fixture.router = rbit_web::router(rbit_web::AppState::new(Arc::clone(&fixture.config), resumed.clone()));
+    let state = rbit_web::AppState::new(Arc::clone(&fixture.config), resumed.clone());
+    rbit_web::prepare_plugin_routes(&state).await.unwrap();
+    fixture.router = rbit_web::router(state);
     fixture.services = resumed;
     let (status, body, headers) = fixture.get("/admin/plugins").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CONTENT_LANGUAGE], "en");
     assert!(body.contains("data-plugin-status=\"i18n\">Failed</p>"));
     assert!(body.contains("English remains available."));
-    assert!(body.contains("example.broken"));
-    assert!(body.contains("/admin/plugins/i18n/packs/example.broken/remove"));
+    assert!(body.contains(PACKS));
+    let (_, packs, _) = fixture.get(PACKS).await;
+    assert!(packs.contains("example.broken"));
+    assert!(packs.contains(REMOVE));
+    assert!(!packs.contains("private-corrupt-archive-data"));
     assert!(!body.contains("private-corrupt-archive-data"));
     assert!(!fixture.services.i18n_enabled());
 
@@ -462,6 +559,23 @@ async fn failed_language_startup_is_visible_and_repairable_in_the_admin_page() {
         fixture.request(Method::POST, "/admin/plugins/i18n", Some(&fixture.admin_cookie), "http://localhost:3000", "enabled=false").await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert!(fixture.get("/admin/plugins").await.1.contains("data-plugin-status=\"i18n\">Disabled</p>"));
+    let proof = native_proof(&packs, REMOVE);
+    assert_eq!(
+        fixture
+            .request(
+                Method::POST,
+                REMOVE,
+                Some(&fixture.admin_cookie),
+                "http://localhost:3000",
+                &format!("_csrf={proof}&id=example.broken")
+            )
+            .await
+            .0,
+        StatusCode::SEE_OTHER
+    );
+    assert!(!fixture.get(PACKS).await.1.contains("example.broken"));
+    fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
+    assert_eq!(fixture.get(LANGUAGE).await.0, StatusCode::OK);
     fixture.services.shutdown().await;
 }
 
@@ -657,4 +771,125 @@ async fn custom_request_hooks_preserve_host_recovery_and_its_security_guards() {
         assert_eq!(fixture.get("/").await.0, StatusCode::OK);
         fixture.services.shutdown().await;
     }
+}
+
+#[cfg(feature = "i18n")]
+#[tokio::test]
+async fn native_i18n_routes_persist_account_choices_and_reject_retired_generation_proofs() {
+    let fixture = Fixture::new().await;
+    fixture.services.install_language_pack(&fixture.admin, &language_pack("ar", "rtl", "استكشاف")).await.unwrap();
+    fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
+    let (old_proof, _) = native_form(&fixture, LANGUAGE, Some(&fixture.admin_cookie), LANGUAGE).await;
+    assert_eq!(
+        fixture
+            .request(Method::POST, LANGUAGE, Some(&fixture.admin_cookie), "http://localhost:3000", &format!("_csrf={old_proof}&locale=ar"))
+            .await
+            .0,
+        StatusCode::SEE_OTHER
+    );
+    assert_eq!(fixture.get("/").await.2[header::CONTENT_LANGUAGE], "ar");
+    fixture.services.set_i18n_enabled(&fixture.admin, false).await.unwrap();
+    assert_eq!(fixture.get(LANGUAGE).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(fixture.get("/").await.2[header::CONTENT_LANGUAGE], "en");
+    assert_eq!(fixture.get(PACKS).await.0, StatusCode::OK, "installed admin management survives provider disable");
+    fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
+    assert_eq!(
+        fixture
+            .request(Method::POST, LANGUAGE, Some(&fixture.admin_cookie), "http://localhost:3000", &format!("_csrf={old_proof}&locale=en"))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(fixture.get("/").await.2[header::CONTENT_LANGUAGE], "ar");
+    let (proof, _) = native_form(&fixture, LANGUAGE, Some(&fixture.admin_cookie), LANGUAGE).await;
+    let browser_cookie = format!("{}; rbit-locale=ar", fixture.admin_cookie);
+    let (status, _, headers) =
+        fixture.request(Method::POST, LANGUAGE, Some(&browser_cookie), "http://localhost:3000", &format!("_csrf={proof}&locale=")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(
+        headers
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|value| value.to_str().unwrap().starts_with("rbit-locale=;") && value.to_str().unwrap().contains("Max-Age=0"))
+    );
+    assert_eq!(fixture.get("/").await.2[header::CONTENT_LANGUAGE], "en");
+    fixture.services.shutdown().await;
+}
+
+#[cfg(feature = "i18n")]
+#[tokio::test]
+async fn native_i18n_routes_guest_https_identity_and_locale_cookies_are_host_constrained() {
+    let fixture = Fixture::with_origin(true, "https://localhost:3000").await;
+    fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
+    let (proof, headers) = native_form(&fixture, LANGUAGE, None, LANGUAGE).await;
+    let browser = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().unwrap();
+            value.starts_with("__Host-rbit-plugin-browser=").then_some(value)
+        })
+        .unwrap();
+    assert!(browser.contains("Secure") && browser.contains("HttpOnly") && browser.contains("SameSite=Lax") && browser.contains("Path=/"));
+    assert!(!browser.contains("Domain="));
+    let cookie = browser.split(';').next().unwrap();
+    let (status, _, headers) =
+        fixture.request(Method::POST, LANGUAGE, Some(cookie), "https://localhost:3000", &format!("_csrf={proof}&locale=en")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let locale = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .find_map(|value| {
+            let value = value.to_str().unwrap();
+            value.starts_with("rbit-locale=").then_some(value)
+        })
+        .unwrap();
+    assert!(
+        locale.contains("rbit-locale=en")
+            && locale.contains("Secure")
+            && locale.contains("HttpOnly")
+            && locale.contains("SameSite=Lax")
+            && locale.contains("Path=/")
+    );
+    let wrong_identity = cookie.replace(cookie.split('=').nth(1).unwrap(), &rbit_auth::PluginBrowserToken::generate().encode());
+    assert_eq!(
+        fixture
+            .request(Method::POST, LANGUAGE, Some(&wrong_identity), "https://localhost:3000", &format!("_csrf={proof}&locale=en"))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.services.shutdown().await;
+}
+
+#[cfg(feature = "i18n")]
+#[tokio::test]
+async fn native_i18n_routes_reject_bad_upload_proofs_malformed_fields_and_invalid_archives() {
+    let fixture = Fixture::new().await;
+    let (proof, _) = native_form(&fixture, PACKS, Some(&fixture.admin_cookie), INSTALL).await;
+    let pack = language_pack("ar", "rtl", "استكشاف");
+    let mut wrong_field = pack_wire(&proof, &pack);
+    let position = wrong_field.windows(b"name=\"pack\"".len()).position(|window| window == b"name=\"pack\"").unwrap();
+    wrong_field.splice(position..position + b"name=\"pack\"".len(), b"name=\"oops\"".iter().copied());
+    for (wire, expected) in [
+        (pack_wire("wrong", &pack), StatusCode::FORBIDDEN),
+        (wrong_field, StatusCode::BAD_REQUEST),
+        (pack_wire(&proof, b"not an archive"), StatusCode::UNPROCESSABLE_ENTITY),
+    ] {
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(INSTALL)
+            .header(header::HOST, "localhost:3000")
+            .header(header::ORIGIN, "http://localhost:3000")
+            .header(header::COOKIE, &fixture.admin_cookie)
+            .header(header::CONTENT_TYPE, "multipart/form-data; boundary=rbitpack")
+            .body(Body::from(wire))
+            .unwrap();
+        let response = fixture.router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), expected);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let _ = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        assert_eq!(fixture.services.language_packs(&fixture.admin).await.unwrap().len(), 0);
+    }
+    fixture.services.shutdown().await;
 }

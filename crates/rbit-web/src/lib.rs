@@ -19,6 +19,8 @@ pub mod client_ip;
 pub mod error;
 pub mod extract;
 pub mod i18n;
+mod i18n_plugin_routes;
+pub use i18n_plugin_routes::prepare_plugin_routes;
 pub mod metrics;
 pub mod middleware;
 pub mod monitoring;

@@ -1,0 +1,16 @@
+<div class="box p-4">
+  <p class="text-[13px] text-ink-muted">{{ messages.text("core", "plugin-only-install-packs-from-a-publisher-you-trust-translations-can-change-security-and-sign-in-instructions") }}</p>
+  {% if let Some(error) = error %}<p class="mt-4 text-[13px]" role="alert">{{ error }}</p>{% endif %}
+  {% if let Some(form) = install %}
+  <form method="post" action="{{ form.action() }}" enctype="multipart/form-data" hx-boost="false" class="mt-4 flex flex-wrap items-end gap-3">
+    <input type="hidden" name="_csrf" value="{{ form.csrf() }}">
+    <div><label class="block text-[13px]" for="language-pack">{{ messages.text("core", "plugin-language-pack-zip-up-to-2-mib") }}</label><input id="language-pack" name="pack" type="file" accept=".rbit-language,.zip,application/zip" required class="mt-2 block max-w-full text-[13px]"></div>
+    <button class="btn btn-primary" type="submit">{{ messages.text("core", "plugin-install-language-pack") }}</button>
+  </form>
+  {% endif %}
+  <p class="mt-4 text-[13px] text-ink-muted">{{ count }}</p>
+  {% for pack in packs %}<div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+    <div class="min-w-0 text-[13px]"><p class="break-all font-medium">{{ pack.id }}</p><p class="text-ink-muted">{{ pack.locale }} · {{ pack.version }}</p><p class="text-xs text-ink-muted">{{ pack.coverage }}</p></div>
+    {% if let Some(form) = remove %}<form method="post" action="{{ form.action() }}" hx-boost="false"><input type="hidden" name="_csrf" value="{{ form.csrf() }}"><input type="hidden" name="id" value="{{ pack.id }}"><button class="btn btn-ghost" type="submit">{{ messages.text("core", "plugin-remove-pack") }}</button></form>{% endif %}
+  </div>{% endfor %}
+</div>

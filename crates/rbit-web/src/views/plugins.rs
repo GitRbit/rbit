@@ -28,7 +28,6 @@ pub struct PluginsPage {
     pub i18n_retry_disable: bool,
     pub i18n_busy: bool,
     pub i18n_problem: bool,
-    pub packs: Vec<LanguagePack>,
 }
 
 impl PluginsPage {
@@ -50,16 +49,6 @@ impl PluginsPage {
             i18n_retry_disable: false,
             i18n_busy: false,
             i18n_problem: false,
-            packs: Vec::new(),
         }
     }
-}
-
-#[derive(Debug)]
-pub struct LanguagePack {
-    pub id: String,
-    pub locale: String,
-    pub version: String,
-    pub message_count: usize,
-    pub message_total: usize,
 }

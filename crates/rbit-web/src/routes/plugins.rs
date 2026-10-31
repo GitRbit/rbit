@@ -2,7 +2,7 @@
 
 use axum::{
     Form, Router,
-    extract::{DefaultBodyLimit, Multipart, Path, State},
+    extract::State,
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::get,
@@ -13,10 +13,7 @@ use crate::{
     AppState,
     error::{WebError, WebResult},
     extract::SiteAdmin,
-    views::{
-        layout::Page,
-        plugins::{LanguagePack, PluginsPage},
-    },
+    views::{layout::Page, plugins::PluginsPage},
 };
 
 pub fn routes() -> Router<AppState> {
@@ -24,11 +21,9 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/plugins", get(index))
         .route("/admin/plugins/actions", axum::routing::post(set_actions))
         .route("/admin/plugins/i18n", axum::routing::post(set_i18n))
-        .route("/admin/plugins/i18n/packs", axum::routing::post(install_pack).layer(DefaultBodyLimit::max(2 * 1024 * 1024 + 8 * 1024)))
-        .route("/admin/plugins/i18n/packs/{id}/remove", axum::routing::post(remove_pack))
 }
 
-async fn page(state: &AppState, page: Page, actor: &rbit_core::User) -> WebResult<PluginsPage> {
+async fn page(state: &AppState, page: Page) -> WebResult<PluginsPage> {
     let status = state.services.actions_status().await.map(|status| (status.state, status.generation));
     let (state_label, generation, retry_disable, busy) = presentation(status);
     let mut view = PluginsPage::new(page, state.services.actions_available(), state.services.actions.is_some(), state_label, generation);
@@ -40,19 +35,6 @@ async fn page(state: &AppState, page: Page, actor: &rbit_core::User) -> WebResul
     view.i18n_problem = status
         .is_some_and(|(state, _)| matches!(state, rbit_plugin_api::PluginState::Failed | rbit_plugin_api::PluginState::RestartRequired));
     (view.i18n_status, view.i18n_generation, view.i18n_retry_disable, view.i18n_busy) = presentation(status);
-    view.packs = state
-        .services
-        .language_packs(actor)
-        .await?
-        .into_iter()
-        .map(|pack| LanguagePack {
-            id: pack.id,
-            locale: pack.locale,
-            version: pack.version,
-            message_count: pack.message_count,
-            message_total: pack.message_total,
-        })
-        .collect();
     Ok(view)
 }
 
@@ -75,8 +57,8 @@ fn presentation(status: Option<(rbit_plugin_api::PluginState, Option<rbit_plugin
     (crate::i18n::text("core", key).into_owned(), generation.map(rbit_plugin_api::Generation::get), retry, busy)
 }
 
-async fn index(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, shell: Page) -> WebResult<PluginsPage> {
-    page(&state, shell, &admin).await
+async fn index(State(state): State<AppState>, SiteAdmin(_): SiteAdmin, shell: Page) -> WebResult<PluginsPage> {
+    page(&state, shell).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +76,7 @@ async fn set_actions(
         Ok(()) => Ok(([("hx-redirect", "/admin/plugins"), (header::CACHE_CONTROL.as_str(), "no-store")], Redirect::to("/admin/plugins"))
             .into_response()),
         Err(rbit_services::ServiceError::Invalid(message)) => {
-            let mut page = page(&state, shell, &admin).await?;
+            let mut page = page(&state, shell).await?;
             page.error = Some(message);
             Ok((StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
         }
@@ -108,33 +90,5 @@ fn updated() -> Response {
 
 async fn set_i18n(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, Form(form): Form<Toggle>) -> WebResult<Response> {
     state.services.set_i18n_enabled(&admin, form.enabled).await?;
-    Ok(updated())
-}
-
-async fn install_pack(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, mut multipart: Multipart) -> WebResult<Response> {
-    // Allow bounded multipart framing; the service separately caps archive bytes at 2 MiB.
-    let field = multipart
-        .next_field()
-        .await
-        .map_err(|_| WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()))?
-        .ok_or_else(|| WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()))?;
-    if field.name() != Some("pack") {
-        return Err(WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()));
-    }
-    let bytes = field.bytes().await.map_err(|_| WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()))?;
-    if multipart
-        .next_field()
-        .await
-        .map_err(|_| WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()))?
-        .is_some()
-    {
-        return Err(WebError::BadRequest(crate::i18n::text("core", "pack-invalid-upload").into_owned()));
-    }
-    state.services.install_language_pack(&admin, &bytes).await?;
-    Ok(updated())
-}
-
-async fn remove_pack(State(state): State<AppState>, SiteAdmin(admin): SiteAdmin, Path(id): Path<String>) -> WebResult<Response> {
-    state.services.remove_language_pack(&admin, &id).await?;
     Ok(updated())
 }

@@ -165,7 +165,7 @@
       </p>
       <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="{{ crate::i18n::text("core", "shell-footer") }}">
         <a href="/explore" class="hover:text-ink">{{ crate::i18n::text("core", "nav-explore") }}</a>
-        {% if page.has_i18n %}<a href="/language" class="hover:text-ink" hx-boost="false">{{ crate::i18n::text("core", "locale-title") }}</a>{% endif %}
+        {% if page.has_i18n %}<a href="/-/plugins/rbit.i18n/language" class="hover:text-ink" hx-boost="false">{{ crate::i18n::text("core", "locale-title") }}</a>{% endif %}
         <a href="/themes" class="hover:text-ink">{{ crate::i18n::text("core", "nav-themes") }}</a>
         {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">{{ crate::i18n::text("core", "shell-support") }}</a>{% endif %}
         {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">{{ crate::i18n::text("core", "shell-terms") }}</a>{% endif %}
