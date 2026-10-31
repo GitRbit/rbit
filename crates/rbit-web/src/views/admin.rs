@@ -30,12 +30,12 @@ pub enum AdminSection {
     Configuration,
     Plugins,
     // Actions: interface and secrets (U).
-    /// Only on an instance with Actions: see [`AdminLink::needs_actions`].
+    /// The section route is retained; its navigation is a runtime UI contribution.
     Runners,
 }
 
 impl AdminSection {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 8] = [
         Self::Dashboard,
         Self::Users,
         Self::Organizations,
@@ -44,7 +44,6 @@ impl AdminSection {
         Self::Configuration,
         Self::Plugins,
         Self::AuditLog,
-        Self::Runners,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -77,15 +76,7 @@ impl AdminSection {
 
     /// The navigation with `self` marked as the current page.
     pub fn nav(self) -> Vec<AdminLink> {
-        Self::ALL
-            .iter()
-            .map(|&section| AdminLink {
-                label: section.label(),
-                url: section.url(),
-                is_active: section == self,
-                needs_actions: section == Self::Runners,
-            })
-            .collect()
+        Self::ALL.iter().map(|&section| AdminLink { label: section.label(), url: section.url(), is_active: section == self }).collect()
     }
 }
 
@@ -94,10 +85,6 @@ pub struct AdminLink {
     pub label: &'static str,
     pub url: &'static str,
     pub is_active: bool,
-    // Actions: interface and secrets (U).
-    /// Shown only on an instance with Actions ([`Page::has_actions`]); `admin/layout.html`
-    /// leaves the link out otherwise.
-    pub needs_actions: bool,
 }
 
 impl AdminLink {
@@ -807,6 +794,7 @@ mod tests {
     fn page() -> Page {
         Page {
             locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: Default::default(),
             has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { createEnhancementScope } from "../../crates/rbit-web/assets/plugin-enhancements.js";
 
 const source = await readFile(new URL("../../crates/rbit-web/assets/actions-log.js", import.meta.url), "utf8");
 
@@ -26,15 +27,18 @@ class Link extends Element {
 function page(pathname = "/a/b/actions/runs/1/jobs/2") {
   const listeners = new Map();
   const location = { pathname };
-  let job = null;
+  let job = new Job([]);
   const document = {
     addEventListener(type, listener, options) {
       listeners.set(type, listener);
       options?.signal?.addEventListener("abort", () => { if (listeners.get(type) === listener) listeners.delete(type); });
     },
+    removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
     querySelector: () => job,
   };
-  const dispose = vm.runInNewContext(source.replace("export function mount", "function mount") + "\nmount(document);", { document, location, Element, AbortController });
+  const scope = createEnhancementScope({ document, root: () => job });
+  vm.runInNewContext(source.replace("export function mount", "function mount") + "\nmount(document, context);", { document, context: scope.context, location, Element });
+  const dispose = () => scope.dispose();
   const fire = (type, event) => listeners.get(type)(event);
   return {
     location,

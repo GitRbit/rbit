@@ -464,3 +464,94 @@ async fn failed_language_startup_is_visible_and_repairable_in_the_admin_page() {
     assert!(fixture.get("/admin/plugins").await.1.contains("data-plugin-status=\"i18n\">Disabled</p>"));
     fixture.services.shutdown().await;
 }
+
+#[tokio::test]
+async fn runtime_ui_registration_renders_through_askama_and_cleans_up_on_one_router() {
+    use rbit_plugin_api::{
+        Generation, UiContent, UiContribution, UiContributionSet, UiIcon, UiLink, UiMessage, UiNoticeTone, UiSlot, UiVisibility,
+    };
+    use rbit_plugin_runtime::PluginScope;
+
+    let fixture = Fixture::new().await;
+    let registry = fixture.services.ui_registry();
+    let scope = PluginScope::new(Generation::INITIAL);
+    let contribution = |id: &str, slot, visibility, label: &str, target: &str| UiContribution {
+        id: id.parse().unwrap(),
+        slot,
+        order: 0,
+        visibility,
+        content: UiContent::Link(UiLink {
+            label: UiMessage { namespace: "example.ui".into(), key: "label".into(), fallback: label.into() },
+            target: target.parse().unwrap(),
+            icon: UiIcon::Info,
+        }),
+    };
+    let set = UiContributionSet::new(vec![
+        contribution("navigation", UiSlot::GlobalNav, UiVisibility::Public, "<script>Example</script>", "/explore"),
+        contribution("account", UiSlot::AccountSettings, UiVisibility::SignedIn, "Example account", "/settings/example"),
+        contribution("admin", UiSlot::AdminNav, UiVisibility::InstanceAdmin, "Example administrator", "/admin/example"),
+        UiContribution {
+            id: "panel".parse().unwrap(),
+            slot: UiSlot::RepositoryPanel,
+            order: 0,
+            visibility: UiVisibility::RepositoryReader,
+            content: UiContent::Notice {
+                message: UiMessage { namespace: "example.ui".into(), key: "notice".into(), fallback: "Example repository panel".into() },
+                tone: UiNoticeTone::Info,
+            },
+        },
+    ]);
+    let registration = registry.stage("example.ui".parse().unwrap(), &scope, scope.generation(), set).unwrap();
+    assert!(!fixture.get("/admin/plugins").await.1.contains("data-plugin-ui=\"example.ui:"));
+    registration.publish().unwrap();
+    let (_, html, headers) = fixture.get("/admin/plugins").await;
+    assert!(html.contains("data-plugin-ui=\"example.ui:admin\""));
+    assert!(html.contains("Example administrator"));
+    assert!(!html.contains("<script>Example</script>"));
+    assert!(html.contains("Example&#60;/script&#62;") || html.contains("Example&lt;/script&gt;"));
+    assert!(fixture.get("/settings/profile").await.1.contains("Example account"));
+    let response = fixture
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/alice/rocket")
+                .header("Rbit-Partial", "/alice/rocket")
+                .header(header::COOKIE, &fixture.admin_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["rbit-partial"], "true");
+    let partial = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert_eq!(partial.matches("id=\"repo-plugin-panels\"").count(), 1);
+    assert!(partial.contains("Example repository panel"));
+    assert!(partial.contains("hx-swap-oob=\"true\""));
+    let user_page = fixture.request(Method::GET, "/settings/profile", Some(&fixture.user_cookie), "http://localhost:3000", "").await.1;
+    assert!(!user_page.contains("Example administrator"));
+    assert!(user_page.contains("Example account"));
+    assert_eq!(fixture.get("/admin/example").await.0, StatusCode::NOT_FOUND, "UI registration grants no route or authorization");
+
+    registration
+        .replace(UiContributionSet::new(vec![contribution(
+            "navigation",
+            UiSlot::GlobalNav,
+            UiVisibility::Public,
+            "Replacement UI",
+            "/explore",
+        )]))
+        .unwrap();
+    let (_, html, replacement_headers) = fixture.get("/admin/plugins").await;
+    assert!(html.contains("Replacement UI"));
+    assert!(!html.contains("Example administrator"));
+    assert_ne!(headers["rbit-plugin-revision"], replacement_headers["rbit-plugin-revision"]);
+    scope.quiesce();
+    let (status, html, _) = fixture.get("/admin/plugins").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!html.contains("data-plugin-ui=\"example.ui:"));
+    assert!(registration.publish().is_err());
+    assert_eq!(scope.in_flight(), 0, "render snapshots do not hold plugin operations open");
+    fixture.services.shutdown().await;
+}

@@ -33,7 +33,7 @@ pub(crate) fn actions() -> UiContributionSet {
             "actions-repository-tab",
             UiSlot::RepositoryTab,
             60,
-            UiVisibility::RepositoryActionsEnabled,
+            UiVisibility::RepositoryFeatureEnabled,
             UiContent::Link(link("plugin-actions", "Actions", "/{owner}/{repo}/actions", UiIcon::Play)),
         ),
         entry(

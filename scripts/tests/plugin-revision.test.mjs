@@ -12,7 +12,8 @@ function page(revision, locale = "en:0", previousLocale = null) {
   const history = [];
   const redirects = [];
   vm.runInNewContext(source, {
-    document: { body: { dataset: { pluginRevision: revision, localeRevision: locale } }, addEventListener(name, callback) { assert.equal(name, "htmx:beforeOnLoad"); listener = callback; } },
+    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    document: { dispatchEvent() {}, body: { dataset: { pluginRevision: revision, localeRevision: locale } }, addEventListener(name, callback) { assert.equal(name, "htmx:beforeOnLoad"); listener = callback; } },
     clearNavigationResponses() { invalidated += 1; },
     localStorage: { getItem() { return previousLocale; }, setItem() {}, removeItem(key) { history.push(key); } },
     location: { href: "https://git.example/alice/rocket", assign(url) { redirects.push(url); } },

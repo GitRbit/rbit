@@ -59,6 +59,11 @@ impl Services {
     pub fn ui_snapshot(&self) -> ui::UiSnapshot {
         self.ui.snapshot()
     }
+    /// Trusted host composition capability for registering scoped plugin UI.
+    /// A registration still requires the plugin's current scope and generation.
+    pub fn ui_registry(&self) -> rbit_plugin_runtime::UiRegistry {
+        self.ui.clone()
+    }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
     }

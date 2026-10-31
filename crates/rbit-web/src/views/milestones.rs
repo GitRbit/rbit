@@ -186,6 +186,7 @@ mod tests {
         let html = MilestonesPage {
             page: Page {
                 locale: rbit_messages::LocaleSnapshot::english(0),
+                ui: Default::default(),
                 has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),

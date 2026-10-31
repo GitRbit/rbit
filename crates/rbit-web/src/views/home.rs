@@ -201,6 +201,7 @@ mod tests {
     fn page() -> Page {
         Page {
             locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: Default::default(),
             has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
@@ -246,7 +247,6 @@ mod tests {
             avatar: Avatar { initials: "A".to_owned(), palette: 0 },
             is_admin: false,
             can_create_org: false,
-            has_actions: false,
         };
         let signed_in = |unread| {
             let page = Page { plugin_revision: 0, viewer: Some(viewer.clone()), has_unread_notifications: unread, ..page() };

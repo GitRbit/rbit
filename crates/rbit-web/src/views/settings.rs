@@ -29,22 +29,14 @@ pub enum SettingsSection {
     // Milestone 3: email notifications (N).
     Notifications,
     // Actions: interface and secrets (U).
-    /// Only on an instance with Actions: see [`SettingsLink::needs_actions`].
+    /// The section route is retained; its navigation is a runtime UI contribution.
     Actions,
 }
 
 impl SettingsSection {
     /// Navigation order. New sections slot in here.
-    const ALL: [Self; 8] = [
-        Self::Profile,
-        Self::Account,
-        Self::Appearance,
-        Self::Security,
-        Self::SshKeys,
-        Self::AccessTokens,
-        Self::Notifications,
-        Self::Actions,
-    ];
+    const ALL: [Self; 7] =
+        [Self::Profile, Self::Account, Self::Appearance, Self::Security, Self::SshKeys, Self::AccessTokens, Self::Notifications];
 
     const fn label(self) -> &'static str {
         match self {
@@ -75,15 +67,7 @@ impl SettingsSection {
 
     /// The navigation with `self` marked as the current page.
     pub fn nav(self) -> Vec<SettingsLink> {
-        Self::ALL
-            .iter()
-            .map(|&section| SettingsLink {
-                label: section.label(),
-                url: section.url(),
-                is_active: section == self,
-                needs_actions: section == Self::Actions,
-            })
-            .collect()
+        Self::ALL.iter().map(|&section| SettingsLink { label: section.label(), url: section.url(), is_active: section == self }).collect()
     }
 }
 
@@ -92,10 +76,6 @@ pub struct SettingsLink {
     pub label: &'static str,
     pub url: &'static str,
     pub is_active: bool,
-    // Actions: interface and secrets (U).
-    /// Shown only on an instance with Actions ([`Page::has_actions`]): the navigation is
-    /// built without the request, and `settings/layout.html` leaves the link out otherwise.
-    pub needs_actions: bool,
 }
 
 // ------------------------------------------------------------------ profile
@@ -580,9 +560,8 @@ mod tests {
     fn settings_nav_marks_active_section() {
         let nav = SettingsSection::AccessTokens.nav();
         let labels: Vec<_> = nav.iter().map(|link| link.label).collect();
-        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens", "Notifications", "Actions"]);
-        let only_with_actions: Vec<_> = nav.iter().filter(|link| link.needs_actions).map(|link| link.url).collect();
-        assert_eq!(only_with_actions, ["/settings/actions"]);
+        assert_eq!(labels, ["Profile", "Account", "Appearance", "Security", "SSH keys", "Access tokens", "Notifications"]);
+        assert!(!nav.iter().any(|link| link.url == "/settings/actions"), "plugin links are supplied by the runtime registry");
         assert_eq!(nav.iter().filter(|link| link.is_active).count(), 1);
         let active = nav.iter().find(|link| link.is_active).unwrap();
         assert_eq!(active.url, "/settings/tokens");
@@ -607,6 +586,7 @@ mod tests {
     fn page() -> Page {
         Page {
             locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: Default::default(),
             has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),

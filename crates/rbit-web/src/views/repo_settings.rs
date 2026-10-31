@@ -91,9 +91,6 @@ fn settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
     cards.extend(protection::repo_settings_cards(header));
     // Milestone 3: importing and push mirrors (M).
     cards.extend(super::push_mirrors::repo_settings_cards(header));
-    // Actions: interface and secrets (U). Only when the instance has Actions.
-    #[cfg(feature = "actions")]
-    cards.extend(super::actions_settings::repo_settings_cards(header));
     cards
 }
 
@@ -269,6 +266,7 @@ mod tests {
     fn page() -> Page {
         Page {
             locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: Default::default(),
             has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),

@@ -7,7 +7,7 @@
 
 {#- While the job is not finished the whole section refreshes itself; a reload does the same.
     assets/actions-log.js keeps the steps the viewer opened or closed, by `data-step`. -#}
-<section data-actions-module="{{ page.asset("actions-log.js") }}" id="job" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
+<section {% if let Some(generation) = page.actions_ui_generation() %}data-plugin-owner="rbit.actions" data-plugin-generation="{{ generation }}" data-plugin-enhancement="actions.log" data-plugin-module="{{ page.asset("actions-log.js") }}" {% endif %}id="job" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#job" hx-target="this" hx-swap="outerHTML"{% endif %}>
   <div class="flex flex-wrap items-start gap-3">
     {% let look = look %}
     <span class="mt-1">{% include "actions/state.html" %}</span>

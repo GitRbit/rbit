@@ -1,7 +1,6 @@
-export function mount(root, context = {}) {
-const document = root.ownerDocument ?? root;
-const controller = new AbortController();
-const on = (type, listener) => document.addEventListener(type, listener, { signal: controller.signal });
+export function mount(_root, context) {
+const document = context.document;
+const on = (type, listener) => context.listen(document, type, listener);
 // Actions job pages (templates/actions/job.html) refresh their steps every few seconds
 // while the job runs, and each refresh opens the running step, or else the first failed
 // one. Every page works without this file; with it, a step the viewer opened or closed
@@ -42,7 +41,7 @@ on("htmx:afterSwap", () => {
   const before = openBefore;
   openBefore = null;
   if (!before) return;
-  const steps = stepsOf(document.querySelector(JOB));
+  const steps = stepsOf(context.root());
   const running = steps.find((step) => step.dataset.state === "running");
   const choice = chosen();
   for (const step of steps) {
@@ -52,5 +51,5 @@ on("htmx:afterSwap", () => {
   }
 });
 
-return () => { controller.abort(); choices = { path: null, steps: new Map() }; openBefore = null; };
+context.onDispose(() => { choices = { path: null, steps: new Map() }; openBefore = null; });
 }

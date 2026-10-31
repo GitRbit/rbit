@@ -163,7 +163,7 @@ pub enum UiVisibility {
     OrganizationAdmin,
     RepositoryReader,
     RepositoryAdmin,
-    RepositoryActionsEnabled,
+    RepositoryFeatureEnabled,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -288,7 +288,7 @@ impl UiContribution {
             S::AdminNav | S::AdminPanel => self.visibility == V::InstanceAdmin,
             S::RepositorySettings => matches!(self.visibility, V::RepositoryAdmin | V::InstanceAdmin),
             S::RepositoryTab | S::RepositoryPanel => {
-                matches!(self.visibility, V::RepositoryReader | V::RepositoryAdmin | V::RepositoryActionsEnabled)
+                matches!(self.visibility, V::RepositoryReader | V::RepositoryAdmin | V::RepositoryFeatureEnabled)
             }
         };
         if !valid_visibility {

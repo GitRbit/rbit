@@ -104,6 +104,7 @@ mod tests {
         let page = |can_write| LabelsPage {
             page: Page {
                 locale: rbit_messages::LocaleSnapshot::english(0),
+                ui: Default::default(),
                 has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),

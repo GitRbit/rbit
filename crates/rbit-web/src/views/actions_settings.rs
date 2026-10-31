@@ -19,39 +19,7 @@ use rbit_services::actions::{
     settings::{OwnerRepository, TrustedAuthor},
 };
 
-use crate::views::{
-    components::{FormError, SettingsCard},
-    layout::Page,
-    org::OrgHeader,
-    repo::RepoHeader,
-    settings::SettingsLink,
-};
-
-/// The Actions card of the repository settings page: only when the instance has Actions
-/// (and the viewer administers the repository, as on every settings page).
-pub fn repo_settings_cards(header: &RepoHeader) -> Vec<SettingsCard> {
-    header
-        .actions_settings_url
-        .iter()
-        .map(|url| SettingsCard {
-            url: url.clone(),
-            icon: "zap",
-            title: "Actions",
-            description: "Run workflows on pushes and pull requests, with the secrets and variables they use.",
-        })
-        .collect()
-}
-
-/// The Actions card of the organisation settings page; `settings_url` is `/{org}/settings`.
-/// Added only when the instance has Actions.
-pub fn org_settings_cards(settings_url: &str) -> Vec<SettingsCard> {
-    vec![SettingsCard {
-        url: format!("{settings_url}/actions"),
-        icon: "zap",
-        title: "Actions",
-        description: "Secrets and variables for the workflows of every repository of this organization.",
-    }]
-}
+use crate::views::{components::FormError, layout::Page, org::OrgHeader, repo::RepoHeader, settings::SettingsLink};
 
 /// What the last form did, from `?done=` after its redirect. Unknown values show nothing,
 /// so the query never puts words on the page.
@@ -376,14 +344,6 @@ mod tests {
             assert!(notice.message().ends_with('.'));
         }
         assert_eq!(Notice::parse("<script>"), None);
-    }
-
-    #[test]
-    fn the_card_follows_the_header() {
-        assert!(repo_settings_cards(&RepoHeader::default()).is_empty());
-        let header = RepoHeader { actions_settings_url: Some("/a/b/settings/actions".to_owned()), ..RepoHeader::default() };
-        assert_eq!(repo_settings_cards(&header)[0].url, "/a/b/settings/actions");
-        assert_eq!(org_settings_cards("/acme/settings")[0].url, "/acme/settings/actions");
     }
 
     #[test]

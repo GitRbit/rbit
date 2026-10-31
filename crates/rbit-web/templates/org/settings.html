@@ -55,6 +55,8 @@
 
   {% for card in cards %}{% call ui::settings_card(card) %}{% endcall %}{% endfor %}
 
+  {% for extension in page.organization_settings(header) %}{% include "extensions/panel.html" %}{% endfor %}
+
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">
       <h2 class="text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "org-settings-h2-danger-zone") }}</h2>

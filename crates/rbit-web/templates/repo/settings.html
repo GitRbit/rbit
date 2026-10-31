@@ -80,6 +80,8 @@
 
   {% for card in cards %}{% call ui::settings_card(card) %}{% endcall %}{% endfor %}
 
+  {% for extension in page.repository_settings(header) %}{% include "extensions/panel.html" %}{% endfor %}
+
   <section class="mt-10" aria-labelledby="danger-zone-title">
     <h2 id="danger-zone-title" class="mb-3 text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "repo-settings-h2-danger-zone") }}</h2>
     {% for card in danger_cards %}<div class="mb-3">{% call ui::settings_card(card) %}{% endcall %}</div>{% endfor %}

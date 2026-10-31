@@ -206,9 +206,7 @@ impl RepoPage {
             pulls_url: format!("{}/pulls", self.urls.home()),
             open_issues: self.open_counts.issues,
             open_pulls: self.open_counts.pulls,
-            actions_url: self.actions_on.then(|| format!("{}/actions", self.urls.home())),
-            actions_settings_url: (state.services.actions.is_some() && self.ctx.access.can_admin())
-                .then(|| format!("{}/settings/actions", self.urls.home())),
+            enabled_plugins: if self.actions_on { vec!["rbit.actions".parse().expect("built-in plugin ID")] } else { Vec::new() },
             active_tab,
         }
     }

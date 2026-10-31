@@ -10,14 +10,14 @@ autotests = false
 
 [features]
 default = ["actions", "i18n"]
-actions = ["rbit-services/actions", "dep:rbit-workflow", "dep:rbit-plugin-runtime", "dep:http-body"]
+actions = ["rbit-services/actions", "dep:rbit-workflow", "dep:http-body"]
 
 i18n = ["rbit-services/i18n"]
 
 [dependencies]
 rbit-messages.workspace = true
 rbit-plugin-api.workspace = true
-rbit-plugin-runtime = { workspace = true, optional = true }
+rbit-plugin-runtime.workspace = true
 http-body = { version = "1", optional = true }
 rbit-core.workspace = true
 rbit-auth.workspace = true

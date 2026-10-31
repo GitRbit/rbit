@@ -50,7 +50,7 @@
   {% block theme_script %}<script src="{{ page.asset("theme.js") }}" async></script>{% endblock %}
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
-<body data-browser-messages="{{ page.browser_messages() }}" data-locale-revision="{{ page.locale.lang() }}:{{ page.locale.revision() }}" data-plugin-revision="{{ page.plugin_revision }}" hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
+<body data-plugin-enhancements="{{ page.plugin_enhancements() }}" data-browser-messages="{{ page.browser_messages() }}" data-locale-revision="{{ page.locale.lang() }}:{{ page.locale.revision() }}" data-plugin-revision="{{ page.plugin_revision }}" hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
   <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-3 focus:z-50">{{ crate::i18n::text("core", "nav-skip-content") }}</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
@@ -140,6 +140,8 @@
       </div>
     </nav>
   </header>
+  {% let global_extensions = page.global_extensions() %}
+  {% if !global_extensions.is_empty() %}<nav class="mx-auto flex w-full max-w-[96rem] gap-4 scroll-tabs border-b border-line px-4 py-2 text-[13px] sm:px-6" aria-label="{{ crate::i18n::text("core", "nav-main") }}">{% for extension in global_extensions %}{% for link in extension.links %}<a class="shrink-0 hover:underline" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}" href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>{% endfor %}{% endfor %}</nav>{% endif %}
   {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
       (app.css `.site-subnav`). Hidden when a page has none. -#}
   <div class="site-subnav">{% block subnav %}{% endblock %}</div>

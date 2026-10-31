@@ -50,6 +50,10 @@ document.addEventListener("htmx:beforeOnLoad", (event) => {
     });
   if (!changed) return;
   event.preventDefault();
+  // Stop resources owned by an unpublished contribution before the full reload.
+  document.dispatchEvent(new CustomEvent("rbit:plugin-revision", { detail: {
+    revision: event.detail.xhr?.getResponseHeader?.("Rbit-Plugin-Revision"),
+  } }));
   retireLocalizedNavigation();
   const config = event.detail.requestConfig;
   const navigation = config?.boosted && config.verb?.toLowerCase() === "get";
