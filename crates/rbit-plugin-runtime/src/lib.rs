@@ -10,6 +10,7 @@
 //! arbitrary native code cannot be forcibly stopped by these primitives.
 
 mod admission;
+mod extensions;
 pub mod graph;
 mod manager;
 mod scope;
@@ -23,3 +24,8 @@ pub use ui::{UiEntry, UiRegistration, UiRegistry, UiRegistryError, UiSnapshot};
 
 #[cfg(test)]
 mod tests;
+
+pub use extensions::{
+    ExtensionEntry, ExtensionLease, ExtensionRegistration, ExtensionRegistryError, ExtensionSnapshot, MAX_SCOPED_EXTENSIONS,
+    ScopedExtensionRegistry,
+};

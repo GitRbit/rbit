@@ -132,6 +132,7 @@ impl UiRegistry {
             if let Some(state) = weak.upgrade() {
                 state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&cleanup_owner, token);
             }
+            None
         }))?;
         if scope.is_closed() {
             return Err(AdmissionError::Closed.into());

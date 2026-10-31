@@ -13,7 +13,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{Admission, AdmissionError, DrainError, OperationLease};
 
-type Cleanup = Box<dyn FnOnce() + Send + 'static>;
+// Cleanup detaches host registrations; arbitrary retired value destructors run
+// after both the registry lock and the scope cleanup serialization lock are gone.
+type Cleanup = Box<dyn FnOnce() -> Option<Box<dyn Send>> + Send + 'static>;
 #[derive(Default)]
 struct Effects {
     pending: Mutex<Vec<Cleanup>>,
@@ -29,11 +31,11 @@ impl fmt::Debug for Effects {
 }
 impl Effects {
     fn run(&self) {
-        let _running = self.running.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let running = self.running.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let effects = std::mem::take(&mut *self.pending.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
-        for effect in effects.into_iter().rev() {
-            effect();
-        }
+        let retired: Vec<_> = effects.into_iter().rev().filter_map(|effect| effect()).collect();
+        drop(running);
+        drop(retired);
     }
 }
 #[derive(Debug)]
