@@ -211,6 +211,21 @@ cargo run            # serves http://localhost:3000, data in ./data
 `cargo build --release` produces `target/release/rbit`; `docker build -t rbit .` builds the
 image from source.
 
+### Local build storage
+
+All crates share the root workspace, `Cargo.lock`, and `target/`. Cargo 1.91+ puts
+compiler intermediates in `.cargo-build/`; development profiles use line tables
+and disable incremental compilation to keep artifacts small and cacheable.
+
+On the configured development workstation, Cargo uses a bounded shared `sccache`
+cache. After creating a Git worktree, run
+`rust-worktree-storage seed /path/to/main /path/to/worktree` to seed both artifact
+directories using copy-on-write, without sharing mutable output directories.
+Run `rust-worktree-storage sweep --dry-run /path/to/repository` to inspect the
+30-day cleanup, or omit `--dry-run` to remove stale artifacts. The workstation's
+weekly cleanup applies the same policy. Stop builds before running `cargo clean`
+when a full local reset is needed.
+
 ## First steps
 
 The first account you create becomes the site administrator. While there is no account,

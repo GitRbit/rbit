@@ -1,3 +1,7 @@
+[build]
+# Keep disposable compiler intermediates separate from final target/ executables.
+build-dir = "{workspace-root}/.cargo-build"
+
 [env]
 # Compile-time options for the bundled SQLite (libsqlite3-sys reads LIBSQLITE3_FLAGS).
 #

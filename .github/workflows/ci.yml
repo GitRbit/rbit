@@ -35,6 +35,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           # Only main saves caches; pull requests restore them. Saving per pull request fills
           # the repository cache limit and evicts the main caches every run depends on.
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -70,6 +71,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # Integration tests drive the real git CLI (pushes, gc, backups); the hosted runners
       # ship git, so only print its version for the log.
@@ -121,6 +123,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           key: release
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # rbit-runner is not a default member: name both, as the release does.
