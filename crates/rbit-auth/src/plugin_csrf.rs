@@ -32,9 +32,15 @@ pub struct PluginCsrfBinding<'a> {
 
 impl PluginCsrfBinding<'_> {
     fn valid(&self) -> bool {
-        self.actor_id > 0
-            && self.repository_id.is_none_or(|id| id > 0)
-            && self.generation != 0
+        self.actor_id > 0 && self.repository_id.is_none_or(|id| id > 0) && self.valid_route()
+    }
+
+    fn valid_browser_preference(&self) -> bool {
+        self.actor_id == 0 && self.repository_id.is_none() && self.valid_route()
+    }
+
+    fn valid_route(&self) -> bool {
+        self.generation != 0
             && self.version != 0
             && !self.action.is_empty()
             && self.action.len() <= MAX_ACTION_BYTES
@@ -42,6 +48,31 @@ impl PluginCsrfBinding<'_> {
             && !self.action.starts_with("//")
             && self.action.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'-' | b'_' | b'.' | b'~'))
             && self.action[1..].split('/').all(|part| !part.is_empty() && !matches!(part, "." | ".."))
+    }
+}
+
+/// Anonymous browser continuity for a host-declared preference form. This is
+/// never an authentication session and does not create server-side session data.
+#[derive(Clone)]
+pub struct PluginBrowserToken(SessionToken);
+
+impl PluginBrowserToken {
+    pub fn generate() -> Self {
+        Self(SessionToken::generate())
+    }
+
+    pub fn parse(encoded: &str) -> Option<Self> {
+        SessionToken::parse(encoded).map(Self)
+    }
+
+    pub fn encode(&self) -> String {
+        self.0.encode()
+    }
+}
+
+impl fmt::Debug for PluginBrowserToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PluginBrowserToken(<redacted>)")
     }
 }
 
@@ -67,18 +98,39 @@ impl PluginCsrfKey {
         if !binding.valid() {
             return None;
         }
+        Some(self.issue_bound(&session.digest(), binding, now, false))
+    }
+
+    /// Anonymous proofs are restricted to global preference routes and use a
+    /// separate MAC domain, so they cannot authorize authenticated mutations.
+    pub fn issue_browser(&self, browser: &PluginBrowserToken, binding: &PluginCsrfBinding<'_>, now: u64) -> Option<String> {
+        if !binding.valid_browser_preference() {
+            return None;
+        }
+        Some(self.issue_bound(&browser.0.digest(), binding, now, true))
+    }
+
+    fn issue_bound(&self, digest: &[u8; 32], binding: &PluginCsrfBinding<'_>, now: u64, browser: bool) -> String {
         let mut bytes = [0; DECODED_BYTES];
         bytes[..8].copy_from_slice(&now.to_be_bytes());
         bytes[8..PAYLOAD_BYTES].copy_from_slice(&secret::random_bytes()[..16]);
-        let tag = self.mac(session, binding, &bytes[..PAYLOAD_BYTES]).finalize().into_bytes();
+        let tag = self.mac(digest, binding, &bytes[..PAYLOAD_BYTES], browser).finalize().into_bytes();
         bytes[PAYLOAD_BYTES..].copy_from_slice(&tag);
-        Some(format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes)))
+        format!("{PREFIX}{}", URL_SAFE_NO_PAD.encode(bytes))
     }
 
     /// Malformed, expired and wrong-context proofs have one refusal result. The
     /// bounded decoder runs before a constant-time cryptographic MAC comparison.
     pub fn verify(&self, session: &SessionToken, binding: &PluginCsrfBinding<'_>, token: &str, now: u64) -> bool {
-        if token.len() != PLUGIN_CSRF_TOKEN_BYTES || !binding.valid() {
+        binding.valid() && self.verify_bound(&session.digest(), binding, token, now, false)
+    }
+
+    pub fn verify_browser(&self, browser: &PluginBrowserToken, binding: &PluginCsrfBinding<'_>, token: &str, now: u64) -> bool {
+        binding.valid_browser_preference() && self.verify_bound(&browser.0.digest(), binding, token, now, true)
+    }
+
+    fn verify_bound(&self, digest: &[u8; 32], binding: &PluginCsrfBinding<'_>, token: &str, now: u64, browser: bool) -> bool {
+        if token.len() != PLUGIN_CSRF_TOKEN_BYTES {
             return false;
         }
         let Some(encoded) = token.strip_prefix(PREFIX) else { return false };
@@ -90,13 +142,13 @@ impl PluginCsrfKey {
         if now.saturating_sub(issued) > PLUGIN_CSRF_MAX_AGE_SECONDS || issued.saturating_sub(now) > CLOCK_LEEWAY_SECONDS {
             return false;
         }
-        self.mac(session, binding, &bytes[..PAYLOAD_BYTES]).verify_slice(&bytes[PAYLOAD_BYTES..]).is_ok()
+        self.mac(digest, binding, &bytes[..PAYLOAD_BYTES], browser).verify_slice(&bytes[PAYLOAD_BYTES..]).is_ok()
     }
 
-    fn mac(&self, session: &SessionToken, binding: &PluginCsrfBinding<'_>, payload: &[u8]) -> FormMac {
+    fn mac(&self, digest: &[u8; 32], binding: &PluginCsrfBinding<'_>, payload: &[u8], browser: bool) -> FormMac {
         let mut mac = <FormMac as KeyInit>::new_from_slice(&self.0).expect("HMAC accepts a 32-byte key");
-        mac.update(b"rbit/plugin-form-csrf/POST/v1\0");
-        mac.update(&session.digest());
+        mac.update(if browser { b"rbit/plugin-locale-preference-csrf/POST/v1\0" } else { b"rbit/plugin-form-csrf/POST/v1\0" });
+        mac.update(digest);
         mac.update(&binding.actor_id.to_be_bytes());
         match binding.repository_id {
             Some(id) => {
@@ -208,5 +260,36 @@ mod tests {
         ] {
             assert!(key.issue(&session, &invalid, 1_000).is_none());
         }
+    }
+
+    #[test]
+    fn browser_preference_proofs_are_not_authentication_or_session_proofs() {
+        let key = PluginCsrfKey::generate();
+        let browser = PluginBrowserToken::generate();
+        let binding =
+            PluginCsrfBinding { action: "/-/plugins/rbit.i18n/language", actor_id: 0, repository_id: None, generation: 3, version: 4 };
+        let token = key.issue_browser(&browser, &binding, 1_000).unwrap();
+        let restored = PluginBrowserToken::parse(&browser.encode()).unwrap();
+        assert!(key.verify_browser(&restored, &binding, &token, 1_001));
+        assert!(!key.verify_browser(&PluginBrowserToken::generate(), &binding, &token, 1_001));
+        assert!(!PluginCsrfKey::generate().verify_browser(&browser, &binding, &token, 1_001));
+        assert!(!key.verify_browser(&browser, &binding, &token, 2_801));
+        assert!(!key.verify_browser(&browser, &PluginCsrfBinding { version: 5, ..binding }, &token, 1_001));
+        // Even using exactly the same secret bytes cannot cross the two MAC domains.
+        let session = SessionToken::parse(&browser.encode()).unwrap();
+        assert!(!key.verify(&session, &binding, &token, 1_001));
+        assert!(!key.verify(&session, &PluginCsrfBinding { actor_id: 1, ..binding }, &token, 1_001));
+        assert!(key.issue(&session, &binding, 1_000).is_none());
+        for invalid in [
+            PluginCsrfBinding { actor_id: 1, ..binding },
+            PluginCsrfBinding { repository_id: Some(1), ..binding },
+            PluginCsrfBinding { action: "/-/plugins/rbit.i18n/../save", ..binding },
+            PluginCsrfBinding { generation: 0, ..binding },
+        ] {
+            assert!(key.issue_browser(&browser, &invalid, 1_000).is_none());
+            assert!(!key.verify_browser(&browser, &invalid, &token, 1_001));
+        }
+        assert_eq!(format!("{browser:?}"), "PluginBrowserToken(<redacted>)");
+        assert!(PluginBrowserToken::parse("malformed").is_none());
     }
 }
