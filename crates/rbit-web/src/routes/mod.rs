@@ -8,7 +8,9 @@ pub mod actions;
 pub mod actions_runner;
 mod admin;
 mod api;
-pub(crate) use api::{not_found_response as api_not_found_response, unauthorized_response as api_unauthorized_response};
+pub(crate) use api::{
+    PREFIX as PUBLIC_API_PREFIX, not_found_response as api_not_found_response, unauthorized_response as api_unauthorized_response,
+};
 mod archives;
 mod audit;
 mod auth;

@@ -60,8 +60,14 @@ fn refused(task: bool, request: &Request, revision: u64) -> Response {
 
 /// A plugin request owns admission until its response body completes or is dropped.
 pub async fn plugin_admission(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    // A disabled host API stays absent regardless of optional feature credentials.
-    if !state.config.api.enabled && request.uri().path().starts_with("/api/") {
+    // Only the public REST API follows this switch; runner RPC has its own namespace.
+    if !state.config.api.enabled
+        && request
+            .uri()
+            .path()
+            .strip_prefix(crate::routes::PUBLIC_API_PREFIX)
+            .is_some_and(|suffix| suffix.is_empty() || suffix.starts_with('/'))
+    {
         return refused(false, &request, state.services.plugin_revision());
     }
     // Padding cannot bypass classification and then be trimmed by an authenticator.

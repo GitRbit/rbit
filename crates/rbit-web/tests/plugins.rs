@@ -176,6 +176,21 @@ async fn a_disabled_api_keeps_not_found_envelopes_for_rejected_credentials() {
 
 #[cfg(feature = "actions")]
 #[tokio::test]
+async fn disabling_the_public_api_keeps_runner_protocol_routes_available() {
+    let fixture = Fixture::with_api(false).await;
+    fixture.services.set_actions_enabled(&fixture.admin, true).await.unwrap();
+    let request = Request::builder().method(Method::POST).uri("/api/actions/runner/v1/register").body(Body::empty()).unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    // Missing runner version reaches the RPC's negotiation layer, rather than REST's 404.
+    assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED);
+    let body = to_bytes(response.into_body(), 1024).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["code"], "unsupported_protocol");
+    fixture.services.shutdown().await;
+}
+
+#[cfg(feature = "actions")]
+#[tokio::test]
 async fn one_router_reflects_enable_and_disable_in_pages_navigation_and_openapi() {
     let fixture = Fixture::new().await;
     let repo = fixture.services.repositories.open(Some(&fixture.admin), "alice", "rocket").await.unwrap();
