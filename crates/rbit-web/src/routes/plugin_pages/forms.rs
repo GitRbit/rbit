@@ -8,8 +8,10 @@ use rbit_services::plugin_pages::{
 };
 
 use super::{
+    AppState, GlobalPath, IntoResponse, OriginalUri, Page, PageActor, PageRouteHandle, PageScope, Path, PathRejection, PluginId, Redirect,
+    RepoPage, RepositoryPath, Request, Response, StatusCode, Uri, Viewer, WebError, WebResult,
     form_input::{self, InputError, ParsedForm},
-    *,
+    header, shell, sign_in, validate_page_path,
 };
 use crate::extract::CurrentSession;
 
@@ -161,10 +163,7 @@ async fn submit(
     }
     let (viewer, repository) = reauthorize(&state, &session, actor.id().0, repository, &route).await?;
     let actor = viewer.user().ok_or(WebError::Forbidden)?;
-    let input = match FormData::new(parsed.fields) {
-        Ok(input) => input,
-        Err(_) => return Ok(failure(StatusCode::UNPROCESSABLE_ENTITY)),
-    };
+    let Ok(input) = FormData::new(parsed.fields) else { return Ok(failure(StatusCode::UNPROCESSABLE_ENTITY)) };
     let form = FormAction::new("submitted", &action, &parsed.proof).map_err(WebError::internal)?;
     let context = MutationContext::new(
         PageActor { account_id: actor.id().0, is_admin: actor.is_admin },

@@ -98,7 +98,7 @@ fn decode_component(encoded: &str) -> Result<String, InputError> {
         .map_err(|_| InputError::Malformed)
 }
 
-/// Browser URLSearchParams may include UTF-8; no other media/charset/encoding is accepted.
+/// Browser `URLSearchParams` may include UTF-8; no other media/charset/encoding is accepted.
 pub(super) fn supported_content_type(headers: &HeaderMap) -> bool {
     if headers.contains_key(header::CONTENT_ENCODING) || headers.get_all(header::CONTENT_TYPE).iter().count() != 1 {
         return false;
