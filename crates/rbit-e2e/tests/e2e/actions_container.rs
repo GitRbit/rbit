@@ -12,7 +12,6 @@
 
 use std::{
     fmt::Write as _,
-    path::Path,
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
