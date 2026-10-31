@@ -189,3 +189,56 @@ fn benchmark_warm_extension_snapshots() {
     let elapsed = started.elapsed();
     println!("100000 warm snapshots,16 owners: {elapsed:?}; {} ns/snapshot", elapsed.as_nanos() / 100_000);
 }
+
+#[test]
+fn selection_metadata_is_paired_with_callback_and_never_requires_admitting_other_entries() {
+    let registry = ScopedExtensionRegistry::default();
+    let scope = scope(2000);
+    let registration = registry
+        .stage_with_metadata(owner(), &scope, scope.generation(), vec![(10, "old-route".to_owned()), (20, "other-route".to_owned())])
+        .unwrap();
+    registration.publish().unwrap();
+    let old = registry.snapshot();
+    let selected = old.entries.iter().find(|entry| entry.metadata::<String>().is_some_and(|path| path == "old-route")).unwrap();
+    assert_eq!(scope.in_flight(), 0);
+    assert!(selected.metadata::<u64>().is_none());
+    let lease = selected.admit().unwrap();
+    assert_eq!(*lease.value(), 10);
+    assert_eq!(scope.in_flight(), 1);
+    drop(lease);
+    registration.replace_with_metadata(vec![(30, "new-route".to_owned())]).unwrap();
+    assert_eq!(selected.metadata::<String>().unwrap(), "old-route");
+    assert!(selected.admit().is_err());
+    let current = registry.snapshot();
+    assert_eq!(current.entries[0].metadata::<String>().unwrap(), "new-route");
+    assert_eq!(*current.entries[0].admit().unwrap().value(), 30);
+}
+
+struct ReentrantMetadata {
+    registry: ScopedExtensionRegistry<u8>,
+    scope: PluginScope,
+    drops: Arc<AtomicUsize>,
+}
+impl Drop for ReentrantMetadata {
+    fn drop(&mut self) {
+        let _ = self.registry.snapshot();
+        self.scope.quiesce();
+        self.drops.fetch_add(1, Ordering::SeqCst);
+    }
+}
+#[test]
+fn metadata_destructors_also_run_outside_registry_and_scope_locks() {
+    let (sender, receiver) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        let registry = ScopedExtensionRegistry::default();
+        let scope = scope(2001);
+        let drops = Arc::new(AtomicUsize::new(0));
+        let metadata = ReentrantMetadata { registry: registry.clone(), scope: scope.clone(), drops: Arc::clone(&drops) };
+        registry.stage_with_metadata(owner(), &scope, scope.generation(), vec![(1, metadata)]).unwrap().publish().unwrap();
+        scope.quiesce();
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        sender.send(()).unwrap();
+    });
+    receiver.recv_timeout(Duration::from_secs(2)).expect("metadata cleanup cannot deadlock");
+    worker.join().unwrap();
+}

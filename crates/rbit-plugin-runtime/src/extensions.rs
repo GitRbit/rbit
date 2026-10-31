@@ -7,6 +7,7 @@
 use crate::{Admission, AdmissionError, OperationLease, PluginScope};
 use rbit_plugin_api::{Generation, PluginId};
 use std::{
+    any::Any,
     collections::BTreeMap,
     fmt,
     sync::{
@@ -28,15 +29,20 @@ pub enum ExtensionRegistryError {
     #[error("scoped extension registration is no longer current")]
     Stale,
 }
+type Metadata = Arc<dyn Any + Send + Sync>;
+struct ExtensionValue<T> {
+    value: Arc<T>,
+    metadata: Option<Metadata>,
+}
 struct Batch<T> {
-    values: Vec<Arc<T>>,
+    values: Vec<ExtensionValue<T>>,
     active: Arc<AtomicBool>,
     cancellation: CancellationToken,
 }
 impl<T> Batch<T> {
-    fn new(values: Vec<T>, parent: &CancellationToken) -> Self {
+    fn new(values: Vec<(T, Option<Metadata>)>, parent: &CancellationToken) -> Self {
         Self {
-            values: values.into_iter().map(Arc::new).collect(),
+            values: values.into_iter().map(|(value, metadata)| ExtensionValue { value: Arc::new(value), metadata }).collect(),
             active: Arc::new(AtomicBool::new(false)),
             cancellation: parent.child_token(),
         }
@@ -102,7 +108,8 @@ impl<T> State<T> {
                 group.batch.values.iter().map(move |value| ExtensionEntry {
                     owner: owner.clone(),
                     generation: group.generation,
-                    value: Arc::clone(value),
+                    value: Arc::clone(&value.value),
+                    metadata: value.metadata.clone(),
                     admission: group.admission.clone(),
                     active: Arc::clone(&group.batch.active),
                     cancellation: group.batch.cancellation.clone(),
@@ -180,6 +187,7 @@ pub struct ExtensionEntry<T> {
     pub owner: PluginId,
     pub generation: Generation,
     value: Arc<T>,
+    metadata: Option<Metadata>,
     admission: Admission,
     active: Arc<AtomicBool>,
     cancellation: CancellationToken,
@@ -190,6 +198,11 @@ impl<T> fmt::Debug for ExtensionEntry<T> {
     }
 }
 impl<T> ExtensionEntry<T> {
+    /// Immutable host-supplied selection metadata, paired atomically with this
+    /// callback. Reading it grants no callback authority or mutable registry access.
+    pub fn metadata<M: Any>(&self) -> Option<&M> {
+        self.metadata.as_deref()?.downcast_ref()
+    }
     /// Keep the resulting lease through the callback's complete future/body.
     pub fn admit(&self) -> Result<ExtensionLease<T>, AdmissionError> {
         let lease = self.admission.try_acquire(self.generation)?;
@@ -267,6 +280,31 @@ impl<T: Send + Sync + 'static> ScopedExtensionRegistry<T> {
         scope: &PluginScope,
         generation: Generation,
         values: Vec<T>,
+    ) -> Result<ExtensionRegistration<T>, ExtensionRegistryError> {
+        self.stage_values(owner, scope, generation, values.into_iter().map(|value| (value, None)).collect())
+    }
+    /// Registers immutable metadata with each value. Hosts must validate metadata
+    /// and values before staging; snapshots reveal only metadata until admission.
+    pub fn stage_with_metadata<M: Send + Sync + 'static>(
+        &self,
+        owner: PluginId,
+        scope: &PluginScope,
+        generation: Generation,
+        values: Vec<(T, M)>,
+    ) -> Result<ExtensionRegistration<T>, ExtensionRegistryError> {
+        self.stage_values(
+            owner,
+            scope,
+            generation,
+            values.into_iter().map(|(value, metadata)| (value, Some(Arc::new(metadata) as Metadata))).collect(),
+        )
+    }
+    fn stage_values(
+        &self,
+        owner: PluginId,
+        scope: &PluginScope,
+        generation: Generation,
+        values: Vec<(T, Option<Metadata>)>,
     ) -> Result<ExtensionRegistration<T>, ExtensionRegistryError> {
         check_count(values.len())?;
         let _lease = scope.try_acquire(generation)?;
@@ -368,6 +406,13 @@ impl<T: Send + Sync + 'static> ExtensionRegistration<T> {
     /// Revokes the old batch, including retained snapshots. Already admitted leases
     /// remain tracked and receive cancellation; callbacks must cooperate with it.
     pub fn replace(&self, values: Vec<T>) -> Result<(), ExtensionRegistryError> {
+        self.replace_values(values.into_iter().map(|value| (value, None)).collect())
+    }
+    /// Metadata and callbacks change in the same atomic batch publication.
+    pub fn replace_with_metadata<M: Send + Sync + 'static>(&self, values: Vec<(T, M)>) -> Result<(), ExtensionRegistryError> {
+        self.replace_values(values.into_iter().map(|(value, metadata)| (value, Some(Arc::new(metadata) as Metadata))).collect())
+    }
+    fn replace_values(&self, values: Vec<(T, Option<Metadata>)>) -> Result<(), ExtensionRegistryError> {
         check_count(values.len())?;
         if self.admission.is_closed() {
             return Err(AdmissionError::Closed.into());
