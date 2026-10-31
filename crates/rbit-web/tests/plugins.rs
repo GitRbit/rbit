@@ -597,6 +597,32 @@ async fn custom_request_hooks_preserve_host_recovery_and_its_security_guards() {
         assert_eq!(fixture.get("/").await.0, if timeout { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::FORBIDDEN });
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(fixture.get("/admin/plugins").await.0, StatusCode::OK);
+        for path in ["/admin/restart", "/admin/restart/status", "/admin/monitoring"] {
+            let (status, _, headers) = fixture.get(path).await;
+            assert_eq!(status, StatusCode::OK, "administrator recovery remains reachable at {path}");
+            assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+            assert_eq!(
+                fixture.request(Method::GET, path, Some(&fixture.user_cookie), "http://localhost:3000", "").await.0,
+                StatusCode::NOT_FOUND,
+                "hook exemption cannot grant administrator access to {path}"
+            );
+        }
+        assert_eq!(
+            fixture
+                .request(Method::POST, "/admin/restart", Some(&fixture.user_cookie), "http://localhost:3000", "confirmation=restart")
+                .await
+                .0,
+            StatusCode::NOT_FOUND,
+            "ordinary users cannot request a restart"
+        );
+        assert_eq!(
+            fixture
+                .request(Method::POST, "/admin/restart", Some(&fixture.admin_cookie), "https://attacker.example", "confirmation=restart")
+                .await
+                .0,
+            StatusCode::FORBIDDEN,
+            "restart remains protected by the host Origin guard"
+        );
         assert_eq!(
             fixture.request(Method::GET, "/admin/plugins", Some(&fixture.user_cookie), "http://localhost:3000", "").await.0,
             StatusCode::NOT_FOUND,

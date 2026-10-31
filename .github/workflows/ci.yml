@@ -43,6 +43,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           key: core-only
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: node scripts/check-core-dependencies.mjs
@@ -72,6 +73,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           key: plugin-${{ matrix.plugin }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -89,6 +91,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
+          workspaces: ". -> .cargo-build"
           key: plugin-core
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # These contracts and lifecycle primitives must build without forge assets, a
