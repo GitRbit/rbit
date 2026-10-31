@@ -150,8 +150,10 @@ fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> A
 }
 
 /// Every endpoint of the API under `config`.
-pub fn table(_config: &Config) -> Vec<ApiRoute> {
+pub fn table(config: &Config) -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
+    #[cfg(not(feature = "actions"))]
+    let _ = config;
     let mut routes = vec![
         route(Get, "/version", accounts::version),
         route(Get, "/openapi.json", openapi),
@@ -205,7 +207,7 @@ pub fn table(_config: &Config) -> Vec<ApiRoute> {
     routes.extend(statuses::routes());
     // Actions: foundation (F). Only when Actions is enabled.
     #[cfg(feature = "actions")]
-    if _config.actions.enabled {
+    if config.actions.enabled {
         routes.extend(actions_routes());
     }
     routes
