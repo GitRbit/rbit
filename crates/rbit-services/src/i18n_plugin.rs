@@ -53,6 +53,7 @@ struct Inner {
     status: RwLock<Option<PluginStatus>>,
     shutting_down: AtomicBool,
     controller: Arc<tokio::sync::Mutex<Controller>>,
+    routes: crate::i18n_routes::I18nRoutes,
     #[cfg(feature = "i18n")]
     ui_activation: Arc<Mutex<Option<(PluginScope, UiRegistration)>>>,
 }
@@ -81,6 +82,7 @@ struct EmbeddedI18n {
     publication: Arc<RwLock<Publication>>,
     staged: Arc<Mutex<Option<Arc<LiveCatalog>>>>,
     ui: rbit_plugin_runtime::UiRegistry,
+    routes: crate::i18n_routes::I18nRoutes,
     ui_activation: Arc<Mutex<Option<(PluginScope, UiRegistration)>>>,
 }
 
@@ -91,12 +93,14 @@ impl Plugin for EmbeddedI18n {
     }
 
     fn start(&self, scope: PluginScope) -> PluginFuture {
+        let routes = self.routes.stage_active(&scope);
         let registration = self.ui.stage(self.manifest.id.clone(), &scope, scope.generation(), crate::ui::i18n());
         let ui_activation = Arc::clone(&self.ui_activation);
         let ctx = self.ctx.clone();
         let staged = Arc::clone(&self.staged);
         let publication = Arc::clone(&self.publication);
         Box::pin(async move {
+            routes.map_err(|error| error.to_string())?;
             *ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
                 Some((scope.clone(), registration.map_err(|error| error.to_string())?));
             let records = ctx.database.language_packs().list().await.map_err(|error| error.to_string())?;
@@ -121,7 +125,13 @@ impl Plugin for EmbeddedI18n {
 }
 
 impl I18nSlot {
-    pub(crate) async fn new(ctx: ServiceContext, ui: rbit_plugin_runtime::UiRegistry) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(
+        ctx: ServiceContext,
+        ui: rbit_plugin_runtime::UiRegistry,
+        pages: rbit_plugin_web::PageRegistry,
+        mutations: rbit_plugin_web::MutationRegistry,
+    ) -> Result<Self, ServiceError> {
+        let routes = crate::i18n_routes::I18nRoutes::new(pages, mutations);
         let revision = initial_revision()?;
         let enabled = ctx.database.plugin_settings().desired_enabled(I18N_ID).await?.unwrap_or(ctx.config.i18n.enabled);
         #[cfg(not(feature = "i18n"))]
@@ -137,6 +147,7 @@ impl I18nSlot {
                     status: RwLock::new(None),
                     shutting_down: AtomicBool::new(false),
                     controller: Arc::new(tokio::sync::Mutex::new(Controller)),
+                    routes,
                 }),
             })
         }
@@ -160,6 +171,7 @@ impl I18nSlot {
                 publication: Arc::clone(&publication),
                 staged: Arc::new(Mutex::new(None)),
                 ui,
+                routes: routes.clone(),
                 ui_activation: Arc::clone(&ui_activation),
             });
             let mut manager = PluginManager::new(semver::Version::new(1, 0, 0), Duration::from_secs(30));
@@ -171,6 +183,7 @@ impl I18nSlot {
                     status: RwLock::new(manager.status(&plugin.manifest.id)),
                     shutting_down: AtomicBool::new(false),
                     controller: Arc::new(tokio::sync::Mutex::new(Controller { manager, plugin })),
+                    routes,
                     ui_activation,
                 }),
             };
@@ -185,6 +198,34 @@ impl I18nSlot {
             }
             Ok(slot)
         }
+    }
+
+    pub(crate) async fn bind_routes(&self, active: crate::I18nRouteBundle, management: crate::I18nRouteBundle) -> Result<(), ServiceError> {
+        self.check_running()?;
+        let _controller = self.inner.controller.lock().await;
+        self.check_running()?;
+        #[cfg(not(feature = "i18n"))]
+        let (active, management) = {
+            drop((active, management));
+            (crate::I18nRouteBundle::default(), crate::I18nRouteBundle::default())
+        };
+        self.inner.routes.bind(active, management)?;
+        #[cfg(feature = "i18n")]
+        if self.is_enabled() {
+            let scope = self
+                .inner
+                .ui_activation
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_ref()
+                .map(|(scope, _)| scope.clone())
+                .ok_or(ServiceError::Conflict("i18n activation"))?;
+            if let Err(error) = self.inner.routes.stage_active(&scope).and_then(|()| self.inner.routes.publish_active()) {
+                self.unpublish();
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 
     pub fn revision(&self) -> u64 {
@@ -472,6 +513,7 @@ impl I18nSlot {
     }
 
     fn clear_publication(&self, force_revision: bool) {
+        self.inner.routes.withdraw_active();
         #[cfg(feature = "i18n")]
         let activation = self.inner.ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         #[cfg(feature = "i18n")]
@@ -525,6 +567,10 @@ impl I18nSlot {
             self.unpublish();
             return Err(error);
         }
+        if let Err(error) = self.inner.routes.publish_active() {
+            self.unpublish();
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -550,6 +596,7 @@ impl I18nSlot {
     }
 
     pub(crate) fn prepare_shutdown(&self) {
+        self.inner.routes.close();
         let first = !self.inner.shutting_down.swap(true, Ordering::AcqRel);
         self.clear_publication(first);
     }

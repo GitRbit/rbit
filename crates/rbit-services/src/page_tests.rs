@@ -12,12 +12,12 @@ struct Example {
     message: &'static str,
 }
 
-fn page(message: &'static str) -> plugin_pages::PageRegistration {
+pub(super) fn page(message: &'static str) -> plugin_pages::PageRegistration {
     let descriptor = PageDescriptor::new("example", PageScope::Global, "example", PageAudience::Public, Duration::from_secs(1)).unwrap();
     compiled_page(descriptor, move |_| async move { CompiledPage::new("Example", Example { message }) })
 }
 
-async fn fixture() -> (tempfile::TempDir, Database, Services) {
+pub(super) async fn fixture() -> (tempfile::TempDir, Database, Services) {
     let directory = tempfile::tempdir().unwrap();
     let mut config = Config::default();
     config.storage.data_dir = directory.path().join("data");
@@ -31,7 +31,7 @@ async fn fixture() -> (tempfile::TempDir, Database, Services) {
     (directory, database, services)
 }
 
-async fn administrator(database: &Database) -> rbit_core::User {
+pub(super) async fn administrator(database: &Database) -> rbit_core::User {
     database
         .accounts()
         .create_user(rbit_storage::NewUser {

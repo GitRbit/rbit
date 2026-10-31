@@ -10,11 +10,15 @@ use std::{ops::Deref, sync::Arc};
 mod actions_plugin;
 pub use actions_plugin::ActionsSlot;
 mod i18n_plugin;
+mod i18n_routes;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
+pub use i18n_routes::I18nRouteBundle;
 pub mod ui;
 pub use rbit_plugin_web as plugin_pages;
 pub use rbit_plugin_web as plugin_mutations;
 pub use rbit_plugin_web as request_hooks;
+#[cfg(test)]
+mod i18n_route_tests;
 #[cfg(test)]
 mod page_tests;
 
@@ -44,16 +48,10 @@ impl Services {
         let core = Arc::new(Box::pin(rbit_services_base::Services::new(config, database, kv)).await?);
         let ui = rbit_plugin_runtime::UiRegistry::default();
         let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone())).await?;
-        let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone())).await?;
-        Ok(Self {
-            core,
-            actions,
-            i18n,
-            ui,
-            request_hooks: request_hooks::RequestHookRegistry::new(),
-            pages: plugin_pages::PageRegistry::new(),
-            mutations: plugin_mutations::MutationRegistry::new(),
-        })
+        let pages = plugin_pages::PageRegistry::new();
+        let mutations = plugin_mutations::MutationRegistry::new();
+        let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone(), pages.clone(), mutations.clone())).await?;
+        Ok(Self { core, actions, i18n, ui, request_hooks: request_hooks::RequestHookRegistry::new(), pages, mutations })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -97,6 +95,10 @@ impl Services {
     /// Trusted host capability for registering compiled, generation-scoped mutations.
     pub fn mutation_registry(&self) -> plugin_mutations::MutationRegistry {
         self.mutations.clone()
+    }
+    /// Bind native presentation factories before serving HTTP. Blueprints must capture weak host references.
+    pub async fn bind_i18n_routes(&self, active: I18nRouteBundle, management: I18nRouteBundle) -> Result<(), ServiceError> {
+        self.i18n.bind_routes(active, management).await
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
