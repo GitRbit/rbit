@@ -37,8 +37,8 @@ fn with_revision(mut response: Response, revision: u64) -> Response {
 }
 
 fn refused(task: bool, request: &Request, revision: u64) -> Response {
-    if !task && request.uri().path().starts_with("/api/") {
-        let mut response = crate::routes::api_not_found_response();
+    if request.uri().path().starts_with("/api/") {
+        let mut response = if task { crate::routes::api_unauthorized_response() } else { crate::routes::api_not_found_response() };
         response.headers_mut().insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
         response.headers_mut().insert(header::X_CONTENT_TYPE_OPTIONS, axum::http::HeaderValue::from_static("nosniff"));
         return with_revision(response, revision);
@@ -60,12 +60,13 @@ fn refused(task: bool, request: &Request, revision: u64) -> Response {
 
 /// A plugin request owns admission until its response body completes or is dropped.
 pub async fn plugin_admission(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    // A disabled host API stays absent regardless of optional feature credentials.
+    if !state.config.api.enabled && request.uri().path().starts_with("/api/") {
+        return refused(false, &request, state.services.plugin_revision());
+    }
     // Padding cannot bypass classification and then be trimmed by an authenticator.
     if request.headers().get(header::AUTHORIZATION).is_some_and(|value| value.as_bytes().len() > 4096) {
-        return with_revision(
-            (StatusCode::UNAUTHORIZED, [(header::CACHE_CONTROL, "no-store")]).into_response(),
-            state.services.plugin_revision(),
-        );
+        return refused(true, &request, state.services.plugin_revision());
     }
     let task = task_credential(&request);
     #[cfg(feature = "actions")]

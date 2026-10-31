@@ -25,8 +25,13 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_api(true).await
+    }
+
+    async fn with_api(api_enabled: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut config = Config::default();
+        config.api.enabled = api_enabled;
         config.storage.data_dir = directory.path().join("data");
         config.security.rate_limit = false;
         config.updates.check_for_updates = false;
@@ -145,6 +150,27 @@ async fn runtime_refusals_report_the_revision_needed_to_refresh_an_open_page() {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(response.headers()["rbit-plugin-revision"], revision);
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+        assert_eq!(response.headers()[header::WWW_AUTHENTICATE], "Bearer realm=\"rbit\"");
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["message"], "Bad credentials");
+    }
+}
+
+#[tokio::test]
+async fn a_disabled_api_keeps_not_found_envelopes_for_rejected_credentials() {
+    let fixture = Fixture::with_api(false).await;
+    for authorization in [format!("Bearer rbat_{}", "a".repeat(43)), format!("Bearer {}", "a".repeat(4097))] {
+        let request =
+            Request::builder().uri("/api/v1/repos/alice/rocket").header(header::AUTHORIZATION, authorization).body(Body::empty()).unwrap();
+        let response = fixture.router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+        assert!(!response.headers().contains_key(header::WWW_AUTHENTICATE));
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["message"], "Not Found");
     }
 }
 

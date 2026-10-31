@@ -329,6 +329,11 @@ pub(crate) fn not_found_response() -> axum::response::Response {
     ApiError::not_found().into_response()
 }
 
+/// Keep the API authentication envelope when host middleware refuses credentials.
+pub(crate) fn unauthorized_response() -> axum::response::Response {
+    ApiError::unauthorized("Bad credentials").into_response()
+}
+
 #[cfg(feature = "actions")]
 pub(super) fn actions_paths() -> Vec<String> {
     actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()
