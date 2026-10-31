@@ -2,6 +2,7 @@
 //! costs far more than compiling the tests themselves.
 
 // Shared with rbit-storage: counts the SQL statements a request runs.
+#[cfg(feature = "actions")]
 #[path = "../../rbit-storage/tests/common/query_count.rs"]
 mod query_count;
 

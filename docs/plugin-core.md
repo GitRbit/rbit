@@ -124,6 +124,7 @@ cargo test --locked -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-actions-co
 cargo test --locked -p rbit-services --test integration actions_plugin
 cargo test --locked -p rbit-services --no-default-features --test integration actions_unavailable
 cargo check --locked -p rbit-server --no-default-features
+cargo clippy --locked -p rbit-server -p rbit-services -p rbit-web --no-default-features --all-targets -- -D warnings
 node scripts/check-core-dependencies.mjs
 ```
 

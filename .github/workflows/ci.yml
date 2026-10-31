@@ -36,6 +36,8 @@ jobs:
           name: app-css
           path: crates/rbit-web/assets
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -44,7 +46,7 @@ jobs:
           key: core-only
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: node scripts/check-core-dependencies.mjs
-      - run: cargo check --locked --package rbit-server --no-default-features
+      - run: cargo clippy --locked --package rbit-server --package rbit-services --package rbit-web --no-default-features --all-targets -- -D warnings
       - run: cargo test --locked --package rbit-services --no-default-features --test integration actions_unavailable
 
   plugin-core:

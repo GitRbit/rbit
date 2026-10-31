@@ -207,6 +207,7 @@ async fn run_service(
     if pending.is_some() || completion_guard.is_some() {
         let recorder = state.services.pushes.clone();
         tokio::spawn(async move {
+            #[cfg(feature = "actions")]
             let _completion_guard = completion_guard;
             if session_succeeded(session.completion).await
                 && let Some(pending) = pending
@@ -317,14 +318,14 @@ async fn task_push_gate(
 }
 
 #[cfg(not(feature = "actions"))]
-async fn task_push_gate(
+fn task_push_gate(
     _state: &AppState,
     _ctx: &RepoContext,
     _commands: &receive::CommandList,
     _input: receive::Replay<Request>,
     _options: ReceiveOptions,
-) -> Gate {
-    Gate::Answer(Denied::Forbidden.into_response())
+) -> std::future::Ready<Gate> {
+    std::future::ready(Gate::Answer(Denied::Forbidden.into_response()))
 }
 
 async fn session_succeeded(completion: tokio::sync::oneshot::Receiver<std::process::ExitStatus>) -> bool {
@@ -587,8 +588,8 @@ async fn authenticate_task(state: &AppState, client: &Client, token: &str) -> Re
 }
 
 #[cfg(not(feature = "actions"))]
-async fn authenticate_task(_state: &AppState, _client: &Client, _token: &str) -> Result<GitCaller, Denied> {
-    Err(Denied::Challenge)
+fn authenticate_task(_state: &AppState, _client: &Client, _token: &str) -> std::future::Ready<Result<GitCaller, Denied>> {
+    std::future::ready(Err(Denied::Challenge))
 }
 
 /// A task token sent as `Authorization: Bearer` (or `token`), as Git's `http.extraHeader`

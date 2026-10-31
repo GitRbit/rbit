@@ -23,6 +23,7 @@ pub struct Fixture {
     pub services: Services,
     router: Router,
     // Actions: integration (I). Runs are created in the store directly.
+    #[cfg(feature = "actions")]
     pub database: Database,
 }
 
@@ -40,7 +41,13 @@ impl Fixture {
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         let router = crate::router(AppState::new(config, services.clone()));
-        Self { _dir: dir, services, router, database }
+        Self {
+            _dir: dir,
+            services,
+            router,
+            #[cfg(feature = "actions")]
+            database,
+        }
     }
 
     pub async fn user(&self, name: &str) -> User {
