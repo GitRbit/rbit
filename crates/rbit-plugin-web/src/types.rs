@@ -1,6 +1,7 @@
 use std::{fmt::Debug, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 pub const MAX_HOOKS: usize = 16;
+pub const MAX_CONCURRENT_PIPELINES: usize = 128;
 pub const MAX_PATH_BYTES: usize = 2048;
 pub const MAX_HOOK_DEADLINE: Duration = Duration::from_millis(100);
 pub const MAX_PIPELINE_DEADLINE: Duration = Duration::from_millis(500);

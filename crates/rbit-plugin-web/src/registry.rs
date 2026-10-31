@@ -1,13 +1,15 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
+use tokio::sync::Semaphore;
 
 use rbit_plugin_api::{Generation, PluginId};
 use rbit_plugin_runtime::{ExtensionRegistration, ExtensionSnapshot, PluginScope, ScopedExtensionRegistry};
 
-use crate::{HookRegistration, HookRegistrationError, MAX_HOOKS};
+use crate::{HookRegistration, HookRegistrationError, MAX_CONCURRENT_PIPELINES, MAX_HOOKS};
 
 #[derive(Debug, Clone)]
 pub struct RequestHookRegistry {
     inner: ScopedExtensionRegistry<HookRegistration>,
+    pipelines: Arc<Semaphore>,
 }
 impl Default for RequestHookRegistry {
     fn default() -> Self {
@@ -16,7 +18,10 @@ impl Default for RequestHookRegistry {
 }
 impl RequestHookRegistry {
     pub fn new() -> Self {
-        Self { inner: ScopedExtensionRegistry::with_capacity(MAX_HOOKS).expect("host hook capacity is valid") }
+        Self {
+            inner: ScopedExtensionRegistry::with_capacity(MAX_HOOKS).expect("host hook capacity is valid"),
+            pipelines: Arc::new(Semaphore::new(MAX_CONCURRENT_PIPELINES)),
+        }
     }
     pub fn stage(
         &self,
@@ -32,7 +37,7 @@ impl RequestHookRegistry {
         self.inner.snapshot().revision
     }
     pub fn snapshot(&self) -> RequestHookSnapshot {
-        RequestHookSnapshot { inner: self.inner.snapshot() }
+        RequestHookSnapshot { inner: self.inner.snapshot(), pipelines: Arc::clone(&self.pipelines) }
     }
 }
 
@@ -56,6 +61,7 @@ impl RequestHookRegistration {
 #[derive(Debug, Clone)]
 pub struct RequestHookSnapshot {
     pub(crate) inner: ExtensionSnapshot<HookRegistration>,
+    pub(crate) pipelines: Arc<Semaphore>,
 }
 impl RequestHookSnapshot {
     pub fn is_empty(&self) -> bool {

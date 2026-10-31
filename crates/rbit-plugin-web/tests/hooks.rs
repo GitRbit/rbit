@@ -9,8 +9,8 @@ use std::{
 use rbit_plugin_api::Generation;
 use rbit_plugin_runtime::PluginScope;
 use rbit_plugin_web::{
-    HookDecision, HookFuture, HookRegistration, Rejection, RequestHook, RequestHookRegistry, RequestMetadata, RequestMethod,
-    ResponseAnnotation,
+    HookDecision, HookFuture, HookRegistration, MAX_CONCURRENT_PIPELINES, Rejection, RequestHook, RequestHookRegistry, RequestMetadata,
+    RequestMethod, ResponseAnnotation,
 };
 
 #[derive(Debug)]
@@ -286,4 +286,100 @@ async fn cancellation_is_checked_before_constructing_a_queued_callback_future() 
     assert_eq!(queued_calls.load(Ordering::SeqCst), 0, "even synchronous trait preludes must not run after queued cancellation");
     assert_eq!(first.in_flight(), 0);
     assert_eq!(queued.in_flight(), 0);
+}
+
+#[derive(Debug)]
+struct FactoryProbe {
+    hook: Hook,
+    constructions: Arc<AtomicUsize>,
+}
+impl RequestHook for FactoryProbe {
+    fn call<'a>(&'a self, request: &'a RequestMetadata) -> HookFuture<'a> {
+        self.constructions.fetch_add(1, Ordering::SeqCst);
+        self.hook.call(request)
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn shared_pipeline_capacity_rejects_before_callbacks_and_recovers_after_abort() {
+    let registry = RequestHookRegistry::new();
+    let empty = registry.snapshot();
+    let scope = scope();
+    let calls = Arc::default();
+    let drops = Arc::default();
+    let constructions = Arc::new(AtomicUsize::new(0));
+    let slow = HookRegistration::new(
+        "slow",
+        0,
+        Duration::from_millis(100),
+        Arc::new(FactoryProbe {
+            constructions: Arc::clone(&constructions),
+            hook: Hook {
+                name: "slow",
+                calls: Arc::clone(&calls),
+                drops: Arc::clone(&drops),
+                delay: Duration::from_secs(1),
+                decision: HookDecision::Continue(Vec::new()),
+            },
+        }),
+    )
+    .unwrap();
+    let registration = registry.stage("rbit.test".parse().unwrap(), &scope, scope.generation(), vec![slow]).unwrap();
+    registration.publish().unwrap();
+    let retained = registry.snapshot();
+    let clone = registry.clone();
+    let mut requests = Vec::new();
+    for index in 0..MAX_CONCURRENT_PIPELINES {
+        let snapshot = if index % 2 == 0 { retained.clone() } else { clone.snapshot() };
+        requests.push(tokio::spawn(async move { snapshot.evaluate(&metadata()).await }));
+    }
+    for _ in 0..MAX_CONCURRENT_PIPELINES * 2 {
+        if calls.lock().unwrap().len() == MAX_CONCURRENT_PIPELINES {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(calls.lock().unwrap().len(), MAX_CONCURRENT_PIPELINES);
+    assert_eq!(scope.in_flight(), MAX_CONCURRENT_PIPELINES);
+    let started = tokio::time::Instant::now();
+    assert_eq!(clone.snapshot().evaluate(&metadata()).await, HookDecision::Reject(Rejection::Unavailable));
+    assert_eq!(started.elapsed(), Duration::ZERO, "overload never queues behind a semaphore");
+    assert_eq!(calls.lock().unwrap().len(), MAX_CONCURRENT_PIPELINES, "no overloaded callback construction");
+    assert_eq!(
+        constructions.load(Ordering::SeqCst),
+        MAX_CONCURRENT_PIPELINES,
+        "even synchronous callback preludes are skipped on overload"
+    );
+    assert_eq!(empty.evaluate(&metadata()).await, HookDecision::Continue(Vec::new()), "empty snapshots need no permit");
+    let aborted = requests.pop().unwrap();
+    aborted.abort();
+    assert!(aborted.await.unwrap_err().is_cancelled());
+    assert_eq!(scope.in_flight(), MAX_CONCURRENT_PIPELINES - 1);
+    let snapshot = retained.clone();
+    requests.push(tokio::spawn(async move { snapshot.evaluate(&metadata()).await }));
+    for _ in 0..MAX_CONCURRENT_PIPELINES * 2 {
+        if calls.lock().unwrap().len() == MAX_CONCURRENT_PIPELINES + 1 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(calls.lock().unwrap().len(), MAX_CONCURRENT_PIPELINES + 1);
+    assert_eq!(scope.in_flight(), MAX_CONCURRENT_PIPELINES);
+    registration.replace(vec![descriptor("updated", 0, Duration::ZERO, &calls, &drops, HookDecision::Continue(Vec::new()))]).unwrap();
+    assert_eq!(
+        registry.snapshot().evaluate(&metadata()).await,
+        HookDecision::Reject(Rejection::Unavailable),
+        "replacement shares the existing permit pool until old invocations end"
+    );
+    assert_eq!(calls.lock().unwrap().len(), MAX_CONCURRENT_PIPELINES + 1);
+    for request in &requests {
+        request.abort();
+    }
+    for request in requests {
+        let _ = request.await;
+    }
+    assert_eq!(scope.in_flight(), 0);
+    assert_eq!(registry.snapshot().evaluate(&metadata()).await, HookDecision::Continue(Vec::new()));
+    assert_eq!(calls.lock().unwrap().last(), Some(&"updated"));
+    assert_eq!(scope.in_flight(), 0);
 }

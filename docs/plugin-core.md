@@ -130,7 +130,7 @@ registrations. Callback values retire outside registry and scope cleanup locks.
 `rbit-plugin-web` supplies the first request-hook adapter. Trusted composition code accesses
 `Services::request_hooks()`, stages validated hooks under a plugin scope and publishes after
 readiness. Hooks receive a bounded method and matched-route pattern, can continue with safe
-diagnostic headers or return a fixed denial, and run within per-hook and total deadlines.
+diagnostic headers or return a fixed denial, and run within per-hook and total deadlines, with a shared 128-pipeline concurrency cap.
 The host retains authentication, Origin checks, request/response bodies, cache policy and
 security headers. Exact recovery and operational route patterns bypass hooks so a broken
 policy cannot block sign-in, plugin administration or health probes; their normal host

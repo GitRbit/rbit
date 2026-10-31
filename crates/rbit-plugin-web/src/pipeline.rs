@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use tokio::time::{Instant, timeout_at};
 
@@ -14,6 +14,14 @@ impl RequestHookSnapshot {
         if self.inner.entries.len() > MAX_HOOKS {
             return HookDecision::Reject(Rejection::Unavailable);
         }
+        if self.is_empty() {
+            return HookDecision::Continue(Vec::new());
+        }
+        // Bound pending work before touching generation leases or constructing any
+        // callback. The permit outlives all invocation futures and operation leases.
+        let Ok(_pipeline) = Arc::clone(&self.pipelines).try_acquire_owned() else {
+            return HookDecision::Reject(Rejection::Unavailable);
+        };
         let deadline = Instant::now() + MAX_PIPELINE_DEADLINE;
         let mut admitted = Vec::with_capacity(self.len());
         for entry in self.inner.entries.iter() {

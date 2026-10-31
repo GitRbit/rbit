@@ -99,7 +99,10 @@ fixed sentinel. The route pattern is capped at 2,048 bytes.
 
 At most 16 staged and active hooks fit in the registry. Each declares a stable
 ID, ordering and a deadline from 1 to 100 ms; the complete pipeline has a 500 ms
-budget. Ordering is deterministic by order, plugin identity, hook identity and
+budget. A shared admission pool caps concurrently executing pipelines at 128 across
+registry clones and snapshots. Overload returns 503 immediately, without queuing or
+constructing a callback; empty pipelines and reserved recovery routes do not use the pool.
+Ordering is deterministic by order, plugin identity, hook identity and
 generation. Invocation requires exact-generation admission, and both scope
 cancellation and deadline expiration drop the callback future before releasing
 its operation lease. Cancelling the request also drops the invocation future.
