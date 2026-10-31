@@ -38,6 +38,17 @@ forced password-change restrictions, locale selection, error pages, Origin/CSRF
 checks, unsafe-request rate limiting, body limits, deadlines, security headers,
 partial responses and cache policy. A plugin cannot turn those guards off.
 
+The dispatcher rejects percent-encoded aliases and malformed paths before invoking
+a factory. Unsupported methods retain the host's method refusal; HEAD shares the
+declared read-only renderer contract and sends no response body. Raw query strings
+are not passed to the factory.
+
+Speculative preloads return an empty 204 without invoking plugin code. Page responses
+use `Cache-Control: no-store`, and both shells set `hx-history="false"` so HTMX does
+not persist native page content in its history cache. The repository tab response
+cache also excludes these route namespaces. Back navigation therefore resolves the
+current route and permissions rather than restoring an old plugin page snapshot.
+
 The host enforces each route's declared permission profile before calling plugin
 code. Repository policy uses the resolved repository and viewer permissions;
 the dispatcher never derives permission from a string-shaped URL alone. Missing,
@@ -159,7 +170,7 @@ host awaits audit or draining. Retaining an earlier route snapshot cannot bypass
 that gate.
 
 Lookup snapshots retain immutable descriptors and weak callback references. Closing
-the scope releases callback-owned services and other captures once already
+the scope releases registry-owned callback captures once already
 admitted leases finish, even if an old route handle is retained. Passive metadata
 can remain available without preserving executable callback resource graphs.
 This releases runtime resources; compiled native machine code stays in the server
@@ -171,6 +182,13 @@ lease. A slow or unpolled client cannot retain plugin authority indefinitely;
 the host supervises cancellation independently of client polling. A drain timeout
 leaves the generation closed and reports incomplete cleanup instead of reopening
 the route or claiming successful unload.
+
+The operation guard crosses host partial-page and compression transforms before
+one outer supervisor owns the final response body. A completed but unread response
+still consumes one of the 64 page permits. Consuming or dropping the body releases
+that permit; generation cancellation drains it without waiting for the peer to
+poll. When a request also owns Actions admission, the same supervisor retains both
+guards and reacts to cancellation of either generation.
 
 UI navigation can be staged alongside a page route using the same plugin scope.
 Publish the handler before its discovery link. On any UI publication failure,
@@ -186,8 +204,8 @@ replacing, closing and re-enabling a plugin. They verify current-generation
 dispatch, no stale authority, preserved core routes, HTML escaping, locale and
 security metadata, partial navigation and failure behavior.
 
-Repository tests exercise anonymous, reader, contributor and administrator
-contexts, including private repositories. Lifecycle tests retain in-flight output
+Repository tests exercise anonymous visitors, signed-in readers and administrators,
+including private repository refusals. Lifecycle tests retain in-flight output
 and old handles across disable and ensure cleanup does not depend on browser
 polling. Core-only CI runs the runtime registration test so page extensibility
 does not accidentally depend on Actions or the optional catalog engine.
@@ -211,3 +229,16 @@ enforcing a hardware-dependent timing threshold. These local warmed measurements
 exclude HTTP middleware, authentication, database work, body supervision and
 network transfer. They do not establish end-to-end performance parity with
 existing pages.
+
+One reference run on 2026-10-31 used registry source `84857d0`, an Apple M3 Pro,
+Rust 1.99.1, release optimization with LTO disabled and 16 code-generation units:
+
+| Measured path | p50 | p95 |
+| --- | ---: | ---: |
+| Direct compiled Askama fragment | 0.458 μs | 0.500 μs |
+| Snapshot, last-of-16 lookup, admission and bounded compiled rendering | 1.875 μs | 1.958 μs |
+| Empty snapshot and missing-route lookup | 0.125 μs | 0.166 μs |
+
+These are local samples, not a deployment latency guarantee. Keep the measured
+scope and compiler settings with any comparison; the HTTP pipeline and final-body
+supervisor are deliberately outside this microbenchmark.
