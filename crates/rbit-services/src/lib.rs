@@ -12,6 +12,7 @@ pub use actions_plugin::ActionsSlot;
 mod i18n_plugin;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
 pub mod ui;
+pub use rbit_plugin_web as request_hooks;
 
 /// Composition root. Core services never depend on optional plugin implementations.
 #[derive(Debug, Clone)]
@@ -20,6 +21,7 @@ pub struct Services {
     pub actions: ActionsSlot,
     pub i18n: I18nSlot,
     ui: rbit_plugin_runtime::UiRegistry,
+    request_hooks: request_hooks::RequestHookRegistry,
 }
 
 impl Deref for Services {
@@ -37,7 +39,7 @@ impl Services {
         let ui = rbit_plugin_runtime::UiRegistry::default();
         let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone())).await?;
         let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone())).await?;
-        Ok(Self { core, actions, i18n, ui })
+        Ok(Self { core, actions, i18n, ui, request_hooks: request_hooks::RequestHookRegistry::new() })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -53,7 +55,11 @@ impl Services {
     }
     /// Revision used to invalidate feature-dependent browser navigation snapshots.
     pub fn plugin_revision(&self) -> u64 {
-        self.actions.revision().saturating_add(self.i18n.revision()).saturating_add(self.ui.snapshot().revision)
+        self.actions
+            .revision()
+            .saturating_add(self.i18n.revision())
+            .saturating_add(self.ui.snapshot().revision)
+            .saturating_add(self.request_hooks.revision())
     }
     /// Immutable presentation data; snapshots never retain plugin authority or leases.
     pub fn ui_snapshot(&self) -> ui::UiSnapshot {
@@ -63,6 +69,10 @@ impl Services {
     /// A registration still requires the plugin's current scope and generation.
     pub fn ui_registry(&self) -> rbit_plugin_runtime::UiRegistry {
         self.ui.clone()
+    }
+    /// Trusted host capability for registering bounded, generation-scoped request hooks.
+    pub fn request_hooks(&self) -> request_hooks::RequestHookRegistry {
+        self.request_hooks.clone()
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())

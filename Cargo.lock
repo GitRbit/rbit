@@ -4419,6 +4419,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-plugin-web"
+version = "0.1.5"
+dependencies = [
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "rbit-runner"
 version = "0.1.5"
 dependencies = [
@@ -4494,6 +4504,7 @@ dependencies = [
  "rbit-messages",
  "rbit-plugin-api",
  "rbit-plugin-runtime",
+ "rbit-plugin-web",
  "rbit-services-base",
  "rbit-storage",
  "rbit-workflow",

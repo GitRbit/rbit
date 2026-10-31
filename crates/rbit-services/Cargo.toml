@@ -23,6 +23,7 @@ rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-plugin-api.workspace = true
 rbit-plugin-runtime.workspace = true
+rbit-plugin-web.workspace = true
 tokio.workspace = true
 semver.workspace = true
 tracing.workspace = true
