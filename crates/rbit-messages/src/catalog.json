@@ -1126,6 +1126,26 @@
   },
   {
     "namespace": "actions",
+    "key": "permission-read",
+    "english": "Read"
+  },
+  {
+    "namespace": "actions",
+    "key": "permission-read-description",
+    "english": "Workflows can read the repository's contents, issues and pull requests."
+  },
+  {
+    "namespace": "actions",
+    "key": "permission-write",
+    "english": "Read and write"
+  },
+  {
+    "namespace": "actions",
+    "key": "permission-write-description",
+    "english": "Workflows can also push, and comment on issues and pull requests. Branch protection still applies."
+  },
+  {
+    "namespace": "actions",
     "key": "state-approval",
     "english": "Awaiting approval"
   },
@@ -1663,6 +1683,51 @@
     "namespace": "core",
     "key": "admin-layout-h1-site-administration",
     "english": "Site administration"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-audit-log",
+    "english": "Audit log"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-configuration",
+    "english": "Configuration"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-dashboard",
+    "english": "Dashboard"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-organizations",
+    "english": "Organizations"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-plugins",
+    "english": "Plugins"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-repositories",
+    "english": "Repositories"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-runners",
+    "english": "Runners"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-settings",
+    "english": "Settings"
+  },
+  {
+    "namespace": "core",
+    "key": "admin-nav-users",
+    "english": "Users"
   },
   {
     "namespace": "core",
@@ -2800,6 +2865,41 @@
     "namespace": "core",
     "key": "error-a-go-home",
     "english": "Go home"
+  },
+  {
+    "namespace": "core",
+    "key": "error-internal",
+    "english": "An unexpected error occurred. It has been logged."
+  },
+  {
+    "namespace": "core",
+    "key": "error-not-found",
+    "english": "The page you were looking for doesn't exist, or you don't have access to it."
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-access-denied",
+    "english": "Access denied"
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-bad-request",
+    "english": "Bad request"
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-page-not-found",
+    "english": "Page not found"
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-slow-down",
+    "english": "Slow down"
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-something-went-wrong",
+    "english": "Something went wrong"
   },
   {
     "namespace": "core",
@@ -4355,8 +4455,18 @@
   },
   {
     "namespace": "core",
+    "key": "plugin-activation",
+    "english": "Activation"
+  },
+  {
+    "namespace": "core",
     "key": "plugin-changing-actions",
     "english": "Changing Actions"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-changing-languages",
+    "english": "Changing languages"
   },
   {
     "namespace": "core",
@@ -4405,6 +4515,11 @@
   },
   {
     "namespace": "core",
+    "key": "plugin-language-failure-help",
+    "english": "Language support could not start or finish cleanup. English remains available. Disable language support, then repair or remove the affected pack before trying again."
+  },
+  {
+    "namespace": "core",
     "key": "plugin-language-pack-zip-up-to-2-mib",
     "english": "Language pack ZIP (up to 2 MiB)"
   },
@@ -4437,6 +4552,51 @@
     "namespace": "core",
     "key": "plugin-retry-disable-actions",
     "english": "Retry disabling Actions"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-retry-disable-languages",
+    "english": "Retry disabling languages"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-disabled",
+    "english": "Disabled"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-disabling",
+    "english": "Disabling"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-enabled",
+    "english": "Enabled"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-enabling",
+    "english": "Enabling"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-failed",
+    "english": "Failed"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-restart-required",
+    "english": "Cleanup incomplete"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-unavailable",
+    "english": "Unavailable in this build"
+  },
+  {
+    "namespace": "core",
+    "key": "plugin-state-waiting",
+    "english": "Waiting for dependencies"
   },
   {
     "namespace": "core",

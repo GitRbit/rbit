@@ -6,10 +6,10 @@
 <section class="auth-shell sm:py-20">
   <div class="card flex flex-col items-center text-center">
     <span class="tile text-ink-muted">{% call ui::icon("wifi-off", "size-5") %}{% endcall %}</span>
-    <h1 class="mt-5 text-lg font-semibold tracking-tight">You're offline</h1>
-    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">The server couldn't be reached. Check your connection and try again.</p>
+    <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ crate::i18n::text("core", "offline-h1-you-re-offline") }}</h1>
+    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ crate::i18n::text("core", "offline-p-the-server-couldn-t-be-reached-check-your-connection-and-try-agai") }}</p>
     <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-      <a href="/" class="btn btn-primary" hx-boost="false">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Retry</a>
+      <a href="/" class="btn btn-primary" hx-boost="false">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "offline-a-retry") }}</a>
     </div>
   </div>
 </section>

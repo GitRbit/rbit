@@ -13,30 +13,30 @@
 
 {% let tree = crate::views::pulls::PullFileView::tree(files) %}
 {% let has_tree = files.len() > 1 %}
-<section class="diff-layout mt-6" data-diff-layout aria-label="Changes">
+<section class="diff-layout mt-6" data-diff-layout aria-label="{{ crate::i18n::text("core", "pulls-files-aria-label-changes") }}">
 <div class="diff-toolbar flex-wrap text-[13px]">
   {% if has_tree %}
-  <button type="button" class="btn btn-ghost btn-icon h-8 sm:h-8" data-diff-sidebar-toggle aria-pressed="true" aria-controls="diff-sidebar" title="Toggle file tree" aria-label="Toggle file tree" hidden>
+  <button type="button" class="btn btn-ghost btn-icon h-8 sm:h-8" data-diff-sidebar-toggle aria-pressed="true" aria-controls="diff-sidebar" title="{{ crate::i18n::text("core", "pulls-files-title-toggle-file-tree") }}" aria-label="{{ crate::i18n::text("core", "pulls-files-aria-label-toggle-file-tree") }}" hidden>
     {% call ui::icon("panel-left", "size-4") %}{% endcall %}
   </button>
   {% endif %}
-  <span class="text-ink-muted"><span class="font-medium text-ink">{{ files.len() }}</span> {% if files.len() == 1 %}file{% else %}files{% endif %} changed</span>
+  <span class="text-ink-muted"><span class="font-medium text-ink">{{ files.len() }}</span> {% if files.len() == 1 %}{{ crate::i18n::text("core", "pulls-files-span-file") }}{% else %}{{ crate::i18n::text("core", "pulls-files-span-files") }}{% endif %} {{ crate::i18n::text("core", "pulls-files-span-changed") }}</span>
   <span class="font-mono text-xs text-success">+{{ additions }}</span>
   <span class="font-mono text-xs text-danger">−{{ deletions }}</span>
   {% if has_tree %}
   <button type="button" class="btn btn-ghost ml-auto h-8 px-2 text-xs sm:h-8" data-diff-collapse-all hidden>
-    <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}Collapse all</span>
-    <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}Expand all</span>
+    <span class="contents" data-when="expanded">{% call ui::icon("chevrons-down-up", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-files-span-collapse-all") }}</span>
+    <span class="hidden" data-when="collapsed">{% call ui::icon("chevrons-up-down", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-files-span-expand-all") }}</span>
   </button>
   {% endif %}
   {% if outdated_count > 0 %}<span class="text-xs text-ink-faint">{{ outdated_count }} outdated {% if outdated_count == 1 %}comment is{% else %}comments are{% endif %} in the conversation</span>{% endif %}
-  {% if let Some(form) = review_form %}{% if form.pending_comments > 0 %}<a href="#submit-review" hx-boost="false" class="btn ml-auto h-8">Finish your review <span class="badge text-warning">{{ form.pending_comments }}</span></a>{% endif %}{% endif %}
+  {% if let Some(form) = review_form %}{% if form.pending_comments > 0 %}<a href="#submit-review" hx-boost="false" class="btn ml-auto h-8">{{ crate::i18n::text("core", "pulls-files-a-finish-your-review") }} <span class="badge text-warning">{{ form.pending_comments }}</span></a>{% endif %}{% endif %}
 </div>
 {% if !signed_in %}
-<p class="mb-4 text-[13px] text-ink-muted"><a href="{{ sign_in_url }}" class="font-medium text-ink underline underline-offset-4">Sign in</a> to comment on lines.</p>
+<p class="mb-4 text-[13px] text-ink-muted"><a href="{{ sign_in_url }}" class="font-medium text-ink underline underline-offset-4">{{ crate::i18n::text("core", "nav-sign-in") }}</a> {{ crate::i18n::text("core", "pulls-files-p-to-comment-on-lines") }}</p>
 {% endif %}
 {% if truncated %}
-<p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-4 py-2.5 text-[13px] text-ink-muted">This change is very large, so some diffs are not shown. Clone the repository to see the full change.</p>
+<p class="mb-4 rounded-(--radius-ui) border border-line bg-subtle px-4 py-2.5 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "pulls-files-p-this-change-is-very-large-so-some-diffs-are-not-shown-clone-the-r") }}</p>
 {% endif %}
 
 <div class="diff-columns{% if has_tree %} has-tree{% endif %}">
@@ -48,14 +48,14 @@
   {#- `data-rows`: the open file's exact height in rows, its placeholder while off screen
       (app.css "Virtual blocks"); absent when threads make the height unknown. -#}
   <details id="{{ file.anchor }}" class="diff-file box group" data-path="{{ file.path }}"{% if let Some(rows) = file.rows() %} data-rows="{{ rows }}"{% endif %}{% if can_comment %} data-comment="{{ pull.urls.files }}"{% endif %} open>
-    <summary class="diff-file-header" title="Click to collapse or expand | Alt-click for every file">
+    <summary class="diff-file-header" title="{{ crate::i18n::text("core", "pulls-files-title-click-to-collapse-or-expand-alt-click-for-every-file") }}">
       {% call ui::icon("chevron-right", "size-3.5 shrink-0 text-ink-faint transition-transform group-open:rotate-90") %}{% endcall %}
       <span class="min-w-0 flex-1 truncate font-mono text-xs">{% if let Some(old) = file.old_path %}<span class="text-ink-muted">{{ old }} → </span>{% endif %}{{ file.path }}</span>
       <span class="badge hidden sm:inline-flex">{{ file.status }}</span>
       {% if file.stats_known %}<span class="font-mono text-xs text-success">+{{ file.additions }}</span><span class="font-mono text-xs text-danger">−{{ file.deletions }}</span>{% endif %}
     </summary>
     {% if let Some(url) = file.view_url %}
-    <div class="diff-file-bar"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">View file</a></div>
+    <div class="diff-file-bar"><a href="{{ url }}" class="btn btn-ghost h-7 px-2 text-xs sm:h-7">{{ crate::i18n::text("core", "pulls-files-a-view-file") }}</a></div>
     {% endif %}
     {% match file.body %}
     {% when PullDiffBody::Text(text) %}
@@ -94,11 +94,11 @@
           <input type="hidden" name="side" value="{{ thread.side }}">
           <input type="hidden" name="line" value="{{ thread.line }}">
           <label class="label" for="{{ thread.anchor }}-body">Comment on line {{ thread.line }}</label>
-          <textarea id="{{ thread.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Markdown is supported" required autofocus></textarea>
+          <textarea id="{{ thread.anchor }}-body" name="body" data-markdown-editor class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="{{ crate::i18n::text("core", "pulls-files-placeholder-markdown-is-supported") }}" required autofocus></textarea>
           <div class="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <a href="{{ pull.urls.files }}#{{ thread.anchor }}" class="btn h-11 sm:h-8">Cancel</a>
-            <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Start a review</button>
-            <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Add single comment</button>
+            <a href="{{ pull.urls.files }}#{{ thread.anchor }}" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-files-a-cancel") }}</a>
+            <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-files-button-start-a-review") }}</button>
+            <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-files-button-add-single-comment") }}</button>
           </div>
         </form>
       </div>
@@ -107,18 +107,18 @@
       {%- endfor %}
     </div></div>
     {% when PullDiffBody::Binary %}
-    <p class="diff-placeholder">Binary file not shown.</p>
+    <p class="diff-placeholder">{{ crate::i18n::text("core", "pulls-files-p-binary-file-not-shown") }}</p>
     {% when PullDiffBody::TooLarge %}
-    <p class="diff-placeholder">Diff too large to display.</p>
+    <p class="diff-placeholder">{{ crate::i18n::text("core", "pulls-files-p-diff-too-large-to-display") }}</p>
     {% when PullDiffBody::Submodule { old, new } %}
     <p class="diff-placeholder font-mono text-xs">Submodule commit {{ old }} → {{ new }}</p>
     {% when PullDiffBody::NoContentChanges %}
-    <p class="diff-placeholder">No content changes.</p>
+    <p class="diff-placeholder">{{ crate::i18n::text("core", "pulls-files-p-no-content-changes") }}</p>
     {% endmatch %}
   </details>
   {% endif %}
   {% else %}
-  <div class="box">{% call ui::empty_state("file-diff", "No changes", "The head adds nothing to the base.") %}{% endcall %}</div>
+  <div class="box">{% call ui::empty_state("file-diff", crate::i18n::text("core", "pulls-files-empty-title-no-changes"), crate::i18n::text("core", "pulls-files-empty-description-the-head-adds-nothing-to-the-base")) %}{% endcall %}</div>
   {% endfor %}
   </div>
 </div>

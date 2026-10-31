@@ -100,6 +100,24 @@ pub struct AdminLink {
     pub needs_actions: bool,
 }
 
+impl AdminLink {
+    pub fn localized_label(&self) -> std::borrow::Cow<'static, str> {
+        let key = match self.label {
+            "Dashboard" => "admin-nav-dashboard",
+            "Users" => "admin-nav-users",
+            "Organizations" => "admin-nav-organizations",
+            "Repositories" => "admin-nav-repositories",
+            "Settings" => "admin-nav-settings",
+            "Audit log" => "admin-nav-audit-log",
+            "Configuration" => "admin-nav-configuration",
+            "Plugins" => "admin-nav-plugins",
+            "Runners" => "admin-nav-runners",
+            _ => return std::borrow::Cow::Borrowed(self.label),
+        };
+        crate::i18n::text("core", key)
+    }
+}
+
 /// `base?q=…&page=…`, omitting defaults.
 pub fn listing_url(base: &str, search: &str, page: u32) -> String {
     let mut params = Vec::new();
@@ -232,7 +250,7 @@ impl DashboardPage {
             InfoRow::text("Disk usage", system.data_dir_bytes.map_or_else(|| "unavailable".to_owned(), bytes)),
         ];
         Self {
-            page: page.titled("Site administration"),
+            page: page.titled(crate::i18n::text("core", "title-site-administration")),
             admin_nav: AdminSection::Dashboard.nav(),
             tiles,
             system: system_rows,
@@ -381,7 +399,7 @@ pub struct UsersPage {
 impl UsersPage {
     pub fn new(page: Page, viewer: &User, search: &str, paged: &Paged<UserRecord>) -> Self {
         Self {
-            page: page.titled("Users · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-users-administration")),
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
             notice: None,
@@ -519,7 +537,7 @@ pub struct OrganizationsPage {
 impl OrganizationsPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OrgRecord>) -> Self {
         Self {
-            page: page.titled("Organizations · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-organizations-administration")),
             admin_nav: AdminSection::Organizations.nav(),
             listing: Listing::new(AdminSection::Organizations, search, paged),
             orgs: paged.items.iter().map(OrgRow::from).collect(),
@@ -574,7 +592,7 @@ pub struct RepositoriesPage {
 impl RepositoriesPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OwnedRepository>) -> Self {
         Self {
-            page: page.titled("Repositories · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-repositories-administration")),
             admin_nav: AdminSection::Repositories.nav(),
             listing: Listing::new(AdminSection::Repositories, search, paged),
             repos: paged.items.iter().map(RepoRow::from).collect(),
@@ -651,7 +669,7 @@ pub struct SettingsPage {
 impl SettingsPage {
     pub fn new(page: Page, form: SettingsForm, error: FormError, saved: bool) -> Self {
         Self {
-            page: page.titled("Settings · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-settings-administration")),
             admin_nav: AdminSection::Settings.nav(),
             error,
             form,
@@ -788,6 +806,8 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             plugin_revision: 0,

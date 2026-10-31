@@ -18,6 +18,7 @@ pub mod assets;
 pub mod client_ip;
 pub mod error;
 pub mod extract;
+pub mod i18n;
 pub mod metrics;
 pub mod middleware;
 pub mod partial;

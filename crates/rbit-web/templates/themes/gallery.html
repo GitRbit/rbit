@@ -4,7 +4,7 @@
   <link rel="stylesheet" href="{{ gallery.stylesheet }}">
 
   <form method="get" action="{{ gallery.base_url }}" role="search" class="mb-6 flex flex-wrap items-center gap-2">
-    <nav class="theme-segment" aria-label="Show">
+    <nav class="theme-segment" aria-label="{{ crate::i18n::text("core", "themes-gallery-aria-label-show") }}">
       {%- for link in gallery.filters %}
       <a href="{{ link.url }}" data-variant-filter="{{ link.key }}"{% if link.is_active %} aria-current="true"{% endif %}>{{ link.label }}</a>
       {%- endfor %}
@@ -14,7 +14,7 @@
     {%- endif %}
     <div class="relative min-w-0 flex-1 basis-48 sm:max-w-xs">
       {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input class="input pl-9" type="search" name="q" value="{{ gallery.query }}" maxlength="100" placeholder="Search {{ gallery.total }} themes" aria-label="Search themes" autocapitalize="none" autocomplete="off" spellcheck="false" data-theme-search>
+      <input class="input pl-9" type="search" name="q" value="{{ gallery.query }}" maxlength="100" placeholder="Search {{ gallery.total }} themes" aria-label="{{ crate::i18n::text("core", "themes-gallery-aria-label-search-themes") }}" autocapitalize="none" autocomplete="off" spellcheck="false" data-theme-search>
     </div>
     <p class="ml-auto text-xs text-ink-faint" data-theme-count aria-live="polite">{{ gallery.shown_label() }}</p>
   </form>
@@ -22,13 +22,13 @@
   <form method="post" action="/themes" hx-boost="false" data-theme-form>
     <input type="hidden" name="next" value="{{ gallery.next }}">
     <section class="theme-family" data-theme-family="rbit"{% if gallery.defaults_hidden %} hidden{% endif %}>
-      <h2 class="theme-family-title">Built in</h2>
+      <h2 class="theme-family-title">{{ crate::i18n::text("core", "themes-gallery-h2-built-in") }}</h2>
       <ul class="theme-grid">
         {%- for card in gallery.defaults %}{% include "themes/card.html" %}{% endfor -%}
       </ul>
     </section>
     <section class="theme-family" data-theme-family="rbit Classic"{% if gallery.classic_hidden %} hidden{% endif %}>
-      <h2 class="theme-family-title">rbit Classic</h2>
+      <h2 class="theme-family-title">{{ crate::i18n::text("core", "themes-gallery-h2-rbit-classic") }}</h2>
       <ul class="theme-grid">
         {%- for card in gallery.classic %}{% include "themes/card.html" %}{% endfor -%}
       </ul>
@@ -41,11 +41,11 @@
       </ul>
     </section>
     {%- endfor %}
-    <p class="py-10 text-center text-[13px] text-ink-muted" data-theme-empty{% if !gallery.nothing_found %} hidden{% endif %}>No themes match your search.</p>
+    <p class="py-10 text-center text-[13px] text-ink-muted" data-theme-empty{% if !gallery.nothing_found %} hidden{% endif %}>{{ crate::i18n::text("core", "themes-gallery-p-no-themes-match-your-search") }}</p>
   </form>
 
   <p class="mt-10 border-t border-line pt-4 text-xs text-ink-faint">
-    Tinted themes are generated from the <a class="link" href="https://github.com/tinted-theming/schemes">tinted-theming</a> base16 and base24 schemes (MIT); hover a theme to see its author.
-    <a class="link" href="{{ gallery.licence_url }}" hx-boost="false">Licence and credits</a>.
+    {{ crate::i18n::text("core", "themes-gallery-p-tinted-themes-are-generated-from-the") }} <a class="link" href="https://github.com/tinted-theming/schemes">{{ crate::i18n::text("core", "themes-gallery-a-tinted-theming") }}</a> {{ crate::i18n::text("core", "themes-gallery-p-base16-and-base24-schemes-mit-hover-a-theme-to-see-its-author") }}
+    <a class="link" href="{{ gallery.licence_url }}" hx-boost="false">{{ crate::i18n::text("core", "themes-gallery-a-licence-and-credits") }}</a>.
   </p>
 </div>

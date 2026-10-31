@@ -4,16 +4,16 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 items-center gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">Releases</h1>
-  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New release</a>{% endif %}
+  <h1 class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "releases-list-h1-releases") }}</h1>
+  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "releases-list-a-new-release") }}</a>{% endif %}
 </div>
 
 {% if releases.is_empty() %}
 <div class="box">
   {% if can_write %}
-  {% call ui::empty_state("package", "No releases yet", "A release packages a tag with notes and files. Push a tag, then create a release for it.") %}{% endcall %}
+  {% call ui::empty_state("package", crate::i18n::text("core", "releases-list-empty-title-no-releases-yet"), crate::i18n::text("core", "releases-list-empty-description-a-release-packages-a-tag-with-notes-and-files-push-a-tag-then-cre")) %}{% endcall %}
   {% else %}
-  {% call ui::empty_state("package", "No releases yet", "Releases mark versions of this project with notes and downloads.") %}{% endcall %}
+  {% call ui::empty_state("package", crate::i18n::text("core", "releases-list-empty-title-no-releases-yet"), crate::i18n::text("core", "releases-list-empty-description-releases-mark-versions-of-this-project-with-notes-and-downloads")) %}{% endcall %}
   {% endif %}
 </div>
 {% else %}

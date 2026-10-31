@@ -32,7 +32,7 @@ async function switchType(tab) {
   let panel = state.panels.get(kind);
   if (!panel) {
     const controller = new AbortController(); request = controller;
-    status.textContent = 'Loading form…';
+    status.textContent = (globalThis.rbitMessages?.text("browser-form-loading") ?? (globalThis.rbitMessages?.text("browser-form-loading") ?? "Loading form…"));
     try {
       const response = await fetch(tab.href, { signal: controller.signal, headers: { Accept: 'text/html' } });
       if (!response.ok || response.redirected) throw new Error('Form unavailable');
@@ -43,7 +43,7 @@ async function switchType(tab) {
       panel.hidden = true; root.append(panel); state.panels.set(kind, panel);
       window.htmx?.process(panel);
     } catch (error) {
-      if (error.name !== 'AbortError') status.textContent = 'Could not load this form. Select the tab to try again.';
+      if (error.name !== 'AbortError') status.textContent = (globalThis.rbitMessages?.text("browser-form-failed") ?? (globalThis.rbitMessages?.text("browser-form-failed") ?? "Could not load this form. Select the tab to try again."));
       return;
     }
   }

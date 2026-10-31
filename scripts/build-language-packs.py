@@ -33,7 +33,7 @@ def quoted(text):
 def value(message, locale):
     text = message['english']
     if message['key'] == 'language-pack-count':
-        if locale == 'es': return '{ $count ->\n    [one] Una lengua instalada\n   *[other] { $count } lenguas instaladas\n    }'
+        if locale == 'es': return '{ $count ->\n    [one] Un paquete de idioma instalado\n   *[other] { $count } paquetes de idioma instalados\n    }'
         if locale == 'ar-XB': return '{ $count ->\n    [one] حزمة لغة واحدة\n   *[other] حزم اللغات: { $count }\n    }'
         return '{ $count ->\n    [one] [Ǿƞḗ ŀȧƞɠŭȧɠḗ ƥȧƈķ]\n   *[other] [Īƞşŧȧŀŀḗḓ ŀȧƞɠŭȧɠḗ ƥȧƈķş: { $count }]\n    }'
     if message.get('args'):
@@ -66,7 +66,7 @@ def build(locale, messages):
         if lines:
             path='catalogs/'+namespace+'.ftl'; catalogs[namespace]=path;files[path]=''.join(lines).encode()
     manifest='schema = 1\n'+''.join(k+' = '+quoted(v)+'\n' for k,v in {
-      'id':'language.'+locale.lower(),'version':'1.0.0','locale':locale,'direction':'rtl' if locale=='ar-XB' else 'ltr',
+      'id':'language.'+locale.lower(),'version':'1.1.0','locale':locale,'direction':'rtl' if locale=='ar-XB' else 'ltr',
       'message_schema':'^1.0','publisher':'Rbit example language data','license':'MIT OR Apache-2.0','license_file':'LICENSE.txt'}.items())
     manifest+='\n[catalogs]\n'+''.join(k+' = '+quoted(v)+'\n' for k,v in catalogs.items())
     manifest+='\n[checksums]\n'+''.join(quoted(k)+' = '+quoted(hashlib.sha256(v).hexdigest())+'\n' for k,v in sorted(files.items()))

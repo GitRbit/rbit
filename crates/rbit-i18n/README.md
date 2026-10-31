@@ -103,3 +103,12 @@ can recurse into arguments, and bounds nested placeables before AST allocation.
 Browser q-values use the bounded RFC decimal grammar; q=0 exclusions survive
 wildcard/default selection. Host English remains the final safe fallback when
 no supported representation is acceptable.
+
+The host reserves `core` message keys beginning with `browser-` for its browser
+export channel. These patterns accept text and inline variables/string/number
+literals, but reject all Fluent selects. Export formats a template with opaque
+argument sentinels before JavaScript supplies real values; selecting a branch
+at export time would silently choose grammar using those sentinels. Browser
+plurals instead use the host's category-suffixed message keys selected by
+`Intl.PluralRules` after the numeric value is available. Server-rendered messages
+retain the bounded Fluent select/plural support described above.

@@ -3,8 +3,8 @@
 {% block settings_content %}
 {#- hx-history="false": a registration token is shown here once and must not be cached. -#}
 <div hx-history="false">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> Runners</p>
-  <h2 class="mt-1 text-xl font-semibold tracking-tight">Runners</h2>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ crate::i18n::text("actions", "actions-user-runners-a-actions") }}</a> <span class="text-ink-faint">/</span> {{ crate::i18n::text("actions", "actions-user-runners-p-runners") }}</p>
+  <h2 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("actions", "actions-user-runners-h2-runners") }}</h2>
   {% include "actions/runners_section.html" %}
 </div>
 {% endblock %}

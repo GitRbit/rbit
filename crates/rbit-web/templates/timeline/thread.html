@@ -4,7 +4,7 @@
   {% let comment = thread.opening %}{% include "timeline/comment.html" %}
   {% for item in thread.items %}{% include "timeline/item.html" %}{% endfor %}
   {% if let Some(url) = thread.next_url %}
-  <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">Load more</a></div>
+  <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "timeline-thread-a-load-more") }}</a></div>
   {% endif %}
   {% let form = thread.form %}{% include "timeline/comment_form.html" %}
 </div>

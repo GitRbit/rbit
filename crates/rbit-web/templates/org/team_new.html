@@ -5,22 +5,22 @@
 {% include "org/header.html" %}
 
 <div class="mt-6 max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ teams_url }}">Teams</a></p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ teams_url }}">{{ crate::i18n::text("core", "org-team-new-a-teams") }}</a></p>
   <form method="post" action="{{ teams_url }}/new" class="box mt-3" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">New team</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "org-team-new-h2-new-team") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
-      <label class="label" for="team-name">Name</label>
+      <label class="label" for="team-name">{{ crate::i18n::text("core", "org-team-new-label-name") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="team-name" name="name" value="{{ form.name }}" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
-      <p class="hint">Letters, digits, <span class="font-mono">-</span>, <span class="font-mono">_</span> and <span class="font-mono">.</span>; used in the team's address.</p>
+      <p class="hint">{{ crate::i18n::text("core", "org-team-new-p-letters-digits") }} <span class="font-mono">-</span>, <span class="font-mono">_</span> {{ crate::i18n::text("core", "org-team-new-p-and") }} <span class="font-mono">.</span>{{ crate::i18n::text("core", "org-team-new-p-used-in-the-team-s-address") }}</p>
 
-      <label class="label mt-5" for="team-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label mt-5" for="team-description">{{ crate::i18n::text("core", "org-team-new-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "org-team-new-span-optional") }}</span></label>
       <input class="input" id="team-description" name="description" value="{{ form.description }}" maxlength="350">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Create team</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-team-new-button-create-team") }}</button>
     </div>
   </form>
 </div>

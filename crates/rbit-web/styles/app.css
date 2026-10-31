@@ -18,6 +18,9 @@
 @source "../templates";
 @source "../src";
 
+/* Interface direction follows the locale; machine text keeps its original order. */
+[dir="rtl"] :is(pre, code, .font-mono) { direction: ltr; unicode-bidi: isolate; }
+
 /* Contribution calendars share semantic theme colors with the rest of the UI. */
 .contribution-calendar { display: block; width: 100%; }
 .contribution-quarters { display: none; }

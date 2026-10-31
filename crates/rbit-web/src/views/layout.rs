@@ -7,6 +7,8 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
+    pub locale: rbit_messages::LocaleSnapshot,
+    pub has_i18n: bool,
     pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
     pub plugin_revision: u64,
@@ -40,6 +42,8 @@ impl Page {
         let mut settings = state.services.instance.current();
         settings.branding.show_version &= state.config.updates.report_version;
         Self {
+            locale: crate::i18n::current_snapshot(),
+            has_i18n: state.services.i18n_enabled(),
             updates: state.services.updates.status(),
             site_name: settings.site_name,
             plugin_revision: state.services.plugin_revision(),
@@ -78,6 +82,11 @@ impl Page {
             Some(title) => format!("{title} · {}", self.site_name),
             None => self.site_name.clone(),
         }
+    }
+
+    /// Text-only catalog, escaped by Askama in the shell's data attribute.
+    pub fn browser_messages(&self) -> String {
+        if self.has_i18n { crate::i18n::browser_messages(&self.locale) } else { "{}".to_owned() }
     }
 
     /// Content-hashed URL of an embedded asset.
@@ -134,6 +143,8 @@ mod tests {
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
+                locale: rbit_messages::LocaleSnapshot::english(0),
+                has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 plugin_revision: 0,
                 site_name: "rbit".into(),
@@ -164,6 +175,8 @@ mod tests {
     fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            has_i18n: false,
             plugin_revision: 0,
             updates: rbit_services::updates::UpdateStatus {
                 revision: 1,

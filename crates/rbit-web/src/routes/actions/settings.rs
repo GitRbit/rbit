@@ -416,7 +416,7 @@ async fn user_page(state: &AppState, user: &User, page: Page, notice: Option<Not
     let (secrets, variables) =
         sections(&actions(state)?, ActionsTarget::User(user), PERSONAL_URL.to_owned(), PERSONAL_URL.to_owned()).await?;
     Ok(UserActionsSettingsPage {
-        page: page.titled("Actions"),
+        page: page.titled(crate::i18n::text("core", "title-actions")),
         settings_nav: SettingsSection::Actions.nav(),
         notice,
         secrets,

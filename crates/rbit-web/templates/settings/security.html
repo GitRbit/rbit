@@ -4,8 +4,8 @@
 {% block settings_content %}
 {% match view %}
 {% when SecurityView::Overview(overview) %}
-<h2 class="text-xl font-semibold tracking-tight">Security</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Protect your account with a passkey or an authenticator app, and keep track of where you're signed in.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-security-h2-security") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-protect-your-account-with-a-passkey-or-an-authenticator-app-and-k") }}</p>
 
 {% if let Some(notice) = overview.notice %}
 <p role="status" class="mt-6 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ notice.message() }}</p>
@@ -13,14 +13,14 @@
 
 <section class="box mt-6" aria-labelledby="two-factor-title">
   <div class="box-header justify-between gap-3">
-    <h3 id="two-factor-title" class="flex items-center gap-2 text-[13px] font-medium">{% call ui::icon("shield", "size-4 text-ink-muted") %}{% endcall %}Two-factor authentication</h3>
-    {% if overview.two_factor.enabled %}<span class="badge border-success/40 text-success">On</span>{% else %}<span class="badge">Off</span>{% endif %}
+    <h3 id="two-factor-title" class="flex items-center gap-2 text-[13px] font-medium">{% call ui::icon("shield", "size-4 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "settings-security-h3-two-factor-authentication") }}</h3>
+    {% if overview.two_factor.enabled %}<span class="badge border-success/40 text-success">{{ crate::i18n::text("core", "settings-security-span-on") }}</span>{% else %}<span class="badge">{{ crate::i18n::text("core", "settings-security-span-off") }}</span>{% endif %}
   </div>
   <p class="px-4 pt-4 text-[13px] text-ink-muted">
     {% if overview.two_factor.enabled %}
-    Signing in asks for a passkey or a code after your password. Git over HTTPS needs a <a href="/settings/tokens" class="link">personal access token</a>; your password no longer works there.
+    {{ crate::i18n::text("core", "settings-security-p-signing-in-asks-for-a-passkey-or-a-code-after-your-password-git-o") }} <a href="/settings/tokens" class="link">{{ crate::i18n::text("core", "settings-security-a-personal-access-token") }}</a>{{ crate::i18n::text("core", "settings-security-p-your-password-no-longer-works-there") }}
     {% else %}
-    Add a second step to signing in: a passkey, an authenticator app, or both.
+    {{ crate::i18n::text("core", "settings-security-p-add-a-second-step-to-signing-in-a-passkey-an-authenticator-app-or") }}
     {% endif %}
   </p>
 
@@ -29,8 +29,8 @@
     <div class="flex items-start gap-3 px-4 pt-4">
       {% call ui::icon("key-round", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
       <div class="min-w-0">
-        <h4 id="passkeys-title" class="text-[13px] font-medium">Passkeys and security keys</h4>
-        <p class="mt-0.5 text-[13px] text-ink-muted">Confirm sign-ins with your fingerprint, face, device PIN, phone or a hardware key such as a YubiKey.</p>
+        <h4 id="passkeys-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-security-h4-passkeys-and-security-keys") }}</h4>
+        <p class="mt-0.5 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-confirm-sign-ins-with-your-fingerprint-face-device-pin-phone-or-a") }}</p>
       </div>
     </div>
     {% if !overview.passkeys.is_empty() %}
@@ -43,11 +43,11 @@
               <p class="truncate text-[13px] font-medium">{{ passkey.name }}</p>
               <p class="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-muted"><span>{{ passkey.added }}</span><span>{{ passkey.last_used }}</span></p>
             </div>
-            <span class="shrink-0 text-xs text-danger">Remove</span>
+            <span class="shrink-0 text-xs text-danger">{{ crate::i18n::text("core", "settings-security-span-remove") }}</span>
           </summary>
           <form method="post" action="{{ passkey.remove_url }}" class="px-4 pb-4" novalidate>
             {% call ui::form_error(passkey.error) %}{% endcall %}
-            <p class="mb-4 text-[13px] text-ink-muted">{% if overview.passkeys.len() == 1 && !overview.two_factor.authenticator %}This is your only second factor: removing it turns two-factor authentication off and deletes your recovery codes.{% else %}You won't be able to sign in with this passkey any more.{% endif %}</p>
+            <p class="mb-4 text-[13px] text-ink-muted">{% if overview.passkeys.len() == 1 && !overview.two_factor.authenticator %}This is your only second factor: removing it turns two-factor authentication off and deletes your recovery codes.{% else %}{{ crate::i18n::text("core", "settings-security-p-you-won-t-be-able-to-sign-in-with-this-passkey-any-more") }}{% endif %}</p>
             {% call security::confirm_fields(format!("remove-{}", passkey.id), overview.passkey_confirm_options, overview.two_factor.authenticator) %}{% endcall %}
             {% call security::confirm_buttons(overview.passkey_confirm_options, "Remove", true) %}{% endcall %}
           </form>
@@ -61,17 +61,17 @@
       {% call ui::form_error(overview.add_passkey_error) %}{% endcall %}
       <input type="hidden" name="credential" value="">
       <div data-passkey-only hidden>
-        <label class="label" for="passkey-name">Name</label>
+        <label class="label" for="passkey-name">{{ crate::i18n::text("core", "settings-security-label-name") }}</label>
         <div class="flex flex-col gap-2 sm:flex-row">
-          <input class="input sm:max-w-60" id="passkey-name" name="name" maxlength="64" placeholder="e.g. MacBook or YubiKey" autocomplete="off">
-          <button class="btn btn-primary w-full shrink-0 sm:w-auto" type="submit">Add passkey</button>
+          <input class="input sm:max-w-60" id="passkey-name" name="name" maxlength="64" placeholder="{{ crate::i18n::text("core", "settings-security-placeholder-e-g-macbook-or-yubikey") }}" autocomplete="off">
+          <button class="btn btn-primary w-full shrink-0 sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-security-button-add-passkey") }}</button>
         </div>
         <p data-passkey-error role="alert" class="mt-3 text-[13px] text-danger" hidden></p>
       </div>
-      <p data-passkey-unsupported class="text-[13px] text-ink-muted">Adding a passkey needs a browser that supports passkeys, with JavaScript on.</p>
+      <p data-passkey-unsupported class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-adding-a-passkey-needs-a-browser-that-supports-passkeys-with-java") }}</p>
     </form>
     {% else %}
-    <p class="border-t border-line p-4 text-[13px] text-ink-muted {% if overview.passkeys.is_empty() %}mt-3{% endif %}">Passkeys need <code class="font-mono">server.public_url</code> to be set to this site's address.</p>
+    <p class="border-t border-line p-4 text-[13px] text-ink-muted {% if overview.passkeys.is_empty() %}mt-3{% endif %}">{{ crate::i18n::text("core", "settings-security-p-passkeys-need") }} <code class="font-mono">server.public_url</code> {{ crate::i18n::text("core", "settings-security-p-to-be-set-to-this-site-s-address") }}</p>
     {% endif %}
   </div>
 
@@ -81,24 +81,24 @@
       <div class="flex min-w-0 items-start gap-3">
         {% call ui::icon("smartphone", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
         <div class="min-w-0">
-          <h4 class="flex items-center gap-2 text-[13px] font-medium">Authenticator app{% if overview.two_factor.authenticator %} <span class="badge border-success/40 text-success">On</span>{% endif %}</h4>
+          <h4 class="flex items-center gap-2 text-[13px] font-medium">{{ crate::i18n::text("core", "settings-security-h4-authenticator-app") }}{% if overview.two_factor.authenticator %} <span class="badge border-success/40 text-success">{{ crate::i18n::text("core", "settings-security-span-on") }}</span>{% endif %}</h4>
           {% if overview.two_factor.authenticator %}
           <p class="mt-0.5 text-xs text-ink-muted">{{ overview.two_factor.since }}</p>
           {% else %}
-          <p class="mt-0.5 text-[13px] text-ink-muted">Use 6-digit codes from an app such as 1Password, Aegis or Google Authenticator.</p>
+          <p class="mt-0.5 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-use-6-digit-codes-from-an-app-such-as-1password-aegis-or-google-a") }}</p>
           {% endif %}
         </div>
       </div>
       {% if !overview.two_factor.authenticator %}
-      <a href="/settings/security/two-factor" class="btn w-full shrink-0 sm:w-auto">Set up</a>
+      <a href="/settings/security/two-factor" class="btn w-full shrink-0 sm:w-auto">{{ crate::i18n::text("core", "settings-security-a-set-up") }}</a>
       {% endif %}
     </div>
     {% if overview.two_factor.authenticator %}
     <details class="border-t border-line" {% if overview.disable_error.0.is_some() %}open{% endif %}>
-      <summary class="cursor-pointer px-4 py-3 text-[13px] font-medium text-danger hover:bg-subtle">Remove authenticator app</summary>
+      <summary class="cursor-pointer px-4 py-3 text-[13px] font-medium text-danger hover:bg-subtle">{{ crate::i18n::text("core", "settings-security-summary-remove-authenticator-app") }}</summary>
       <form method="post" action="/settings/security/two-factor/disable" class="px-4 pb-4" novalidate>
         {% call ui::form_error(overview.disable_error) %}{% endcall %}
-        <p class="mb-4 text-[13px] text-ink-muted">{% if overview.passkeys.is_empty() %}Your account will be protected by your password alone, and your recovery codes are deleted.{% else %}Your passkeys stay on as your second factor.{% endif %}</p>
+        <p class="mb-4 text-[13px] text-ink-muted">{% if overview.passkeys.is_empty() %}{{ crate::i18n::text("core", "settings-security-p-your-account-will-be-protected-by-your-password-alone-and-your-re") }}{% else %}{{ crate::i18n::text("core", "settings-security-p-your-passkeys-stay-on-as-your-second-factor") }}{% endif %}</p>
         {% call security::confirm_fields("disable", overview.passkey_confirm_options, true) %}{% endcall %}
         {% call security::confirm_buttons(overview.passkey_confirm_options, "Remove", true) %}{% endcall %}
       </form>
@@ -112,15 +112,15 @@
     <div class="flex items-start gap-3 p-4">
       {% call ui::icon("lock", "mt-0.5 size-4 shrink-0 text-ink-faint") %}{% endcall %}
       <div class="min-w-0">
-        <h4 class="text-[13px] font-medium">Recovery codes</h4>
+        <h4 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-security-h4-recovery-codes") }}</h4>
         <p class="mt-0.5 text-xs {% if overview.two_factor.recovery_codes_low %}text-danger{% else %}text-ink-muted{% endif %}">{{ overview.two_factor.recovery_codes }}</p>
       </div>
     </div>
     <details class="border-t border-line" {% if overview.regenerate_error.0.is_some() %}open{% endif %}>
-      <summary class="cursor-pointer px-4 py-3 text-[13px] font-medium hover:bg-subtle">Generate new recovery codes</summary>
+      <summary class="cursor-pointer px-4 py-3 text-[13px] font-medium hover:bg-subtle">{{ crate::i18n::text("core", "settings-security-summary-generate-new-recovery-codes") }}</summary>
       <form method="post" action="/settings/security/recovery-codes" class="px-4 pb-4" novalidate>
         {% call ui::form_error(overview.regenerate_error) %}{% endcall %}
-        <p class="mb-4 text-[13px] text-ink-muted">Your current recovery codes stop working.</p>
+        <p class="mb-4 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-your-current-recovery-codes-stop-working") }}</p>
         {% call security::confirm_fields("regenerate", overview.passkey_confirm_options, overview.two_factor.authenticator) %}{% endcall %}
         {% call security::confirm_buttons(overview.passkey_confirm_options, "Generate new codes", false) %}{% endcall %}
       </form>
@@ -133,22 +133,22 @@
 {% if overview.sign_in.shown %}
 <section class="box mt-6" aria-labelledby="sign-in-title">
   <div class="box-header justify-between gap-3">
-    <h3 id="sign-in-title" class="flex items-center gap-2 text-[13px] font-medium">{% call ui::icon("link", "size-4 text-ink-muted") %}{% endcall %}Sign-in methods</h3>
-    {% if overview.sign_in.has_password %}<span class="badge">Password</span>{% else %}<span class="badge">No password</span>{% endif %}
+    <h3 id="sign-in-title" class="flex items-center gap-2 text-[13px] font-medium">{% call ui::icon("link", "size-4 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "settings-security-h3-sign-in-methods") }}</h3>
+    {% if overview.sign_in.has_password %}<span class="badge">{{ crate::i18n::text("core", "settings-security-span-password") }}</span>{% else %}<span class="badge">{{ crate::i18n::text("core", "settings-security-span-no-password") }}</span>{% endif %}
   </div>
   <div class="px-4 pt-4">
     {% call ui::form_error(overview.sign_in.error) %}{% endcall %}
     {% if overview.sign_in.has_password %}
-    <p class="text-[13px] text-ink-muted">Sign in with your password or with a linked account.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-sign-in-with-your-password-or-with-a-linked-account") }}</p>
     {% else %}
-    <p class="text-[13px] text-ink-muted">Your account has no password: you sign in with a linked account. To set one, request a <a href="/password/forgot" class="link">password reset link</a>. Git over HTTPS needs a <a href="/settings/tokens" class="link">personal access token</a>.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-your-account-has-no-password-you-sign-in-with-a-linked-account-to") }} <a href="/password/forgot" class="link">{{ crate::i18n::text("core", "settings-security-a-password-reset-link") }}</a>. Git over HTTPS needs a <a href="/settings/tokens" class="link">{{ crate::i18n::text("core", "settings-security-a-personal-access-token") }}</a>.</p>
     {% endif %}
   </div>
   <ul class="mt-3">
     {% for identity in overview.sign_in.identities %}
     <li class="row items-start gap-3 py-3 sm:items-center">
       <div class="min-w-0 flex-1">
-        <p class="flex min-w-0 items-center gap-2"><span class="truncate font-medium">{{ identity.provider_name }}</span>{% if !identity.configured %}<span class="badge">No longer available</span>{% endif %}</p>
+        <p class="flex min-w-0 items-center gap-2"><span class="truncate font-medium">{{ identity.provider_name }}</span>{% if !identity.configured %}<span class="badge">{{ crate::i18n::text("core", "settings-security-span-no-longer-available") }}</span>{% endif %}</p>
         <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
           {% if !identity.detail.is_empty() %}<span class="min-w-0 break-all">{{ identity.detail }}</span>{% endif %}
           <span>{{ identity.linked }}</span>
@@ -157,10 +157,10 @@
       </div>
       {% if identity.can_unlink %}
       <form method="post" action="{{ identity.unlink_url }}" class="shrink-0">
-        <button class="btn btn-danger" type="submit" aria-label="Unlink {{ identity.provider_name }}">Unlink</button>
+        <button class="btn btn-danger" type="submit" aria-label="Unlink {{ identity.provider_name }}">{{ crate::i18n::text("core", "settings-security-button-unlink") }}</button>
       </form>
       {% else %}
-      <span class="shrink-0 text-xs text-ink-faint">Only way to sign in</span>
+      <span class="shrink-0 text-xs text-ink-faint">{{ crate::i18n::text("core", "settings-security-span-only-way-to-sign-in") }}</span>
       {% endif %}
     </li>
     {% endfor %}
@@ -168,9 +168,9 @@
     <li class="row items-center gap-3 py-3">
       <div class="min-w-0 flex-1">
         <p class="truncate font-medium">{{ provider.name }}</p>
-        <p class="mt-1 text-xs text-ink-muted">Not linked</p>
+        <p class="mt-1 text-xs text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-not-linked") }}</p>
       </div>
-      <a href="{{ provider.url }}" class="btn shrink-0" hx-boost="false">Link</a>
+      <a href="{{ provider.url }}" class="btn shrink-0" hx-boost="false">{{ crate::i18n::text("core", "settings-security-a-link") }}</a>
     </li>
     {% endfor %}
   </ul>
@@ -179,10 +179,10 @@
 
 <section class="mt-6" aria-labelledby="sessions-title">
   <div class="mb-3 flex min-h-8 items-center justify-between gap-3">
-    <h3 id="sessions-title" class="text-[13px] font-medium text-ink-muted">Sessions</h3>
+    <h3 id="sessions-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "settings-security-h3-sessions") }}</h3>
     {% if overview.has_other_sessions() %}
     <form method="post" action="/settings/security/sessions/revoke-others">
-      <button class="btn" type="submit">Sign out everywhere else</button>
+      <button class="btn" type="submit">{{ crate::i18n::text("core", "settings-security-button-sign-out-everywhere-else") }}</button>
     </form>
     {% endif %}
   </div>
@@ -194,7 +194,7 @@
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-2">
             <span class="truncate font-medium">{{ session.device }}</span>
-            {% if session.is_current %}<span class="badge">This device</span>{% endif %}
+            {% if session.is_current %}<span class="badge">{{ crate::i18n::text("core", "settings-security-span-this-device") }}</span>{% endif %}
           </div>
           <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
             {% if let Some(ip) = session.ip_address %}<span class="font-mono">{{ ip }}</span>{% endif %}
@@ -204,7 +204,7 @@
         </div>
         {% if !session.is_current %}
         <form method="post" action="{{ session.revoke_url }}" class="shrink-0">
-          <button class="btn" type="submit" aria-label="Sign out {{ session.device }}">Sign out</button>
+          <button class="btn" type="submit" aria-label="Sign out {{ session.device }}">{{ crate::i18n::text("core", "nav-sign-out") }}</button>
         </form>
         {% endif %}
       </li>
@@ -215,11 +215,11 @@
 
 <section class="mt-6" aria-labelledby="activity-title">
   <div class="mb-3 flex h-8 items-center">
-    <h3 id="activity-title" class="text-[13px] font-medium text-ink-muted">Recent activity</h3>
+    <h3 id="activity-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "settings-security-h3-recent-activity") }}</h3>
   </div>
   <div class="box">
     {% if overview.activity.is_empty() %}
-    {% call ui::empty_state("shield", "No activity yet", "Sign-ins and security changes on your account will appear here.") %}{% endcall %}
+    {% call ui::empty_state("shield", crate::i18n::text("core", "settings-security-empty-title-no-activity-yet"), crate::i18n::text("core", "settings-security-empty-description-sign-ins-and-security-changes-on-your-account-will-appear-here")) %}{% endcall %}
     {% else %}
     <ul>
       {% for event in overview.activity %}
@@ -237,8 +237,8 @@
 </section>
 
 {% when SecurityView::Setup(setup) %}
-<h2 class="text-xl font-semibold tracking-tight">Set up an authenticator app</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Scan the QR code with your authenticator app, then enter the 6-digit code it shows.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-security-h2-set-up-an-authenticator-app") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-scan-the-qr-code-with-your-authenticator-app-then-enter-the-6-dig") }}</p>
 
 <section class="box mt-6" hx-history="false" aria-labelledby="setup-title">
   <div class="box-header">
@@ -247,44 +247,44 @@
   <div class="flex flex-col items-center gap-5 p-4 sm:flex-row sm:items-start">
     <div class="size-44 shrink-0 overflow-hidden rounded-(--radius-ui) border border-line">{{ setup.qr_svg|safe }}</div>
     <div class="min-w-0 w-full">
-      <label class="label" for="totp-secret">Can't scan? Enter this key instead</label>
+      <label class="label" for="totp-secret">{{ crate::i18n::text("core", "settings-security-label-can-t-scan-enter-this-key-instead") }}</label>
       <div class="flex">
         <input id="totp-secret" class="input min-w-0 rounded-r-none font-mono text-[13px]" value="{{ setup.secret }}" readonly autocomplete="off" spellcheck="false">
-        <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9 sm:w-9" data-copy="totp-secret" aria-label="Copy key" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+        <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9 sm:w-9" data-copy="totp-secret" aria-label="{{ crate::i18n::text("core", "settings-security-aria-label-copy-key") }}" title="{{ crate::i18n::text("core", "settings-security-title-copy") }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
       </div>
-      <p class="hint">Time-based, 6 digits, every 30 seconds.</p>
+      <p class="hint">{{ crate::i18n::text("core", "settings-security-p-time-based-6-digits-every-30-seconds") }}</p>
     </div>
   </div>
 </section>
 
 <form method="post" action="/settings/security/two-factor" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">2. Confirm a code</h3>
+    <h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-security-h3-label-2-confirm-a-code") }}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(setup.error) %}{% endcall %}
-    <label class="label" for="setup-code">Authentication code</label>
+    <label class="label" for="setup-code">{{ crate::i18n::text("core", "settings-security-label-authentication-code") }}</label>
     <input class="input font-mono tracking-widest sm:max-w-60" id="setup-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="123456" required autofocus>
   </div>
   <div class="flex flex-col-reverse gap-2 border-t border-line px-4 py-3 sm:flex-row sm:justify-end">
-    <button class="btn w-full sm:w-auto" type="submit" formaction="/settings/security/two-factor/cancel" formnovalidate>Cancel</button>
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Enable</button>
+    <button class="btn w-full sm:w-auto" type="submit" formaction="/settings/security/two-factor/cancel" formnovalidate>{{ crate::i18n::text("core", "settings-security-button-cancel") }}</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-security-button-enable") }}</button>
   </div>
 </form>
 
 {% when SecurityView::RecoveryCodes(recovery) %}
-<h2 class="text-xl font-semibold tracking-tight">Recovery codes</h2>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-security-h2-recovery-codes") }}</h2>
 {% if recovery.just_enabled %}
-<p role="status" class="mt-3 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Two-factor authentication is on.</p>
+<p role="status" class="mt-3 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "settings-security-p-two-factor-authentication-is-on") }}</p>
 {% endif %}
 
 <section class="box mt-6 border-ink" hx-history="false" aria-labelledby="codes-title">
   <div class="box-header">
     {% call ui::icon("lock", "size-4 shrink-0") %}{% endcall %}
-    <h3 id="codes-title" class="text-[13px] font-medium">Save these codes now</h3>
+    <h3 id="codes-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-security-h3-save-these-codes-now") }}</h3>
   </div>
   <div class="p-4">
-    <p class="text-[13px] text-ink-muted">Each code signs you in once if you lose your passkeys or authenticator app. They won't be shown again, so keep them somewhere safe, such as a password manager.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-security-p-each-code-signs-you-in-once-if-you-lose-your-passkeys-or-authenti") }}</p>
     <ul class="mt-4 grid grid-cols-2 gap-x-6 gap-y-1.5 font-mono text-[13px] sm:max-w-sm">
       {% for code in recovery.codes %}
       <li>{{ code }}</li>
@@ -292,7 +292,7 @@
     </ul>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <a href="/settings/security" class="btn btn-primary w-full sm:w-auto">I've saved my codes</a>
+    <a href="/settings/security" class="btn btn-primary w-full sm:w-auto">{{ crate::i18n::text("core", "settings-security-a-i-ve-saved-my-codes") }}</a>
   </div>
 </section>
 {% endmatch %}

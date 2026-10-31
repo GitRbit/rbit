@@ -1,11 +1,11 @@
 {% import "macros.html" as ui %}
-    <details id="diff-sidebar" class="diff-sidebar box" aria-label="Changed files" open>
-      <summary class="diff-sidebar-summary">{% call ui::icon("panel-left", "size-4") %}{% endcall %}File tree <span class="text-ink-faint">{{ files.len() }}</span></summary>
+    <details id="diff-sidebar" class="diff-sidebar box" aria-label="{{ crate::i18n::text("core", "repo-diff-tree-aria-label-changed-files") }}" open>
+      <summary class="diff-sidebar-summary">{% call ui::icon("panel-left", "size-4") %}{% endcall %}{{ crate::i18n::text("core", "repo-diff-tree-summary-file-tree") }} <span class="text-ink-faint">{{ files.len() }}</span></summary>
       <div class="diff-filter">
         <label class="relative block">
-          <span class="sr-only">Filter changed files</span>
+          <span class="sr-only">{{ crate::i18n::text("core", "repo-diff-tree-span-filter-changed-files") }}</span>
           {% call ui::icon("search", "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-          <input type="search" class="diff-filter-input" placeholder="Filter files…" autocomplete="off" spellcheck="false" data-diff-filter>
+          <input type="search" class="diff-filter-input" placeholder="{{ crate::i18n::text("core", "repo-diff-tree-placeholder-filter-files") }}" autocomplete="off" spellcheck="false" data-diff-filter>
           <span class="diff-filter-count" data-diff-filter-count aria-live="polite">{{ files.len() }}</span>
         </label>
       </div>
@@ -32,6 +32,6 @@
         </li>
         {% endmatch %}
         {% endfor %}
-        <li class="px-3 py-6 text-center text-[13px] text-ink-faint" data-diff-filter-empty hidden>No files match.</li>
+        <li class="px-3 py-6 text-center text-[13px] text-ink-faint" data-diff-filter-empty hidden>{{ crate::i18n::text("core", "repo-diff-tree-li-no-files-match") }}</li>
       </ul>
     </details>

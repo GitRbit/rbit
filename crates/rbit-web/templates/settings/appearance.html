@@ -1,7 +1,7 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
-<h2 class="text-xl font-semibold tracking-tight">Appearance</h2>
-<p class="mt-1 mb-6 text-[13px] text-ink-muted">Your theme is saved to your account and follows you to every device you sign in on. Hover a theme to preview it; click to keep it.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-appearance-h2-appearance") }}</h2>
+<p class="mt-1 mb-6 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-appearance-p-your-theme-is-saved-to-your-account-and-follows-you-to-every-devi") }}</p>
 {% include "themes/gallery.html" %}
 {% endblock %}

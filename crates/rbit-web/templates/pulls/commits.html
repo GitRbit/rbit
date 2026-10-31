@@ -17,7 +17,7 @@
     <a href="{{ commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ commit.short_id }}</a>
   </li>
   {% else %}
-  <li>{% call ui::empty_state("commit", "No commits", "The head and the base point at the same commit.") %}{% endcall %}</li>
+  <li>{% call ui::empty_state("commit", crate::i18n::text("core", "pulls-commits-empty-title-no-commits"), crate::i18n::text("core", "pulls-commits-empty-description-the-head-and-the-base-point-at-the-same-commit")) %}{% endcall %}</li>
   {% endfor %}
 </ol>
 {% if more_commits %}<p class="mt-2 text-xs text-ink-muted">Only the newest {{ commits.len() }} commits are listed.</p>{% endif %}

@@ -1,33 +1,33 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
-<h2 class="text-xl font-semibold tracking-tight">Notifications</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Everything still appears in <a class="link" href="/notifications">your inbox</a>. Choose what is also sent to your email address.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-notifications") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-notifications-p-everything-still-appears-in") }} <a class="link" href="/notifications">{{ crate::i18n::text("core", "settings-notifications-a-your-inbox") }}</a>. Choose what is also sent to your email address.</p>
 
 {% if saved %}
 <p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
-  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Preferences saved.
+  {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "settings-notifications-p-preferences-saved") }}
 </p>
 {% endif %}
 
 {% if !available %}
 <p class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px] text-ink-muted">
-  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0") %}{% endcall %}Email is not available on this server, so notifications only appear in your inbox.
+  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0") %}{% endcall %}{{ crate::i18n::text("core", "settings-notifications-p-email-is-not-available-on-this-server-so-notifications-only-appea") }}
 </p>
 {% else if !verified %}
 <p class="mt-6 flex items-start gap-2 rounded-(--radius-ui) border border-warning/40 px-3 py-2.5 text-[13px]">
-  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-warning") %}{% endcall %}<span>Verify <span class="font-medium break-all">{{ address }}</span> in <a class="link" href="/settings/account">account settings</a> to receive notification emails.</span>
+  {% call ui::icon("alert", "mt-0.5 size-4 shrink-0 text-warning") %}{% endcall %}<span>{{ crate::i18n::text("core", "settings-notifications-span-verify") }} <span class="font-medium break-all">{{ address }}</span> {{ crate::i18n::text("core", "settings-notifications-span-in") }} <a class="link" href="/settings/account">{{ crate::i18n::text("core", "settings-notifications-a-account-settings") }}</a> {{ crate::i18n::text("core", "settings-notifications-span-to-receive-notification-emails") }}</span>
 </p>
 {% endif %}
 
 <form method="post" action="/settings/notifications" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">Email</h3>
+    <h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-notifications-h3-email") }}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
     <fieldset>
-      <legend class="label">Send to <span class="break-all text-ink-muted">{{ address }}</span></legend>
+      <legend class="label">{{ crate::i18n::text("core", "settings-notifications-legend-send-to") }} <span class="break-all text-ink-muted">{{ address }}</span></legend>
       <div class="box overflow-hidden">
         {% for option in options %}
         <label class="flex cursor-pointer items-start gap-3 {% if !loop.last %}border-b border-line {% endif %}px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
@@ -41,7 +41,7 @@
       </div>
     </fieldset>
     <fieldset class="mt-6">
-      <legend class="label">When</legend>
+      <legend class="label">{{ crate::i18n::text("core", "settings-notifications-legend-when") }}</legend>
       <div class="box overflow-hidden">
         {% for option in deliveries %}
         <label class="flex cursor-pointer items-start gap-3 {% if !loop.last %}border-b border-line {% endif %}px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
@@ -54,17 +54,17 @@
         {% endfor %}
       </div>
     </fieldset>
-    <label class="label mt-6" for="digest-hour">Digest time</label>
+    <label class="label mt-6" for="digest-hour">{{ crate::i18n::text("core", "settings-notifications-label-digest-time") }}</label>
     <div class="relative w-full sm:w-48">
       <select class="input cursor-pointer appearance-none pr-9" id="digest-hour" name="digest_hour" aria-describedby="digest-hour-hint">
         {% for hour in hours %}<option value="{{ hour.value }}"{% if hour.selected %} selected{% endif %}>{{ hour.label }}</option>{% endfor %}
       </select>
       {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
-    <p class="hint" id="digest-hour-hint">Digests leave out threads you have already read here. Every email has a link that turns them off in one click.</p>
+    <p class="hint" id="digest-hour-hint">{{ crate::i18n::text("core", "settings-notifications-p-digests-leave-out-threads-you-have-already-read-here-every-email") }}</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Save preferences</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-notifications-button-save-preferences") }}</button>
   </div>
 </form>
 {% endblock %}

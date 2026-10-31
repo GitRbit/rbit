@@ -8,14 +8,14 @@
     {% if let Some(url) = pull.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ pull.author.name }}</a>{% else %}<span class="font-medium">{{ pull.author.name }}</span>{% endif %}
     {{ pull.verb }} {% call slots::phrase(pull.slot(crate::views::pulls::CountSlot::CommitsPhrase), pull.counts.commits_phrase(), false) %}{% endcall %} into
     <a href="{{ pull.base_url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ pull.base_branch }}</a>
-    from
+    {{ crate::i18n::text("core", "pulls-header-p-from") }}
     {% if let Some(url) = pull.head_url %}<a href="{{ url }}" class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ pull.head_label }}</a>{% else %}<span class="rounded-sm bg-subtle px-1 font-mono text-xs text-ink-faint">{{ pull.head_label }}</span>{% endif %}
   </p>
 </div>
-<nav class="-mx-4 -mb-px mt-5 flex gap-5 border-b border-line px-4 scroll-tabs sm:mx-0 sm:px-0" aria-label="Pull request">
-  <a class="tab" href="{{ pull.urls.page }}" {% if pull.active == "conversation" %}aria-current="page"{% endif %}>{% call ui::icon("message-square", "size-3.5") %}{% endcall %}Conversation</a>
-  <a class="tab" href="{{ pull.urls.commits }}" {% if pull.active == "commits" %}aria-current="page"{% endif %}>{% call ui::icon("commit", "size-3.5") %}{% endcall %}Commits{% call slots::badge(pull.slot(crate::views::pulls::CountSlot::Commits), pull.counts.commits_badge(), false) %}{% endcall %}</a>
-  <a class="tab" href="{{ pull.urls.files }}" {% if pull.active == "files" %}aria-current="page"{% endif %}>{% call ui::icon("file-diff", "size-3.5") %}{% endcall %}Files changed{% call slots::badge(pull.slot(crate::views::pulls::CountSlot::Files), pull.counts.files_badge(), false) %}{% endcall %}</a>
+<nav class="-mx-4 -mb-px mt-5 flex gap-5 border-b border-line px-4 scroll-tabs sm:mx-0 sm:px-0" aria-label="{{ crate::i18n::text("core", "pulls-header-aria-label-pull-request") }}">
+  <a class="tab" href="{{ pull.urls.page }}" {% if pull.active == "conversation" %}aria-current="page"{% endif %}>{% call ui::icon("message-square", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-header-a-conversation") }}</a>
+  <a class="tab" href="{{ pull.urls.commits }}" {% if pull.active == "commits" %}aria-current="page"{% endif %}>{% call ui::icon("commit", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-header-a-commits") }}{% call slots::badge(pull.slot(crate::views::pulls::CountSlot::Commits), pull.counts.commits_badge(), false) %}{% endcall %}</a>
+  <a class="tab" href="{{ pull.urls.files }}" {% if pull.active == "files" %}aria-current="page"{% endif %}>{% call ui::icon("file-diff", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-header-a-files-changed") }}{% call slots::badge(pull.slot(crate::views::pulls::CountSlot::Files), pull.counts.files_badge(), false) %}{% endcall %}</a>
 </nav>
 {%- if let Some(url) = pull.counts_url %}
 <div hidden hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"></div>

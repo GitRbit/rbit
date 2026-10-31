@@ -1,12 +1,12 @@
 <div class="my-3 flex flex-wrap items-center justify-between gap-3">
   <form method="get" data-listing-search action="{{ pagination.action }}" class="flex gap-2" role="search">
     {% for param in pagination.extra %}<input type="hidden" name="{{ param.0 }}" value="{{ param.1 }}">{% endfor %}
-    <input type="search" name="q" value="{{ pagination.query }}" maxlength="100" class="input min-w-0" aria-label="Search this listing" placeholder="Search names">
-    <button class="btn" type="submit">Search</button>
+    <input type="search" name="q" value="{{ pagination.query }}" maxlength="100" class="input min-w-0" aria-label="{{ crate::i18n::text("core", "repo-listing-controls-aria-label-search-this-listing") }}" placeholder="{{ crate::i18n::text("core", "repo-listing-controls-placeholder-search-names") }}">
+    <button class="btn" type="submit">{{ crate::i18n::text("core", "repo-listing-controls-button-search") }}</button>
   </form>
-  <nav class="flex items-center gap-3 text-xs text-ink-muted" aria-label="Listing pages">
-    {% if let Some(url) = pagination.previous %}<a class="btn" href="{{ url }}" data-listing-page>Previous</a>{% endif %}
+  <nav class="flex items-center gap-3 text-xs text-ink-muted" aria-label="{{ crate::i18n::text("core", "repo-listing-controls-aria-label-listing-pages") }}">
+    {% if let Some(url) = pagination.previous %}<a class="btn" href="{{ url }}" data-listing-page>{{ crate::i18n::text("core", "repo-listing-controls-a-previous") }}</a>{% endif %}
     <span>{{ pagination.total }} results · {{ pagination.page }} / {{ pagination.pages }}</span>
-    {% if let Some(url) = pagination.next %}<a class="btn" href="{{ url }}" data-listing-page>Next</a>{% endif %}
+    {% if let Some(url) = pagination.next %}<a class="btn" href="{{ url }}" data-listing-page>{{ crate::i18n::text("core", "repo-listing-controls-a-next") }}</a>{% endif %}
   </nav>
 </div>

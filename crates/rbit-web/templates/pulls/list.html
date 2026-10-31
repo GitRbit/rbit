@@ -4,27 +4,27 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <form method="get" action="{{ list_url }}" role="search" class="mb-3 flex gap-2">
-  <label for="pull-query" class="sr-only">Search pull requests</label>
-  <input id="pull-query" type="search" class="input min-w-0 flex-1 font-mono text-xs" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…">
-  <button type="submit" class="btn">Search</button>
+  <label for="pull-query" class="sr-only">{{ crate::i18n::text("core", "pulls-list-label-search-pull-requests") }}</label>
+  <input id="pull-query" type="search" class="input min-w-0 flex-1 font-mono text-xs" name="q" value="{{ query }}" maxlength="1000" placeholder="{{ crate::i18n::text("core", "pulls-list-placeholder-search-titles-and-descriptions") }}">
+  <button type="submit" class="btn">{{ crate::i18n::text("core", "pulls-list-button-search") }}</button>
 </form>
-<p class="hint mb-3">Choose filters below, or type terms such as <code>is:draft</code>, <code>is:merged</code>, <code>author:@me</code> or <code>label:bug</code>. <a class="link" href="{{ list_url }}">Clear search and filters</a></p>
+<p class="hint mb-3">{{ crate::i18n::text("core", "pulls-list-p-choose-filters-below-or-type-terms-such-as") }} <code>is:draft</code>, <code>is:merged</code>, <code>author:@me</code> {{ crate::i18n::text("core", "pulls-list-p-or") }} <code>label:bug</code>. <a class="link" href="{{ list_url }}">{{ crate::i18n::text("core", "pulls-list-a-clear-search-and-filters") }}</a></p>
 {% for hint in hints %}<p class="hint mb-2">{{ hint }}</p>{% endfor %}
-<div class="relative mb-3 flex flex-wrap gap-1" aria-label="Pull request filters">
+<div class="relative mb-3 flex flex-wrap gap-1" aria-label="{{ crate::i18n::text("core", "pulls-list-aria-label-pull-request-filters") }}">
   {% include "issues/filters.html" %}
 </div>
 <div class="mb-3 flex min-h-8 flex-wrap items-center gap-3">
-  <nav class="flex items-center gap-1" aria-label="Pull request state">
-    <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.open }}</span> Open</a>
-    <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.closed }}</span> Closed</a>
+  <nav class="flex items-center gap-1" aria-label="{{ crate::i18n::text("core", "pulls-list-aria-label-pull-request-state") }}">
+    <a href="{{ tabs.open_url }}" class="btn {% if tabs.state == "open" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "open" %}aria-current="page"{% endif %}>{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.open }}</span> {{ crate::i18n::text("core", "pulls-list-a-open") }}</a>
+    <a href="{{ tabs.closed_url }}" class="btn {% if tabs.state == "closed" %}btn-primary{% else %}btn-ghost{% endif %} h-11 sm:h-8" {% if tabs.state == "closed" %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ tabs.closed }}</span> {{ crate::i18n::text("core", "pulls-list-a-closed") }}</a>
   </nav>
   {% if let Some(author) = author_filter %}<span class="badge">author: {{ author }}</span>{% endif %}
-  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ml-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}New<span class="hidden sm:inline">&nbsp;pull request</span></a>{% endif %}
+  {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary ml-auto h-11 sm:h-8">{% call ui::icon("git-pull-request", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-list-a-new") }}<span class="hidden sm:inline">{{ crate::i18n::text("core", "pulls-list-span-pull-request") }}</span></a>{% endif %}
 </div>
 
 <div class="box">
   {% if rows.is_empty() %}
-  {% call ui::empty_state("git-pull-request", "No pull requests here", "Pull requests propose changes from a branch or a fork. Compare branches to open one.") %}{% endcall %}
+  {% call ui::empty_state("git-pull-request", crate::i18n::text("core", "pulls-list-empty-title-no-pull-requests-here"), crate::i18n::text("core", "pulls-list-empty-description-pull-requests-propose-changes-from-a-branch-or-a-fork-compare-bra")) %}{% endcall %}
   {% else %}
   <ul>
     {% for row in rows %}
@@ -34,7 +34,7 @@
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <a href="{{ row.url }}" class="min-w-0 break-words text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.title }}</a>
           {% for label in row.labels %}<span class="label-chip"><svg viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="4" fill="{{ label.color }}"/></svg>{{ label.name }}</span>{% endfor %}
-          {% if row.badge.label == "Draft" %}<span class="badge">Draft</span>{% endif %}
+          {% if row.badge.label == "Draft" %}<span class="badge">{{ crate::i18n::text("core", "pulls-list-span-draft") }}</span>{% endif %}
         </div>
         <p class="mt-0.5 truncate text-xs text-ink-muted">{{ row.number }} {{ row.verb() }} <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time> by {{ row.author }}{% if let Some(review) = row.review %} · <span class="{{ review.1 }}">{{ review.0 }}</span>{% endif %}</p>
       </div>

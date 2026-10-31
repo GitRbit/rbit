@@ -3,29 +3,29 @@
 {% if let Some(issued) = section.issued %}
 <div class="box mt-6 border-success/40" role="status">
   <div class="p-4">
-    <p class="font-medium">Registration token created</p>
-    <p class="mt-1 text-[13px] text-ink-muted">Copy it now: it is not shown again. On the machine that should run jobs, run the command below and paste the token when it waits for input, then start the runner with <span class="font-mono text-ink">rbit-runner run</span>.</p>
-    <label class="label mt-3" for="issued-token">Token</label>
+    <p class="font-medium">{{ crate::i18n::text("actions", "actions-runners-section-p-registration-token-created") }}</p>
+    <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-runners-section-p-copy-it-now-it-is-not-shown-again-on-the-machine-that-should-run") }} <span class="font-mono text-ink">{{ crate::i18n::text("actions", "actions-runners-section-span-rbit-runner-run") }}</span>.</p>
+    <label class="label mt-3" for="issued-token">{{ crate::i18n::text("actions", "actions-runners-section-label-token") }}</label>
     <div class="flex">
       <input id="issued-token" class="input rounded-r-none font-mono text-xs" value="{{ issued.value }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9" data-copy="issued-token" aria-label="Copy the token" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9" data-copy="issued-token" aria-label="{{ crate::i18n::text("actions", "actions-runners-section-aria-label-copy-the-token") }}" title="{{ crate::i18n::text("actions", "actions-runners-section-title-copy") }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
-    <label class="label mt-3" for="issued-command">Command</label>
+    <label class="label mt-3" for="issued-command">{{ crate::i18n::text("actions", "actions-runners-section-label-command") }}</label>
     <div class="flex">
       <input id="issued-command" class="input rounded-r-none font-mono text-xs" value="{{ issued.command }}" readonly autocomplete="off" spellcheck="false">
-      <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9" data-copy="issued-command" aria-label="Copy the command" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+      <button type="button" class="btn btn-icon -ml-px h-10 rounded-l-none sm:h-9" data-copy="issued-command" aria-label="{{ crate::i18n::text("actions", "actions-runners-section-aria-label-copy-the-command") }}" title="{{ crate::i18n::text("actions", "actions-runners-section-title-copy") }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
     </div>
-    <p class="hint">Labels map to how jobs run: <span class="font-mono">name:container:image</span> runs in Docker or Podman, <span class="font-mono">name:host</span> runs on the machine itself with no isolation — only for trusted repositories.</p>
+    <p class="hint">{{ crate::i18n::text("actions", "actions-runners-section-p-labels-map-to-how-jobs-run") }} <span class="font-mono">{{ crate::i18n::text("actions", "actions-runners-section-span-name-container-image") }}</span> {{ crate::i18n::text("actions", "actions-runners-section-p-runs-in-docker-or-podman") }} <span class="font-mono">{{ crate::i18n::text("actions", "actions-runners-section-span-name-host") }}</span> {{ crate::i18n::text("actions", "actions-runners-section-p-runs-on-the-machine-itself-with-no-isolation-only-for-trusted-rep") }}</p>
   </div>
 </div>
 {% endif %}
 
 <section class="mt-8" aria-labelledby="runners-title">
-  <h2 id="runners-title" class="text-[13px] font-medium">Runners</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">Machines running <span class="font-mono text-ink">rbit-runner</span> that take the jobs of {{ section.subject }}.</p>
+  <h2 id="runners-title" class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-runners-section-h2-runners") }}</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-runners-section-p-machines-running") }} <span class="font-mono text-ink">{{ crate::i18n::text("actions", "actions-runners-section-span-rbit-runner") }}</span> that take the jobs of {{ section.subject }}.</p>
   <div class="box mt-4">
     {% if section.runners.is_empty() %}
-    {% call ui::empty_state("server", "No runners yet", "Create a registration token below and register a runner with it. Jobs wait until a runner with their labels is online.") %}{% endcall %}
+    {% call ui::empty_state("server", crate::i18n::text("actions", "actions-runners-section-empty-title-no-runners-yet"), crate::i18n::text("actions", "actions-runners-section-empty-description-create-a-registration-token-below-and-register-a-runner-with-it-j")) %}{% endcall %}
     {% else %}
     <ul>
       {% for runner in section.runners %}
@@ -35,8 +35,8 @@
             <span class="truncate font-medium">{{ runner.name }}</span>
             <span class="text-xs {{ runner.tone }}">{{ runner.state }}</span>
             {% if runner.scope != "repository" %}<span class="badge">{{ runner.scope }}</span>{% endif %}
-            {% if runner.ephemeral %}<span class="badge">ephemeral</span>{% endif %}
-            {% if runner.host %}<span class="badge border-warning/40 text-warning" title="Jobs on its host labels run as the runner's user, with no isolation">host — no isolation</span>{% endif %}
+            {% if runner.ephemeral %}<span class="badge">{{ crate::i18n::text("actions", "actions-runners-section-span-ephemeral") }}</span>{% endif %}
+            {% if runner.host %}<span class="badge border-warning/40 text-warning" title="{{ crate::i18n::text("actions", "actions-runners-section-title-jobs-on-its-host-labels-run-as-the-runner-s-user-with-no-isolatio") }}">{{ crate::i18n::text("actions", "actions-runners-section-span-host-no-isolation") }}</span>{% endif %}
           </p>
           <p class="mt-0.5 break-words text-xs text-ink-muted"><span class="font-mono">{{ runner.labels }}</span></p>
           <p class="mt-0.5 text-xs text-ink-faint">{{ runner.backends }}{% if !runner.platform.is_empty() %} · {{ runner.platform }}{% endif %} · rbit-runner {{ runner.version }} · {{ runner.capacity }} at once{% if let Some(seen) = runner.last_seen %} · seen {{ seen }}{% endif %}</p>
@@ -45,13 +45,13 @@
         <div class="flex shrink-0 gap-2">
           <form method="post" action="{{ runner.url }}">
             {% if runner.disabled %}
-            <button class="btn h-10 sm:h-8" type="submit" name="action" value="enable">Enable</button>
+            <button class="btn h-10 sm:h-8" type="submit" name="action" value="enable">{{ crate::i18n::text("actions", "actions-runners-section-button-enable") }}</button>
             {% else %}
-            <button class="btn h-10 sm:h-8" type="submit" name="action" value="disable">Disable</button>
+            <button class="btn h-10 sm:h-8" type="submit" name="action" value="disable">{{ crate::i18n::text("actions", "actions-runners-section-button-disable") }}</button>
             {% endif %}
           </form>
           <form method="post" action="{{ runner.url }}">
-            <button class="btn btn-danger h-10 sm:h-8" type="submit" name="action" value="remove" aria-label="Remove {{ runner.name }}">Remove</button>
+            <button class="btn btn-danger h-10 sm:h-8" type="submit" name="action" value="remove" aria-label="Remove {{ runner.name }}">{{ crate::i18n::text("actions", "actions-runners-section-button-remove") }}</button>
           </form>
         </div>
         {% endif %}
@@ -63,13 +63,13 @@
 </section>
 
 <section class="mt-8" aria-labelledby="tokens-title">
-  <h2 id="tokens-title" class="text-[13px] font-medium">Registration tokens</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">A runner trades a registration token for its own credential once. Tokens are single-use and expire unless you choose otherwise.</p>
+  <h2 id="tokens-title" class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-runners-section-h2-registration-tokens") }}</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-runners-section-p-a-runner-trades-a-registration-token-for-its-own-credential-once") }}</p>
   <form method="post" action="{{ section.action_url }}" class="box mt-4" novalidate>
     <div class="grid gap-4 p-4 sm:grid-cols-2">
       <div class="sm:col-span-2">{% call ui::form_error(section.error) %}{% endcall %}</div>
       <div>
-        <label class="label" for="token-lifetime">Expires after</label>
+        <label class="label" for="token-lifetime">{{ crate::i18n::text("actions", "actions-runners-section-label-expires-after") }}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pr-9" id="token-lifetime" name="lifetime">
             {% for choice in section.lifetimes %}<option value="{{ choice.value }}">{{ choice.label }}</option>{% endfor %}
@@ -78,16 +78,16 @@
         </div>
       </div>
       <div>
-        <label class="label" for="token-labels">Only these labels <span class="font-normal text-ink-faint">(optional)</span></label>
-        <input class="input font-mono" id="token-labels" name="labels" placeholder="ubuntu-latest, arm64" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <label class="label" for="token-labels">{{ crate::i18n::text("actions", "actions-runners-section-label-only-these-labels") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("actions", "actions-runners-section-span-optional") }}</span></label>
+        <input class="input font-mono" id="token-labels" name="labels" placeholder="{{ crate::i18n::text("actions", "actions-runners-section-placeholder-ubuntu-latest-arm64") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
       <label class="flex min-h-11 cursor-pointer items-center gap-3 sm:col-span-2">
         <input class="accent-(--ink)" type="checkbox" name="reusable" value="on">
-        <span class="text-[13px]">Allow any number of runners to register with it until it expires</span>
+        <span class="text-[13px]">{{ crate::i18n::text("actions", "actions-runners-section-span-allow-any-number-of-runners-to-register-with-it-until-it-expires") }}</span>
       </label>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit" name="action" value="create">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New registration token</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit" name="action" value="create">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-runners-section-button-new-registration-token") }}</button>
     </div>
   </form>
   {% if !section.tokens.is_empty() %}
@@ -95,13 +95,13 @@
     {% for token in section.tokens %}
     <li class="row flex-wrap items-center gap-3 py-2.5">
       <div class="min-w-0 flex-1">
-        <p class="text-[13px]">Created {{ token.created }} · {% if token.usable %}expires {{ token.expires }}{% else %}<span class="text-ink-faint">no longer usable</span>{% endif %}</p>
+        <p class="text-[13px]">Created {{ token.created }} · {% if token.usable %}expires {{ token.expires }}{% else %}<span class="text-ink-faint">{{ crate::i18n::text("actions", "actions-runners-section-span-no-longer-usable") }}</span>{% endif %}</p>
         <p class="text-xs text-ink-muted">{{ token.uses }}{% if let Some(labels) = token.labels %} · <span class="font-mono">{{ labels }}</span>{% endif %}</p>
       </div>
       {% if token.usable %}
       <form method="post" action="{{ section.action_url }}" class="shrink-0">
         <input type="hidden" name="token" value="{{ token.id }}">
-        <button class="btn h-10 sm:h-8" type="submit" name="action" value="revoke">Revoke</button>
+        <button class="btn h-10 sm:h-8" type="submit" name="action" value="revoke">{{ crate::i18n::text("actions", "actions-runners-section-button-revoke") }}</button>
       </form>
       {% endif %}
     </li>

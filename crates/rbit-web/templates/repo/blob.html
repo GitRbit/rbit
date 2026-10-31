@@ -15,13 +15,13 @@
     {% if let Some(lines) = line_count %}<span>{{ lines }} lines</span><span class="h-3 w-px bg-line-strong"></span>{% endif %}
     <span>{{ size }}</span>
     {% if let Some(language) = language %}<span class="h-3 w-px bg-line-strong"></span><span>{{ language }}</span>{% endif %}
-    {% if let Some(stored) = lfs_stored %}<span class="badge">Stored with Git LFS</span>{% if !stored %}<span>Object not on this server</span>{% endif %}{% endif %}
+    {% if let Some(stored) = lfs_stored %}<span class="badge">{{ crate::i18n::text("core", "repo-blob-span-stored-with-git-lfs") }}</span>{% if !stored %}<span>{{ crate::i18n::text("core", "repo-blob-span-object-not-on-this-server") }}</span>{% endif %}{% endif %}
     <div class="ml-auto flex">
-      {% if let Some(url) = edit_url %}<a href="{{ url }}" class="btn btn-icon mr-1 h-7 w-7 sm:h-7 sm:w-7" aria-label="Edit this file" title="Edit this file">{% call ui::icon("pencil", "size-3.5") %}{% endcall %}</a>{% endif %}
-      {% if let Some(url) = delete_url %}<a href="{{ url }}" class="btn btn-icon mr-2 h-7 w-7 sm:h-7 sm:w-7" aria-label="Delete this file" title="Delete this file">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</a>{% endif %}
-      {% if line_count.is_some() %}<a href="{{ blame_url }}" class="btn -mr-px h-7 rounded-r-none px-2.5 text-xs sm:h-7">Blame</a>{% endif %}
-      <a href="{{ raw_url }}" class="btn h-7 {% if line_count.is_some() %}rounded-none{% else %}rounded-r-none{% endif %} px-2.5 text-xs sm:h-7" hx-boost="false">Raw</a>
-      <a href="{{ raw_url }}" download="{{ file_name }}" class="btn btn-icon -ml-px h-7 w-7 rounded-l-none sm:h-7 sm:w-7" hx-boost="false" aria-label="Download" title="Download">{% call ui::icon("download", "size-3.5") %}{% endcall %}</a>
+      {% if let Some(url) = edit_url %}<a href="{{ url }}" class="btn btn-icon mr-1 h-7 w-7 sm:h-7 sm:w-7" aria-label="{{ crate::i18n::text("core", "repo-blob-aria-label-edit-this-file") }}" title="{{ crate::i18n::text("core", "repo-blob-title-edit-this-file") }}">{% call ui::icon("pencil", "size-3.5") %}{% endcall %}</a>{% endif %}
+      {% if let Some(url) = delete_url %}<a href="{{ url }}" class="btn btn-icon mr-2 h-7 w-7 sm:h-7 sm:w-7" aria-label="{{ crate::i18n::text("core", "repo-blob-aria-label-delete-this-file") }}" title="{{ crate::i18n::text("core", "repo-blob-title-delete-this-file") }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</a>{% endif %}
+      {% if line_count.is_some() %}<a href="{{ blame_url }}" class="btn -mr-px h-7 rounded-r-none px-2.5 text-xs sm:h-7">{{ crate::i18n::text("core", "repo-blob-a-blame") }}</a>{% endif %}
+      <a href="{{ raw_url }}" class="btn h-7 {% if line_count.is_some() %}rounded-none{% else %}rounded-r-none{% endif %} px-2.5 text-xs sm:h-7" hx-boost="false">{{ crate::i18n::text("core", "repo-blob-a-raw") }}</a>
+      <a href="{{ raw_url }}" download="{{ file_name }}" class="btn btn-icon -ml-px h-7 w-7 rounded-l-none sm:h-7 sm:w-7" hx-boost="false" aria-label="{{ crate::i18n::text("core", "repo-blob-aria-label-download") }}" title="{{ crate::i18n::text("core", "repo-blob-title-download") }}">{% call ui::icon("download", "size-3.5") %}{% endcall %}</a>
     </div>
   </div>
 
@@ -46,11 +46,11 @@
   {% when BlobContent::Markdown(html) %}
   <article class="prose-rbit px-5 py-6 sm:px-8">{{ html|safe }}</article>
   {% when BlobContent::Binary %}
-  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">Binary file not shown. <a href="{{ raw_url }}" class="link" hx-boost="false">Download</a></p>
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-blob-p-binary-file-not-shown") }} <a href="{{ raw_url }}" class="link" hx-boost="false">{{ crate::i18n::text("core", "repo-blob-a-download") }}</a></p>
   {% when BlobContent::Image %}
   <div class="flex justify-center overflow-x-auto px-4 py-6"><img src="{{ raw_url }}" alt="{{ file_name }}" class="max-w-full"></div>
   {% when BlobContent::TooLarge %}
-  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is too large to display. <a href="{{ raw_url }}" class="link" hx-boost="false">View raw</a></p>
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-blob-p-this-file-is-too-large-to-display") }} <a href="{{ raw_url }}" class="link" hx-boost="false">{{ crate::i18n::text("core", "repo-blob-a-view-raw") }}</a></p>
   {% endmatch %}
 </section>
 {% endblock %}

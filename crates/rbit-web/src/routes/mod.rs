@@ -26,6 +26,7 @@ mod forks;
 mod git_http;
 mod history;
 mod home;
+mod i18n;
 mod imports;
 mod issues;
 mod labels;
@@ -137,6 +138,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(orgs::routes())
         .merge(admin::routes())
         .merge(plugins::routes())
+        .merge(i18n::routes())
         .merge(repo_settings::routes())
         .merge(stars::routes())
         .merge(security::routes())
@@ -177,6 +179,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(actions_page_routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
+        .layer(from_fn_with_state(state.clone(), middleware::locale))
         .layer(from_fn_with_state(state.clone(), middleware::session))
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))

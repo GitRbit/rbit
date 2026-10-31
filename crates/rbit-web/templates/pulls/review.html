@@ -22,11 +22,11 @@
     {% endif %}
     {% if review.can_dismiss %}
     <details class="mt-2">
-      <summary class="btn btn-ghost h-11 cursor-pointer text-xs sm:h-8">Dismiss review</summary>
+      <summary class="btn btn-ghost h-11 cursor-pointer text-xs sm:h-8">{{ crate::i18n::text("core", "pulls-review-summary-dismiss-review") }}</summary>
       <form method="post" action="{{ review.dismiss_url }}" class="mt-2 flex flex-col gap-2 sm:flex-row">
-        <label class="sr-only" for="{{ review.anchor }}-dismiss">Why is this review dismissed?</label>
-        <input id="{{ review.anchor }}-dismiss" class="input min-w-0 flex-1" name="message" maxlength="1000" placeholder="Why is this review dismissed?" required>
-        <button type="submit" class="btn btn-danger h-11 sm:h-9">Dismiss</button>
+        <label class="sr-only" for="{{ review.anchor }}-dismiss">{{ crate::i18n::text("core", "pulls-review-label-why-is-this-review-dismissed") }}</label>
+        <input id="{{ review.anchor }}-dismiss" class="input min-w-0 flex-1" name="message" maxlength="1000" placeholder="{{ crate::i18n::text("core", "pulls-review-placeholder-why-is-this-review-dismissed") }}" required>
+        <button type="submit" class="btn btn-danger h-11 sm:h-9">{{ crate::i18n::text("core", "pulls-review-button-dismiss") }}</button>
       </form>
     </details>
     {% endif %}

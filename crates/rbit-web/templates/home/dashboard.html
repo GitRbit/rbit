@@ -7,29 +7,29 @@
   {% call ui::avatar(user.avatar, "size-10 text-[13px]") %}{% endcall %}
   <div class="min-w-0 flex-1">
     <h1 class="truncate text-lg font-semibold tracking-tight">{{ user.label }}</h1>
-    <p class="truncate text-[13px] text-ink-muted">{% if user.label != user.name %}{{ user.name }} · {% endif %}<a href="/{{ user.name }}" class="hover:text-ink">View profile</a></p>
+    <p class="truncate text-[13px] text-ink-muted">{% if user.label != user.name %}{{ user.name }} · {% endif %}<a href="/{{ user.name }}" class="hover:text-ink">{{ crate::i18n::text("core", "home-dashboard-a-view-profile") }}</a></p>
   </div>
   {% endif %}
-  <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}<span>New<span class="hidden sm:inline"> repository</span></span></a>
+  <a href="/new" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}<span>{{ crate::i18n::text("core", "home-dashboard-span-new") }}<span class="hidden sm:inline"> {{ crate::i18n::text("core", "home-dashboard-span-repository") }}</span></span></a>
 </header>
 
-<nav class="mb-4 flex gap-4 text-[13px]" aria-label="Personal dashboards"><a href="/issues" class="link">Issues</a><a href="/pulls" class="link">Pull requests</a></nav>
+<nav class="mb-4 flex gap-4 text-[13px]" aria-label="{{ crate::i18n::text("core", "home-dashboard-aria-label-personal-dashboards") }}"><a href="/issues" class="link">{{ crate::i18n::text("core", "nav-issues") }}</a><a href="/pulls" class="link">{{ crate::i18n::text("core", "nav-pull-requests") }}</a></nav>
 
 <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
   <section class="box self-start" aria-labelledby="repos-title">
     <div class="box-header flex-wrap gap-y-2 py-2">
-      <h2 id="repos-title" class="box-title">Repositories</h2>
+      <h2 id="repos-title" class="box-title">{{ crate::i18n::text("core", "home-dashboard-h2-repositories") }}</h2>
       <span class="badge tabular-nums" id="dashboard-repos-count" title="{{ private_count() }} private">{{ repos.len() }}</span>
       {% if !repos.is_empty() %}
       <div class="relative order-last w-full sm:order-none sm:ml-auto sm:w-56">
         {% call ui::icon("search", "pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-        <input class="input h-9 pl-8 text-[13px] sm:h-8" type="search" placeholder="Find a repository…" aria-label="Filter your repositories" aria-controls="dashboard-repos" autocapitalize="none" spellcheck="false" autocomplete="off" data-filter="dashboard-repos" data-filter-count="dashboard-repos-count">
+        <input class="input h-9 pl-8 text-[13px] sm:h-8" type="search" placeholder="{{ crate::i18n::text("core", "home-dashboard-placeholder-find-a-repository") }}" aria-label="{{ crate::i18n::text("core", "home-dashboard-aria-label-filter-your-repositories") }}" aria-controls="dashboard-repos" autocapitalize="none" spellcheck="false" autocomplete="off" data-filter="dashboard-repos" data-filter-count="dashboard-repos-count">
       </div>
       {% endif %}
     </div>
     {% if repos.is_empty() %}
-    {% call ui::empty_state("repo", "No repositories yet", "Create a repository to start hosting code on this server.") %}{% endcall %}
-    <div class="-mt-8 flex justify-center pb-10"><a href="/new" class="btn">Create repository</a></div>
+    {% call ui::empty_state("repo", crate::i18n::text("core", "home-dashboard-empty-title-no-repositories-yet"), crate::i18n::text("core", "home-dashboard-empty-description-create-a-repository-to-start-hosting-code-on-this-server")) %}{% endcall %}
+    <div class="-mt-8 flex justify-center pb-10"><a href="/new" class="btn">{{ crate::i18n::text("core", "home-dashboard-a-create-repository") }}</a></div>
     {% else %}
     <ul id="dashboard-repos" class="filter-list">
       {% for repo in repos %}
@@ -39,8 +39,8 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-              {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
-              {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
+              {% if repo.is_private %}<span class="badge">{{ crate::i18n::text("core", "home-dashboard-span-private") }}</span>{% endif %}
+              {% if repo.is_archived %}<span class="badge">{{ crate::i18n::text("core", "home-dashboard-span-archived") }}</span>{% endif %}
             </div>
             {% if let Some(description) = repo.description %}
             <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted sm:line-clamp-1">{{ description }}</p>
@@ -53,7 +53,7 @@
         </a>
       </li>
       {% endfor %}
-      <li class="px-4 py-10 text-center text-[13px] text-ink-muted" data-filter-empty hidden>No repositories match your filter.</li>
+      <li class="px-4 py-10 text-center text-[13px] text-ink-muted" data-filter-empty hidden>{{ crate::i18n::text("core", "home-dashboard-li-no-repositories-match-your-filter") }}</li>
     </ul>
     {% endif %}
   </section>
@@ -61,14 +61,14 @@
   <aside class="flex flex-col gap-6">
     <section class="box" aria-labelledby="orgs-title">
       <div class="box-header">
-        <h2 id="orgs-title" class="box-title">Organizations</h2>
+        <h2 id="orgs-title" class="box-title">{{ crate::i18n::text("core", "home-dashboard-h2-organizations") }}</h2>
         {% if !orgs.is_empty() %}<span class="badge tabular-nums">{{ orgs.len() }}</span>{% endif %}
-        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost btn-icon -mr-2 ml-auto" aria-label="New organization" title="New organization">{% call ui::icon("plus", "size-4") %}{% endcall %}</a>{% endif %}
+        {% if can_create_org %}<a href="/organizations/new" class="btn btn-ghost btn-icon -mr-2 ml-auto" aria-label="{{ crate::i18n::text("core", "nav-new-organization") }}" title="{{ crate::i18n::text("core", "nav-new-organization") }}">{% call ui::icon("plus", "size-4") %}{% endcall %}</a>{% endif %}
       </div>
       {% if orgs.is_empty() %}
       <p class="px-4 py-6 text-center text-[13px] text-ink-muted">
-        You are not a member of any organization.
-        {% if can_create_org %}<a href="/organizations/new" class="link">Create one</a> to share repositories with a team.{% endif %}
+        {{ crate::i18n::text("core", "home-dashboard-p-you-are-not-a-member-of-any-organization") }}
+        {% if can_create_org %}<a href="/organizations/new" class="link">{{ crate::i18n::text("core", "home-dashboard-a-create-one") }}</a> {{ crate::i18n::text("core", "home-dashboard-p-to-share-repositories-with-a-team") }}{% endif %}
       </p>
       {% else %}
       <ul>
@@ -87,11 +87,11 @@
 
     <section class="box" aria-labelledby="recent-title">
       <div class="box-header justify-between">
-        <h2 id="recent-title" class="box-title">Recently updated</h2>
-        <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">Explore</a>
+        <h2 id="recent-title" class="box-title">{{ crate::i18n::text("core", "home-dashboard-h2-recently-updated") }}</h2>
+        <a href="/explore" class="text-[13px] text-ink-muted hover:text-ink">{{ crate::i18n::text("core", "nav-explore") }}</a>
       </div>
       {% if recent.is_empty() %}
-      <p class="px-4 py-6 text-center text-[13px] text-ink-muted">Nothing public yet.</p>
+      <p class="px-4 py-6 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "home-dashboard-p-nothing-public-yet") }}</p>
       {% else %}
       <ul>
         {% for repo in recent %}

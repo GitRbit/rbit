@@ -12,17 +12,17 @@
   {% include "repo/latest_commit.html" %}
 
   <div class="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-1.5 text-xs text-ink-muted">
-    <span class="font-medium text-ink">Blame</span>
+    <span class="font-medium text-ink">{{ crate::i18n::text("core", "repo-blame-span-blame") }}</span>
     <div class="ml-auto flex">
-      <a href="{{ blob_url }}" class="btn h-7 rounded-r-none px-2.5 text-xs sm:h-7">View file</a>
-      <a href="{{ raw_url }}" class="btn -ml-px h-7 rounded-l-none px-2.5 text-xs sm:h-7" hx-boost="false">Raw</a>
+      <a href="{{ blob_url }}" class="btn h-7 rounded-r-none px-2.5 text-xs sm:h-7">{{ crate::i18n::text("core", "repo-blame-a-view-file") }}</a>
+      <a href="{{ raw_url }}" class="btn -ml-px h-7 rounded-l-none px-2.5 text-xs sm:h-7" hx-boost="false">{{ crate::i18n::text("core", "repo-blame-a-raw") }}</a>
     </div>
   </div>
 
   {% match content %}
   {% when BlameContent::Hunks(hunks) %}
   {% if hunks.is_empty() %}
-  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is empty.</p>
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-blame-p-this-file-is-empty") }}</p>
   {% else %}
   {#- One scroller for the whole file, its lines in virtual blocks like repo/blob.html;
       consecutive hunks share a block, each headed by its commit (two rows tall, counted
@@ -38,7 +38,7 @@
         <div class="blame-hunk"><div class="blame-hunk-info">
           {%- call ui::avatar(hunk.commit.avatar, "size-4 text-[8px]") %}{% endcall -%}
           <a href="{{ hunk.commit.url }}" class="min-w-0 flex-1 truncate font-medium hover:underline hover:underline-offset-4" title="{{ hunk.commit.summary }}">{{ hunk.commit.summary }}</a>
-          {%- if let Some(source) = hunk.source_path %}<span class="hidden shrink-0 font-mono text-ink-faint md:inline" title="Path in that commit">{{ source }}</span>{% endif -%}
+          {%- if let Some(source) = hunk.source_path %}<span class="hidden shrink-0 font-mono text-ink-faint md:inline" title="{{ crate::i18n::text("core", "repo-blame-title-path-in-that-commit") }}">{{ source }}</span>{% endif -%}
           <span class="hidden shrink-0 text-ink-muted sm:inline">{{ hunk.commit.author }}</span>
           <time class="shrink-0 text-ink-faint" datetime="{{ hunk.commit.when_iso }}" title="{{ hunk.commit.when_iso }}">{{ hunk.commit.when }}</time>
         </div></div>
@@ -52,9 +52,9 @@
   </div>
   {% endif %}
   {% when BlameContent::Binary %}
-  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">Binary files cannot be blamed. <a href="{{ raw_url }}" class="link" hx-boost="false">Download</a></p>
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-blame-p-binary-files-cannot-be-blamed") }} <a href="{{ raw_url }}" class="link" hx-boost="false">{{ crate::i18n::text("core", "repo-blame-a-download") }}</a></p>
   {% when BlameContent::TooLarge %}
-  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">This file is too large to blame. <a href="{{ blob_url }}" class="link">View the file</a></p>
+  <p class="px-4 py-14 text-center text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-blame-p-this-file-is-too-large-to-blame") }} <a href="{{ blob_url }}" class="link">{{ crate::i18n::text("core", "repo-blame-a-view-the-file") }}</a></p>
   {% endmatch %}
 </section>
 {% endblock %}

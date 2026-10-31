@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../../crates/rbit-web/assets/markdown-preview.js', import.meta.url), 'utf8');
 
-function mount({ file = false, failure = false, reply = false, pathValue = 'docs/README.md' } = {}) {
+function mount({ file = false, failure = false, reply = false, pathValue = 'docs/README.md', translations = {} } = {}) {
   const handlers = {}, requests = [], created = [];
   let release;
   class Element {
@@ -30,7 +30,7 @@ function mount({ file = false, failure = false, reply = false, pathValue = 'docs
     return [input];
   }, addEventListener(name, callback) { handlers[name] = callback; }, createElement() { const element = new Element(); created.push(element); return element; } };
   const window = { htmx: { ajax(method, url, options) { requests.push({ method, url, options }); return new Promise((resolve, reject) => { release = failure ? () => reject(new Error('offline')) : resolve; }); } } };
-  vm.runInNewContext(source, { document, window, location: { pathname: '/alice/demo/issues/1' }, URLSearchParams });
+  vm.runInNewContext(source, { document, window, rbitMessages: { text: key => translations[key] }, location: { pathname: '/alice/demo/issues/1' }, URLSearchParams });
   return { input, path, handlers, requests, created, release: () => release(), write: created[2], preview: created[3], panel: created[1], tabs: created[0] };
 }
 
@@ -155,4 +155,19 @@ test('renaming a file closes stale previews and keeps late responses hidden for 
   assert.equal(page.input.hidden, false, 'moving a Markdown file also invalidates its old document base');
   assert.equal(page.panel.hidden, true);
   page.release(); await second;
+});
+
+
+test('browser catalog supplies editor controls and error messages as text', async () => {
+  const page = mount({ failure: true, translations: {
+    'browser-write': 'Écrire', 'browser-preview': 'Aperçu', 'browser-preview-loading': 'Chargement…',
+    'browser-preview-failed': '<strong>Échec</strong>', 'browser-markdown-editor': 'Éditeur Markdown',
+  } });
+  assert.equal(page.write.textContent, 'Écrire');
+  assert.equal(page.preview.textContent, 'Aperçu');
+  assert.equal(page.tabs.attributes['aria-label'], 'Éditeur Markdown');
+  const pending = page.preview.click();
+  assert.equal(page.panel.textContent, 'Chargement…');
+  page.release(); await pending;
+  assert.equal(page.panel.textContent, '<strong>Échec</strong>', 'translation remains text rather than markup');
 });

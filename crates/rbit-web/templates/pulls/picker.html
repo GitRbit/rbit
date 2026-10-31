@@ -4,7 +4,7 @@
 <form method="get" action="{{ picker.action_url }}" data-compare-picker data-branches-only="{{ picker.branches_only }}" data-repository="{{ picker.base_repo }}" class="box flex flex-col gap-3 p-4 md:flex-row md:items-end">
   {% if picker.repositories.len() > 1 %}
   <div class="min-w-0 md:w-48">
-    <label class="label" for="compare-base-repo">Base repository</label>
+    <label class="label" for="compare-base-repo">{{ crate::i18n::text("core", "pulls-picker-label-base-repository") }}</label>
     <input class="input font-mono text-xs" id="compare-base-repo" name="base_repo" value="{{ picker.base_repo }}" list="compare-repositories" required>
     <datalist id="compare-repositories">
       {% for repo in picker.repositories %}<option value="{{ repo }}"></option>{% endfor %}
@@ -12,28 +12,28 @@
   </div>
   {% endif %}
   <div class="min-w-0 flex-1">
-    <label class="label" for="compare-base">Base</label>
+    <label class="label" for="compare-base">{{ crate::i18n::text("core", "pulls-picker-label-base") }}</label>
     <div class="relative" data-compare-field>
       <input class="input font-mono text-xs" id="compare-base" name="base" value="{{ picker.base }}" autocomplete="off" required data-compare-ref="base" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="compare-base-options">
-      <div id="compare-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="Base branches and tags" hidden></div>
+      <div id="compare-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="{{ crate::i18n::text("core", "pulls-picker-aria-label-base-branches-and-tags") }}" hidden></div>
       <p class="hint" data-compare-status aria-live="polite"></p>
     </div>
   </div>
   <span class="hidden pb-2 text-ink-faint md:block" aria-hidden="true">…</span>
   {% if picker.repositories.len() > 1 %}
   <div class="min-w-0 md:w-48">
-    <label class="label" for="compare-head-repo">Head repository</label>
+    <label class="label" for="compare-head-repo">{{ crate::i18n::text("core", "pulls-picker-label-head-repository") }}</label>
     <input class="input font-mono text-xs" id="compare-head-repo" name="head_repo" value="{{ picker.head_repo }}" list="compare-repositories" required>
   </div>
   {% endif %}
   <div class="min-w-0 flex-1">
-    <label class="label" for="compare-head">Compare</label>
+    <label class="label" for="compare-head">{{ crate::i18n::text("core", "pulls-picker-label-compare") }}</label>
     <div class="relative" data-compare-field>
       <input class="input font-mono text-xs" id="compare-head" name="head" value="{{ picker.head }}" autocomplete="off" required data-compare-ref="head" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="compare-head-options">
-      <div id="compare-head-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="Compare branches and tags" hidden></div>
+      <div id="compare-head-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="{{ crate::i18n::text("core", "pulls-picker-aria-label-compare-branches-and-tags") }}" hidden></div>
       <p class="hint" data-compare-status aria-live="polite"></p>
     </div>
   </div>
 
-  <button type="submit" class="btn btn-primary h-11 md:h-9">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}Compare</button>
+  <button type="submit" class="btn btn-primary h-11 md:h-9">{% call ui::icon("git-compare", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-picker-button-compare") }}</button>
 </form>

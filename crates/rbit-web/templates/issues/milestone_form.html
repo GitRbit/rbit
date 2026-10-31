@@ -4,19 +4,19 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-2xl">
-  <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}New milestone{% else %}Edit milestone{% endif %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">Group issues towards a release or a date.</p>
+  <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}{{ crate::i18n::text("core", "issues-milestone-form-h1-new-milestone") }}{% else %}{{ crate::i18n::text("core", "issues-milestone-form-h1-edit-milestone") }}{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "issues-milestone-form-p-group-issues-towards-a-release-or-a-date") }}</p>
   <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
-    <label class="label" for="milestone-title">Title</label>
+    <label class="label" for="milestone-title">{{ crate::i18n::text("core", "issues-milestone-form-label-title") }}</label>
     <input class="input" id="milestone-title" name="title" value="{{ form.title }}" maxlength="100" required>
-    <label class="label mt-5" for="milestone-due">Due date <span class="font-normal text-ink-faint">optional</span></label>
+    <label class="label mt-5" for="milestone-due">{{ crate::i18n::text("core", "issues-milestone-form-label-due-date") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "issues-milestone-form-span-optional") }}</span></label>
     <input class="input sm:w-56" id="milestone-due" name="due_on" type="date" value="{{ form.due_on }}">
-    <label class="label mt-5" for="milestone-description">Description <span class="font-normal text-ink-faint">Markdown, optional</span></label>
+    <label class="label mt-5" for="milestone-description">{{ crate::i18n::text("core", "issues-milestone-form-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "issues-milestone-form-span-markdown-optional") }}</span></label>
     <textarea class="input h-40 resize-y py-2 text-[13px]" id="milestone-description" name="description" rows="6" maxlength="10000">{{ form.description }}</textarea>
     <div class="mt-8 flex flex-wrap items-center gap-2">
-      <button type="submit" class="btn btn-primary h-11 sm:h-9">{% if is_new %}Create milestone{% else %}Save milestone{% endif %}</button>
-      <a href="{{ cancel_url }}" class="btn btn-ghost h-11 sm:h-9">Cancel</a>
+      <button type="submit" class="btn btn-primary h-11 sm:h-9">{% if is_new %}{{ crate::i18n::text("core", "issues-milestone-form-button-create-milestone") }}{% else %}{{ crate::i18n::text("core", "issues-milestone-form-button-save-milestone") }}{% endif %}</button>
+      <a href="{{ cancel_url }}" class="btn btn-ghost h-11 sm:h-9">{{ crate::i18n::text("core", "issues-milestone-form-a-cancel") }}</a>
     </div>
   </form>
 </section>

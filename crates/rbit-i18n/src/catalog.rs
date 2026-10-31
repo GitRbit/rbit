@@ -38,7 +38,8 @@ impl Catalog {
                         return Err(PackError::Limit);
                     }
                     let spec = schema.message(namespace, message.id.name).ok_or(PackError::Schema)?;
-                    let mut budget = Budget { nodes: 0, output: 0, spec };
+                    let mut budget =
+                        Budget { nodes: 0, output: 0, spec, allow_select: namespace != "core" || !message.id.name.starts_with("browser-") };
                     budget.pattern(message.value.as_ref().ok_or(PackError::Catalog)?, 0)?;
                     total_nodes += budget.nodes;
                     if total_nodes > MAX_MESSAGES * 32 {
@@ -64,6 +65,7 @@ struct Budget<'a> {
     nodes: usize,
     output: usize,
     spec: &'a MessageSpec,
+    allow_select: bool,
 }
 impl Budget<'_> {
     fn node(&mut self, depth: usize, bytes: usize) -> Result<(), PackError> {
@@ -93,7 +95,9 @@ impl Budget<'_> {
             ast::Expression::Inline(inline) => self.inline(inline, depth + 1),
             ast::Expression::Select { selector, variants } => {
                 // Selectors cannot evaluate nested patterns, functions or references.
-                if !matches!(selector, ast::InlineExpression::VariableReference { .. }) || variants.len() > 16 {
+                // Browser exports interpolate real values later in JavaScript; evaluating
+                // a select against export sentinels would choose the wrong branch.
+                if !self.allow_select || !matches!(selector, ast::InlineExpression::VariableReference { .. }) || variants.len() > 16 {
                     return Err(PackError::Catalog);
                 }
                 self.inline(selector, depth + 1)?;

@@ -3,37 +3,37 @@
 {% import "macros.html" as ui %}
 {% block admin_content %}
 <div class="max-w-xl">
-<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Users</a></p>
+<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "admin-new-user-a-users") }}</a></p>
 {% call admin::heading("New user", "Administrators can create accounts even while registration is closed.") %}{% endcall %}
 
 <form method="post" action="/admin/users/new" class="box" novalidate>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="username">Username</label>
+    <label class="label" for="username">{{ crate::i18n::text("core", "admin-new-user-label-username") }}</label>
     <input class="input" id="username" name="username" value="{{ username }}" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
-    <p class="hint">Letters, digits, '-', '_' and '.'</p>
+    <p class="hint">{{ crate::i18n::text("core", "admin-new-user-p-letters-digits-and") }}</p>
 
-    <label class="label mt-4" for="email">Email</label>
+    <label class="label mt-4" for="email">{{ crate::i18n::text("core", "admin-new-user-label-email") }}</label>
     <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="off" required>
 
-    <label class="label mt-4" for="password">Initial password</label>
+    <label class="label mt-4" for="password">{{ crate::i18n::text("core", "admin-new-user-label-initial-password") }}</label>
     <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
     <p class="hint">At least {{ min_password_length }} characters. Share it with the user securely. They must replace it when they first sign in.</p>
 
     <label class="mt-5 flex cursor-pointer items-start gap-3">
       <input type="checkbox" name="is_admin" value="1" class="mt-1 accent-(--ink)" {% if is_admin %}checked{% endif %}>
       <span>
-        <span class="block font-medium">Site administrator</span>
-        <span class="block text-[13px] text-ink-muted">Full access to every repository and to this panel.</span>
+        <span class="block font-medium">{{ crate::i18n::text("core", "admin-new-user-span-site-administrator") }}</span>
+        <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "admin-new-user-span-full-access-to-every-repository-and-to-this-panel") }}</span>
       </span>
     </label>
   </div>
   <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
-    <a href="/admin/users" class="btn">Cancel</a>
-    <button class="btn btn-primary" type="submit">Create user</button>
+    <a href="/admin/users" class="btn">{{ crate::i18n::text("core", "admin-new-user-a-cancel") }}</a>
+    <button class="btn btn-primary" type="submit">{{ crate::i18n::text("core", "admin-new-user-button-create-user") }}</button>
   </div>
 </form>
-{% if !registration_open %}<p class="hint">Public sign-up is currently closed; this is the only way to add users.</p>{% endif %}
+{% if !registration_open %}<p class="hint">{{ crate::i18n::text("core", "admin-new-user-p-public-sign-up-is-currently-closed-this-is-the-only-way-to-add-us") }}</p>{% endif %}
 </div>
 {% endblock %}

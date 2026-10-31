@@ -1,14 +1,14 @@
 {% if graph.rows.is_empty() %}
-{% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+{% call ui::empty_state("branch", crate::i18n::text("core", "repo-branch-graph-empty-title-no-branches-yet"), crate::i18n::text("core", "repo-branch-graph-empty-description-push-a-commit-to-create-the-first-branch")) %}{% endcall %}
 {% else %}
-<div class="commit-graph" data-commit-graph aria-label="Branch commit graph">
+<div class="commit-graph" data-commit-graph aria-label="{{ crate::i18n::text("core", "repo-branch-graph-aria-label-branch-commit-graph") }}">
   <div class="commit-graph-help">
-    <span data-graph-status aria-live="polite">Follow colored lines to trace history. Select a track to highlight its commits.</span>
-    <button type="button" class="link" data-graph-clear hidden>Clear highlight</button>
+    <span data-graph-status aria-live="polite">{{ crate::i18n::text("core", "repo-branch-graph-span-follow-colored-lines-to-trace-history-select-a-track-to-highlight") }}</span>
+    <button type="button" class="link" data-graph-clear hidden>{{ crate::i18n::text("core", "repo-branch-graph-button-clear-highlight") }}</button>
   </div>
   <table class="commit-graph-table">
     <colgroup><col class="commit-graph-column{% if graph.width <= 112 %} commit-graph-column-compact{% endif %}"><col></colgroup>
-    <thead class="sr-only"><tr><th>History connections</th><th>Commit details</th></tr></thead>
+    <thead class="sr-only"><tr><th>{{ crate::i18n::text("core", "repo-branch-graph-th-history-connections") }}</th><th>{{ crate::i18n::text("core", "repo-branch-graph-th-commit-details") }}</th></tr></thead>
     <tbody>
     {% for row in graph.rows %}
     <tr data-graph-row="{{ row.lane }}">
@@ -23,7 +23,7 @@
           <button type="button" class="commit-graph-track graph-color-{{ row.color }}" data-graph-track="{{ row.lane }}" aria-pressed="false" aria-label="Highlight track {{ row.lane + 1 }}">Track {{ row.lane + 1 }}</button>
           {% for branch in row.branches %}<a href="{{ branch.1 }}" class="badge commit-graph-branch graph-color-{{ row.color }}" title="Branch: {{ branch.0 }}">{% call ui::icon("branch", "size-3 shrink-0") %}{% endcall %}<span>{{ branch.0 }}</span></a>{% endfor %}
           {% if row.more_branches > 0 %}<a href="{{ header.branches_url }}" class="badge">{{ row.more_branches }} more branches</a>{% endif %}
-          {% if row.is_merge %}<span class="commit-graph-merge">Merge</span>{% endif %}
+          {% if row.is_merge %}<span class="commit-graph-merge">{{ crate::i18n::text("core", "repo-branch-graph-span-merge") }}</span>{% endif %}
         </div>
         <a href="{{ row.commit.url }}" class="commit-graph-summary hover:underline">{{ row.commit.summary }}</a>
         <div class="commit-graph-meta">
@@ -37,5 +37,5 @@
     </tbody>
   </table>
 </div>
-{% if graph.truncated %}<p class="border-t border-line p-4 text-xs text-ink-muted">Showing the latest 200 commits across branches. Lines at the bottom continue into older history. Open a branch’s history to explore further.</p>{% endif %}
+{% if graph.truncated %}<p class="border-t border-line p-4 text-xs text-ink-muted">{{ crate::i18n::text("core", "repo-branch-graph-p-showing-the-latest-200-commits-across-branches-lines-at-the-botto") }}</p>{% endif %}
 {% endif %}

@@ -17,6 +17,6 @@ document.addEventListener("click", (event) => {
   });
   graph.querySelector("[data-graph-clear]").hidden = lane === undefined;
   graph.querySelector("[data-graph-status]").textContent = lane === undefined
-    ? "Follow colored lines to trace history. Select a track to highlight its commits."
-    : `Highlighting track ${Number(lane) + 1}. Select it again to show all history.`;
+    ? (globalThis.rbitMessages?.text("browser-graph-help") ?? "Follow colored lines to trace history. Select a track to highlight its commits.")
+    : (globalThis.rbitMessages?.text("browser-graph-selected", { track: globalThis.rbitMessages?.number(Number(lane) + 1) ?? String(Number(lane) + 1) }) ?? `Highlighting track ${Number(lane) + 1}. Select it again to show all history.`);
 });

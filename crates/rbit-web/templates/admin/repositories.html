@@ -10,14 +10,14 @@
 
 <div class="box">
   {% if repos.is_empty() %}
-  {% call ui::empty_state("repo", "No repositories found", "Repositories will be listed here once they exist.") %}{% endcall %}
+  {% call ui::empty_state("repo", crate::i18n::text("core", "admin-repositories-empty-title-no-repositories-found"), crate::i18n::text("core", "admin-repositories-empty-description-repositories-will-be-listed-here-once-they-exist")) %}{% endcall %}
   {% else %}
   <table class="w-full text-left text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">Repository</th>
-        <th scope="col" class="hidden px-4 font-medium md:table-cell">Updated</th>
-        <th scope="col" class="w-px px-4"><span class="sr-only">Actions</span></th>
+        <th scope="col" class="h-9 px-4 font-medium">{{ crate::i18n::text("core", "admin-repositories-th-repository") }}</th>
+        <th scope="col" class="hidden px-4 font-medium md:table-cell">{{ crate::i18n::text("core", "admin-repositories-th-updated") }}</th>
+        <th scope="col" class="w-px px-4"><span class="sr-only">{{ crate::i18n::text("core", "plugin-actions") }}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -26,14 +26,14 @@
         <td class="max-w-0 px-4 py-2.5">
           <div class="flex min-w-0 items-center gap-2">
             <a href="{{ repo.url }}" class="truncate font-medium hover:underline"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</a>
-            {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
-            {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
+            {% if repo.is_private %}<span class="badge">{{ crate::i18n::text("core", "admin-repositories-span-private") }}</span>{% endif %}
+            {% if repo.is_archived %}<span class="badge">{{ crate::i18n::text("core", "admin-repositories-span-archived") }}</span>{% endif %}
           </div>
           {% if let Some(description) = repo.description %}<p class="truncate text-xs text-ink-muted">{{ description }}</p>{% endif %}
         </td>
         <td class="hidden whitespace-nowrap px-4 text-ink-muted md:table-cell"><time datetime="{{ repo.updated_iso }}">{{ repo.updated }}</time></td>
         <td class="px-4 py-2.5 text-right">
-          <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="Delete {{ repo.full_name }}">Delete</a>
+          <a href="{{ repo.delete_url }}" class="btn btn-danger" aria-label="Delete {{ repo.full_name }}">{{ crate::i18n::text("core", "admin-repositories-a-delete") }}</a>
         </td>
       </tr>
       {% endfor %}

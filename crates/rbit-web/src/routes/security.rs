@@ -350,7 +350,13 @@ async fn second_step_page(
         None => true,
     };
     let passkey_options = optional_options(two_factor.sign_in_options(pending).await)?;
-    Ok(TwoFactorLoginPage { page: page.titled("Two-factor authentication"), error, next, passkey_options, authenticator })
+    Ok(TwoFactorLoginPage {
+        page: page.titled(crate::i18n::text("core", "title-two-factor-authentication")),
+        error,
+        next,
+        passkey_options,
+        authenticator,
+    })
 }
 
 /// `GET /login/two-factor`: only while a password has just been accepted.
@@ -398,7 +404,9 @@ pub async fn two_factor(
         }
         Err(ServiceError::NotFound) => {
             let error = FormError::new("Your sign-in expired. Enter your password again.");
-            let login = login_page(&state, page.titled("Two-factor authentication"), error, String::new(), next).await?;
+            let login =
+                login_page(&state, page.titled(crate::i18n::text("core", "title-two-factor-authentication")), error, String::new(), next)
+                    .await?;
             Ok((without_pending(jar), login).into_response())
         }
         Err(other) => Err(other.into()),

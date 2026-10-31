@@ -37,7 +37,7 @@ pub async fn error_pages(State(state): State<AppState>, request: Request, next: 
     {
         return moved_permanently(&method, &location);
     }
-    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).titled(info.title);
+    let page = Page::new(&state, viewer.user(), &path).with_theme(theme).titled(info.localized_title());
     render_error_response(response, ErrorPage { page, info })
 }
 

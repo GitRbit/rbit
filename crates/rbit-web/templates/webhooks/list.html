@@ -3,11 +3,11 @@
 {% block hooks_content %}
 <div class="mt-1 flex items-start justify-between gap-4">
   <div class="min-w-0">
-    <h1 class="text-xl font-semibold tracking-tight">Webhooks</h1>
-    <p class="mt-1 text-[13px] text-ink-muted">{{ page.site_name }} sends a signed <span class="font-mono text-ink">POST</span> with a JSON payload to each URL when the events it subscribes to happen in <span class="text-ink">{{ frame.name }}</span>{% if frame.org.is_some() %} or any of its repositories{% endif %}.</p>
+    <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "webhooks-list-h1-webhooks") }}</h1>
+    <p class="mt-1 text-[13px] text-ink-muted">{{ page.site_name }} sends a signed <span class="font-mono text-ink">{{ crate::i18n::text("core", "webhooks-list-span-post") }}</span> {{ crate::i18n::text("core", "webhooks-list-p-with-a-json-payload-to-each-url-when-the-events-it-subscribes-to") }} <span class="text-ink">{{ frame.name }}</span>{% if frame.org.is_some() %} {{ crate::i18n::text("core", "webhooks-list-p-or-any-of-its-repositories") }}{% endif %}.</p>
   </div>
   {% if can_add %}
-  <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add webhook</a>
+  <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "webhooks-list-a-add-webhook") }}</a>
   {% endif %}
 </div>
 {% if !can_add %}
@@ -16,7 +16,7 @@
 
 <div class="box mt-6">
   {% if hooks.is_empty() %}
-  {% call ui::empty_state("webhook", "No webhooks", "Add a webhook to notify a CI server, a chat bot or any other service about pushes, releases and more.") %}{% endcall %}
+  {% call ui::empty_state("webhook", crate::i18n::text("core", "webhooks-list-empty-title-no-webhooks"), crate::i18n::text("core", "webhooks-list-empty-description-add-a-webhook-to-notify-a-ci-server-a-chat-bot-or-any-other-servi")) %}{% endcall %}
   {% else %}
   <ul>
     {% for hook in hooks %}
@@ -26,7 +26,7 @@
         <span class="min-w-0 flex-1">
           <span class="flex min-w-0 items-center gap-2">
             <span class="truncate font-medium">{{ hook.host }}</span>
-            {% if !hook.active %}<span class="badge">Inactive</span>{% endif %}
+            {% if !hook.active %}<span class="badge">{{ crate::i18n::text("core", "webhooks-list-span-inactive") }}</span>{% endif %}
           </span>
           <span class="mt-0.5 block truncate font-mono text-xs text-ink-muted">{{ hook.url }}</span>
           <span class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
@@ -35,7 +35,7 @@
             <span class="badge {{ last.class }}">{{ last.label }}</span>
             <time datetime="{{ hook.last_iso }}">{{ hook.last_at }}</time>
             {% else %}
-            <span>No deliveries yet</span>
+            <span>{{ crate::i18n::text("core", "webhooks-list-span-no-deliveries-yet") }}</span>
             {% endif %}
           </span>
         </span>

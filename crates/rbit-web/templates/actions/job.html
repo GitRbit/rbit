@@ -14,22 +14,22 @@
     <div class="min-w-0 flex-1">
       <h1 class="break-words text-xl font-semibold tracking-tight">{{ name }}</h1>
       <p class="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
-        <span>{{ look.label }}</span>
+        <span>{{ look.localized_label() }}</span>
         {% if let Some(duration) = duration %}<span aria-hidden="true">·</span><span class="tabular-nums">{{ duration }}</span>{% endif %}
-        <span aria-hidden="true">·</span><span>runs on <span class="font-mono text-xs">{{ labels }}</span></span>
+        <span aria-hidden="true">·</span><span>{{ crate::i18n::text("actions", "actions-job-span-runs-on") }} <span class="font-mono text-xs">{{ labels }}</span></span>
       </p>
     </div>
     <div class="flex w-full flex-wrap gap-2 sm:w-auto">
-      {% if let Some(raw_url) = raw_url %}<a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}Raw log</a>{% endif %}
+      {% if let Some(raw_url) = raw_url %}<a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-job-a-raw-log") }}</a>{% endif %}
       {% if let Some(rerun_url) = rerun_url %}
-      <form method="post" action="{{ rerun_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Re-run job</button></form>
+      <form method="post" action="{{ rerun_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-job-button-re-run-job") }}</button></form>
       {% endif %}
     </div>
   </div>
 
   {% if steps.is_empty() %}
   <div class="box mt-6">
-    {% call ui::empty_state("clock", "Not started yet", "The steps and their logs appear here once a runner takes this job.") %}{% endcall %}
+    {% call ui::empty_state("clock", crate::i18n::text("actions", "actions-job-empty-title-not-started-yet"), crate::i18n::text("actions", "actions-job-empty-description-the-steps-and-their-logs-appear-here-once-a-runner-takes-this-job")) %}{% endcall %}
   </div>
   {% else %}
   <ol class="box mt-6 divide-y divide-line overflow-hidden">

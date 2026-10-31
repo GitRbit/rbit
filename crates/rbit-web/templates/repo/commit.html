@@ -15,22 +15,22 @@
   </div>
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line bg-subtle px-4 py-2.5 text-[13px] sm:px-5">
     {% call ui::avatar(commit.avatar, "size-5 text-[9px]") %}{% endcall %}
-    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">committed</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
+    <span><span class="font-medium">{{ commit.author }}</span> <span class="text-ink-muted">{{ crate::i18n::text("core", "repo-commit-span-committed") }}</span> <time class="text-ink-muted" datetime="{{ commit.when_iso }}" title="{{ commit.when_iso }}">{{ commit.when }}</time></span>
     {% if let Some(committer) = committer %}<span class="text-ink-muted">· committed by {{ committer }}</span>{% endif %}
     <div class="ml-auto flex items-center gap-3 font-mono text-xs text-ink-muted">
       {% if !parents.is_empty() %}
-      <span>{% if parents.len() == 1 %}parent{% else %}parents{% endif %}
+      <span>{% if parents.len() == 1 %}{{ crate::i18n::text("core", "repo-commit-span-parent") }}{% else %}{{ crate::i18n::text("core", "repo-commit-span-parents") }}{% endif %}
         {% for parent in parents %}<a href="{{ parent.url }}" class="text-ink hover:underline hover:underline-offset-4">{{ parent.short_id }}</a>{% if !loop.last %} + {% endif %}{% endfor %}
       </span>
       {% endif %}
-      <span title="{{ commit.id }}">commit <span class="text-ink">{{ commit.short_id }}</span></span>
-      <a href="{{ commit.browse_url }}" class="btn h-7 px-2 font-sans sm:h-7">Browse files</a>
+      <span title="{{ commit.id }}">{{ crate::i18n::text("core", "repo-commit-span-commit") }} <span class="text-ink">{{ commit.short_id }}</span></span>
+      <a href="{{ commit.browse_url }}" class="btn h-7 px-2 font-sans sm:h-7">{{ crate::i18n::text("core", "repo-commit-a-browse-files") }}</a>
     </div>
   </div>
 </header>
 
 {% if let Some(checks) = checks %}
-<section class="box mt-4 overflow-hidden" aria-label="Checks">{% include "statuses/checks.html" %}</section>
+<section class="box mt-4 overflow-hidden" aria-label="{{ crate::i18n::text("core", "repo-commit-aria-label-checks") }}">{% include "statuses/checks.html" %}</section>
 {% endif %}
 
 {% include "repo/file_diffs.html" %}

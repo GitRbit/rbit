@@ -4,23 +4,23 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a></p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Collaborators</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">People added here get access to <span class="text-ink">{{ full_name }}</span> directly{% if is_org %}, whether or not they belong to the organization{% endif %}.</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a></p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "access-collaborators-h1-collaborators") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "access-collaborators-p-people-added-here-get-access-to") }} <span class="text-ink">{{ full_name }}</span> {{ crate::i18n::text("core", "access-collaborators-p-directly") }}{% if is_org %}{{ crate::i18n::text("core", "access-collaborators-p-whether-or-not-they-belong-to-the-organization") }}{% endif %}.</p>
 
   <form method="post" action="{{ add_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Add a collaborator</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "access-collaborators-h2-add-a-collaborator") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
       <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end">
         <div>
-          <label class="label" for="collaborator-username">Username</label>
+          <label class="label" for="collaborator-username">{{ crate::i18n::text("core", "access-collaborators-label-username") }}</label>
           <input class="input" id="collaborator-username" name="username" value="{{ form.username }}" maxlength="39" autocapitalize="none" autocomplete="off" spellcheck="false" required>
         </div>
         <div>
-          <label class="label" for="collaborator-permission">Permission</label>
+          <label class="label" for="collaborator-permission">{{ crate::i18n::text("core", "access-collaborators-label-permission") }}</label>
           <div class="relative">
             <select class="input cursor-pointer appearance-none pr-9" id="collaborator-permission" name="permission">
               {% for option in form.options %}
@@ -30,7 +30,7 @@
             {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
           </div>
         </div>
-        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">Add</button>
+        <button class="btn btn-primary h-10 w-full sm:h-9 sm:w-auto" type="submit">{{ crate::i18n::text("core", "access-collaborators-button-add") }}</button>
       </div>
       <ul class="hint space-y-0.5">
         {% for option in form.options %}<li><span class="text-ink">{{ option.label }}</span> · {{ option.description }}</li>{% endfor %}
@@ -40,12 +40,12 @@
 
   <section class="mt-6" aria-labelledby="people-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="people-title" class="text-[13px] font-medium text-ink-muted">People</h2>
+      <h2 id="people-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "access-collaborators-h2-people") }}</h2>
       {% if !collaborators.is_empty() %}<span class="text-xs text-ink-faint">{{ collaborators.len() }}</span>{% endif %}
     </div>
     <div class="box">
       {% if collaborators.is_empty() %}
-      {% call ui::empty_state("users", "No collaborators", "Add someone by username to give them access to this repository.") %}{% endcall %}
+      {% call ui::empty_state("users", crate::i18n::text("core", "access-collaborators-empty-title-no-collaborators"), crate::i18n::text("core", "access-collaborators-empty-description-add-someone-by-username-to-give-them-access-to-this-repository")) %}{% endcall %}
       {% else %}
       <ul>
         {% for row in collaborators %}
@@ -53,7 +53,7 @@
           <a href="{{ row.url }}" class="flex min-w-0 flex-1 items-center gap-3">
             {% call ui::avatar(row.avatar, "size-8 text-[11px]") %}{% endcall %}
             <span class="min-w-0">
-              <span class="block truncate font-medium">{{ row.label }}{% if row.is_viewer %} <span class="font-normal text-ink-faint">(you)</span>{% endif %}</span>
+              <span class="block truncate font-medium">{{ row.label }}{% if row.is_viewer %} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "access-collaborators-span-you") }}</span>{% endif %}</span>
               <span class="block truncate text-xs text-ink-muted">{{ row.name }} · <time datetime="{{ row.added_iso }}">{{ row.added }}</time></span>
             </span>
           </a>
@@ -68,13 +68,13 @@
                 </select>
                 {% call ui::icon("chevron-down", "pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
               </div>
-              <button class="btn" type="submit" aria-label="Save permission for {{ row.name }}">Save</button>
+              <button class="btn" type="submit" aria-label="Save permission for {{ row.name }}">{{ crate::i18n::text("core", "access-collaborators-button-save") }}</button>
             </form>
             <form method="post" action="{{ row.remove_url }}">
               {% if row.is_viewer %}
-              <button class="btn" type="submit">Leave</button>
+              <button class="btn" type="submit">{{ crate::i18n::text("core", "access-collaborators-button-leave") }}</button>
               {% else %}
-              <button class="btn" type="submit" aria-label="Remove {{ row.name }}">Remove</button>
+              <button class="btn" type="submit" aria-label="Remove {{ row.name }}">{{ crate::i18n::text("core", "access-collaborators-button-remove") }}</button>
               {% endif %}
             </form>
           </div>
@@ -88,12 +88,12 @@
   {% if is_org %}
   <section class="mt-6" aria-labelledby="teams-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="teams-title" class="text-[13px] font-medium text-ink-muted">Teams</h2>
-      <a class="text-xs text-ink-muted hover:text-ink" href="{{ teams_url }}">Manage teams</a>
+      <h2 id="teams-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "access-collaborators-h2-teams") }}</h2>
+      <a class="text-xs text-ink-muted hover:text-ink" href="{{ teams_url }}">{{ crate::i18n::text("core", "access-collaborators-a-manage-teams") }}</a>
     </div>
     <div class="box">
       {% if teams.is_empty() %}
-      {% call ui::empty_state("users", "No teams", "Grant a team access from the team's page; its members then get that permission here.") %}{% endcall %}
+      {% call ui::empty_state("users", crate::i18n::text("core", "access-collaborators-empty-title-no-teams"), crate::i18n::text("core", "access-collaborators-empty-description-grant-a-team-access-from-the-team-s-page-its-members-then-get-tha")) %}{% endcall %}
       {% else %}
       <ul>
         {% for team in teams %}

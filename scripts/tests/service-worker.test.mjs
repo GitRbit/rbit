@@ -7,7 +7,7 @@ const source = await readFile(new URL("../../crates/rbit-web/assets/sw.js", impo
 const origin = "https://git.example.com";
 const asset = `${origin}/assets/app.js?v=0123456789ab`;
 
-function worker(cacheControl = "public, max-age=31536000, immutable", { brokenStorage = false, brokenWrite = false, networkDown = false } = {}) {
+function worker(cacheControl = "public, max-age=31536000, immutable", { brokenStorage = false, brokenWrite = false, networkDown = false, brokenRefresh = false } = {}) {
   const listeners = new Map();
   const stored = new Map();
   const deleted = [];
@@ -16,8 +16,10 @@ function worker(cacheControl = "public, max-age=31536000, immutable", { brokenSt
   const cache = {
     async add(request) {
       installed.push(request);
+      if (brokenRefresh && installed.length > 1) throw new Error("Refresh unavailable");
       stored.set(request.url, new Response("offline"));
     },
+    async delete(request) { return stored.delete(new URL(request, origin).href); },
     async match(request) { return stored.get(typeof request === "string" ? new URL(request, origin).href : request.url)?.clone(); },
     async put(request, response) {
       if (brokenWrite) throw new Error("Quota exceeded");
@@ -60,6 +62,7 @@ function worker(cacheControl = "public, max-age=31536000, immutable", { brokenSt
       const pending = [];
       listeners.get(name)({
         request,
+        data: request,
         respondWith(value) { response = value; },
         waitUntil(value) { pending.push(value); },
       });
@@ -117,4 +120,27 @@ test("offline navigation uses the current cache and survives a missing fallback"
   assert.equal((await app.dispatch("fetch", navigation)).status, 503);
   const noStorage = worker(undefined, { networkDown: true, brokenStorage: true });
   assert.equal((await noStorage.dispatch("fetch", navigation)).status, 503);
+});
+
+
+test("locale changes refresh anonymous offline HTML while retaining immutable assets", async () => {
+  const app = worker();
+  await app.dispatch("install");
+  await app.dispatch("fetch", new Request(asset));
+  assert.ok(app.stored.has(`${origin}/offline`));
+  await app.dispatch("message", { type: "rbit-locale-changed" });
+  assert.equal(app.stored.has(`${origin}/offline`), true);
+  assert.equal(app.installed.length, 2);
+  assert.equal(app.installed[1].credentials, "omit");
+  assert.equal(app.installed[1].cache, "reload");
+  assert.ok(app.stored.has(asset));
+});
+
+
+test("a failed locale refresh retains the previously available offline document", async () => {
+  const app = worker(undefined, { brokenRefresh: true });
+  await app.dispatch("install");
+  app.stored.set(`${origin}/offline`, new Response("previous offline"));
+  await app.dispatch("message", { type: "rbit-locale-changed" });
+  assert.equal(await app.stored.get(`${origin}/offline`).text(), "previous offline");
 });

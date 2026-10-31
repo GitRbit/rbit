@@ -62,13 +62,13 @@ function credentialJson(credential) {
 function message(error, creating) {
   switch (error?.name) {
     case "NotAllowedError":
-      return "The passkey request was cancelled or timed out. Try again.";
+      return (globalThis.rbitMessages?.text("browser-passkey-cancelled") ?? "The passkey request was cancelled or timed out. Try again.");
     case "InvalidStateError":
-      return creating ? "That passkey is already registered to your account." : "That passkey isn't registered here.";
+      return creating ? (globalThis.rbitMessages?.text("browser-passkey-registered") ?? "That passkey is already registered to your account.") : (globalThis.rbitMessages?.text("browser-passkey-unknown") ?? "That passkey isn't registered here.");
     case "SecurityError":
-      return "Passkeys don't work at this address. Open the site at its configured URL.";
+      return (globalThis.rbitMessages?.text("browser-passkey-address") ?? "Passkeys don't work at this address. Open the site at its configured URL.");
     default:
-      return "Your browser couldn't use a passkey. Try again or use a code.";
+      return (globalThis.rbitMessages?.text("browser-passkey-failed") ?? "Your browser couldn't use a passkey. Try again or use a code.");
   }
 }
 
@@ -127,7 +127,7 @@ if (supported) {
     event.preventDefault();
     const password = form.elements.password;
     if (password && !password.value) {
-      showError(form, "Enter your password first.");
+      showError(form, (globalThis.rbitMessages?.text("browser-passkey-password") ?? "Enter your password first."));
       password.focus();
       return;
     }

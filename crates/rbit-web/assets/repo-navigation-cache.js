@@ -13,7 +13,7 @@ const cachedTransports = new WeakSet();
 let generation = 0;
 let totalBytes = 0;
 
-const RESPONSE_HEADERS = ['Content-Type', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'Rbit-Update-Available', 'ETag', 'Last-Modified', 'Vary'];
+const RESPONSE_HEADERS = ['Content-Type', 'Cache-Control', 'Rbit-Partial', 'Server-Timing', 'Rbit-Update-Available', 'Rbit-Plugin-Revision', 'Rbit-Locale-Revision', 'Content-Language', 'ETag', 'Last-Modified', 'Vary'];
 const EFFECT_HEADERS = ['Set-Cookie', 'HX-Location', 'HX-Redirect', 'HX-Refresh', 'HX-Retarget', 'HX-Reswap', 'HX-Reselect', 'HX-Push-Url', 'HX-Replace-Url', 'HX-Trigger', 'HX-Trigger-After-Swap', 'HX-Trigger-After-Settle'];
 
 /** Synthetic deliveries must not refresh the original response's freshness time. */
@@ -36,7 +36,7 @@ function requestKey(url, headers) {
     const suffix = target.pathname.slice(scope.length);
     if (!target.pathname.startsWith(scope) || !/^(?:\/?|\/(?:issues|pulls|branches|tags|releases)|\/commits(?:\/[^?]*)?)$/.test(suffix)) return null;
     target.hash = '';
-    return { key: JSON.stringify([target.href, scope, epoch]), url: target.href, scope };
+    return { key: JSON.stringify([target.href, scope, epoch, readHeader(headers, 'Rbit-Plugin-Revision'), readHeader(headers, 'Rbit-Locale-Revision')]), url: target.href, scope };
   } catch { return null; }
 }
 

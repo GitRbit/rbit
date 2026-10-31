@@ -68,7 +68,7 @@ async fn inbox(
         next_url: (inbox.page < page_count).then(|| page_url(inbox.page + 1)),
     };
     Ok(InboxPage {
-        page: page.titled("Notifications"),
+        page: page.titled(crate::i18n::text("core", "title-notifications")),
         groups: group(&inbox.notifications),
         showing_all,
         unread_url: "/notifications".to_owned(),

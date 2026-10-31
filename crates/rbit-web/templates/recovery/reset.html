@@ -13,11 +13,11 @@
     <p class="text-[13px] text-ink-muted">{{ problem.message() }}</p>
     {% if problem.is_invalid() %}
     {% if email_available %}
-    <a href="/password/forgot" class="btn btn-primary btn-lg mt-6 w-full">Request a new link</a>
+    <a href="/password/forgot" class="btn btn-primary btn-lg mt-6 w-full">{{ crate::i18n::text("core", "recovery-reset-a-request-a-new-link") }}</a>
     {% else %}
     <div class="notice mt-5" role="status">
       {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
-      <p>Email is not available on this server, so a new link can't be sent. Ask an administrator to set a new password for you.</p>
+      <p>{{ crate::i18n::text("core", "recovery-reset-p-email-is-not-available-on-this-server-so-a-new-link-can-t-be-sent") }}</p>
     </div>
     {% endif %}
     {% endif %}
@@ -25,8 +25,8 @@
   {% else %}
   <header class="auth-head">
     <span class="tile">{% call ui::icon("lock", "size-5") %}{% endcall %}</span>
-    <h1 class="auth-title">Choose a new password</h1>
-    <p class="auth-lede">For <span class="font-medium text-ink">{{ username }}</span>. You'll sign in with it from now on.</p>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "recovery-reset-h1-choose-a-new-password") }}</h1>
+    <p class="auth-lede">{{ crate::i18n::text("core", "recovery-reset-p-for") }} <span class="font-medium text-ink">{{ username }}</span>. You'll sign in with it from now on.</p>
   </header>
 
   <div class="card">
@@ -34,18 +34,18 @@
       {% call ui::form_error(error) %}{% endcall %}
       <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden readonly>
 
-      <label class="label" for="new-password">New password</label>
+      <label class="label" for="new-password">{{ crate::i18n::text("core", "recovery-reset-label-new-password") }}</label>
       <input class="input" id="new-password" name="new_password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" maxlength="256" required autofocus>
       <p class="hint">At least {{ min_password_length }} characters.</p>
 
-      <label class="label mt-4" for="confirm-password">Confirm new password</label>
+      <label class="label mt-4" for="confirm-password">{{ crate::i18n::text("core", "recovery-reset-label-confirm-new-password") }}</label>
       <input class="input" id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" maxlength="256" required>
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Change password</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "recovery-reset-button-change-password") }}</button>
     </form>
   </div>
   {% endif %}
 
-  <p class="auth-aside"><a href="/login" class="link">Back to sign in</a></p>
+  <p class="auth-aside"><a href="/login" class="link">{{ crate::i18n::text("core", "recovery-reset-a-back-to-sign-in") }}</a></p>
 </section>
 {% endblock %}

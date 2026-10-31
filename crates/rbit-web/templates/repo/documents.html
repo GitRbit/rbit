@@ -1,18 +1,18 @@
 {% if let Some(readme) = readme %}
-<section id="readme" class="repo-documents box mt-6" data-repo-documents data-document-key="{{ readme.key }}" data-document-scope="{{ document_scope }}" aria-label="Repository documents">
+<section id="readme" class="repo-documents box mt-6" data-repo-documents data-document-key="{{ readme.key }}" data-document-scope="{{ document_scope }}" aria-label="{{ crate::i18n::text("core", "repo-documents-aria-label-repository-documents") }}">
   <header class="repo-documents-header">
-    <div class="repo-document-tabs" role="tablist" aria-label="Repository documents">
+    <div class="repo-document-tabs" role="tablist" aria-label="{{ crate::i18n::text("core", "repo-documents-aria-label-repository-documents") }}">
       {% for document in documents %}
       <a href="{{ document.url }}" class="repo-document-tab" role="tab" aria-controls="repo-document-panel" aria-selected="{{ document.is_active }}" data-repo-document="{{ document.key }}" hx-boost="false">{% call ui::icon(document.icon, "size-4 shrink-0") %}{% endcall %}<span>{{ document.name }}</span></a>
       {% endfor %}
     </div>
     <details class="repo-document-outline" data-document-outline hidden>
-      <summary class="btn btn-ghost btn-icon" aria-label="Document outline" title="Document outline">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+      <summary class="btn btn-ghost btn-icon" aria-label="{{ crate::i18n::text("core", "repo-documents-aria-label-document-outline") }}" title="{{ crate::i18n::text("core", "repo-documents-title-document-outline") }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
       <div class="repo-document-outline-menu">
-        <label class="sr-only" for="repo-document-filter">Filter headings</label>
-        <input id="repo-document-filter" class="input" type="search" placeholder="Filter headings" autocomplete="off" data-document-heading-filter>
-        <nav aria-label="Document headings"><ul data-document-headings></ul></nav>
-        <p class="repo-document-outline-empty" data-document-no-headings hidden>No matching headings.</p>
+        <label class="sr-only" for="repo-document-filter">{{ crate::i18n::text("core", "repo-documents-label-filter-headings") }}</label>
+        <input id="repo-document-filter" class="input" type="search" placeholder="{{ crate::i18n::text("core", "repo-documents-placeholder-filter-headings") }}" autocomplete="off" data-document-heading-filter>
+        <nav aria-label="{{ crate::i18n::text("core", "repo-documents-aria-label-document-headings") }}"><ul data-document-headings></ul></nav>
+        <p class="repo-document-outline-empty" data-document-no-headings hidden>{{ crate::i18n::text("core", "repo-documents-p-no-matching-headings") }}</p>
       </div>
     </details>
   </header>

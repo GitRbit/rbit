@@ -269,6 +269,13 @@ pub struct PermissionOption {
 }
 
 impl PermissionOption {
+    pub fn localized_label(&self) -> std::borrow::Cow<'static, str> {
+        crate::i18n::text("actions", if self.value == "write" { "permission-write" } else { "permission-read" })
+    }
+    pub fn localized_description(&self) -> std::borrow::Cow<'static, str> {
+        crate::i18n::text("actions", if self.value == "write" { "permission-write-description" } else { "permission-read-description" })
+    }
+
     pub fn list(selected: DefaultTokenPermission) -> Vec<Self> {
         [
             (DefaultTokenPermission::Read, "Read", "Workflows can read the repository's contents, issues and pull requests."),

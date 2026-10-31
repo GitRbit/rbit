@@ -2,12 +2,12 @@
     (views::actions_settings). Variables are plain configuration and are shown. -#}
 {% import "macros.html" as ui %}
 <section class="mt-8" aria-labelledby="variables-title">
-  <h2 id="variables-title" class="text-[13px] font-medium">Variables</h2>
-  <p class="mt-1 text-[13px] text-ink-muted">Workflows read them as <span class="font-mono text-ink">{% raw %}${{ vars.NAME }}{% endraw %}</span>. They are not secret: anyone who can change a workflow can print them. Runs from forks and from authors without write access never receive them.</p>
+  <h2 id="variables-title" class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-variables-h2-variables") }}</h2>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-variables-p-workflows-read-them-as") }} <span class="font-mono text-ink">{% raw %}${{ vars.NAME }}{% endraw %}</span>. They are not secret: anyone who can change a workflow can print them. Runs from forks and from authors without write access never receive them.</p>
 
   <div class="box mt-4">
     {% if variables.rows.is_empty() %}
-    {% call ui::empty_state("settings", "No variables", "Add a variable for configuration your workflows share, such as a region or a version.") %}{% endcall %}
+    {% call ui::empty_state("settings", crate::i18n::text("actions", "actions-variables-empty-title-no-variables"), crate::i18n::text("actions", "actions-variables-empty-description-add-a-variable-for-configuration-your-workflows-share-such-as-a-r")) %}{% endcall %}
     {% else %}
     <ul>
       {% for variable in variables.rows %}
@@ -16,25 +16,25 @@
           <div class="min-w-0 flex-1">
             <span class="block truncate font-mono text-[13px] font-medium">{{ variable.name }}</span>
             <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ variable.value }}</p>
-            <p class="mt-0.5 text-xs text-ink-muted">Updated <time datetime="{{ variable.updated_iso }}">{{ variable.updated }}</time></p>
+            <p class="mt-0.5 text-xs text-ink-muted">{{ crate::i18n::text("actions", "actions-variables-p-updated") }} <time datetime="{{ variable.updated_iso }}">{{ variable.updated }}</time></p>
           </div>
           <form method="post" action="{{ variables.action_url }}" class="shrink-0">
             <input type="hidden" name="kind" value="variable">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="name" value="{{ variable.name }}">
-            <button class="btn h-10 sm:h-8" type="submit" aria-label="Delete variable {{ variable.name }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete</button>
+            <button class="btn h-10 sm:h-8" type="submit" aria-label="Delete variable {{ variable.name }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-variables-button-delete") }}</button>
           </form>
         </div>
         <details class="mt-1">
-          <summary class="flex min-h-11 cursor-pointer items-center text-[13px] text-ink-muted hover:text-ink">Edit</summary>
+          <summary class="flex min-h-11 cursor-pointer items-center text-[13px] text-ink-muted hover:text-ink">{{ crate::i18n::text("actions", "actions-variables-summary-edit") }}</summary>
           <form method="post" action="{{ variables.action_url }}" class="pb-2" novalidate>
             <input type="hidden" name="kind" value="variable">
             <input type="hidden" name="action" value="put">
             <input type="hidden" name="name" value="{{ variable.name }}">
-            <label class="label" for="variable-{{ loop.index }}-value">Value of <span class="font-mono">{{ variable.name }}</span></label>
+            <label class="label" for="variable-{{ loop.index }}-value">{{ crate::i18n::text("actions", "actions-variables-label-value-of") }} <span class="font-mono">{{ variable.name }}</span></label>
             <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" id="variable-{{ loop.index }}-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
 {{ variable.value }}</textarea>
-            <button class="btn btn-primary mt-3 w-full sm:w-auto" type="submit">Save variable</button>
+            <button class="btn btn-primary mt-3 w-full sm:w-auto" type="submit">{{ crate::i18n::text("actions", "actions-variables-button-save-variable") }}</button>
           </form>
         </details>
       </li>
@@ -45,22 +45,22 @@
 
   <form method="post" action="{{ variables.action_url }}" class="box mt-4" novalidate>
     <div class="box-header">
-      <h3 class="text-[13px] font-medium">New variable</h3>
+      <h3 class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-variables-h3-new-variable") }}</h3>
     </div>
     <div class="p-4">
       {% call ui::form_error(variables.error) %}{% endcall %}
       <input type="hidden" name="kind" value="variable">
       <input type="hidden" name="action" value="put">
-      <label class="label" for="variable-name">Name</label>
+      <label class="label" for="variable-name">{{ crate::i18n::text("actions", "actions-variables-label-name") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="variable-name" name="name" value="{{ variables.name }}" maxlength="100" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
-      <p class="hint">The same rules as secret names; an existing name is replaced.</p>
-      <label class="label mt-5" for="variable-value">Value</label>
+      <p class="hint">{{ crate::i18n::text("actions", "actions-variables-p-the-same-rules-as-secret-names-an-existing-name-is-replaced") }}</p>
+      <label class="label mt-5" for="variable-value">{{ crate::i18n::text("actions", "actions-variables-label-value") }}</label>
       <textarea class="input h-28 resize-y py-2 font-mono text-[13px]" id="variable-value" name="value" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" required>
 {{ variables.value }}</textarea>
       <p class="hint">At most {{ variables.max_kib }} KiB.</p>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Add variable</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("actions", "actions-variables-button-add-variable") }}</button>
     </div>
   </form>
 </section>

@@ -4,52 +4,52 @@
     <form method="get" class="flex items-center gap-2">
       <input type="hidden" name="calendar" value="1">
       {% if contributions.tab != "" %}<input type="hidden" name="tab" value="{{ contributions.tab }}">{% endif %}
-      <label for="contribution-year" class="text-xs text-ink-muted">Year</label>
+      <label for="contribution-year" class="text-xs text-ink-muted">{{ crate::i18n::text("core", "contributions-body-label-year") }}</label>
       <select id="contribution-year" name="year" class="input w-auto">
         {% for year in contributions.years %}<option value="{{ year }}" {% if *year == contributions.year %}selected{% endif %}>{{ year }}</option>{% endfor %}
       </select>
-      <button class="btn" type="submit">View</button>
+      <button class="btn" type="submit">{{ crate::i18n::text("core", "contributions-body-button-view") }}</button>
     </form>
   </div>
   <div class="box p-4">
-    <div class="contribution-year" role="group" aria-label="Annual commit calendar">
+    <div class="contribution-year" role="group" aria-label="{{ crate::i18n::text("core", "contributions-body-aria-label-annual-commit-calendar") }}">
       <svg class="contribution-calendar" viewBox="0 0 846 133" role="group" aria-labelledby="calendar-title calendar-description">
         <title id="calendar-title">Commit activity in {{ contributions.year }}</title>
         <desc id="calendar-description">{{ contributions.total }} commits across {{ contributions.active_days }} active days. Higher intensity indicates more commits. Focus or hover over a day for its count. Select a day for details.</desc>
         {% for month in contributions.months %}<text x="{{ month.x }}" y="13">{{ month.label }}</text>{% endfor %}
-        <text x="0" y="49">Mon</text><text x="0" y="79">Wed</text><text x="0" y="109">Fri</text>
+        <text x="0" y="49">{{ crate::i18n::text("core", "contributions-body-text-mon") }}</text><text x="0" y="79">{{ crate::i18n::text("core", "contributions-body-text-wed") }}</text><text x="0" y="109">{{ crate::i18n::text("core", "contributions-body-text-fri") }}</text>
         {% for day in contributions.days %}
         <rect x="{{ day.x }}" y="{{ day.y }}" width="12" height="12" rx="2" class="contribution-level-{{ day.level }}" tabindex="0" role="button" aria-pressed="false" data-contribution-day="{{ day.date }}" data-count="{{ day.count }}" aria-label="{{ day.count }} commits on {{ day.date }}"><title>{{ day.count }} commits on {{ day.date }}</title></rect>
         {% endfor %}
       </svg>
     </div>
-    <div class="contribution-quarters" role="group" aria-label="Commit calendar by quarter">
+    <div class="contribution-quarters" role="group" aria-label="{{ crate::i18n::text("core", "contributions-body-aria-label-commit-calendar-by-quarter") }}">
       {% for quarter in contributions.quarters %}
       <svg viewBox="0 0 246 133" role="group" aria-label="{{ quarter.label }} {{ contributions.year }} commit activity">
         <title>{{ quarter.label }} {{ contributions.year }}</title>
         {% for month in quarter.months %}<text x="{{ month.x }}" y="13">{{ month.label }}</text>{% endfor %}
-        <text x="0" y="49">Mon</text><text x="0" y="79">Wed</text><text x="0" y="109">Fri</text>
+        <text x="0" y="49">{{ crate::i18n::text("core", "contributions-body-text-mon") }}</text><text x="0" y="79">{{ crate::i18n::text("core", "contributions-body-text-wed") }}</text><text x="0" y="109">{{ crate::i18n::text("core", "contributions-body-text-fri") }}</text>
         {% for day in quarter.days %}<rect x="{{ day.x }}" y="{{ day.y }}" width="12" height="12" rx="2" class="contribution-level-{{ day.level }}" tabindex="0" role="button" aria-pressed="false" data-contribution-day="{{ day.date }}" data-count="{{ day.count }}" aria-label="{{ day.count }} commits on {{ day.date }}"><title>{{ day.count }} commits on {{ day.date }}</title></rect>{% endfor %}
       </svg>
       {% endfor %}
     </div>
     <div class="mt-2 flex flex-wrap justify-between gap-3 text-xs text-ink-muted">
       <p>{{ contributions.scope }} Dates use UTC.</p>
-      <div class="contribution-legend" aria-label="Commit intensity from less to more">Less <i class="contribution-level-0"></i><i class="contribution-level-1"></i><i class="contribution-level-2"></i><i class="contribution-level-3"></i><i class="contribution-level-4"></i> More</div>
+      <div class="contribution-legend" aria-label="{{ crate::i18n::text("core", "contributions-body-aria-label-commit-intensity-from-less-to-more") }}">{{ crate::i18n::text("core", "contributions-body-div-less") }} <i class="contribution-level-0"></i><i class="contribution-level-1"></i><i class="contribution-level-2"></i><i class="contribution-level-3"></i><i class="contribution-level-4"></i> {{ crate::i18n::text("core", "contributions-body-div-more") }}</div>
     </div>
-    {% if contributions.partial %}<p class="mt-3 text-xs text-ink-muted" data-partial-activity>Partial activity: at least one repository exceeded the 100,000-commit history scan limit.</p>{% endif %}
-    {% if contributions.total == 0 %}<p class="mt-4 text-sm text-ink-muted">No matching commits in this year.</p>{% endif %}
+    {% if contributions.partial %}<p class="mt-3 text-xs text-ink-muted" data-partial-activity>{{ crate::i18n::text("core", "contributions-body-p-partial-activity-at-least-one-repository-exceeded-the-100-000-com") }}</p>{% endif %}
+    {% if contributions.total == 0 %}<p class="mt-4 text-sm text-ink-muted">{{ crate::i18n::text("core", "contributions-body-p-no-matching-commits-in-this-year") }}</p>{% endif %}
     <div class="contribution-tooltip" role="tooltip" data-contribution-tooltip hidden></div>
-    <div class="contribution-selection mt-4 border-t border-line pt-4" data-contribution-details role="status" aria-live="polite">Select a date to see its commit activity.</div>
+    <div class="contribution-selection mt-4 border-t border-line pt-4" data-contribution-details role="status" aria-live="polite">{{ crate::i18n::text("core", "contributions-body-div-select-a-date-to-see-its-commit-activity") }}</div>
     <dl class="contribution-stats mt-5 border-t border-line pt-4">
-      <div><dt>Commits</dt><dd>{{ contributions.total }}</dd></div>
-      <div><dt>Active days</dt><dd>{{ contributions.active_days }}</dd></div>
-      <div><dt>Longest streak</dt><dd>{{ contributions.longest_streak }} days</dd></div>
-      <div><dt>Repositories</dt><dd>{{ contributions.repositories }}</dd></div>
+      <div><dt>{{ crate::i18n::text("core", "contributions-body-dt-commits") }}</dt><dd>{{ contributions.total }}</dd></div>
+      <div><dt>{{ crate::i18n::text("core", "contributions-body-dt-active-days") }}</dt><dd>{{ contributions.active_days }}</dd></div>
+      <div><dt>{{ crate::i18n::text("core", "contributions-body-dt-longest-streak") }}</dt><dd>{{ contributions.longest_streak }} days</dd></div>
+      <div><dt>{{ crate::i18n::text("core", "contributions-body-dt-repositories") }}</dt><dd>{{ contributions.repositories }}</dd></div>
     </dl>
     <details class="mt-4 text-xs text-ink-muted">
-      <summary class="cursor-pointer">Monthly activity and how commits are counted</summary>
-      <p class="mt-3">Counts include commits reachable from the configured default branch, attributed to their author date. Identical commits shared by repositories count once. Only repositories you can access are included. Issues, pull requests, and reviews are not included.</p>
+      <summary class="cursor-pointer">{{ crate::i18n::text("core", "contributions-body-summary-monthly-activity-and-how-commits-are-counted") }}</summary>
+      <p class="mt-3">{{ crate::i18n::text("core", "contributions-body-p-counts-include-commits-reachable-from-the-configured-default-bran") }}</p>
       <div class="contribution-months mt-4">
         {% for month in contributions.months %}<div><svg viewBox="0 0 40 76" aria-hidden="true"><rect x="8" y="{{ month.bar_y }}" width="24" height="{{ month.bar_height }}" rx="2" class="contribution-level-4" /></svg><span>{{ month.label }}</span><strong>{{ month.count }}</strong></div>{% endfor %}
       </div>

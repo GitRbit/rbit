@@ -30,6 +30,13 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Refresh the anonymous offline document after a locale change. A failed refresh
+// must preserve the existing fallback; content-hashed assets remain reusable.
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "rbit-locale-changed") return;
+  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.add(new Request(OFFLINE_URL, { cache: "reload", credentials: "omit" }))).catch(() => {}));
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;

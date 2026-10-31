@@ -4,9 +4,9 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a></p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Transfer ownership</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">Move <span class="text-ink">{{ full_name }}</span> to another account. Its history, collaborators and stars move with it; links and clone URLs that use the old address stop working, and teams of the current organization lose their access.</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a></p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "access-transfer-h1-transfer-ownership") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "access-transfer-p-move") }} <span class="text-ink">{{ full_name }}</span> {{ crate::i18n::text("core", "access-transfer-p-to-another-account-its-history-collaborators-and-stars-move-with") }}</p>
 
   {% if self.has_targets() %}
   <form method="post" action="{{ action_url }}" class="box mt-6 border-danger/40" novalidate>
@@ -14,15 +14,15 @@
       {% call ui::form_error(error) %}{% endcall %}
 
       {% if free_entry %}
-      <label class="label" for="transfer-owner">New owner</label>
+      <label class="label" for="transfer-owner">{{ crate::i18n::text("core", "access-transfer-label-new-owner") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="transfer-owner" name="new_owner" value="{{ form.new_owner }}" list="transfer-owners" maxlength="39" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       <datalist id="transfer-owners">
         {% for owner in owners %}<option value="{{ owner.name }}">{{ owner.label }}</option>{% endfor %}
       </datalist>
-      <p class="hint">As a site administrator you may enter any user or organization.</p>
+      <p class="hint">{{ crate::i18n::text("core", "access-transfer-p-as-a-site-administrator-you-may-enter-any-user-or-organization") }}</p>
       {% else %}
       <fieldset>
-        <legend class="label">New owner</legend>
+        <legend class="label">{{ crate::i18n::text("core", "access-transfer-legend-new-owner") }}</legend>
         <div class="box overflow-hidden">
           {% for owner in owners %}
           <label class="flex cursor-pointer items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
@@ -32,24 +32,24 @@
               <span class="block truncate font-medium">{{ owner.label }}</span>
               <span class="block truncate text-xs text-ink-muted">{{ owner.name }}</span>
             </span>
-            {% if owner.is_organization %}<span class="badge shrink-0">Organization</span>{% endif %}
+            {% if owner.is_organization %}<span class="badge shrink-0">{{ crate::i18n::text("core", "access-transfer-span-organization") }}</span>{% endif %}
           </label>
           {% endfor %}
         </div>
-        <p class="hint">Your account, or an organization you belong to.</p>
+        <p class="hint">{{ crate::i18n::text("core", "access-transfer-p-your-account-or-an-organization-you-belong-to") }}</p>
       </fieldset>
       {% endif %}
 
-      <label class="label mt-5" for="transfer-confirm">Type <span class="font-mono">{{ full_name }}</span> to confirm</label>
+      <label class="label mt-5" for="transfer-confirm">{{ crate::i18n::text("core", "access-transfer-label-type") }} <span class="font-mono">{{ full_name }}</span> {{ crate::i18n::text("core", "access-transfer-label-to-confirm") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="transfer-confirm" name="confirm" value="{{ form.confirm }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
     </div>
     <div class="flex justify-end border-t border-danger/40 px-4 py-3">
-      <button class="btn btn-danger w-full sm:w-auto" type="submit">Transfer repository</button>
+      <button class="btn btn-danger w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "access-transfer-button-transfer-repository") }}</button>
     </div>
   </form>
   {% else %}
   <div class="box mt-6">
-    {% call ui::empty_state("transfer", "Nowhere to transfer to", "You belong to no organization where you could create repositories, and this repository is already yours.") %}{% endcall %}
+    {% call ui::empty_state("transfer", crate::i18n::text("core", "access-transfer-empty-title-nowhere-to-transfer-to"), crate::i18n::text("core", "access-transfer-empty-description-you-belong-to-no-organization-where-you-could-create-repositories")) %}{% endcall %}
   </div>
   {% endif %}
 </div>

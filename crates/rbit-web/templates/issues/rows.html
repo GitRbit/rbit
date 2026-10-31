@@ -13,7 +13,7 @@
       <p class="mt-1 truncate text-xs text-ink-faint">
         {{ row.number }} {% if row.closed %}closed{% else %}opened{% endif %} <time datetime="{{ row.when_iso }}" title="{{ row.when_iso }}">{{ row.when }}</time>{% if !row.closed %} by {{ row.author }}{% endif %}
         {%- if let Some((title, url)) = row.milestone %} · <a href="{{ url }}" class="hover:text-ink-muted hover:underline hover:underline-offset-4">{% call ui::icon("milestone", "inline size-3 align-[-2px]") %}{% endcall %} {{ title }}</a>{% endif %}
-        {%- if row.locked %} · {% call ui::icon("lock", "inline size-3 align-[-2px]") %}{% endcall %}<span class="sr-only">locked</span>{% endif %}
+        {%- if row.locked %} · {% call ui::icon("lock", "inline size-3 align-[-2px]") %}{% endcall %}<span class="sr-only">{{ crate::i18n::text("core", "issues-rows-span-locked") }}</span>{% endif %}
       </p>
     </div>
     <div class="flex shrink-0 items-center gap-3 text-xs text-ink-faint">

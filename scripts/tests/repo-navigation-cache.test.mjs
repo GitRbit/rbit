@@ -340,3 +340,16 @@ test('pending loads are bounded and duplicate registrations share one result', a
   assert.equal(await initial, true);
   assert.equal(await duplicate, true);
 });
+
+
+test('locale, catalog and plugin identity isolate navigation responses', async () => {
+  const a = await app();
+  const localized = { ...headers, 'Rbit-Plugin-Revision': '1', 'Rbit-Locale-Revision': 'fr:2' };
+  assert.equal(a.remember(html('French'), {}, url, localized), true);
+  assert.equal(a.request({ requestHeaders: localized }).reused, true);
+  for (const identity of [
+    { 'Rbit-Locale-Revision': 'en:2' },
+    { 'Rbit-Locale-Revision': 'fr:3' },
+    { 'Rbit-Plugin-Revision': '2' },
+  ]) assert.equal(a.request({ requestHeaders: { ...localized, ...identity } }).reused, false);
+});

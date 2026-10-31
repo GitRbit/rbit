@@ -39,6 +39,10 @@ pub struct StateLook {
 }
 
 impl StateLook {
+    pub fn localized_label(&self) -> String {
+        action_label(self.label)
+    }
+
     pub const fn of(status: Status) -> Self {
         let (key, label, tone) = match status {
             Status::Success => ("success", "Success", "text-success"),
@@ -59,6 +63,29 @@ impl StateLook {
     fn of_run(run: &Run) -> Self {
         if run.is_workflow_error() { Self::WORKFLOW_ERROR } else { Self::of(run.status) }
     }
+}
+
+/// Presentation labels only; machine status keys and protocol values remain stable.
+pub fn action_label(label: &str) -> String {
+    let key = match label {
+        "Success" => "state-success",
+        "Failure" => "state-failure",
+        "Cancelled" => "state-cancelled",
+        "Skipped" => "state-skipped",
+        "Queued" => "state-queued",
+        "In progress" => "state-running",
+        "Waiting" => "state-waiting",
+        "Awaiting approval" => "state-approval",
+        "Workflow error" => "state-workflow-error",
+        "push" => "event-push",
+        "pull request" => "event-pull-request",
+        "manual" => "event-manual",
+        "schedule" => "event-schedule",
+        "after a workflow" => "event-workflow-run",
+        "dispatch" => "event-dispatch",
+        _ => return label.to_owned(),
+    };
+    crate::i18n::text("actions", key).into_owned()
 }
 
 /// `main` for `refs/heads/main`, `#3` for a pull request ref, the tag name for a tag.
@@ -192,6 +219,12 @@ pub struct FilterOption {
     pub value: &'static str,
     pub label: &'static str,
     pub selected: bool,
+}
+
+impl FilterOption {
+    pub fn localized_label(&self) -> String {
+        action_label(self.label)
+    }
 }
 
 /// The filters as the form shows them.

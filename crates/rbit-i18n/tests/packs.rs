@@ -442,3 +442,21 @@ fn orphan_local_entries_are_rejected_even_when_not_in_the_directory() {
     orphan[end + 12..end + 16].copy_from_slice(&(directory_size - removed).to_le_bytes());
     assert!(LanguagePack::parse(&orphan, &schema).is_err());
 }
+
+#[test]
+fn browser_export_channel_rejects_selects_but_keeps_inline_interpolation() {
+    let schema = Arc::new(
+        MessageSchema::new(vec![
+            spec("browser-greeting", "Hello {name}", &[("name", ArgumentKind::Text)]),
+            spec("hello", "Hello {name}", &[("name", ArgumentKind::Text)]),
+        ])
+        .unwrap(),
+    );
+    let browser_select = "browser-greeting = { $name ->\n [formal] Bonjour\n *[other] Salut\n}\n";
+    assert!(matches!(LanguagePack::parse(&archive(manifest("fr", "ltr"), browser_select), &schema), Err(PackError::Catalog)));
+    let server_select = "hello = { $name ->\n [formal] Bonjour\n *[other] Salut\n}\n";
+    assert!(LanguagePack::parse(&archive(manifest("fr", "ltr"), server_select), &schema).is_ok());
+    let inline = "browser-greeting = Bonjour { $name } { \"!\" } { 2 }\n";
+    let snapshot = set(vec![pack(manifest("fr", "ltr"), inline, &schema)], &schema, 1).snapshot("fr");
+    assert!(text(&snapshot, "browser-greeting", &[Argument { name: "name", value: Value::Text("Alice") }]).contains("Alice"));
+}

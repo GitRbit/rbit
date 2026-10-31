@@ -3,7 +3,7 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<p class="mb-3 text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ runs_url }}">Actions</a> / <a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}">{{ run.workflow }}</a></p>
+<p class="mb-3 text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ runs_url }}">{{ crate::i18n::text("actions", "actions-run-a-actions") }}</a> / <a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.workflow_url }}">{{ run.workflow }}</a></p>
 
 {#- While the run is not finished the whole section refreshes itself, as the import page does. -#}
 <section id="run" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#run" hx-target="this" hx-swap="outerHTML"{% endif %}>
@@ -13,7 +13,7 @@
     <div class="min-w-0 flex-1">
       <h1 class="break-words text-xl font-semibold tracking-tight">{{ run.title }} <span class="font-normal text-ink-muted">#{{ run.number }}</span></h1>
       <p class="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-ink-muted">
-        <span>{{ run.look.label }}</span><span aria-hidden="true">·</span><span>{{ run.event }}</span>
+        <span>{{ run.look.localized_label() }}</span><span aria-hidden="true">·</span><span>{{ crate::views::actions::action_label(run.event) }}</span>
         {% if !run.reference.is_empty() %}<span aria-hidden="true">·</span><span class="font-mono text-xs">{{ run.reference }}</span>{% endif %}
         <span aria-hidden="true">·</span><a class="font-mono text-xs hover:text-ink hover:underline hover:underline-offset-4" href="{{ run.commit_url }}" title="{{ run.sha }}">{{ run.short_sha }}</a>
         {% if let Some(actor) = run.actor %}<span aria-hidden="true">·</span><span>by {{ actor }}</span>{% endif %}
@@ -25,13 +25,13 @@
     {% if can_write %}
     <div class="flex w-full flex-wrap gap-2 sm:w-auto">
       {% if let Some(cancel_url) = cancel_url %}
-      <form method="post" action="{{ cancel_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("stop", "size-3.5") %}{% endcall %}Cancel run</button></form>
+      <form method="post" action="{{ cancel_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("stop", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-button-cancel-run") }}</button></form>
       {% endif %}
       {% if let Some(rerun_failed_url) = rerun_failed_url %}
-      <form method="post" action="{{ rerun_failed_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Re-run failed</button></form>
+      <form method="post" action="{{ rerun_failed_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-button-re-run-failed") }}</button></form>
       {% endif %}
       {% if let Some(rerun_url) = rerun_url %}
-      <form method="post" action="{{ rerun_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Re-run all</button></form>
+      <form method="post" action="{{ rerun_url }}"><button class="btn h-10 sm:h-8" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-button-re-run-all") }}</button></form>
       {% endif %}
     </div>
     {% endif %}
@@ -39,12 +39,12 @@
 
   {% if awaiting_approval %}
   <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
-    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}This run waits for approval</p>
-    <p class="mt-1 text-ink-muted">It comes from a fork or from someone without write access. Its workflow may run code you have not reviewed, so a writer has to approve it first. Even approved, it runs with a read-only token and without secrets or variables.</p>
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-p-this-run-waits-for-approval") }}</p>
+    <p class="mt-1 text-ink-muted">{{ crate::i18n::text("actions", "actions-run-p-it-comes-from-a-fork-or-from-someone-without-write-access-its-wor") }}</p>
     {% if can_write %}
     <form method="post" action="{{ approve_url }}" class="mt-3 flex flex-wrap items-center gap-3">
-      <label class="flex min-h-11 items-center gap-2"><input class="accent-(--ink)" type="checkbox" name="trust_author" value="true">Always run this author's pull requests without approval</label>
-      <button class="btn btn-primary h-10 sm:h-9" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and run</button>
+      <label class="flex min-h-11 items-center gap-2"><input class="accent-(--ink)" type="checkbox" name="trust_author" value="true">{{ crate::i18n::text("actions", "actions-run-label-always-run-this-author-s-pull-requests-without-approval") }}</label>
+      <button class="btn btn-primary h-10 sm:h-9" type="submit">{% call ui::icon("play", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-button-approve-and-run") }}</button>
     </form>
     {% endif %}
   </div>
@@ -54,16 +54,16 @@
 
   {% for deployment in deployments %}
   <div class="mt-6 rounded-(--radius-ui) border border-warning/40 px-3 py-3 text-[13px]" role="status">
-    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>Waiting for review: <span class="font-mono">{{ deployment.environment }}</span></span></p>
+    <p class="flex items-start gap-2 font-medium">{% call ui::icon("shield", "mt-px size-4 shrink-0 text-warning") %}{% endcall %}<span>{{ crate::i18n::text("actions", "actions-run-span-waiting-for-review") }} <span class="font-mono">{{ deployment.environment }}</span></span></p>
     <p class="mt-1 text-ink-muted">{{ deployment.jobs }} {% if deployment.jobs.contains(", ") %}deploy{% else %}deploys{% endif %} to {{ deployment.environment }}, whose reviewers must approve it first.</p>
     {% if deployment.can_review %}
     <form method="post" action="{{ review_url }}" class="mt-3">
       <input type="hidden" name="environment" value="{{ deployment.environment }}">
-      <label class="label" for="review-{{ loop.index }}">Comment <span class="font-normal text-ink-faint">(optional)</span></label>
+      <label class="label" for="review-{{ loop.index }}">{{ crate::i18n::text("actions", "actions-run-label-comment") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("actions", "actions-run-span-optional") }}</span></label>
       <textarea class="input h-20 resize-y py-2" id="review-{{ loop.index }}" name="comment" rows="2"></textarea>
       <div class="mt-3 flex flex-wrap gap-2">
-        <button class="btn btn-primary h-10 sm:h-9" type="submit" name="decision" value="approve">{% call ui::icon("play", "size-3.5") %}{% endcall %}Approve and deploy</button>
-        <button class="btn h-10 sm:h-9" type="submit" name="decision" value="reject">Reject</button>
+        <button class="btn btn-primary h-10 sm:h-9" type="submit" name="decision" value="approve">{% call ui::icon("play", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-run-button-approve-and-deploy") }}</button>
+        <button class="btn h-10 sm:h-9" type="submit" name="decision" value="reject">{{ crate::i18n::text("actions", "actions-run-button-reject") }}</button>
       </div>
     </form>
     {% endif %}
@@ -76,7 +76,7 @@
     <span class="whitespace-pre-wrap break-words">{{ error }}</span>
   </div>
   {% else %}
-  <h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">Jobs</h2>
+  <h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("actions", "actions-run-h2-jobs") }}</h2>
   <ul class="box">
     {% for job in jobs %}
     <li class="row gap-3 py-2.5">
@@ -90,19 +90,19 @@
       </div>
       {% if let Some(duration) = job.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
       {% if job.can_rerun %}
-      <form method="post" action="{{ job.rerun_url }}"><button class="btn btn-icon size-10 sm:size-8" type="submit" title="Re-run this job" aria-label="Re-run {{ job.name }}">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}</button></form>
+      <form method="post" action="{{ job.rerun_url }}"><button class="btn btn-icon size-10 sm:size-8" type="submit" title="{{ crate::i18n::text("actions", "actions-run-title-re-run-this-job") }}" aria-label="Re-run {{ job.name }}">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}</button></form>
       {% endif %}
     </li>
     {% endfor %}
   </ul>
   {% if !artifacts.is_empty() %}
-  <h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">Artifacts</h2>
+  <h2 class="mb-2 mt-6 text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("actions", "actions-run-h2-artifacts") }}</h2>
   <ul class="box">
     {% for artifact in artifacts %}
     <li class="row gap-3 py-2.5">
       {% call ui::icon("package", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
       <a class="min-w-0 flex-1 truncate text-[13px] font-medium hover:underline hover:underline-offset-4" href="{{ artifact.url }}/zip" hx-boost="false" download>{{ artifact.name }}</a>
-      <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4" href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="Download as tar.gz">tar.gz</a>
+      <a class="shrink-0 text-xs text-ink-faint hover:text-ink hover:underline hover:underline-offset-4" href="{{ artifact.url }}/tar.gz" hx-boost="false" download title="{{ crate::i18n::text("actions", "actions-run-title-download-as-tar-gz") }}">{{ crate::i18n::text("actions", "actions-run-a-tar-gz") }}</a>
       <span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ artifact.size }} · expires <time datetime="{{ artifact.expires_iso }}">{{ artifact.expires }}</time></span>
     </li>
     {% endfor %}

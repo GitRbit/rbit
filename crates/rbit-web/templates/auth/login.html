@@ -5,7 +5,7 @@
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
     <h1 class="auth-title">Sign in to {{ page.site_name }}</h1>
-    <p class="auth-lede">Use your username or email address.</p>
+    <p class="auth-lede">{{ crate::i18n::text("core", "auth-login-p-use-your-username-or-email-address") }}</p>
   </header>
 
   <div class="card">
@@ -13,20 +13,20 @@
       {% call ui::form_error(error) %}{% endcall %}
       <input type="hidden" name="next" value="{{ next }}">
 
-      <label class="label" for="login">Username or email</label>
+      <label class="label" for="login">{{ crate::i18n::text("core", "auth-login-label-username-or-email") }}</label>
       <input class="input" id="login" name="login" value="{{ login }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
 
       <div class="mt-4 mb-1.5 flex items-center justify-between gap-3">
-        <label class="label mb-0" for="password">Password</label>
-        <a href="/password/forgot" class="text-xs text-ink-muted hover:text-ink">Forgot password?</a>
+        <label class="label mb-0" for="password">{{ crate::i18n::text("core", "auth-login-label-password") }}</label>
+        <a href="/password/forgot" class="text-xs text-ink-muted hover:text-ink">{{ crate::i18n::text("core", "auth-login-a-forgot-password") }}</a>
       </div>
       <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Sign in</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "nav-sign-in") }}</button>
     </form>
     {#- Milestone 3: external sign-in (O). Plain links: the provider is another site. -#}
     {% if !providers.is_empty() %}
-    <p class="my-4 text-center text-xs text-ink-faint">or</p>
+    <p class="my-4 text-center text-xs text-ink-faint">{{ crate::i18n::text("core", "auth-login-p-or") }}</p>
     <div class="flex flex-col gap-2">
       {% for provider in providers %}
       <a href="{{ provider.url }}" class="btn btn-lg w-full" hx-boost="false">{% call ui::icon("key-round", "size-3.5") %}{% endcall %}Sign in with {{ provider.name }}</a>
@@ -36,7 +36,7 @@
   </div>
 
   {% if registration_open %}
-  <p class="auth-aside">Don't have an account? <a href="/signup" class="link">Sign up</a></p>
+  <p class="auth-aside">{{ crate::i18n::text("core", "auth-login-p-don-t-have-an-account") }} <a href="/signup" class="link">{{ crate::i18n::text("core", "nav-sign-up") }}</a></p>
   {% endif %}
 </section>
 {% endblock %}

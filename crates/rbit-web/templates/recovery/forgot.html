@@ -4,9 +4,9 @@
 <section class="auth-shell">
   <header class="auth-head">
     <span class="tile">{% call ui::icon("lock", "size-5") %}{% endcall %}</span>
-    <h1 class="auth-title">Reset your password</h1>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "recovery-forgot-h1-reset-your-password") }}</h1>
     {% if email_available && !sent %}
-    <p class="auth-lede">Enter the email address of your account and we'll send you a link to choose a new password.</p>
+    <p class="auth-lede">{{ crate::i18n::text("core", "recovery-forgot-p-enter-the-email-address-of-your-account-and-we-ll-send-you-a-link") }}</p>
     {% endif %}
   </header>
 
@@ -14,26 +14,26 @@
     {% if !email_available %}
     <div class="notice" role="status">
       {% call ui::icon("alert", "mt-px size-4 shrink-0") %}{% endcall %}
-      <p>Email is not available on this server, so passwords can't be reset by email. Ask an administrator to set a new password for you.</p>
+      <p>{{ crate::i18n::text("core", "recovery-forgot-p-email-is-not-available-on-this-server-so-passwords-can-t-be-reset") }}</p>
     </div>
     {% else if sent %}
     <div role="status" class="text-[13px]">
-      <p class="flex items-center gap-2 font-medium">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Check your email</p>
-      <p class="mt-2 text-ink-muted">If an account uses that address, we've sent it a link to choose a new password. The link works once and expires in an hour.</p>
-      <p class="mt-2 text-ink-muted">Nothing arrived? Check your spam folder, or <a href="/password/forgot" class="link">try again</a>.</p>
+      <p class="flex items-center gap-2 font-medium">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "recovery-forgot-p-check-your-email") }}</p>
+      <p class="mt-2 text-ink-muted">{{ crate::i18n::text("core", "recovery-forgot-p-if-an-account-uses-that-address-we-ve-sent-it-a-link-to-choose-a") }}</p>
+      <p class="mt-2 text-ink-muted">{{ crate::i18n::text("core", "recovery-forgot-p-nothing-arrived-check-your-spam-folder-or") }} <a href="/password/forgot" class="link">{{ crate::i18n::text("core", "recovery-forgot-a-try-again") }}</a>.</p>
     </div>
     {% else %}
     <form method="post" action="/password/forgot" novalidate>
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="email">Email</label>
+      <label class="label" for="email">{{ crate::i18n::text("core", "recovery-forgot-label-email") }}</label>
       <input class="input" id="email" name="email" type="email" value="{{ email }}" maxlength="254" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus>
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Send reset link</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "recovery-forgot-button-send-reset-link") }}</button>
     </form>
     {% endif %}
   </div>
 
-  <p class="auth-aside">Remembered it? <a href="/login" class="link">Sign in</a></p>
+  <p class="auth-aside">{{ crate::i18n::text("core", "recovery-forgot-p-remembered-it") }} <a href="/login" class="link">{{ crate::i18n::text("core", "nav-sign-in") }}</a></p>
 </section>
 {% endblock %}

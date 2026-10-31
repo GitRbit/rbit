@@ -230,7 +230,7 @@ pub async fn new_user_form(State(state): State<AppState>, SiteAdmin(_admin): Sit
 
 fn new_user_page(state: &AppState, page: Page, error: FormError, username: String, email: String, is_admin: bool) -> NewUserPage {
     NewUserPage {
-        page: page.titled("New user · Administration"),
+        page: page.titled(crate::i18n::text("core", "title-new-user-administration")),
         admin_nav: AdminSection::Users.nav(),
         error,
         username,
@@ -515,7 +515,7 @@ fn configuration_page(
     saved: bool,
 ) -> WebResult<ConfigurationPage> {
     Ok(ConfigurationPage {
-        page: page.titled("Configuration · Administration"),
+        page: page.titled(crate::i18n::text("core", "title-configuration-administration")),
         admin_nav: AdminSection::Configuration.nav(),
         form: crate::views::admin::configuration::ConfigurationForm::new(document, section)?,
         error,

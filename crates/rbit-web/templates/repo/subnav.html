@@ -1,13 +1,13 @@
 {% import "macros.html" as ui %}
 {#- Repository tabs, star and fork buttons and clone menu under the top bar; expects `header: RepoHeader` and `page: Page` fields. -#}
 {% if let Some(parent) = header.forked_from %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">forked from <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("git-fork", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{{ crate::i18n::text("core", "repo-subnav-span-forked-from") }} <a class="font-medium text-ink hover:underline hover:underline-offset-4" href="{{ parent.url }}">{{ parent.full_name }}</a></span></p>
 {% endif %}
 {% if header.archived %}
-<div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>This repository has been archived. It is read-only: you can clone, fork and star it, but not change it.</span></p></div>
+<div class="mx-auto max-w-[96rem] px-4 pt-2 sm:px-6"><p class="flex items-start gap-2 rounded-(--radius-ui) border border-line bg-subtle px-3 py-2 text-[13px] text-ink-muted" role="note">{% call ui::icon("archive", "mt-0.5 size-3.5 shrink-0") %}{% endcall %}<span>{{ crate::i18n::text("core", "repo-subnav-span-this-repository-has-been-archived-it-is-read-only-you-can-clone-f") }}</span></p></div>
 {% endif %}
 {% if let Some(upstream) = header.mirror_url %}
-<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">mirror of <span class="font-mono text-ink">{{ upstream }}</span></span></p>
+<p class="mx-auto flex max-w-[96rem] items-center gap-1.5 px-4 pt-2 text-xs text-ink-muted sm:px-6">{% call ui::icon("refresh", "size-3 shrink-0") %}{% endcall %}<span class="truncate">{{ crate::i18n::text("core", "repo-subnav-span-mirror-of") }} <span class="font-mono text-ink">{{ upstream }}</span></span></p>
 {% endif %}
 {#- `data-repo-scope` lets nav.js swap only <main> and these tabs between pages of the same repository;
     the markers are where `partial.rs` cuts them out for partial responses (the div must open exactly so).
@@ -20,24 +20,24 @@
     <a href="/{{ header.owner }}" class="block truncate text-xs text-ink-muted hover:text-ink">{{ header.owner }}</a>
     <p class="flex min-w-0 items-center gap-2">
       <a href="{{ header.home_url }}" class="truncate text-base font-semibold tracking-tight" title="{{ header.owner }}/{{ header.name }}">{{ header.name }}</a>
-      {% if header.is_private %}{% call ui::icon("lock", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}<span class="sr-only">Private</span>{% endif %}
+      {% if header.is_private %}{% call ui::icon("lock", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}<span class="sr-only">{{ crate::i18n::text("core", "repo-subnav-span-private") }}</span>{% endif %}
     </p>
   </div>
 
-  <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="Repository">
-    <a class="tab" data-repo-tab="code" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>Code</a>
-    <a class="tab" data-repo-tab="issues" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>Issues{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
-    <a class="tab" data-repo-tab="pulls" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>Pull requests{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
-    <a class="tab" data-repo-tab="commits" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>Commits</a>
-    <a class="tab" data-repo-tab="branches" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>Branches</a>
-    <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>Tags</a>
-    <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>Releases</a>
-    <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>Activity</a>
+  <nav class="repo-tabs -mb-px flex min-w-0 gap-5 scroll-tabs" aria-label="{{ crate::i18n::text("core", "repo-subnav-aria-label-repository") }}">
+    <a class="tab" data-repo-tab="code" data-preload="visible" href="{{ header.home_url }}" {% if header.active_tab == "code" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-code") }}</a>
+    <a class="tab" data-repo-tab="issues" data-preload="visible" href="{{ header.issues_url }}" {% if header.active_tab == "issues" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-issues") }}{% if header.open_issues > 0 %}<span class="badge tabular-nums">{{ header.open_issues }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="pulls" data-preload="visible" href="{{ header.pulls_url }}" {% if header.active_tab == "pulls" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-pull-requests") }}{% if header.open_pulls > 0 %}<span class="badge tabular-nums">{{ header.open_pulls }}</span>{% endif %}</a>
+    <a class="tab" data-repo-tab="commits" data-preload="visible" href="{{ header.commits_url }}" {% if header.active_tab == "commits" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-commits") }}</a>
+    <a class="tab" data-repo-tab="branches" data-preload="visible" href="{{ header.branches_url }}" {% if header.active_tab == "branches" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-branches") }}</a>
+    <a class="tab" data-repo-tab="tags" data-preload="visible" href="{{ header.tags_url }}" {% if header.active_tab == "tags" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-tags") }}</a>
+    <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-releases") }}</a>
+    <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-activity") }}</a>
     {% if let Some(actions_url) = header.actions_url %}
-    <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>Actions</a>
+    <a class="tab" data-repo-tab="actions" data-preload="visible" href="{{ actions_url }}" {% if header.active_tab == "actions" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "plugin-actions") }}</a>
     {% endif %}
     {% if header.can_admin %}
-    <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>Settings</a>
+    <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "nav-settings") }}</a>
     {% endif %}
   </nav>
 
@@ -46,29 +46,29 @@
     {% include "repo/star_button.html" %}
 
     <div class="flex shrink-0">
-      <a class="btn h-8 rounded-r-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="Fork this repository">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">Fork</span></a>
-      <a class="btn -ml-px h-8 rounded-l-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="Forks" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
+      <a class="btn h-8 rounded-r-none px-2.5 sm:h-7" href="{{ header.fork_url }}" title="{{ crate::i18n::text("core", "repo-subnav-title-fork-this-repository") }}">{% call ui::icon("git-fork", "size-3.5 text-ink-muted") %}{% endcall %}<span class="hidden sm:inline">{{ crate::i18n::text("core", "repo-subnav-span-fork") }}</span></a>
+      <a class="btn -ml-px h-8 rounded-l-none px-2 tabular-nums sm:h-7" href="{{ header.forks_url }}" title="{{ crate::i18n::text("core", "repo-subnav-title-forks") }}" aria-label="{{ header.fork_count }} {% if header.fork_count == 1 %}fork{% else %}forks{% endif %}">{{ header.fork_count }}</a>
     </div>
 
     <details class="relative" data-menu>
       <summary class="btn h-8 cursor-pointer sm:h-7">
-        Clone{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
+        {{ crate::i18n::text("core", "repo-subnav-summary-clone") }}{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}
       </summary>
       <div class="menu right-0 w-[min(24rem,calc(100vw-2rem))] p-3">
         <p class="mb-2 text-xs font-medium text-ink-muted">HTTPS</p>
         <div class="flex">
-          <input id="clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="Clone URL">
-          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="clone-url" aria-label="Copy clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ header.clone_url }}" readonly aria-label="{{ crate::i18n::text("core", "repo-subnav-aria-label-clone-url") }}">
+          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="clone-url" aria-label="{{ crate::i18n::text("core", "repo-subnav-aria-label-copy-clone-url") }}" title="{{ crate::i18n::text("core", "repo-subnav-title-copy") }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
         {% if let Some(ssh_url) = header.ssh_clone_url %}
-        <p class="mb-2 mt-3 text-xs font-medium text-ink-muted">SSH</p>
+        <p class="mb-2 mt-3 text-xs font-medium text-ink-muted">{{ crate::i18n::text("core", "repo-subnav-p-ssh") }}</p>
         <div class="flex">
-          <input id="ssh-clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="SSH clone URL">
-          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="ssh-clone-url" aria-label="Copy SSH clone URL" title="Copy">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
+          <input id="ssh-clone-url" class="input h-8 rounded-r-none font-mono text-xs sm:h-8" value="{{ ssh_url }}" readonly aria-label="{{ crate::i18n::text("core", "repo-subnav-aria-label-ssh-clone-url") }}">
+          <button type="button" class="btn btn-icon -ml-px h-8 rounded-l-none sm:h-8" data-copy="ssh-clone-url" aria-label="{{ crate::i18n::text("core", "repo-subnav-aria-label-copy-ssh-clone-url") }}" title="{{ crate::i18n::text("core", "repo-subnav-title-copy") }}">{% call ui::icon("copy", "size-3.5") %}{% endcall %}</button>
         </div>
-        <p class="mt-2 text-xs text-ink-faint">SSH needs a key in <a class="underline hover:text-ink" href="/settings/keys">your settings</a>.</p>
+        <p class="mt-2 text-xs text-ink-faint">{{ crate::i18n::text("core", "repo-subnav-p-ssh-needs-a-key-in") }} <a class="underline hover:text-ink" href="/settings/keys">{{ crate::i18n::text("core", "repo-subnav-a-your-settings") }}</a>.</p>
         {% endif %}
-        <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}Download ZIP</a>
+        <a class="btn mt-3 w-full justify-center" href="{{ header.zip_url }}" hx-boost="false" download>{% call ui::icon("archive", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-subnav-a-download-zip") }}</a>
       </div>
     </details>
   </div>

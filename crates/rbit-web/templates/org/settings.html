@@ -7,33 +7,33 @@
 <div class="mt-6 max-w-3xl">
   <form method="post" action="{{ save_url }}" class="box" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Profile</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "nav-profile") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="org-display-name">Display name <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label" for="org-display-name">{{ crate::i18n::text("core", "org-settings-label-display-name") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "org-settings-span-optional") }}</span></label>
       <input class="input" id="org-display-name" name="display_name" value="{{ form.display_name }}" maxlength="100" placeholder="{{ header.name }}">
 
-      <label class="label mt-5" for="org-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label mt-5" for="org-description">{{ crate::i18n::text("core", "org-settings-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "org-settings-span-optional") }}</span></label>
       <textarea class="input h-auto min-h-20 py-2" id="org-description" name="description" maxlength="350" rows="3">{{ form.description }}</textarea>
 
-      <label class="label mt-5" for="org-website">Website <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label mt-5" for="org-website">{{ crate::i18n::text("core", "org-settings-label-website") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "org-settings-span-optional") }}</span></label>
       <input class="input" id="org-website" name="website" type="url" value="{{ form.website }}" maxlength="255" placeholder="https://" autocapitalize="none" spellcheck="false">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save profile</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-settings-button-save-profile") }}</button>
     </div>
   </form>
 
   <form method="post" action="{{ permission_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Member permission</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "org-settings-h2-member-permission") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(permission_error) %}{% endcall %}
       <fieldset>
-        <legend class="label">What every member gets on every repository</legend>
+        <legend class="label">{{ crate::i18n::text("core", "org-settings-legend-what-every-member-gets-on-every-repository") }}</legend>
         <div class="box overflow-hidden">
           {% for option in base_permissions %}
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-subtle has-checked:bg-subtle">
@@ -46,10 +46,10 @@
           {% endfor %}
         </div>
       </fieldset>
-      <p class="hint">Teams and collaborators can add to this, never take away. Owners always administer every repository.</p>
+      <p class="hint">{{ crate::i18n::text("core", "org-settings-p-teams-and-collaborators-can-add-to-this-never-take-away-owners-al") }}</p>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save permission</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-settings-button-save-permission") }}</button>
     </div>
   </form>
 
@@ -57,14 +57,14 @@
 
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium text-danger">Danger zone</h2>
+      <h2 class="text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "org-settings-h2-danger-zone") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(delete_error) %}{% endcall %}
-      <p class="font-medium">Delete this organization</p>
+      <p class="font-medium">{{ crate::i18n::text("core", "org-settings-p-delete-this-organization") }}</p>
       {% if repo_count == 0 %}
-      <p class="mt-1 text-[13px] text-ink-muted">This permanently removes the organization and all of its memberships. It cannot be undone.</p>
-      <label class="label mt-4" for="org-confirm">Type <span class="font-mono">{{ header.name }}</span> to confirm</label>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "org-settings-p-this-permanently-removes-the-organization-and-all-of-its-membersh") }}</p>
+      <label class="label mt-4" for="org-confirm">{{ crate::i18n::text("core", "org-settings-label-type") }} <span class="font-mono">{{ header.name }}</span> {{ crate::i18n::text("core", "org-settings-label-to-confirm") }}</label>
       <input class="input" id="org-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       {% else %}
       <p class="mt-1 text-[13px] text-ink-muted">{{ header.name }} still owns {{ repo_count }} {% if repo_count == 1 %}repository{% else %}repositories{% endif %}. Delete or transfer {% if repo_count == 1 %}it{% else %}them{% endif %} first.</p>
@@ -72,7 +72,7 @@
     </div>
     {% if repo_count == 0 %}
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-danger w-full sm:w-auto" type="submit">Delete organization</button>
+      <button class="btn btn-danger w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-settings-button-delete-organization") }}</button>
     </div>
     {% endif %}
   </form>

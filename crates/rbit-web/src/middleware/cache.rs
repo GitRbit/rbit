@@ -85,6 +85,17 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
         return response;
     }
     let (mut parts, body) = response.into_parts();
+    let has_locale_identity = parts.headers.contains_key("rbit-locale-revision");
+    // English catalogs cannot override the built-in presentation. Keep the host's
+    // content-addressed fragment and preload fast paths for this neutral fallback.
+    let localized = parts.headers.get(header::CONTENT_LANGUAGE).is_some_and(|value| value.as_bytes() != b"en");
+    // Commit identity does not include the visitor's locale or installed catalog.
+    if localized && is_immutable(&parts.headers) {
+        parts.headers.remove(header::CACHE_CONTROL);
+    }
+    if has_locale_identity {
+        append_vary(&mut parts.headers, "Cookie, Accept-Language, Rbit-Locale-Revision");
+    }
     // A response pinned by commit ids (`cache_pinned`) is the same in every epoch; varying
     // on it would throw a year-long cache entry away after every form post.
     let vary = if is_immutable(&parts.headers) { "HX-Request" } else { "HX-Request, Rbit-Nav-Epoch, Rbit-Plugin-Revision" };
@@ -100,7 +111,8 @@ pub async fn html_caching(request: Request, next: Next) -> Response {
     };
     // The footer's render time changes on every request; leave it out of the ETag.
     let etag = weak_etag(crate::timing::without_render_time(&bytes));
-    let cache_control = if preloaded { format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}") } else { "private, no-cache".to_owned() };
+    let cache_control =
+        if preloaded && !localized { format!("private, max-age={PRELOAD_MAX_AGE_SECONDS}") } else { "private, no-cache".to_owned() };
     parts.headers.insert(header::CACHE_CONTROL, HeaderValue::from_str(&cache_control).unwrap_or(HeaderValue::from_static("no-cache")));
     if let Ok(value) = HeaderValue::from_str(&etag) {
         parts.headers.insert(header::ETAG, value);

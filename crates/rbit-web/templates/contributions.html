@@ -1,7 +1,7 @@
 {% if contributions.deferred %}
-<div class="mt-6 box p-4" hx-get="?year={{ contributions.year }}&amp;tab={{ contributions.tab }}&amp;calendar=fragment" hx-trigger="load" hx-swap="outerHTML" hx-boost="false" aria-label="Commit activity" aria-busy="true">
-  <p class="text-sm text-ink-muted">Loading commit activity…</p>
-  <a class="text-sm hover:underline" href="?year={{ contributions.year }}&amp;tab={{ contributions.tab }}&amp;calendar=1" hx-boost="false">View commit activity</a>
+<div class="mt-6 box p-4" hx-get="?year={{ contributions.year }}&amp;tab={{ contributions.tab }}&amp;calendar=fragment" hx-trigger="load" hx-swap="outerHTML" hx-boost="false" aria-label="{{ crate::i18n::text("core", "contributions-aria-label-commit-activity") }}" aria-busy="true">
+  <p class="text-sm text-ink-muted">{{ crate::i18n::text("core", "contributions-p-loading-commit-activity") }}</p>
+  <a class="text-sm hover:underline" href="?year={{ contributions.year }}&amp;tab={{ contributions.tab }}&amp;calendar=1" hx-boost="false">{{ crate::i18n::text("core", "contributions-a-view-commit-activity") }}</a>
 </div>
 {% else %}
 {% include "contributions_body.html" %}

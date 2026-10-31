@@ -4,48 +4,48 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <h1 class="text-xl font-semibold tracking-tight">Settings</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">Only administrators of <span class="text-ink">{{ full_name }}</span> can see this page.</p>
+  <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-settings") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-p-only-administrators-of") }} <span class="text-ink">{{ full_name }}</span> {{ crate::i18n::text("core", "repo-settings-p-can-see-this-page") }}</p>
 
   {% if saved %}
   <p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
-    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Settings saved.
+    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "repo-settings-p-settings-saved") }}
   </p>
   {% endif %}
 
   <form method="post" action="{{ general_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">General</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "repo-settings-h2-general") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(general_error) %}{% endcall %}
 
-      <label class="label" for="description">Description <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label" for="description">{{ crate::i18n::text("core", "repo-settings-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "repo-settings-span-optional") }}</span></label>
       <input class="input" id="description" name="description" value="{{ general.description }}" maxlength="350">
 
       <fieldset class="mt-5">
-        <legend class="label">Visibility</legend>
+        <legend class="label">{{ crate::i18n::text("core", "repo-settings-legend-visibility") }}</legend>
         <div class="box overflow-hidden">
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !general.is_private %}checked{% endif %}>
             <span>
-              <span class="flex items-center gap-1.5 font-medium">{% call ui::icon("globe", "size-3.5 text-ink-muted") %}{% endcall %}Public</span>
-              <span class="block text-[13px] text-ink-muted">Anyone can see and clone this repository.</span>
+              <span class="flex items-center gap-1.5 font-medium">{% call ui::icon("globe", "size-3.5 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "repo-settings-span-public") }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-span-anyone-can-see-and-clone-this-repository") }}</span>
             </span>
           </label>
           <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if general.is_private %}checked{% endif %}>
             <span>
-              <span class="flex items-center gap-1.5 font-medium">{% call ui::icon("lock", "size-3.5 text-ink-muted") %}{% endcall %}Private</span>
-              <span class="block text-[13px] text-ink-muted">Only people with access can see and clone it.</span>
+              <span class="flex items-center gap-1.5 font-medium">{% call ui::icon("lock", "size-3.5 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "repo-settings-span-private") }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-span-only-people-with-access-can-see-and-clone-it") }}</span>
             </span>
           </label>
         </div>
       </fieldset>
 
-      <label class="label mt-5" for="default-branch">Default branch</label>
+      <label class="label mt-5" for="default-branch">{{ crate::i18n::text("core", "repo-settings-label-default-branch") }}</label>
       {% if general.branches.is_empty() %}
-      <p class="text-[13px] text-ink-muted">Push a branch to choose the default branch.</p>
+      <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-p-push-a-branch-to-choose-the-default-branch") }}</p>
       {% else %}
       <div class="relative sm:max-w-72">
         <select class="input cursor-pointer appearance-none pr-9 font-mono text-[13px]" id="default-branch" name="default_branch">
@@ -55,65 +55,65 @@
         </select>
         {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
       </div>
-      <p class="hint">Shown first when browsing, and checked out by <span class="font-mono">git clone</span>.</p>
+      <p class="hint">{{ crate::i18n::text("core", "repo-settings-p-shown-first-when-browsing-and-checked-out-by") }} <span class="font-mono">git clone</span>.</p>
       {% endif %}
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save changes</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-settings-button-save-changes") }}</button>
     </div>
   </form>
 
   <form method="post" action="{{ rename_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Repository name</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "repo-settings-h2-repository-name") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(rename_error) %}{% endcall %}
-      <label class="label" for="name">Name</label>
+      <label class="label" for="name">{{ crate::i18n::text("core", "repo-settings-label-name") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
-      <p class="hint">Links and clone URLs that use the old name stop working.</p>
+      <p class="hint">{{ crate::i18n::text("core", "repo-settings-p-links-and-clone-urls-that-use-the-old-name-stop-working") }}</p>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn w-full sm:w-auto" type="submit">Rename</button>
+      <button class="btn w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-settings-button-rename") }}</button>
     </div>
   </form>
 
   {% for card in cards %}{% call ui::settings_card(card) %}{% endcall %}{% endfor %}
 
   <section class="mt-10" aria-labelledby="danger-zone-title">
-    <h2 id="danger-zone-title" class="mb-3 text-[13px] font-medium text-danger">Danger zone</h2>
+    <h2 id="danger-zone-title" class="mb-3 text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "repo-settings-h2-danger-zone") }}</h2>
     {% for card in danger_cards %}<div class="mb-3">{% call ui::settings_card(card) %}{% endcall %}</div>{% endfor %}
     <form method="post" action="{{ archive_url }}" class="box mb-3 border-danger/40" hx-boost="false" novalidate>
       {%- if header.archived %}
       <input type="hidden" name="archived" value="false">
       <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <div class="min-w-0 flex-1">
-          <p class="font-medium">Unarchive this repository</p>
-          <p class="mt-1 text-[13px] text-ink-muted">It accepts pushes, issues, pull requests, comments and releases again, and its mirrors resume.</p>
+          <p class="font-medium">{{ crate::i18n::text("core", "repo-settings-p-unarchive-this-repository") }}</p>
+          <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-p-it-accepts-pushes-issues-pull-requests-comments-and-releases-agai") }}</p>
         </div>
-        <button class="btn w-full sm:w-auto" type="submit">Unarchive repository</button>
+        <button class="btn w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-settings-button-unarchive-repository") }}</button>
       </div>
       {%- else %}
       <input type="hidden" name="archived" value="true">
       <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         <div class="min-w-0 flex-1">
-          <p class="font-medium">Archive this repository</p>
-          <p class="mt-1 text-[13px] text-ink-muted">It becomes read-only: people can still clone, fork and star it, but nobody can push, merge or change its issues, pull requests or releases, and its mirrors pause. You can unarchive it at any time.</p>
+          <p class="font-medium">{{ crate::i18n::text("core", "repo-settings-p-archive-this-repository") }}</p>
+          <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-p-it-becomes-read-only-people-can-still-clone-fork-and-star-it-but") }}</p>
         </div>
-        <button class="btn btn-danger w-full sm:w-auto" type="submit">Archive repository</button>
+        <button class="btn btn-danger w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-settings-button-archive-repository") }}</button>
       </div>
       {%- endif %}
     </form>
     <form method="post" action="{{ delete_url }}" class="box border-danger/40" novalidate>
       <div class="p-4">
         {% call ui::form_error(delete_error) %}{% endcall %}
-        <p class="font-medium">Delete this repository</p>
-        <p class="mt-1 text-[13px] text-ink-muted">Its files, history and stars are removed permanently. This cannot be undone.</p>
-        <label class="label mt-4" for="confirm-delete">Type <span class="font-mono">{{ full_name }}</span> to confirm</label>
+        <p class="font-medium">{{ crate::i18n::text("core", "repo-settings-p-delete-this-repository") }}</p>
+        <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-settings-p-its-files-history-and-stars-are-removed-permanently-this-cannot-b") }}</p>
+        <label class="label mt-4" for="confirm-delete">{{ crate::i18n::text("core", "repo-settings-label-type") }} <span class="font-mono">{{ full_name }}</span> {{ crate::i18n::text("core", "repo-settings-label-to-confirm") }}</label>
         <input class="input font-mono text-[13px] sm:max-w-72" id="confirm-delete" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required>
       </div>
       <div class="flex justify-end border-t border-danger/40 px-4 py-3">
-        <button class="btn btn-danger w-full sm:w-auto" type="submit">Delete repository</button>
+        <button class="btn btn-danger w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-settings-button-delete-repository") }}</button>
       </div>
     </form>
   </section>

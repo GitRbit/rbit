@@ -3,6 +3,6 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold tracking-tight">Repository activity</h1>
+<h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "repo-activity-h1-repository-activity") }}</h1>
 {% include "contributions.html" %}
 {% endblock %}

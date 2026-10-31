@@ -207,8 +207,8 @@
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-2">
         <span class="truncate font-medium"><span class="text-ink-muted">{{ repo.owner }}/</span>{{ repo.name }}</span>
-        {% if repo.is_private %}<span class="badge">Private</span>{% endif %}
-        {% if repo.is_archived %}<span class="badge">Archived</span>{% endif %}
+        {% if repo.is_private %}<span class="badge">{{ crate::i18n::text("core", "macros-span-private") }}</span>{% endif %}
+        {% if repo.is_archived %}<span class="badge">{{ crate::i18n::text("core", "macros-span-archived") }}</span>{% endif %}
       </div>
       {% if let Some(description) = repo.description %}
       <p class="mt-0.5 line-clamp-2 text-[13px] text-ink-muted">{{ description }}</p>
@@ -233,17 +233,17 @@
 {#- "Previous · Page n of m · Next" under a paged list; expects a `Pagination`. -#}
 {% macro pagination(pager) %}
 {% if pager.is_needed() %}
-<nav class="mt-4 flex items-center justify-between gap-2" aria-label="Pagination">
+<nav class="mt-4 flex items-center justify-between gap-2" aria-label="{{ crate::i18n::text("core", "macros-aria-label-pagination") }}">
   {% if let Some(url) = pager.previous_url %}
-  <a href="{{ url }}" class="btn" rel="prev">{% call icon("chevron-left", "size-3.5") %}{% endcall %}Previous</a>
+  <a href="{{ url }}" class="btn" rel="prev">{% call icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "macros-a-previous") }}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call icon("chevron-left", "size-3.5") %}{% endcall %}Previous</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{% call icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "macros-span-previous") }}</span>
   {% endif %}
   <span class="text-xs text-ink-muted">Page {{ pager.page }} of {{ pager.page_count }}</span>
   {% if let Some(url) = pager.next_url %}
-  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
+  <a href="{{ url }}" class="btn" rel="next" data-preload="visible">{{ crate::i18n::text("core", "macros-a-next") }}{% call icon("chevron-right", "size-3.5") %}{% endcall %}</a>
   {% else %}
-  <span class="btn pointer-events-none opacity-50" aria-hidden="true">Next{% call icon("chevron-right", "size-3.5") %}{% endcall %}</span>
+  <span class="btn pointer-events-none opacity-50" aria-hidden="true">{{ crate::i18n::text("core", "macros-span-next") }}{% call icon("chevron-right", "size-3.5") %}{% endcall %}</span>
   {% endif %}
 </nav>
 {% endif %}

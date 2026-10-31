@@ -31,7 +31,7 @@ function enhanceDiagrams(event) {
       oldDetails.remove();
     }
     const frame = document.createElement('iframe');
-    frame.title = 'Mermaid diagram';
+    frame.title = (globalThis.rbitMessages?.text("browser-mermaid-diagram") ?? (globalThis.rbitMessages?.text("browser-mermaid-diagram") ?? "Mermaid diagram"));
     frame.className = 'mermaid-frame';
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.setAttribute('height', '300');
@@ -44,7 +44,7 @@ function enhanceDiagrams(event) {
     const details = document.createElement('details');
     details.className = 'mermaid-source';
     const summary = document.createElement('summary');
-    summary.textContent = 'Diagram source';
+    summary.textContent = (globalThis.rbitMessages?.text("browser-diagram-source") ?? (globalThis.rbitMessages?.text("browser-diagram-source") ?? "Diagram source"));
     pre.before(frame, details);
     details.append(summary, pre);
     if (frame.contentWindow) frames.set(frame.contentWindow, frame);

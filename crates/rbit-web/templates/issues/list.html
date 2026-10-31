@@ -5,40 +5,40 @@
 {% block content %}
 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
   <form method="get" action="{{ list_url }}" class="flex min-w-0 flex-1" role="search">
-    <label class="sr-only" for="issue-query">Search issues</label>
+    <label class="sr-only" for="issue-query">{{ crate::i18n::text("core", "issues-list-label-search-issues") }}</label>
     <span class="relative min-w-0 flex-1">
       {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-      <input id="issue-query" class="input pl-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="Search titles and descriptions…" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input id="issue-query" class="input pl-8 font-mono text-xs" type="search" name="q" value="{{ query }}" maxlength="1000" placeholder="{{ crate::i18n::text("core", "issues-list-placeholder-search-titles-and-descriptions") }}" aria-describedby="search-help" autocomplete="off" autocapitalize="none" spellcheck="false">
     </span>
-    <button type="submit" class="btn ml-2">Search</button>
+    <button type="submit" class="btn ml-2">{{ crate::i18n::text("core", "issues-list-button-search") }}</button>
   </form>
   <div class="flex shrink-0 gap-2">
-    <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
-    <a href="{{ milestones_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}Milestones</a>
-    {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">New issue</a>{% endif %}
+    <a href="{{ labels_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("tag", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "issues-list-a-labels") }}</a>
+    <a href="{{ milestones_url }}" class="btn flex-1 sm:flex-none">{% call ui::icon("milestone", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "issues-list-a-milestones") }}</a>
+    {% if !header.archived %}<a href="{{ new_url }}" class="btn btn-primary flex-1 sm:flex-none">{{ crate::i18n::text("core", "issues-list-a-new-issue") }}</a>{% endif %}
   </div>
 </div>
 
 <details class="mt-2 text-xs text-ink-muted" id="search-help">
-  <summary class="cursor-pointer">Search help</summary>
-  <p class="mt-2">Use the menus to filter results, or type terms such as <code>author:@me</code>, <code>label:"good first issue"</code>, <code>no:assignee</code> or <code>sort:updated-desc</code>. Text searches titles and descriptions. Each menu keeps your other filters.</p>
+  <summary class="cursor-pointer">{{ crate::i18n::text("core", "issues-list-summary-search-help") }}</summary>
+  <p class="mt-2">{{ crate::i18n::text("core", "issues-list-p-use-the-menus-to-filter-results-or-type-terms-such-as") }} <code>author:@me</code>, <code>label:"good first issue"</code>, <code>no:assignee</code> {{ crate::i18n::text("core", "issues-list-p-or") }} <code>sort:updated-desc</code>. Text searches titles and descriptions. Each menu keeps your other filters.</p>
 </details>
 {% for hint in hints %}<p class="hint mt-2">{{ hint }}</p>{% endfor %}
-{% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}Clear the search, filters and sort</a></p>{% endif %}
+{% if is_filtered %}<p class="mt-2 text-xs"><a href="{{ list_url }}" class="flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("x", "size-3") %}{% endcall %}{{ crate::i18n::text("core", "issues-list-a-clear-the-search-filters-and-sort") }}</a></p>{% endif %}
 
 <div class="box mt-4 overflow-visible">
   {#- Phones: the state links, then the filters on one row that scrolls sideways. -#}
   <div class="box-header relative flex-col items-stretch gap-0 pt-2 sm:flex-row sm:items-center sm:gap-3 sm:pt-0">
-    <nav class="flex min-h-9 items-center gap-4 text-[13px]" aria-label="State">
-      <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ open }}</span> Open</a>
-      <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> Closed</a>
+    <nav class="flex min-h-9 items-center gap-4 text-[13px]" aria-label="{{ crate::i18n::text("core", "issues-list-aria-label-state") }}">
+      <a href="{{ open_url }}" class="flex items-center gap-1.5 {% if showing_open %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_open %}aria-current="page"{% endif %}>{% call ui::icon("circle-dot", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ open }}</span> {{ crate::i18n::text("core", "issues-list-a-open") }}</a>
+      <a href="{{ closed_url }}" class="flex items-center gap-1.5 {% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}>{% call ui::icon("check", "size-3.5") %}{% endcall %}<span class="tabular-nums">{{ closed }}</span> {{ crate::i18n::text("core", "issues-list-a-closed") }}</a>
     </nav>
     <div class="scroll-tabs -mx-4 flex px-2 sm:relative sm:mx-0 sm:ml-auto sm:gap-x-1 sm:overflow-visible sm:px-0 sm:[mask-image:none]">
       {% include "issues/filters.html" %}
     </div>
   </div>
   {% if rows.is_empty() %}
-  {% call ui::empty_state("circle-dot", "No issues match", "Try another search, or open the first issue.") %}{% endcall %}
+  {% call ui::empty_state("circle-dot", crate::i18n::text("core", "issues-list-empty-title-no-issues-match"), crate::i18n::text("core", "issues-list-empty-description-try-another-search-or-open-the-first-issue")) %}{% endcall %}
   {% else %}
   {% include "issues/rows.html" %}
   {% endif %}

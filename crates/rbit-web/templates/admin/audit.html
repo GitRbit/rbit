@@ -5,9 +5,9 @@
 {% call admin::heading("Audit log", "Sign-ins, two-factor changes, sessions, access tokens and administrator actions, newest first.") %}{% endcall %}
 
 <form method="get" action="/admin/audit" class="mb-3 flex flex-wrap items-center gap-2" role="search">
-  <label class="sr-only" for="audit-search">Search</label>
-  <input class="input min-w-0 flex-1 basis-56 sm:max-w-72" id="audit-search" type="search" name="q" value="{{ listing.search }}" placeholder="User, target or IP address" autocomplete="off" autocapitalize="none" spellcheck="false">
-  <label class="sr-only" for="audit-category">Category</label>
+  <label class="sr-only" for="audit-search">{{ crate::i18n::text("core", "admin-audit-label-search") }}</label>
+  <input class="input min-w-0 flex-1 basis-56 sm:max-w-72" id="audit-search" type="search" name="q" value="{{ listing.search }}" placeholder="{{ crate::i18n::text("core", "admin-audit-placeholder-user-target-or-ip-address") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+  <label class="sr-only" for="audit-category">{{ crate::i18n::text("core", "admin-audit-label-category") }}</label>
   <div class="relative w-full sm:w-48">
     <select class="input cursor-pointer appearance-none pr-9" id="audit-category" name="category">
       {% for option in listing.categories %}
@@ -16,13 +16,13 @@
     </select>
     {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
   </div>
-  <button class="btn h-10 sm:h-9" type="submit">Filter</button>
-  {% if listing.is_filtered %}<a href="/admin/audit" class="btn btn-ghost h-10 sm:h-9">Clear</a>{% endif %}
+  <button class="btn h-10 sm:h-9" type="submit">{{ crate::i18n::text("core", "admin-audit-button-filter") }}</button>
+  {% if listing.is_filtered %}<a href="/admin/audit" class="btn btn-ghost h-10 sm:h-9">{{ crate::i18n::text("core", "admin-audit-a-clear") }}</a>{% endif %}
 </form>
 
 <div class="box">
   {% if events.is_empty() %}
-  {% call ui::empty_state("shield", "No events", "Nothing matches these filters yet.") %}{% endcall %}
+  {% call ui::empty_state("shield", crate::i18n::text("core", "admin-audit-empty-title-no-events"), crate::i18n::text("core", "admin-audit-empty-description-nothing-matches-these-filters-yet")) %}{% endcall %}
   {% else %}
   <ul>
     {% for event in events %}
@@ -33,8 +33,8 @@
           <span class="badge">{{ event.category }}</span>
         </div>
         <p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
-          {% if let Some(actor) = event.actor %}<span>{% if event.actor_unverified %}as <span class="font-mono">{{ actor }}</span>{% else %}by <a href="/{{ actor }}" class="text-ink hover:underline">{{ actor }}</a>{% endif %}</span>{% endif %}
-          {% if let Some(target) = event.target %}<span>on <span class="text-ink">{{ target }}</span></span>{% endif %}
+          {% if let Some(actor) = event.actor %}<span>{% if event.actor_unverified %}{{ crate::i18n::text("core", "admin-audit-span-as") }} <span class="font-mono">{{ actor }}</span>{% else %}{{ crate::i18n::text("core", "admin-audit-span-by") }} <a href="/{{ actor }}" class="text-ink hover:underline">{{ actor }}</a>{% endif %}</span>{% endif %}
+          {% if let Some(target) = event.target %}<span>{{ crate::i18n::text("core", "admin-audit-span-on") }} <span class="text-ink">{{ target }}</span></span>{% endif %}
           {% if let Some(ip) = event.ip_address %}<span class="font-mono">{{ ip }}</span>{% endif %}
           {% if !event.detail.is_empty() %}<span>{{ event.detail }}</span>{% endif %}
         </p>

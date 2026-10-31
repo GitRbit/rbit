@@ -1,19 +1,19 @@
 {#- Submit a review (Comment / Approve / Request changes); expects `form: ReviewFormView` (views::pulls). -#}
-<section id="submit-review" class="box scroll-mt-28 p-3 sm:p-4" aria-label="Review changes">
+<section id="submit-review" class="box scroll-mt-28 p-3 sm:p-4" aria-label="{{ crate::i18n::text("core", "pulls-review-form-aria-label-review-changes") }}">
   <form method="post" action="{{ form.action_url }}">
-    <label for="review-body" class="label">Review changes{% if form.pending_comments > 0 %} <span class="badge text-warning">{{ form.pending_comments }} pending</span>{% endif %}</label>
-    <textarea id="review-body" name="body" data-markdown-editor class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="Leave a comment (Markdown is supported)"></textarea>
+    <label for="review-body" class="label">{{ crate::i18n::text("core", "pulls-review-form-label-review-changes") }}{% if form.pending_comments > 0 %} <span class="badge text-warning">{{ form.pending_comments }} pending</span>{% endif %}</label>
+    <textarea id="review-body" name="body" data-markdown-editor class="input mt-1.5 h-24 resize-y py-2 text-[13px]" rows="4" maxlength="65536" placeholder="{{ crate::i18n::text("core", "pulls-review-form-placeholder-leave-a-comment-markdown-is-supported") }}"></textarea>
     <div class="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-      <button type="submit" name="verdict" value="comment" class="btn h-11 sm:h-8">Comment</button>
+      <button type="submit" name="verdict" value="comment" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-review-form-button-comment") }}</button>
       {% if form.can_decide %}
-      <button type="submit" name="verdict" value="request_changes" class="btn h-11 sm:h-8">Request changes</button>
-      <button type="submit" name="verdict" value="approve" class="btn btn-primary h-11 sm:h-8">Approve</button>
+      <button type="submit" name="verdict" value="request_changes" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-review-form-button-request-changes") }}</button>
+      <button type="submit" name="verdict" value="approve" class="btn btn-primary h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-review-form-button-approve") }}</button>
       {% endif %}
     </div>
   </form>
   {% if form.pending_comments > 0 %}
   <form method="post" action="{{ form.discard_url }}" class="mt-2 flex justify-end">
-    <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">Discard pending review</button>
+    <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{{ crate::i18n::text("core", "pulls-review-form-button-discard-pending-review") }}</button>
   </form>
   {% endif %}
 </section>

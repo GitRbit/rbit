@@ -2,12 +2,12 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <header class="mb-6 border-b border-line pb-6">
-  <h1 class="text-2xl font-semibold tracking-tight">Themes</h1>
+  <h1 class="text-2xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-themes") }}</h1>
   <p class="mt-1.5 text-ink-muted">
     {%- if gallery.signed_in %}
-    Pick a theme. It is saved to your account and follows you to every device you sign in on.
+    {{ crate::i18n::text("core", "themes-index-p-pick-a-theme-it-is-saved-to-your-account-and-follows-you-to-every") }}
     {%- else %}
-    Pick a theme. It is remembered in this browser; <a class="link" href="/login?next=/themes">sign in</a> to keep it on every device.
+    {{ crate::i18n::text("core", "themes-index-p-pick-a-theme-it-is-remembered-in-this-browser") }} <a class="link" href="/login?next=/themes">{{ crate::i18n::text("core", "themes-index-a-sign-in") }}</a> {{ crate::i18n::text("core", "themes-index-p-to-keep-it-on-every-device") }}
     {%- endif %}
   </p>
 </header>

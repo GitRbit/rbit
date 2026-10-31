@@ -2,49 +2,49 @@
 {% import "macros.html" as ui %}
 {% block settings_content %}
 {% if password_change_required %}
-<h2 class="text-xl font-semibold tracking-tight">Update your password</h2>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-account-h2-update-your-password") }}</h2>
 <p class="mt-1 text-[13px] text-ink-muted">An administrator created your account with an initial password. Choose a new password before continuing to {{ page.site_name }}.</p>
 {% else %}
-<h2 class="text-xl font-semibold tracking-tight">Account</h2>
-<p class="mt-1 text-[13px] text-ink-muted">How you sign in. Changes ask for your current password.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-account-h2-account") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-account-p-how-you-sign-in-changes-ask-for-your-current-password") }}</p>
 
 <form method="post" action="/settings/account/username" class="box mt-6" novalidate>
-  <div class="box-header"><h3 class="text-[13px] font-medium">Username</h3></div>
+  <div class="box-header"><h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-account-h3-username") }}</h3></div>
   <div class="p-4">
     {% call ui::form_error(username_error) %}{% endcall %}
-    {% if self.saved_username() %}<p role="status" class="mb-5 text-[13px]">Username updated.</p>{% endif %}
-    <label class="label" for="username">Username</label>
+    {% if self.saved_username() %}<p role="status" class="mb-5 text-[13px]">{{ crate::i18n::text("core", "settings-account-p-username-updated") }}</p>{% endif %}
+    <label class="label" for="username">{{ crate::i18n::text("core", "settings-account-label-username") }}</label>
     <input class="input" id="username" name="username" value="{{ username }}" maxlength="39" autocomplete="username" spellcheck="false" required>
-    <p class="hint">Profile links and Git remotes using your old name keep working until someone takes that name. Update your links and remotes. Sign in with your new username or email.</p>
-    <label class="label mt-5" for="username-password">Current password</label>
+    <p class="hint">{{ crate::i18n::text("core", "settings-account-p-profile-links-and-git-remotes-using-your-old-name-keep-working-un") }}</p>
+    <label class="label mt-5" for="username-password">{{ crate::i18n::text("core", "settings-account-label-current-password") }}</label>
     <input class="input" id="username-password" name="current_password" type="password" autocomplete="current-password" required>
   </div>
-  <div class="flex justify-end border-t border-line px-4 py-3"><button class="btn btn-primary w-full sm:w-auto" type="submit">Change username</button></div>
+  <div class="flex justify-end border-t border-line px-4 py-3"><button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-account-button-change-username") }}</button></div>
 </form>
 
 <section class="box mt-6" aria-labelledby="verification-heading">
   <div class="p-4">
     {% call ui::form_error(verification_error) %}{% endcall %}
     {% if self.sent_verification() %}
-    <p role="status" class="mb-4 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Verification email sent. Check your inbox.</p>
+    <p role="status" class="mb-4 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "settings-account-p-verification-email-sent-check-your-inbox") }}</p>
     {% endif %}
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <h3 id="verification-heading" class="flex flex-wrap items-center gap-2 text-[13px] font-medium">
           <span class="truncate">{{ current_email }}</span>
-          {% if self.is_verified() %}<span class="badge">Verified</span>{% else %}<span class="badge border-warning/40 text-warning">Unverified</span>{% endif %}
+          {% if self.is_verified() %}<span class="badge">{{ crate::i18n::text("core", "settings-account-span-verified") }}</span>{% else %}<span class="badge border-warning/40 text-warning">{{ crate::i18n::text("core", "settings-account-span-unverified") }}</span>{% endif %}
         </h3>
         <p class="mt-1 text-xs text-ink-muted">
           {%- match verification -%}
-          {%- when EmailVerification::Verified -%}You have confirmed that this address is yours.
-          {%- when EmailVerification::Pending -%}Confirm the address with the link we emailed you.
-          {%- when EmailVerification::Unavailable -%}Email is not available on this server, so the address can't be verified.
+          {%- when EmailVerification::Verified -%}{{ crate::i18n::text("core", "settings-account-p-you-have-confirmed-that-this-address-is-yours") }}
+          {%- when EmailVerification::Pending -%}{{ crate::i18n::text("core", "settings-account-p-confirm-the-address-with-the-link-we-emailed-you") }}
+          {%- when EmailVerification::Unavailable -%}{{ crate::i18n::text("core", "settings-account-p-email-is-not-available-on-this-server-so-the-address-can-t-be-ver") }}
           {%- endmatch -%}
         </p>
       </div>
       {% if self.can_resend() %}
       <form method="post" action="/settings/account/verify" class="w-full sm:w-auto">
-        <button class="btn w-full sm:w-auto" type="submit">Resend verification email</button>
+        <button class="btn w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-account-button-resend-verification-email") }}</button>
       </form>
       {% endif %}
     </div>
@@ -53,23 +53,23 @@
 
 <form method="post" action="/settings/account/email" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">Email address</h3>
+    <h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-account-h3-email-address") }}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(email_error) %}{% endcall %}
     {% if self.saved_email() %}
-    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Email address updated.</p>
+    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "settings-account-p-email-address-updated") }}</p>
     {% endif %}
 
-    <label class="label" for="email">Email</label>
+    <label class="label" for="email">{{ crate::i18n::text("core", "settings-account-label-email") }}</label>
     <input class="input" id="email" name="email" type="email" value="{{ email }}" maxlength="254" autocomplete="email" spellcheck="false" required>
-    <p class="hint">You can sign in with this address or your username. Currently <span class="text-ink-muted">{{ current_email }}</span>.</p>
+    <p class="hint">{{ crate::i18n::text("core", "settings-account-p-you-can-sign-in-with-this-address-or-your-username-currently") }} <span class="text-ink-muted">{{ current_email }}</span>.</p>
 
-    <label class="label mt-5" for="email-password">Current password</label>
+    <label class="label mt-5" for="email-password">{{ crate::i18n::text("core", "settings-account-label-current-password") }}</label>
     <input class="input" id="email-password" name="current_password" type="password" autocomplete="current-password" required>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Update email</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-account-button-update-email") }}</button>
   </div>
 </form>
 
@@ -77,26 +77,26 @@
 
 <form method="post" action="/settings/account/password" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">Password</h3>
+    <h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-account-h3-password") }}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(password_error) %}{% endcall %}
     {% if self.saved_password() %}
-    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Password changed.</p>
+    <p role="status" class="mb-5 flex items-center gap-2 text-[13px]">{% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "settings-account-p-password-changed") }}</p>
     {% endif %}
 
-    <label class="label" for="current-password">Current password</label>
+    <label class="label" for="current-password">{{ crate::i18n::text("core", "settings-account-label-current-password") }}</label>
     <input class="input" id="current-password" name="current_password" type="password" autocomplete="current-password" required>
 
-    <label class="label mt-5" for="new-password">New password</label>
+    <label class="label mt-5" for="new-password">{{ crate::i18n::text("core", "settings-account-label-new-password") }}</label>
     <input class="input" id="new-password" name="new_password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" maxlength="256" required>
     <p class="hint">At least {{ min_password_length }} characters. A few unrelated words make a strong, memorable password.</p>
 
-    <label class="label mt-5" for="confirm-password">Confirm new password</label>
+    <label class="label mt-5" for="confirm-password">{{ crate::i18n::text("core", "settings-account-label-confirm-new-password") }}</label>
     <input class="input" id="confirm-password" name="confirm_password" type="password" autocomplete="new-password" maxlength="256" required>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Change password</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-account-button-change-password") }}</button>
   </div>
 </form>
 {% endblock %}

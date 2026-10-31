@@ -5,51 +5,51 @@
 {% block content %}
 {#- hx-history="false" keeps this page, with its secret forms, out of htmx's localStorage history cache. -#}
 <div class="mx-auto max-w-3xl" hx-history="false">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ environments_url }}">Environments</a> <span class="text-ink-faint">/</span> {{ name }}</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("actions", "actions-environment-a-settings") }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ crate::i18n::text("actions", "actions-environment-a-actions") }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ environments_url }}">{{ crate::i18n::text("actions", "actions-environment-a-environments") }}</a> <span class="text-ink-faint">/</span> {{ name }}</p>
   <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ name }}</h1>
 
   {% include "actions/notice.html" %}
 
   <form method="post" action="{{ action_url }}" class="box mt-6" novalidate>
-    <div class="box-header"><h2 class="text-[13px] font-medium">Protection rules</h2></div>
+    <div class="box-header"><h2 class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-environment-h2-protection-rules") }}</h2></div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
-      <label class="label" for="environment-reviewers">Required reviewers</label>
-      <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="environment-reviewers" name="reviewers" rows="3" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="one username per line">{{ reviewers }}</textarea>
-      <p class="hint">Up to six people who can read this repository. A job in this environment waits until one of them approves it; a rejected job fails. With none, jobs run without review.</p>
+      <label class="label" for="environment-reviewers">{{ crate::i18n::text("actions", "actions-environment-label-required-reviewers") }}</label>
+      <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="environment-reviewers" name="reviewers" rows="3" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="{{ crate::i18n::text("actions", "actions-environment-placeholder-one-username-per-line") }}">{{ reviewers }}</textarea>
+      <p class="hint">{{ crate::i18n::text("actions", "actions-environment-p-up-to-six-people-who-can-read-this-repository-a-job-in-this-envir") }}</p>
       <label class="mt-4 flex cursor-pointer items-start gap-3">
         <input type="checkbox" name="prevent_self_review" value="on" class="mt-1 accent-(--ink)" {% if prevent_self_review %}checked{% endif %}>
-        <span><span class="block font-medium">Prevent self-review</span><span class="block text-[13px] text-ink-muted">Whoever started a run cannot approve its deployments.</span></span>
+        <span><span class="block font-medium">{{ crate::i18n::text("actions", "actions-environment-span-prevent-self-review") }}</span><span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-environment-span-whoever-started-a-run-cannot-approve-its-deployments") }}</span></span>
       </label>
 
-      <label class="label mt-5" for="environment-wait-timer">Wait timer</label>
+      <label class="label mt-5" for="environment-wait-timer">{{ crate::i18n::text("actions", "actions-environment-label-wait-timer") }}</label>
       <input class="input w-32" id="environment-wait-timer" name="wait_timer" type="number" min="0" max="43200" inputmode="numeric" value="{{ wait_timer }}">
-      <p class="hint">Minutes a job in this environment waits, once it is ready and approved, before it runs. 0 for none; at most 43200 (30 days).</p>
+      <p class="hint">{{ crate::i18n::text("actions", "actions-environment-p-minutes-a-job-in-this-environment-waits-once-it-is-ready-and-appr") }}</p>
 
       <fieldset class="mt-5">
-        <legend class="label">Deployment branches and tags</legend>
+        <legend class="label">{{ crate::i18n::text("actions", "actions-environment-legend-deployment-branches-and-tags") }}</legend>
         <div class="box overflow-hidden">
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="policy" value="all" class="mt-1 accent-(--ink)" {% if policy == "all" %}checked{% endif %}>
-            <span class="block font-medium">Any branch or tag</span>
+            <span class="block font-medium">{{ crate::i18n::text("actions", "actions-environment-span-any-branch-or-tag") }}</span>
           </label>
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="policy" value="protected" class="mt-1 accent-(--ink)" {% if policy == "protected" %}checked{% endif %}>
-            <span><span class="block font-medium">Protected branches only</span><span class="block text-[13px] text-ink-muted">Branches that have a branch protection rule.</span></span>
+            <span><span class="block font-medium">{{ crate::i18n::text("actions", "actions-environment-span-protected-branches-only") }}</span><span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-environment-span-branches-that-have-a-branch-protection-rule") }}</span></span>
           </label>
           <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="radio" name="policy" value="selected" class="mt-1 accent-(--ink)" {% if policy == "selected" %}checked{% endif %}>
             <span class="min-w-0 flex-1">
-              <span class="block font-medium">Selected branches and tags</span>
-              <textarea class="input mt-2 h-20 resize-y py-2 font-mono text-[13px]" name="patterns" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Branch and tag patterns" placeholder="main">{{ patterns }}</textarea>
-              <span class="block text-xs text-ink-muted">One pattern per line, as in workflow filters. Branches by name (<span class="font-mono">release/*</span>), tags with <span class="font-mono">refs/tags/</span> (<span class="font-mono">refs/tags/v*</span>); <span class="font-mono">!</span> excludes.</span>
+              <span class="block font-medium">{{ crate::i18n::text("actions", "actions-environment-span-selected-branches-and-tags") }}</span>
+              <textarea class="input mt-2 h-20 resize-y py-2 font-mono text-[13px]" name="patterns" rows="2" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="{{ crate::i18n::text("actions", "actions-environment-aria-label-branch-and-tag-patterns") }}" placeholder="{{ crate::i18n::text("actions", "actions-environment-placeholder-main") }}">{{ patterns }}</textarea>
+              <span class="block text-xs text-ink-muted">{{ crate::i18n::text("actions", "actions-environment-span-one-pattern-per-line-as-in-workflow-filters-branches-by-name") }}<span class="font-mono">{{ crate::i18n::text("actions", "actions-environment-span-release") }}</span>{{ crate::i18n::text("actions", "actions-environment-span-tags-with") }} <span class="font-mono">{{ crate::i18n::text("actions", "actions-environment-span-refs-tags") }}</span> (<span class="font-mono">{{ crate::i18n::text("actions", "actions-environment-span-refs-tags-v") }}</span>); <span class="font-mono">!</span> {{ crate::i18n::text("actions", "actions-environment-span-excludes") }}</span>
             </span>
           </label>
         </div>
       </fieldset>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save protection rules</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("actions", "actions-environment-button-save-protection-rules") }}</button>
     </div>
   </form>
 
@@ -59,8 +59,8 @@
 
   <form method="post" action="{{ delete_url }}" class="box mt-8">
     <div class="flex flex-wrap items-center gap-3 p-4">
-      <p class="min-w-0 flex-1 text-[13px]"><span class="block font-medium">Delete this environment</span><span class="block text-ink-muted">Its secrets, variables and rules go too. Jobs waiting for its reviewers run at once.</span></p>
-      <button class="btn h-10 text-danger sm:h-8" type="submit">Delete environment</button>
+      <p class="min-w-0 flex-1 text-[13px]"><span class="block font-medium">{{ crate::i18n::text("actions", "actions-environment-span-delete-this-environment") }}</span><span class="block text-ink-muted">{{ crate::i18n::text("actions", "actions-environment-span-its-secrets-variables-and-rules-go-too-jobs-waiting-for-its-revie") }}</span></p>
+      <button class="btn h-10 text-danger sm:h-8" type="submit">{{ crate::i18n::text("actions", "actions-environment-button-delete-environment") }}</button>
     </div>
   </form>
 </div>

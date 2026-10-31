@@ -40,7 +40,7 @@ function initializeMirrorProgress(event) {
         delay = status.phase === "failed" ? 10000 : 1500;
       } catch {
         if (!panel.isConnected) return;
-        panel.querySelector("[data-mirror-message]").textContent = "Unable to check mirror status. Reconnecting automatically…";
+        panel.querySelector("[data-mirror-message]").textContent = (globalThis.rbitMessages?.text("browser-mirror-reconnecting") ?? "Unable to check mirror status. Reconnecting automatically…");
         delay = Math.min(delay * 2, 15000);
       }
       if (panel.isConnected) setTimeout(poll, delay);

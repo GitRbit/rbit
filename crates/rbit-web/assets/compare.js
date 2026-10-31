@@ -22,7 +22,7 @@ async function search(input, state) {
   const parts = repo.split('/');
   if (parts.length !== 2 || parts.some(part => !part || part === '.' || part === '..')) return;
   const url = `/${parts.map(encodeURIComponent).join('/')}/compare/refs?${new URLSearchParams({ q: state.query ?? input.value, branches: String(form.dataset.branchesOnly === 'true') })}`;
-  status.textContent = branchesOnly ? 'Finding branches…' : 'Finding branches and tags…';
+  status.textContent = branchesOnly ? (globalThis.rbitMessages?.text("browser-branches-loading") ?? (globalThis.rbitMessages?.text("browser-branches-loading") ?? "Finding branches…")) : (globalThis.rbitMessages?.text("browser-refs-loading") ?? (globalThis.rbitMessages?.text("browser-refs-loading") ?? "Finding branches and tags…"));
   try {
     const response = await fetch(url, { signal: state.controller.signal, headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('Search failed');
@@ -42,9 +42,9 @@ async function search(input, state) {
     }
     list.hidden = options.length === 0;
     input.setAttribute('aria-expanded', String(options.length > 0));
-    status.textContent = options.length === 50 ? 'First 50 matches. Type more to narrow the list.' : options.length ? '' : branchesOnly ? 'No matching branches. Enter an existing branch name.' : 'No matches. You can type a revision or commit ID.';
+    status.textContent = options.length === 50 ? (globalThis.rbitMessages?.text("browser-refs-more") ?? (globalThis.rbitMessages?.text("browser-refs-more") ?? "First 50 matches. Type more to narrow the list.")) : options.length ? '' : branchesOnly ? (globalThis.rbitMessages?.text("browser-branches-empty") ?? (globalThis.rbitMessages?.text("browser-branches-empty") ?? "No matching branches. Enter an existing branch name.")) : (globalThis.rbitMessages?.text("browser-refs-empty") ?? (globalThis.rbitMessages?.text("browser-refs-empty") ?? "No matches. You can type a revision or commit ID."));
   } catch (error) {
-    if (error.name !== 'AbortError' && searches.get(input) === state) status.textContent = branchesOnly ? 'Search is unavailable. Enter an existing branch name.' : 'Search is unavailable. Type a revision and press Compare.';
+    if (error.name !== 'AbortError' && searches.get(input) === state) status.textContent = branchesOnly ? (globalThis.rbitMessages?.text("browser-branches-failed") ?? (globalThis.rbitMessages?.text("browser-branches-failed") ?? "Search is unavailable. Enter an existing branch name.")) : (globalThis.rbitMessages?.text("browser-refs-failed") ?? (globalThis.rbitMessages?.text("browser-refs-failed") ?? "Search is unavailable. Type a revision and press Compare."));
   }
 }
 function schedule(input, delay, all = false) {

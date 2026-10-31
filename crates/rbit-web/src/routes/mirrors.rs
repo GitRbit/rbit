@@ -69,7 +69,7 @@ fn suggested_name(url: &str) -> String {
 async fn mirror_page(state: &AppState, user: &User, page: Page, form: &NewMirrorForm, error: FormError) -> WebResult<NewMirrorPage> {
     let mirrors = &state.services.mirrors;
     Ok(NewMirrorPage {
-        page: page.titled("Mirror a repository"),
+        page: page.titled(crate::i18n::text("core", "title-mirror-a-repository")),
         error,
         disabled: !mirrors.is_enabled(),
         owners: owner_options(state, user, &form.owner).await?,

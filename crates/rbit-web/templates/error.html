@@ -6,11 +6,11 @@
 <section class="auth-shell sm:py-20">
   <div class="card flex flex-col items-center text-center">
     <span class="tile font-mono text-[13px] font-medium">{{ info.status.as_u16() }}</span>
-    <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.title }}</h1>
-    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ info.message }}</p>
+    <h1 class="mt-5 text-lg font-semibold tracking-tight">{{ info.localized_title() }}</h1>
+    <p class="mt-1.5 max-w-xs text-[13px] text-ink-muted text-balance">{{ info.localized_message() }}</p>
     <div class="mt-6 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
-      <a href="/" class="btn btn-primary">Go home</a>
-      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}Explore</a>
+      <a href="/" class="btn btn-primary">{{ crate::i18n::text("core", "error-a-go-home") }}</a>
+      <a href="/explore" class="btn">{% call ui::icon("compass", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "error-a-explore") }}</a>
     </div>
   </div>
 </section>

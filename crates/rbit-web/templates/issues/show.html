@@ -15,12 +15,12 @@
 </header>
 
 <details class="box mt-4 md:hidden">
-  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}Details</summary>
+  <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-[13px] font-medium">{% call ui::icon("chevron-down", "size-3.5 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "issues-show-summary-details") }}</summary>
   <div class="border-t border-line px-4 py-3">{% include "issues/sidebar.html" %}</div>
 </details>
 
 <div class="mt-6 grid gap-8 md:grid-cols-[minmax(0,1fr)_16rem]">
   <div class="min-w-0">{% include "timeline/thread.html" %}</div>
-  <aside class="hidden md:block" aria-label="Details">{% include "issues/sidebar.html" %}</aside>
+  <aside class="hidden md:block" aria-label="{{ crate::i18n::text("core", "issues-show-aria-label-details") }}">{% include "issues/sidebar.html" %}</aside>
 </div>
 {% endblock %}

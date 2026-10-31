@@ -2,25 +2,25 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="mirror">
-  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-new-repository") }}</h1>
   {% let creation_kind = "mirror" %}
   {% include "repo/create_tabs.html" %}
   <div id="create-mirror-panel" role="tabpanel" aria-labelledby="create-mirror-tab" data-repo-create-panel>
-  <p class="mt-1 text-[13px] text-ink-muted">A mirror fetches the branches and tags of a public repository elsewhere on a schedule. It is read-only here: changes come from upstream.</p>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-mirror-p-a-mirror-fetches-the-branches-and-tags-of-a-public-repository-els") }}</p>
 
   {% if disabled %}
-  <div class="box mt-8">{% call ui::empty_state("refresh", "Mirrors are disabled", "An administrator of this instance has turned pull mirrors off.") %}{% endcall %}</div>
+  <div class="box mt-8">{% call ui::empty_state("refresh", crate::i18n::text("core", "repo-new-mirror-empty-title-mirrors-are-disabled"), crate::i18n::text("core", "repo-new-mirror-empty-description-an-administrator-of-this-instance-has-turned-pull-mirrors-off")) %}{% endcall %}</div>
   {% else %}
   <form method="post" action="/new/mirror" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="mirror-url">Upstream URL</label>
+    <label class="label" for="mirror-url">{{ crate::i18n::text("core", "repo-new-mirror-label-upstream-url") }}</label>
     <input class="input font-mono text-xs" id="mirror-url" name="url" value="{{ url }}" type="url" inputmode="url" placeholder="https://example.com/group/project.git" autocapitalize="none" spellcheck="false" maxlength="2048" required autofocus>
-    <p class="hint">An <span class="font-mono">https://</span> or <span class="font-mono">http://</span> URL of a public repository.</p>
+    <p class="hint">{{ crate::i18n::text("core", "repo-new-mirror-p-an") }} <span class="font-mono">https://</span> {{ crate::i18n::text("core", "repo-new-mirror-p-or") }} <span class="font-mono">http://</span> {{ crate::i18n::text("core", "repo-new-mirror-p-url-of-a-public-repository") }}</p>
 
     <div class="mt-5 grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
       <div>
-        <label class="label" for="mirror-owner">Owner</label>
+        <label class="label" for="mirror-owner">{{ crate::i18n::text("core", "repo-new-mirror-label-owner") }}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pr-9" id="mirror-owner" name="owner">
             {% for owner in owners %}
@@ -32,44 +32,44 @@
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
       <div>
-        <label class="label" for="mirror-name">Name <span class="font-normal text-ink-faint">optional</span></label>
-        <input class="input" id="mirror-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="from the URL">
+        <label class="label" for="mirror-name">{{ crate::i18n::text("core", "repo-new-mirror-label-name") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "repo-new-mirror-span-optional") }}</span></label>
+        <input class="input" id="mirror-name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]*" placeholder="{{ crate::i18n::text("core", "repo-new-mirror-placeholder-from-the-url") }}">
       </div>
     </div>
 
-    <label class="label mt-5" for="mirror-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+    <label class="label mt-5" for="mirror-description">{{ crate::i18n::text("core", "repo-new-mirror-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "repo-new-mirror-span-optional") }}</span></label>
     <input class="input" id="mirror-description" name="description" value="{{ description }}" maxlength="350">
 
-    <label class="label mt-5" for="mirror-interval">Fetch every</label>
+    <label class="label mt-5" for="mirror-interval">{{ crate::i18n::text("core", "repo-new-mirror-label-fetch-every") }}</label>
     <div class="flex items-center gap-2">
       <input class="input w-32" id="mirror-interval" name="interval" value="{{ interval_minutes }}" inputmode="numeric" pattern="[0-9]+" required>
-      <span class="text-[13px] text-ink-muted">minutes</span>
+      <span class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-mirror-span-minutes") }}</span>
     </div>
     <p class="hint">At least {{ min_interval_minutes }} minutes.</p>
 
     <fieldset class="mt-6">
-      <legend class="label">Visibility</legend>
+      <legend class="label">{{ crate::i18n::text("core", "repo-new-mirror-legend-visibility") }}</legend>
       <div class="box overflow-hidden">
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Public</span>
-            <span class="block text-[13px] text-ink-muted">Anyone can see and clone the mirror.</span>
+            <span class="block font-medium">{{ crate::i18n::text("core", "repo-new-mirror-span-public") }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-mirror-span-anyone-can-see-and-clone-the-mirror") }}</span>
           </span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Private</span>
-            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+            <span class="block font-medium">{{ crate::i18n::text("core", "repo-new-mirror-span-private") }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-mirror-span-only-the-owner-can-see-it-for-an-organization-that-means-its-memb") }}</span>
           </span>
         </label>
       </div>
     </fieldset>
 
     <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
-      <a href="/new" class="btn">Cancel</a>
-      <button class="btn btn-primary" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Create mirror</button>
+      <a href="/new" class="btn">{{ crate::i18n::text("core", "repo-new-mirror-a-cancel") }}</a>
+      <button class="btn btn-primary" type="submit">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-new-mirror-button-create-mirror") }}</button>
     </div>
   </form>
   {% endif %}

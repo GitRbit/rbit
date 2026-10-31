@@ -16,7 +16,7 @@ fn bundled_packs_validate_and_resolve_locales_plurals_and_pseudolocales() {
     let set = PackSet::new(packs, Arc::clone(&schema), Arc::new(English::new(Arc::clone(&schema))), 9).unwrap();
     let spanish = set.snapshot("es");
     assert_eq!(spanish.text("core", "nav-explore"), "Explorar");
-    for (count, expected) in [(1.0, "Una lengua instalada"), (3.0, "lenguas instaladas")] {
+    for (count, expected) in [(1.0, "Un paquete de idioma instalado"), (3.0, "paquetes de idioma instalados")] {
         assert!(
             spanish
                 .format(&MessageRef {

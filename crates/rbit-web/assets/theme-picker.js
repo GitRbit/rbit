@@ -260,7 +260,7 @@ function filter(gallery) {
     family.hidden = !family.querySelector("[data-theme-item]:not([hidden])");
   }
   const count = gallery.querySelector("[data-theme-count]");
-  if (count) count.textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  if (count) count.textContent = (globalThis.rbitMessages?.plural("browser-theme", shown) ?? `${shown} ${shown === 1 ? "theme" : "themes"}`);
   const empty = gallery.querySelector("[data-theme-empty]");
   if (empty) empty.hidden = anyVisible;
 
@@ -392,14 +392,14 @@ function syncSide() {
   // Row titles read "Name by Author" or "Name · built in".
   const credit = option.title;
   const by = credit.indexOf(" by ");
-  part("author").textContent = by >= 0 ? `By ${credit.slice(by + 4)}` : "Built into rbit";
+  part("author").textContent = by >= 0 ? (globalThis.rbitMessages?.text("browser-theme-author", { author: credit.slice(by + 4) }) ?? `By ${credit.slice(by + 4)}`) : (globalThis.rbitMessages?.text("browser-theme-builtin") ?? "Built into rbit");
   const button = part("apply");
   const isCurrent = option.value === applied.slug;
   button.value = option.value;
   button.dataset.variant = option.dataset.variant;
   button.dataset.counterpart = option.dataset.counterpart;
   button.disabled = isCurrent;
-  button.textContent = isCurrent ? "Applied" : "Apply";
+  button.textContent = isCurrent ? (globalThis.rbitMessages?.text("browser-theme-applied") ?? "Applied") : (globalThis.rbitMessages?.text("browser-theme-apply") ?? "Apply");
 }
 
 function renderRecent() {
@@ -450,7 +450,7 @@ function filterDialog() {
   for (const link of dialog.querySelectorAll("[data-tpk-jump]")) {
     link.hidden = document.getElementById(link.dataset.tpkJump)?.hidden ?? true;
   }
-  part("count").textContent = `${shown} ${shown === 1 ? "theme" : "themes"}`;
+  part("count").textContent = (globalThis.rbitMessages?.plural("browser-theme", shown) ?? `${shown} ${shown === 1 ? "theme" : "themes"}`);
   part("empty").hidden = shown > 0;
   list.scrollTop = 0;
   activate(reachable()[0] ?? null, { scroll: false });

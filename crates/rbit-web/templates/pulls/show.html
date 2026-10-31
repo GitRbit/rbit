@@ -8,26 +8,26 @@
 {% include "pulls/header.html" %}
 {% if can_change_base %}
 <details class="mt-3">
-  <summary class="btn btn-ghost min-h-11 cursor-pointer text-xs sm:min-h-8">Change base branch</summary>
+  <summary class="btn btn-ghost min-h-11 cursor-pointer text-xs sm:min-h-8">{{ crate::i18n::text("core", "pulls-show-summary-change-base-branch") }}</summary>
   <form method="post" action="{{ pull.urls.page }}/base" data-compare-picker data-branches-only="true" data-repository="{{ header.owner }}/{{ header.name }}" class="box mt-2 flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
     <div class="min-w-0 flex-1">
-      <label class="label" for="pull-base">Base branch</label>
+      <label class="label" for="pull-base">{{ crate::i18n::text("core", "pulls-show-label-base-branch") }}</label>
       <div class="relative" data-compare-field>
         <input id="pull-base" class="input font-mono text-xs" name="base" value="{{ pull.base_branch }}" required autocomplete="off" data-compare-ref="base" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pull-base-options">
-        <div id="pull-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="Base branches" hidden></div>
+        <div id="pull-base-options" class="menu inset-x-0 top-full max-h-64 overflow-y-auto" role="listbox" aria-label="{{ crate::i18n::text("core", "pulls-show-aria-label-base-branches") }}" hidden></div>
         <p class="hint" data-compare-status aria-live="polite"></p>
       </div>
-      <p class="hint">Changing the base updates the commits, diff and merge checks.</p>
+      <p class="hint">{{ crate::i18n::text("core", "pulls-show-p-changing-the-base-updates-the-commits-diff-and-merge-checks") }}</p>
     </div>
-    <button type="submit" class="btn btn-primary h-11 sm:h-9">Update base branch</button>
+    <button type="submit" class="btn btn-primary h-11 sm:h-9">{{ crate::i18n::text("core", "pulls-show-button-update-base-branch") }}</button>
   </form>
 </details>
 {% endif %}
 
 <div class="mt-6 flex flex-col gap-6 md:flex-row-reverse md:items-start">
-  <aside class="md:w-60 md:shrink-0" aria-label="Details">
+  <aside class="md:w-60 md:shrink-0" aria-label="{{ crate::i18n::text("core", "pulls-show-aria-label-details") }}">
     <details class="box md:hidden">
-      <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}Details</summary>
+      <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium">{% call ui::icon("chevron-right", "size-3.5 text-ink-faint") %}{% endcall %}{{ crate::i18n::text("core", "pulls-show-summary-details") }}</summary>
       <div class="border-t border-line p-3">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
     </details>
     <div class="hidden md:block">{% include "pulls/reviewers.html" %}{% include "issues/sidebar.html" %}</div>
@@ -41,15 +41,15 @@
       {% if let Some(review) = entry.review %}{% include "pulls/review.html" %}{% endif %}
       {% endfor %}
       {% if let Some(url) = thread.next_url %}
-      <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">Load more</a></div>
+      <div class="relative flex justify-center"><a href="{{ url }}" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-show-a-load-more") }}</a></div>
       {% endif %}
       {% if let Some(merge) = merge_box %}{% include "pulls/merge_box.html" %}{% endif %}
       {% if let Some(closed) = closed_box %}
-      <section class="timeline-item" aria-label="Merged">
+      <section class="timeline-item" aria-label="{{ crate::i18n::text("core", "pulls-show-aria-label-merged") }}">
         <span class="timeline-badge {% if closed.merged %}bg-inverted text-inverted-ink{% endif %}">{% if closed.merged %}{% call ui::icon("git-merge", "size-3.5") %}{% endcall %}{% else %}{% call ui::icon("git-pull-request-closed", "size-3.5") %}{% endcall %}{% endif %}</span>
         <div class="box flex min-w-0 flex-1 flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:px-4">
           <p class="flex-1 text-[13px] text-ink-muted">
-            {% if closed.merged %}Pull request merged{% if let Some(commit) = closed.merge_commit %} as <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ commit.0 }}</a>{% endif %}.{% else %}This pull request is closed.{% endif %}
+            {% if closed.merged %}{{ crate::i18n::text("core", "pulls-show-p-pull-request-merged") }}{% if let Some(commit) = closed.merge_commit %} {{ crate::i18n::text("core", "pulls-show-p-as") }} <a href="{{ commit.1 }}" class="font-mono text-xs text-ink hover:underline hover:underline-offset-4">{{ commit.0 }}</a>{% endif %}.{% else %}{{ crate::i18n::text("core", "pulls-show-p-this-pull-request-is-closed") }}{% endif %}
           </p>
           {% if closed.can_delete_branch %}
           <form method="post" action="{{ closed.delete_url }}">
@@ -65,7 +65,7 @@
     {% if can_convert_to_draft %}
     <form method="post" action="{{ pull.urls.draft }}" class="mt-2 flex justify-end">
       <input type="hidden" name="draft" value="true">
-      <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("git-pull-request-draft", "size-3.5") %}{% endcall %}Convert to draft</button>
+      <button type="submit" class="btn btn-ghost h-11 text-xs sm:h-8">{% call ui::icon("git-pull-request-draft", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "pulls-show-button-convert-to-draft") }}</button>
     </form>
     {% endif %}
   </div>

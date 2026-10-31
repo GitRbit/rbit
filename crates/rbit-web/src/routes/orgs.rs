@@ -91,7 +91,7 @@ pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, p
         return Err(WebError::Forbidden);
     }
     Ok(NewOrgPage {
-        page: page.titled("New organization"),
+        page: page.titled(crate::i18n::text("core", "title-new-organization")),
         error: FormError::default(),
         name: String::new(),
         display_name: String::new(),
@@ -113,7 +113,7 @@ pub async fn create(
         Err(error) => {
             let message = validation_message(error)?;
             let page = NewOrgPage {
-                page: page.titled("New organization"),
+                page: page.titled(crate::i18n::text("core", "title-new-organization")),
                 error: FormError::from_message(&message),
                 name: form.name,
                 display_name: form.display_name,

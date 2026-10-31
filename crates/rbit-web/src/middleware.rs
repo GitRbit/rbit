@@ -3,6 +3,9 @@
 mod auth;
 mod cache;
 mod errors;
+mod i18n;
+pub(crate) use i18n::AccountLocale;
+pub use i18n::{LOCALE_COOKIE, locale};
 mod plugins;
 mod security;
 pub use plugins::plugin_admission;
@@ -98,6 +101,79 @@ mod tests {
         assert_eq!(private.headers()[header::CACHE_CONTROL], "private, no-cache");
         assert!(private.headers().contains_key(header::ETAG), "revalidated");
         assert_eq!(private.headers()[header::VARY], "HX-Request, Rbit-Nav-Epoch, Rbit-Plugin-Revision");
+    }
+
+    #[tokio::test]
+    async fn localized_commit_fragments_revalidate_and_vary_on_real_locale_inputs() {
+        let app = Router::new()
+            .route(
+                "/fragment",
+                get(|| async {
+                    let mut response = cache_pinned(axum::response::Html("<span>Translated</span>").into_response(), true);
+                    response.headers_mut().insert("rbit-locale-revision", HeaderValue::from_static("fr:2"));
+                    response.headers_mut().insert(header::CONTENT_LANGUAGE, HeaderValue::from_static("fr"));
+                    response
+                }),
+            )
+            .layer(from_fn(html_caching));
+        let response =
+            app.oneshot(Request::builder().uri("/fragment").header(PRELOAD_HEADER, "true").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "private, no-cache");
+        assert!(response.headers().contains_key(header::ETAG));
+        let vary = response.headers()[header::VARY].to_str().unwrap().to_ascii_lowercase();
+        for input in ["cookie", "accept-language", "rbit-locale-revision"] {
+            assert!(vary.contains(input), "missing {input}: {vary}");
+        }
+    }
+
+    #[tokio::test]
+    async fn pre_locale_html_errors_receive_english_metadata_without_overwriting_localized_pages() {
+        let app = Router::new()
+            .route(
+                "/limited",
+                get(|| async { (StatusCode::TOO_MANY_REQUESTS, axum::response::Html("<html lang=\"en\" dir=\"ltr\">Slow down</html>")) }),
+            )
+            .route(
+                "/localized",
+                get(|| async {
+                    (
+                        [(header::CONTENT_LANGUAGE.as_str(), "ar"), ("rbit-locale-revision", "ar:2")],
+                        axum::response::Html("<html lang=\"ar\" dir=\"rtl\">...</html>"),
+                    )
+                }),
+            )
+            .layer(from_fn_with_state(SecurityHeaders::default(), security_headers));
+        let response = app.clone().oneshot(Request::builder().uri("/limited").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "en");
+        assert_eq!(response.headers()["rbit-locale-revision"], "en:0");
+        let response = app.oneshot(Request::builder().uri("/localized").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.headers()[header::CONTENT_LANGUAGE], "ar");
+        assert_eq!(response.headers()["rbit-locale-revision"], "ar:2");
+    }
+
+    #[tokio::test]
+    async fn english_fallback_keeps_preload_freshness_and_content_addressed_fragment_caching() {
+        let page = |pinned: bool| async move {
+            let mut response = cache_pinned(axum::response::Html("<span>English</span>").into_response(), pinned);
+            response.headers_mut().insert(header::CONTENT_LANGUAGE, HeaderValue::from_static("en"));
+            response.headers_mut().insert("rbit-locale-revision", HeaderValue::from_static("en:123"));
+            response
+        };
+        let app =
+            Router::new().route("/page", get(move || page(false))).route("/pinned", get(move || page(true))).layer(from_fn(html_caching));
+        for (path, expected) in [("/page", "private, max-age=30"), ("/pinned", PINNED_CACHE_CONTROL)] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).header(PRELOAD_HEADER, "true").body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.headers()[header::CACHE_CONTROL], expected);
+            let vary = response.headers()[header::VARY].to_str().unwrap().to_ascii_lowercase();
+            assert!(vary.contains("cookie") && vary.contains("accept-language") && vary.contains("rbit-locale-revision"));
+            if path == "/pinned" {
+                assert!(!vary.contains("rbit-nav-epoch"));
+            }
+        }
     }
 
     fn app() -> Router {

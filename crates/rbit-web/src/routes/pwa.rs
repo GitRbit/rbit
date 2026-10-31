@@ -91,7 +91,7 @@ fn worker_response(version: &str) -> Response {
 pub async fn offline(State(state): State<AppState>) -> OfflinePage {
     // The service worker persists this page across sign-outs and account switches.
     // It must never contain the requesting account's navigation or preferences.
-    OfflinePage { page: Page::new(&state, None, "/offline").titled("Offline") }
+    OfflinePage { page: Page::new(&state, None, "/offline").titled(crate::i18n::text("core", "title-offline")) }
 }
 
 /// The colours `base.html` links the branding sheet with (`?color=…&text=…`).

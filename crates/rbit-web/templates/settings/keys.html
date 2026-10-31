@@ -1,37 +1,37 @@
 {% extends "settings/layout.html" %}
 {% import "macros.html" as ui %}
 {% block settings_content %}
-<h2 class="text-xl font-semibold tracking-tight">SSH keys</h2>
-<p class="mt-1 text-[13px] text-ink-muted">Keys let you clone, fetch and push over SSH without a password. Paste the contents of your public key file, usually <span class="font-mono text-ink">~/.ssh/id_ed25519.pub</span>.</p>
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "settings-keys-h2-ssh-keys") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "settings-keys-p-keys-let-you-clone-fetch-and-push-over-ssh-without-a-password-pas") }} <span class="font-mono text-ink">{{ crate::i18n::text("core", "settings-keys-span-ssh-id-ed25519-pub") }}</span>.</p>
 
 <form method="post" action="/settings/keys" class="box mt-6" novalidate>
   <div class="box-header">
-    <h3 class="text-[13px] font-medium">New SSH key</h3>
+    <h3 class="text-[13px] font-medium">{{ crate::i18n::text("core", "settings-keys-h3-new-ssh-key") }}</h3>
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="key-title">Title <span class="font-normal text-ink-faint">optional</span></label>
-    <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="e.g. Work laptop" autocomplete="off">
-    <p class="hint">Defaults to the key's comment.</p>
+    <label class="label" for="key-title">{{ crate::i18n::text("core", "settings-keys-label-title") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "settings-keys-span-optional") }}</span></label>
+    <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="{{ crate::i18n::text("core", "settings-keys-placeholder-e-g-work-laptop") }}" autocomplete="off">
+    <p class="hint">{{ crate::i18n::text("core", "settings-keys-p-defaults-to-the-key-s-comment") }}</p>
 
-    <label class="label mt-5" for="key-value">Public Key</label>
-    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… you@example.com" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
-    <p class="hint">Ed25519, ECDSA, RSA (2048 bits or more) or a security key (<span class="font-mono">sk-…</span>). Create one with <span class="font-mono">ssh-keygen -t ed25519</span>.</p>
+    <label class="label mt-5" for="key-value">{{ crate::i18n::text("core", "settings-keys-label-public-key") }}</label>
+    <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="{{ crate::i18n::text("core", "settings-keys-placeholder-ssh-ed25519-aaaa-you-example-com") }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+    <p class="hint">{{ crate::i18n::text("core", "settings-keys-p-ed25519-ecdsa-rsa-2048-bits-or-more-or-a-security-key") }}<span class="font-mono">{{ crate::i18n::text("core", "settings-keys-span-sk") }}</span>{{ crate::i18n::text("core", "settings-keys-p-create-one-with") }} <span class="font-mono">ssh-keygen -t ed25519</span>.</p>
   </div>
   <div class="flex justify-end border-t border-line px-4 py-3">
-    <button class="btn btn-primary w-full sm:w-auto" type="submit">Add key</button>
+    <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "settings-keys-button-add-key") }}</button>
   </div>
 </form>
 
 <section class="mt-6" aria-labelledby="keys-title">
   <div class="mb-3 flex h-8 items-center justify-between">
-    <h3 id="keys-title" class="text-[13px] font-medium text-ink-muted">Your keys</h3>
+    <h3 id="keys-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "settings-keys-h3-your-keys") }}</h3>
     {% if !keys.is_empty() %}<span class="text-xs text-ink-faint">{{ keys.len() }}</span>{% endif %}
   </div>
   <div class="box">
     {% if keys.is_empty() %}
-    {% call ui::empty_state("terminal", "No SSH keys", "Add a public key to use Git over SSH.") %}{% endcall %}
+    {% call ui::empty_state("terminal", crate::i18n::text("core", "settings-keys-empty-title-no-ssh-keys"), crate::i18n::text("core", "settings-keys-empty-description-add-a-public-key-to-use-git-over-ssh")) %}{% endcall %}
     {% else %}
     <ul>
       {% for key in keys %}
@@ -48,7 +48,7 @@
           </p>
         </div>
         <form method="post" action="{{ key.delete_url }}" class="shrink-0">
-          <button class="btn" type="submit" aria-label="Delete {{ key.title }}">Delete</button>
+          <button class="btn" type="submit" aria-label="Delete {{ key.title }}">{{ crate::i18n::text("core", "settings-keys-button-delete") }}</button>
         </form>
       </li>
       {% endfor %}
@@ -56,7 +56,7 @@
     {% endif %}
   </div>
   {% if let Some(command) = test_command %}
-  <p class="hint mt-3">Check that a key works with <span class="font-mono text-ink">{{ command }}</span>.</p>
+  <p class="hint mt-3">{{ crate::i18n::text("core", "settings-keys-p-check-that-a-key-works-with") }} <span class="font-mono text-ink">{{ command }}</span>.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -266,7 +266,7 @@ pub struct ThemesPage {
 impl ThemesPage {
     pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
         let gallery = Gallery::new(&page, GALLERY_URL, variant, query);
-        Self { page: page.titled("Themes"), gallery }
+        Self { page: page.titled(crate::i18n::text("core", "title-themes")), gallery }
     }
 }
 
@@ -362,7 +362,7 @@ pub struct AppearancePage {
 impl AppearancePage {
     pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
         let gallery = Gallery::new(&page, SettingsSection::Appearance.url(), variant, query);
-        Self { page: page.titled("Appearance"), settings_nav: SettingsSection::Appearance.nav(), gallery }
+        Self { page: page.titled(crate::i18n::text("core", "title-appearance")), settings_nav: SettingsSection::Appearance.nav(), gallery }
     }
 }
 
@@ -372,6 +372,8 @@ mod tests {
 
     fn page(theme: Theme) -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             plugin_revision: 0,

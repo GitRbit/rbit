@@ -136,7 +136,7 @@ pub struct ProfilePage {
 impl ProfilePage {
     pub fn new(page: Page, user: &User, form: ProfileForm) -> Self {
         Self {
-            page: page.titled("Profile"),
+            page: page.titled(crate::i18n::text("core", "title-profile")),
             settings_nav: SettingsSection::Profile.nav(),
             username: user.name().to_string(),
             avatar: Avatar::for_account(&user.account),
@@ -237,7 +237,7 @@ pub struct AccountPage {
 impl AccountPage {
     pub fn new(page: Page, user: &User, min_password_length: usize) -> Self {
         Self {
-            page: page.titled("Account"),
+            page: page.titled(crate::i18n::text("core", "title-account")),
             username: user.name().to_string(),
             username_error: FormError::default(),
             settings_nav: SettingsSection::Account.nav(),
@@ -473,7 +473,7 @@ impl TokensPage {
     pub fn new(page: Page, username: String, tokens: &[AccessToken], form: TokenForm) -> Self {
         let now = Timestamp::now();
         Self {
-            page: page.titled("Access tokens"),
+            page: page.titled(crate::i18n::text("core", "title-access-tokens")),
             settings_nav: SettingsSection::AccessTokens.nav(),
             username,
             error: FormError::default(),
@@ -606,6 +606,8 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
             plugin_revision: 0,

@@ -2,11 +2,11 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <section class="mx-auto max-w-xl" data-repo-create hx-history="false" data-kind="new">
-  <h1 class="text-xl font-semibold tracking-tight">New repository</h1>
+  <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-new-repository") }}</h1>
   {% let creation_kind = "new" %}
   {% include "repo/create_tabs.html" %}
   <div id="create-new-panel" role="tabpanel" aria-labelledby="create-new-tab" data-repo-create-panel>
-  <p class="mt-3 text-[13px] text-ink-muted">Create an empty repository, import a project, or keep a mirror in sync with its source.</p>
+  <p class="mt-3 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-p-create-an-empty-repository-import-a-project-or-keep-a-mirror-in-s") }}</p>
 
   <form method="post" action="/new" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
@@ -14,7 +14,7 @@
     {% if owners.len() > 1 %}
     <div class="grid gap-x-2 gap-y-5 sm:grid-cols-[minmax(0,13rem)_auto_minmax(0,1fr)] sm:items-end">
       <div>
-        <label class="label" for="owner">Owner</label>
+        <label class="label" for="owner">{{ crate::i18n::text("core", "repo-new-label-owner") }}</label>
         <div class="relative">
           <select class="input cursor-pointer appearance-none pr-9" id="owner" name="owner">
             {% for owner in owners %}
@@ -26,12 +26,12 @@
       </div>
       <span class="hidden h-9 items-center text-ink-faint sm:flex" aria-hidden="true">/</span>
       <div>
-        <label class="label" for="name">Name</label>
+        <label class="label" for="name">{{ crate::i18n::text("core", "repo-new-label-name") }}</label>
         <input class="input" id="name" name="name" value="{{ name }}" maxlength="100" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required autofocus>
       </div>
     </div>
     {% else if let Some(owner) = selected_owner() %}
-    <label class="label" for="name">Name</label>
+    <label class="label" for="name">{{ crate::i18n::text("core", "repo-new-label-name") }}</label>
     <div class="flex h-10 items-center rounded-(--radius-ui) border border-line focus-within:border-ink hover:border-line-strong sm:h-9">
       <span class="flex h-full shrink-0 items-center gap-2 border-r border-line bg-subtle px-3 text-ink-muted">
         {% call ui::avatar(owner.avatar, "size-4 text-[8px]") %}{% endcall %}{{ owner.name }}
@@ -42,32 +42,32 @@
     </div>
     {% endif %}
 
-    <label class="label mt-5" for="description">Description <span class="font-normal text-ink-faint">optional</span></label>
+    <label class="label mt-5" for="description">{{ crate::i18n::text("core", "repo-new-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "repo-new-span-optional") }}</span></label>
     <input class="input" id="description" name="description" value="{{ description }}" maxlength="350">
 
     <fieldset class="mt-6">
-      <legend class="label">Visibility</legend>
+      <legend class="label">{{ crate::i18n::text("core", "repo-new-legend-visibility") }}</legend>
       <div class="box overflow-hidden">
         <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="public" class="mt-1 accent-(--ink)" {% if !private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Public</span>
-            <span class="block text-[13px] text-ink-muted">Anyone can see and clone this repository.</span>
+            <span class="block font-medium">{{ crate::i18n::text("core", "repo-new-span-public") }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-span-anyone-can-see-and-clone-this-repository") }}</span>
           </span>
         </label>
         <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
           <input type="radio" name="visibility" value="private" class="mt-1 accent-(--ink)" {% if private %}checked{% endif %}>
           <span>
-            <span class="block font-medium">Private</span>
-            <span class="block text-[13px] text-ink-muted">Only the owner can see it. For an organization, that means its members.</span>
+            <span class="block font-medium">{{ crate::i18n::text("core", "repo-new-span-private") }}</span>
+            <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-new-span-only-the-owner-can-see-it-for-an-organization-that-means-its-memb") }}</span>
           </span>
         </label>
       </div>
     </fieldset>
 
     <div class="mt-8 flex justify-end gap-2 border-t border-line pt-6">
-      <a href="/" class="btn">Cancel</a>
-      <button class="btn btn-primary" type="submit">Create repository</button>
+      <a href="/" class="btn">{{ crate::i18n::text("core", "repo-new-a-cancel") }}</a>
+      <button class="btn btn-primary" type="submit">{{ crate::i18n::text("core", "repo-new-button-create-repository") }}</button>
     </div>
   </form>
   </div>

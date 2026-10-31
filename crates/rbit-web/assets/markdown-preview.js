@@ -23,7 +23,7 @@ function enhanceMarkdownEditors() {
     const tabs = document.createElement('div');
     tabs.className = 'flex gap-1 mt-2';
     tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Markdown editor');
+    tabs.setAttribute('aria-label', (globalThis.rbitMessages?.text("browser-markdown-editor") ?? (globalThis.rbitMessages?.text("browser-markdown-editor") ?? "Markdown editor")));
     const panel = document.createElement('div');
     panel.id = id;
     panel.dataset.markdownPreviewPanel = '';
@@ -31,7 +31,7 @@ function enhanceMarkdownEditors() {
     panel.hidden = true;
     panel.setAttribute('role', 'tabpanel');
     panel.setAttribute('aria-live', 'polite');
-    const buttons = ['Write', 'Preview'].map((label) => {
+    const buttons = [(globalThis.rbitMessages?.text("browser-write") ?? (globalThis.rbitMessages?.text("browser-write") ?? "Write")), (globalThis.rbitMessages?.text("browser-preview") ?? (globalThis.rbitMessages?.text("browser-preview") ?? "Preview"))].map((label) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'tab h-11 sm:h-8';
@@ -76,14 +76,14 @@ function enhanceMarkdownEditors() {
       loading = true;
       // Keep the active tab focusable so arrow keys can return to Write while loading.
       preview.setAttribute('aria-disabled', 'true');
-      panel.textContent = 'Loading preview…';
+      panel.textContent = (globalThis.rbitMessages?.text("browser-preview-loading") ?? (globalThis.rbitMessages?.text("browser-preview-loading") ?? "Loading preview…"));
       panel.setAttribute('aria-busy', 'true');
       const values = { [input.name]: input.value };
       if (path) values.path = path.value;
       try {
         await window.htmx.ajax('POST', previewContext(input), { target: panel, swap: 'innerHTML', values });
       } catch {
-        panel.textContent = 'Preview could not be loaded. Return to Write and try again.';
+        panel.textContent = (globalThis.rbitMessages?.text("browser-preview-failed") ?? (globalThis.rbitMessages?.text("browser-preview-failed") ?? "Preview could not be loaded. Return to Write and try again."));
       } finally {
         loading = false;
         preview.setAttribute('aria-disabled', 'false');
@@ -107,7 +107,7 @@ enhanceMarkdownEditors();
 document.addEventListener('htmx:responseError', (event) => {
   const panel = event.detail.target;
   if (panel?.matches('[data-markdown-preview-panel]')) {
-    panel.textContent = 'Preview could not be loaded. Return to Write and try again.';
+    panel.textContent = (globalThis.rbitMessages?.text("browser-preview-failed") ?? (globalThis.rbitMessages?.text("browser-preview-failed") ?? "Preview could not be loaded. Return to Write and try again."));
   }
 });
 document.addEventListener('htmx:afterSettle', enhanceMarkdownEditors);
