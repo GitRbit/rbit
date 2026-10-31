@@ -382,3 +382,5 @@ async fn runtime_route_registration_preserves_nested_navigation_identity() {
     assert!(html.contains("data-repo-tab=\"example.pages:repository\""));
     fixture.services.shutdown().await;
 }
+
+mod lifecycle;
