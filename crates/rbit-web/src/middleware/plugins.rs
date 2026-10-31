@@ -197,7 +197,7 @@ impl CancellationPair {
     }
 }
 
-fn copy_security_headers(source: &axum::http::HeaderMap, target: &mut axum::http::HeaderMap) {
+pub(super) fn copy_security_headers(source: &axum::http::HeaderMap, target: &mut axum::http::HeaderMap) {
     for name in [
         "content-security-policy",
         "strict-transport-security",
