@@ -308,6 +308,13 @@ check_for_updates = true
 report_version = true
 
 [actions]
+# Optional localization provider (docs/i18n.md). Administrator intent saved at
+# Admin -> Plugins overrides this startup default. Installed packs and preferences
+# survive disablement. The fallback language is always English.
+[i18n]
+enabled = false
+default_locale = "en"
+
 # CI/CD with rbit-runner (docs/actions.md). Off by default; when off, Actions is fully
 # absent: no pages, no runner endpoint, no background work, workflow files are ignored.
 # Startup default until an administrator saves a runtime override in Admin -> Plugins.

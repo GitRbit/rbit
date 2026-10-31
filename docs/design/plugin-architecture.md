@@ -3,7 +3,10 @@
 Status: proposed implementation plan. Baseline: `main` at `9f07d6f`, inspected on October 30, 2026.
 
 Implementation progress: Actions is now an optional embedded plugin with live administrator
-controls, request and stream admission, persisted intent and crash-safe revocation. See
+controls, request and stream admission, persisted intent and crash-safe revocation. The next
+stage adds optional embedded i18n, installable data-only packs, locale preferences and catalog
+revision invalidation; [languages](../i18n.md) records the delivered coverage and remaining
+email/dynamic-prose conversion. See
 [plugin core](../plugin-core.md) for the delivered behavior and remaining stages. Source
 reference links below follow their current crate locations.
 

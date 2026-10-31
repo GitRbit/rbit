@@ -1,18 +1,19 @@
 # Plugin core
 
-Actions is an optional first-party embedded plugin. Administrators can enable and disable
-it at **Admin → Plugins** without restarting Rbit. The control plane lives in `rbit-actions`;
+Actions and localization are optional first-party embedded plugins. Administrators can enable
+and disable them at **Admin → Plugins** without restarting Rbit. Localization accepts installable
+data-only language packs; see [languages](i18n.md). The control plane lives in `rbit-actions`;
 shared forge services live in `rbit-services-base`. The `rbit-services` facade composes them
 and publishes the active service through an owned snapshot.
 
 The plugin contracts and controller are reusable for other trusted embedded features.
 Independently installed executable packages, sandboxed plugins, general third-party UI
-contributions, i18n and language packs remain later stages of the
+contributions and executable package installation remain later stages of the
 [runtime plugin plan](design/plugin-architecture.md).
 
 ## Build profiles
 
-The ordinary server includes Actions support and starts it disabled by default. Build it
+The ordinary server includes Actions and i18n support and starts both disabled by default. Build it
 normally with `cargo build --release --package rbit-server`. Build a minimal server with:
 
 ```sh
@@ -21,7 +22,8 @@ node scripts/check-core-dependencies.mjs
 ```
 
 The minimal server excludes `rbit-actions`, `rbit-workflow` and the workflow YAML parser
-from its normal dependency graph. The Plugins page remains available and explains that
+from its normal dependency graph. It also excludes `rbit-i18n` and the Fluent engine;
+built-in English messages remain available. The Plugins page remains available and explains that
 Actions is unavailable. Generic commit statuses, branch protection and external CI remain
 usable. Existing Actions tables and compatibility value types stay in core storage so old
 databases and migration checksums remain valid; they do not activate the control plane.

@@ -25,7 +25,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A minimal server build (`--package rbit-server --no-default-features`) excludes the
   Actions implementation and workflow parser. Shared forge services now live in
   `rbit-services-base`, with Actions in its own optional `rbit-actions` crate. Installable
-  executable packages, sandboxed plugins and i18n remain later stages.
+  executable packages and sandboxed plugins remain later stages.
+- Optional i18n plugin with live administrator enable/disable, installable bounded Fluent
+  language packs, account/browser preferences, RTL/pseudolocales, escaped presentation
+  messages and locale/catalog cache invalidation. Migration `0062` keeps pack archives
+  and locale preferences in SQLite backups. See [languages](docs/i18n.md).
 - Updated runners stop local tasks after 120 seconds without an accepted state heartbeat,
   including while disconnected. Runtime disable revokes task credentials independently.
 - `rbit` is also a command-line client for an instance's API, in the manner of `gh`: runs,

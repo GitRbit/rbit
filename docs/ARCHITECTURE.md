@@ -51,6 +51,8 @@ rbit/
     ├── rbit-workflow/       # Actions: workflow parsing, triggers, expressions, plans, runner protocol types
     ├── rbit-runner/         # The `rbit-runner` binary (not a default member): runs Actions jobs
     ├── rbit-actions-core/   # Host-independent Actions configuration and workflow permission policy
+    ├── rbit-messages/       # Shared message schema and built-in English fallback
+    ├── rbit-i18n/           # Optional bounded Fluent catalogs and data-only language packs
     ├── rbit-plugin-api/     # Validated manifests, service declarations and lifecycle contracts
     ├── rbit-plugin-runtime/ # Embedded plugin controller, dependencies and generation scopes
     └── rbit-e2e/            # End-to-end and Git compatibility tests (test-only)
@@ -1568,7 +1570,8 @@ lifecycle management and generation-scoped disposal. Actions is an optional crat
 `rbit-services-base`; the `rbit-services` facade hosts its runtime activation and persistent
 intent. The UI and API documentation follow active publication. Request bodies, response
 streams, Git completion and blocking producers retain leases until cleanup completes.
-Package installation, sandboxed execution and i18n remain later stages of the
+Localization and data-only language-pack installation are described in [languages](i18n.md).
+Executable package installation and sandboxed execution remain later stages of the
 [implementation plan](design/plugin-architecture.md).
 
 - **Trait seams** at every external boundary: `GitTransport`, store traits in services,
