@@ -188,13 +188,20 @@ host drains already admitted work through the plugin manager before reporting
 successful unload. Dropping the registration handle alone does not unload its
 scope-owned effect.
 
-The host reserves plugin administration, sign-in/MFA/OAuth/password recovery, the exact
-account routes needed for forced password changes, embedded assets and operational
-health/readiness/metrics routes from hooks. This uses compiled matched-route patterns,
+The host reserves plugin administration, administrator restart/status and monitoring,
+sign-in/MFA/OAuth/password recovery, the exact account routes needed for forced
+password changes, embedded assets and operational health/readiness/metrics routes
+from hooks. This uses compiled matched-route patterns,
 not raw prefix matching or a blanket administrator exemption. A deny-all or timing-out hook
 cannot trap administrators outside plugin recovery or trigger a health-probe restart loop.
 Reserved routes still run their ordinary administrator, authentication, token, Origin and
 body/security guards. Other administrator pages remain eligible for hooks.
+
+The upstream monitoring and restart controls retain their existing English prose
+and browser status labels. Their host chrome still uses the selected locale, and
+preexisting translated configuration, form and recovery text is preserved. This
+page-registry phase does not migrate that inherited English presentation into new
+catalog entries or change bundled language packs.
 
 The following subsections specify how this foundation may expand. Host-resolved
 principals, repository permission context, capability grants, localized rejection

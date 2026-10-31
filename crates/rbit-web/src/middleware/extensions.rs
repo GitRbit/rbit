@@ -52,6 +52,9 @@ fn reserved_host_route(route: &str) -> bool {
     matches!(
         route,
         "/admin/plugins"
+            | "/admin/restart"
+            | "/admin/restart/status"
+            | "/admin/monitoring"
             | "/admin/plugins/actions"
             | "/admin/plugins/i18n"
             | "/admin/plugins/i18n/packs"
@@ -283,12 +286,20 @@ mod tests {
         let (_scope, _registration) = register(&registry, hook);
         let router = Router::new()
             .route("/admin/plugins", get(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/admin/restart", get(|| async { StatusCode::UNAUTHORIZED }).post(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/admin/restart/status", get(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/admin/monitoring", get(|| async { StatusCode::UNAUTHORIZED }))
             .route("/login", get(|| async { StatusCode::OK }).post(|| async { StatusCode::UNAUTHORIZED }))
             .route("/assets/{*path}", get(|| async { "trusted asset" }))
             .route("/admin", get(|| async { "must not run" }))
-            .layer(from_fn_with_state(registry, layer));
+            .layer(from_fn_with_state(registry, layer))
+            .layer(from_fn(crate::middleware::csrf_origin_check));
         for (method, path, status) in [
             ("GET", "/admin/plugins", StatusCode::UNAUTHORIZED),
+            ("GET", "/admin/restart", StatusCode::UNAUTHORIZED),
+            ("POST", "/admin/restart", StatusCode::UNAUTHORIZED),
+            ("GET", "/admin/restart/status", StatusCode::UNAUTHORIZED),
+            ("GET", "/admin/monitoring", StatusCode::UNAUTHORIZED),
             ("GET", "/login", StatusCode::OK),
             ("POST", "/login", StatusCode::UNAUTHORIZED),
             ("GET", "/assets/app.bundle.js", StatusCode::OK),
@@ -296,6 +307,15 @@ mod tests {
             let response = router.clone().oneshot(Request::builder().method(method).uri(path).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), status, "{method} {path}");
         }
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder().method("POST").uri("/admin/restart").header("sec-fetch-site", "cross-site").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap().as_ref(), b"cross-site request blocked");
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         let response = router.oneshot(Request::builder().uri("/admin").body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
