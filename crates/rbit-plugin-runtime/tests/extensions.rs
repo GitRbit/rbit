@@ -242,3 +242,45 @@ fn metadata_destructors_also_run_outside_registry_and_scope_locks() {
     receiver.recv_timeout(Duration::from_secs(2)).expect("metadata cleanup cannot deadlock");
     worker.join().unwrap();
 }
+
+struct DropCounter(Arc<AtomicUsize>);
+impl Drop for DropCounter {
+    fn drop(&mut self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn retained_metadata_snapshots_do_not_keep_disposed_callbacks_alive() {
+    let registry = ScopedExtensionRegistry::default();
+    let scope = scope(3000);
+    let drops = Arc::new(AtomicUsize::new(0));
+    registry
+        .stage_with_metadata(owner(), &scope, scope.generation(), vec![(DropCounter(Arc::clone(&drops)), "route".to_owned())])
+        .unwrap()
+        .publish()
+        .unwrap();
+    let retained = registry.snapshot();
+    assert_eq!(retained.entries[0].metadata::<String>().unwrap(), "route");
+    scope.dispose(Duration::from_secs(1)).await.unwrap();
+    assert_eq!(drops.load(Ordering::SeqCst), 1, "metadata snapshots cannot retain captured services after disposal");
+    assert_eq!(retained.entries[0].metadata::<String>().unwrap(), "route");
+    assert!(retained.entries[0].admit().is_err());
+}
+
+#[tokio::test]
+async fn only_admitted_operations_keep_withdrawn_callback_resources_alive() {
+    let registry = ScopedExtensionRegistry::default();
+    let scope = scope(3001);
+    let drops = Arc::new(AtomicUsize::new(0));
+    registry.stage(owner(), &scope, scope.generation(), vec![DropCounter(Arc::clone(&drops))]).unwrap().publish().unwrap();
+    let retained = registry.snapshot();
+    let lease = retained.entries[0].admit().unwrap();
+    scope.quiesce();
+    assert_eq!(drops.load(Ordering::SeqCst), 0);
+    assert!(matches!(scope.dispose(Duration::ZERO).await, Err(DrainError::Timeout { in_flight: 1 })));
+    drop(lease);
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    scope.dispose(Duration::from_secs(1)).await.unwrap();
+    assert!(retained.entries[0].admit().is_err());
+}

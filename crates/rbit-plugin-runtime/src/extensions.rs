@@ -108,7 +108,7 @@ impl<T> State<T> {
                 group.batch.values.iter().map(move |value| ExtensionEntry {
                     owner: owner.clone(),
                     generation: group.generation,
-                    value: Arc::clone(&value.value),
+                    value: Arc::downgrade(&value.value),
                     metadata: value.metadata.clone(),
                     admission: group.admission.clone(),
                     active: Arc::clone(&group.batch.active),
@@ -162,7 +162,8 @@ fn with_state<T, R>(state: &Mutex<State<T>>, operation: impl FnOnce(&mut State<T
     result
 }
 
-/// One immutable registry view. Values and callback gates remain private.
+/// One immutable registry view. Only metadata is retained strongly; callback
+/// resources stay alive solely through a current batch or an admitted operation.
 pub struct ExtensionSnapshot<T> {
     pub revision: u64,
     pub entries: Arc<[ExtensionEntry<T>]>,
@@ -186,7 +187,7 @@ impl<T> fmt::Debug for ExtensionSnapshot<T> {
 pub struct ExtensionEntry<T> {
     pub owner: PluginId,
     pub generation: Generation,
-    value: Arc<T>,
+    value: Weak<T>,
     metadata: Option<Metadata>,
     admission: Admission,
     active: Arc<AtomicBool>,
@@ -209,7 +210,13 @@ impl<T> ExtensionEntry<T> {
         if !self.active.load(Ordering::Acquire) {
             return Err(AdmissionError::Closed);
         }
-        Ok(ExtensionLease { value: Arc::clone(&self.value), lease, cancellation: self.cancellation.child_token() })
+        let value = self.value.upgrade().ok_or(AdmissionError::Closed)?;
+        // Withdrawal may win between the first gate check and upgrading. Only an
+        // admitted operation retains callback resources; stale metadata never does.
+        if !self.active.load(Ordering::Acquire) {
+            return Err(AdmissionError::Closed);
+        }
+        Ok(ExtensionLease { value, lease, cancellation: self.cancellation.child_token() })
     }
     pub fn cancellation_token(&self) -> CancellationToken {
         self.cancellation.child_token()
