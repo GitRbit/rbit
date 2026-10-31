@@ -384,3 +384,4 @@ async fn runtime_route_registration_preserves_nested_navigation_identity() {
 }
 
 mod lifecycle;
+mod shutdown;
