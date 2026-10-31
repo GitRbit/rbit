@@ -383,3 +383,39 @@ async fn shared_pipeline_capacity_rejects_before_callbacks_and_recovers_after_ab
     assert_eq!(calls.lock().unwrap().last(), Some(&"updated"));
     assert_eq!(scope.in_flight(), 0);
 }
+
+#[tokio::test]
+async fn terminal_hook_registry_close_cancels_pending_callback_and_refuses_republication() {
+    let registry = RequestHookRegistry::new();
+    let scope = scope();
+    let calls = Arc::default();
+    let drops = Arc::default();
+    let make = || descriptor("pending", 0, Duration::from_secs(60), &calls, &drops, HookDecision::Continue(Vec::new()));
+    let registration = registry.stage("example.close".parse().unwrap(), &scope, scope.generation(), vec![make()]).unwrap();
+    registration.publish().unwrap();
+    let retained = registry.snapshot();
+    let active = retained.clone();
+    let task = tokio::spawn(async move { active.evaluate(&metadata()).await });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while calls.lock().unwrap().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    registry.clone().close();
+    assert!(registry.is_closed());
+    assert_eq!(tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap(), HookDecision::Reject(Rejection::Unavailable));
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(scope.in_flight(), 0);
+    assert!(!scope.is_closed());
+    assert_eq!(retained.evaluate(&metadata()).await, HookDecision::Reject(Rejection::Unavailable));
+    assert!(registry.snapshot().is_empty());
+    assert!(registration.publish().is_err());
+    assert!(registration.replace(vec![make()]).is_err());
+    assert!(registry.stage("example.close".parse().unwrap(), &scope, scope.generation(), vec![make()]).is_err());
+    let revision = registry.revision();
+    registry.close();
+    assert_eq!(registry.revision(), revision);
+    scope.dispose(Duration::from_secs(1)).await.unwrap();
+}

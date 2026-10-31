@@ -33,6 +33,14 @@ impl RequestHookRegistry {
         validate(&hooks)?;
         Ok(RequestHookRegistration { inner: self.inner.stage(owner, scope, generation, hooks)? })
     }
+    /// Terminally withdraws all callbacks and cancels admitted work across clones.
+    /// The host still owns disposal of any independent plugin scope tasks.
+    pub fn close(&self) {
+        self.inner.close();
+    }
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
     pub fn revision(&self) -> u64 {
         self.inner.snapshot().revision
     }

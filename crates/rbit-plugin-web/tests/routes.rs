@@ -272,3 +272,55 @@ async fn aborting_a_caller_drops_its_factory_before_authority_and_reuses_capacit
     drop(leases);
     assert_eq!(scope.in_flight(), 0);
 }
+
+#[tokio::test]
+async fn terminal_page_registry_close_cancels_pending_factory_and_preserves_scope_tracking() {
+    let registry = PageRegistry::new();
+    let scope = scope();
+    let started = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
+    let captured_scope = scope.clone();
+    let started_factory = Arc::clone(&started);
+    let factory_drops = Arc::clone(&drops);
+    let pending = compiled_page(descriptor("pending", "pending"), move |_| {
+        let guard = FutureDrop { scope: captured_scope.clone(), drops: Arc::clone(&factory_drops) };
+        let started = Arc::clone(&started_factory);
+        async move {
+            let _guard = guard;
+            started.fetch_add(1, Ordering::SeqCst);
+            std::future::pending::<Result<CompiledPage<Message>, PageError>>().await
+        }
+    });
+    let registration = registry.stage(owner(), &scope, scope.generation(), vec![pending]).unwrap();
+    registration.publish().unwrap();
+    let handle = registry.snapshot().find(&owner(), PageScope::Global, "pending").unwrap();
+    let mut lease = handle.admit().unwrap();
+    let task = tokio::spawn(async move {
+        let result = lease.render(context()).await;
+        (result, lease)
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while started.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    registry.clone().close();
+    assert!(registry.is_closed());
+    let (result, lease) = tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap();
+    assert!(matches!(result, Err(PageError::Unavailable)));
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(scope.in_flight(), 1);
+    assert!(!scope.is_closed());
+    assert!(handle.admit().is_err());
+    assert!(registry.snapshot().is_empty());
+    assert!(registration.publish().is_err());
+    assert!(registration.replace(vec![page("new", "new", "New")]).is_err());
+    assert!(registry.stage(owner(), &scope, scope.generation(), vec![page("new", "new", "New")]).is_err());
+    let revision = registry.revision();
+    registry.close();
+    assert_eq!(registry.revision(), revision);
+    drop(lease);
+    scope.dispose(Duration::from_secs(1)).await.unwrap();
+}
