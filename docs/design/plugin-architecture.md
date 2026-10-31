@@ -7,7 +7,9 @@ administrator controls. Language packs, account preferences and locale revision 
 are delivered; [languages](../i18n.md) records their coverage. Runtime UI contributions now
 use scoped registrations and compiled Askama host components, with a shared browser cleanup
 lifecycle; [UI extensions](../plugin-ui.md) records the supported slots and boundaries.
-[Scoped extension and middleware design](plugin-extensions.md) covers the next host interface.
+[Scoped extension and middleware design](plugin-extensions.md) covers typed request hooks.
+[Native plugin pages](../plugin-routes.md) documents the namespaced compiled Askama GET
+registry and host-enforced permission profiles; legacy Actions routes remain in the host.
 See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
 Source reference links below follow their current crate locations.
 
@@ -191,6 +193,12 @@ Use bounded consumer concurrency, storage retention and dead-letter records. If 
 ## 8 Runtime web and UI extension contract
 
 ### Routing and middleware
+
+The current embedded implementation supports exact GET/HEAD native pages at
+`/-/plugins/{plugin}/{path}` and `/{owner}/{repo}/-/plugins/{plugin}/{path}`.
+Registration is scope-owned and the host applies its browser-page security stack.
+Arbitrary mounts, mutation handlers, streaming plugin APIs and executable package
+installation remain future work described below.
 
 Keep core routes stable. Add a dynamic dispatcher for registered plugin routes, with host-owned precedence and collision checks. Preserve Actions' existing repository, owner, administrator and runner paths through reserved compatibility mounts. New plugins use an ID namespace by default.
 

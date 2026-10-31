@@ -2,9 +2,11 @@
 
 This document specifies the common ownership rules for runtime extensions and the
 request-hook surface. It complements [the plugin architecture](plugin-architecture.md).
-Declarative UI registration, the generic scoped extension registry and the
-metadata-only request-hook foundation are implemented. Richer request contexts,
-dynamic routes and arbitrary middleware remain later stages.
+Declarative UI registration, the generic scoped extension registry, metadata-only
+request hooks and namespaced compiled native GET pages are implemented. Arbitrary
+route mounts, mutation handlers, richer hook contexts and unrestricted middleware
+remain later stages. The [native page guide](../plugin-routes.md) documents the
+page API, host security profiles and measured rendering scope.
 
 ## Ownership and publication
 
@@ -58,6 +60,12 @@ retained discovery snapshots cannot invoke a revoked batch. Each adapter still
 validates its own typed descriptors before staging. Registry validation is not
 delegated to arbitrary plugin callbacks.
 
+Callback snapshots hold weak references, while the live batch and admitted leases
+own strong callback references. Retaining stale discovery metadata therefore
+cannot keep disposed native callbacks or their captured service graphs alive.
+Metadata supplied by a host adapter must remain passive data. Compiled native
+machine code remains in the binary after resources are released.
+
 Retired callback values can have native destructors. Removal detaches those values
 under the registry lock and drops them after releasing it. Scope cleanup similarly
 releases its serialization lock before dropping detached values. Destructors that
@@ -86,8 +94,10 @@ all text. UI visibility is a server-evaluated predicate, not an authorization gr
 
 ## Request-hook foundation
 
-`rbit-plugin-web` is a small typed adapter over the generic registry. It has no
-Axum, HTTP body, forge service, database or Fluent dependency. `Services` shares
+`rbit-plugin-web` contains typed adapters over the generic registry, including the
+bounded Askama native-page bridge. It has no Axum, HTTP body, forge service,
+database or Fluent dependency. Shared locale messages do not pull in the optional
+catalog engine. `Services` shares
 one registry through its trusted `request_hooks()` accessor; the actual HTTP
 adapter remains in `rbit-web`.
 

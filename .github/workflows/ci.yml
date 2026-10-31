@@ -50,6 +50,7 @@ jobs:
       - run: cargo test --locked --package rbit-services --no-default-features --test integration actions_unavailable
       - run: cargo test --locked --package rbit-services --no-default-features --test integration i18n_unavailable
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_ui_registration
+      - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_route_registration
 
   plugin-profiles:
     name: Optional plugin (${{ matrix.plugin }})
