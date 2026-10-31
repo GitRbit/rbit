@@ -272,26 +272,3 @@ async fn aborting_a_caller_drops_its_factory_before_authority_and_reuses_capacit
     drop(leases);
     assert_eq!(scope.in_flight(), 0);
 }
-
-#[test]
-fn total_staged_route_capacity_and_maximum_target_lengths_are_bounded() {
-    let registry = PageRegistry::new();
-    let scope = scope();
-    let mut registrations = Vec::new();
-    for index in 0..4 {
-        let pages = (0..32).map(|page_index| page(&format!("page-{page_index}"), &format!("page-{page_index}"), "Value")).collect();
-        registrations.push(registry.stage(format!("example.owner-{index}").parse().unwrap(), &scope, scope.generation(), pages).unwrap());
-    }
-    assert!(registry.stage("example.overflow".parse().unwrap(), &scope, scope.generation(), vec![page("one", "one", "x")]).is_err());
-    assert!(registry.snapshot().is_empty());
-    registrations[0].publish().unwrap();
-    assert_eq!(registry.snapshot().len(), 32);
-    let longest = format!("{}/{}/{}", "a".repeat(32), "b".repeat(32), "c".repeat(30));
-    let owner: PluginId = format!("example.{}", "a".repeat(120)).parse().unwrap();
-    let descriptor =
-        PageDescriptor::new("max", PageScope::Repository, &longest, PageAudience::RepositoryReader, Duration::from_secs(1)).unwrap();
-    assert!(descriptor.target(&owner).as_str().len() <= 256);
-    for invalid in ["a".repeat(97), "a".repeat(33), ["a"; 9].join("/")] {
-        assert!(!validate_page_path(&invalid));
-    }
-}

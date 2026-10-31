@@ -69,6 +69,9 @@ fn aggregate_budget_counts_staged_routes_and_recovers_after_revocation() {
 
 #[test]
 fn maximum_namespaced_targets_fit_the_ui_contract() {
+    for invalid in ["a".repeat(MAX_PAGE_PATH_BYTES + 1), "a".repeat(33), ["a"; 9].join("/")] {
+        assert!(PageDescriptor::new("invalid", PageScope::Global, &invalid, PageAudience::Public, Duration::from_secs(1)).is_err());
+    }
     let owner: PluginId = format!("example.{}", "a".repeat(120)).parse().unwrap();
     assert_eq!(owner.as_str().len(), PluginId::MAX_LEN);
     let path = format!("{}/{}/{}", "a".repeat(32), "b".repeat(32), "c".repeat(30));
