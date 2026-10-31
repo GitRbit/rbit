@@ -3,20 +3,20 @@
 {#- Where an owner secret goes: all of the owner's repositories or the ticked ones. -#}
 {% macro visibility(selected) %}
 <fieldset class="mt-5">
-  <legend class="label">Repository access</legend>
+  <legend class="label">{{ crate::i18n::text("actions", "actions-settings-macros-legend-repository-access") }}</legend>
   <div class="box overflow-hidden">
     <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
       <input type="radio" name="visibility" value="all" class="mt-1 accent-(--ink)" {% if !selected %}checked{% endif %}>
       <span>
-        <span class="block font-medium">All repositories</span>
-        <span class="block text-[13px] text-ink-muted">Every repository of this owner, including ones created later.</span>
+        <span class="block font-medium">{{ crate::i18n::text("actions", "actions-settings-macros-span-all-repositories") }}</span>
+        <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-settings-macros-span-every-repository-of-this-owner-including-ones-created-later") }}</span>
       </span>
     </label>
     <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
       <input type="radio" name="visibility" value="selected" class="mt-1 accent-(--ink)" {% if selected %}checked{% endif %}>
       <span>
-        <span class="block font-medium">Selected repositories</span>
-        <span class="block text-[13px] text-ink-muted">Only the repositories ticked below.</span>
+        <span class="block font-medium">{{ crate::i18n::text("actions", "actions-settings-macros-span-selected-repositories") }}</span>
+        <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-settings-macros-span-only-the-repositories-ticked-below") }}</span>
       </span>
     </label>
   </div>
@@ -26,7 +26,7 @@
 {#- The owner's repositories as checkboxes named `repository`; expects `Vec<RepoChoice>`. -#}
 {% macro repositories(choices) %}
 {% if choices.is_empty() %}
-<p class="hint">This owner has no repositories yet.</p>
+<p class="hint">{{ crate::i18n::text("actions", "actions-settings-macros-p-this-owner-has-no-repositories-yet") }}</p>
 {% else %}
 <div class="box mt-3 overflow-hidden">
   {% for choice in choices.iter() %}

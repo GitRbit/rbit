@@ -1,5 +1,5 @@
 {#- Path breadcrumbs; expects `breadcrumbs: Vec<Crumb>` where the last crumb is the current location. -#}
-<nav class="flex min-w-0 flex-wrap items-center gap-1 font-mono text-[13px]" aria-label="Path">
+<nav class="flex min-w-0 flex-wrap items-center gap-1 font-mono text-[13px]" aria-label="{{ crate::i18n::text("core", "repo-breadcrumbs-aria-label-path") }}">
   {% for crumb in breadcrumbs %}
     {% if !loop.first %}<span class="text-ink-faint">/</span>{% endif %}
     {% if loop.last %}

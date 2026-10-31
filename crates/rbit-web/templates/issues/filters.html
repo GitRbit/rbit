@@ -6,7 +6,7 @@
           <label class="sr-only" for="filter-{{ menu.title }}">Find {{ menu.title|lower }}</label>
           <input id="filter-{{ menu.title }}" type="search" class="input mb-2 text-xs" placeholder="Find {{ menu.title|lower }}…" data-filter="filter-options-{{ menu.title }}" autocomplete="off">
           <div id="filter-options-{{ menu.title }}">
-          {% if menu.items.is_empty() %}<p class="px-2.5 py-2 text-xs text-ink-faint">Nothing to choose from yet.</p>{% endif %}
+          {% if menu.items.is_empty() %}<p class="px-2.5 py-2 text-xs text-ink-faint">{{ crate::i18n::text("core", "issues-filters-p-nothing-to-choose-from-yet") }}</p>{% endif %}
           {% for item in menu.items %}
           <a href="{{ item.url }}" class="menu-item" data-filter-text="{{ item.label|lower }}" {% if item.selected %}aria-current="true"{% endif %}>
             <span class="flex size-3.5 shrink-0 items-center justify-center">{% if item.selected %}{% call ui::icon("check", "size-3.5") %}{% endcall %}{% endif %}</span>
@@ -14,7 +14,7 @@
             <span class="truncate">{{ item.label }}</span>
           </a>
           {% endfor %}
-          <p data-filter-empty hidden class="hint px-2.5 py-2">No matches.</p>
+          <p data-filter-empty hidden class="hint px-2.5 py-2">{{ crate::i18n::text("core", "issues-filters-p-no-matches") }}</p>
           </div>
         </div>
       </details>

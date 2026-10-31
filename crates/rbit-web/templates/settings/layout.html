@@ -1,15 +1,18 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 {#- Settings shell; expects a `settings_nav: Vec<SettingsLink>` field. Pages fill `settings_content`.
-    Links that need Actions are left out on an instance without it. -#}
+    Optional plugin links come from the request's published UI snapshot. -#}
 {% block content %}
 <div class="grid gap-6 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-10">
   <aside class="min-w-0">
-    <h1 class="mb-3 text-[13px] font-medium text-ink-muted">Settings</h1>
-    <nav class="-mx-4 flex gap-1 scroll-tabs border-b border-line px-4 pb-3 md:mx-0 md:flex-col md:border-b-0 md:px-0 md:pb-0" aria-label="Settings">
-      {% for link in settings_nav %}{% if !link.needs_actions || page.has_actions() %}
+    <h1 class="mb-3 text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "nav-settings") }}</h1>
+    <nav class="-mx-4 flex gap-1 scroll-tabs border-b border-line px-4 pb-3 md:mx-0 md:flex-col md:border-b-0 md:px-0 md:pb-0" aria-label="{{ crate::i18n::text("core", "nav-settings") }}">
+      {% for link in settings_nav %}
       <a class="menu-item w-auto shrink-0 md:w-full {% if link.is_active %}bg-hover font-medium{% else %}text-ink-muted hover:text-ink{% endif %}" href="{{ link.url }}" {% if link.is_active %}aria-current="page"{% endif %}>{{ link.label }}</a>
-      {% endif %}{% endfor %}
+      {% endfor %}
+      {% for extension in page.account_extensions() %}{% for link in extension.links %}
+      <a class="menu-item w-auto shrink-0 md:w-full {% if link.active %}bg-hover font-medium{% else %}text-ink-muted hover:text-ink{% endif %}" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}" href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>
+      {% endfor %}{% endfor %}
     </nav>
   </aside>
 

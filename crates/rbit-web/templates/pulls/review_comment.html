@@ -5,7 +5,7 @@
   <div class="flex flex-wrap items-center gap-2 border-b border-line bg-subtle px-3 py-1.5 text-xs">
     <a href="{{ comment.line_url }}" class="min-w-0 flex-1 truncate font-mono text-ink hover:underline hover:underline-offset-4">{{ comment.path }}</a>
     <span class="font-mono text-ink-faint">{{ comment.line_label }}</span>
-    {% if comment.outdated %}<span class="badge">Outdated</span>{% endif %}
+    {% if comment.outdated %}<span class="badge">{{ crate::i18n::text("core", "pulls-review-comment-span-outdated") }}</span>{% endif %}
   </div>
   {% if !comment.hunk.is_empty() %}
   <div class="diff-scroll border-b border-line"><div class="diff-view diff-excerpt">
@@ -18,7 +18,7 @@
     <p class="flex flex-wrap items-center gap-x-2 text-[13px]">
       {% if let Some(url) = comment.author.url %}<a href="{{ url }}" class="font-medium text-ink hover:underline hover:underline-offset-4">{{ comment.author.name }}</a>{% else %}<span class="font-medium text-ink-muted">{{ comment.author.name }}</span>{% endif %}
       <a href="#{{ comment.anchor }}" class="text-xs text-ink-faint hover:underline hover:underline-offset-4"><time datetime="{{ comment.when_iso }}" title="{{ comment.when_iso }}">{{ comment.when }}</time></a>
-      {% if comment.pending %}<span class="badge text-warning">Pending</span>{% endif %}
+      {% if comment.pending %}<span class="badge text-warning">{{ crate::i18n::text("core", "pulls-review-comment-span-pending") }}</span>{% endif %}
     </p>
     <div class="prose-rbit mt-1">{{ comment.body_html|safe }}</div>
   </div>

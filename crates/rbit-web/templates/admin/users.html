@@ -10,20 +10,20 @@
 
 <div class="mb-3 flex flex-wrap items-center gap-2">
   {% call admin::search(listing, "Search by username, name or email") %}{% endcall %}
-  <a href="/admin/users/new" class="btn btn-primary h-10 sm:h-9">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New user</a>
+  <a href="/admin/users/new" class="btn btn-primary h-10 sm:h-9">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "admin-users-a-new-user") }}</a>
 </div>
 
 <div class="box">
   {% if users.is_empty() %}
-  {% call ui::empty_state("user", "No users found", "Try a different search.") %}{% endcall %}
+  {% call ui::empty_state("user", crate::i18n::text("core", "admin-users-empty-title-no-users-found"), crate::i18n::text("core", "admin-users-empty-description-try-a-different-search")) %}{% endcall %}
   {% else %}
   <table class="w-full text-left text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">User</th>
-        <th scope="col" class="hidden px-4 font-medium md:table-cell">Repositories</th>
-        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Joined</th>
-        <th scope="col" class="w-px px-4"><span class="sr-only">Actions</span></th>
+        <th scope="col" class="h-9 px-4 font-medium">{{ crate::i18n::text("core", "admin-users-th-user") }}</th>
+        <th scope="col" class="hidden px-4 font-medium md:table-cell">{{ crate::i18n::text("core", "admin-users-th-repositories") }}</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">{{ crate::i18n::text("core", "admin-users-th-joined") }}</th>
+        <th scope="col" class="w-px px-4"><span class="sr-only">{{ crate::i18n::text("core", "plugin-actions") }}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -35,10 +35,10 @@
             <div class="min-w-0">
               <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                 <a href="{{ user.profile_url }}" class="truncate font-medium hover:underline">{{ user.name }}</a>
-                {% if user.is_admin %}<span class="badge">Admin</span>{% endif %}
-                {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">Suspended</span>{% endif %}
-                {% if user.is_verified %}<span class="badge" title="Email address verified">Verified</span>{% endif %}
-                {% if user.is_self %}<span class="badge">You</span>{% endif %}
+                {% if user.is_admin %}<span class="badge">{{ crate::i18n::text("core", "admin-users-span-admin") }}</span>{% endif %}
+                {% if user.is_suspended %}<span class="badge border-danger/40 text-danger">{{ crate::i18n::text("core", "admin-users-span-suspended") }}</span>{% endif %}
+                {% if user.is_verified %}<span class="badge" title="{{ crate::i18n::text("core", "admin-users-title-email-address-verified") }}">{{ crate::i18n::text("core", "admin-users-span-verified") }}</span>{% endif %}
+                {% if user.is_self %}<span class="badge">{{ crate::i18n::text("core", "admin-users-span-you") }}</span>{% endif %}
               </div>
               <p class="truncate text-xs text-ink-muted">{% if user.has_display_name %}{{ user.label }} · {% endif %}{{ user.email }}</p>
             </div>
@@ -49,25 +49,25 @@
         <td class="px-4 py-2.5 text-right">
           {% if !user.is_self %}
           <details class="relative inline-block text-left" data-menu>
-            <summary class="btn btn-ghost btn-icon" aria-label="Actions for {{ user.name }}" title="Actions">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
+            <summary class="btn btn-ghost btn-icon" aria-label="Actions for {{ user.name }}" title="{{ crate::i18n::text("core", "plugin-actions") }}">{% call ui::icon("chevron-down", "size-4") %}{% endcall %}</summary>
             <div class="menu right-0 w-52">
               {% if user.is_admin %}
-              <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Remove administrator</button></form>
+              <form method="post" action="{{ user.demote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{{ crate::i18n::text("core", "admin-users-button-remove-administrator") }}</button></form>
               {% else %}
-              <form method="post" action="{{ user.promote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Make administrator</button></form>
+              <form method="post" action="{{ user.promote_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{{ crate::i18n::text("core", "admin-users-button-make-administrator") }}</button></form>
               {% endif %}
               {% if user.is_suspended %}
-              <form method="post" action="{{ user.unsuspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Lift suspension</button></form>
+              <form method="post" action="{{ user.unsuspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{{ crate::i18n::text("core", "admin-users-button-lift-suspension") }}</button></form>
               {% else %}
-              <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">Suspend</button></form>
+              <form method="post" action="{{ user.suspend_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item text-danger" type="submit">{{ crate::i18n::text("core", "admin-users-button-suspend") }}</button></form>
               {% endif %}
               <div class="menu-divider"></div>
               {% if email_available && !user.is_suspended %}
-              <form method="post" action="{{ user.send_reset_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">Send password reset</button></form>
+              <form method="post" action="{{ user.send_reset_url }}">{% call admin::return_to(listing) %}{% endcall %}<button class="menu-item" type="submit">{{ crate::i18n::text("core", "admin-users-button-send-password-reset") }}</button></form>
               {% endif %}
-              <a class="menu-item" href="{{ user.password_url }}">Set password…</a>
+              <a class="menu-item" href="{{ user.password_url }}">{{ crate::i18n::text("core", "admin-users-a-set-password") }}</a>
               <div class="menu-divider"></div>
-              <a class="menu-item text-danger" href="{{ user.delete_url }}">Delete…</a>
+              <a class="menu-item text-danger" href="{{ user.delete_url }}">{{ crate::i18n::text("core", "admin-users-a-delete") }}</a>
             </div>
           </details>
           {% endif %}

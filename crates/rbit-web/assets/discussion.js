@@ -42,7 +42,7 @@ function insert(input, option) {
   if (!mention) return;
   const value = `${option.dataset.mention} `;
   if (input.value.length - (mention.end - mention.start) + value.length > input.maxLength) {
-    input.form.querySelector('[data-discussion-status]').textContent = 'This mention would exceed the comment limit. Shorten your draft first.';
+    input.form.querySelector('[data-discussion-status]').textContent = (globalThis.rbitMessages?.text("browser-mention-limit") ?? (globalThis.rbitMessages?.text("browser-mention-limit") ?? "This mention would exceed the comment limit. Shorten your draft first."));
     cancel(); close(input); return;
   }
   input.setRangeText(value, mention.start, mention.end, 'end');
@@ -77,7 +77,7 @@ document.addEventListener('click', event => {
     const text = reply.closest('article').querySelector('[data-reply-source]').value;
     const quote = quoteReply(reply.dataset.replyAuthor, reply.dataset.reply, text);
     if (input.value.length + quote.length + 2 > input.maxLength) {
-      input.form.querySelector('[data-discussion-status]').textContent = 'This reply would exceed the comment limit. Shorten your draft first.';
+      input.form.querySelector('[data-discussion-status]').textContent = (globalThis.rbitMessages?.text("browser-reply-limit") ?? (globalThis.rbitMessages?.text("browser-reply-limit") ?? "This reply would exceed the comment limit. Shorten your draft first."));
       return;
     }
     input.value += `${input.value ? '\n\n' : ''}${quote}`;

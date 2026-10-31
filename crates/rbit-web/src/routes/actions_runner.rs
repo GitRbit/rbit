@@ -449,8 +449,8 @@ async fn unregister(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-fn actions(state: &AppState) -> Result<&rbit_services::ActionsService, Refusal> {
-    state.services.actions.as_ref().ok_or_else(|| RunnerError::not_found("not found").into())
+fn actions(state: &AppState) -> Result<rbit_services::ActionsService, Refusal> {
+    state.services.actions.snapshot().ok_or_else(|| RunnerError::not_found("not found").into())
 }
 
 // ------------------------------------------------------------------ the envelope

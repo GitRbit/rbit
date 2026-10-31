@@ -32,6 +32,28 @@ pub struct ErrorInfo {
     pub message: String,
 }
 
+impl ErrorInfo {
+    pub fn localized_title(&self) -> std::borrow::Cow<'static, str> {
+        let key = match self.title {
+            "Page not found" => "error-title-page-not-found",
+            "Access denied" => "error-title-access-denied",
+            "Bad request" => "error-title-bad-request",
+            "Slow down" => "error-title-slow-down",
+            "Something went wrong" => "error-title-something-went-wrong",
+            _ => return std::borrow::Cow::Borrowed(self.title),
+        };
+        crate::i18n::text("core", key)
+    }
+    pub fn localized_message(&self) -> std::borrow::Cow<'_, str> {
+        let key = match self.message.as_str() {
+            "The page you were looking for doesn't exist, or you don't have access to it." => "error-not-found",
+            "An unexpected error occurred. It has been logged." => "error-internal",
+            _ => return std::borrow::Cow::Borrowed(&self.message),
+        };
+        crate::i18n::text("core", key)
+    }
+}
+
 impl WebError {
     pub fn internal(error: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Internal(Box::new(error))

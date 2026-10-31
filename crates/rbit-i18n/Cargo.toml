@@ -1,0 +1,25 @@
+[package]
+name = "rbit-i18n"
+description = "Bounded language-pack validation and immutable Fluent catalogs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-messages.workspace = true
+fluent-bundle.workspace = true
+fluent-syntax.workspace = true
+unic-langid.workspace = true
+intl_pluralrules.workspace = true
+semver = { workspace = true, features = ["serde"] }
+serde.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+# Select the portable compression backend in standalone catalog builds.
+flate2.workspace = true
+sha2.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

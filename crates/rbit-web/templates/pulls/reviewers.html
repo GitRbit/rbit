@@ -1,9 +1,9 @@
 {#- Reviewers and their latest state, with request / remove forms; expects `reviewers: ReviewersView`. -#}
 {% import "macros.html" as ui %}
-<section class="mb-5" aria-label="Reviewers">
-  <h2 class="text-xs font-medium text-ink-muted">Reviewers</h2>
+<section class="mb-5" aria-label="{{ crate::i18n::text("core", "pulls-reviewers-aria-label-reviewers") }}">
+  <h2 class="text-xs font-medium text-ink-muted">{{ crate::i18n::text("core", "pulls-reviewers-h2-reviewers") }}</h2>
   {% if reviewers.reviewers.is_empty() %}
-  <p class="mt-1.5 text-xs text-ink-faint">No reviews yet</p>
+  <p class="mt-1.5 text-xs text-ink-faint">{{ crate::i18n::text("core", "pulls-reviewers-p-no-reviews-yet") }}</p>
   {% else %}
   <ul class="mt-1.5 space-y-1.5">
     {% for reviewer in reviewers.reviewers %}
@@ -14,7 +14,7 @@
       {% if reviewers.can_request && reviewer.requested %}
       <form method="post" action="{{ reviewers.remove_url }}">
         <input type="hidden" name="reviewer" value="{{ reviewer.name }}">
-        <button type="submit" class="btn btn-ghost btn-icon h-8 w-8 sm:h-6 sm:w-6" aria-label="Remove the review request for {{ reviewer.name }}" title="Remove request">{% call ui::icon("x", "size-3") %}{% endcall %}</button>
+        <button type="submit" class="btn btn-ghost btn-icon h-8 w-8 sm:h-6 sm:w-6" aria-label="Remove the review request for {{ reviewer.name }}" title="{{ crate::i18n::text("core", "pulls-reviewers-title-remove-request") }}">{% call ui::icon("x", "size-3") %}{% endcall %}</button>
       </form>
       {% endif %}
     </li>
@@ -23,9 +23,9 @@
   {% endif %}
   {% if reviewers.can_request %}
   <form method="post" action="{{ reviewers.request_url }}" class="mt-2 flex gap-1.5">
-    <label class="sr-only" for="request-reviewer">Request a review from</label>
-    <input id="request-reviewer" class="input h-11 min-w-0 flex-1 text-xs sm:h-8" name="reviewers" placeholder="username" maxlength="200" autocomplete="off">
-    <button type="submit" class="btn h-11 shrink-0 px-2.5 text-xs sm:h-8" aria-label="Request review">{% call ui::icon("user-plus", "size-3.5") %}{% endcall %}</button>
+    <label class="sr-only" for="request-reviewer">{{ crate::i18n::text("core", "pulls-reviewers-label-request-a-review-from") }}</label>
+    <input id="request-reviewer" class="input h-11 min-w-0 flex-1 text-xs sm:h-8" name="reviewers" placeholder="{{ crate::i18n::text("core", "pulls-reviewers-placeholder-username") }}" maxlength="200" autocomplete="off">
+    <button type="submit" class="btn h-11 shrink-0 px-2.5 text-xs sm:h-8" aria-label="{{ crate::i18n::text("core", "pulls-reviewers-aria-label-request-review") }}">{% call ui::icon("user-plus", "size-3.5") %}{% endcall %}</button>
   </form>
   {% endif %}
 </section>

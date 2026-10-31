@@ -1,0 +1,55 @@
+{% extends "admin/layout.html" %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+<h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "plugin-plugins") }}</h2>
+<p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-manage-optional-features-without-restarting-rbit") }}</p>
+{% if let Some(error) = error %}<p class="mt-4 text-[13px]" role="alert">{{ error }}</p>{% endif %}
+<section class="box mt-6" aria-labelledby="actions-plugin-title">
+  <div class="flex flex-wrap items-start justify-between gap-4 p-4">
+    <div class="min-w-0">
+      <h3 id="actions-plugin-title" class="font-medium">{{ crate::i18n::text("core", "plugin-actions") }}</h3>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-workflows-runners-logs-and-artifacts") }}</p>
+      <p class="mt-2 text-xs text-ink-muted">{{ status }}</p>
+      {% if let Some(generation) = generation %}<details class="mt-2 text-xs text-ink-muted"><summary>{{ crate::i18n::text("core", "plugin-diagnostics") }}</summary><p class="mt-1">{{ crate::i18n::text("core", "plugin-activation") }} {{ generation }}</p></details>{% endif %}
+      {% if !available %}<p class="mt-2 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-this-build-does-not-include-actions-install-a-build-with-actions-support-to-enable-it") }}</p>{% endif %}
+    </div>
+    {% if available %}
+    <form method="post" action="/admin/plugins/actions" hx-boost="false">
+      <input type="hidden" name="enabled" value="{% if active || retry_disable %}false{% else %}true{% endif %}">
+      <button {% if busy %}disabled{% endif %} class="btn {% if active %}btn-ghost{% else %}btn-primary{% endif %}" type="submit">{% if busy %}{{ crate::i18n::text("core", "plugin-changing-actions") }}{% else if retry_disable %}{{ crate::i18n::text("core", "plugin-retry-disable-actions") }}{% else if active %}{{ crate::i18n::text("core", "plugin-disable-actions") }}{% else %}{{ crate::i18n::text("core", "plugin-enable-actions") }}{% endif %}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if available %}<p class="border-t border-line px-4 py-3 text-xs text-ink-muted">{{ crate::i18n::text("core", "plugin-disabling-actions-stops-new-work-cancels-active-jobs-and-keeps-stored-history-and-repository-settings") }}</p>{% endif %}
+</section>
+<section class="box mt-6" aria-labelledby="i18n-plugin-title">
+  <div class="flex flex-wrap items-start justify-between gap-4 p-4">
+    <div><h3 id="i18n-plugin-title" class="font-medium">{{ crate::i18n::text("core", "plugin-languages") }}</h3>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-install-trusted-language-packs-and-translate-the-interface") }}</p>
+      <p class="mt-2 text-xs text-ink-muted" data-plugin-status="i18n">{{ i18n_status }}</p>
+      {% if let Some(generation) = i18n_generation %}<details class="mt-2 text-xs text-ink-muted"><summary>{{ crate::i18n::text("core", "plugin-diagnostics") }}</summary><p class="mt-1">{{ crate::i18n::text("core", "plugin-activation") }} {{ generation }}</p></details>{% endif %}
+      {% if i18n_problem %}<p class="mt-2 text-[13px] text-ink-muted" role="status">{{ crate::i18n::text("core", "plugin-language-failure-help") }}</p>{% endif %}
+      {% if !i18n_available %}<p class="mt-2 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-this-build-does-not-include-language-pack-support") }}</p>{% endif %}
+    </div>
+    {% if i18n_available %}<form method="post" action="/admin/plugins/i18n" hx-boost="false">
+      <input type="hidden" name="enabled" value="{% if i18n_active || i18n_retry_disable %}false{% else %}true{% endif %}">
+      <button {% if i18n_busy %}disabled{% endif %} class="btn {% if i18n_active %}btn-ghost{% else %}btn-primary{% endif %}" type="submit">{% if i18n_busy %}{{ crate::i18n::text("core", "plugin-changing-languages") }}{% else if i18n_retry_disable %}{{ crate::i18n::text("core", "plugin-retry-disable-languages") }}{% else if i18n_active %}{{ crate::i18n::text("core", "plugin-disable-languages") }}{% else %}{{ crate::i18n::text("core", "plugin-enable-languages") }}{% endif %}</button>
+    </form>{% endif %}
+  </div>
+  {% if i18n_available %}
+  <div class="border-t border-line p-4">
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-disabling-selects-english-installed-packs-and-language-preferences-are-retained") }}</p>
+    <p class="mt-2 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "plugin-only-install-packs-from-a-publisher-you-trust-translations-can-change-security-and-sign-in-instructions") }}</p>
+    <form method="post" action="/admin/plugins/i18n/packs" enctype="multipart/form-data" hx-boost="false" class="mt-4 flex flex-wrap items-end gap-3">
+      <div><label class="block text-[13px]" for="language-pack">{{ crate::i18n::text("core", "plugin-language-pack-zip-up-to-2-mib") }}</label><input id="language-pack" name="pack" type="file" accept=".rbit-language,.zip,application/zip" required class="mt-2 block max-w-full text-[13px]"></div>
+      <button class="btn btn-primary" type="submit">{{ crate::i18n::text("core", "plugin-install-language-pack") }}</button>
+    </form>
+    <p class="mt-4 text-[13px] text-ink-muted">{{ crate::i18n::pack_count(packs.len()) }}</p>
+    {% for pack in packs %}<div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+      <div class="min-w-0 text-[13px]"><p class="break-all font-medium">{{ pack.id }}</p><p class="text-ink-muted">{{ pack.locale }} · {{ pack.version }}</p><p class="text-xs text-ink-muted">{{ crate::i18n::pack_coverage(pack.message_count, pack.message_total) }}</p></div>
+      <form method="post" action="/admin/plugins/i18n/packs/{{ pack.id|urlencode }}/remove" hx-boost="false"><button class="btn btn-ghost" type="submit">{{ crate::i18n::text("core", "plugin-remove-pack") }}</button></form>
+    </div>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

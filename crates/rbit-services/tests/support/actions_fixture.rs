@@ -81,8 +81,8 @@ impl Fixture {
         fixture
     }
 
-    pub fn actions(&self) -> &ActionsService {
-        self.services.actions.as_ref().expect("Actions is enabled")
+    pub fn actions(&self) -> ActionsService {
+        self.services.actions.snapshot().expect("Actions is enabled")
     }
 
     pub async fn repo(&self, viewer: &User) -> RepoContext {

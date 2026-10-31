@@ -28,11 +28,13 @@ pub mod instance;
 pub mod issue_meta;
 pub mod issue_search;
 pub mod issues;
+pub mod language_packs;
 pub mod lfs;
 pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+pub mod plugin_settings;
 mod pool;
 pub mod preferences;
 pub mod profiles;
@@ -229,6 +231,16 @@ impl Database {
 
     pub fn preferences(&self) -> preferences::PreferenceStore {
         preferences::PreferenceStore::new(self.store("preferences"))
+    }
+
+    /// Installed language archives and account locale preferences.
+    pub fn language_packs(&self) -> language_packs::LanguagePackStore {
+        language_packs::LanguagePackStore::new(self.store("language_packs"))
+    }
+
+    /// Persisted desired state for optional plugins, independent of feature packages.
+    pub fn plugin_settings(&self) -> plugin_settings::PluginSettingsStore {
+        plugin_settings::PluginSettingsStore::new(self.store("plugin_settings"))
     }
 
     // Milestone 2 wave B: the shared issue core (T0), then the workstreams.

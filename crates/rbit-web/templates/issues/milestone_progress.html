@@ -5,7 +5,7 @@
   <rect width="{{ milestone.percent }}" height="2" class="fill-success"/>
 </svg>
 <p class="mt-1.5 flex flex-wrap gap-x-3 text-xs text-ink-muted">
-  <span><span class="font-medium text-ink">{{ milestone.percent }}%</span> complete</span>
+  <span><span class="font-medium text-ink">{{ milestone.percent }}%</span> {{ crate::i18n::text("core", "issues-milestone-progress-span-complete") }}</span>
   <span>{{ milestone.open_issues }} open</span>
   <span>{{ milestone.closed_issues }} closed</span>
 </p>

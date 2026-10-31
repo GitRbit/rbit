@@ -70,11 +70,9 @@ pub struct RepoHeader {
     /// `TimelineService::open_counts`, loaded with the page).
     pub open_issues: u64,
     pub open_pulls: u64,
-    /// `/{owner}/{repo}/actions`, when the instance and the repository have Actions on.
-    pub actions_url: Option<String>,
-    /// `/{owner}/{repo}/settings/actions`, when the instance has Actions and the viewer
-    /// administers the repository: the settings page links it as a card.
-    pub actions_settings_url: Option<String>,
+    /// Repository-scoped feature policies already checked by the host adapter.
+    /// A globally active plugin alone does not opt a repository into its UI.
+    pub enabled_plugins: Vec<rbit_plugin_api::PluginId>,
     /// `"code"`, `"issues"`, `"pulls"`, `"commits"`, `"branches"`, `"tags"`, `"releases"`
     /// or `"activity"`, `"actions"`, `"settings"`; compared in `repo/subnav.html`.
     pub active_tab: &'static str,
@@ -408,8 +406,12 @@ mod tests {
         };
         BlobPage {
             page: Page {
+                locale: rbit_messages::LocaleSnapshot::english(0),
+                ui: rbit_services::ui::UiSnapshot::default(),
+                has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".to_owned(),
+                plugin_revision: 0,
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,

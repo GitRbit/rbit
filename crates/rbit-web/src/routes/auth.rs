@@ -142,7 +142,7 @@ pub(crate) async fn login_page(state: &AppState, page: Page, error: FormError, l
     let registration_open = state.services.accounts.registration_open().await?;
     // Milestone 3: external sign-in (O).
     let providers = ProviderButton::all(&state.services.external_auth.providers(), &next);
-    Ok(LoginPage { page: page.titled("Sign in"), error, login, next, registration_open, providers })
+    Ok(LoginPage { page: page.titled(crate::i18n::text("core", "title-sign-in")), error, login, next, registration_open, providers })
 }
 
 /// Continues a sign-in whose first step passed at the second step: the pending sign-in
@@ -168,7 +168,7 @@ async fn signup_page(
 ) -> Result<SignupPage, WebError> {
     let accounts = &state.services.accounts;
     Ok(SignupPage {
-        page: page.titled("Sign up"),
+        page: page.titled(crate::i18n::text("core", "title-sign-up")),
         error,
         username,
         email,

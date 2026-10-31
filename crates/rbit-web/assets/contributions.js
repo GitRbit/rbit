@@ -1,8 +1,8 @@
 // Immediate count tooltips and persistent day selection, including after htmx swaps.
 const dayOf = target => target instanceof Element ? target.closest('[data-contribution-day]') : null;
-const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeZone: 'UTC' });
+const dateFormatter = new Intl.DateTimeFormat(globalThis.rbitMessages?.locale() ?? globalThis.document?.documentElement?.lang ?? undefined, { dateStyle: 'full', timeZone: 'UTC' });
 const dateLabel = value => dateFormatter.format(new Date(`${value}T00:00:00Z`));
-const countLabel = count => `${count} commit${count === 1 ? '' : 's'}`;
+const countLabel = count => globalThis.rbitMessages?.plural("browser-commit", count) ?? `${count} commit${count === 1 ? '' : 's'}`;
 
 // The tooltips on show. Hiding runs on every scroll event of every page, so it touches
 // only these instead of searching the document (a full walk of a large diff's DOM).
@@ -13,7 +13,7 @@ function showDayTooltip(day) {
   day.querySelector('title')?.remove();
   const calendar = day.closest('[data-contributions]');
   const tooltip = calendar.querySelector('[data-contribution-tooltip]');
-  tooltip.textContent = `${countLabel(Number(day.dataset.count))} on ${dateLabel(day.dataset.contributionDay)}`;
+  tooltip.textContent = (globalThis.rbitMessages?.text("browser-contribution-day", { count: countLabel(Number(day.dataset.count)), date: dateLabel(day.dataset.contributionDay) }) ?? `${countLabel(Number(day.dataset.count))} on ${dateLabel(day.dataset.contributionDay)}`);
   tooltip.hidden = false;
   shown.add(tooltip);
   const box = day.getBoundingClientRect();
@@ -45,7 +45,10 @@ function selectDay(day) {
   heading.textContent = `${dateLabel(date)} · ${countLabel(count)}`;
   const info = document.createElement('p');
   info.className = 'mt-1 text-xs text-ink-muted';
-  info.textContent = `${countLabel(monthly)} in this month · ${total ? (count / total * 100).toFixed(1) : '0'}% of this year's commits. Author dates from 00:00 to 23:59 UTC. Counts follow the scope and visibility described below.${calendar.querySelector('[data-partial-activity]') ? ' Activity is partial because the history scan limit was reached.' : ''}`;
+  const partial = Boolean(calendar.querySelector('[data-partial-activity]'));
+  const percent = globalThis.rbitMessages?.number(total ? count / total : 0, { style: "percent", maximumFractionDigits: 1 }) ?? `${total ? (count / total * 100).toFixed(1) : '0'}%`;
+  info.textContent = globalThis.rbitMessages?.text(partial ? "browser-contribution-summary-partial" : "browser-contribution-summary", { count: countLabel(monthly), percent })
+    ?? `${countLabel(monthly)} in this month · ${total ? (count / total * 100).toFixed(1) : '0'}% of this year's commits. Author dates from 00:00 to 23:59 UTC. Counts follow the scope and visibility described below.${partial ? ' Activity is partial because the history scan limit was reached.' : ''}`;
   details.replaceChildren(heading, info);
 }
 

@@ -126,7 +126,7 @@ async fn environment_page(
     let actions = actions(state)?;
     let target = ActionsTarget::Environment(&loaded.ctx, environment);
     let url = environment_url(loaded, &environment.name);
-    let (secrets, variables) = sections(actions, target, format!("{url}/secrets"), format!("{url}/variables")).await?;
+    let (secrets, variables) = sections(&actions, target, format!("{url}/secrets"), format!("{url}/variables")).await?;
     let people = actions.environment_reviewers(environment).await?;
     let (policy, patterns) = match &environment.branch_policy {
         BranchPolicy::All => ("all", String::new()),
@@ -263,9 +263,9 @@ async fn entry(
     let actions = actions(state)?;
     let target = ActionsTarget::Environment(&loaded.ctx, &environment);
     let result = if form.kind == "variable" {
-        apply_variable(actions, user, target, form).await
+        apply_variable(&actions, user, target, form).await
     } else {
-        apply_secret(actions, user, target, form).await
+        apply_secret(&actions, user, target, form).await
     };
     match result {
         Ok(notice) => Ok(done(&environment_url(&loaded, &environment.name), notice)),

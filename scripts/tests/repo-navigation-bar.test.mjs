@@ -169,3 +169,30 @@ test('reordered keyed tabs retain focus without scrolling or replacing anchors',
   assert.deepEqual(current.tabs[1].focusOptions, { preventScroll: true });
   assert.equal(current.nav.scrollLeft, 210);
 });
+
+test('repository plugin panels insert, update and disappear without replacing host navigation', () => withHtmx(() => {
+  const current = fixture();
+  const tab = current.tabs[1], menu = current.menu;
+  current.document.activeElement = tab;
+  function incoming(text, generation) {
+    const next = fixture();
+    if (text !== null) {
+      const content = new Node('#text', {}, text, next.document);
+      const panel = new Node('SECTION', { id: 'plugin-panel-actions', 'data-plugin-owner': 'rbit.actions', 'data-plugin-generation': generation }, [content], next.document);
+      next.root.insertBefore(new Node('DIV', { id: 'repo-plugin-panels', class: 'col-span-full' }, [panel], next.document), null);
+    }
+    return next.root;
+  }
+  assert.equal(reconcileRepositoryBar(current.root, incoming('First contribution', '1')), true);
+  const panel = current.root.querySelectorAll('SECTION')[0];
+  assert.ok(panel); assert.equal(panel.textContent, 'First contribution');
+  assert.equal(reconcileRepositoryBar(current.root, incoming('Updated contribution', '2')), true);
+  assert.equal(current.root.querySelectorAll('SECTION')[0], panel, 'stable panel identity can be reconciled');
+  assert.equal(panel.textContent, 'Updated contribution');
+  assert.equal(panel.getAttribute('data-plugin-generation'), '2');
+  assert.equal(reconcileRepositoryBar(current.root, incoming(null)), true);
+  assert.equal(current.root.querySelectorAll('SECTION').length, 0);
+  assert.equal(current.root.querySelector('.repo-tabs'), current.nav);
+  assert.equal(current.tabs[1], tab); assert.equal(current.menu, menu);
+  assert.equal(current.document.activeElement, tab);
+}));

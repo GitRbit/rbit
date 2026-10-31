@@ -12,11 +12,11 @@
 {% if can_reply %}
 <form method="post" action="{{ pull.urls.line_comments }}" class="border-t border-line p-3">
   <input type="hidden" name="in_reply_to" value="{{ comment.reply_to }}">
-  <label class="sr-only" for="{{ comment.anchor }}-reply">Reply</label>
-  <textarea id="{{ comment.anchor }}-reply" name="body" class="input h-16 resize-y py-2 text-[13px]" rows="2" maxlength="65536" placeholder="Reply…" required></textarea>
+  <label class="sr-only" for="{{ comment.anchor }}-reply">{{ crate::i18n::text("core", "pulls-review-thread-label-reply") }}</label>
+  <textarea id="{{ comment.anchor }}-reply" name="body" class="input h-16 resize-y py-2 text-[13px]" rows="2" maxlength="65536" placeholder="{{ crate::i18n::text("core", "pulls-review-thread-placeholder-reply") }}" required></textarea>
   <div class="mt-2 flex justify-end gap-2">
-    <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">Add to review</button>
-    <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">Reply</button>
+    <button type="submit" name="action" value="review" class="btn h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-review-thread-button-add-to-review") }}</button>
+    <button type="submit" name="action" value="single" class="btn btn-primary h-11 sm:h-8">{{ crate::i18n::text("core", "pulls-review-thread-button-reply") }}</button>
   </div>
 </form>
 {% endif %}
@@ -24,7 +24,7 @@
 <form method="post" action="{{ action_url }}" class="border-t border-line px-3 py-2">
   <input type="hidden" name="resolved" value="{% if comment.resolution.resolved %}false{% else %}true{% endif %}">
   <input type="hidden" name="view" value="{{ thread_view }}">
-  <button type="submit" class="btn h-11 text-xs sm:h-8">{% if comment.resolution.resolved %}Reopen conversation{% else %}Resolve conversation{% endif %}</button>
+  <button type="submit" class="btn h-11 text-xs sm:h-8">{% if comment.resolution.resolved %}{{ crate::i18n::text("core", "pulls-review-thread-button-reopen-conversation") }}{% else %}{{ crate::i18n::text("core", "pulls-review-thread-button-resolve-conversation") }}{% endif %}</button>
 </form>
 {% endif %}
 {% if comment.resolution.resolved %}</details>{% endif %}

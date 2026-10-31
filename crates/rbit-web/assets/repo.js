@@ -27,16 +27,16 @@ async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl
   dialog.className = 'language-dialog';
   dialog.dataset.languageDialog = '';
   dialog.languageTrigger = trigger;
-  dialog.setAttribute('aria-label', 'Language files');
+  dialog.setAttribute('aria-label', (globalThis.rbitMessages?.text("browser-language-files") ?? (globalThis.rbitMessages?.text("browser-language-files") ?? "Language files")));
   const loading = document.createElement('p');
   loading.className = 'p-6 text-ink-muted';
   loading.setAttribute('role', 'status');
-  loading.textContent = 'Loading files…';
+  loading.textContent = (globalThis.rbitMessages?.text("browser-files-loading") ?? (globalThis.rbitMessages?.text("browser-files-loading") ?? "Loading files…"));
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'btn m-4';
   close.dataset.languageClose = '';
-  close.textContent = 'Close';
+  close.textContent = (globalThis.rbitMessages?.text("browser-close") ?? (globalThis.rbitMessages?.text("browser-close") ?? "Close"));
   dialog.append(loading, close);
   dialog.addEventListener('close', () => {
     controller.abort();
@@ -67,11 +67,11 @@ async function showLanguageFiles(trigger, url = trigger.dataset.languageFilesUrl
     content.querySelector('[data-language-close]').focus();
   } catch (error) {
     if (error.name === 'AbortError') return;
-    loading.textContent = 'Unable to load files. ';
+    loading.textContent = (globalThis.rbitMessages?.text("browser-files-failed") ?? (globalThis.rbitMessages?.text("browser-files-failed") ?? "Unable to load files. "));
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'link';
-    retry.textContent = 'Try again';
+    retry.textContent = (globalThis.rbitMessages?.text("browser-retry") ?? (globalThis.rbitMessages?.text("browser-retry") ?? "Try again"));
     retry.addEventListener('click', () => showLanguageFiles(trigger, url));
     loading.append(retry);
   }
@@ -91,7 +91,7 @@ async function previewLanguageFile(link) {
   const status = document.createElement('p');
   status.className = 'p-6 text-sm text-ink-muted';
   status.setAttribute('role', 'status');
-  status.textContent = 'Loading file…';
+  status.textContent = (globalThis.rbitMessages?.text("browser-file-loading") ?? (globalThis.rbitMessages?.text("browser-file-loading") ?? "Loading file…"));
   preview.replaceChildren(status);
   try {
     const response = await fetch(link.href, { signal: controller.signal });
@@ -107,7 +107,7 @@ async function previewLanguageFile(link) {
     const full = document.createElement('a');
     full.href = link.href;
     full.className = 'link shrink-0';
-    full.textContent = 'Open file';
+    full.textContent = (globalThis.rbitMessages?.text("browser-open-file") ?? (globalThis.rbitMessages?.text("browser-open-file") ?? "Open file"));
     heading.append(path, full);
     // IDs must remain unique alongside the repository page and within previews.
     for (const element of content.querySelectorAll('[id]')) element.removeAttribute('id');
@@ -116,11 +116,11 @@ async function previewLanguageFile(link) {
     preview.dispatchEvent(new Event('rbit:content-loaded', { bubbles: true }));
   } catch (error) {
     if (error.name === 'AbortError') return;
-    status.textContent = 'Unable to load this file. ';
+    status.textContent = (globalThis.rbitMessages?.text("browser-file-failed") ?? (globalThis.rbitMessages?.text("browser-file-failed") ?? "Unable to load this file. "));
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'link';
-    retry.textContent = 'Try again';
+    retry.textContent = (globalThis.rbitMessages?.text("browser-retry") ?? (globalThis.rbitMessages?.text("browser-retry") ?? "Try again"));
     retry.addEventListener('click', () => previewLanguageFile(link));
     status.append(retry);
   } finally {

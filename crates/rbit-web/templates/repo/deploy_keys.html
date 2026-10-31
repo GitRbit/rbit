@@ -4,46 +4,46 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a></p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Deploy keys</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A deploy key gives a server or CI job SSH access to <span class="text-ink">{{ full_name }}</span> only. Keys are read-only unless you allow them to push.</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a></p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "repo-deploy-keys-h1-deploy-keys") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-deploy-keys-p-a-deploy-key-gives-a-server-or-ci-job-ssh-access-to") }} <span class="text-ink">{{ full_name }}</span> {{ crate::i18n::text("core", "repo-deploy-keys-p-only-keys-are-read-only-unless-you-allow-them-to-push") }}</p>
 
   <form method="post" action="{{ keys_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">New deploy key</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "repo-deploy-keys-h2-new-deploy-key") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="key-title">Title <span class="font-normal text-ink-faint">optional</span></label>
-      <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="e.g. Production server" autocomplete="off">
-      <p class="hint">Defaults to the key's comment.</p>
+      <label class="label" for="key-title">{{ crate::i18n::text("core", "repo-deploy-keys-label-title") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "repo-deploy-keys-span-optional") }}</span></label>
+      <input class="input" id="key-title" name="title" value="{{ form.title }}" maxlength="100" placeholder="{{ crate::i18n::text("core", "repo-deploy-keys-placeholder-e-g-production-server") }}" autocomplete="off">
+      <p class="hint">{{ crate::i18n::text("core", "repo-deploy-keys-p-defaults-to-the-key-s-comment") }}</p>
 
-      <label class="label mt-5" for="key-value">Key</label>
-      <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="ssh-ed25519 AAAA… deploy@server" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
-      <p class="hint">A key can belong to only one repository or account; generate a separate key for each.</p>
+      <label class="label mt-5" for="key-value">{{ crate::i18n::text("core", "repo-deploy-keys-label-key") }}</label>
+      <textarea class="input h-32 resize-y py-2 font-mono text-xs sm:h-28" id="key-value" name="key" rows="4" placeholder="{{ crate::i18n::text("core", "repo-deploy-keys-placeholder-ssh-ed25519-aaaa-deploy-server") }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>{{ form.key }}</textarea>
+      <p class="hint">{{ crate::i18n::text("core", "repo-deploy-keys-p-a-key-can-belong-to-only-one-repository-or-account-generate-a-sep") }}</p>
 
       <label class="mt-5 flex cursor-pointer items-start gap-3">
         <input type="checkbox" name="allow_write" value="on" class="mt-1 accent-(--ink)" {% if form.allow_write %}checked{% endif %}>
         <span>
-          <span class="block font-medium">Allow write access</span>
-          <span class="block text-[13px] text-ink-muted">The key can push to this repository as well as clone it.</span>
+          <span class="block font-medium">{{ crate::i18n::text("core", "repo-deploy-keys-span-allow-write-access") }}</span>
+          <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "repo-deploy-keys-span-the-key-can-push-to-this-repository-as-well-as-clone-it") }}</span>
         </span>
       </label>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Add deploy key</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "repo-deploy-keys-button-add-deploy-key") }}</button>
     </div>
   </form>
 
   <section class="mt-6" aria-labelledby="keys-title">
     <div class="mb-3 flex h-8 items-center justify-between">
-      <h2 id="keys-title" class="text-[13px] font-medium text-ink-muted">Keys</h2>
+      <h2 id="keys-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "repo-deploy-keys-h2-keys") }}</h2>
       {% if !keys.is_empty() %}<span class="text-xs text-ink-faint">{{ keys.len() }}</span>{% endif %}
     </div>
     <div class="box">
       {% if keys.is_empty() %}
-      {% call ui::empty_state("server", "No deploy keys", "Add a key to let a server or CI job clone this repository over SSH.") %}{% endcall %}
+      {% call ui::empty_state("server", crate::i18n::text("core", "repo-deploy-keys-empty-title-no-deploy-keys"), crate::i18n::text("core", "repo-deploy-keys-empty-description-add-a-key-to-let-a-server-or-ci-job-clone-this-repository-over-ss")) %}{% endcall %}
       {% else %}
       <ul>
         {% for key in keys %}
@@ -61,7 +61,7 @@
             </p>
           </div>
           <form method="post" action="{{ key.delete_url }}" class="shrink-0">
-            <button class="btn" type="submit" aria-label="Delete {{ key.title }}">Delete</button>
+            <button class="btn" type="submit" aria-label="Delete {{ key.title }}">{{ crate::i18n::text("core", "repo-deploy-keys-button-delete") }}</button>
           </form>
         </li>
         {% endfor %}

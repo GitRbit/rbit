@@ -343,7 +343,7 @@ async fn workflow_comments_record_no_cross_reference_by_a_ghost() {
     let target = fixture.create(&fixture.alice, "Target", "").await;
     let source = fixture.create(&fixture.alice, "Source", "").await;
     let source_ctx = fixture.open(&fixture.alice, source).await;
-    let grant = rbit_services::actions::tokens::TaskGrant {
+    let grant = rbit_core::actions::TaskGrant {
         task: TaskId(1),
         job: JobId(1),
         run: RunId(1),

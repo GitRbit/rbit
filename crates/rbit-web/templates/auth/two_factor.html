@@ -4,8 +4,8 @@
 <section class="auth-shell">
   <header class="auth-head">
     <span class="tile">{% if passkey_options.is_some() %}{% call ui::icon("key-round", "size-5") %}{% endcall %}{% else %}{% call ui::icon("smartphone", "size-5") %}{% endcall %}{% endif %}</span>
-    <h1 class="auth-title">Two-factor authentication</h1>
-    <p class="auth-lede">{% if passkey_options.is_some() && authenticator %}Use your passkey or enter the 6-digit code from your authenticator app.{% else if passkey_options.is_some() %}Use your passkey or security key to finish signing in.{% else %}Enter the 6-digit code from your authenticator app.{% endif %}</p>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "auth-two-factor-h1-two-factor-authentication") }}</h1>
+    <p class="auth-lede">{% if passkey_options.is_some() && authenticator %}Use your passkey or enter the 6-digit code from your authenticator app.{% else if passkey_options.is_some() %}{{ crate::i18n::text("core", "auth-two-factor-p-use-your-passkey-or-security-key-to-finish-signing-in") }}{% else %}{{ crate::i18n::text("core", "auth-two-factor-p-enter-the-6-digit-code-from-your-authenticator-app") }}{% endif %}</p>
   </header>
 
   <div class="card">
@@ -17,26 +17,26 @@
       <input type="hidden" name="passkey" value="">
       <div data-passkey-only hidden>
         <p data-passkey-error role="alert" class="mb-4 text-[13px] text-danger" hidden></p>
-        <button class="btn btn-primary btn-lg w-full" type="button" data-passkey-get="{{ options }}">{% call ui::icon("key-round", "size-4") %}{% endcall %}Use a passkey</button>
-        <p class="my-5 flex items-center gap-3 text-xs text-ink-faint" aria-hidden="true"><span class="h-px flex-1 bg-line"></span>or<span class="h-px flex-1 bg-line"></span></p>
+        <button class="btn btn-primary btn-lg w-full" type="button" data-passkey-get="{{ options }}">{% call ui::icon("key-round", "size-4") %}{% endcall %}{{ crate::i18n::text("core", "auth-two-factor-button-use-a-passkey") }}</button>
+        <p class="my-5 flex items-center gap-3 text-xs text-ink-faint" aria-hidden="true"><span class="h-px flex-1 bg-line"></span>{{ crate::i18n::text("core", "auth-two-factor-p-or") }}<span class="h-px flex-1 bg-line"></span></p>
       </div>
-      <p data-passkey-unsupported class="mb-5 text-[13px] text-ink-muted">This browser can't use passkeys. Enter a code instead.</p>
+      <p data-passkey-unsupported class="mb-5 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "auth-two-factor-p-this-browser-can-t-use-passkeys-enter-a-code-instead") }}</p>
       {% endif %}
 
       {% if authenticator %}
-      <label class="label" for="code">Authentication code</label>
+      <label class="label" for="code">{{ crate::i18n::text("core", "auth-two-factor-label-authentication-code") }}</label>
       <input class="input font-mono tracking-widest" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="123456" {% if passkey_options.is_none() %}required autofocus{% endif %}>
-      <p class="hint">Lost your device? Enter one of your recovery codes instead.</p>
+      <p class="hint">{{ crate::i18n::text("core", "auth-two-factor-p-lost-your-device-enter-one-of-your-recovery-codes-instead") }}</p>
       {% else %}
-      <label class="label" for="code">Recovery code</label>
-      <input class="input font-mono" id="code" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="xxxx-xxxx-xxxx">
-      <p class="hint">Lost your passkey? Enter one of your recovery codes.</p>
+      <label class="label" for="code">{{ crate::i18n::text("core", "auth-two-factor-label-recovery-code") }}</label>
+      <input class="input font-mono" id="code" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="20" placeholder="{{ crate::i18n::text("core", "auth-two-factor-placeholder-xxxx-xxxx-xxxx") }}">
+      <p class="hint">{{ crate::i18n::text("core", "auth-two-factor-p-lost-your-passkey-enter-one-of-your-recovery-codes") }}</p>
       {% endif %}
 
-      <button class="btn {% if passkey_options.is_none() %}btn-primary{% endif %} btn-lg mt-6 w-full" type="submit">Verify code</button>
+      <button class="btn {% if passkey_options.is_none() %}btn-primary{% endif %} btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "auth-two-factor-button-verify-code") }}</button>
     </form>
   </div>
 
-  <p class="auth-aside">Not you? <a href="/login" class="link">Sign in with a different account</a></p>
+  <p class="auth-aside">{{ crate::i18n::text("core", "auth-two-factor-p-not-you") }} <a href="/login" class="link">{{ crate::i18n::text("core", "auth-two-factor-a-sign-in-with-a-different-account") }}</a></p>
 </section>
 {% endblock %}

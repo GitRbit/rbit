@@ -20,6 +20,48 @@ import { installUpdateNotice } from "./update-notice.js";
 
 installUpdateNotice(document);
 
+// Runtime feature changes require a fresh shell, assets and navigation history.
+function retireLocalizedNavigation() {
+  clearNavigationResponses();
+  try { localStorage.removeItem("htmx-history-cache"); } catch { /* Storage can be unavailable. */ }
+  globalThis.navigator?.serviceWorker?.controller?.postMessage({ type: "rbit-locale-changed" });
+}
+
+// A plain form submission creates a fresh document without an HTMX response event.
+// Retire persisted history here as well, and notify other open tabs of the new identity.
+const LOCALE_STORAGE = "rbit-locale-revision";
+const initialLocale = document.body?.dataset?.localeRevision;
+try {
+  const previous = localStorage.getItem(LOCALE_STORAGE);
+  if (previous && initialLocale && previous !== initialLocale) retireLocalizedNavigation();
+  if (initialLocale) localStorage.setItem(LOCALE_STORAGE, initialLocale);
+} catch { /* Preferences remain usable when storage is unavailable. */ }
+globalThis.addEventListener?.("storage", (event) => {
+  if (event.key !== LOCALE_STORAGE || !event.newValue || event.newValue === initialLocale) return;
+  retireLocalizedNavigation();
+  location.reload();
+});
+document.addEventListener("htmx:beforeOnLoad", (event) => {
+  const changed = [["pluginRevision", "Rbit-Plugin-Revision"], ["localeRevision", "Rbit-Locale-Revision"]]
+    .some(([key, header]) => {
+      const current = document.body?.dataset?.[key];
+      const next = event.detail.xhr?.getResponseHeader?.(header);
+      return current && next && current !== next;
+    });
+  if (!changed) return;
+  event.preventDefault();
+  // Stop resources owned by an unpublished contribution before the full reload.
+  document.dispatchEvent(new CustomEvent("rbit:plugin-revision", { detail: {
+    revision: event.detail.xhr?.getResponseHeader?.("Rbit-Plugin-Revision"),
+  } }));
+  retireLocalizedNavigation();
+  const config = event.detail.requestConfig;
+  const navigation = config?.boosted && config.verb?.toLowerCase() === "get";
+  // Deferred fragments and polls can have URLs which are not full HTML pages.
+  location.assign(navigation ? (event.detail.xhr.responseURL || location.href) : location.href);
+});
+
+
 // Title-Case like any HTTP header name (the server lists them in `Vary` with that spelling).
 const EPOCH_HEADER = "Rbit-Nav-Epoch";
 const PARTIAL_HEADER = "Rbit-Partial";
@@ -55,6 +97,10 @@ function partialScope(url) {
  */
 export function navigationHeaders(url) {
   const headers = { "HX-Request": "true", [EPOCH_HEADER]: epoch };
+  const revision = document.body?.dataset?.pluginRevision;
+  if (revision) headers["Rbit-Plugin-Revision"] = revision;
+  const locale = document.body?.dataset?.localeRevision;
+  if (locale) headers["Rbit-Locale-Revision"] = locale;
   const scope = partialScope(url);
   if (scope) headers[PARTIAL_HEADER] = scope;
   return headers;
@@ -112,6 +158,10 @@ seedCurrentTab();
 document.addEventListener("htmx:configRequest", (event) => {
   const detail = event.detail;
   detail.headers[EPOCH_HEADER] = epoch;
+  const revision = document.body?.dataset?.pluginRevision;
+  if (revision) detail.headers["Rbit-Plugin-Revision"] = revision;
+  const locale = document.body?.dataset?.localeRevision;
+  if (locale) detail.headers["Rbit-Locale-Revision"] = locale;
   if (!detail.boosted || detail.verb !== "get") return;
   const scope = partialScope(detail.path);
   if (scope) detail.headers[PARTIAL_HEADER] = scope;

@@ -7,6 +7,6 @@
     {% call ui::icon("chevron-down", "size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
   </summary>
   <div class="menu left-0 max-h-80 w-64 overflow-y-auto">
-    <div class="ref-picker-results" data-ref-picker-unloaded><a class="menu-item" href="{{ switcher.picker.page }}" data-no-preload>Browse branches and tags</a></div>
+    <div class="ref-picker-results" data-ref-picker-unloaded><a class="menu-item" href="{{ switcher.picker.page }}" data-no-preload>{{ crate::i18n::text("core", "repo-ref-switcher-a-browse-branches-and-tags") }}</a></div>
   </div>
 </details>

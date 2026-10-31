@@ -7,13 +7,13 @@
   <input type="hidden" name="next" value="{{ page.path }}">
   <button class="menu-item" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}">
     <span class="when-dark">{% call ui::icon("sun", "menu-icon") %}{% endcall %}</span><span class="when-light">{% call ui::icon("moon", "menu-icon") %}{% endcall %}</span>
-    <span class="when-dark">Light mode</span><span class="when-light">Dark mode</span>
+    <span class="when-dark">{{ crate::i18n::text("core", "nav-light-mode") }}</span><span class="when-light">{{ crate::i18n::text("core", "nav-dark-mode") }}</span>
   </button>
 </form>
-<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}Themes</a>
+<a class="menu-item sm:hidden" href="/themes" hx-boost="false" aria-haspopup="dialog" data-theme-dialog-open>{% call ui::icon("palette", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-themes") }}</a>
 {% endmacro %}
 <!doctype html>
-<html lang="en"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
+<html lang="{{ page.locale.lang() }}" dir="{{ page.locale.direction() }}"{% if let Some(theme) = page.theme.attribute() %} data-theme="{{ theme }}"{% endif %}{% if let Some(scheme) = page.theme.scheme() %} data-scheme="{{ scheme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -50,53 +50,53 @@
   {% block theme_script %}<script src="{{ page.asset("theme.js") }}" async></script>{% endblock %}
 </head>
 {#- The preloader (assets/preload.js) keeps a preloaded page as long as the server lets the browser cache it. #}
-<body hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
-  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50">Skip to content</a>
+<body data-plugin-enhancements="{{ page.plugin_enhancements() }}" data-browser-messages="{{ page.browser_messages() }}" data-locale-revision="{{ page.locale.lang() }}:{{ page.locale.revision() }}" data-plugin-revision="{{ page.plugin_revision }}" hx-boost="true" data-preload-fresh="{{ crate::middleware::PRELOAD_MAX_AGE_SECONDS }}"{% if page.is_signed_in() %} data-signed-in{% endif %} class="flex min-h-dvh flex-col">
+  <a href="#main" class="btn sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-3 focus:z-50">{{ crate::i18n::text("core", "nav-skip-content") }}</a>
 
   <div class="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" aria-hidden="true">
     <div id="page-progress" class="h-full w-1/4 bg-ink"></div>
   </div>
 
   <header class="site-header sticky top-0 z-30 border-b border-line bg-canvas/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-    <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="Main">
-      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} home">{% call ui::brand_logo(page, "size-9", 36) %}{% endcall %}</a>
+    <nav class="mx-auto flex h-12 max-w-[96rem] items-center gap-3 px-4 sm:px-6" aria-label="{{ crate::i18n::text("core", "nav-main") }}">
+      <a href="/" class="shrink-0" aria-label="{{ page.site_name }} {{ crate::i18n::text("core", "nav-home") }}">{% call ui::brand_logo(page, "size-9", 36) %}{% endcall %}</a>
       <div class="flex min-w-0 items-center gap-2 text-[13px]">
         {% block nav_context %}<a href="/" class="font-semibold tracking-tight">{{ page.site_name }}</a>{% endblock %}
       </div>
 
-      <div class="ml-auto flex shrink-0 items-center gap-1">
-        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">Explore</a>
+      <div class="ms-auto flex shrink-0 items-center gap-1">
+        <a href="/explore" class="btn btn-ghost hidden sm:inline-flex {% if page.is_at("/explore") %}text-ink{% endif %}">{{ crate::i18n::text("core", "nav-explore") }}</a>
         {#- One click flips light/dark, keeping a tinted scheme's family (Gruvbox dark ↔ light);
             the palette menu next to it picks any theme. Both are plain forms without JS. On
             phones both move into the account menu (or, signed out, the site menu). -#}
         {%- let toggle = page.theme.toggled() %}
         <form method="post" action="/themes" class="hidden sm:contents" hx-boost="false" data-theme-form data-asset-version="{{ crate::assets::build_version() }}">
           <input type="hidden" name="next" value="{{ page.path }}">
-          <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="Switch between light and dark" title="Switch between light and dark">
+          <button class="btn btn-ghost btn-icon" type="submit" name="theme" value="{{ toggle.slug() }}" data-theme-toggle data-variant="{{ toggle.scheme().unwrap_or_default() }}" aria-label="{{ crate::i18n::text("core", "nav-toggle-theme") }}" title="{{ crate::i18n::text("core", "nav-toggle-theme") }}">
             {% call ui::icon("sun", "size-4 when-dark") %}{% endcall %}
             {% call ui::icon("moon", "size-4 when-light") %}{% endcall %}
           </button>
         </form>
         {#- Opens the theme picker dialog; without scripts, the gallery. -#}
-        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="Choose a theme" title="Choose a theme" data-theme-dialog-open>
+        <a href="/themes" class="btn btn-ghost btn-icon hidden sm:inline-flex" hx-boost="false" aria-haspopup="dialog" aria-label="{{ crate::i18n::text("core", "nav-choose-theme") }}" title="{{ crate::i18n::text("core", "nav-choose-theme") }}" data-theme-dialog-open>
           {% call ui::icon("palette", "size-4") %}{% endcall %}
         </a>
 
         {% if let Some(user) = page.viewer %}
-        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="Notifications" title="{% if page.has_unread_notifications %}You have unread notifications{% else %}Notifications{% endif %}">
+        <a href="/notifications" class="btn btn-ghost btn-icon relative {% if page.is_at("/notifications") %}text-ink{% endif %}" aria-label="{{ crate::i18n::text("core", "nav-notifications") }}" title="{% if page.has_unread_notifications %}{{ crate::i18n::text("core", "nav-unread-notifications") }}{% else %}{{ crate::i18n::text("core", "nav-notifications") }}{% endif %}">
           {% call ui::icon("bell", "size-4") %}{% endcall %}
           {%- if page.has_unread_notifications %}<span class="notification-dot" aria-hidden="true"></span>{% endif %}
         </a>
-        <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="New repository" title="New repository">
+        <a href="/new" class="btn btn-ghost btn-icon hidden sm:inline-flex" aria-label="{{ crate::i18n::text("core", "nav-new-repository") }}" title="{{ crate::i18n::text("core", "nav-new-repository") }}">
           {% call ui::icon("plus", "size-4") %}{% endcall %}
         </a>
-        <details class="relative ml-1" data-menu>
-          <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="Account menu">
+        <details class="relative ms-1" data-menu>
+          <summary class="flex size-9 cursor-pointer items-center justify-center rounded-full sm:size-8" aria-label="{{ crate::i18n::text("core", "nav-account-menu") }}">
             {% call ui::avatar(user.avatar, "size-7 text-[10px]") %}{% endcall %}
           </summary>
-          <div class="menu right-0 w-60">
-            <a class="menu-item" href="/issues">Issues</a>
-            <a class="menu-item" href="/pulls">Pull requests</a>
+          <div class="menu end-0 w-60">
+            <a class="menu-item" href="/issues">{{ crate::i18n::text("core", "nav-issues") }}</a>
+            <a class="menu-item" href="/pulls">{{ crate::i18n::text("core", "nav-pull-requests") }}</a>
             <div class="flex items-center gap-2.5 px-2.5 py-2">
               {% call ui::avatar(user.avatar, "size-8 text-[11px]") %}{% endcall %}
               <div class="min-w-0">
@@ -105,33 +105,33 @@
               </div>
             </div>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}Dashboard</a>
-            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}Profile</a>
-            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
+            <a class="menu-item" href="/">{% call ui::icon("code", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-dashboard") }}</a>
+            <a class="menu-item" href="/{{ user.name }}">{% call ui::icon("user", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-profile") }}</a>
+            <a class="menu-item sm:hidden" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-explore") }}</a>
             <div class="menu-divider"></div>
-            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}New repository</a>
-            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}New organization</a>{% endif %}
+            <a class="menu-item" href="/new">{% call ui::icon("plus", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-new-repository") }}</a>
+            {% if user.can_create_org %}<a class="menu-item" href="/organizations/new">{% call ui::icon("building", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-new-organization") }}</a>{% endif %}
             <div class="menu-divider"></div>
             {% call theme_menu_items(page) %}{% endcall %}
-            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}Settings</a>
+            <a class="menu-item" href="/settings">{% call ui::icon("settings", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-settings") }}</a>
             {% if user.is_admin %}
-            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}Site administration</a>
+            <a class="menu-item" href="/admin">{% call ui::icon("shield", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-administration") }}</a>
             {% endif %}
             <div class="menu-divider"></div>
             <form method="post" action="/logout">
-              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}Sign out</button>
+              <button class="menu-item text-ink-muted" type="submit">{% call ui::icon("log-out", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-sign-out") }}</button>
             </form>
           </div>
         </details>
         {% else %}
-        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">Sign in</a>
-        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">Sign up</a>
-        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">Sign in</a>{% endif %}
+        <a href="/login" class="btn btn-ghost hidden sm:inline-flex">{{ crate::i18n::text("core", "nav-sign-in") }}</a>
+        <a href="/signup" class="btn btn-primary hidden sm:inline-flex">{{ crate::i18n::text("core", "nav-sign-up") }}</a>
+        {%- if !page.is_at("/login") %}<a href="/login" class="btn sm:hidden">{{ crate::i18n::text("core", "nav-sign-in") }}</a>{% endif %}
         <details class="relative sm:hidden" data-menu>
-          <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="Menu">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
-          <div class="menu right-0 w-60">
-            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}Explore</a>
-            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}Create an account</a>
+          <summary class="btn btn-ghost btn-icon cursor-pointer" aria-label="{{ crate::i18n::text("core", "nav-menu") }}">{% call ui::icon("menu", "size-4") %}{% endcall %}</summary>
+          <div class="menu end-0 w-60">
+            <a class="menu-item" href="/explore">{% call ui::icon("compass", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-explore") }}</a>
+            <a class="menu-item" href="/signup">{% call ui::icon("user-plus", "menu-icon") %}{% endcall %}{{ crate::i18n::text("core", "nav-create-account") }}</a>
             <div class="menu-divider"></div>
             {% call theme_menu_items(page) %}{% endcall %}
           </div>
@@ -140,6 +140,8 @@
       </div>
     </nav>
   </header>
+  {% let global_extensions = page.global_extensions() %}
+  {% if !global_extensions.is_empty() %}<nav class="mx-auto flex w-full max-w-[96rem] gap-4 scroll-tabs border-b border-line px-4 py-2 text-[13px] sm:px-6" aria-label="{{ crate::i18n::text("core", "nav-main") }}">{% for extension in global_extensions %}{% for link in extension.links %}<a class="shrink-0 hover:underline" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}" href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>{% endfor %}{% endfor %}</nav>{% endif %}
   {#- Page tabs: sticky under the top bar from `md` up, scrolling with the page on phones
       (app.css `.site-subnav`). Hidden when a page has none. -#}
   <div class="site-subnav">{% block subnav %}{% endblock %}</div>
@@ -153,21 +155,22 @@
     <div class="mx-auto flex min-h-12 flex-wrap max-w-[96rem] items-center justify-between gap-4 px-4 text-xs text-ink-faint sm:px-6">
       <p class="flex min-w-0 items-center gap-2">
         {% if page.branding.show_powered_by %}{% call ui::brand_logo(page, "size-3.5 shrink-0 text-ink-muted", 14) %}{% endcall %}
-        <span class="truncate">Powered by <span class="text-ink-muted">rbit</span></span>{% endif %}
+        <span class="truncate">{{ crate::i18n::text("core", "shell-powered-by") }} <span class="text-ink-muted">rbit</span></span>{% endif %}
         <span class="truncate">{{ page.branding.footer_text }}</span>
         {% if page.branding.show_version %}<span class="font-mono text-[11px]">v{{ env!("CARGO_PKG_VERSION") }}</span>{% endif %}
-        <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">Update available</a>{% endif %}</span>
+        <span data-update-notice="{{ page.updates.revision }};{{ page.updates.notice() }}">{% if let Some(release) = page.updates.release %}<a href="{{ release.url }}" class="link whitespace-nowrap" hx-boost="false" rel="noreferrer">{{ crate::i18n::text("core", "shell-update-available") }}</a>{% endif %}</span>
         {%- if let Some(elapsed) = crate::timing::elapsed() %}
-        <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="Server time for the last page or update">· rendered in <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
+        <!--render-time--><span class="hidden font-mono text-[11px] sm:inline" title="{{ crate::i18n::text("core", "shell-server-time") }}">· {{ crate::i18n::text("core", "shell-rendered-in") }} <span data-render-time>{{ elapsed }}</span></span><!--/render-time-->
         {%- endif %}
       </p>
-      <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="Footer">
-        <a href="/explore" class="hover:text-ink">Explore</a>
-        <a href="/themes" class="hover:text-ink">Themes</a>
-        {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">Support</a>{% endif %}
-        {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">Terms</a>{% endif %}
-        {% if !page.branding.privacy_url.is_empty() %}<a href="{{ page.branding.privacy_url }}" hx-boost="false">Privacy</a>{% endif %}
-        <a href="/healthz" class="hover:text-ink" hx-boost="false">Status</a>
+      <nav class="flex max-w-full flex-wrap gap-x-4 gap-y-2 py-3" aria-label="{{ crate::i18n::text("core", "shell-footer") }}">
+        <a href="/explore" class="hover:text-ink">{{ crate::i18n::text("core", "nav-explore") }}</a>
+        {% if page.has_i18n %}<a href="/language" class="hover:text-ink" hx-boost="false">{{ crate::i18n::text("core", "locale-title") }}</a>{% endif %}
+        <a href="/themes" class="hover:text-ink">{{ crate::i18n::text("core", "nav-themes") }}</a>
+        {% if !page.branding.support_url.is_empty() %}<a href="{{ page.branding.support_url }}" hx-boost="false">{{ crate::i18n::text("core", "shell-support") }}</a>{% endif %}
+        {% if !page.branding.terms_url.is_empty() %}<a href="{{ page.branding.terms_url }}" hx-boost="false">{{ crate::i18n::text("core", "shell-terms") }}</a>{% endif %}
+        {% if !page.branding.privacy_url.is_empty() %}<a href="{{ page.branding.privacy_url }}" hx-boost="false">{{ crate::i18n::text("core", "shell-privacy") }}</a>{% endif %}
+        <a href="/healthz" class="hover:text-ink" hx-boost="false">{{ crate::i18n::text("core", "shell-status") }}</a>
       </nav>
     </div>
   </footer>

@@ -65,7 +65,7 @@ pub struct RegisterPage {
 impl RegisterPage {
     pub fn new(page: Page, draft: &RegistrationDraft, error: FormError) -> Self {
         Self {
-            page: page.titled("Create your account"),
+            page: page.titled(crate::i18n::text("core", "title-create-your-account")),
             error,
             provider_name: draft.provider_name.clone(),
             action: register_url(&draft.provider_id),
@@ -92,7 +92,7 @@ impl RefusedPage {
         let (back_url, back_label) =
             if linking { ("/settings/security", "Back to security settings") } else { ("/login", "Back to sign in") };
         Self {
-            page: page.titled("Sign-in didn't work"),
+            page: page.titled(crate::i18n::text("core", "title-sign-in-didn-t-work")),
             message: FormError::from_message(message).0.unwrap_or_default(),
             back_url,
             back_label,
@@ -175,8 +175,12 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

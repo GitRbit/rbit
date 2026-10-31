@@ -612,6 +612,77 @@ impl ActionsRunStore {
             .await?)
     }
 
+    /// All unfinished runs, used after request admission has closed during plugin disable.
+    pub async fn unfinished_all(&self) -> Result<Vec<(RepoId, RunId)>, StorageError> {
+        let rows: Vec<(i64, i64)> =
+            sqlx::query_as("SELECT repo_id, id FROM actions_runs WHERE status IN (5, 6, 7, 8) ORDER BY id").fetch_all(&self.pool).await?;
+        Ok(rows.into_iter().map(|(repo, run)| (RepoId(repo), RunId(run))).collect())
+    }
+
+    /// Journals unfinished runs before disable cancellation starts. Repeated calls preserve
+    /// entries whose runs are already terminal but whose status reports still need retry.
+    pub async fn queue_plugin_revocations(&self) -> Result<(), StorageError> {
+        sqlx::query(
+            "INSERT INTO actions_plugin_revocations (run_id) SELECT id FROM actions_runs \
+             WHERE status IN (5, 6, 7, 8) UNION SELECT j.run_id FROM actions_tasks t \
+             CROSS JOIN actions_jobs j ON j.id = t.job_id WHERE t.status IN (5, 6, 7, 8) \
+             ON CONFLICT(run_id) DO NOTHING",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Disable work survives a crash between cancelling the run and reporting its checks.
+    pub async fn pending_plugin_revocations(&self) -> Result<Vec<(RepoId, RunId)>, StorageError> {
+        let rows: Vec<(i64, i64)> = sqlx::query_as(
+            "SELECT r.repo_id, p.run_id FROM actions_plugin_revocations p \
+             CROSS JOIN actions_runs r ON r.id = p.run_id ORDER BY p.run_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(repo, run)| (RepoId(repo), RunId(run))).collect())
+    }
+
+    /// Acknowledge only after cancellation and terminal check reports both succeeded.
+    pub async fn complete_plugin_revocation(&self, run: RunId) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM actions_plugin_revocations WHERE run_id = ?").bind(run.0).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Unlike ordinary run cancellation, plugin unload cannot await a final runner report.
+    /// Terminalize surviving attempts and steps while preserving completed step results.
+    pub async fn terminalize_plugin_tasks(&self, run: RunId, now: Timestamp) -> Result<(), StorageError> {
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        sqlx::query(
+            "UPDATE actions_steps SET status = 3, stopped_at = COALESCE(stopped_at, ?1) \
+             WHERE status IN (5, 6, 7, 8) AND task_id IN (SELECT t.id FROM actions_tasks t \
+             JOIN actions_jobs j ON j.id = t.job_id WHERE j.run_id = ?2)",
+        )
+        .bind(now.0)
+        .bind(run.0)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "UPDATE actions_tasks SET status = 3, token_digest = NULL, stopped_at = COALESCE(stopped_at, ?1) \
+             WHERE status IN (5, 6, 7, 8) AND job_id IN (SELECT id FROM actions_jobs WHERE run_id = ?2)",
+        )
+        .bind(now.0)
+        .bind(run.0)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    /// Revokes every task token after admitted operations drain, including orphaned tasks.
+    pub async fn revoke_all_task_tokens(&self) -> Result<u64, StorageError> {
+        Ok(sqlx::query("UPDATE actions_tasks SET token_digest = NULL WHERE token_digest IS NOT NULL")
+            .execute(&self.pool)
+            .await?
+            .rows_affected())
+    }
+
     /// The runs of `repo` in concurrency group `group` that have not finished, oldest first.
     pub async fn unfinished_in_group(&self, repo: RepoId, group: &str) -> Result<Vec<Run>, StorageError> {
         let rows: Vec<RunRow> =

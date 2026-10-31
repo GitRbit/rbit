@@ -401,7 +401,7 @@ function makeCurrent(row, previous = null) {
   }
   cell.setAttribute("tabindex", "0");
   cell.setAttribute("role", "button");
-  cell.setAttribute("aria-label", `Comment on line ${LINE_ROW.exec(row.id)[1]}`);
+  cell.setAttribute("aria-label", (globalThis.rbitMessages?.text("browser-comment-line", { line: globalThis.rbitMessages?.number(Number(LINE_ROW.exec(row.id)[1])) ?? LINE_ROW.exec(row.id)[1] }) ?? `Comment on line ${LINE_ROW.exec(row.id)[1]}`));
   return cell;
 }
 

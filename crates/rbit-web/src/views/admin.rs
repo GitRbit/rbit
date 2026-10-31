@@ -30,8 +30,9 @@ pub enum AdminSection {
     Settings,
     AuditLog,
     Configuration,
+    Plugins,
     // Actions: interface and secrets (U).
-    /// Only on an instance with Actions: see [`AdminLink::needs_actions`].
+    /// The section route is retained; its navigation is a runtime UI contribution.
     Runners,
 }
 
@@ -43,8 +44,8 @@ impl AdminSection {
         Self::Repositories,
         Self::Settings,
         Self::Configuration,
+        Self::Plugins,
         Self::AuditLog,
-        Self::Runners,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -56,6 +57,7 @@ impl AdminSection {
             Self::Settings => "Settings",
             Self::AuditLog => "Audit log",
             Self::Configuration => "Configuration",
+            Self::Plugins => "Plugins",
             Self::Runners => "Runners",
         }
     }
@@ -69,21 +71,14 @@ impl AdminSection {
             Self::Settings => "/admin/settings",
             Self::AuditLog => "/admin/audit",
             Self::Configuration => "/admin/configuration",
+            Self::Plugins => "/admin/plugins",
             Self::Runners => "/admin/runners",
         }
     }
 
     /// The navigation with `self` marked as the current page.
     pub fn nav(self) -> Vec<AdminLink> {
-        Self::ALL
-            .iter()
-            .map(|&section| AdminLink {
-                label: section.label(),
-                url: section.url(),
-                is_active: section == self,
-                needs_actions: section == Self::Runners,
-            })
-            .collect()
+        Self::ALL.iter().map(|&section| AdminLink { label: section.label(), url: section.url(), is_active: section == self }).collect()
     }
 }
 
@@ -92,10 +87,24 @@ pub struct AdminLink {
     pub label: &'static str,
     pub url: &'static str,
     pub is_active: bool,
-    // Actions: interface and secrets (U).
-    /// Shown only on an instance with Actions ([`Page::has_actions`]); `admin/layout.html`
-    /// leaves the link out otherwise.
-    pub needs_actions: bool,
+}
+
+impl AdminLink {
+    pub fn localized_label(&self) -> std::borrow::Cow<'static, str> {
+        let key = match self.label {
+            "Dashboard" => "admin-nav-dashboard",
+            "Users" => "admin-nav-users",
+            "Organizations" => "admin-nav-organizations",
+            "Repositories" => "admin-nav-repositories",
+            "Settings" => "admin-nav-settings",
+            "Audit log" => "admin-nav-audit-log",
+            "Configuration" => "admin-nav-configuration",
+            "Plugins" => "admin-nav-plugins",
+            "Runners" => "admin-nav-runners",
+            _ => return std::borrow::Cow::Borrowed(self.label),
+        };
+        crate::i18n::text("core", key)
+    }
 }
 
 /// `base?q=…&page=…`, omitting defaults.
@@ -232,7 +241,7 @@ impl DashboardPage {
             InfoRow::text("Disk usage", system.data_dir_bytes.map_or_else(|| "unavailable".to_owned(), bytes)),
         ];
         Self {
-            page: page.titled("Site administration"),
+            page: page.titled(crate::i18n::text("core", "title-site-administration")),
             admin_nav: AdminSection::Dashboard.nav(),
             monitoring: monitoring::MonitoringPanel::new(snapshot),
             restart_available,
@@ -383,7 +392,7 @@ pub struct UsersPage {
 impl UsersPage {
     pub fn new(page: Page, viewer: &User, search: &str, paged: &Paged<UserRecord>) -> Self {
         Self {
-            page: page.titled("Users · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-users-administration")),
             admin_nav: AdminSection::Users.nav(),
             error: FormError::default(),
             notice: None,
@@ -521,7 +530,7 @@ pub struct OrganizationsPage {
 impl OrganizationsPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OrgRecord>) -> Self {
         Self {
-            page: page.titled("Organizations · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-organizations-administration")),
             admin_nav: AdminSection::Organizations.nav(),
             listing: Listing::new(AdminSection::Organizations, search, paged),
             orgs: paged.items.iter().map(OrgRow::from).collect(),
@@ -576,7 +585,7 @@ pub struct RepositoriesPage {
 impl RepositoriesPage {
     pub fn new(page: Page, search: &str, paged: &Paged<OwnedRepository>) -> Self {
         Self {
-            page: page.titled("Repositories · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-repositories-administration")),
             admin_nav: AdminSection::Repositories.nav(),
             listing: Listing::new(AdminSection::Repositories, search, paged),
             repos: paged.items.iter().map(RepoRow::from).collect(),
@@ -653,7 +662,7 @@ pub struct SettingsPage {
 impl SettingsPage {
     pub fn new(page: Page, form: SettingsForm, error: FormError, saved: bool) -> Self {
         Self {
-            page: page.titled("Settings · Administration"),
+            page: page.titled(crate::i18n::text("core", "title-settings-administration")),
             admin_nav: AdminSection::Settings.nav(),
             error,
             form,
@@ -790,8 +799,12 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

@@ -7,12 +7,12 @@
 
 <section class="mt-6" aria-labelledby="repos-title">
   <div class="mb-3 flex h-8 items-center justify-between">
-    <h2 id="repos-title" class="text-[13px] font-medium text-ink-muted">Repositories</h2>
-    {% if can_create_repo %}<a href="{{ new_repo_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New</a>{% endif %}
+    <h2 id="repos-title" class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "org-profile-h2-repositories") }}</h2>
+    {% if can_create_repo %}<a href="{{ new_repo_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "org-profile-a-new") }}</a>{% endif %}
   </div>
   <div class="box">
     {% if repos.is_empty() %}
-    {% call ui::empty_state("repo", "No repositories yet", "Repositories owned by this organization will be listed here.") %}{% endcall %}
+    {% call ui::empty_state("repo", crate::i18n::text("core", "org-profile-empty-title-no-repositories-yet"), crate::i18n::text("core", "org-profile-empty-description-repositories-owned-by-this-organization-will-be-listed-here")) %}{% endcall %}
     {% else %}
     <ul>{% for repo in repos %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>
     {% endif %}

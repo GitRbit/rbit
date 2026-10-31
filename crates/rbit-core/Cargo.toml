@@ -7,6 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+rbit-actions-core.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true

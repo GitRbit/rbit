@@ -110,7 +110,7 @@ async fn form_page(
 ) -> WebResult<NewImportPage> {
     let default_private = !state.services.instance.current().default_visibility.is_public();
     Ok(NewImportPage {
-        page: page.titled("Import a repository"),
+        page: page.titled(crate::i18n::text("core", "title-import-a-repository")),
         error,
         disabled: !state.services.imports.is_enabled(),
         sources: SourceChoice::all(form.kind()),

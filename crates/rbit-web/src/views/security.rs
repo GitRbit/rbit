@@ -415,7 +415,7 @@ impl AuditPage {
             }))
             .collect();
         Self {
-            page: page.titled("Audit log"),
+            page: page.titled(crate::i18n::text("core", "title-audit-log")),
             admin_nav: AdminSection::AuditLog.nav(),
             listing: AuditListing {
                 search: search.to_owned(),
@@ -531,8 +531,12 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

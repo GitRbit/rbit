@@ -63,7 +63,11 @@ reviews and repository Markdown files, using the same sanitized rendering as sav
 
 ## Near-term priorities
 
-The current near-term priorities are implemented in the features above.
+- **Plugin core:** extract Actions behind module boundaries, support runtime lifecycle and
+  UI extensions, then add an i18n plugin with installable language packs. The initial
+  [core implementation](docs/plugin-core.md) and
+  [delivery plan](docs/design/plugin-architecture.md) separate available primitives from
+  the remaining host integration and package work.
 
 ## Longer-term ideas
 
@@ -84,7 +88,6 @@ matters to you, open a discussion; the answer may change, but not soon:
 - Wikis and project boards.
 - Reactions on issues and comments.
 - `CODEOWNERS`, tag protection and commit signature verification.
-- Translations (i18n).
 - Databases other than SQLite (such as Postgres) and object storage for repositories or files.
 - Running builds inside the rbit server process: builds run on `rbit-runner`, a separate
   program, never in the forge.

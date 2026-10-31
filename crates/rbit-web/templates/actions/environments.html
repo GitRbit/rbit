@@ -4,13 +4,13 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">Actions</a> <span class="text-ink-faint">/</span> Environments</p>
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">Environments</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A job that names an environment with <span class="font-mono text-ink">environment:</span> gets its secrets and variables, waits for one of its reviewers when it has any, and runs only from the branches it allows. An environment appears here the first time a workflow names it.</p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("actions", "actions-environments-a-settings") }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ actions_url }}">{{ crate::i18n::text("actions", "actions-environments-a-actions") }}</a> <span class="text-ink-faint">/</span> {{ crate::i18n::text("actions", "actions-environments-p-environments") }}</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("actions", "actions-environments-h1-environments") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-environments-p-a-job-that-names-an-environment-with") }} <span class="font-mono text-ink">{{ crate::i18n::text("actions", "actions-environments-span-environment") }}</span> {{ crate::i18n::text("actions", "actions-environments-p-gets-its-secrets-and-variables-waits-for-one-of-its-reviewers-whe") }}</p>
 
   <div class="box mt-6">
     {% if environments.is_empty() %}
-    {% call ui::empty_state("server", "No environments", "Add one below, or run a workflow whose job names one with environment:.") %}{% endcall %}
+    {% call ui::empty_state("server", crate::i18n::text("actions", "actions-environments-empty-title-no-environments"), crate::i18n::text("actions", "actions-environments-empty-description-add-one-below-or-run-a-workflow-whose-job-names-one-with-environm")) %}{% endcall %}
     {% else %}
     <ul>
       {% for environment in environments %}
@@ -27,14 +27,14 @@
   </div>
 
   <form method="post" action="{{ action_url }}" class="box mt-4" novalidate>
-    <div class="box-header"><h2 class="text-[13px] font-medium">New environment</h2></div>
+    <div class="box-header"><h2 class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-environments-h2-new-environment") }}</h2></div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
-      <label class="label" for="environment-name">Name</label>
-      <input class="input" id="environment-name" name="name" value="{{ new_name }}" maxlength="255" autocomplete="off" required placeholder="production">
+      <label class="label" for="environment-name">{{ crate::i18n::text("actions", "actions-environments-label-name") }}</label>
+      <input class="input" id="environment-name" name="name" value="{{ new_name }}" maxlength="255" autocomplete="off" required placeholder="{{ crate::i18n::text("actions", "actions-environments-placeholder-production") }}">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Add environment</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("actions", "actions-environments-button-add-environment") }}</button>
     </div>
   </form>
 </div>

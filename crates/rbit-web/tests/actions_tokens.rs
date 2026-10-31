@@ -440,3 +440,24 @@ async fn task_pushes_land_unless_they_change_workflows() {
     assert!(report.contains("ok refs/heads/main"), "{report}");
     assert_eq!(repo.reader.commit_id("refs/heads/main".to_owned()).await.unwrap(), code, "the push landed through the replayed spool");
 }
+
+#[tokio::test]
+async fn runtime_disable_revokes_live_task_credentials_and_reenable_does_not_revive_them() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let (_credential, _task, token) = running_task(&fixture).await;
+    let path = "/alice/rocket/info/refs?service=git-upload-pack";
+    assert_eq!(send(&fixture, Method::GET, path, Some(&basic(&token)), None).await.0, StatusCode::OK);
+    // A long Basic username cannot hide a valid workload password from admission.
+    let padded = format!("Basic {}", STANDARD.encode(format!("{}:{token}", "x".repeat(4096))));
+    assert_eq!(send(&fixture, Method::GET, path, Some(&padded), None).await.0, StatusCode::UNAUTHORIZED);
+    let padded = format!("Bearer {}{token}", " ".repeat(4096));
+    assert_eq!(send(&fixture, Method::GET, "/api/v1/repos/alice/rocket", Some(&padded), None).await.0, StatusCode::UNAUTHORIZED);
+    fixture.services.set_actions_enabled(&fixture.alice, false).await.unwrap();
+    for authorization in [basic(&token), format!("Bearer {token}")] {
+        assert_eq!(send(&fixture, Method::GET, path, Some(&authorization), None).await.0, StatusCode::UNAUTHORIZED);
+        assert_eq!(send(&fixture, Method::GET, "/api/v1/repos/alice/rocket", Some(&authorization), None).await.0, StatusCode::UNAUTHORIZED);
+    }
+    fixture.services.set_actions_enabled(&fixture.alice, true).await.unwrap();
+    assert_eq!(send(&fixture, Method::GET, path, Some(&basic(&token)), None).await.0, StatusCode::UNAUTHORIZED);
+    fixture.services.set_actions_enabled(&fixture.alice, false).await.unwrap();
+}

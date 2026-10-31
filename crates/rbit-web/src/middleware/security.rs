@@ -127,6 +127,14 @@ pub async fn security_headers(State(settings): State<SecurityHeaders>, request: 
     let theme = Theme::from_headers(request.headers());
     let head_styles = !request.headers().contains_key("hx-request");
     let mut response = crate::assets::with_head_styles(head_styles, next.run(request)).await;
+    // Pre-session failures (such as rate limiting) render the host's English shell.
+    // Normal pages already carry their immutable request snapshot's metadata.
+    if response.headers().get(header::CONTENT_TYPE).is_some_and(|value| value.as_bytes().starts_with(b"text/html"))
+        && !response.headers().contains_key(header::CONTENT_LANGUAGE)
+    {
+        response.headers_mut().insert(header::CONTENT_LANGUAGE, HeaderValue::from_static("en"));
+        response.headers_mut().insert("rbit-locale-revision", HeaderValue::from_static("en:0"));
+    }
     // Keep style attributes and arbitrary inline styles blocked. Only our exact embedded
     // initial styles are allowed; external sheets still support theme switching.
     if response.status() == StatusCode::NOT_MODIFIED
@@ -193,8 +201,12 @@ mod tests {
 
     async fn page(headers: HeaderMap) -> axum::response::Html<String> {
         let page = Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".into(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

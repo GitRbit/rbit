@@ -7,8 +7,12 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
+    pub ui: rbit_services::ui::UiSnapshot,
+    pub locale: rbit_messages::LocaleSnapshot,
+    pub has_i18n: bool,
     pub updates: rbit_services::updates::UpdateStatus,
     pub site_name: String,
+    pub plugin_revision: u64,
     pub branding: rbit_core::config::BrandingConfig,
     pub title: Option<String>,
     pub viewer: Option<NavUser>,
@@ -29,9 +33,6 @@ pub struct NavUser {
     pub is_admin: bool,
     /// Instance settings may restrict organisation creation to administrators.
     pub can_create_org: bool,
-    // Actions: interface and secrets (U).
-    /// The instance has Actions: personal settings list their Actions section.
-    pub has_actions: bool,
 }
 
 impl Page {
@@ -39,8 +40,12 @@ impl Page {
         let mut settings = state.services.instance.current();
         settings.branding.show_version &= state.config.updates.report_version;
         Self {
+            locale: crate::i18n::current_snapshot(),
+            ui: state.services.ui_snapshot(),
+            has_i18n: state.services.i18n_enabled(),
             updates: state.services.updates.status(),
             site_name: settings.site_name,
+            plugin_revision: state.services.plugin_revision(),
             branding: settings.branding,
             title: None,
             viewer: viewer.map(|user| NavUser {
@@ -49,7 +54,6 @@ impl Page {
                 avatar: Avatar::for_account(&user.account),
                 is_admin: user.is_admin,
                 can_create_org: state.services.orgs.can_create(user),
-                has_actions: state.services.actions.is_some(),
             }),
             path: path.to_owned(),
             has_unread_notifications: false,
@@ -78,6 +82,11 @@ impl Page {
         }
     }
 
+    /// Text-only catalog, escaped by Askama in the shell's data attribute.
+    pub fn browser_messages(&self) -> String {
+        if self.has_i18n { crate::i18n::browser_messages(&self.locale) } else { "{}".to_owned() }
+    }
+
     /// Content-hashed URL of an embedded asset.
     pub fn asset(&self, path: &str) -> String {
         assets::url(path)
@@ -103,12 +112,6 @@ impl Page {
         self.viewer.is_some()
     }
 
-    // Actions: interface and secrets (U).
-    /// Whether a signed-in viewer is on an instance with Actions (settings navigation).
-    pub fn has_actions(&self) -> bool {
-        self.viewer.as_ref().is_some_and(|viewer| viewer.has_actions)
-    }
-
     /// Whether the current path is `prefix` or below it (for active nav styling).
     pub fn is_at(&self, prefix: &str) -> bool {
         self.path == prefix || (prefix != "/" && self.path.starts_with(prefix))
@@ -132,7 +135,11 @@ mod tests {
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
+                locale: rbit_messages::LocaleSnapshot::english(0),
+                ui: rbit_services::ui::UiSnapshot::default(),
+                has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
+                plugin_revision: 0,
                 site_name: "rbit".into(),
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
@@ -161,6 +168,10 @@ mod tests {
     fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
+            plugin_revision: 0,
             updates: rbit_services::updates::UpdateStatus {
                 revision: 1,
                 state: rbit_services::updates::UpdateState::Available,

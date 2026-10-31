@@ -91,7 +91,7 @@ pub async fn new_form(State(state): State<AppState>, SignedIn(user): SignedIn, p
         return Err(WebError::Forbidden);
     }
     Ok(NewOrgPage {
-        page: page.titled("New organization"),
+        page: page.titled(crate::i18n::text("core", "title-new-organization")),
         error: FormError::default(),
         name: String::new(),
         display_name: String::new(),
@@ -113,7 +113,7 @@ pub async fn create(
         Err(error) => {
             let message = validation_message(error)?;
             let page = NewOrgPage {
-                page: page.titled("New organization"),
+                page: page.titled(crate::i18n::text("core", "title-new-organization")),
                 error: FormError::from_message(&message),
                 name: form.name,
                 display_name: form.display_name,
@@ -309,11 +309,7 @@ async fn settings_page(state: &AppState, user: &User, page: Page, ctx: &OrgConte
     let (header, repos) = header(state, Some(user), ctx, OrgTab::Settings).await?;
     let base = format!("/{}/settings", ctx.org.name());
     let base_permission = state.services.orgs.base_permission(&ctx.org).await?;
-    let mut cards = crate::views::org::org_settings_cards(&base);
-    // Actions: interface and secrets (U). Only when the instance has Actions.
-    if state.services.actions.is_some() {
-        cards.extend(crate::views::actions_settings::org_settings_cards(&base));
-    }
+    let cards = crate::views::org::org_settings_cards(&base);
     Ok(OrgSettingsPage {
         page: page.titled(format!("Settings · {}", ctx.org.label())),
         header,

@@ -2,6 +2,6 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<h1 class="mb-4 text-lg font-semibold">Branches and tags</h1>
+<h1 class="mb-4 text-lg font-semibold">{{ crate::i18n::text("core", "repo-ref-picker-h1-branches-and-tags") }}</h1>
 <div class="box mx-auto max-w-xl">{% include "repo/ref_picker_options.html" %}</div>
 {% endblock %}

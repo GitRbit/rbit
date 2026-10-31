@@ -44,8 +44,8 @@ use crate::{
 /// Most registration tokens listed (newest first).
 const LISTED_TOKENS: usize = 20;
 
-fn actions(state: &AppState) -> WebResult<&ActionsService> {
-    state.services.actions.as_ref().ok_or(WebError::NotFound)
+fn actions(state: &AppState) -> WebResult<ActionsService> {
+    state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
 /// Forbidden reads like a page that does not exist.
@@ -290,7 +290,7 @@ async fn user_page(state: &AppState, user: &User, page: Page, outcome: Outcome) 
         section(state, user, ManagedScope::Owner(&user.account), "/settings/actions/runners", "your repositories".to_owned(), outcome)
             .await?;
     Ok(UserRunnersPage {
-        page: page.titled("Runners"),
+        page: page.titled(crate::i18n::text("core", "title-runners")),
         settings_nav: SettingsSection::Actions.nav(),
         actions_url: "/settings/actions".to_owned(),
         section,
@@ -330,7 +330,11 @@ pub async fn personal_runner(
 async fn admin_page(state: &AppState, admin: &User, page: Page, outcome: Outcome) -> WebResult<AdminRunnersPage> {
     let section =
         section(state, admin, ManagedScope::Instance, "/admin/runners", "every owner allowed instance runners".to_owned(), outcome).await?;
-    Ok(AdminRunnersPage { page: page.titled("Runners · Administration"), admin_nav: AdminSection::Runners.nav(), section })
+    Ok(AdminRunnersPage {
+        page: page.titled(crate::i18n::text("core", "title-runners-administration")),
+        admin_nav: AdminSection::Runners.nav(),
+        section,
+    })
 }
 
 /// `GET /admin/runners`

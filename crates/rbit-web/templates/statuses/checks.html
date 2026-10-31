@@ -17,9 +17,9 @@
         <span class="truncate font-medium text-ink">{{ row.context }}</span>
         {% if !row.description.is_empty() %}<span class="truncate text-xs text-ink-muted">{{ row.description }}</span>{% endif %}
       </div>
-      {% if row.required %}<span class="badge shrink-0">Required</span>{% endif %}
+      {% if row.required %}<span class="badge shrink-0">{{ crate::i18n::text("core", "statuses-checks-span-required") }}</span>{% endif %}
       {% if let Some(url) = row.target_url %}
-      <a href="{{ url }}" rel="nofollow noopener noreferrer" hx-boost="false" class="shrink-0 text-xs text-ink-muted hover:text-ink hover:underline hover:underline-offset-4">Details</a>
+      <a href="{{ url }}" rel="nofollow noopener noreferrer" hx-boost="false" class="shrink-0 text-xs text-ink-muted hover:text-ink hover:underline hover:underline-offset-4">{{ crate::i18n::text("core", "statuses-checks-a-details") }}</a>
       {% endif %}
     </li>
     {% endfor %}

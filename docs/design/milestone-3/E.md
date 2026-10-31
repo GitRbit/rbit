@@ -12,8 +12,8 @@ text below is for the files the integrator owns (`CHANGELOG.md`, `README.md`,
 | `[editor]` configuration section | `crates/rbit-core/src/config/editor.rs` |
 | Scratch-repository write path: `EditWorkspace` (streamed blobs, tree checks, scratch index, `commit-tree`, lease) | `crates/rbit-git/src/edit.rs` |
 | The hand-over (fetch + `update-ref` compare-and-swap) factored out of the merge so both share it; `Git`/`Signature` helpers made `pub(crate)` | `crates/rbit-git/src/merge.rs` |
-| `EditService`: authorisation, mirrors read-only, push gate, identity, line endings, uploads, `PushService` wrapping | `crates/rbit-services/src/edits.rs` |
-| `ProtectionService::branch_update_refusal` (the push decision without auditing, for the form) | `crates/rbit-services/src/protection.rs` |
+| `EditService`: authorisation, mirrors read-only, push gate, identity, line endings, uploads, `PushService` wrapping | `crates/rbit-services-base/src/edits.rs` |
+| `ProtectionService::branch_update_refusal` (the push decision without auditing, for the form) | `crates/rbit-services-base/src/protection.rs` |
 | Routes `/{owner}/{repo}/new|edit|delete/{branch}/{path…}` (page router, own body limit) and `/{owner}/{repo}/upload/{branch}/{dir…}` (outside it, streaming) | `crates/rbit-web/src/routes/edits.rs` |
 | Views and templates: editor, delete confirmation, upload form, shared commit box | `crates/rbit-web/src/views/edits.rs`, `templates/repo/{edit_file,delete_file,upload_files,commit_box}.html` |
 | Buttons: pencil/trash on the blob page (editor only for displayable text), "Add file" + upload on tree pages; writers, branches, non-mirrors only | `routes/repo.rs` (`RepoPage::can_edit_on`), `views/repo.rs`, `templates/repo/{blob,tree}.html` |

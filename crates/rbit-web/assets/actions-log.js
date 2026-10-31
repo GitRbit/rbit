@@ -1,3 +1,6 @@
+export function mount(_root, context) {
+const document = context.document;
+const on = (type, listener) => context.listen(document, type, listener);
 // Actions job pages (templates/actions/job.html) refresh their steps every few seconds
 // while the job runs, and each refresh opens the running step, or else the first failed
 // one. Every page works without this file; with it, a step the viewer opened or closed
@@ -20,7 +23,7 @@ const stepsOf = (job) => (job ? [...job.querySelectorAll("details[data-step]")] 
 
 // A click on a step's summary (or Enter or Space on it) is the viewer's choice; a refresh
 // setting `open` is not, so `toggle` cannot tell them apart.
-document.addEventListener("click", (event) => {
+on("click", (event) => {
   if (event.defaultPrevented || !(event.target instanceof Element)) return;
   const summary = event.target.closest(`${JOB} details[data-step] > summary`);
   if (!summary) return;
@@ -28,17 +31,17 @@ document.addEventListener("click", (event) => {
   chosen().set(step.dataset.step, !step.open);
 });
 
-document.addEventListener("htmx:beforeSwap", (event) => {
+on("htmx:beforeSwap", (event) => {
   const job = event.target instanceof Element && event.target.matches(JOB) ? event.target : null;
   openBefore = job ? new Set(stepsOf(job).filter((step) => step.open).map((step) => step.dataset.step)) : null;
 });
 
 // The refreshed job replaced the old one: look it up again.
-document.addEventListener("htmx:afterSwap", () => {
+on("htmx:afterSwap", () => {
   const before = openBefore;
   openBefore = null;
   if (!before) return;
-  const steps = stepsOf(document.querySelector(JOB));
+  const steps = stepsOf(context.root());
   const running = steps.find((step) => step.dataset.state === "running");
   const choice = chosen();
   for (const step of steps) {
@@ -47,3 +50,6 @@ document.addEventListener("htmx:afterSwap", () => {
     else if (before.has(number) && (!running || running === step)) step.open = true;
   }
 });
+
+context.onDispose(() => { choices = { path: null, steps: new Map() }; openBefore = null; });
+}

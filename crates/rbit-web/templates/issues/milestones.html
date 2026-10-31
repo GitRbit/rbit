@@ -4,18 +4,18 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-4 flex flex-wrap items-center gap-2">
-  <a href="{{ issues_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Issues</a>
-  <a href="{{ labels_url }}" class="btn btn-ghost">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Labels</a>
-  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New milestone</a>{% endif %}
+  <a href="{{ issues_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "issues-milestones-a-issues") }}</a>
+  <a href="{{ labels_url }}" class="btn btn-ghost">{% call ui::icon("tag", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "issues-milestones-a-labels") }}</a>
+  {% if can_write %}<a href="{{ new_url }}" class="btn btn-primary ml-auto">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "issues-milestones-a-new-milestone") }}</a>{% endif %}
 </div>
 
-<section class="box" aria-label="Milestones">
-  <nav class="box-header flex items-center gap-4 text-[13px]" aria-label="State">
-    <a href="{{ open_url }}" class="{% if !showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if !showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ open }}</span> Open</a>
-    <a href="{{ closed_url }}" class="{% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ closed }}</span> Closed</a>
+<section class="box" aria-label="{{ crate::i18n::text("core", "issues-milestones-aria-label-milestones") }}">
+  <nav class="box-header flex items-center gap-4 text-[13px]" aria-label="{{ crate::i18n::text("core", "issues-milestones-aria-label-state") }}">
+    <a href="{{ open_url }}" class="{% if !showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if !showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ open }}</span> {{ crate::i18n::text("core", "issues-milestones-a-open") }}</a>
+    <a href="{{ closed_url }}" class="{% if showing_closed %}font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if showing_closed %}aria-current="page"{% endif %}><span class="tabular-nums">{{ closed }}</span> {{ crate::i18n::text("core", "issues-milestones-a-closed") }}</a>
   </nav>
   {% if milestones.is_empty() %}
-  {% call ui::empty_state("milestone", "No milestones here", "Milestones group issues towards a release or a date, and show how far along they are.") %}{% endcall %}
+  {% call ui::empty_state("milestone", crate::i18n::text("core", "issues-milestones-empty-title-no-milestones-here"), crate::i18n::text("core", "issues-milestones-empty-description-milestones-group-issues-towards-a-release-or-a-date-and-show-how")) %}{% endcall %}
   {% else %}
   <ul>
     {% for milestone in milestones %}
@@ -25,7 +25,7 @@
         <p class="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-ink-muted">
           {% if milestone.closed %}{% if let Some(when) = milestone.closed_when %}<span>Closed {{ when }}</span>{% endif %}
           {% else if let Some(due) = milestone.due %}<span class="{% if milestone.overdue %}text-danger{% endif %}">{% if milestone.overdue %}Past due by{% else %}Due by{% endif %} {{ due }}</span>
-          {% else %}<span>No due date</span>{% endif %}
+          {% else %}<span>{{ crate::i18n::text("core", "issues-milestones-span-no-due-date") }}</span>{% endif %}
         </p>
         {% if !milestone.description.is_empty() %}<p class="mt-1 truncate text-[13px] text-ink-muted">{{ milestone.description }}</p>{% endif %}
       </div>
@@ -33,9 +33,9 @@
         {% include "issues/milestone_progress.html" %}
         {% if can_write %}
         <div class="mt-2 flex flex-wrap gap-2 text-xs">
-          <a href="{{ milestone.edit_url }}" class="text-ink-muted hover:text-ink">Edit</a>
-          <form method="post" action="{{ milestone.state_url }}"><input type="hidden" name="state" value="{% if milestone.closed %}open{% else %}closed{% endif %}"><button type="submit" class="text-ink-muted hover:text-ink">{% if milestone.closed %}Reopen{% else %}Close{% endif %}</button></form>
-          <form method="post" action="{{ milestone.delete_url }}" hx-confirm="Delete the milestone “{{ milestone.title }}”? Its issues are kept."><button type="submit" class="text-danger hover:underline">Delete</button></form>
+          <a href="{{ milestone.edit_url }}" class="text-ink-muted hover:text-ink">{{ crate::i18n::text("core", "issues-milestones-a-edit") }}</a>
+          <form method="post" action="{{ milestone.state_url }}"><input type="hidden" name="state" value="{% if milestone.closed %}open{% else %}closed{% endif %}"><button type="submit" class="text-ink-muted hover:text-ink">{% if milestone.closed %}{{ crate::i18n::text("core", "issues-milestones-button-reopen") }}{% else %}{{ crate::i18n::text("core", "issues-milestones-button-close") }}{% endif %}</button></form>
+          <form method="post" action="{{ milestone.delete_url }}" hx-confirm="Delete the milestone “{{ milestone.title }}”? Its issues are kept."><button type="submit" class="text-danger hover:underline">{{ crate::i18n::text("core", "issues-milestones-button-delete") }}</button></form>
         </div>
         {% endif %}
       </div>

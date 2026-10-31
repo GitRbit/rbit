@@ -10,7 +10,7 @@
 {% block content %}
 {% if let Some(header) = frame.org %}{% include "org/header.html" %}{% endif %}
 <div class="{% if frame.org.is_some() %}mt-6 max-w-3xl{% else %}mx-auto max-w-3xl{% endif %}">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ frame.settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ frame.hooks_url }}">Webhooks</a></p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ frame.settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ frame.hooks_url }}">{{ crate::i18n::text("core", "webhooks-layout-a-webhooks") }}</a></p>
   {% block hooks_content %}{% endblock %}
 </div>
 {% endblock %}

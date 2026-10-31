@@ -188,6 +188,35 @@ fn statuses(jobs: &[rbit_core::actions::Job]) -> Vec<(&str, JobStatus)> {
 }
 
 #[tokio::test]
+async fn disable_journal_survives_terminal_transition_and_reopen_until_acknowledged() {
+    let fx = Fixture::new().await;
+    let store = fx.db.actions_runs();
+    let runs_on = strings(&["linux"]);
+    let jobs = [job("build", &[], &runs_on)];
+    let run = store.create_run(&new_run(fx.rocket, &jobs, RunStart::Runnable)).await.unwrap();
+    let scope = RunnerScope::Repository(fx.rocket);
+    let (runner, labels) = fx.runner(scope, &["linux"], 75).await;
+    let digest = [77; 32];
+    let claimed = store.claim(&claim(runner, scope, &labels, &digest)).await.unwrap().unwrap();
+    assert!(store.running_task_by_token(&digest).await.unwrap().is_some());
+    store.queue_plugin_revocations().await.unwrap();
+    store.queue_plugin_revocations().await.unwrap();
+    assert_eq!(store.pending_plugin_revocations().await.unwrap(), [(fx.rocket, run.id)]);
+    assert_eq!(store.revoke_all_task_tokens().await.unwrap(), 1);
+    assert!(store.running_task_by_token(&digest).await.unwrap().is_none());
+    store.cancel_run(fx.rocket, run.id, NOW).await.unwrap().unwrap();
+    assert_eq!(store.unfinished_all().await.unwrap(), Vec::new());
+    let reopened = Database::open(&fx.dir.path().join("rbit.db")).await.unwrap();
+    let restored = reopened.actions_runs();
+    restored.queue_plugin_revocations().await.unwrap();
+    assert_eq!(restored.pending_plugin_revocations().await.unwrap(), [(fx.rocket, run.id)]);
+    restored.terminalize_plugin_tasks(run.id, NOW).await.unwrap();
+    assert_eq!(restored.task(claimed.task.id).await.unwrap().unwrap().status, Status::Cancelled);
+    restored.complete_plugin_revocation(run.id).await.unwrap();
+    assert_eq!(restored.pending_plugin_revocations().await.unwrap(), Vec::new());
+}
+
+#[tokio::test]
 async fn repository_settings_owner_policies_and_trusted_users() {
     let fx = Fixture::new().await;
     let settings = fx.db.actions_settings();

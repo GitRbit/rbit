@@ -32,7 +32,7 @@ export function installUpdateNotice(document) {
     const link = document.createElement('a');
     link.href = release;
     link.className = 'link whitespace-nowrap';
-    link.textContent = 'Update available';
+    link.textContent = (globalThis.rbitMessages?.text("browser-update-available") ?? (globalThis.rbitMessages?.text("browser-update-available") ?? "Update available"));
     link.setAttribute('hx-boost', 'false');
     link.rel = 'noreferrer';
     target.replaceChildren(link);

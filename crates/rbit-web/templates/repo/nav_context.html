@@ -6,5 +6,5 @@
   <a href="/{{ header.owner }}" class="truncate text-ink-muted hover:text-ink">{{ header.owner }}</a>
   <span class="text-ink-faint">/</span>
   <a href="{{ header.home_url }}" class="truncate font-medium">{{ header.name }}</a>
-  {% if header.is_private %}<span class="badge">Private</span>{% endif %}
+  {% if header.is_private %}<span class="badge">{{ crate::i18n::text("core", "repo-nav-context-span-private") }}</span>{% endif %}
 </span>

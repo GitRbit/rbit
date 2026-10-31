@@ -3,18 +3,18 @@
 <div id="{{ title.anchor }}" class="min-w-0 flex-1">
   {% if title.editing %}
   <form method="post" action="{{ title.update_url }}" class="flex flex-col gap-2 sm:flex-row sm:items-center">
-    <label class="sr-only" for="{{ title.anchor }}-input">Title</label>
+    <label class="sr-only" for="{{ title.anchor }}-input">{{ crate::i18n::text("core", "timeline-title-form-label-title") }}</label>
     <input id="{{ title.anchor }}-input" class="input min-w-0 flex-1" name="title" value="{{ title.title }}" maxlength="256" required>
     <div class="flex gap-2">
-      <button type="submit" class="btn btn-primary h-11 flex-1 sm:h-9 sm:flex-none">Save</button>
-      <a href="{{ title.cancel_url }}" class="btn h-11 flex-1 sm:h-9 sm:flex-none" hx-get="{{ title.cancel_url }}" hx-select="#{{ title.anchor }}" hx-target="#{{ title.anchor }}" hx-swap="outerHTML" hx-push-url="true">Cancel</a>
+      <button type="submit" class="btn btn-primary h-11 flex-1 sm:h-9 sm:flex-none">{{ crate::i18n::text("core", "timeline-title-form-button-save") }}</button>
+      <a href="{{ title.cancel_url }}" class="btn h-11 flex-1 sm:h-9 sm:flex-none" hx-get="{{ title.cancel_url }}" hx-select="#{{ title.anchor }}" hx-target="#{{ title.anchor }}" hx-swap="outerHTML" hx-push-url="true">{{ crate::i18n::text("core", "timeline-title-form-a-cancel") }}</a>
     </div>
   </form>
   {% else %}
   <div class="flex items-start gap-3">
     <h1 class="min-w-0 flex-1 break-words text-xl font-semibold tracking-tight">{{ title.title }} <span class="font-normal text-ink-faint">{{ title.number }}</span></h1>
     {% if title.can_edit %}
-    <a href="{{ title.edit_url }}" class="btn h-9 shrink-0 px-2.5 text-xs sm:h-8" hx-get="{{ title.edit_url }}" hx-select="#{{ title.anchor }}" hx-target="#{{ title.anchor }}" hx-swap="outerHTML" hx-push-url="true">Edit</a>
+    <a href="{{ title.edit_url }}" class="btn h-9 shrink-0 px-2.5 text-xs sm:h-8" hx-get="{{ title.edit_url }}" hx-select="#{{ title.anchor }}" hx-target="#{{ title.anchor }}" hx-swap="outerHTML" hx-push-url="true">{{ crate::i18n::text("core", "timeline-title-form-a-edit") }}</a>
     {% endif %}
   </div>
   {% endif %}

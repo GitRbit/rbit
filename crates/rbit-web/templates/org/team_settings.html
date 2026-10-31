@@ -8,32 +8,32 @@
   <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ team_url }}">{{ team_name }}</a></p>
   <form method="post" action="{{ save_url }}" class="box mt-3" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Team settings</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "org-team-settings-h2-team-settings") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
-      <label class="label" for="team-name">Name</label>
+      <label class="label" for="team-name">{{ crate::i18n::text("core", "org-team-settings-label-name") }}</label>
       <input class="input font-mono text-[13px] sm:max-w-72" id="team-name" name="name" value="{{ form.name }}" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" required>
-      <p class="hint">Renaming changes the team's address.</p>
+      <p class="hint">{{ crate::i18n::text("core", "org-team-settings-p-renaming-changes-the-team-s-address") }}</p>
 
-      <label class="label mt-5" for="team-description">Description <span class="font-normal text-ink-faint">optional</span></label>
+      <label class="label mt-5" for="team-description">{{ crate::i18n::text("core", "org-team-settings-label-description") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "org-team-settings-span-optional") }}</span></label>
       <input class="input" id="team-description" name="description" value="{{ form.description }}" maxlength="350">
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">Save changes</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-team-settings-button-save-changes") }}</button>
     </div>
   </form>
 
   <form method="post" action="{{ delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium text-danger">Danger zone</h2>
+      <h2 class="text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "org-team-settings-h2-danger-zone") }}</h2>
     </div>
     <div class="p-4">
-      <p class="font-medium">Delete this team</p>
-      <p class="mt-1 text-[13px] text-ink-muted">Its members stay in the organization but lose the access this team gave them.</p>
+      <p class="font-medium">{{ crate::i18n::text("core", "org-team-settings-p-delete-this-team") }}</p>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "org-team-settings-p-its-members-stay-in-the-organization-but-lose-the-access-this-tea") }}</p>
     </div>
     <div class="flex justify-end border-t border-danger/40 px-4 py-3">
-      <button class="btn btn-danger w-full sm:w-auto" type="submit">Delete team</button>
+      <button class="btn btn-danger w-full sm:w-auto" type="submit">{{ crate::i18n::text("core", "org-team-settings-button-delete-team") }}</button>
     </div>
   </form>
 </div>

@@ -6,11 +6,11 @@
 <section class="box" data-language-content>
   <div class="box-header justify-between">
     <h1 id="language-files-title" class="font-medium">{{ language }} files <span class="ml-2 text-ink-faint">{{ pagination.total }}</span></h1>
-    <button type="button" class="btn btn-ghost btn-icon" data-language-close aria-label="Close file browser" hidden>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
+    <button type="button" class="btn btn-ghost btn-icon" data-language-close aria-label="{{ crate::i18n::text("core", "repo-language-files-aria-label-close-file-browser") }}" hidden>{% call ui::icon("x", "size-4") %}{% endcall %}</button>
   </div>
   <div class="px-4">{% include "repo/listing_controls.html" %}</div>
   <div class="language-browser">
-  <nav class="language-file-list" aria-label="Language files" data-file-outline>
+  <nav class="language-file-list" aria-label="{{ crate::i18n::text("core", "repo-language-files-aria-label-language-files") }}" data-file-outline>
     <ul class="diff-tree">
       {% for row in rows %}
       <li class="diff-tree-row" data-depth="{{ row.depth }}" data-path="{{ row.path }}">
@@ -22,10 +22,10 @@
       </li>
       {% endfor %}
     </ul>
-    {% if rows.is_empty() %}<p class="p-6 text-ink-muted">{% if pagination.query.is_empty() %}No files found for this language.{% else %}No matching files.{% endif %}</p>{% endif %}
+    {% if rows.is_empty() %}<p class="p-6 text-ink-muted">{% if pagination.query.is_empty() %}{{ crate::i18n::text("core", "repo-language-files-p-no-files-found-for-this-language") }}{% else %}{{ crate::i18n::text("core", "repo-language-files-p-no-matching-files") }}{% endif %}</p>{% endif %}
   </nav>
-  <section class="language-preview" aria-label="File content" aria-busy="false" data-language-preview>
-    <p class="p-6 text-sm text-ink-muted" role="status">Select a file to preview its content.</p>
+  <section class="language-preview" aria-label="{{ crate::i18n::text("core", "repo-language-files-aria-label-file-content") }}" aria-busy="false" data-language-preview>
+    <p class="p-6 text-sm text-ink-muted" role="status">{{ crate::i18n::text("core", "repo-language-files-p-select-a-file-to-preview-its-content") }}</p>
   </section>
   </div>
 </section>

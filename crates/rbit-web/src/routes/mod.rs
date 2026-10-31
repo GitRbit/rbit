@@ -2,10 +2,15 @@
 
 mod account;
 // Actions: foundation (F). Public for the disabled-is-disabled tests' route inventory.
+#[cfg(feature = "actions")]
 pub mod actions;
+#[cfg(feature = "actions")]
 pub mod actions_runner;
 mod admin;
 mod api;
+pub(crate) use api::{
+    PREFIX as PUBLIC_API_PREFIX, not_found_response as api_not_found_response, unauthorized_response as api_unauthorized_response,
+};
 mod archives;
 mod audit;
 mod auth;
@@ -14,12 +19,19 @@ mod collaborators;
 mod compare;
 mod dashboards;
 mod edits;
+mod plugin_pages;
+
+pub(crate) fn is_plugin_page_route(pattern: &str) -> bool {
+    plugin_pages::matches_route(pattern)
+}
+mod plugins;
 // Milestone 3: external sign-in (O).
 mod external_auth;
 mod forks;
 mod git_http;
 mod history;
 mod home;
+mod i18n;
 mod imports;
 mod issues;
 mod labels;
@@ -89,10 +101,12 @@ pub fn router(state: AppState) -> Router {
         // Milestone 3: Git LFS (L). Streams like Git traffic: no page layers.
         .merge(lfs::routes())
         // Actions: foundation (F). The runner endpoint exists only when Actions is enabled.
-        .merge(if state.services.actions.is_some() { actions_runner::routes() } else { Router::new() })
+        .merge(actions_runner_routes())
         // Actions: artifacts (A). Downloads stream, so they sit outside the page router.
-        .merge(if state.services.actions.is_some() { actions::file_routes(&state) } else { Router::new() })
+        .merge(actions_file_routes(&state))
         // Before any route: a hover preload must never reach a side-effecting handler.
+        .layer(from_fn_with_state(state.clone(), middleware::request_hooks))
+        .layer(from_fn_with_state(state.clone(), middleware::plugin_admission))
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn_with_state(state.monitoring.clone(), crate::metrics::track))
         .layer(TraceLayer::new_for_http())
@@ -130,6 +144,9 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(settings::routes())
         .merge(orgs::routes())
         .merge(admin::routes())
+        .merge(plugins::routes())
+        .merge(plugin_pages::routes())
+        .merge(i18n::routes())
         .merge(repo_settings::routes())
         .merge(stars::routes())
         .merge(security::routes())
@@ -167,9 +184,10 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(imports::routes())
         .merge(push_mirrors::routes())
         // Actions: foundation (F). The pages exist only when Actions is enabled.
-        .merge(if state.services.actions.is_some() { actions::routes() } else { Router::new() })
+        .merge(actions_page_routes())
         .fallback(|| async { WebError::NotFound })
         .layer(from_fn_with_state(state.clone(), middleware::error_pages))
+        .layer(from_fn_with_state(state.clone(), middleware::locale))
         .layer(from_fn_with_state(state.clone(), middleware::session))
         .layer(from_fn_with_state(state.clone(), middleware::rate_limit))
         .layer(from_fn(middleware::csrf_origin_check))
@@ -188,6 +206,45 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .layer(DefaultBodyLimit::max(MAX_FORM_BYTES))
         // Outermost, so the footer's render time covers every layer that runs before the page.
         .layer(from_fn(crate::timing::track))
+}
+
+#[cfg(feature = "actions")]
+fn actions_page_routes() -> Router<AppState> {
+    actions::routes()
+}
+#[cfg(not(feature = "actions"))]
+fn actions_page_routes() -> Router<AppState> {
+    Router::new()
+}
+#[cfg(feature = "actions")]
+fn actions_runner_routes() -> Router<AppState> {
+    actions_runner::routes()
+}
+#[cfg(not(feature = "actions"))]
+fn actions_runner_routes() -> Router<AppState> {
+    Router::new()
+}
+#[cfg(feature = "actions")]
+fn actions_file_routes(state: &AppState) -> Router<AppState> {
+    actions::file_routes(state)
+}
+#[cfg(not(feature = "actions"))]
+fn actions_file_routes(_state: &AppState) -> Router<AppState> {
+    Router::new()
+}
+
+/// Exact router templates owned by Actions, rather than path substring guesses.
+#[cfg(feature = "actions")]
+pub(crate) fn is_actions_route(path: &str) -> bool {
+    static PATHS: std::sync::LazyLock<std::collections::HashSet<String>> = std::sync::LazyLock::new(|| {
+        actions::PATHS
+            .iter()
+            .map(|(path, _)| (*path).to_owned())
+            .chain(actions_runner::PATHS.iter().map(|path| (*path).to_owned()))
+            .chain(api::actions_paths())
+            .collect()
+    });
+    PATHS.contains(path)
 }
 
 /// Pages go out as Brotli at quality 5: on rbit's HTML it is 6-12% smaller than the default

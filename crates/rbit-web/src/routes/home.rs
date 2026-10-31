@@ -41,7 +41,8 @@ pub async fn index(State(state): State<AppState>, viewer: Viewer, page: Page) ->
     let star_counts = state.services.stars.counts(&listed).await?;
     let (repos, recent) = (RepoCard::list(&repos, &star_counts), RepoCard::list(&recent, &star_counts));
     let can_create_org = state.services.orgs.can_create(user);
-    Ok(DashboardPage { page: page.titled("Dashboard"), repos, recent, orgs, can_create_org }.into_response())
+    Ok(DashboardPage { page: page.titled(crate::i18n::text("core", "title-dashboard")), repos, recent, orgs, can_create_org }
+        .into_response())
 }
 
 /// `?q=…&sort=…&archived=…&page=…`. Everything is optional and parsed leniently: a bad

@@ -10,6 +10,7 @@ mod branding;
 mod auth;
 mod editor;
 // Milestone 3: importing and push mirrors (M).
+mod i18n;
 mod imports;
 mod issues;
 mod lfs;
@@ -35,6 +36,7 @@ pub use auth::{AuthConfig, MAX_PROVIDER_ID_LEN, ProviderConfig, ProviderKind, Pr
 pub use branding::BrandingConfig;
 pub use editor::EditorConfig;
 // Milestone 3: importing and push mirrors (M).
+pub use i18n::{I18nConfig, valid_locale_preference};
 pub use imports::{AuthorMapping, ImportConfig, PushMirrorConfig};
 pub use issues::IssueConfig;
 pub use lfs::LfsConfig;
@@ -82,6 +84,7 @@ pub struct Config {
     pub push_mirrors: PushMirrorConfig,
     // Actions: foundation (F).
     pub actions: ActionsConfig,
+    pub i18n: I18nConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

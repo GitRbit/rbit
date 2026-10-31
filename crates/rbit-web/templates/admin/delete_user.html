@@ -3,7 +3,7 @@
 {% import "macros.html" as ui %}
 {% block admin_content %}
 <div class="max-w-xl">
-<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Users</a></p>
+<p class="mb-3 text-[13px]"><a href="/admin/users" class="inline-flex items-center gap-1 text-ink-muted hover:text-ink">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "admin-delete-user-a-users") }}</a></p>
 {% call admin::heading("Delete user", "") %}{% endcall %}
 
 <form method="post" action="{{ user.delete_url }}" class="box border-danger/40" novalidate>
@@ -16,14 +16,14 @@
   </div>
   <div class="p-4">
     {% call ui::form_error(error) %}{% endcall %}
-    <p class="text-[13px] text-ink-muted">This permanently deletes <span class="font-medium text-ink">{{ user.name }}</span>, their repositories ({{ user.repositories }}, including all Git data), access tokens and organization memberships. It cannot be undone.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "admin-delete-user-p-this-permanently-deletes") }} <span class="font-medium text-ink">{{ user.name }}</span>, their repositories ({{ user.repositories }}, including all Git data), access tokens and organization memberships. It cannot be undone.</p>
 
-    <label class="label mt-5" for="confirm">Type <span class="font-mono">{{ user.name }}</span> to confirm</label>
+    <label class="label mt-5" for="confirm">{{ crate::i18n::text("core", "admin-delete-user-label-type") }} <span class="font-mono">{{ user.name }}</span> {{ crate::i18n::text("core", "admin-delete-user-label-to-confirm") }}</label>
     <input class="input font-mono" id="confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required autofocus>
   </div>
   <div class="flex justify-end gap-2 border-t border-line px-4 py-3">
-    <a href="/admin/users" class="btn">Cancel</a>
-    <button class="btn btn-danger" type="submit">Delete user</button>
+    <a href="/admin/users" class="btn">{{ crate::i18n::text("core", "admin-delete-user-a-cancel") }}</a>
+    <button class="btn btn-danger" type="submit">{{ crate::i18n::text("core", "admin-delete-user-button-delete-user") }}</button>
   </div>
 </form>
 </div>

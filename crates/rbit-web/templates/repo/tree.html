@@ -7,15 +7,15 @@
   <div class="min-w-0">
     {#- Phones: the description and counts above the files; the full sidebar follows the README. -#}
     {% if breadcrumbs.len() <= 1 %}
-    <section class="mb-4 lg:hidden" aria-label="About">
+    <section class="mb-4 lg:hidden" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-about") }}">
       {% if let Some(description) = header.description %}<p class="text-[13px] text-ink-muted">{{ description }}</p>{% endif %}
       <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-muted">
-        <a href="{{ header.branches_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}branch{% else %}branches{% endif %}</span></a>
-        <a href="{{ header.tags_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}tag{% else %}tags{% endif %}</span></a>
+        <a href="{{ header.branches_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}{{ crate::i18n::text("core", "repo-tree-span-branch") }}{% else %}{{ crate::i18n::text("core", "repo-tree-span-branches") }}{% endif %}</span></a>
+        <a href="{{ header.tags_url }}" class="flex items-center gap-1.5 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<span><span class="font-medium text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}{{ crate::i18n::text("core", "repo-tree-span-tag") }}{% else %}{{ crate::i18n::text("core", "repo-tree-span-tags") }}{% endif %}</span></a>
         {% if header.is_private %}
-        <span class="flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}Private</span>
+        <span class="flex items-center gap-1.5">{% call ui::icon("lock", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-tree-span-private") }}</span>
         {% else %}
-        <span class="flex items-center gap-1.5">{% call ui::icon("globe", "size-3.5") %}{% endcall %}Public</span>
+        <span class="flex items-center gap-1.5">{% call ui::icon("globe", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-tree-span-public") }}</span>
         {% endif %}
       </p>
     </section>
@@ -24,17 +24,17 @@
     <div class="mb-3 flex min-h-8 flex-wrap items-center gap-2 sm:gap-3">
       {% include "repo/ref_switcher.html" %}
       {% if breadcrumbs.len() > 1 %}{% include "repo/breadcrumbs.html" %}{% endif %}
-      <a href="{{ history_url }}" class="btn btn-ghost ml-auto" aria-label="History" title="History">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">History</span></a>
-      {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add file</a>{% endif %}
-      {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="Upload files" title="Upload files">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
+      <a href="{{ history_url }}" class="btn btn-ghost ml-auto" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-history") }}" title="{{ crate::i18n::text("core", "repo-tree-title-history") }}">{% call ui::icon("history", "size-3.5") %}{% endcall %}<span class="hidden sm:inline">{{ crate::i18n::text("core", "repo-tree-span-history") }}</span></a>
+      {% if let Some(url) = new_file_url %}<a href="{{ url }}" class="btn">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-tree-a-add-file") }}</a>{% endif %}
+      {% if let Some(url) = upload_url %}<a href="{{ url }}" class="btn btn-icon" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-upload-files") }}" title="{{ crate::i18n::text("core", "repo-tree-title-upload-files") }}">{% call ui::icon("upload", "size-3.5") %}{% endcall %}</a>{% endif %}
     </div>
 
     {% include "repo/listing_controls.html" %}
-    <section class="box overflow-hidden" aria-label="Files">
+    <section class="box overflow-hidden" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-files") }}">
       {% include "repo/latest_commit.html" %}
       <ul>
         {% if let Some(parent) = parent_url %}
-        <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" aria-label="Parent directory">..</a></li>
+        <li><a href="{{ parent }}" class="row row-link font-mono text-[13px] text-ink-muted" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-parent-directory") }}">..</a></li>
         {% endif %}
         {#- The name link stretches over the whole row (`after:inset-0`); the commit link
             sits above it (`z-10`) so both are clickable without nesting anchors. -#}
@@ -64,21 +64,21 @@
 
   <aside class="repo-aside {% if breadcrumbs.len() > 1 %}max-lg:hidden{% endif %}">
     <section class="hidden lg:block">
-      <h2 class="text-[13px] font-medium">About</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "repo-tree-h2-about") }}</h2>
       {% if let Some(description) = header.description %}
       <p class="mt-2 text-[13px] text-ink-muted">{{ description }}</p>
       {% else %}
-      <p class="mt-2 text-[13px] text-ink-faint">No description.</p>
+      <p class="mt-2 text-[13px] text-ink-faint">{{ crate::i18n::text("core", "repo-tree-p-no-description") }}</p>
       {% endif %}
     </section>
     {% include "repo/document_links.html" %}
     {% if let Some(release) = latest_release %}
     <section class="aside-section" aria-labelledby="latest-release-title">
-      <h2 id="latest-release-title" class="text-[13px] font-medium"><a href="{{ release.releases_url }}" class="hover:underline hover:underline-offset-4">Releases</a></h2>
+      <h2 id="latest-release-title" class="text-[13px] font-medium"><a href="{{ release.releases_url }}" class="hover:underline hover:underline-offset-4">{{ crate::i18n::text("core", "repo-tree-a-releases") }}</a></h2>
       <a href="{{ release.url }}" class="group mt-2 flex items-start gap-2 text-[13px]">
         {% call ui::icon("tag", "mt-0.5 size-3.5 shrink-0 text-ink-muted") %}{% endcall %}
         <span class="min-w-0">
-          <span class="flex items-center gap-2"><span class="truncate font-medium group-hover:underline group-hover:underline-offset-4">{{ release.name }}</span><span class="badge">Latest</span></span>
+          <span class="flex items-center gap-2"><span class="truncate font-medium group-hover:underline group-hover:underline-offset-4">{{ release.name }}</span><span class="badge">{{ crate::i18n::text("core", "repo-tree-span-latest") }}</span></span>
           <time class="block text-xs text-ink-faint" datetime="{{ release.when_iso }}">{{ release.when }}</time>
         </span>
       </a>
@@ -86,16 +86,16 @@
     {% endif %}
     {% if let Some(collaborator) = collaborator %}
     <section class="aside-section" aria-labelledby="your-access-title">
-      <h2 id="your-access-title" class="text-[13px] font-medium">Your access</h2>
+      <h2 id="your-access-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "repo-tree-h2-your-access") }}</h2>
       <p class="mt-2 text-[13px] text-ink-muted">{{ collaborator.permission_label }} access as a collaborator.</p>
       <form method="post" action="{{ collaborator.leave_url }}" class="mt-3">
-        <button class="btn" type="submit">Leave repository</button>
+        <button class="btn" type="submit">{{ crate::i18n::text("core", "repo-tree-button-leave-repository") }}</button>
       </form>
     </section>
     {% endif %}
     {% if let Some(languages) = languages %}
     <section class="aside-section" aria-labelledby="languages-title">
-      <h2 id="languages-title" class="text-[13px] font-medium">Languages</h2>
+      <h2 id="languages-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "plugin-languages") }}</h2>
       <div class="mt-3 overflow-hidden rounded-full">
         <svg class="block h-2 w-full" viewBox="0 0 100 1" preserveAspectRatio="none" role="img" aria-label="{{ languages.label }}">
           {%- for segment in languages.segments %}<rect x="{{ segment.x }}" width="{{ segment.width }}" height="1" fill="{{ segment.color }}"><title>{{ segment.name }} {{ segment.percent }}</title></rect>{% endfor -%}
@@ -112,18 +112,18 @@
       </ul>
     </section>
     {% endif %}
-    <nav class="space-y-2 text-[13px] text-ink-muted" aria-label="Repository links">
-      <a href="{{ history_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("history", "size-3.5") %}{% endcall %}Commit history</a>
-      <a href="{{ header.releases_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}Releases</a>
+    <nav class="space-y-2 text-[13px] text-ink-muted" aria-label="{{ crate::i18n::text("core", "repo-tree-aria-label-repository-links") }}">
+      <a href="{{ history_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("history", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-tree-a-commit-history") }}</a>
+      <a href="{{ header.releases_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("tag", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-tree-a-releases") }}</a>
       <a href="{{ header.forks_url }}" class="flex items-center gap-2 hover:text-ink">{% call ui::icon("git-fork", "size-3.5") %}{% endcall %}{{ header.fork_count }} forks</a>
     </nav>
     <dl class="hidden space-y-2 border-t border-line pt-5 text-[13px] text-ink-muted lg:block">
-      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">Branches</dt><dd><a href="{{ header.branches_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}branch{% else %}branches{% endif %}</a></dd></div>
-      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">Tags</dt><dd><a href="{{ header.tags_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}tag{% else %}tags{% endif %}</a></dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("branch", "size-3.5") %}{% endcall %}<dt class="sr-only">{{ crate::i18n::text("core", "repo-tree-dt-branches") }}</dt><dd><a href="{{ header.branches_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.branch_count }}</span> {% if switcher.branch_count == 1 %}{{ crate::i18n::text("core", "repo-tree-a-branch") }}{% else %}{{ crate::i18n::text("core", "repo-tree-a-branches") }}{% endif %}</a></dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("tag", "size-3.5") %}{% endcall %}<dt class="sr-only">{{ crate::i18n::text("core", "repo-tree-dt-tags") }}</dt><dd><a href="{{ header.tags_url }}" class="hover:text-ink hover:underline"><span class="text-ink">{{ switcher.tag_count }}</span> {% if switcher.tag_count == 1 %}{{ crate::i18n::text("core", "repo-tree-a-tag") }}{% else %}{{ crate::i18n::text("core", "repo-tree-a-tags") }}{% endif %}</a></dd></div>
       {% if header.is_private %}
-      <div class="flex items-center gap-2">{% call ui::icon("lock", "size-3.5") %}{% endcall %}<dt class="sr-only">Visibility</dt><dd>Private</dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("lock", "size-3.5") %}{% endcall %}<dt class="sr-only">{{ crate::i18n::text("core", "repo-tree-dt-visibility") }}</dt><dd>{{ crate::i18n::text("core", "repo-tree-dd-private") }}</dd></div>
       {% else %}
-      <div class="flex items-center gap-2">{% call ui::icon("globe", "size-3.5") %}{% endcall %}<dt class="sr-only">Visibility</dt><dd>Public</dd></div>
+      <div class="flex items-center gap-2">{% call ui::icon("globe", "size-3.5") %}{% endcall %}<dt class="sr-only">{{ crate::i18n::text("core", "repo-tree-dt-visibility") }}</dt><dd>{{ crate::i18n::text("core", "repo-tree-dd-public") }}</dd></div>
       {% endif %}
     </dl>
   </aside>

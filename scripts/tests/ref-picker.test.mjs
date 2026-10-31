@@ -29,7 +29,7 @@ function harness({ dark = false, theme } = {}) {
     querySelector() { return null; },
   };
   const window = { htmx: { trigger(element, name) { requests.push({element, name}); } } };
-  vm.runInNewContext(source, { matchMedia: () => media, document, window, navigator: {}, addEventListener: (name, callback) => listeners.set(name, [callback]), HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
+  vm.runInNewContext(source, { createEnhancementHost: () => ({ start() {} }), location: new URL("https://git.example/"), matchMedia: () => media, document, window, navigator: {}, addEventListener: (name, callback) => listeners.set(name, [callback]), HTMLDetailsElement: Details, ResizeObserver: class { observe() {} unobserve() {} } });
   const picker = new Details();
   menus.push(picker);
   return { picker, requests, window, metadata, media, emit: (name, detail = {}) => listeners.get(name).forEach(callback => callback({target: picker, detail})) };

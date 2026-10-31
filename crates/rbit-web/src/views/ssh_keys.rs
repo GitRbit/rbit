@@ -109,7 +109,7 @@ pub struct SshKeysPage {
 impl SshKeysPage {
     pub fn new(page: Page, keys: &[SshKey], test_command: Option<String>) -> Self {
         Self {
-            page: page.titled("SSH keys"),
+            page: page.titled(crate::i18n::text("core", "title-ssh-keys")),
             settings_nav: SettingsSection::SshKeys.nav(),
             keys: keys.iter().map(KeyRow::for_user_key).collect(),
             form: KeyForm::default(),

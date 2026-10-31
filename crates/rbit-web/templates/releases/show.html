@@ -4,7 +4,7 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 items-center gap-3">
-  <a href="{{ releases_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}Releases</a>
+  <a href="{{ releases_url }}" class="btn btn-ghost">{% call ui::icon("chevron-left", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "releases-show-a-releases") }}</a>
 </div>
 
 {% if let Some(message) = notice %}
@@ -18,35 +18,35 @@
 
 {% if can_write %}
 <section class="box mt-6" aria-labelledby="files-title">
-  <h2 id="files-title" class="box-header text-[13px] font-medium">{% call ui::icon("upload", "size-3.5 text-ink-muted") %}{% endcall %}Files</h2>
+  <h2 id="files-title" class="box-header text-[13px] font-medium">{% call ui::icon("upload", "size-3.5 text-ink-muted") %}{% endcall %}{{ crate::i18n::text("core", "releases-show-h2-files") }}</h2>
   {% if !release.assets.is_empty() %}
   <ul>
     {% for asset in release.assets %}
     <li class="flex items-center gap-3 border-b border-line px-4 py-2.5 text-[13px]">
       <span class="min-w-0 flex-1">
         <span class="block truncate font-medium">{{ asset.name }}</span>
-        <span class="block truncate font-mono text-[11px] text-ink-faint" title="SHA-256">{{ asset.sha256 }}</span>
+        <span class="block truncate font-mono text-[11px] text-ink-faint" title="{{ crate::i18n::text("core", "releases-show-title-sha-256") }}">{{ asset.sha256 }}</span>
       </span>
       <span class="hidden shrink-0 text-xs text-ink-faint sm:inline">{{ asset.size }} · {{ asset.download_count }} {% if asset.download_count == 1 %}download{% else %}downloads{% endif %}</span>
       <form method="post" action="{{ asset.delete_url }}" class="shrink-0">
-        <button type="submit" class="btn btn-ghost btn-icon h-7 w-7 sm:h-7 sm:w-7" aria-label="Remove {{ asset.name }}" title="Remove">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</button>
+        <button type="submit" class="btn btn-ghost btn-icon h-7 w-7 sm:h-7 sm:w-7" aria-label="Remove {{ asset.name }}" title="{{ crate::i18n::text("core", "releases-show-title-remove") }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}</button>
       </form>
     </li>
     {% endfor %}
   </ul>
   {% endif %}
   <form method="post" action="{{ upload_url }}" enctype="multipart/form-data" class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center" hx-boost="false">
-    <input type="file" name="file" class="min-w-0 flex-1 text-[13px] file:mr-3 file:rounded-(--radius-ui) file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:text-ink" required aria-label="File to attach">
-    <button type="submit" class="btn">{% call ui::icon("upload", "size-3.5") %}{% endcall %}Upload</button>
+    <input type="file" name="file" class="min-w-0 flex-1 text-[13px] file:mr-3 file:rounded-(--radius-ui) file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:text-ink" required aria-label="{{ crate::i18n::text("core", "releases-show-aria-label-file-to-attach") }}">
+    <button type="submit" class="btn">{% call ui::icon("upload", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "releases-show-button-upload") }}</button>
   </form>
   <p class="hint px-4 pb-4">Up to {{ max_asset_size }} per file. Downloads are always served as files, never displayed.</p>
 </section>
 
 <section class="box mt-6 border-danger/40" aria-labelledby="danger-title">
-  <h2 id="danger-title" class="box-header text-[13px] font-medium text-danger">Delete this release</h2>
+  <h2 id="danger-title" class="box-header text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "releases-show-h2-delete-this-release") }}</h2>
   <form method="post" action="{{ delete_url }}" class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
-    <p class="flex-1 text-[13px] text-ink-muted">The release, its notes and its files are removed. The tag <span class="font-mono text-ink">{{ release.tag }}</span> stays.</p>
-    <button type="submit" class="btn btn-danger">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete release</button>
+    <p class="flex-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "releases-show-p-the-release-its-notes-and-its-files-are-removed-the-tag") }} <span class="font-mono text-ink">{{ release.tag }}</span> {{ crate::i18n::text("core", "releases-show-p-stays") }}</p>
+    <button type="submit" class="btn btn-danger">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "releases-show-button-delete-release") }}</button>
   </form>
 </section>
 {% endif %}

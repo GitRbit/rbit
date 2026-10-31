@@ -11,12 +11,12 @@
 </div>
 
 <section class="box mb-6 p-4" aria-labelledby="software-updates-title">
-  <h3 id="software-updates-title" class="text-[13px] font-medium">Software updates</h3>
+  <h3 id="software-updates-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "admin-dashboard-h3-software-updates") }}</h3>
   <p class="mt-1 text-xs text-ink-muted">{{ page.updates.label() }}</p>
   {% if let Some(release) = page.updates.release %}
   <a href="{{ release.url }}" class="link mt-2 inline-block text-[13px]" hx-boost="false" rel="noreferrer">View rbit {{ release.version }} release notes</a>
   {% endif %}
-  <a href="/admin/configuration" class="link mt-2 block text-xs">Configure update checks and version privacy</a>
+  <a href="/admin/configuration" class="link mt-2 block text-xs">{{ crate::i18n::text("core", "admin-dashboard-a-configure-update-checks-and-version-privacy") }}</a>
 </section>
 
 <ul class="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -48,7 +48,7 @@
   <section class="box min-w-0" aria-labelledby="system-title">
     <div class="box-header">
       {% call ui::icon("server", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-      <h3 id="system-title" class="text-[13px] font-medium">System</h3>
+      <h3 id="system-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "admin-dashboard-h3-system") }}</h3>
     </div>
     <dl>
       {% for row in system %}
@@ -63,8 +63,8 @@
   <section class="box min-w-0" aria-labelledby="settings-title">
     <div class="box-header">
       {% call ui::icon("globe", "size-4 shrink-0 text-ink-muted") %}{% endcall %}
-      <h3 id="settings-title" class="text-[13px] font-medium">Instance settings</h3>
-      <a href="/admin/settings" class="link ml-auto text-xs">Edit</a>
+      <h3 id="settings-title" class="text-[13px] font-medium">{{ crate::i18n::text("core", "admin-dashboard-h3-instance-settings") }}</h3>
+      <a href="/admin/settings" class="link ml-auto text-xs">{{ crate::i18n::text("core", "admin-dashboard-a-edit") }}</a>
     </div>
     <dl>
       {% for row in settings %}

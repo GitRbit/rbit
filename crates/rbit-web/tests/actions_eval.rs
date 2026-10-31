@@ -1246,8 +1246,8 @@ impl Fixture {
         Self { _directory: directory, services, database, router, alice, bob, carol, dave, eve }
     }
 
-    fn actions(&self) -> &ActionsService {
-        self.services.actions.as_ref().unwrap()
+    fn actions(&self) -> ActionsService {
+        self.services.actions.snapshot().unwrap()
     }
 
     async fn repo(&self, owner: &User, name: &str) -> RepoContext {

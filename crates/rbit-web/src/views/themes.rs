@@ -266,7 +266,7 @@ pub struct ThemesPage {
 impl ThemesPage {
     pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
         let gallery = Gallery::new(&page, GALLERY_URL, variant, query);
-        Self { page: page.titled("Themes"), gallery }
+        Self { page: page.titled(crate::i18n::text("core", "title-themes")), gallery }
     }
 }
 
@@ -362,7 +362,7 @@ pub struct AppearancePage {
 impl AppearancePage {
     pub fn new(page: Page, variant: VariantFilter, query: Option<&str>) -> Self {
         let gallery = Gallery::new(&page, SettingsSection::Appearance.url(), variant, query);
-        Self { page: page.titled("Appearance"), settings_nav: SettingsSection::Appearance.nav(), gallery }
+        Self { page: page.titled(crate::i18n::text("core", "title-appearance")), settings_nav: SettingsSection::Appearance.nav(), gallery }
     }
 }
 
@@ -372,8 +372,12 @@ mod tests {
 
     fn page(theme: Theme) -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
@@ -416,7 +420,7 @@ mod tests {
     #[test]
     fn system_page_uses_dna_browser_colors_and_default_toggle() {
         let html = ThemesPage::new(page(Theme::System), VariantFilter::All, None).render().unwrap();
-        assert!(html.contains("<html lang=\"en\">"), "unselected preferences follow the device");
+        assert!(html.contains("<html lang=\"en\" dir=\"ltr\">"), "unselected preferences follow the device");
         assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: light)\"", themes::DNA_DAY_CANVAS)));
         assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: dark)\"", themes::DNA_DARK_CANVAS)));
         assert!(html.contains("value=\"dna-dark\" data-theme-toggle"));
@@ -468,7 +472,11 @@ mod tests {
     fn renders_live_preview_cards() {
         let tinted = &themes::tinted()[0];
         let html = ThemesPage::new(page(Theme::Tinted(tinted)), VariantFilter::All, None).render().unwrap();
-        assert!(html.contains(&format!("<html lang=\"en\" data-theme=\"{}\" data-scheme=\"{}\">", tinted.slug, tinted.variant.as_str())));
+        assert!(html.contains(&format!(
+            "<html lang=\"en\" dir=\"ltr\" data-theme=\"{}\" data-scheme=\"{}\">",
+            tinted.slug,
+            tinted.variant.as_str()
+        )));
         assert!(html.contains(&format!("data-theme=\"{}\" value=\"{}\"", tinted.slug, tinted.slug)), "cards carry their own theme");
         assert!(html.contains("/assets/themes/all.css?v="), "the gallery links every theme");
         assert!(html.contains(&format!("<style data-theme-stylesheet data-theme=\"{}\">", tinted.slug)), "the active theme's own sheet");

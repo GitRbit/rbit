@@ -4,21 +4,21 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <section class="mx-auto max-w-2xl">
-  <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}New release{% else %}Edit release{% endif %}</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">A release describes a tag: its notes, and files to download.</p>
+  <h1 class="text-xl font-semibold tracking-tight">{% if is_new %}{{ crate::i18n::text("core", "releases-form-h1-new-release") }}{% else %}{{ crate::i18n::text("core", "releases-form-h1-edit-release") }}{% endif %}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "releases-form-p-a-release-describes-a-tag-its-notes-and-files-to-download") }}</p>
 
   <form method="post" action="{{ action_url }}" class="mt-8" novalidate>
     {% call ui::form_error(error) %}{% endcall %}
 
-    <label class="label" for="release-tag">Tag</label>
+    <label class="label" for="release-tag">{{ crate::i18n::text("core", "releases-form-label-tag") }}</label>
     <input class="input font-mono text-xs" id="release-tag" name="tag" value="{{ form.tag }}" list="release-tags" autocomplete="off" autocapitalize="none" spellcheck="false" required>
     <datalist id="release-tags">
       {% for tag in tags %}<option value="{{ tag }}"></option>{% endfor %}
     </datalist>
     {% if is_new %}
-    <p class="hint">An existing <a class="link" href="{{ tags_url }}">tag</a>, or a new one created from the branch below.</p>
+    <p class="hint">{{ crate::i18n::text("core", "releases-form-p-an-existing") }} <a class="link" href="{{ tags_url }}">{{ crate::i18n::text("core", "releases-form-a-tag") }}</a>{{ crate::i18n::text("core", "releases-form-p-or-a-new-one-created-from-the-branch-below") }}</p>
 
-    <label class="label mt-5" for="release-target">Create a new tag from <span class="font-normal text-ink-faint">used only when the tag does not exist</span></label>
+    <label class="label mt-5" for="release-target">{{ crate::i18n::text("core", "releases-form-label-create-a-new-tag-from") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "releases-form-span-used-only-when-the-tag-does-not-exist") }}</span></label>
     <div class="relative">
       <select class="input cursor-pointer appearance-none pr-9 font-mono text-xs" id="release-target" name="target">
         {% for branch in branches %}
@@ -28,27 +28,27 @@
       {% call ui::icon("chevron-down", "pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted") %}{% endcall %}
     </div>
     {% else %}
-    <p class="hint">One of the repository's <a class="link" href="{{ tags_url }}">tags</a>.</p>
+    <p class="hint">{{ crate::i18n::text("core", "releases-form-p-one-of-the-repository-s") }} <a class="link" href="{{ tags_url }}">{{ crate::i18n::text("core", "releases-form-a-tags") }}</a>.</p>
     {% endif %}
 
-    <label class="label mt-5" for="release-name">Title <span class="font-normal text-ink-faint">optional, defaults to the tag</span></label>
+    <label class="label mt-5" for="release-name">{{ crate::i18n::text("core", "releases-form-label-title") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "releases-form-span-optional-defaults-to-the-tag") }}</span></label>
     <input class="input" id="release-name" name="name" value="{{ form.name }}" maxlength="255">
 
-    <label class="label mt-5" for="release-notes">Notes <span class="font-normal text-ink-faint">Markdown</span></label>
+    <label class="label mt-5" for="release-notes">{{ crate::i18n::text("core", "releases-form-label-notes") }} <span class="font-normal text-ink-faint">{{ crate::i18n::text("core", "releases-form-span-markdown") }}</span></label>
     <textarea class="input h-64 resize-y py-2 font-mono text-xs" id="release-notes" name="notes" rows="12">{{ form.notes }}</textarea>
 
     <label class="mt-5 flex cursor-pointer items-start gap-3">
       <input type="checkbox" name="prerelease" value="on" class="mt-1 accent-(--ink)" {% if form.is_prerelease %}checked{% endif %}>
       <span>
-        <span class="block font-medium">This is a pre-release</span>
-        <span class="block text-[13px] text-ink-muted">Marked as not ready for production; a full release is preferred as the latest.</span>
+        <span class="block font-medium">{{ crate::i18n::text("core", "releases-form-span-this-is-a-pre-release") }}</span>
+        <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "releases-form-span-marked-as-not-ready-for-production-a-full-release-is-preferred-as") }}</span>
       </span>
     </label>
 
     <div class="mt-8 flex flex-wrap items-center gap-2">
-      <button type="submit" name="action" value="publish" class="btn btn-primary">{% if is_published %}Save release{% else %}Publish release{% endif %}</button>
-      {% if !is_published %}<button type="submit" name="action" value="draft" class="btn">Save draft</button>{% endif %}
-      <a href="{{ cancel_url }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" name="action" value="publish" class="btn btn-primary">{% if is_published %}{{ crate::i18n::text("core", "releases-form-button-save-release") }}{% else %}{{ crate::i18n::text("core", "releases-form-button-publish-release") }}{% endif %}</button>
+      {% if !is_published %}<button type="submit" name="action" value="draft" class="btn">{{ crate::i18n::text("core", "releases-form-button-save-draft") }}</button>{% endif %}
+      <a href="{{ cancel_url }}" class="btn btn-ghost">{{ crate::i18n::text("core", "releases-form-a-cancel") }}</a>
     </div>
   </form>
 </section>

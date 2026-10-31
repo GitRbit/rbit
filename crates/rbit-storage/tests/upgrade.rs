@@ -776,6 +776,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
             "actions_owner_enabled_repositories",
             "actions_owner_policies",
             "actions_owner_settings",
+            "actions_plugin_revocations",
             "actions_registration_tokens",
             "actions_repositories",
             "actions_run_numbers",
@@ -806,6 +807,7 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
              status, event_payload, created_at) VALUES (1, 6, 1, 'a.yml', 'CI', 'x', 'push', 'refs/heads/trunk', \
              '0123456789abcdef0123456789abcdef01234567', 2, 1, 6, '{}', 1); \
          INSERT INTO actions_run_numbers (repo_id, last) VALUES (6, 1); \
+         INSERT INTO actions_plugin_revocations (run_id) VALUES (1); \
          INSERT INTO actions_jobs (id, run_id, repo_id, job_key, name, payload, status, runner_id, created_at) \
              VALUES (1, 1, 6, 'build', 'build', x'00', 6, 1, 1); \
          INSERT INTO actions_job_labels (job_id, label) VALUES (1, 'linux'); \
@@ -827,6 +829,8 @@ async fn actions_tables_start_empty_with_their_checks_and_cascades() {
     .execute(&db.raw)
     .await
     .unwrap();
+
+    assert_eq!(db.count("SELECT COUNT(*) FROM actions_plugin_revocations").await, 1);
 
     // Removing the runner keeps the job and task; removing a person keeps what they did.
     sqlx::query("DELETE FROM actions_runners WHERE id = 1").execute(&db.raw).await.unwrap();

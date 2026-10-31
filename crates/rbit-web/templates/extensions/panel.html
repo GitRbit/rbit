@@ -1,0 +1,10 @@
+<section class="box my-4 min-w-0 overflow-hidden" data-plugin-tone="{{ extension.tone }}" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}">
+  <div class="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center">
+    <div class="min-w-0 flex-1 break-words">
+      {% if !extension.title.is_empty() %}<h2 class="text-[13px] font-medium">{{ extension.title }}</h2>{% endif %}
+      {% if !extension.body.is_empty() %}<p class="mt-1 whitespace-pre-wrap text-[13px] {% if extension.tone == "danger" %}text-danger{% else if extension.tone == "success" %}text-success{% else %}text-ink-muted{% endif %}" {% if extension.kind == "notice" %}role="note"{% endif %}>{{ extension.body }}</p>{% endif %}
+    </div>
+    {% if extension.kind != "list" %}{% for link in extension.links %}<a class="btn w-full shrink-0 whitespace-normal break-words sm:w-auto" href="{{ link.url }}">{% if !link.icon.is_empty() %}{% call ui::icon(link.icon, "size-4 shrink-0") %}{% endcall %}{% endif %}{{ link.label }}</a>{% endfor %}{% endif %}
+  </div>
+  {% if extension.kind == "list" %}<ul class="divide-y divide-line border-t border-line">{% for link in extension.links %}<li><a class="flex min-h-11 items-center gap-2 break-words px-4 py-2 text-[13px] hover:bg-subtle" href="{{ link.url }}">{% if !link.icon.is_empty() %}{% call ui::icon(link.icon, "size-4 shrink-0") %}{% endcall %}{% endif %}{{ link.label }}</a></li>{% endfor %}</ul>{% endif %}
+</section>

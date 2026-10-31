@@ -972,12 +972,31 @@ const LFS: &[Spec] = &[
     },
 ];
 
+const I18N: &[Spec] = &[
+    Spec {
+        key: "enabled",
+        label: "Startup default",
+        help: "Default until an administrator saves runtime intent. Use Admin → Plugins to enable or disable internationalization immediately. Saved plugin intent survives restart and overrides this default.",
+        kind: Kind::Toggle,
+        optional: false,
+        max: "",
+    },
+    Spec {
+        key: "default_locale",
+        label: "Default locale",
+        help: "Locale used when account, cookie and browser preferences do not select an installed language. Use a language tag such as en or es. English remains the fallback. Changes take effect after restart.",
+        kind: Kind::Text,
+        optional: false,
+        max: "",
+    },
+];
+
 // Actions: foundation (F).
 const ACTIONS: &[Spec] = &[
     Spec {
         key: "enabled",
-        label: "Enable this feature",
-        help: "Run workflows on rbit-runner. When off, Actions is fully absent: no pages, no runner endpoint, no background work, and workflow files are ignored. Restart required.",
+        label: "Startup default",
+        help: "Default until an administrator saves runtime intent. Use Admin → Plugins to enable or disable Actions immediately. Saved plugin intent survives restart and overrides this default.",
         kind: Kind::Toggle,
         optional: false,
         max: "",
@@ -1307,6 +1326,12 @@ pub(super) const SECTIONS: &[Section] = &[
     Section { key: "pulls", title: "Pull requests", help: "Merge limits, background checks and author addresses.", fields: PULLS },
     Section { key: "editor", title: "Browser editor", help: "Browser upload size, count and timeout limits.", fields: EDITOR },
     Section { key: "lfs", title: "Git LFS", help: "Large-file storage, object sizes and token lifetime.", fields: LFS },
+    Section {
+        key: "i18n",
+        title: "Languages",
+        help: "Internationalization startup defaults. Manage runtime availability and installed language packs in Admin → Plugins.",
+        fields: I18N,
+    },
     // Actions: foundation (F).
     Section { key: "actions", title: "Actions", help: "CI/CD on external runners, retention, limits and timeouts.", fields: ACTIONS },
 ];

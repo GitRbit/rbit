@@ -3,14 +3,14 @@
 {% block content %}
 <div class="mx-auto max-w-4xl">
   <div class="flex flex-wrap items-center gap-3">
-    <h1 class="text-xl font-semibold tracking-tight">Notifications</h1>
-    <nav class="flex gap-4 text-[13px] sm:ml-4" aria-label="Show">
-      <a href="{{ unread_url }}" class="tab" {% if !showing_all %}aria-current="page"{% endif %}>Unread</a>
-      <a href="{{ all_url }}" class="tab" {% if showing_all %}aria-current="page"{% endif %}>All</a>
+    <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-notifications") }}</h1>
+    <nav class="flex gap-4 text-[13px] sm:ml-4" aria-label="{{ crate::i18n::text("core", "notifications-inbox-aria-label-show") }}">
+      <a href="{{ unread_url }}" class="tab" {% if !showing_all %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "notifications-inbox-a-unread") }}</a>
+      <a href="{{ all_url }}" class="tab" {% if showing_all %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "notifications-inbox-a-all") }}</a>
     </nav>
     {% if page.has_unread_notifications %}
     <form method="post" action="{{ mark_all_url }}" class="ml-auto">
-      <button type="submit" class="btn h-11 sm:h-8">{% call ui::icon("check", "size-3.5") %}{% endcall %}Mark all as read</button>
+      <button type="submit" class="btn h-11 sm:h-8">{% call ui::icon("check", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "notifications-inbox-button-mark-all-as-read") }}</button>
     </form>
     {% endif %}
   </div>
@@ -18,9 +18,9 @@
   {% if groups.is_empty() %}
   <div class="box mt-5">
     {% if showing_all %}
-    {% call ui::empty_state("bell", "No notifications", "You hear here about issues and pull requests you take part in: ones you opened, commented on, are assigned to or were mentioned in.") %}{% endcall %}
+    {% call ui::empty_state("bell", crate::i18n::text("core", "notifications-inbox-empty-title-no-notifications"), crate::i18n::text("core", "notifications-inbox-empty-description-you-hear-here-about-issues-and-pull-requests-you-take-part-in-one")) %}{% endcall %}
     {% else %}
-    {% call ui::empty_state("bell", "All caught up", "Nothing unread. Older notifications are under All.") %}{% endcall %}
+    {% call ui::empty_state("bell", crate::i18n::text("core", "notifications-inbox-empty-title-all-caught-up"), crate::i18n::text("core", "notifications-inbox-empty-description-nothing-unread-older-notifications-are-under-all")) %}{% endcall %}
     {% endif %}
   </div>
   {% endif %}
@@ -38,10 +38,10 @@
         </div>
         <div class="flex shrink-0 items-center gap-1">
           {% if row.unread %}
-          <span class="mr-1 size-2 rounded-full bg-inverted" role="img" aria-label="Unread"></span>
-          <form method="post" action="{{ row.read_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="Mark as read" title="Mark as read">{% call ui::icon("check", "size-3.5") %}{% endcall %}</button></form>
+          <span class="mr-1 size-2 rounded-full bg-inverted" role="img" aria-label="{{ crate::i18n::text("core", "notifications-inbox-aria-label-unread") }}"></span>
+          <form method="post" action="{{ row.read_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="{{ crate::i18n::text("core", "notifications-inbox-aria-label-mark-as-read") }}" title="{{ crate::i18n::text("core", "notifications-inbox-title-mark-as-read") }}">{% call ui::icon("check", "size-3.5") %}{% endcall %}</button></form>
           {% endif %}
-          <form method="post" action="{{ row.unsubscribe_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="Unsubscribe" title="Unsubscribe">{% call ui::icon("eye-off", "size-3.5") %}{% endcall %}</button></form>
+          <form method="post" action="{{ row.unsubscribe_url }}"><button type="submit" class="btn btn-ghost btn-icon h-11 w-11 sm:h-8 sm:w-8" aria-label="{{ crate::i18n::text("core", "notifications-inbox-aria-label-unsubscribe") }}" title="{{ crate::i18n::text("core", "notifications-inbox-title-unsubscribe") }}">{% call ui::icon("eye-off", "size-3.5") %}{% endcall %}</button></form>
         </div>
       </li>
       {% endfor %}

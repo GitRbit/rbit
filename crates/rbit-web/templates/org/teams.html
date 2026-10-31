@@ -6,14 +6,14 @@
 
 <div class="mt-6 max-w-3xl">
   <div class="mb-3 flex h-8 items-center justify-between gap-3">
-    <h2 class="text-[13px] font-medium text-ink-muted">Teams <span class="ml-1 text-ink-faint">{{ teams.len() }}</span></h2>
+    <h2 class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "org-teams-h2-teams") }} <span class="ml-1 text-ink-faint">{{ teams.len() }}</span></h2>
     {% if can_manage %}
-    <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}New team</a>
+    <a href="{{ new_url }}" class="btn btn-primary">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "org-teams-a-new-team") }}</a>
     {% endif %}
   </div>
   <div class="box">
     {% if teams.is_empty() %}
-    {% call ui::empty_state("users", "No teams yet", "Teams group members and give each group its own access to repositories.") %}{% endcall %}
+    {% call ui::empty_state("users", crate::i18n::text("core", "org-teams-empty-title-no-teams-yet"), crate::i18n::text("core", "org-teams-empty-description-teams-group-members-and-give-each-group-its-own-access-to-reposit")) %}{% endcall %}
     {% else %}
     <ul>
       {% for team in teams %}

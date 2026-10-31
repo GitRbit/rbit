@@ -169,7 +169,7 @@ async fn account_page(state: &AppState, user: &User, page: Page) -> WebResult<Ac
     let mut page = AccountPage::new(page, user, state.config.security.min_password_length).verification(verification);
     page.password_change_required = state.services.accounts.password_change_required(user.id()).await?;
     if page.password_change_required {
-        page.page = page.page.titled("Update your password");
+        page.page = page.page.titled(crate::i18n::text("core", "title-update-your-password"));
         page.settings_nav.clear();
     }
     Ok(page)

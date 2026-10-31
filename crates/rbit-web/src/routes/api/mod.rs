@@ -43,7 +43,9 @@ mod test_support;
 // Milestone 3: commit statuses (S).
 mod statuses;
 // Actions: integration (I).
+#[cfg(feature = "actions")]
 mod actions;
+#[cfg(feature = "actions")]
 mod environments;
 
 use std::{borrow::Cow, sync::LazyLock, time::Duration};
@@ -148,6 +150,7 @@ fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> A
 }
 
 /// Every endpoint of the API under `config`.
+#[cfg_attr(not(feature = "actions"), expect(unused_variables, reason = "only optional Actions routes inspect configuration"))]
 pub fn table(config: &Config) -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
     let mut routes = vec![
@@ -202,6 +205,7 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     // Milestone 3: commit statuses (S).
     routes.extend(statuses::routes());
     // Actions: foundation (F). Only when Actions is enabled.
+    #[cfg(feature = "actions")]
     if config.actions.enabled {
         routes.extend(actions_routes());
     }
@@ -210,6 +214,7 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
 
 /// The Actions endpoints (served only when Actions is enabled). The integration workstream
 /// (I) adds them with their `openapi/actions.json` fragment ([`ACTIONS_FRAGMENTS`]).
+#[cfg(feature = "actions")]
 fn actions_routes() -> Vec<ApiRoute> {
     // Actions: integration (I).
     let mut routes = actions::routes();
@@ -220,6 +225,7 @@ fn actions_routes() -> Vec<ApiRoute> {
 
 /// The `OpenAPI` fragments of the Actions endpoints, merged only when Actions is enabled.
 // Actions: integration (I).
+#[cfg(feature = "actions")]
 const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
     ("actions", include_str!("openapi/actions.json")),
     ("environments", include_str!("openapi/environments.json")),
@@ -229,6 +235,9 @@ const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
 
 /// The `OpenAPI` fragments of wave B's and milestone 3's areas, merged into [`OPENAPI`]. Each is shaped
 /// `{"paths": {…}, "components": {"schemas": {…}}}`.
+#[cfg(not(feature = "actions"))]
+const ACTIONS_FRAGMENTS: [(&str, &str); 0] = [];
+
 const FRAGMENTS: [(&str, &str); 9] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
@@ -273,7 +282,9 @@ fn merged_document(actions: bool) -> (Value, Vec<String>) {
 }
 
 pub fn routes(config: &Config) -> Router<AppState> {
-    let (streaming, buffered): (Vec<_>, Vec<_>) = table(config).into_iter().partition(|entry| entry.streaming);
+    let mut mounted = config.clone();
+    mounted.actions.enabled = cfg!(feature = "actions");
+    let (streaming, buffered): (Vec<_>, Vec<_>) = table(&mounted).into_iter().partition(|entry| entry.streaming);
     let mut router = Router::new();
     for entry in buffered {
         if let Some(handler) = entry.handler {
@@ -304,13 +315,28 @@ pub fn routes(config: &Config) -> Router<AppState> {
 
 /// `GET /openapi.json`
 async fn openapi(State(state): State<AppState>, _caller: Caller) -> impl IntoResponse {
-    let document = if state.config.actions.enabled { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
+    let document = if state.services.actions.is_some() { DOCUMENT_WITH_ACTIONS.as_str() } else { DOCUMENT.as_str() };
     ([(header::CONTENT_TYPE, "application/json")], document)
 }
 
 /// Every other path under `/api`.
 async fn not_found() -> ApiError {
     ApiError::not_found()
+}
+
+/// The same absent-resource envelope for requests rejected before API routing.
+pub(crate) fn not_found_response() -> axum::response::Response {
+    ApiError::not_found().into_response()
+}
+
+/// Keep the API authentication envelope when host middleware refuses credentials.
+pub(crate) fn unauthorized_response() -> axum::response::Response {
+    ApiError::unauthorized("Bad credentials").into_response()
+}
+
+#[cfg(feature = "actions")]
+pub(super) fn actions_paths() -> Vec<String> {
+    actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()
 }
 
 #[cfg(test)]

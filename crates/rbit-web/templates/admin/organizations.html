@@ -10,15 +10,15 @@
 
 <div class="box">
   {% if orgs.is_empty() %}
-  {% call ui::empty_state("globe", "No organizations found", "Organizations will be listed here once they exist.") %}{% endcall %}
+  {% call ui::empty_state("globe", crate::i18n::text("core", "admin-organizations-empty-title-no-organizations-found"), crate::i18n::text("core", "admin-organizations-empty-description-organizations-will-be-listed-here-once-they-exist")) %}{% endcall %}
   {% else %}
   <table class="w-full text-left text-[13px]">
     <thead class="border-b border-line bg-subtle text-xs text-ink-muted">
       <tr>
-        <th scope="col" class="h-9 px-4 font-medium">Organization</th>
-        <th scope="col" class="px-4 text-right font-medium sm:text-left">Members</th>
-        <th scope="col" class="hidden px-4 font-medium sm:table-cell">Repositories</th>
-        <th scope="col" class="hidden px-4 font-medium lg:table-cell">Created</th>
+        <th scope="col" class="h-9 px-4 font-medium">{{ crate::i18n::text("core", "admin-organizations-th-organization") }}</th>
+        <th scope="col" class="px-4 text-right font-medium sm:text-left">{{ crate::i18n::text("core", "admin-organizations-th-members") }}</th>
+        <th scope="col" class="hidden px-4 font-medium sm:table-cell">{{ crate::i18n::text("core", "admin-organizations-th-repositories") }}</th>
+        <th scope="col" class="hidden px-4 font-medium lg:table-cell">{{ crate::i18n::text("core", "admin-organizations-th-created") }}</th>
       </tr>
     </thead>
     <tbody>

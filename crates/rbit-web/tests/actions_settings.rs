@@ -105,8 +105,8 @@ impl Fixture {
         self.database.repositories().find_by_path("alice", "rocket").await.unwrap().unwrap().repo.id
     }
 
-    fn actions(&self) -> &rbit_services::ActionsService {
-        self.services.actions.as_ref().unwrap()
+    fn actions(&self) -> rbit_services::ActionsService {
+        self.services.actions.snapshot().unwrap()
     }
 }
 
@@ -200,7 +200,7 @@ async fn the_switch_and_the_token_permission_are_saved() {
     assert!(page.contains(r#"name="enabled" value="on" class="mt-1 accent-(--ink)" checked"#));
     assert!(page.contains(r#"value="write" class="mt-1 accent-(--ink)" checked"#));
     let home = fixture.page("/alice/rocket", &fixture.reader).await;
-    assert!(home.contains(r#"data-repo-tab="actions""#), "the tab follows the switch");
+    assert!(home.contains(r#"data-repo-tab="rbit.actions:actions-repository-tab""#), "the tab follows the switch");
 
     fixture.redirects(REPO, &fixture.owner, "token_permission=write", &format!("{REPO}?done=saved")).await;
     assert!(!fixture.database.actions_settings().is_enabled(fixture.repo_id().await).await.unwrap(), "an unticked box turns it off");

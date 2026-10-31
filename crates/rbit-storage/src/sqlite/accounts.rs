@@ -29,8 +29,9 @@ macro_rules! select_user {
 const SESSION_USER: &str = "SELECT a.id, a.kind, a.name, a.display_name, a.bio, a.created_at, l.email, l.is_admin, \
      '' AS password_hash, l.password_change_required, \
      CASE WHEN ?2 THEN EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = a.id AND n.unread = 1) ELSE 0 END \
-     AS has_unread_notifications \
-     FROM accounts a JOIN user_logins l ON l.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
+     AS has_unread_notifications, al.locale \
+     FROM accounts a JOIN user_logins l ON l.account_id = a.id \
+     LEFT JOIN account_locales al ON al.account_id = a.id WHERE a.id = ?1 AND l.suspended_at IS NULL";
 
 /// An active (not suspended) user as a signed-in request sees them, from
 /// [`AccountStore::find_session_user`].
@@ -41,6 +42,8 @@ pub struct SessionUser {
     pub password_change_required: bool,
     /// Something in the inbox is unread (always `false` when notifications are off).
     pub has_unread_notifications: bool,
+    /// Explicit locale preference, included in the existing session query.
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -49,6 +52,7 @@ struct SessionUserRow {
     user: UserRow,
     password_change_required: bool,
     has_unread_notifications: bool,
+    locale: Option<String>,
 }
 
 /// A login candidate: the user, their stored password hash and whether they are suspended.
@@ -169,6 +173,7 @@ impl AccountStore {
                 user,
                 password_change_required: row.password_change_required,
                 has_unread_notifications: row.has_unread_notifications,
+                locale: row.locale,
             })
         })
         .transpose()

@@ -1,0 +1,66 @@
+[package]
+name = "rbit-actions"
+description = "Optional CI/CD control plane for rbit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+# One integration-test binary (tests/main.rs) instead of one per file.
+
+[dependencies]
+rbit-services-base.workspace = true
+rbit-core.workspace = true
+rbit-storage.workspace = true
+rbit-auth.workspace = true
+rbit-git.workspace = true
+rbit-mail.workspace = true
+rbit-plugin-api.workspace = true
+rbit-plugin-runtime.workspace = true
+# Actions: workflow parsing, triggers and planning.
+rbit-workflow.workspace = true
+# Actions: sealing secrets (U).
+aes-gcm.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+getrandom.workspace = true
+# The first account's setup token is compared in constant time.
+subtle.workspace = true
+metrics.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+ssh-key.workspace = true
+# W: webhook deliveries (signed JSON over HTTP(S), ring-backed rustls).
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+same-file.workspace = true
+serde_json.workspace = true
+semver.workspace = true
+percent-encoding.workspace = true
+# L: Git LFS (signed transfer tokens).
+base64.workspace = true
+# Milestone 3: external sign-in (O): provider documents (discovery, tokens, GitHub's API).
+# M: importing (the source's API objects).
+serde.workspace = true
+# Actions: S. The masking pass over job outputs and log lines, and gzipped task logs.
+aho-corasick.workspace = true
+flate2.workspace = true
+# Actions: artifacts, read to serve them as zip archives.
+tar.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
+sqlx.workspace = true
+# A software authenticator for the passkey tests.
+p256.workspace = true
+base64.workspace = true
+# M: a fake GitHub/Gitea server for the import tests.
+axum.workspace = true
+# Actions: reading the zip archives artifacts are served as.
+zip.workspace = true
+
+[lints]
+workspace = true

@@ -1,6 +1,8 @@
 // Progressive enhancements. Every page works without this file.
 // Behaviour is attached with event delegation, so it keeps working after htmx swaps.
 
+import "./messages.js";
+
 // Theme menu and gallery: instant switching, live previews, filtering.
 import "./theme-picker.js";
 
@@ -22,8 +24,10 @@ import "./sticky-header.js";
 import "./contributions.js";
 import "./branch-graph.js";
 import "./mirror-progress.js";
-// Actions job pages: steps keep the viewer's open or closed choice across refreshes.
-import "./actions-log.js";
+// Host-owned runtime enhancements dispose resources with their provider generation.
+import { createEnhancementHost } from "./plugin-enhancements.js";
+const pluginEnhancements = createEnhancementHost({ document, window, location });
+pluginEnhancements.start();
 import "./repo-create.js";
 import "./markdown.js";
 import "./discussion.js";
@@ -51,7 +55,7 @@ async function copyToClipboard(button) {
     await navigator.clipboard.writeText(text.trim());
     const label = button.getAttribute("aria-label");
     button.dataset.copied = "true";
-    button.setAttribute("aria-label", "Copied!");
+    button.setAttribute("aria-label", (globalThis.rbitMessages?.text("browser-copied") ?? "Copied!"));
     setTimeout(() => {
       delete button.dataset.copied;
       button.setAttribute("aria-label", label);

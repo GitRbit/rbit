@@ -4,63 +4,63 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ list_url }}">Branch protection</a></p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a> <span class="text-ink-faint">/</span> <a class="text-ink-muted hover:text-ink" href="{{ list_url }}">{{ crate::i18n::text("core", "protection-form-a-branch-protection") }}</a></p>
   {% if let Some(rule) = rule %}
   <h1 class="mt-1 truncate font-mono text-xl font-semibold tracking-tight">{{ rule.pattern }}</h1>
   <p class="mt-1 text-[13px] text-ink-muted">
-    {% if rule.matches.is_empty() %}Matches no branch yet.{% else %}Matches:
+    {% if rule.matches.is_empty() %}{{ crate::i18n::text("core", "protection-form-p-matches-no-branch-yet") }}{% else %}{{ crate::i18n::text("core", "protection-form-p-matches") }}
     {% for name in rule.matches %}<span class="font-mono text-ink">{{ name }}</span>{% if !loop.last %}, {% endif %}{% endfor %}{% endif %}
   </p>
   {% else %}
-  <h1 class="mt-1 text-xl font-semibold tracking-tight">New branch protection rule</h1>
-  <p class="mt-1 text-[13px] text-ink-muted">The rule applies to every branch its pattern matches, now and later.</p>
+  <h1 class="mt-1 text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "protection-form-h1-new-branch-protection-rule") }}</h1>
+  <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-p-the-rule-applies-to-every-branch-its-pattern-matches-now-and-late") }}</p>
   {% endif %}
 
   {% if saved %}
   <p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
-    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Rule saved.
+    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "protection-form-p-rule-saved") }}
   </p>
   {% endif %}
 
   <form method="post" action="{{ action_url }}" class="box mt-6" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium">Rule</h2>
+      <h2 class="text-[13px] font-medium">{{ crate::i18n::text("core", "protection-form-h2-rule") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="rule-pattern">Branch name pattern</label>
-      <input class="input font-mono text-[13px]" id="rule-pattern" name="pattern" value="{{ form.pattern }}" maxlength="255" placeholder="main" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-      <p class="hint">A branch name, or a pattern: <span class="font-mono">*</span> matches within one part of the name, <span class="font-mono">**</span> across parts (<span class="font-mono">release/**</span>), <span class="font-mono">?</span> one character. Case-sensitive.</p>
+      <label class="label" for="rule-pattern">{{ crate::i18n::text("core", "protection-form-label-branch-name-pattern") }}</label>
+      <input class="input font-mono text-[13px]" id="rule-pattern" name="pattern" value="{{ form.pattern }}" maxlength="255" placeholder="{{ crate::i18n::text("core", "protection-form-placeholder-main") }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <p class="hint">{{ crate::i18n::text("core", "protection-form-p-a-branch-name-or-a-pattern") }} <span class="font-mono">*</span> {{ crate::i18n::text("core", "protection-form-p-matches-within-one-part-of-the-name") }} <span class="font-mono">**</span> {{ crate::i18n::text("core", "protection-form-p-across-parts") }}<span class="font-mono">{{ crate::i18n::text("core", "protection-form-span-release") }}</span>), <span class="font-mono">?</span> {{ crate::i18n::text("core", "protection-form-p-one-character-case-sensitive") }}</p>
 
       <fieldset class="mt-5">
-        <legend class="label">Protect matching branches</legend>
+        <legend class="label">{{ crate::i18n::text("core", "protection-form-legend-protect-matching-branches") }}</legend>
         <div class="box overflow-hidden">
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="checkbox" name="deny_force_push" value="on" class="mt-1 accent-(--ink)" {% if form.deny_force_push %}checked{% endif %}>
             <span>
-              <span class="block font-medium">Block force pushes</span>
-              <span class="block text-[13px] text-ink-muted">Pushes may only add commits; history cannot be rewritten.</span>
+              <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-block-force-pushes") }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-pushes-may-only-add-commits-history-cannot-be-rewritten") }}</span>
             </span>
           </label>
           <label class="flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="checkbox" name="deny_deletion" value="on" class="mt-1 accent-(--ink)" {% if form.deny_deletion %}checked{% endif %}>
             <span>
-              <span class="block font-medium">Block deletion</span>
-              <span class="block text-[13px] text-ink-muted">Matching branches cannot be deleted.</span>
+              <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-block-deletion") }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-matching-branches-cannot-be-deleted") }}</span>
             </span>
           </label>
           <div class="border-b border-line">
             <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
               <input type="checkbox" name="require_pull_request" value="on" class="mt-1 accent-(--ink)" {% if form.require_pull_request %}checked{% endif %}>
               <span>
-                <span class="block font-medium">Require a pull request</span>
-                <span class="block text-[13px] text-ink-muted">Changes arrive only by merging a pull request; direct pushes to an existing branch are refused.</span>
+                <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-require-a-pull-request") }}</span>
+                <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-changes-arrive-only-by-merging-a-pull-request-direct-pushes-to-an") }}</span>
               </span>
             </label>
             <div class="space-y-3 px-4 pb-4 sm:pl-11">
               <div class="max-w-48">
-                <label class="label" for="rule-approvals">Required approvals</label>
+                <label class="label" for="rule-approvals">{{ crate::i18n::text("core", "protection-form-label-required-approvals") }}</label>
                 <div class="relative">
                   <select class="input cursor-pointer appearance-none pr-9" id="rule-approvals" name="required_approvals">
                     {% for option in form.approvals %}
@@ -72,11 +72,11 @@
               </div>
               <label class="flex cursor-pointer items-start gap-3 text-[13px]">
                 <input type="checkbox" name="dismiss_stale_approvals" value="on" class="mt-0.5 accent-(--ink)" {% if form.dismiss_stale_approvals %}checked{% endif %}>
-                <span>Dismiss approvals when new commits are pushed</span>
+                <span>{{ crate::i18n::text("core", "protection-form-span-dismiss-approvals-when-new-commits-are-pushed") }}</span>
               </label>
               <label class="flex cursor-pointer items-start gap-3 text-[13px]">
                 <input type="checkbox" name="block_on_changes_requested" value="on" class="mt-0.5 accent-(--ink)" {% if form.block_on_changes_requested %}checked{% endif %}>
-                <span>Block merging while changes are requested</span>
+                <span>{{ crate::i18n::text("core", "protection-form-span-block-merging-while-changes-are-requested") }}</span>
               </label>
             </div>
           </div>
@@ -84,21 +84,21 @@
             <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
               <input type="checkbox" name="restrict_pushers" value="on" class="mt-1 accent-(--ink)" {% if form.restrict_pushers %}checked{% endif %}>
               <span>
-                <span class="block font-medium">Restrict who can push</span>
-                <span class="block text-[13px] text-ink-muted">Only the people{% if is_org %} and teams{% endif %} below may push or merge. Deploy keys never may.</span>
+                <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-restrict-who-can-push") }}</span>
+                <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-only-the-people") }}{% if is_org %} {{ crate::i18n::text("core", "protection-form-span-and-teams") }}{% endif %} {{ crate::i18n::text("core", "protection-form-span-below-may-push-or-merge-deploy-keys-never-may") }}</span>
               </span>
             </label>
             <div class="space-y-3 px-4 pb-4 sm:pl-11">
               <div>
-                <label class="label" for="rule-users">People</label>
-                <input class="input" id="rule-users" name="users" value="{{ form.users }}" placeholder="alice bob" autocomplete="off" autocapitalize="none" spellcheck="false">
-                <p class="hint">Usernames separated by spaces or commas. Each needs write access.</p>
+                <label class="label" for="rule-users">{{ crate::i18n::text("core", "protection-form-label-people") }}</label>
+                <input class="input" id="rule-users" name="users" value="{{ form.users }}" placeholder="{{ crate::i18n::text("core", "protection-form-placeholder-alice-bob") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
+                <p class="hint">{{ crate::i18n::text("core", "protection-form-p-usernames-separated-by-spaces-or-commas-each-needs-write-access") }}</p>
               </div>
               {% if is_org %}
               <fieldset>
-                <legend class="label">Teams</legend>
+                <legend class="label">{{ crate::i18n::text("core", "protection-form-legend-teams") }}</legend>
                 {% if form.teams.is_empty() %}
-                <p class="text-[13px] text-ink-muted">This organization has no teams yet.</p>
+                <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-p-this-organization-has-no-teams-yet") }}</p>
                 {% else %}
                 <div class="flex flex-wrap gap-x-5 gap-y-2">
                   {% for team in form.teams %}
@@ -118,47 +118,47 @@
             <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
               <input type="checkbox" name="require_status_checks" value="on" class="mt-1 accent-(--ink)" {% if form.require_status_checks %}checked{% endif %}>
               <span>
-                <span class="block font-medium">Require status checks to pass</span>
-                <span class="block text-[13px] text-ink-muted">Pull requests merge only when the latest status of every check below is a success on their head commit.</span>
+                <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-require-status-checks-to-pass") }}</span>
+                <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-pull-requests-merge-only-when-the-latest-status-of-every-check-be") }}</span>
               </span>
             </label>
             <div class="px-4 pb-4 sm:pl-11">
-              <label class="label" for="rule-contexts">Required checks</label>
-              <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="rule-contexts" name="contexts" rows="4" placeholder="ci/build" autocomplete="off" autocapitalize="none" spellcheck="false">{{ form.contexts }}</textarea>
+              <label class="label" for="rule-contexts">{{ crate::i18n::text("core", "protection-form-label-required-checks") }}</label>
+              <textarea class="input h-24 resize-y py-2 font-mono text-[13px]" id="rule-contexts" name="contexts" rows="4" placeholder="{{ crate::i18n::text("core", "protection-form-placeholder-ci-build") }}" autocomplete="off" autocapitalize="none" spellcheck="false">{{ form.contexts }}</textarea>
               <p class="hint">One context per line, exactly as your CI reports it (case-sensitive), at most {{ form.max_contexts }}.</p>
             </div>
           </div>
           <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-subtle has-checked:bg-subtle">
             <input type="checkbox" name="allow_admin_bypass" value="on" class="mt-1 accent-(--ink)" {% if form.allow_admin_bypass %}checked{% endif %}>
             <span>
-              <span class="block font-medium">Allow administrators to bypass</span>
-              <span class="block text-[13px] text-ink-muted">Repository administrators are not held to this rule. Every bypass is recorded in the audit log.</span>
+              <span class="block font-medium">{{ crate::i18n::text("core", "protection-form-span-allow-administrators-to-bypass") }}</span>
+              <span class="block text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-span-repository-administrators-are-not-held-to-this-rule-every-bypass") }}</span>
             </span>
           </label>
         </div>
       </fieldset>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-primary w-full sm:w-auto" type="submit">{% if rule.is_some() %}Save rule{% else %}Add rule{% endif %}</button>
+      <button class="btn btn-primary w-full sm:w-auto" type="submit">{% if rule.is_some() %}{{ crate::i18n::text("core", "protection-form-button-save-rule") }}{% else %}{{ crate::i18n::text("core", "protection-form-button-add-rule") }}{% endif %}</button>
     </div>
   </form>
 
   {% if let Some(rule) = rule %}
   <form method="post" action="{{ rule.delete_url }}" class="box mt-8 border-danger/40" novalidate>
     <div class="box-header">
-      <h2 class="text-[13px] font-medium text-danger">Danger zone</h2>
+      <h2 class="text-[13px] font-medium text-danger">{{ crate::i18n::text("core", "protection-form-h2-danger-zone") }}</h2>
     </div>
     <div class="p-4">
       {% call ui::form_error(delete_error) %}{% endcall %}
-      <p class="font-medium">Delete this rule</p>
-      <p class="mt-1 text-[13px] text-ink-muted">Branches matching <span class="font-mono text-ink">{{ rule.pattern }}</span> lose its protection immediately.</p>
+      <p class="font-medium">{{ crate::i18n::text("core", "protection-form-p-delete-this-rule") }}</p>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-form-p-branches-matching") }} <span class="font-mono text-ink">{{ rule.pattern }}</span> {{ crate::i18n::text("core", "protection-form-p-lose-its-protection-immediately") }}</p>
       <label class="mt-4 flex cursor-pointer items-center gap-3 text-[13px]">
         <input type="checkbox" name="confirm" value="on" class="accent-(--ink)" required>
-        <span>I understand that this rule will be deleted</span>
+        <span>{{ crate::i18n::text("core", "protection-form-span-i-understand-that-this-rule-will-be-deleted") }}</span>
       </label>
     </div>
     <div class="flex justify-end border-t border-line px-4 py-3">
-      <button class="btn btn-danger w-full sm:w-auto" type="submit">{% call ui::icon("trash", "size-3.5") %}{% endcall %}Delete rule</button>
+      <button class="btn btn-danger w-full sm:w-auto" type="submit">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "protection-form-button-delete-rule") }}</button>
     </div>
   </form>
   {% endif %}

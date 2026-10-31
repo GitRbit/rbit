@@ -481,11 +481,20 @@ identity provider on the same network).
 
 ## Actions and runners
 
-rbit Actions is off by default. With `[actions] enabled = true` (a restart is needed) rbit
-plans workflow runs and hands their jobs to **rbit-runner**, a separate program shipped in the
+rbit Actions is off by default. Administrators can enable it live at
+**Administration → Plugins**; saved intent survives restarts and overrides the
+`[actions] enabled` startup default. When enabled, rbit plans workflow runs and hands their
+jobs to **rbit-runner**, a separate program shipped in the
 same release archives and as the image `ghcr.io/gitrbit/rbit-runner`. The server never runs
 builds itself. [docs/actions.md](actions.md) covers workflows and registering runners; this
 section is about running them safely.
+
+Disabling Actions closes request admission, cancels unfinished jobs, and revokes task
+credentials while retaining history and repository settings. Updated runners stop execution
+when task authority is refused or after 120 seconds without an accepted state heartbeat.
+See [plugin core](plugin-core.md#disable-and-recovery) for older-runner compatibility.
+Builds compiled without the `actions` feature cannot enable Actions; other Actions
+configuration changes require a restart.
 
 ```toml
 [actions]

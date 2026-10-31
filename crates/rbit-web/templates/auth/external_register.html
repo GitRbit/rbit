@@ -4,7 +4,7 @@
 <section class="auth-shell">
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
-    <h1 class="auth-title">Create your account</h1>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "auth-external-register-h1-create-your-account") }}</h1>
     <p class="auth-lede">You signed in with {{ provider_name }}. Choose a username on {{ page.site_name }}.</p>
   </header>
 
@@ -12,16 +12,16 @@
     <form method="post" action="{{ action }}" novalidate>
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="username">Username</label>
+      <label class="label" for="username">{{ crate::i18n::text("core", "auth-external-register-label-username") }}</label>
       <input class="input" id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
-      <p class="hint">Letters, digits, '-', '_' and '.'</p>
+      <p class="hint">{{ crate::i18n::text("core", "auth-external-register-p-letters-digits-and") }}</p>
 
-      <label class="label mt-4" for="email">Email</label>
+      <label class="label mt-4" for="email">{{ crate::i18n::text("core", "auth-external-register-label-email") }}</label>
       <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required>
       {% if email_verified %}
       <p class="hint">Verified by {{ provider_name }}. A different address has to be confirmed by email.</p>
       {% else %}
-      <p class="hint">You'll get an email to confirm this address.</p>
+      <p class="hint">{{ crate::i18n::text("core", "auth-external-register-p-you-ll-get-an-email-to-confirm-this-address") }}</p>
       {% endif %}
 
       <div class="notice mt-5" role="note">
@@ -29,10 +29,10 @@
         <p>You'll sign in with {{ provider_name }}; your account has no password until you set one with a reset link. Git over HTTPS needs a personal access token.</p>
       </div>
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "auth-external-register-button-create-account") }}</button>
     </form>
   </div>
 
-  <p class="auth-aside">Already have an account? <a href="/login" class="link">Sign in</a> and link {{ provider_name }} in your security settings.</p>
+  <p class="auth-aside">{{ crate::i18n::text("core", "auth-external-register-p-already-have-an-account") }} <a href="/login" class="link">{{ crate::i18n::text("core", "nav-sign-in") }}</a> and link {{ provider_name }} in your security settings.</p>
 </section>
 {% endblock %}

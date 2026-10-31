@@ -17,6 +17,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Plugin-owned compiled Askama forms and runtime POST routes with host-enforced
+  session and repository authorization, session-bound CSRF proofs and bounded typed
+  input. Replacement invalidates old forms; cancellation preserves already-started
+  native commits until they finish, and shutdown drains them before core services.
+  See [native plugin forms](docs/plugin-mutations.md).
+- Runtime registration of compiled Askama plugin pages, with host-enforced global
+  and repository permissions, bounded rendering and generation-owned cleanup.
+  Replacement and disable revoke stale handlers; unread full and HTMX responses
+  retain capacity until consumption or cancellation. Host shutdown fences plugin
+  callbacks before HTTP drain. See [native plugin pages](docs/plugin-routes.md).
+- Runtime UI extension registrations with atomic updates, generation-owned cleanup and
+  compiled Askama navigation, cards, notices and lists. Actions and Languages use scoped
+  contributions; trusted browser enhancements share bounded, cancellable resource ownership.
+  See [UI extensions](docs/plugin-ui.md).
+- Reusable scoped extension registries and bounded runtime request middleware hooks.
+  Custom trusted hooks receive declared route metadata, can reject requests or add safe
+  diagnostic headers, and retain generation admission through cancellation and deadlines.
+  Host authentication, Origin, bodies and security headers remain host-controlled.
+
+- Plugin core with optional Actions: administrators can enable and disable Actions in
+  **Admin → Plugins** without restarting the forge. Persisted intent, scoped admission,
+  cancellable request/response streams and durable revocation/check-report recovery keep
+  runtime transitions separate from retained repository settings and history
+  ([docs/plugin-core.md](docs/plugin-core.md)).
+- A minimal server build (`--package rbit-server --no-default-features`) excludes the
+  Actions implementation and workflow parser. Shared forge services now live in
+  `rbit-services-base`, with Actions in its own optional `rbit-actions` crate. Installable
+  executable packages and sandboxed plugins remain later stages.
+- Optional i18n plugin with live administrator enable/disable, installable bounded Fluent
+  language packs, account/browser preferences, RTL/pseudolocales, escaped presentation
+  messages and locale/catalog cache invalidation. Migration `0062` keeps pack archives
+  and locale preferences in SQLite backups. See [languages](docs/i18n.md).
+- Updated runners stop local tasks after 120 seconds without an accepted state heartbeat,
+  including while disconnected. Runtime disable revokes task credentials independently.
 - Live administration monitoring: theme-aware request-rate and response-time charts,
   HTTP response and Git activity tables, five-second updates, and pause/resume controls.
   Five minutes of process-local history stay in bounded memory without a chart library.
@@ -74,11 +108,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Upgrade notes
 
+- Migrations `0060` and `0061` add persisted plugin intent, revocation recovery and a
+  cancellation-report journal. Saved intent overrides `[actions] enabled` after restart.
+  Disable Actions before switching an enabled instance to a core-only build. Interrupted
+  disable cleanup is reconciled before a fresh activation; retained data is not purged.
 - Migrations `0048` to `0057` add the Actions tables, a `source` column on commit statuses
   and comments (and releases), step summaries, the Actions permissions and owner policies, the
   `workflow_run` and `repository_dispatch` events, access to private reusable workflows and
-  environment wait timers. Nothing changes until an administrator enables Actions; with it off no Actions
-  table is written and `<data_dir>/actions` is not created.
+  environment wait timers. A fresh disabled instance creates no Actions files or feature
+  records; explicit disablement may write terminal and revocation state during cleanup.
 - With Actions on, `<data_dir>/actions/secrets.key` seals secrets. `rbit backup` does not
   copy it: back it up separately. Job logs and artifacts under `<data_dir>/actions` are not
   backed up.

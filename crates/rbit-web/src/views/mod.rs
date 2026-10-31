@@ -6,8 +6,11 @@
 
 pub mod account;
 // Actions: interface and secrets (U).
+#[cfg(feature = "actions")]
 pub mod actions;
+#[cfg(feature = "actions")]
 pub mod actions_runners;
+#[cfg(feature = "actions")]
 pub mod actions_settings;
 pub mod admin;
 pub mod auth;
@@ -22,7 +25,10 @@ pub mod contributions;
 pub mod dashboards;
 pub mod edits;
 pub mod errors;
+pub mod plugin_pages;
+pub mod plugins;
 // Milestone 3: external sign-in (O).
+pub mod extensions;
 pub mod external_auth;
 pub mod forks;
 pub mod home;

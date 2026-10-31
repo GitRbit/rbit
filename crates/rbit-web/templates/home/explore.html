@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 {% block content %}
 <header class="mb-6">
-  <h1 class="text-2xl font-semibold tracking-tight">Explore</h1>
+  <h1 class="text-2xl font-semibold tracking-tight">{{ crate::i18n::text("core", "nav-explore") }}</h1>
   <p class="mt-1.5 text-ink-muted">Public repositories on {{ page.site_name }}.</p>
 </header>
 
@@ -11,16 +11,16 @@
 <form method="get" action="/explore" role="search" class="mb-4 flex gap-2">
   <div class="relative min-w-0 flex-1">
     {% call ui::icon("search", "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ink-faint") %}{% endcall %}
-    <input class="input pl-9" type="search" name="q" value="{{ query }}" maxlength="100" placeholder="Search by name or description" aria-label="Search repositories" aria-controls="explore-results" autocapitalize="none" spellcheck="false" autocomplete="off"
+    <input class="input pl-9" type="search" name="q" value="{{ query }}" maxlength="100" placeholder="{{ crate::i18n::text("core", "home-explore-placeholder-search-by-name-or-description") }}" aria-label="{{ crate::i18n::text("core", "home-explore-aria-label-search-repositories") }}" aria-controls="explore-results" autocapitalize="none" spellcheck="false" autocomplete="off"
       hx-get="/explore" hx-include="closest form" hx-trigger="input changed delay:200ms, search" hx-target="#explore-results" hx-select="#explore-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="closest form:replace" hx-indicator="#page-progress">
   </div>
   {% if sort != "updated" %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
   {% if let Some(value) = archived %}<input type="hidden" name="archived" value="{{ value }}">{% endif %}
-  <button class="btn h-10 sm:h-9" type="submit">Search</button>
+  <button class="btn h-10 sm:h-9" type="submit">{{ crate::i18n::text("core", "home-explore-button-search") }}</button>
 </form>
 
 <div id="explore-results">
-  <nav class="mb-3 flex items-center gap-1" aria-label="Archived repositories">
+  <nav class="mb-3 flex items-center gap-1" aria-label="{{ crate::i18n::text("core", "home-explore-aria-label-archived-repositories") }}">
     {% for link in archived_filters %}
     <a href="{{ link.url }}" class="rounded px-2 py-1 text-xs {% if link.is_active %}bg-hover font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if link.is_active %}aria-current="true"{% endif %}>{{ link.label }}</a>
     {% endfor %}
@@ -28,7 +28,7 @@
   <div class="box">
     <div class="box-header justify-between">
       <span class="truncate text-[13px] text-ink-muted tabular-nums">{{ total_label() }}{% if !query.is_empty() %} for “<span class="text-ink">{{ query }}</span>”{% endif %}</span>
-      <nav class="flex shrink-0 items-center gap-1" aria-label="Sort by">
+      <nav class="flex shrink-0 items-center gap-1" aria-label="{{ crate::i18n::text("core", "home-explore-aria-label-sort-by") }}">
         {% for link in sorts %}
         <a href="{{ link.url }}" class="rounded px-2 py-1 text-xs {% if link.is_active %}bg-hover font-medium text-ink{% else %}text-ink-muted hover:text-ink{% endif %}" {% if link.is_active %}aria-current="true"{% endif %}>{{ link.label }}</a>
         {% endfor %}
@@ -36,9 +36,9 @@
     </div>
     {% if repos.is_empty() %}
     {% if query.is_empty() %}
-    {% call ui::empty_state("compass", "Nothing here yet", "Public repositories will be listed here once they exist.") %}{% endcall %}
+    {% call ui::empty_state("compass", crate::i18n::text("core", "home-explore-empty-title-nothing-here-yet"), crate::i18n::text("core", "home-explore-empty-description-public-repositories-will-be-listed-here-once-they-exist")) %}{% endcall %}
     {% else %}
-    {% call ui::empty_state("search", "No matching repositories", "Try a shorter search or different words.") %}{% endcall %}
+    {% call ui::empty_state("search", crate::i18n::text("core", "home-explore-empty-title-no-matching-repositories"), crate::i18n::text("core", "home-explore-empty-description-try-a-shorter-search-or-different-words")) %}{% endcall %}
     {% endif %}
     {% else %}
     <ul>{% for repo in repos %}{% call ui::repo_row(repo) %}{% endcall %}{% endfor %}</ul>

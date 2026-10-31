@@ -115,7 +115,7 @@ pub struct NotificationSettingsPage {
 impl NotificationSettingsPage {
     pub fn new(page: Page, settings: &EmailSettings) -> Self {
         Self {
-            page: page.titled("Notifications"),
+            page: page.titled(crate::i18n::text("core", "title-notifications")),
             settings_nav: SettingsSection::Notifications.nav(),
             options: PreferenceOption::all(settings.preference),
             deliveries: DeliveryOption::all(settings.delivery),
@@ -180,8 +180,12 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

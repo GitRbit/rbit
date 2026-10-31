@@ -1520,6 +1520,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluent-bundle"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01203cb8918f5711e73891b347816d932046f95f54207710bda99beaeb423bf4"
+dependencies = [
+ "fluent-langneg",
+ "fluent-syntax",
+ "intl-memoizer",
+ "intl_pluralrules",
+ "rustc-hash",
+ "self_cell",
+ "smallvec",
+ "unic-langid",
+]
+
+[[package]]
+name = "fluent-langneg"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7eebbe59450baee8282d71676f3bfed5689aeab00b27545e83e5f14b1195e8b0"
+dependencies = [
+ "unic-langid",
+]
+
+[[package]]
+name = "fluent-syntax"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54f0d287c53ffd184d04d8677f590f4ac5379785529e5e08b1c8083acdd5c198"
+dependencies = [
+ "memchr",
+ "thiserror",
+]
+
+[[package]]
 name = "flume"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2992,6 +3027,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "intl-memoizer"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "310da2e345f5eb861e7a07ee182262e94975051db9e4223e909ba90f392f163f"
+dependencies = [
+ "type-map",
+ "unic-langid",
+]
+
+[[package]]
+name = "intl_pluralrules"
+version = "7.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "078ea7b7c29a2b4df841a7f6ac8775ff6074020c6776d48491ce2268e068f972"
+dependencies = [
+ "unic-langid",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4181,6 +4235,57 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-actions"
+version = "0.1.5"
+dependencies = [
+ "aes-gcm",
+ "aho-corasick",
+ "axum",
+ "base64 0.23.1",
+ "flate2",
+ "getrandom 0.4.3",
+ "hmac",
+ "metrics",
+ "p256",
+ "percent-encoding",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-mail",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-services-base",
+ "rbit-storage",
+ "rbit-workflow",
+ "reqwest",
+ "rustls",
+ "same-file",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "ssh-key",
+ "subtle",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
+name = "rbit-actions-core"
+version = "0.1.5"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rbit-auth"
 version = "0.1.5"
 dependencies = [
@@ -4207,6 +4312,7 @@ version = "0.1.5"
 dependencies = [
  "proptest",
  "pulldown-cmark",
+ "rbit-actions-core",
  "serde",
  "serde_json",
  "thiserror",
@@ -4253,6 +4359,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-i18n"
+version = "0.1.5"
+dependencies = [
+ "flate2",
+ "fluent-bundle",
+ "fluent-syntax",
+ "intl_pluralrules",
+ "rbit-messages",
+ "semver",
+ "serde",
+ "sha2 0.11.1",
+ "thiserror",
+ "toml",
+ "unic-langid",
+ "zip",
+]
+
+[[package]]
 name = "rbit-mail"
 version = "0.1.5"
 dependencies = [
@@ -4262,6 +4386,49 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "rbit-messages"
+version = "0.1.5"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "rbit-plugin-api"
+version = "0.1.5"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "rbit-plugin-runtime"
+version = "0.1.5"
+dependencies = [
+ "rbit-plugin-api",
+ "semver",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "rbit-plugin-web"
+version = "0.1.5"
+dependencies = [
+ "askama",
+ "rbit-messages",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "thiserror",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -4327,11 +4494,46 @@ dependencies = [
 name = "rbit-services"
 version = "0.1.5"
 dependencies = [
- "aes-gcm",
- "aho-corasick",
+ "askama",
  "axum",
  "base64 0.23.1",
- "flate2",
+ "getrandom 0.4.3",
+ "p256",
+ "rbit-actions",
+ "rbit-auth",
+ "rbit-core",
+ "rbit-git",
+ "rbit-i18n",
+ "rbit-mail",
+ "rbit-messages",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-plugin-web",
+ "rbit-services-base",
+ "rbit-storage",
+ "rbit-workflow",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "ssh-key",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
+ "zip",
+]
+
+[[package]]
+name = "rbit-services-base"
+version = "0.1.5"
+dependencies = [
+ "axum",
+ "base64 0.23.1",
  "getrandom 0.4.3",
  "hmac",
  "metrics",
@@ -4342,7 +4544,6 @@ dependencies = [
  "rbit-git",
  "rbit-mail",
  "rbit-storage",
- "rbit-workflow",
  "reqwest",
  "rustls",
  "same-file",
@@ -4353,14 +4554,11 @@ dependencies = [
  "sqlx",
  "ssh-key",
  "subtle",
- "tar",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
- "zeroize",
- "zip",
 ]
 
 [[package]]
@@ -4429,6 +4627,7 @@ dependencies = [
  "brotli",
  "flate2",
  "futures-util",
+ "http-body",
  "metrics",
  "metrics-exporter-prometheus",
  "mime_guess",
@@ -4439,6 +4638,9 @@ dependencies = [
  "rbit-auth",
  "rbit-core",
  "rbit-git",
+ "rbit-messages",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
  "rbit-services",
  "rbit-storage",
  "rbit-transport",
@@ -4940,10 +5142,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "self_cell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ab42ca02749e120097e328d91d415325bdf43b1c72c4c8badf37375fe40a813"
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+dependencies = [
+ "serde",
+ "serde_core",
+]
 
 [[package]]
 name = "serde"
@@ -5685,6 +5897,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1e27c91459209c2986af3dcf603a5a74a4368754ce37414f59acc971167f643"
 dependencies = [
  "displaydoc",
+ "serde_core",
  "zerovec",
 ]
 
@@ -5964,6 +6177,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "type-map"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
+dependencies = [
+ "rustc-hash",
+]
+
+[[package]]
 name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5997,6 +6219,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1b88fcfe09e89d3866a5c11019378088af2d24c3fbd4f0543f96b479ec90697"
 dependencies = [
  "version_check",
+]
+
+[[package]]
+name = "unic-langid"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a28ba52c9b05311f4f6e62d5d9d46f094bd6e84cb8df7b3ef952748d752a7d05"
+dependencies = [
+ "unic-langid-impl",
+]
+
+[[package]]
+name = "unic-langid-impl"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce1bf08044d4b7a94028c93786f8566047edc11110595914de93362559bc658"
+dependencies = [
+ "tinystr",
 ]
 
 [[package]]
@@ -6644,6 +6884,7 @@ version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb0464e17806c1d976d5cba29399c7f08e516e279e2ba493f63123b5fca67dd8"
 dependencies = [
+ "serde",
  "yoke",
  "zerofrom",
  "zerovec-derive",

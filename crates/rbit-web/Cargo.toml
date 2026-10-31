@@ -8,11 +8,21 @@ license.workspace = true
 # One integration-test binary (tests/main.rs) instead of one per file.
 autotests = false
 
+[features]
+default = ["actions", "i18n"]
+actions = ["rbit-services/actions", "dep:rbit-workflow"]
+
+i18n = ["rbit-services/i18n"]
+
 [dependencies]
+rbit-messages.workspace = true
+rbit-plugin-api.workspace = true
+rbit-plugin-runtime.workspace = true
+http-body = "1"
 rbit-core.workspace = true
 rbit-auth.workspace = true
 rbit-git.workspace = true
-rbit-services.workspace = true
+rbit-services = { workspace = true, default-features = false }
 rbit-transport.workspace = true
 
 axum = { workspace = true, features = ["multipart"] }
@@ -45,7 +55,7 @@ tracing.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 # Actions: S. The runner protocol's wire types, and gzip bodies within a decompressed cap.
-rbit-workflow.workspace = true
+rbit-workflow = { workspace = true, optional = true }
 flate2.workspace = true
 
 [dev-dependencies]
@@ -69,3 +79,4 @@ path = "tests/main.rs"
 [[test]]
 name = "actions_eval"
 path = "tests/actions_eval.rs"
+required-features = ["actions"]

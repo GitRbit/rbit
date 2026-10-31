@@ -24,6 +24,82 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  core-only:
+    name: Core-only server
+    needs: assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/prepare-build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: app-css
+          path: crates/rbit-web/assets
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          key: core-only
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: node scripts/check-core-dependencies.mjs
+      - run: cargo clippy --locked --package rbit-server --package rbit-services --package rbit-web --no-default-features --all-targets -- -D warnings
+      - run: cargo test --locked --package rbit-services --no-default-features --test integration actions_unavailable
+      - run: cargo test --locked --package rbit-services --no-default-features --test integration i18n_unavailable
+      - run: cargo test --locked --package rbit-services --no-default-features --lib mutation_commit_survives_waiter_abort
+      - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_ui_registration
+      - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_route_registration
+      - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_form_mutations
+
+  plugin-profiles:
+    name: Optional plugin (${{ matrix.plugin }})
+    needs: assets
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [actions, i18n]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/prepare-build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: app-css
+          path: crates/rbit-web/assets
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          key: plugin-${{ matrix.plugin }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: node scripts/check-core-dependencies.mjs ${{ matrix.plugin }}
+      - run: cargo clippy --locked -p rbit-server -p rbit-services -p rbit-web --no-default-features --features ${{ matrix.plugin }} --all-targets -- -D warnings
+      - run: cargo test --locked -p rbit-services --no-default-features --features ${{ matrix.plugin }} --test integration i18n_
+
+  plugin-core:
+    name: Plugin core contracts and lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ". -> .cargo-build"
+          key: plugin-core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # These contracts and lifecycle primitives must build without forge assets, a
+      # database, or the web application. The full workspace jobs still run below.
+      - run: cargo test --locked -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-plugin-web -p rbit-messages -p rbit-i18n
+
   lint:
     name: Format and clippy
     runs-on: ubuntu-latest
@@ -82,8 +158,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      # nextest runs every test binary in parallel, each test in its own process. The
-      # workspace has no doctests, which nextest does not run.
+      # nextest runs every test binary in parallel, each test in its own process.
+      # The contract job separately runs plugin SDK doctests, including compile-fail checks.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
@@ -101,6 +177,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - run: node scripts/check-messages.mjs
+      - run: python3 scripts/build-language-packs.py --check
       # Vendored scripts and generated icons are committed; the build must not change them.
       - run: git diff --exit-code -- crates/rbit-web/assets
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

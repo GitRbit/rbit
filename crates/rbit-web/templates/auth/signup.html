@@ -4,7 +4,7 @@
 <section class="auth-shell">
   <header class="auth-head">
     {% call ui::brand_logo(page, "size-16", 64) %}{% endcall %}
-    <h1 class="auth-title">Create your account</h1>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "auth-signup-h1-create-your-account") }}</h1>
     <p class="auth-lede">Host your code on {{ page.site_name }}.</p>
   </header>
 
@@ -13,33 +13,33 @@
     <form method="post" action="/signup" novalidate>
       {% call ui::form_error(error) %}{% endcall %}
 
-      <label class="label" for="username">Username</label>
+      <label class="label" for="username">{{ crate::i18n::text("core", "auth-signup-label-username") }}</label>
       <input class="input" id="username" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="39" pattern="[A-Za-z0-9._\-]+" required autofocus>
-      <p class="hint">Letters, digits, '-', '_' and '.'</p>
+      <p class="hint">{{ crate::i18n::text("core", "auth-signup-p-letters-digits-and") }}</p>
 
-      <label class="label mt-4" for="email">Email</label>
+      <label class="label mt-4" for="email">{{ crate::i18n::text("core", "auth-signup-label-email") }}</label>
       <input class="input" id="email" name="email" type="email" value="{{ email }}" autocomplete="email" required>
 
-      <label class="label mt-4" for="password">Password</label>
+      <label class="label mt-4" for="password">{{ crate::i18n::text("core", "auth-signup-label-password") }}</label>
       <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="{{ min_password_length }}" required>
       <p class="hint">At least {{ min_password_length }} characters.</p>
 
       {% if setup_required %}
-      <label class="label mt-4" for="setup_token">Setup token</label>
+      <label class="label mt-4" for="setup_token">{{ crate::i18n::text("core", "auth-signup-label-setup-token") }}</label>
       <input class="input font-mono" id="setup_token" name="setup_token" value="{{ setup_token }}" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-      <p class="hint">This first account administers the server. Find the token in the server log.</p>
+      <p class="hint">{{ crate::i18n::text("core", "auth-signup-p-this-first-account-administers-the-server-find-the-token-in-the-s") }}</p>
       {% endif %}
 
-      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">Create account</button>
+      <button class="btn btn-primary btn-lg mt-6 w-full" type="submit">{{ crate::i18n::text("core", "auth-signup-button-create-account") }}</button>
     </form>
     {% else %}
     <div class="notice" role="status">
       {% call ui::icon("lock", "mt-px size-4 shrink-0") %}{% endcall %}
-      <p>Registration is closed on this server. Ask an administrator for an account.</p>
+      <p>{{ crate::i18n::text("core", "auth-signup-p-registration-is-closed-on-this-server-ask-an-administrator-for-an") }}</p>
     </div>
     {% endif %}
   </div>
 
-  <p class="auth-aside">Already have an account? <a href="/login" class="link">Sign in</a></p>
+  <p class="auth-aside">{{ crate::i18n::text("core", "auth-signup-p-already-have-an-account") }} <a href="/login" class="link">{{ crate::i18n::text("core", "nav-sign-in") }}</a></p>
 </section>
 {% endblock %}

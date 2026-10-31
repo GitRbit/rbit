@@ -5,21 +5,21 @@
   {% if let Some(address) = verified_address %}
   <header class="auth-head">
     <span class="tile text-success">{% call ui::icon("check", "size-5") %}{% endcall %}</span>
-    <h1 class="auth-title">Email address verified</h1>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "recovery-verify-h1-email-address-verified") }}</h1>
   </header>
 
   <div class="card">
-    <p class="text-[13px] text-ink-muted">Thanks for confirming <span class="font-medium text-ink break-all">{{ address }}</span>.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "recovery-verify-p-thanks-for-confirming") }} <span class="font-medium text-ink break-all">{{ address }}</span>.</p>
     <a href="{{ self.continue_url() }}" class="btn btn-primary btn-lg mt-6 w-full">{{ self.continue_label() }}</a>
   </div>
   {% else %}
   <header class="auth-head">
     <span class="tile">{% call ui::icon("alert", "size-5") %}{% endcall %}</span>
-    <h1 class="auth-title">This link has expired</h1>
+    <h1 class="auth-title">{{ crate::i18n::text("core", "recovery-verify-h1-this-link-has-expired") }}</h1>
   </header>
 
   <div class="card">
-    <p class="text-[13px] text-ink-muted">Verification links work once, expire after two days and stop working when the address changes. Sign in and send a new one from your account settings.</p>
+    <p class="text-[13px] text-ink-muted">{{ crate::i18n::text("core", "recovery-verify-p-verification-links-work-once-expire-after-two-days-and-stop-worki") }}</p>
     <a href="{{ self.continue_url() }}" class="btn btn-primary btn-lg mt-6 w-full">{{ self.continue_label() }}</a>
   </div>
   {% endif %}

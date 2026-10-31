@@ -4,12 +4,12 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex h-8 items-center">
-  <h1 class="text-[13px] font-medium text-ink-muted">Stargazers <span class="ml-1 text-ink-faint">{{ header.star_count }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{{ crate::i18n::text("core", "repo-stargazers-h1-stargazers") }} <span class="ml-1 text-ink-faint">{{ header.star_count }}</span></h1>
 </div>
 
 <div class="box">
   {% if stargazers.is_empty() %}
-  {% call ui::empty_state("user", "No stargazers yet", "People who star this repository appear here.") %}{% endcall %}
+  {% call ui::empty_state("user", crate::i18n::text("core", "repo-stargazers-empty-title-no-stargazers-yet"), crate::i18n::text("core", "repo-stargazers-empty-description-people-who-star-this-repository-appear-here")) %}{% endcall %}
   {% else %}
   <ul>
     {% for gazer in stargazers %}

@@ -1,0 +1,16 @@
+[package]
+name = "rbit-actions-core"
+description = "Pure Actions configuration and workflow permission policies, independent of the forge host."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

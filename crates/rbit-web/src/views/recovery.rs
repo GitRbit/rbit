@@ -25,7 +25,13 @@ pub struct ForgotPasswordPage {
 
 impl ForgotPasswordPage {
     pub fn new(page: Page, email_available: bool) -> Self {
-        Self { page: page.titled("Reset your password"), error: FormError::default(), email: String::new(), sent: false, email_available }
+        Self {
+            page: page.titled(crate::i18n::text("core", "title-reset-your-password")),
+            error: FormError::default(),
+            email: String::new(),
+            sent: false,
+            email_available,
+        }
     }
 
     #[must_use]
@@ -91,7 +97,7 @@ pub struct ResetPasswordPage {
 impl ResetPasswordPage {
     pub fn form(page: Page, token: &str, username: String, min_password_length: usize) -> Self {
         Self {
-            page: page.titled("Choose a new password"),
+            page: page.titled(crate::i18n::text("core", "title-choose-a-new-password")),
             error: FormError::default(),
             action: format!("/password/reset/{token}"),
             username,
@@ -129,7 +135,7 @@ pub struct ResetCompletePage {
 
 impl ResetCompletePage {
     pub fn new(page: Page) -> Self {
-        Self { page: page.titled("Password changed") }
+        Self { page: page.titled(crate::i18n::text("core", "title-password-changed")) }
     }
 }
 
@@ -144,11 +150,11 @@ pub struct VerifyEmailPage {
 
 impl VerifyEmailPage {
     pub fn verified(page: Page, address: String) -> Self {
-        Self { page: page.titled("Email address verified"), verified_address: Some(address) }
+        Self { page: page.titled(crate::i18n::text("core", "title-email-address-verified")), verified_address: Some(address) }
     }
 
     pub fn invalid(page: Page) -> Self {
-        Self { page: page.titled("This link has expired"), verified_address: None }
+        Self { page: page.titled(crate::i18n::text("core", "title-this-link-has-expired")), verified_address: None }
     }
 
     /// Where to go next: the account settings when signed in, sign-in otherwise.
@@ -167,8 +173,12 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            locale: rbit_messages::LocaleSnapshot::english(0),
+            ui: rbit_services::ui::UiSnapshot::default(),
+            has_i18n: false,
             updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".to_owned(),
+            plugin_revision: 0,
             branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,

@@ -138,8 +138,12 @@ mod tests {
 
         let html = InboxPage {
             page: Page {
+                locale: rbit_messages::LocaleSnapshot::english(0),
+                ui: rbit_services::ui::UiSnapshot::default(),
+                has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 site_name: "rbit".into(),
+                plugin_revision: 0,
                 branding: rbit_core::config::BrandingConfig::default(),
                 title: None,
                 viewer: None,

@@ -4,11 +4,11 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-3">
-  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}Branches{% else %}Tags{% endif %} <span class="ml-1 text-ink-faint">{{ pagination.total }}</span></h1>
+  <h1 class="text-[13px] font-medium text-ink-muted">{% if kind == "branch" %}{{ crate::i18n::text("core", "repo-refs-h1-branches") }}{% else %}{{ crate::i18n::text("core", "repo-refs-h1-tags") }}{% endif %} <span class="ml-1 text-ink-faint">{{ pagination.total }}</span></h1>
   {% if kind == "branch" %}
-  <nav class="flex gap-1" aria-label="Branch view">
-    <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>List</a>
-    <a href="{{ header.branches_url }}?view=tree" class="btn {% if graph.is_some() %}btn-primary{% endif %}" {% if graph.is_some() %}aria-current="page"{% endif %}>{% call ui::icon("branch", "size-3.5") %}{% endcall %}Git tree</a>
+  <nav class="flex gap-1" aria-label="{{ crate::i18n::text("core", "repo-refs-aria-label-branch-view") }}">
+    <a href="{{ header.branches_url }}?view=list" class="btn {% if graph.is_none() %}btn-primary{% endif %}" {% if graph.is_none() %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-refs-a-list") }}</a>
+    <a href="{{ header.branches_url }}?view=tree" class="btn {% if graph.is_some() %}btn-primary{% endif %}" {% if graph.is_some() %}aria-current="page"{% endif %}>{% call ui::icon("branch", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "repo-refs-a-git-tree") }}</a>
   </nav>
   {% endif %}
 </div>
@@ -22,11 +22,11 @@
   {% else %}
   {% if rows.is_empty() %}
   {% if !pagination.query.is_empty() %}
-  <p class="p-6 text-ink-muted">No matching refs.</p>
+  <p class="p-6 text-ink-muted">{{ crate::i18n::text("core", "repo-refs-p-no-matching-refs") }}</p>
   {% else if kind == "branch" %}
-  {% call ui::empty_state("branch", "No branches yet", "Push a commit to create the first branch.") %}{% endcall %}
+  {% call ui::empty_state("branch", crate::i18n::text("core", "repo-refs-empty-title-no-branches-yet"), crate::i18n::text("core", "repo-refs-empty-description-push-a-commit-to-create-the-first-branch")) %}{% endcall %}
   {% else %}
-  {% call ui::empty_state("tag", "No tags yet", "Tags mark releases and other important points in history.") %}{% endcall %}
+  {% call ui::empty_state("tag", crate::i18n::text("core", "repo-refs-empty-title-no-tags-yet"), crate::i18n::text("core", "repo-refs-empty-description-tags-mark-releases-and-other-important-points-in-history")) %}{% endcall %}
   {% endif %}
   {% else %}
   <ul>
@@ -36,8 +36,8 @@
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <a href="{{ row.url }}" class="truncate font-mono text-[13px] font-medium hover:underline hover:underline-offset-4">{{ row.name }}</a>
-          {% if row.is_default %}<span class="badge">default</span>{% endif %}
-          {% if row.protected %}<span class="badge" title="A branch protection rule applies to this branch">{% call ui::icon("shield", "size-3") %}{% endcall %}Protected</span>{% endif %}
+          {% if row.is_default %}<span class="badge">{{ crate::i18n::text("core", "repo-refs-span-default") }}</span>{% endif %}
+          {% if row.protected %}<span class="badge" title="{{ crate::i18n::text("core", "repo-refs-title-a-branch-protection-rule-applies-to-this-branch") }}">{% call ui::icon("shield", "size-3") %}{% endcall %}{{ crate::i18n::text("core", "repo-refs-span-protected") }}</span>{% endif %}
         </div>
         <p class="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-ink-muted">
           <a href="{{ row.commit.url }}" class="truncate hover:text-ink">{{ row.commit.summary }}</a>
@@ -45,11 +45,11 @@
         </p>
       </div>
       {% if let Some(url) = row.compare_url %}
-      <a href="{{ url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" title="Compare with the default branch">Compare</a>
+      <a href="{{ url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" title="{{ crate::i18n::text("core", "repo-refs-title-compare-with-the-default-branch") }}">{{ crate::i18n::text("core", "repo-refs-a-compare") }}</a>
       {% endif %}
       {% if kind == "tag" %}
-      <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download ZIP">zip</a>
-      <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="Download tar.gz">tar.gz</a>
+      <a href="{{ row.zip_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="{{ crate::i18n::text("core", "repo-refs-title-download-zip") }}">{{ crate::i18n::text("core", "repo-refs-a-zip") }}</a>
+      <a href="{{ row.tar_url }}" class="btn btn-ghost hidden h-7 shrink-0 px-2 text-xs sm:inline-flex sm:h-7" hx-boost="false" download title="{{ crate::i18n::text("core", "repo-refs-title-download-tar-gz") }}">{{ crate::i18n::text("core", "repo-refs-a-tar-gz") }}</a>
       {% endif %}
       <a href="{{ row.commit.url }}" class="btn h-7 shrink-0 px-2 font-mono text-xs sm:h-7">{{ row.commit.short_id }}</a>
     </li>

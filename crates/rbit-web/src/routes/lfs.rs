@@ -232,9 +232,13 @@ pub(crate) async fn authorize(
 
     let caller = git_http::authenticate(state, client, headers).await?;
     // Actions: S. A task opens its own repository at its grant, others only if public.
-    if let (Some(GitCaller::Task(grant)), Some(actions)) = (&caller, &state.services.actions) {
+    #[cfg(feature = "actions")]
+    if let (Some(GitCaller::Task(grant)), Some(actions)) = (&caller, state.services.actions.snapshot()) {
         let ctx = actions.open_for_task(grant, owner, repo).await?;
         return Ok(Authorized { ctx, user: None, subject: TokenSubject::Anonymous, object: None, authenticated: true, task: true });
+    }
+    if matches!(caller, Some(GitCaller::Task(_))) {
+        return Err(LfsError::Challenge);
     }
     let user = caller.as_ref().and_then(GitCaller::user);
     let mut ctx = match state.services.repositories.open_following_renames(user, owner, repo).await {

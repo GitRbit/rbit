@@ -243,7 +243,7 @@ function documentError(section, url) {
   status.replaceChildren(document.createTextNode('Unable to load this document. Your current document is still available. '));
   const fallback = document.createElement('a');
   fallback.href = url.href;
-  fallback.textContent = 'Open the document page';
+  fallback.textContent = (globalThis.rbitMessages?.text("browser-open-document") ?? (globalThis.rbitMessages?.text("browser-open-document") ?? "Open the document page"));
   fallback.setAttribute('hx-boost', 'false');
   status.append(fallback);
   status.hidden = false;

@@ -4,14 +4,14 @@
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">Settings</a></p>
+  <p class="text-[13px]"><a class="text-ink-muted hover:text-ink" href="{{ settings_url }}">{{ crate::i18n::text("core", "nav-settings") }}</a></p>
   <div class="mt-1 flex items-start justify-between gap-4">
     <div class="min-w-0">
-      <h1 class="text-xl font-semibold tracking-tight">Branch protection</h1>
-      <p class="mt-1 text-[13px] text-ink-muted">Rules apply to every push to <span class="text-ink">{{ full_name }}</span>, over HTTP and SSH, administrators included unless a rule lets them bypass it.</p>
+      <h1 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "protection-list-h1-branch-protection") }}</h1>
+      <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("core", "protection-list-p-rules-apply-to-every-push-to") }} <span class="text-ink">{{ full_name }}</span>{{ crate::i18n::text("core", "protection-list-p-over-http-and-ssh-administrators-included-unless-a-rule-lets-them") }}</p>
     </div>
     {% if can_add %}
-    <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}Add rule</a>
+    <a href="{{ new_url }}" class="btn btn-primary shrink-0">{% call ui::icon("plus", "size-3.5") %}{% endcall %}{{ crate::i18n::text("core", "protection-list-a-add-rule") }}</a>
     {% endif %}
   </div>
   {% if !can_add %}
@@ -19,13 +19,13 @@
   {% endif %}
   {% if deleted %}
   <p role="status" class="mt-6 flex items-center gap-2 rounded-(--radius-ui) border border-line px-3 py-2.5 text-[13px]">
-    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}Rule deleted.
+    {% call ui::icon("check", "size-4 shrink-0 text-success") %}{% endcall %}{{ crate::i18n::text("core", "protection-list-p-rule-deleted") }}
   </p>
   {% endif %}
 
   <div class="box mt-6">
     {% if rows.is_empty() %}
-    {% call ui::empty_state("shield", "No protected branches", "Add a rule to keep a branch such as main from being force-pushed, deleted or changed without a pull request.") %}{% endcall %}
+    {% call ui::empty_state("shield", crate::i18n::text("core", "protection-list-empty-title-no-protected-branches"), crate::i18n::text("core", "protection-list-empty-description-add-a-rule-to-keep-a-branch-such-as-main-from-being-force-pushed")) %}{% endcall %}
     {% else %}
     <ul>
       {% for row in rows %}
