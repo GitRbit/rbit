@@ -41,7 +41,8 @@ metrics, and analysis across instances.
 
 ## Restarting the application
 
-The **Restart server** button sits opposite **Dashboard** in the page heading. It uses
+The **Restart server** button sits opposite **Dashboard** in the page heading and is
+also available in the **Configuration** heading, beside the saved deployment settings. It uses
 the site's normal button styling and follows every theme. It opens a confirmation page;
 only the confirmed, same-origin administrator POST requests a restart. The request is
 recorded as **Requested a server restart** in the administration audit log. Repeated
