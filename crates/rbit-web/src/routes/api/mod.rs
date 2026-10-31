@@ -324,6 +324,11 @@ async fn not_found() -> ApiError {
     ApiError::not_found()
 }
 
+/// The same absent-resource envelope for requests rejected before API routing.
+pub(crate) fn not_found_response() -> axum::response::Response {
+    ApiError::not_found().into_response()
+}
+
 #[cfg(feature = "actions")]
 pub(super) fn actions_paths() -> Vec<String> {
     actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()

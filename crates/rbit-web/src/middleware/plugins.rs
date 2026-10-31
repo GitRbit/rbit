@@ -37,6 +37,12 @@ fn with_revision(mut response: Response, revision: u64) -> Response {
 }
 
 fn refused(task: bool, request: &Request, revision: u64) -> Response {
+    if !task && request.uri().path().starts_with("/api/") {
+        let mut response = crate::routes::api_not_found_response();
+        response.headers_mut().insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
+        response.headers_mut().insert(header::X_CONTENT_TYPE_OPTIONS, axum::http::HeaderValue::from_static("nosniff"));
+        return with_revision(response, revision);
+    }
     // These two-segment paths otherwise match the host's GET-only repository route.
     // Preserve its method-not-allowed behavior while optional routes are absent.
     if !task

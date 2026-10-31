@@ -8,6 +8,7 @@ pub mod actions;
 pub mod actions_runner;
 mod admin;
 mod api;
+pub(crate) use api::not_found_response as api_not_found_response;
 mod archives;
 mod audit;
 mod auth;
