@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn system_page_uses_dna_browser_colors_and_default_toggle() {
         let html = ThemesPage::new(page(Theme::System), VariantFilter::All, None).render().unwrap();
-        assert!(html.contains("<html lang=\"en\">"), "unselected preferences follow the device");
+        assert!(html.contains("<html lang=\"en\" dir=\"ltr\">"), "unselected preferences follow the device");
         assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: light)\"", themes::DNA_DAY_CANVAS)));
         assert!(html.contains(&format!("content=\"{}\" media=\"(prefers-color-scheme: dark)\"", themes::DNA_DARK_CANVAS)));
         assert!(html.contains("value=\"dna-dark\" data-theme-toggle"));
@@ -471,7 +471,11 @@ mod tests {
     fn renders_live_preview_cards() {
         let tinted = &themes::tinted()[0];
         let html = ThemesPage::new(page(Theme::Tinted(tinted)), VariantFilter::All, None).render().unwrap();
-        assert!(html.contains(&format!("<html lang=\"en\" data-theme=\"{}\" data-scheme=\"{}\">", tinted.slug, tinted.variant.as_str())));
+        assert!(html.contains(&format!(
+            "<html lang=\"en\" dir=\"ltr\" data-theme=\"{}\" data-scheme=\"{}\">",
+            tinted.slug,
+            tinted.variant.as_str()
+        )));
         assert!(html.contains(&format!("data-theme=\"{}\" value=\"{}\"", tinted.slug, tinted.slug)), "cards carry their own theme");
         assert!(html.contains("/assets/themes/all.css?v="), "the gallery links every theme");
         assert!(html.contains(&format!("<style data-theme-stylesheet data-theme=\"{}\">", tinted.slug)), "the active theme's own sheet");
