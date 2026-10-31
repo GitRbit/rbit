@@ -284,7 +284,7 @@ mod tests {
                 cancellation.cancel();
                 let result = tokio::time::timeout(Duration::from_secs(5), producer).await.unwrap().unwrap();
                 assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::BrokenPipe);
-            })
+            });
         }));
         // A regression must fail within a deadline, rather than hang runtime teardown
         // forever waiting for an uninterruptible blocking writer.
