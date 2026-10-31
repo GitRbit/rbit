@@ -1,6 +1,6 @@
 [package]
 name = "rbit-plugin-web"
-description = "Scoped request hooks and bounded compiled Askama pages for trusted embedded plugins."
+description = "Scoped request hooks, compiled Askama pages and typed mutations for trusted embedded plugins."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

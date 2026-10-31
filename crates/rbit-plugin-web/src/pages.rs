@@ -59,6 +59,7 @@ pub struct PageDescriptor {
     path: String,
     audience: PageAudience,
     deadline: Duration,
+    forms: Vec<crate::FormReference>,
 }
 impl PageDescriptor {
     pub fn new(id: &str, scope: PageScope, path: &str, audience: PageAudience, deadline: Duration) -> Result<Self, PageError> {
@@ -72,7 +73,28 @@ impl PageDescriptor {
         ) {
             return Err(PageError::Invalid("scope and audience mismatch"));
         }
-        Ok(Self { id: id.parse().map_err(|_| PageError::Invalid("page identifier"))?, scope, path: path.to_owned(), audience, deadline })
+        Ok(Self {
+            id: id.parse().map_err(|_| PageError::Invalid("page identifier"))?,
+            scope,
+            path: path.to_owned(),
+            audience,
+            deadline,
+            forms: Vec::new(),
+        })
+    }
+    pub fn with_forms(mut self, forms: Vec<crate::FormReference>) -> Result<Self, PageError> {
+        if forms.len() > 8
+            || forms.iter().enumerate().any(|(i, form)| {
+                crate::FormReference::new(&form.name, &form.path).is_err() || forms[..i].iter().any(|old| old.name == form.name)
+            })
+        {
+            return Err(PageError::Invalid("form references"));
+        }
+        self.forms = forms;
+        Ok(self)
+    }
+    pub fn forms(&self) -> &[crate::FormReference] {
+        &self.forms
     }
     pub fn id(&self) -> &str {
         self.id.as_str()
@@ -152,7 +174,7 @@ impl PageContext {
         if allowed { Ok(()) } else { Err(PageError::Forbidden) }
     }
 }
-fn valid_name(value: &str, max: usize) -> bool {
+pub(crate) fn valid_name(value: &str, max: usize) -> bool {
     !value.is_empty()
         && value.len() <= max
         && !value.contains("..")
@@ -168,6 +190,15 @@ pub struct CompiledPage<T> {
     template: T,
 }
 impl<T: Template> CompiledPage<T> {
+    pub(crate) fn render(self) -> Result<PageBody, PageError> {
+        // Never trust SIZE_HINT or allocate an unbounded rendered intermediary.
+        let mut writer = BoundedWriter { output: String::new(), overflow: false };
+        if self.template.render_into(&mut writer).is_err() || writer.overflow {
+            return Err(PageError::Render);
+        }
+        Ok(PageBody { title: self.title, html: writer.output })
+    }
+
     pub fn new(title: &str, template: T) -> Result<Self, PageError> {
         if title.is_empty() || title.len() > MAX_PAGE_TITLE_BYTES || title.chars().any(char::is_control) {
             return Err(PageError::Invalid("page title"));
@@ -206,28 +237,17 @@ impl fmt::Write for BoundedWriter {
 
 type RenderFuture<'a> = Pin<Box<dyn Future<Output = Result<PageBody, PageError>> + Send + 'a>>;
 trait Renderer: Send + Sync {
-    fn render(&self, context: PageContext) -> RenderFuture<'_>;
+    fn render(&self, context: PageContext, forms: crate::FormActions) -> RenderFuture<'_>;
 }
 struct TemplateRenderer<F>(F);
 impl<T, F, Fut> Renderer for TemplateRenderer<F>
 where
     T: Template + Send + 'static,
-    F: Fn(PageContext) -> Fut + Send + Sync + 'static,
+    F: Fn(PageContext, crate::FormActions) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
 {
-    fn render(&self, context: PageContext) -> RenderFuture<'_> {
-        Box::pin(async move {
-            let page = (self.0)(context).await?;
-            // SIZE_HINT is not an allocation budget. Never reserve it or render to
-            // an unbounded temporary String. Latch failures even if a custom native
-            // Template implementation ignores its writer's fmt::Error.
-            let mut writer = BoundedWriter { output: String::new(), overflow: false };
-            let rendered = page.template.render_into(&mut writer);
-            if rendered.is_err() || writer.overflow {
-                return Err(PageError::Render);
-            }
-            Ok(PageBody { title: page.title, html: writer.output })
-        })
+    fn render(&self, context: PageContext, forms: crate::FormActions) -> RenderFuture<'_> {
+        Box::pin(async move { (self.0)(context, forms).await?.render() })
     }
 }
 
@@ -258,6 +278,15 @@ pub fn compiled_page<T, F, Fut>(descriptor: PageDescriptor, factory: F) -> PageR
 where
     T: Template + Send + 'static,
     F: Fn(PageContext) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
+{
+    PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(move |context, _| factory(context))) }
+}
+
+pub fn compiled_form_page<T, F, Fut>(descriptor: PageDescriptor, factory: F) -> PageRegistration
+where
+    T: Template + Send + 'static,
+    F: Fn(PageContext, crate::FormActions) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
 {
     PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(factory)) }
@@ -405,6 +434,9 @@ impl PageLease {
         self.inner.cancellation_token()
     }
     pub async fn render(&mut self, context: PageContext) -> Result<PageBody, PageError> {
+        self.render_with_forms(context, crate::FormActions::default()).await
+    }
+    pub async fn render_with_forms(&mut self, context: PageContext, forms: crate::FormActions) -> Result<PageBody, PageError> {
         let registration = self.inner.value();
         context.authorize(&registration.descriptor)?;
         let deadline = Instant::now() + registration.descriptor.deadline;
@@ -412,7 +444,7 @@ impl PageLease {
         let page = tokio::select! {
             biased;
             ()=cancellation.cancelled()=>return Err(PageError::Unavailable),
-            result=timeout_at(deadline,async {registration.renderer.render(context).await})=>result.map_err(|_|PageError::Timeout)??,
+            result=timeout_at(deadline,async {registration.renderer.render(context,forms).await})=>result.map_err(|_|PageError::Timeout)??,
         };
         // Synchronous native rendering cannot be preempted. Check again before
         // publishing markup in case it completed after the deadline or revocation.

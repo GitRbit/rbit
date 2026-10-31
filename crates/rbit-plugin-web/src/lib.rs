@@ -1,4 +1,4 @@
-//! Scoped request hooks and compiled Askama page contracts for trusted embedded plugins.
+//! Scoped request hooks, compiled Askama pages and typed form mutations for trusted embedded plugins.
 //! The host retains transport, authentication, body supervision, caching and security.
 //! Askama, shared messages and cancellation primitives are used here; this crate
 //! depends on no HTTP framework, forge services, database or Fluent implementation.
@@ -12,3 +12,8 @@ pub use registry::{RequestHookRegistration, RequestHookRegistry, RequestHookSnap
 pub use types::*;
 
 pub use pages::*;
+
+mod forms;
+mod mutations;
+pub use forms::*;
+pub use mutations::*;
