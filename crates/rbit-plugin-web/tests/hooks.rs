@@ -419,3 +419,77 @@ async fn terminal_hook_registry_close_cancels_pending_callback_and_refuses_repub
     assert_eq!(registry.revision(), revision);
     scope.dispose(Duration::from_secs(1)).await.unwrap();
 }
+
+#[derive(Debug)]
+struct LifetimeHook {
+    scope: PluginScope,
+    observed: Arc<AtomicUsize>,
+    started: Arc<AtomicUsize>,
+    deny_and_close: Option<RequestHookRegistry>,
+}
+impl Drop for LifetimeHook {
+    fn drop(&mut self) {
+        assert!(self.scope.in_flight() > 0, "native callback resources must drop before their admitted operation");
+        self.observed.fetch_add(1, Ordering::SeqCst);
+    }
+}
+impl RequestHook for LifetimeHook {
+    fn call<'a>(&'a self, _: &'a RequestMetadata) -> HookFuture<'a> {
+        Box::pin(async move {
+            self.started.fetch_add(1, Ordering::SeqCst);
+            if let Some(registry) = &self.deny_and_close {
+                registry.close();
+                return HookDecision::Reject(Rejection::Forbidden);
+            }
+            std::future::pending::<HookDecision>().await
+        })
+    }
+}
+
+#[tokio::test]
+async fn final_native_hook_resources_drop_before_authority_on_close_abort_and_deny() {
+    for mode in ["close", "abort", "deny"] {
+        let registry = RequestHookRegistry::new();
+        let scope = scope();
+        let observed = Arc::new(AtomicUsize::new(0));
+        let started = Arc::new(AtomicUsize::new(0));
+        let hook = LifetimeHook {
+            scope: scope.clone(),
+            observed: Arc::clone(&observed),
+            started: Arc::clone(&started),
+            deny_and_close: (mode == "deny").then(|| registry.clone()),
+        };
+        registry
+            .stage(
+                "example.lifetime".parse().unwrap(),
+                &scope,
+                scope.generation(),
+                vec![HookRegistration::new("lifetime", 0, Duration::from_millis(100), Arc::new(hook)).unwrap()],
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
+        let snapshot = registry.snapshot();
+        let task = tokio::spawn(async move { snapshot.evaluate(&metadata()).await });
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while started.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        if mode != "deny" {
+            registry.close();
+        }
+        if mode == "abort" {
+            task.abort();
+            assert!(tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap_err().is_cancelled());
+        } else {
+            let decision = tokio::time::timeout(Duration::from_secs(2), task).await.unwrap().unwrap();
+            assert_eq!(decision, HookDecision::Reject(if mode == "deny" { Rejection::Forbidden } else { Rejection::Unavailable }));
+        }
+        assert_eq!(observed.load(Ordering::SeqCst), 1);
+        assert_eq!(scope.in_flight(), 0);
+        scope.dispose(Duration::from_secs(1)).await.unwrap();
+    }
+}

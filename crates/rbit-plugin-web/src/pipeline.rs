@@ -40,7 +40,10 @@ impl RequestHookSnapshot {
         let mut annotations = Vec::new();
         let mut names = BTreeSet::new();
         for (_, _, lease) in admitted {
-            let (hook, _operation, cancellation) = lease.into_parts();
+            // Keep native callback resources inside the lease so their destructors
+            // finish before admission is released, including cancellation/early return.
+            let hook = lease.value();
+            let cancellation = lease.cancellation_token();
             if Instant::now() >= deadline {
                 return HookDecision::Reject(Rejection::Unavailable);
             }
