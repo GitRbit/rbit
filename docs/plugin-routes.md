@@ -195,6 +195,23 @@ Publish the handler before its discovery link. On any UI publication failure,
 withdraw the handler and close the scope. A brief available-handler/no-link
 interval is safe; advertising an unavailable handler is not.
 
+## Host shutdown
+
+The executable calls `Services::prepare_shutdown()` when shutdown or restart is
+requested, before waiting for HTTP connections to drain. This synchronously closes
+the page and request-hook registries across every clone, cancels admitted callbacks
+and response bodies, and withdraws built-in provider entry points. Core services
+and stores remain available during HTTP drain. `Services::shutdown()` then finishes
+provider and worker disposal before the stores close. Saved enablement intent and
+retained plugin data survive an ordinary restart.
+
+Registry `close()` is terminal for the entire host instance. It also fences staged
+registrations, so a late startup cannot republish after shutdown starts. A plugin's
+normal disable path uses its registration or scope; it must not close the shared
+host registry. Closing a registry revokes its callbacks, while the plugin manager
+still owns disposal of independent tasks in custom scopes. Connection drain follows
+the host's transport policy.
+
 ## Validation
 
 The contract suite must cover route IDs, duplicate mounts, invalid replacement
@@ -230,14 +247,14 @@ exclude HTTP middleware, authentication, database work, body supervision and
 network transfer. They do not establish end-to-end performance parity with
 existing pages.
 
-One reference run on 2026-10-31 used registry source `84857d0`, an Apple M3 Pro,
+One reference run on 2026-10-31 used registry source `706094d`, an Apple M3 Pro,
 Rust 1.99.1, release optimization with LTO disabled and 16 code-generation units:
 
 | Measured path | p50 | p95 |
 | --- | ---: | ---: |
-| Direct compiled Askama fragment | 0.458 μs | 0.500 μs |
-| Snapshot, last-of-16 lookup, admission and bounded compiled rendering | 1.875 μs | 1.958 μs |
-| Empty snapshot and missing-route lookup | 0.125 μs | 0.166 μs |
+| Direct compiled Askama fragment | 0.417 μs | 0.500 μs |
+| Snapshot, last-of-16 lookup, admission and bounded compiled rendering | 1.708 μs | 1.792 μs |
+| Empty snapshot and missing-route lookup | 0.125 μs | 0.125 μs |
 
 These are local samples, not a deployment latency guarantee. Keep the measured
 scope and compiler settings with any comparison; the HTTP pipeline and final-body

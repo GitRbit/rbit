@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Runtime registration of compiled Askama plugin pages, with host-enforced global
+  and repository permissions, bounded rendering and generation-owned cleanup.
+  Replacement and disable revoke stale handlers; unread full and HTMX responses
+  retain capacity until consumption or cancellation. Host shutdown fences plugin
+  callbacks before HTTP drain. See [native plugin pages](docs/plugin-routes.md).
 - Runtime UI extension registrations with atomic updates, generation-owned cleanup and
   compiled Askama navigation, cards, notices and lists. Actions and Languages use scoped
   contributions; trusted browser enhancements share bounded, cancellable resource ownership.

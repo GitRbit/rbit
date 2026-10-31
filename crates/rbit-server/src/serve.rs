@@ -55,12 +55,17 @@ pub async fn run(config: Config) -> anyhow::Result<bool> {
     log_setup_token(&config, &background);
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let shutdown_services = background.clone();
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .with_graceful_shutdown(async move {
             let restarting = tokio::select! {
                 () = shutdown_signal() => false,
                 result = restart.wait_for(|requested| *requested) => result.is_ok(),
             };
+            // Revoke plugin HTTP work before waiting for connections: an unread
+            // plugin body must not wait for a cancellation scheduled after drain.
+            // Core services and stores remain available until HTTP has finished.
+            shutdown_services.prepare_shutdown();
             let _ = shutdown_tx.send(restarting);
         })
         .await
