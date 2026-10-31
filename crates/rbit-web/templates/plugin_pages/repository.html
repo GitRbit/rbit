@@ -2,7 +2,7 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
-<section data-plugin-page="{{ owner }}:{{ route }}" hx-history="false" class="min-w-0">
+<section data-plugin-page="{{ owner }}:{{ route }}" hx-history="false"{% if native_forms %} hx-boost="false"{% endif %} class="min-w-0">
   <h1 class="mb-4 text-xl font-semibold tracking-tight">{{ body.title() }}</h1>
   {# PageBody has no public raw HTML constructor; only the compiled Askama bridge creates it. #}
   {{ body.html()|safe }}

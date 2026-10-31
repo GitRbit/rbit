@@ -113,7 +113,14 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
     let revision = state.services.plugin_revision();
     let read = matches!(*request.method(), axum::http::Method::GET | axum::http::Method::HEAD);
     let target = request.uri().clone();
+    let runtime_page =
+        request.extensions().get::<axum::extract::MatchedPath>().is_some_and(|path| crate::routes::is_plugin_page_route(path.as_str()));
     let mut response = next.run(request).await;
+    // This outer boundary also covers host CSRF/rate/timeout failures that return
+    // before the runtime route's own layer can set its no-store policy.
+    if runtime_page {
+        response.headers_mut().insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
+    }
     let page_operation = response.extensions_mut().remove::<PageResponseGuard>().and_then(|pending| pending.take());
     let current_revision = state.services.plugin_revision();
     let html = response.headers().get(header::CONTENT_TYPE).is_some_and(|value| value.as_bytes().starts_with(b"text/html"));
@@ -147,14 +154,21 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
 
 /// A page response carries ownership across host body transforms without cloning it.
 #[derive(Debug, Clone)]
-pub(crate) struct PageResponseGuard(
-    std::sync::Arc<std::sync::Mutex<Option<(rbit_services::plugin_pages::PageOperation, tokio_util::sync::CancellationToken)>>>,
-);
+pub(crate) struct PageResponseGuard(std::sync::Arc<std::sync::Mutex<Option<(ResponseOperation, tokio_util::sync::CancellationToken)>>>);
+
+#[derive(Debug)]
+enum ResponseOperation {
+    Page { _guard: rbit_services::plugin_pages::PageOperation },
+    Mutation { _guard: rbit_services::plugin_pages::MutationOperation },
+}
 impl PageResponseGuard {
     pub(crate) fn new(guard: rbit_services::plugin_pages::PageOperation, token: tokio_util::sync::CancellationToken) -> Self {
-        Self(std::sync::Arc::new(std::sync::Mutex::new(Some((guard, token)))))
+        Self(std::sync::Arc::new(std::sync::Mutex::new(Some((ResponseOperation::Page { _guard: guard }, token)))))
     }
-    fn take(&self) -> Option<(rbit_services::plugin_pages::PageOperation, tokio_util::sync::CancellationToken)> {
+    pub(crate) fn mutation(guard: rbit_services::plugin_pages::MutationOperation, token: tokio_util::sync::CancellationToken) -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(Some((ResponseOperation::Mutation { _guard: guard }, token)))))
+    }
+    fn take(&self) -> Option<(ResponseOperation, tokio_util::sync::CancellationToken)> {
         self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
     }
 }

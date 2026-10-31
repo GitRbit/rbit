@@ -13,6 +13,7 @@ pub struct GlobalPluginPage {
     pub owner: String,
     pub route: String,
     pub body: PageBody,
+    pub native_forms: bool,
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -23,4 +24,5 @@ pub struct RepositoryPluginPage {
     pub owner: String,
     pub route: String,
     pub body: PageBody,
+    pub native_forms: bool,
 }

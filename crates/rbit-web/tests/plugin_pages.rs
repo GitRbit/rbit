@@ -236,9 +236,10 @@ async fn runtime_route_registration_is_read_only_canonical_and_never_preloaded()
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    for method in [Method::POST, Method::OPTIONS] {
+    for (method, status) in [(Method::POST, StatusCode::NOT_FOUND), (Method::OPTIONS, StatusCode::METHOD_NOT_ALLOWED)] {
         let response = fixture.request(method, "/-/plugins/example.pages/nested/report", None, &[]).await;
-        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        // POST resolves the independent mutation registry and never invokes a GET renderer.
+        assert_eq!(response.status(), status);
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
     }
     let response =
@@ -385,3 +386,4 @@ async fn runtime_route_registration_preserves_nested_navigation_identity() {
 
 mod lifecycle;
 mod shutdown;
+mod forms;

@@ -19,6 +19,8 @@ pub struct AppStateInner {
     pub transport: ProcessTransport,
     pub highlighter: Highlighter,
     pub monitoring: Arc<crate::monitoring::Monitor>,
+    /// Host proof key; plugin callbacks never receive this key or session material.
+    pub plugin_csrf: rbit_auth::PluginCsrfKey,
     /// The executable subscribes before serving; embedded hosts can leave this unsupported.
     pub restart: tokio::sync::watch::Sender<bool>,
 }
@@ -33,6 +35,7 @@ impl AppState {
             transport,
             highlighter: Highlighter::new(),
             monitoring: crate::monitoring::Monitor::new(),
+            plugin_csrf: rbit_auth::PluginCsrfKey::generate(),
             restart,
         }))
     }

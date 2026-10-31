@@ -1,4 +1,7 @@
-//! Read-only runtime dispatch inside the normal host browser security stack.
+//! Runtime page and form dispatch inside the normal host browser security stack.
+
+mod form_input;
+mod forms;
 
 use axum::{
     Router,
@@ -27,13 +30,25 @@ use crate::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/-/plugins/{plugin}/{*page}", get(global))
-        .route("/{owner}/{repo}/-/plugins/{plugin}/{*page}", get(repository))
+        .route("/-/plugins/{plugin}/{*page}", get(global).post(forms::global))
+        .route("/{owner}/{repo}/-/plugins/{plugin}/{*page}", get(repository).post(forms::repository))
         .route("/-/plugins", get(absent))
         .route("/-/plugins/{plugin}", get(absent))
         .route("/{owner}/{repo}/-/plugins", get(absent))
         .route("/{owner}/{repo}/-/plugins/{plugin}", get(absent))
         .route_layer(from_fn(runtime_page_policy))
+}
+
+pub(super) fn matches_route(pattern: &str) -> bool {
+    matches!(
+        pattern,
+        "/-/plugins/{plugin}/{*page}"
+            | "/{owner}/{repo}/-/plugins/{plugin}/{*page}"
+            | "/-/plugins"
+            | "/-/plugins/{plugin}"
+            | "/{owner}/{repo}/-/plugins"
+            | "/{owner}/{repo}/-/plugins/{plugin}"
+    )
 }
 
 async fn absent() -> WebError {
@@ -85,6 +100,7 @@ async fn global(
     mut page: Page,
     OriginalUri(uri): OriginalUri,
     path: Result<Path<GlobalPath>, PathRejection>,
+    request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
     page.path = uri.path().to_owned();
@@ -95,7 +111,8 @@ async fn global(
         PageAudience::Public | PageAudience::SignedIn | PageAudience::SiteAdmin => {}
         PageAudience::RepositoryReader | PageAudience::RepositoryAdmin => return Err(WebError::NotFound),
     }
-    render(route, page, &viewer, None, &state).await
+    let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
+    render(route, page, &viewer, session.as_ref(), None, &state).await
 }
 
 async fn repository(
@@ -104,6 +121,7 @@ async fn repository(
     mut page: Page,
     OriginalUri(uri): OriginalUri,
     path: Result<Path<RepositoryPath>, PathRejection>,
+    request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
     page.path = uri.path().to_owned();
@@ -114,13 +132,15 @@ async fn repository(
         PageAudience::RepositoryAdmin if loaded.ctx.access.can_admin() => {}
         _ => return Err(WebError::NotFound),
     }
-    render(route, page, &viewer, Some(loaded), &state).await
+    let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
+    render(route, page, &viewer, session.as_ref(), Some(loaded), &state).await
 }
 
 async fn render(
     route: PageRouteHandle,
     page: Page,
     viewer: &Viewer,
+    session: Option<&crate::extract::CurrentSession>,
     repository: Option<RepoPage>,
     state: &AppState,
 ) -> WebResult<Response> {
@@ -134,24 +154,38 @@ async fn render(
         }),
         locale: page.locale.clone(),
     };
+    let native_forms = !route.descriptor().forms().is_empty();
+    let actions = forms::actions(&route, viewer, session, repository.as_ref(), state);
     let Ok(mut lease) = route.admit() else { return Ok(unavailable()) };
-    let body = match lease.render(context).await {
+    let body = match lease.render_with_forms(context, actions).await {
         Ok(body) => body,
         Err(PageError::Forbidden) => return Err(WebError::NotFound),
         Err(_) => return Ok(unavailable()),
     };
-    let page = page.titled(body.title());
     let owner = route.owner().to_string();
     let path = route.descriptor().path().to_owned();
-    let response = if let Some(repository) = repository {
-        RepositoryPluginPage { page, header: repository.header(state, ""), owner, route: path, body }.into_response()
-    } else {
-        GlobalPluginPage { page, owner, route: path, body }.into_response()
-    };
+    let response = shell(page, repository, owner, path, body, native_forms, state);
     let (guard, cancellation) = lease.into_parts();
     let mut response = response;
     response.extensions_mut().insert(crate::middleware::PageResponseGuard::new(guard, cancellation));
     Ok(response)
+}
+
+fn shell(
+    page: Page,
+    repository: Option<RepoPage>,
+    owner: String,
+    path: String,
+    body: rbit_services::plugin_pages::PageBody,
+    native_forms: bool,
+    state: &AppState,
+) -> Response {
+    let page = page.titled(body.title());
+    if let Some(repository) = repository {
+        RepositoryPluginPage { page, header: repository.header(state, ""), owner, route: path, body, native_forms }.into_response()
+    } else {
+        GlobalPluginPage { page, owner, route: path, body, native_forms }.into_response()
+    }
 }
 
 fn unavailable() -> Response {

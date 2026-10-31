@@ -20,6 +20,10 @@ mod compare;
 mod dashboards;
 mod edits;
 mod plugin_pages;
+
+pub(crate) fn is_plugin_page_route(pattern: &str) -> bool {
+    plugin_pages::matches_route(pattern)
+}
 mod plugins;
 // Milestone 3: external sign-in (O).
 mod external_auth;
