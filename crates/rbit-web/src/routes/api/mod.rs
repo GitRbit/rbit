@@ -150,10 +150,9 @@ fn route_in_wildcard(method: ApiMethod, path: impl Into<Cow<'static, str>>) -> A
 }
 
 /// Every endpoint of the API under `config`.
+#[cfg_attr(not(feature = "actions"), expect(unused_variables, reason = "only optional Actions routes inspect configuration"))]
 pub fn table(config: &Config) -> Vec<ApiRoute> {
     use ApiMethod::{Delete, Get, Patch, Post, Put};
-    #[cfg(not(feature = "actions"))]
-    let _ = config;
     let mut routes = vec![
         route(Get, "/version", accounts::version),
         route(Get, "/openapi.json", openapi),
@@ -323,6 +322,11 @@ async fn openapi(State(state): State<AppState>, _caller: Caller) -> impl IntoRes
 /// Every other path under `/api`.
 async fn not_found() -> ApiError {
     ApiError::not_found()
+}
+
+#[cfg(feature = "actions")]
+pub(super) fn actions_paths() -> Vec<String> {
+    actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()
 }
 
 #[cfg(test)]
@@ -503,9 +507,4 @@ mod tests {
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
         }
     }
-}
-
-#[cfg(feature = "actions")]
-pub(super) fn actions_paths() -> Vec<String> {
-    actions_routes().into_iter().map(|route| format!("{PREFIX}{}", route.path)).collect()
 }

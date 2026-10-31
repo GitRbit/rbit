@@ -10,7 +10,7 @@ use super::{
 
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "admin/plugins.html")]
-#[expect(clippy::struct_excessive_bools, reason = "independent template visibility flags")]
+#[expect(clippy::struct_excessive_bools, reason = "independent display flags")]
 pub struct PluginsPage {
     pub page: Page,
     pub admin_nav: Vec<AdminLink>,
