@@ -273,6 +273,7 @@ async fn every_section_renders_labeled_controls_without_a_json_editor() {
         assert_eq!(response.status(), StatusCode::OK, "{section}");
         let markup = html(response).await;
         assert!(markup.contains("Configuration sections") && markup.contains("aria-describedby=\"hint-"));
+        assert!(markup.contains("href=\"/admin/restart\"") && markup.contains("Restart server"), "{section}");
         assert!(!markup.contains("name=\"document\"") && !markup.contains("Deployment configuration (JSON)"));
         if section == "storage" {
             assert!(markup.contains("readonly") && !markup.contains("Save Storage settings"));
@@ -285,6 +286,7 @@ async fn every_section_renders_labeled_controls_without_a_json_editor() {
         }
     }
     assert_eq!(fixture.get("not-a-section").await.status(), StatusCode::NOT_FOUND);
+    assert!(!*fixture.restart.as_ref().unwrap().borrow(), "viewing configuration never requests a restart");
 }
 
 #[tokio::test]
