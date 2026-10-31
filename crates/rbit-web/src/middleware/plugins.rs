@@ -238,7 +238,7 @@ impl http_body::Body for PluginResponseBody {
         self.finished
     }
     fn size_hint(&self) -> http_body::SizeHint {
-        if self.finished { http_body::SizeHint::with_exact(0) } else { self.hint.clone() }
+        if self.finished { http_body::SizeHint::with_exact(0) } else { self.hint }
     }
 }
 
