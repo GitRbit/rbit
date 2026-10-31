@@ -38,12 +38,12 @@
 //!   sweep.
 
 use std::{
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
 use axum::{
-    extract::{MatchedPath, Request},
+    extract::{MatchedPath, Request, State},
     http::{Method, StatusCode},
     middleware::Next,
     response::Response,
@@ -106,7 +106,7 @@ pub fn render() -> String {
 }
 
 /// Records one HTTP request. Applied to every route.
-pub async fn track(request: Request, next: Next) -> Response {
+pub async fn track(State(monitor): State<Arc<crate::monitoring::Monitor>>, request: Request, next: Next) -> Response {
     install();
     let method = method_label(request.method());
     let route = request.extensions().get::<MatchedPath>().map_or_else(|| "unmatched".to_owned(), |path| path.as_str().to_owned());
@@ -116,7 +116,17 @@ pub async fn track(request: Request, next: Next) -> Response {
     let response = next.run(request).await;
 
     let status = status_class(response.status());
-    let elapsed = started.elapsed().as_secs_f64();
+    let duration = started.elapsed();
+    let elapsed = duration.as_secs_f64();
+    // Monitoring must not generate its own traffic on an otherwise idle instance.
+    if route != "/admin/monitoring" && route != "/admin/restart/status" && route != "/metrics" {
+        let exchange = match git {
+            Some(("upload-pack", "exchange")) => Some(0),
+            Some(("receive-pack", "exchange")) => Some(1),
+            _ => None,
+        };
+        monitor.record(response.status().as_u16(), duration, exchange);
+    }
     metrics::histogram!("rbit_http_request_duration_seconds", "method" => method, "route" => route.clone()).record(elapsed);
     metrics::counter!("rbit_http_requests_total", "method" => method, "route" => route, "status" => status).increment(1);
     if let Some((service, stage)) = git {
@@ -171,7 +181,7 @@ fn git_operation(route: &str, query: Option<&str>) -> Option<(&'static str, &'st
 
 #[cfg(test)]
 mod tests {
-    use axum::{Router, body::Body, middleware::from_fn, routing::get};
+    use axum::{Router, body::Body, middleware::from_fn_with_state, routing::get};
     use tower::ServiceExt;
 
     use super::*;
@@ -196,7 +206,8 @@ mod tests {
 
     #[tokio::test]
     async fn requests_are_counted_by_route_template() {
-        let app = Router::new().route("/items/{id}", get(|| async { "ok" })).layer(from_fn(track));
+        let app =
+            Router::new().route("/items/{id}", get(|| async { "ok" })).layer(from_fn_with_state(crate::monitoring::Monitor::new(), track));
         for id in ["first-unique-item", "second-unique-item"] {
             let request = Request::builder().uri(format!("/items/{id}")).body(Body::empty()).unwrap();
             assert_eq!(app.clone().oneshot(request).await.unwrap().status(), StatusCode::OK);

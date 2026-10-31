@@ -12,7 +12,6 @@
 
 use std::{
     fmt::Write as _,
-    path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
 };
@@ -20,18 +19,12 @@ use std::{
 use rbit_e2e::{Git, PASSWORD, TestServer, attribute_after};
 use serde_json::{Value, json};
 
+use super::actions_runner::runner_binary;
+
 /// Pulling two images and running three workflows' containers.
 const RUN_DEADLINE: Duration = Duration::from_mins(10);
 
 const RUNNER: &str = "e2e-docker";
-
-fn runner_binary() -> PathBuf {
-    let exe = std::env::current_exe().expect("the test's own path");
-    let profile = exe.parent().and_then(Path::parent).expect("target/<profile>");
-    let binary = profile.join(format!("rbit-runner{}", std::env::consts::EXE_SUFFIX));
-    assert!(binary.exists(), "{} is missing: run `cargo build -p rbit-runner` first", binary.display());
-    binary
-}
 
 struct Running(std::process::Child);
 

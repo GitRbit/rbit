@@ -81,6 +81,7 @@ const MAX_FORM_BYTES: usize = 1024 * 1024;
 
 /// Builds the complete application router.
 pub fn router(state: AppState) -> Router {
+    state.monitoring.start();
     Router::new()
         .merge(page_routes(&state))
         .merge(static_routes())
@@ -103,7 +104,7 @@ pub fn router(state: AppState) -> Router {
         .layer(from_fn_with_state(state.clone(), middleware::request_hooks))
         .layer(from_fn_with_state(state.clone(), middleware::plugin_admission))
         .layer(from_fn(middleware::preload_guard))
-        .layer(from_fn(crate::metrics::track))
+        .layer(from_fn_with_state(state.monitoring.clone(), crate::metrics::track))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

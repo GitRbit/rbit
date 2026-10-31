@@ -21,13 +21,26 @@ use serde_json::Value;
 /// How long the whole run may take: the runner polls, checks out and runs four short jobs.
 const RUN_DEADLINE: Duration = Duration::from_secs(240);
 
-/// The `rbit-runner` built next to this test, by `cargo test --workspace` (the runner's own
+/// The `rbit-runner` built by `cargo test --workspace` (the runner's own
 /// integration test makes cargo build its binary) or `cargo build -p rbit-runner`.
-fn runner_binary() -> PathBuf {
+pub(super) fn runner_binary() -> PathBuf {
     let exe = std::env::current_exe().expect("the test's own path");
-    // target/<profile>/deps/e2e-… → target/<profile>/rbit-runner
-    let profile = exe.parent().and_then(std::path::Path::parent).expect("target/<profile>");
-    let binary = profile.join(format!("rbit-runner{}", std::env::consts::EXE_SUFFIX));
+    // Test executables live in the build directory; final binaries live in the target
+    // directory. Cargo metadata respects custom paths and a separate build directory.
+    let output = Command::new(env!("CARGO"))
+        .args(["metadata", "--format-version", "1", "--no-deps", "--offline", "--locked"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .expect("read Cargo artifact directories");
+    assert!(output.status.success(), "cargo metadata failed: {}", String::from_utf8_lossy(&output.stderr));
+    let metadata: Value = serde_json::from_slice(&output.stdout).expect("Cargo metadata is JSON");
+    let target = PathBuf::from(metadata["target_directory"].as_str().expect("Cargo target directory"));
+    // Older Cargo versions do not report build_directory and put everything in target/.
+    let build = metadata["build_directory"].as_str().map_or_else(|| target.clone(), PathBuf::from);
+    let relative = exe.strip_prefix(build).expect("test executable is in Cargo's build directory");
+    // Retain the profile and, when cross compiling, the target triple.
+    let profile = relative.parent().and_then(std::path::Path::parent).expect("<profile>/deps/test");
+    let binary = target.join(profile).join(format!("rbit-runner{}", std::env::consts::EXE_SUFFIX));
     assert!(binary.exists(), "{} is missing: run `cargo build -p rbit-runner` (or the whole workspace's tests) first", binary.display());
     binary
 }

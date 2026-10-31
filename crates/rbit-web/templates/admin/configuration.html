@@ -1,9 +1,11 @@
 {% extends "admin/layout.html" %}
-{% import "admin/components.html" as admin %}
 {% import "macros.html" as ui %}
 {% import "admin/configuration_field.html" as config %}
 {% block admin_content %}
-{% call admin::heading("Configuration", "Manage your self-hosted instance with settings organized by feature.") %}{% endcall %}
+<div class="mb-5 flex items-start justify-between gap-3">
+  <div><h2 class="text-xl font-semibold tracking-tight">{{ crate::i18n::text("core", "admin-nav-configuration") }}</h2><p class="mt-1 text-[13px] text-ink-muted">Manage your self-hosted instance with settings organized by feature.</p></div>
+  <a href="/admin/restart" class="btn shrink-0" hx-boost="false">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Restart server</a>
+</div>
 {% if saved %}<div role="status" class="box mb-5 p-4 text-[13px]">{{ crate::i18n::text("core", "admin-configuration-div-settings-saved-restart-the-server-to-apply-deployment-changes") }}</div>{% endif %}
 <div class="mb-6 flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
   <span class="badge">{{ crate::i18n::text("core", "admin-configuration-span-restart-required") }}</span><span>{{ crate::i18n::text("core", "admin-configuration-span-environment-variables-take-precedence") }}</span>

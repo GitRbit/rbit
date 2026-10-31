@@ -96,6 +96,7 @@ pub enum AuditAction {
     PasswordSet,
     RepositoryDeleted,
     InstanceSettingsChanged,
+    ServerRestartRequested,
     CollaboratorAdded,
     CollaboratorChanged,
     CollaboratorRemoved,
@@ -146,7 +147,7 @@ pub enum AuditAction {
 }
 
 impl AuditAction {
-    pub const ALL: [Self; 68] = [
+    pub const ALL: [Self; 69] = [
         Self::UsernameChanged,
         Self::SignIn,
         Self::SignInFailed,
@@ -174,6 +175,7 @@ impl AuditAction {
         Self::PasswordSet,
         Self::RepositoryDeleted,
         Self::InstanceSettingsChanged,
+        Self::ServerRestartRequested,
         Self::CollaboratorAdded,
         Self::CollaboratorChanged,
         Self::CollaboratorRemoved,
@@ -250,6 +252,7 @@ impl AuditAction {
             Self::PasswordSet => "password_set",
             Self::RepositoryDeleted => "repository_deleted",
             Self::InstanceSettingsChanged => "instance_settings_changed",
+            Self::ServerRestartRequested => "server_restart_requested",
             Self::CollaboratorAdded => "collaborator_added",
             Self::CollaboratorChanged => "collaborator_changed",
             Self::CollaboratorRemoved => "collaborator_removed",
@@ -328,7 +331,8 @@ impl AuditAction {
             | Self::PasswordResetSent
             | Self::PasswordSet
             | Self::RepositoryDeleted
-            | Self::InstanceSettingsChanged => AuditCategory::Administration,
+            | Self::InstanceSettingsChanged
+            | Self::ServerRestartRequested => AuditCategory::Administration,
             Self::CollaboratorAdded
             | Self::CollaboratorChanged
             | Self::CollaboratorRemoved
@@ -402,6 +406,7 @@ impl AuditAction {
             Self::UserDeleted => "Deleted a user",
             Self::RepositoryDeleted => "Deleted a repository",
             Self::InstanceSettingsChanged => "Changed instance settings",
+            Self::ServerRestartRequested => "Requested a server restart",
             Self::CollaboratorAdded => "Added a collaborator",
             Self::CollaboratorChanged => "Changed a collaborator's permission",
             Self::CollaboratorRemoved => "Removed a collaborator",

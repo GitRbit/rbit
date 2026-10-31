@@ -18,12 +18,23 @@ pub struct AppStateInner {
     pub services: Services,
     pub transport: ProcessTransport,
     pub highlighter: Highlighter,
+    pub monitoring: Arc<crate::monitoring::Monitor>,
+    /// The executable subscribes before serving; embedded hosts can leave this unsupported.
+    pub restart: tokio::sync::watch::Sender<bool>,
 }
 
 impl AppState {
     pub fn new(config: Arc<Config>, services: Services) -> Self {
         let transport = ProcessTransport::new(config.repository.git_binary.clone()).with_max_push_bytes(config.repository.max_push_bytes());
-        Self(Arc::new(AppStateInner { config, services, transport, highlighter: Highlighter::new() }))
+        let (restart, _) = tokio::sync::watch::channel(false);
+        Self(Arc::new(AppStateInner {
+            config,
+            services,
+            transport,
+            highlighter: Highlighter::new(),
+            monitoring: crate::monitoring::Monitor::new(),
+            restart,
+        }))
     }
 }
 

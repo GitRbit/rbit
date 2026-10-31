@@ -1,6 +1,8 @@
 //! Administration panel pages (`/admin/…`) and their view models.
 
 pub mod configuration;
+pub mod monitoring;
+pub mod restart;
 
 use std::{collections::HashSet, time::Duration};
 
@@ -191,6 +193,8 @@ impl InfoRow {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "admin/dashboard.html")]
 pub struct DashboardPage {
+    pub monitoring: monitoring::MonitoringPanel,
+    pub restart_available: bool,
     pub page: Page,
     pub admin_nav: Vec<AdminLink>,
     pub tiles: Vec<StatTile>,
@@ -199,7 +203,7 @@ pub struct DashboardPage {
 }
 
 impl DashboardPage {
-    pub fn new(page: Page, dashboard: &Dashboard) -> Self {
+    pub fn new(page: Page, dashboard: &Dashboard, snapshot: &crate::monitoring::Snapshot, restart_available: bool) -> Self {
         let counts = &dashboard.counts;
         let system = &dashboard.system;
         let tiles = vec![
@@ -239,6 +243,8 @@ impl DashboardPage {
         Self {
             page: page.titled(crate::i18n::text("core", "title-site-administration")),
             admin_nav: AdminSection::Dashboard.nav(),
+            monitoring: monitoring::MonitoringPanel::new(snapshot),
+            restart_available,
             tiles,
             system: system_rows,
             settings: settings_summary(&dashboard.settings),
@@ -819,10 +825,17 @@ mod tests {
                 url: "https://github.com/GitRbit/rbit/releases/tag/v99.0.0".into(),
             }),
         };
-        let html =
-            DashboardPage { page, admin_nav: AdminSection::Dashboard.nav(), tiles: Vec::new(), system: Vec::new(), settings: Vec::new() }
-                .render()
-                .unwrap();
+        let html = DashboardPage {
+            page,
+            admin_nav: AdminSection::Dashboard.nav(),
+            monitoring: monitoring::MonitoringPanel::new(&crate::monitoring::Snapshot { uptime: Duration::ZERO, samples: Vec::new() }),
+            restart_available: false,
+            tiles: Vec::new(),
+            system: Vec::new(),
+            settings: Vec::new(),
+        }
+        .render()
+        .unwrap();
         assert!(html.contains("A newer stable release is available."));
         assert!(html.contains("View rbit 99.0.0 release notes"));
         assert!(html.contains("https://github.com/GitRbit/rbit/releases/tag/v99.0.0"));

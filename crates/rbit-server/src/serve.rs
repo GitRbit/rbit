@@ -35,34 +35,47 @@ async fn open_database(config: &Config) -> anyhow::Result<Database> {
     Database::open_with_key_file(&storage.sqlite_path(), &storage.secret_key_path()).await.context("cannot open SQLite database")
 }
 
-pub async fn run(config: Config) -> anyhow::Result<()> {
+pub async fn run(config: Config) -> anyhow::Result<bool> {
     // Refuse to start rather than fail every page.
     rbit_web::assets::ensure_built().map_err(anyhow::Error::msg)?;
     let config = Arc::new(config);
     let storage = open_storage(&config).await?;
     let services = Services::new(Arc::clone(&config), &storage.database, &storage.kv).await?;
 
-    spawn_session_purger(storage.kv.clone());
+    let purger = spawn_session_purger(storage.kv.clone());
     services.spawn_background();
-    crate::ssh::start(&config, &services);
-
     let background = services.clone();
-    let app = rbit_web::router(AppState::new(Arc::clone(&config), services));
+    let state = AppState::new(Arc::clone(&config), services);
+    let mut restart = state.restart.subscribe();
+    let ssh = crate::ssh::start(&config, &background, restart.clone());
+    let app = rbit_web::router(state);
     let listener =
         http_listener(TcpListener::bind(config.server.bind).await.with_context(|| format!("cannot bind {}", config.server.bind))?);
-    tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), "rbit is listening");
+    tracing::info!(address = %config.server.bind, public_url = %config.server.public_url, data_dir = %config.storage.data_dir.display(), process_id = std::process::id(), "rbit is listening");
     log_setup_token(&config, &background);
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            let restarting = tokio::select! {
+                () = shutdown_signal() => false,
+                result = restart.wait_for(|requested| *requested) => result.is_ok(),
+            };
+            let _ = shutdown_tx.send(restarting);
+        })
         .await
         .context("server error")?;
 
     tracing::info!("shutting down");
+    purger.abort();
+    let _ = purger.await;
+    if let Some(ssh) = ssh {
+        let _ = ssh.await;
+    }
     // Stop background work before closing the stores it writes to.
     background.shutdown().await;
     storage.database.close().await;
-    Ok(())
+    Ok(shutdown_rx.await.unwrap_or(false))
 }
 
 /// On an instance without users, prints what the first (administrator) sign-up needs.
@@ -118,7 +131,7 @@ fn disable_nagle(stream: &mut TcpStream) {
     }
 }
 
-fn spawn_session_purger(kv: KvStore) {
+fn spawn_session_purger(kv: KvStore) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(SESSION_PURGE_INTERVAL);
         loop {
@@ -129,7 +142,7 @@ fn spawn_session_purger(kv: KvStore) {
                 Err(error) => tracing::warn!(%error, "session purge failed"),
             }
         }
-    });
+    })
 }
 
 /// Resolves on Ctrl+C, or SIGTERM on Unix (as sent by systemd and container runtimes).

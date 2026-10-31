@@ -1,5 +1,6 @@
 # Rust
 /target
+/.cargo-build
 
 # Front-end tooling (build-time only)
 /node_modules

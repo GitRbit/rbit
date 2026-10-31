@@ -3,6 +3,7 @@
 .github
 .claude
 target
+.cargo-build
 node_modules
 data
 data*
