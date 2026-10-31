@@ -20,6 +20,7 @@ pub mod error;
 pub mod extract;
 pub mod metrics;
 pub mod middleware;
+pub mod monitoring;
 pub mod partial;
 pub mod render;
 pub mod routes;

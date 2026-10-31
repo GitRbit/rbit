@@ -7,6 +7,10 @@ use clap::{Parser, Subcommand};
 #[derive(Debug, Parser)]
 #[command(name = "rbit", version, about = "A fast, self-hosted Git platform")]
 pub struct Cli {
+    /// Internal worker role used by the Windows restart supervisor.
+    #[cfg(windows)]
+    #[arg(long, hide = true, global = true)]
+    pub restart_worker: bool,
     /// Path to a TOML configuration file. Settings can also be given as `RBIT_*` environment
     /// variables, e.g. `RBIT_SERVER__BIND=0.0.0.0:3000`.
     #[arg(short, long, env = "RBIT_CONFIG", global = true)]
