@@ -3,6 +3,8 @@
 mod auth;
 mod cache;
 mod errors;
+mod extensions;
+pub use extensions::request_hooks;
 mod i18n;
 pub(crate) use i18n::AccountLocale;
 pub use i18n::{LOCALE_COOKIE, locale};

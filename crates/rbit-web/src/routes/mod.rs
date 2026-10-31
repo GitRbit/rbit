@@ -99,6 +99,7 @@ pub fn router(state: AppState) -> Router {
         // Actions: artifacts (A). Downloads stream, so they sit outside the page router.
         .merge(actions_file_routes(&state))
         // Before any route: a hover preload must never reach a side-effecting handler.
+        .layer(from_fn_with_state(state.clone(), middleware::request_hooks))
         .layer(from_fn_with_state(state.clone(), middleware::plugin_admission))
         .layer(from_fn(middleware::preload_guard))
         .layer(from_fn(crate::metrics::track))

@@ -555,3 +555,79 @@ async fn runtime_ui_registration_renders_through_askama_and_cleans_up_on_one_rou
     assert_eq!(scope.in_flight(), 0, "render snapshots do not hold plugin operations open");
     fixture.services.shutdown().await;
 }
+
+#[tokio::test]
+async fn custom_request_hooks_preserve_host_recovery_and_its_security_guards() {
+    use rbit_plugin_api::Generation;
+    use rbit_plugin_runtime::PluginScope;
+    use rbit_services::request_hooks::{HookDecision, HookFuture, HookRegistration, Rejection, RequestHook, RequestMetadata};
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
+
+    #[derive(Debug)]
+    struct RecoveryProbe {
+        timeout: bool,
+        calls: Arc<AtomicUsize>,
+    }
+    impl RequestHook for RecoveryProbe {
+        fn call<'a>(&'a self, _: &'a RequestMetadata) -> HookFuture<'a> {
+            Box::pin(async move {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                if self.timeout {
+                    std::future::pending::<()>().await;
+                }
+                HookDecision::Reject(Rejection::Forbidden)
+            })
+        }
+    }
+
+    for timeout in [false, true] {
+        let fixture = Fixture::new().await;
+        let scope = PluginScope::new(Generation::INITIAL);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let hook =
+            HookRegistration::new("recovery-probe", 0, Duration::from_millis(5), Arc::new(RecoveryProbe { timeout, calls: calls.clone() }))
+                .unwrap();
+        let registration =
+            fixture.services.request_hooks().stage("example.recovery".parse().unwrap(), &scope, scope.generation(), vec![hook]).unwrap();
+        registration.publish().unwrap();
+        assert_eq!(fixture.get("/").await.0, if timeout { StatusCode::SERVICE_UNAVAILABLE } else { StatusCode::FORBIDDEN });
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.get("/admin/plugins").await.0, StatusCode::OK);
+        assert_eq!(
+            fixture.request(Method::GET, "/admin/plugins", Some(&fixture.user_cookie), "http://localhost:3000", "").await.0,
+            StatusCode::NOT_FOUND,
+            "recovery is still administrator-only"
+        );
+        assert_eq!(
+            fixture
+                .request(Method::POST, "/admin/plugins/actions", Some(&fixture.admin_cookie), "https://attacker.example", "enabled=false")
+                .await
+                .0,
+            StatusCode::FORBIDDEN,
+            "recovery never bypasses Origin enforcement"
+        );
+        let expected = if cfg!(feature = "actions") { StatusCode::SEE_OTHER } else { StatusCode::NOT_FOUND };
+        assert_eq!(
+            fixture
+                .request(Method::POST, "/admin/plugins/actions", Some(&fixture.admin_cookie), "http://localhost:3000", "enabled=false")
+                .await
+                .0,
+            expected
+        );
+        assert_eq!(fixture.request(Method::GET, "/login", None, "http://localhost:3000", "").await.0, StatusCode::OK);
+        let (status, _, headers) =
+            fixture.request(Method::POST, "/login", None, "http://localhost:3000", "login=alice&password=correct+horse+battery").await;
+        assert_eq!(status, StatusCode::SEE_OTHER, "administrator sign-in reaches the host authentication flow");
+        assert!(headers.contains_key(header::SET_COOKIE));
+        assert_eq!(fixture.get("/assets/app.bundle.js").await.0, StatusCode::OK);
+        assert_eq!(fixture.get("/healthz").await.0, StatusCode::OK);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "reserved host recovery paths never invoke custom hooks");
+        scope.quiesce();
+        assert_eq!(scope.in_flight(), 0);
+        assert_eq!(fixture.get("/").await.0, StatusCode::OK);
+        fixture.services.shutdown().await;
+    }
+}
