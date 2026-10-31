@@ -46,6 +46,7 @@ mod listings;
 mod markdown_preview;
 mod mirror_progress;
 mod notification_settings;
+mod plugin_pages;
 mod plugins;
 mod properties;
 mod repository_documents;

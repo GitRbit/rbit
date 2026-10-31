@@ -25,6 +25,7 @@ pub mod contributions;
 pub mod dashboards;
 pub mod edits;
 pub mod errors;
+pub mod plugin_pages;
 pub mod plugins;
 // Milestone 3: external sign-in (O).
 pub mod extensions;

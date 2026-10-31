@@ -10,6 +10,7 @@ pub(crate) use i18n::AccountLocale;
 pub use i18n::{LOCALE_COOKIE, locale};
 mod plugins;
 mod security;
+pub(crate) use plugins::PageResponseGuard;
 pub use plugins::plugin_admission;
 
 pub use auth::{LEGACY_SESSION_COOKIE, SESSION_COOKIE, session, session_token};

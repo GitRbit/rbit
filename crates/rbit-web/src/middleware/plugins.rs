@@ -107,10 +107,14 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
         request
     };
 
+    #[cfg(not(feature = "actions"))]
+    let admitted: Option<(rbit_plugin_runtime::OperationLease, tokio_util::sync::CancellationToken)> = None;
+
     let revision = state.services.plugin_revision();
     let read = matches!(*request.method(), axum::http::Method::GET | axum::http::Method::HEAD);
     let target = request.uri().clone();
     let mut response = next.run(request).await;
+    let page_operation = response.extensions_mut().remove::<PageResponseGuard>().and_then(|pending| pending.take());
     let current_revision = state.services.plugin_revision();
     let html = response.headers().get(header::CONTENT_TYPE).is_some_and(|value| value.as_bytes().starts_with(b"text/html"));
     if read && html && current_revision != revision {
@@ -119,25 +123,95 @@ pub async fn plugin_admission(State(state): State<AppState>, request: Request, n
         let mut refresh = axum::response::Redirect::temporary(&target.to_string()).into_response();
         refresh.headers_mut().insert(header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store"));
         refresh.headers_mut().insert("hx-refresh", axum::http::HeaderValue::from_static("true"));
+        copy_security_headers(response.headers(), refresh.headers_mut());
+        let (_, body) = response.into_parts();
+        drop(body);
+        drop(page_operation);
+        drop(admitted);
         return with_revision(refresh, current_revision);
     }
     response = with_revision(response, revision);
-    #[cfg(feature = "actions")]
-    if let Some((lease, cancellation)) = admitted {
+    let (page_guard, page_token) = page_operation.map_or((None, None), |(guard, token)| (Some(guard), Some(token)));
+    let (actions_guard, actions_token) = admitted.map_or((None, None), |(guard, token)| (Some(guard), Some(token)));
+    let cancellation = match (page_token, actions_token) {
+        (Some(primary), secondary) => Some(CancellationPair { primary, secondary }),
+        (None, Some(primary)) => Some(CancellationPair { primary, secondary: None }),
+        (None, None) => None,
+    };
+    if let Some(cancellation) = cancellation {
         let (parts, body) = response.into_parts();
-        response = Response::from_parts(parts, supervised_plugin_body(body, lease, cancellation));
+        response = Response::from_parts(parts, supervise(body, (page_guard, actions_guard), cancellation));
     }
     response
 }
 
+/// A page response carries ownership across host body transforms without cloning it.
+#[derive(Debug, Clone)]
+pub(crate) struct PageResponseGuard(
+    std::sync::Arc<std::sync::Mutex<Option<(rbit_services::plugin_pages::PageOperation, tokio_util::sync::CancellationToken)>>>,
+);
+impl PageResponseGuard {
+    pub(crate) fn new(guard: rbit_services::plugin_pages::PageOperation, token: tokio_util::sync::CancellationToken) -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(Some((guard, token)))))
+    }
+    fn take(&self) -> Option<(rbit_services::plugin_pages::PageOperation, tokio_util::sync::CancellationToken)> {
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CancellationPair {
+    primary: tokio_util::sync::CancellationToken,
+    secondary: Option<tokio_util::sync::CancellationToken>,
+}
+impl CancellationPair {
+    async fn cancelled(&self) {
+        if let Some(secondary) = &self.secondary {
+            tokio::select! { biased; () = self.primary.cancelled() => {}, () = secondary.cancelled() => {} }
+        } else {
+            self.primary.cancelled().await;
+        }
+    }
+    fn is_cancelled(&self) -> bool {
+        self.primary.is_cancelled() || self.secondary.as_ref().is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
+    }
+    fn cancel(&self) {
+        self.primary.cancel();
+        if let Some(secondary) = &self.secondary {
+            secondary.cancel();
+        }
+    }
+}
+
+fn copy_security_headers(source: &axum::http::HeaderMap, target: &mut axum::http::HeaderMap) {
+    for name in [
+        "content-security-policy",
+        "strict-transport-security",
+        "x-content-type-options",
+        "referrer-policy",
+        "x-frame-options",
+        "permissions-policy",
+        "cross-origin-opener-policy",
+        "cross-origin-resource-policy",
+    ] {
+        for value in source.get_all(name) {
+            target.append(axum::http::HeaderName::from_static(name), value.clone());
+        }
+    }
+}
+
 /// Drive admitted output independently of Hyper's polling. A stopped peer must not
 /// prevent cancellation or keep native feature resources alive after disposal.
-#[cfg(feature = "actions")]
-fn supervised_plugin_body(
-    mut body: axum::body::Body,
-    lease: rbit_plugin_runtime::OperationLease,
+#[cfg(all(test, feature = "actions"))]
+fn supervised_plugin_body<Guard: Send + 'static>(
+    body: axum::body::Body,
+    lease: Guard,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> axum::body::Body {
+    supervise(body, lease, CancellationPair { primary: cancellation, secondary: None })
+}
+
+fn supervise<Guard: Send + 'static>(mut body: axum::body::Body, lease: Guard, cancellation: CancellationPair) -> axum::body::Body {
     use http_body::Body as _;
     use std::sync::{
         Arc,
@@ -145,18 +219,21 @@ fn supervised_plugin_body(
     };
     let hint = body.size_hint();
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    let (consumed, consumption) = tokio::sync::oneshot::channel();
     let failed = Arc::new(AtomicBool::new(false));
     let failure = Arc::clone(&failed);
     let stopped = cancellation.clone();
     tokio::spawn(async move {
-        let cancelled = loop {
+        let mut cancelled = loop {
             let frame = tokio::select! {
+                biased;
                 () = stopped.cancelled() => break true,
                 frame = std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)) => frame,
             };
             let Some(frame) = frame else { break false };
             let last = frame.is_err();
             tokio::select! {
+                biased;
                 () = stopped.cancelled() => break true,
                 sent = sender.send(frame) => if sent.is_err() { break false; },
             }
@@ -167,32 +244,51 @@ fn supervised_plugin_body(
         // Releasing operation authority must follow dropping its source, which may
         // own a file reader, Git stream or plugin-specific native resources.
         drop(body);
+        // Closing the frame channel lets the consumer observe EOF. Keep operation
+        // authority and capacity while a complete frame remains unread, without
+        // depending on the peer polling in order to observe generation cancellation.
+        drop(sender);
+        if !cancelled {
+            tokio::select! {
+                biased;
+                () = stopped.cancelled() => cancelled = true,
+                _ = consumption => {}
+            }
+        }
         drop(lease);
         if cancelled {
             failure.store(true, Ordering::Release);
         }
     });
-    axum::body::Body::new(PluginResponseBody { receiver, cancellation, failed, hint, finished: false })
+    axum::body::Body::new(PluginResponseBody { receiver, consumed: Some(consumed), cancellation, failed, hint, finished: false })
 }
 
-#[cfg(feature = "actions")]
 #[derive(Debug)]
 struct PluginResponseBody {
+    consumed: Option<tokio::sync::oneshot::Sender<()>>,
     receiver: tokio::sync::mpsc::Receiver<Result<http_body::Frame<axum::body::Bytes>, axum::Error>>,
-    cancellation: tokio_util::sync::CancellationToken,
+    cancellation: CancellationPair,
     failed: std::sync::Arc<std::sync::atomic::AtomicBool>,
     hint: http_body::SizeHint,
     finished: bool,
 }
 
-#[cfg(feature = "actions")]
 impl Drop for PluginResponseBody {
     fn drop(&mut self) {
         self.cancellation.cancel();
+        self.complete();
     }
 }
 
-#[cfg(feature = "actions")]
+impl PluginResponseBody {
+    fn complete(&mut self) {
+        self.finished = true;
+        if let Some(consumed) = self.consumed.take() {
+            let _ = consumed.send(());
+        }
+    }
+}
+
 impl http_body::Body for PluginResponseBody {
     type Data = axum::body::Bytes;
     type Error = axum::Error;
@@ -205,7 +301,7 @@ impl http_body::Body for PluginResponseBody {
             return std::task::Poll::Ready(None);
         }
         if self.cancellation.is_cancelled() || self.failed.load(std::sync::atomic::Ordering::Acquire) {
-            self.finished = true;
+            self.complete();
             self.receiver.close();
             while self.receiver.try_recv().is_ok() {}
             return std::task::Poll::Ready(Some(Err(axum::Error::new(std::io::Error::new(
@@ -215,7 +311,7 @@ impl http_body::Body for PluginResponseBody {
         }
         match self.receiver.poll_recv(cx) {
             std::task::Poll::Ready(None) => {
-                self.finished = true;
+                self.complete();
                 // Cancellation may race the first flag read and channel closure.
                 if self.failed.load(std::sync::atomic::Ordering::Acquire) {
                     std::task::Poll::Ready(Some(Err(axum::Error::new(std::io::Error::new(
@@ -240,7 +336,7 @@ impl http_body::Body for PluginResponseBody {
                 std::task::Poll::Ready(Some(Ok(frame)))
             }
             std::task::Poll::Ready(Some(Err(error))) => {
-                self.finished = true;
+                self.complete();
                 std::task::Poll::Ready(Some(Err(error)))
             }
             std::task::Poll::Pending => std::task::Poll::Pending,
@@ -307,6 +403,31 @@ impl http_body::Body for CancellableBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn combined_response_guards_release_on_either_scope_without_cancelling_the_other() {
+        for cancel_first in [true, false] {
+            let first = rbit_plugin_runtime::PluginScope::new(rbit_plugin_api::Generation::INITIAL);
+            let second = rbit_plugin_runtime::PluginScope::new(rbit_plugin_api::Generation::INITIAL);
+            let body = supervise(
+                axum::body::Body::from("unread"),
+                (first.try_acquire(first.generation()).unwrap(), second.try_acquire(second.generation()).unwrap()),
+                CancellationPair { primary: first.cancellation_token(), secondary: Some(second.cancellation_token()) },
+            );
+            let (closed, unaffected) = if cancel_first { (&first, &second) } else { (&second, &first) };
+            closed.dispose(std::time::Duration::from_secs(1)).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                while unaffected.in_flight() != 0 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+            assert!(!unaffected.cancellation_token().is_cancelled());
+            assert!(axum::body::to_bytes(body, 64).await.is_err());
+            assert!(unaffected.try_acquire(unaffected.generation()).is_ok());
+        }
+    }
 
     #[test]
     fn workload_credentials_are_bounded_and_detected_in_both_basic_fields() {
@@ -410,17 +531,45 @@ mod tests {
     #[cfg(feature = "actions")]
     #[tokio::test]
     async fn disable_discards_a_finished_but_unread_secret_bearing_response() {
+        struct FinishedSource {
+            sent: bool,
+            dropped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+        impl Drop for FinishedSource {
+            fn drop(&mut self) {
+                self.dropped.store(true, std::sync::atomic::Ordering::Release);
+            }
+        }
+        impl http_body::Body for FinishedSource {
+            type Data = axum::body::Bytes;
+            type Error = std::io::Error;
+            fn poll_frame(
+                mut self: std::pin::Pin<&mut Self>,
+                _: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+                if self.sent {
+                    return std::task::Poll::Ready(None);
+                }
+                self.sent = true;
+                std::task::Poll::Ready(Some(Ok(http_body::Frame::data(axum::body::Bytes::from_static(b"private job specification")))))
+            }
+        }
         let scope = rbit_plugin_runtime::PluginScope::new(rbit_plugin_api::Generation::INITIAL);
-        let response = admitted(axum::body::Body::from("private job specification"), &scope, scope.cancellation_token());
+        let source_dropped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let response = admitted(
+            axum::body::Body::new(FinishedSource { sent: false, dropped: source_dropped.clone() }),
+            &scope,
+            scope.cancellation_token(),
+        );
         tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            while scope.in_flight() != 0 {
+            while !source_dropped.load(std::sync::atomic::Ordering::Acquire) {
                 tokio::task::yield_now().await;
             }
         })
         .await
         .unwrap();
-        // The producer has finished, but the bounded receiver still holds its frame.
-        scope.dispose(std::time::Duration::ZERO).await.unwrap();
+        assert_eq!(scope.in_flight(), 1, "unread output still owns capacity after its producer is dropped");
+        scope.dispose(std::time::Duration::from_secs(1)).await.unwrap();
         assert!(axum::body::to_bytes(response, 1024).await.is_err());
     }
 

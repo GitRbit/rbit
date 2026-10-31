@@ -19,6 +19,7 @@ mod collaborators;
 mod compare;
 mod dashboards;
 mod edits;
+mod plugin_pages;
 mod plugins;
 // Milestone 3: external sign-in (O).
 mod external_auth;
@@ -139,6 +140,7 @@ fn page_routes(state: &AppState) -> Router<AppState> {
         .merge(orgs::routes())
         .merge(admin::routes())
         .merge(plugins::routes())
+        .merge(plugin_pages::routes())
         .merge(i18n::routes())
         .merge(repo_settings::routes())
         .merge(stars::routes())
