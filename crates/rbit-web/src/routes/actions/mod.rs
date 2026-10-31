@@ -126,7 +126,7 @@ impl ChunkWriter {
         let chunk = std::mem::replace(&mut self.chunk, Vec::with_capacity(Self::SIZE));
         self.runtime.block_on(async {
             tokio::select! {
-                () = self.cancellation.cancelled() => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "plugin disabled")),
+                () = self.cancellation.cancelled() => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "plugin disabled")),
                 result = self.sender.send(Ok(chunk.into())) => result.map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "the download was closed")),
             }
         })
@@ -136,7 +136,8 @@ impl ChunkWriter {
 impl std::io::Write for ChunkWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if self.cancellation.is_cancelled() {
-            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "plugin disabled"));
+            // `write_all` retries Interrupted indefinitely; cancellation must be terminal.
+            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "plugin disabled"));
         }
         self.chunk.extend_from_slice(buf);
         if self.chunk.len() >= Self::SIZE {
@@ -264,21 +265,32 @@ mod tests {
     use super::ChunkWriter;
     use std::{io::Write as _, time::Duration};
 
-    #[tokio::test]
-    async fn disabling_interrupts_an_archive_writer_even_when_the_client_does_not_read() {
-        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
-        sender.try_send(Ok(axum::body::Bytes::from_static(b"full"))).unwrap();
-        let cancellation = tokio_util::sync::CancellationToken::new();
-        let mut writer = ChunkWriter::new(sender, cancellation.clone());
-        let (started, ready) = tokio::sync::oneshot::channel();
-        let mut producer = tokio::task::spawn_blocking(move || {
-            started.send(()).unwrap();
-            writer.write_all(&vec![0; ChunkWriter::SIZE])
-        });
-        ready.await.unwrap();
-        assert!(tokio::time::timeout(Duration::from_millis(20), &mut producer).await.is_err());
-        cancellation.cancel();
-        let result = tokio::time::timeout(Duration::from_secs(5), producer).await.unwrap().unwrap();
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::Interrupted);
+    #[test]
+    fn disabling_interrupts_an_archive_writer_even_when_the_client_does_not_read() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.block_on(async {
+                let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+                sender.try_send(Ok(axum::body::Bytes::from_static(b"full"))).unwrap();
+                let cancellation = tokio_util::sync::CancellationToken::new();
+                let mut writer = ChunkWriter::new(sender, cancellation.clone());
+                let (started, ready) = tokio::sync::oneshot::channel();
+                let mut producer = tokio::task::spawn_blocking(move || {
+                    started.send(()).unwrap();
+                    writer.write_all(&vec![0; ChunkWriter::SIZE])
+                });
+                ready.await.unwrap();
+                assert!(tokio::time::timeout(Duration::from_millis(20), &mut producer).await.is_err());
+                cancellation.cancel();
+                let result = tokio::time::timeout(Duration::from_secs(5), producer).await.unwrap().unwrap();
+                assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::BrokenPipe);
+            })
+        }));
+        // A regression must fail within a deadline, rather than hang runtime teardown
+        // forever waiting for an uninterruptible blocking writer.
+        runtime.shutdown_timeout(Duration::from_secs(1));
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
     }
 }
