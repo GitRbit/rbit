@@ -156,8 +156,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci && npm run build
-      # nextest runs every test binary in parallel, each test in its own process. The
-      # workspace has no doctests, which nextest does not run.
+      # nextest runs every test binary in parallel, each test in its own process.
+      # The contract job separately runs plugin SDK doctests, including compile-fail checks.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest

@@ -115,7 +115,7 @@ use rbit_services::{Services, plugin_pages::{
 
 #[derive(Debug, Template)]
 #[template(
-    source = "<section><h1>Plugin status</h1><p>Locale: {{ locale }}</p></section>",
+    source = "<section><h2>Runtime details</h2><p>Locale: {{ locale }}</p></section>",
     ext = "html"
 )]
 struct StatusPage {
