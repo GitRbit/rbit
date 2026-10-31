@@ -116,7 +116,7 @@ impl Drop for Reentrant {
 
 #[test]
 fn destructors_reentering_registry_and_scope_run_outside_both_serialization_locks() {
-    for action in ["unpublish", "replace", "quiesce", "rejected_stage"] {
+    for action in ["unpublish", "replace", "quiesce", "close", "rejected_stage"] {
         let (sender, receiver) = mpsc::channel();
         let worker = thread::spawn(move || {
             let registry = ScopedExtensionRegistry::default();
@@ -133,6 +133,7 @@ fn destructors_reentering_registry_and_scope_run_outside_both_serialization_lock
                     handle.replace(vec![make()]).unwrap();
                 }
                 "quiesce" => scope.quiesce(),
+                "close" => registry.close(),
                 _ => {
                     assert!(registry.stage(owner(), &scope, scope.generation(), vec![make()]).is_err());
                 }
@@ -283,4 +284,57 @@ async fn only_admitted_operations_keep_withdrawn_callback_resources_alive() {
     assert_eq!(drops.load(Ordering::SeqCst), 1);
     scope.dispose(Duration::from_secs(1)).await.unwrap();
     assert!(retained.entries[0].admit().is_err());
+}
+
+#[tokio::test]
+async fn terminal_close_revokes_clones_and_retained_authority_without_disposing_scope() {
+    let registry = ScopedExtensionRegistry::default();
+    let cloned = registry.clone();
+    let scope = scope(4000);
+    let handle = registry.stage(owner(), &scope, scope.generation(), vec![1]).unwrap();
+    handle.publish().unwrap();
+    let snapshot = registry.snapshot();
+    let lease = snapshot.entries[0].admit().unwrap();
+    let token = lease.cancellation_token();
+    cloned.close();
+    assert!(registry.is_closed());
+    assert!(token.is_cancelled());
+    assert!(snapshot.entries[0].admit().is_err());
+    assert!(registry.snapshot().entries.is_empty());
+    assert!(!scope.is_closed(), "registry withdrawal does not dispose arbitrary scope resources");
+    assert_eq!(scope.in_flight(), 1);
+    assert!(matches!(handle.publish(), Err(ExtensionRegistryError::Closed)));
+    assert!(matches!(handle.replace(vec![2]), Err(ExtensionRegistryError::Closed)));
+    assert!(!handle.unpublish());
+    assert!(matches!(registry.stage(owner(), &scope, scope.generation(), vec![3]), Err(ExtensionRegistryError::Closed)));
+    let revision = registry.snapshot().revision;
+    registry.close();
+    assert_eq!(registry.snapshot().revision, revision);
+    drop(lease);
+    scope.dispose(Duration::from_secs(1)).await.unwrap();
+}
+
+#[test]
+fn terminal_close_racing_staging_and_publication_always_wins_eventually() {
+    for generation in 4100..4150 {
+        let registry = ScopedExtensionRegistry::default();
+        let scope = scope(generation);
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_registry = registry.clone();
+        let worker_scope = scope.clone();
+        let worker_barrier = Arc::clone(&barrier);
+        let worker = thread::spawn(move || {
+            worker_barrier.wait();
+            if let Ok(handle) = worker_registry.stage(owner(), &worker_scope, worker_scope.generation(), vec![1]) {
+                let _ = handle.publish();
+                let _ = handle.replace(vec![2]);
+            }
+        });
+        barrier.wait();
+        registry.close();
+        worker.join().unwrap();
+        assert!(registry.is_closed());
+        assert!(registry.snapshot().entries.is_empty());
+        assert!(registry.stage(owner(), &scope, scope.generation(), vec![3]).is_err());
+    }
 }

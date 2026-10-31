@@ -20,6 +20,8 @@ use tokio_util::sync::CancellationToken;
 pub const MAX_SCOPED_EXTENSIONS: usize = 32;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ExtensionRegistryError {
+    #[error("scoped extension registry is permanently closed")]
+    Closed,
     #[error(transparent)]
     Admission(#[from] AdmissionError),
     #[error("plugin already has a scoped extension registration")]
@@ -78,6 +80,8 @@ impl<T> Default for Retired<T> {
     }
 }
 struct State<T> {
+    closed: bool,
+    closing_tokens: Vec<CancellationToken>,
     groups: BTreeMap<PluginId, Group<T>>,
     next_token: u64,
     snapshot: ExtensionSnapshot<T>,
@@ -87,6 +91,8 @@ struct State<T> {
 impl<T> Default for State<T> {
     fn default() -> Self {
         Self {
+            closed: false,
+            closing_tokens: Vec::new(),
             groups: BTreeMap::new(),
             next_token: 1,
             snapshot: ExtensionSnapshot { revision: 1, entries: Arc::from([]) },
@@ -318,6 +324,9 @@ impl<T: Send + Sync + 'static> ScopedExtensionRegistry<T> {
         // On an early error, incoming T destructors must also run after unlocking.
         let mut incoming = Some(values);
         with_state(&self.state, |state| {
+            if state.closed {
+                return Err(ExtensionRegistryError::Closed);
+            }
             state.purge_closed();
             if state.groups.contains_key(&owner) {
                 return Err(ExtensionRegistryError::Conflict);
@@ -348,6 +357,33 @@ impl<T: Send + Sync + 'static> ScopedExtensionRegistry<T> {
                 .insert(owner.clone(), Group { generation, token, admission: admission.clone(), cancellation, batch, published: false });
             Ok(ExtensionRegistration { state: Arc::downgrade(&self.state), owner, generation, token, admission })
         })
+    }
+    /// Permanently revokes every staged/published batch across all clones.
+    /// Admitted operations receive cancellation and remain tracked by their scopes;
+    /// this does not dispose unrelated tasks owned by those scopes.
+    pub fn close(&self) {
+        let (tokens, retired) = detach_state(&self.state, |state| {
+            if state.closed {
+                return state.closing_tokens.clone();
+            }
+            state.closed = true;
+            for (_, group) in std::mem::take(&mut state.groups) {
+                group.batch.revoke();
+                state.closing_tokens.push(group.batch.cancellation.clone());
+                state.retired.groups.push(group);
+            }
+            state.rebuild();
+            state.closing_tokens.clone()
+        });
+        // Every concurrent close also signals the saved tokens before returning.
+        // Wake every admitted operation before any native value destructor runs.
+        for token in tokens {
+            token.cancel();
+        }
+        drop(retired);
+    }
+    pub fn is_closed(&self) -> bool {
+        self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner).closed
     }
     pub fn snapshot(&self) -> ExtensionSnapshot<T> {
         with_state(&self.state, |state| {
@@ -393,6 +429,9 @@ impl<T: Send + Sync + 'static> ExtensionRegistration<T> {
         }
         let state = self.state.upgrade().ok_or(ExtensionRegistryError::Stale)?;
         with_state(&state, |state| {
+            if state.closed {
+                return Err(ExtensionRegistryError::Closed);
+            }
             state.purge_closed();
             let group = state
                 .groups
@@ -427,6 +466,9 @@ impl<T: Send + Sync + 'static> ExtensionRegistration<T> {
         let state = self.state.upgrade().ok_or(ExtensionRegistryError::Stale)?;
         let mut incoming = Some(values);
         with_state(&state, |state| {
+            if state.closed {
+                return Err(ExtensionRegistryError::Closed);
+            }
             state.purge_closed();
             let group = state
                 .groups
