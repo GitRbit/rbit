@@ -15,6 +15,7 @@
 pub mod access_token;
 pub mod oidc;
 pub mod password;
+pub mod plugin_csrf;
 pub mod policy;
 // Actions: S.
 pub mod runner_token;
@@ -28,6 +29,7 @@ pub mod webauthn;
 pub use access_token::AccessTokenSecret;
 pub use oidc::{Flow, FlowKey, IdToken, IdTokenCheck, JwkSet, OidcError, Pkce};
 pub use password::{PasswordError, Passwords};
+pub use plugin_csrf::{PLUGIN_CSRF_MAX_AGE_SECONDS, PLUGIN_CSRF_TOKEN_BYTES, PluginCsrfBinding, PluginCsrfKey};
 pub use policy::{Grants, repo_access};
 // Actions: S.
 pub use runner_token::{RegistrationSecret, RunnerCredential};
