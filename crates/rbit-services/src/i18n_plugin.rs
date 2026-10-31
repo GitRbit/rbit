@@ -126,7 +126,7 @@ impl I18nSlot {
         let enabled = ctx.database.plugin_settings().desired_enabled(I18N_ID).await?.unwrap_or(ctx.config.i18n.enabled);
         #[cfg(not(feature = "i18n"))]
         {
-            let _ui = ui;
+            drop(ui);
             if enabled {
                 return Err(ServiceError::Invalid("this distribution was built without i18n".to_owned()));
             }
