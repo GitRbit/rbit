@@ -136,7 +136,7 @@ mod tests {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
                 locale: rbit_messages::LocaleSnapshot::english(0),
-                ui: Default::default(),
+                ui: rbit_services::ui::UiSnapshot::default(),
                 has_i18n: false,
                 updates: rbit_services::updates::UpdateStatus::default(),
                 plugin_revision: 0,
@@ -169,7 +169,7 @@ mod tests {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
             locale: rbit_messages::LocaleSnapshot::english(0),
-            ui: Default::default(),
+            ui: rbit_services::ui::UiSnapshot::default(),
             has_i18n: false,
             plugin_revision: 0,
             updates: rbit_services::updates::UpdateStatus {

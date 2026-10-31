@@ -198,17 +198,17 @@ mod tests {
     fn page(entries: Vec<UiEntry>) -> Page {
         Page {
             ui: UiSnapshot { revision: 1, entries: Arc::from(entries) },
-            locale: Default::default(),
+            locale: rbit_messages::LocaleSnapshot::default(),
             has_i18n: false,
-            updates: Default::default(),
+            updates: rbit_services::updates::UpdateStatus::default(),
             site_name: "rbit".into(),
             plugin_revision: 1,
-            branding: Default::default(),
+            branding: rbit_core::config::BrandingConfig::default(),
             title: None,
             viewer: None,
             path: "/alice/rocket/actions/42".into(),
             has_unread_notifications: false,
-            theme: Default::default(),
+            theme: crate::themes::Theme::default(),
         }
     }
 
