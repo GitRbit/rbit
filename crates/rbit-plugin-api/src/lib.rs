@@ -6,7 +6,13 @@
 mod identifiers;
 mod lifecycle;
 mod manifest;
+mod ui;
 
 pub use identifiers::{CapabilityId, IdentifierError, PluginId, ServiceId};
 pub use lifecycle::{DesiredState, Generation, GenerationError, PluginState};
 pub use manifest::{ManifestError, PluginManifest, ServiceDependency, ServiceProvided};
+
+pub use ui::{
+    MAX_UI_BYTES, MAX_UI_CONTRIBUTIONS, MAX_UI_LIST_ITEMS, UiContent, UiContribution, UiContributionId, UiContributionSet, UiIcon, UiLink,
+    UiMessage, UiNoticeTone, UiSlot, UiTarget, UiTone, UiValidationError, UiVisibility,
+};

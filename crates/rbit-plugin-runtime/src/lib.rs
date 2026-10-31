@@ -13,11 +13,13 @@ mod admission;
 pub mod graph;
 mod manager;
 mod scope;
+mod ui;
 
 pub use admission::{Admission, AdmissionError, DrainError, OperationLease};
 pub use graph::{GraphError, MAX_PLUGINS, Resolution, resolve};
 pub use manager::{ManagerError, Plugin, PluginFuture, PluginManager, PluginStatus};
 pub use scope::PluginScope;
+pub use ui::{UiEntry, UiRegistration, UiRegistry, UiRegistryError, UiSnapshot};
 
 #[cfg(test)]
 mod tests;
