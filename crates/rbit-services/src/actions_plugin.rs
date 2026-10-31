@@ -354,6 +354,7 @@ impl ActionsSlot {
     fn publish(&self, service: &ActionsService) -> Result<(), ServiceError> {
         let mut current = self.inner.current.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.inner.shutting_down.load(Ordering::Acquire) {
+            drop(current);
             service.quiesce();
             return Err(ServiceError::Conflict("server shutdown"));
         }
@@ -385,17 +386,23 @@ impl ActionsSlot {
         // A publisher may have held this lock before the first revocation store.
         self.inner.ctx.actions_availability.set_enabled(false);
         let service = current.take();
+        drop(current);
         if let Some(service) = service {
             service.quiesce();
+            self.inner.revision.fetch_add(1, Ordering::AcqRel);
         }
-        self.inner.revision.fetch_add(1, Ordering::AcqRel);
+    }
+    /// Close admission synchronously without changing saved intent or cancelling runs.
+    pub(crate) fn prepare_shutdown(&self) {
+        self.inner.shutting_down.store(true, Ordering::Release);
+        #[cfg(feature = "actions")]
+        self.unpublish();
     }
     #[allow(clippy::unused_async)] // The core-only build has no worker to drain.
     pub(crate) async fn shutdown(&self) {
-        self.inner.shutting_down.store(true, Ordering::Release);
+        self.prepare_shutdown();
         #[cfg(feature = "actions")]
         {
-            self.unpublish();
             let mut controller = self.inner.controller.lock().await;
             // Finish revocation after any operation that was already preparing while
             // shutdown began. No new lifecycle operation can pass the shutdown flag.
@@ -427,6 +434,49 @@ mod tests {
     use super::*;
     use rbit_core::Config;
     use rbit_storage::{Database, KvStore};
+
+    #[derive(Debug)]
+    struct ReenterPublication {
+        slot: ActionsSlot,
+        observed: Arc<AtomicBool>,
+    }
+
+    impl Drop for ReenterPublication {
+        fn drop(&mut self) {
+            let unlocked = self.slot.inner.current.try_read().is_ok();
+            self.observed.store(unlocked && self.slot.snapshot().is_none(), Ordering::Release);
+        }
+    }
+
+    #[tokio::test]
+    async fn native_cleanup_runs_after_the_actions_publication_lock_is_released() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        config.storage.data_dir = directory.path().join("data");
+        config.updates.check_for_updates = false;
+        config.actions.enabled = true;
+        std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
+        let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
+        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
+        let slot = services.actions.clone();
+        let scope = slot.inner.observed_scope.read().unwrap().clone().unwrap();
+        let observed = Arc::new(AtomicBool::new(false));
+        let registry = rbit_plugin_runtime::ScopedExtensionRegistry::default();
+        let registration = registry
+            .stage(
+                "example.cleanup".parse().unwrap(),
+                &scope,
+                scope.generation(),
+                vec![ReenterPublication { slot: slot.clone(), observed: observed.clone() }],
+            )
+            .unwrap();
+        registration.publish().unwrap();
+        slot.prepare_shutdown();
+        assert!(observed.load(Ordering::Acquire), "native cleanup can reenter snapshot with no publication guard held");
+        assert!(registry.snapshot().entries.is_empty());
+        services.shutdown().await;
+    }
 
     #[tokio::test]
     async fn shutdown_rejects_new_publication_and_clears_a_previously_staged_service() {

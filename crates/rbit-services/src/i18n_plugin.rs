@@ -468,17 +468,25 @@ impl I18nSlot {
     }
 
     fn unpublish(&self) {
+        self.clear_publication(true);
+    }
+
+    fn clear_publication(&self, force_revision: bool) {
         #[cfg(feature = "i18n")]
-        if let Some((scope, registration)) = &*self.inner.ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+        let activation = self.inner.ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        #[cfg(feature = "i18n")]
+        if let Some((scope, registration)) = activation {
             registration.unpublish();
             scope.quiesce();
         }
         let mut publication = self.inner.publication.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         #[cfg(feature = "i18n")]
-        {
-            publication.live = None;
+        let changed = publication.live.take().is_some();
+        #[cfg(not(feature = "i18n"))]
+        let changed = false;
+        if force_revision || changed {
+            publication.revision = publication.revision.saturating_add(1);
         }
-        publication.revision = publication.revision.saturating_add(1);
     }
 
     #[cfg(feature = "i18n")]
@@ -541,9 +549,13 @@ impl I18nSlot {
         tokio::task::spawn_blocking(move || parse_records(records)).await.map_err(ServiceError::internal)?
     }
 
+    pub(crate) fn prepare_shutdown(&self) {
+        let first = !self.inner.shutting_down.swap(true, Ordering::AcqRel);
+        self.clear_publication(first);
+    }
+
     pub(crate) async fn shutdown(&self) {
-        self.inner.shutting_down.store(true, Ordering::Release);
-        self.unpublish();
+        self.prepare_shutdown();
         let mut controller = self.inner.controller.lock().await;
         self.unpublish();
         #[cfg(feature = "i18n")]

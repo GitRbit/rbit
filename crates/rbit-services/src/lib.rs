@@ -166,7 +166,16 @@ impl Services {
         }
         Ok(self.core.context().database.language_packs().set_account_locale(actor.id(), locale).await?)
     }
+    /// Terminally revoke plugin entry points before the host drains HTTP requests.
+    /// Core services and stores remain available until asynchronous shutdown finishes.
+    pub fn prepare_shutdown(&self) {
+        self.pages.close();
+        self.request_hooks.close();
+        self.i18n.prepare_shutdown();
+        self.actions.prepare_shutdown();
+    }
     pub async fn shutdown(&self) {
+        self.prepare_shutdown();
         self.i18n.shutdown().await;
         self.actions.shutdown().await;
         self.core.shutdown().await;
