@@ -29,6 +29,15 @@ import "./markdown.js";
 import "./discussion.js";
 import "./markdown-preview.js";
 
+// Load restart controls before their POST can take the server offline.
+function enhanceServerRestart() {
+  if (!document.querySelector('form[action="/admin/restart"]')) return;
+  const script = "/assets/admin-restart.js";
+  import(script).catch(() => {}); // The ordinary form remains available without JS.
+}
+enhanceServerRestart();
+document.addEventListener("htmx:afterSettle", enhanceServerRestart);
+
 // Long code and diff views: exact placeholder heights for virtual blocks.
 import "./blocks.js";
 

@@ -21,6 +21,7 @@ struct Fixture {
     router: Router,
     admin: User,
     cookie: String,
+    restart: Option<tokio::sync::watch::Receiver<bool>>,
 }
 
 impl Fixture {
@@ -44,8 +45,10 @@ impl Fixture {
             .unwrap();
         let token = services.accounts.start_session(&admin).await.unwrap();
         let cookie = format!("rbit_session={}", token.encode());
-        let router = rbit_web::router(AppState::new(config, services.clone()));
-        Self { _directory: directory, database, services, router, admin, cookie }
+        let state = AppState::new(config, services.clone());
+        let restart = Some(state.restart.subscribe());
+        let router = rbit_web::router(state);
+        Self { _directory: directory, database, services, router, admin, cookie, restart }
     }
 
     async fn get(&self, section: &str) -> Response {
@@ -97,6 +100,128 @@ impl Fixture {
 
 async fn html(response: Response) -> String {
     String::from_utf8(axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap()
+}
+
+#[tokio::test]
+async fn restart_requires_an_admin_confirmation_and_same_origin_and_records_an_audit_event() {
+    let fixture = Fixture::new().await;
+    let request = |method: &str, path: &str, cookie: &str, origin: &str, body: &str| {
+        Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::COOKIE, cookie)
+            .header(header::HOST, "localhost:3000")
+            .header(header::ORIGIN, origin)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(body.to_owned()))
+            .unwrap()
+    };
+    let send = |method, path, cookie, origin, body| fixture.router.clone().oneshot(request(method, path, cookie, origin, body));
+    let response = send("GET", "/admin/restart", &fixture.cookie, "http://localhost:3000", "").await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(html(response).await.contains("Restart this rbit application?"));
+    assert!(!*fixture.restart.as_ref().unwrap().borrow());
+    let response = send("POST", "/admin/restart", "", "http://localhost:3000", "confirmation=restart").await.unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let response = send("POST", "/admin/restart", &fixture.cookie, "https://another.example", "confirmation=restart").await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let response = send("POST", "/admin/restart", &fixture.cookie, "http://localhost:3000", "confirmation=no").await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert!(!*fixture.restart.as_ref().unwrap().borrow());
+
+    let member = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "member".into(), email: "member@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    let token = fixture.services.accounts.start_session(&member).await.unwrap();
+    let cookie = format!("rbit_session={}", token.encode());
+    for (method, path) in [("GET", "/admin/restart"), ("POST", "/admin/restart"), ("GET", "/admin/restart/status")] {
+        assert_eq!(
+            send(method, path, &cookie, "http://localhost:3000", "confirmation=restart").await.unwrap().status(),
+            StatusCode::NOT_FOUND
+        );
+    }
+    let response = send("POST", "/admin/restart", &fixture.cookie, "http://localhost:3000", "confirmation=restart").await.unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert!(html(response).await.contains("Restart requested"));
+    assert!(*fixture.restart.as_ref().unwrap().borrow());
+    let audit = fixture.services.audit.recent_for(&fixture.admin, 10).await.unwrap();
+    assert!(audit.iter().any(|event| event.action == rbit_services::audit::AuditAction::ServerRestartRequested));
+    let response = send("GET", "/admin/restart/status", &fixture.cookie, "http://localhost:3000", "").await.unwrap();
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert!(html(response).await.contains(r#""restarting":true"#));
+}
+
+#[tokio::test]
+async fn an_embedded_host_without_a_restart_receiver_reports_unavailable() {
+    let mut fixture = Fixture::new().await;
+    fixture.restart.take();
+    let response = fixture
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin/restart")
+                .header(header::COOKIE, &fixture.cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("confirmation=restart"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert!(html(response).await.contains("Restart is unavailable"));
+}
+
+#[tokio::test]
+async fn monitoring_is_admin_only_uncached_and_does_not_render_the_full_dashboard() {
+    let fixture = Fixture::new().await;
+    let request = |cookie: &str| Request::builder().uri("/admin/monitoring").header(header::COOKIE, cookie).body(Body::empty()).unwrap();
+    let anonymous = fixture.router.clone().oneshot(request("")).await.unwrap();
+    assert_eq!(anonymous.status(), StatusCode::SEE_OTHER);
+    let user = fixture
+        .services
+        .accounts
+        .create_user(
+            SignUp { username: "member".into(), email: "member@example.com".into(), password: "correct horse battery".into() },
+            Some(false),
+        )
+        .await
+        .unwrap();
+    let token = fixture.services.accounts.start_session(&user).await.unwrap();
+    let cookie = format!("rbit_session={}", token.encode());
+    let denied = fixture.router.clone().oneshot(request(&cookie)).await.unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    assert!(!html(denied).await.contains("<div data-monitoring-snapshot>"));
+
+    let response = fixture.router.clone().oneshot(request(&fixture.cookie)).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert!(!response.headers().contains_key(header::ETAG));
+    let content = html(response).await;
+    assert!(content.contains("<div data-monitoring-snapshot>"));
+    assert!(content.contains("Request traffic") && content.contains("Response time"));
+    assert!(content.contains("HTTP responses") && content.contains("Git activity"));
+    assert!(!content.contains("<!doctype") && !content.contains("Data directory"));
+
+    let response = fixture
+        .router
+        .clone()
+        .oneshot(Request::builder().uri("/admin").header(header::COOKIE, &fixture.cookie).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let content = html(response).await;
+    assert!(content.contains("data-admin-monitoring"));
+    assert!(content.contains("<div data-monitoring-snapshot>"));
+    assert!(content.contains("admin-monitoring.js?v="));
 }
 
 fn mail_inputs() -> BTreeMap<String, String> {

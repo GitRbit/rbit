@@ -73,6 +73,7 @@ const MAX_FORM_BYTES: usize = 1024 * 1024;
 
 /// Builds the complete application router.
 pub fn router(state: AppState) -> Router {
+    state.monitoring.start();
     Router::new()
         .merge(page_routes(&state))
         .merge(static_routes())
@@ -93,7 +94,7 @@ pub fn router(state: AppState) -> Router {
         .merge(if state.services.actions.is_some() { actions::file_routes(&state) } else { Router::new() })
         // Before any route: a hover preload must never reach a side-effecting handler.
         .layer(from_fn(middleware::preload_guard))
-        .layer(from_fn(crate::metrics::track))
+        .layer(from_fn_with_state(state.monitoring.clone(), crate::metrics::track))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

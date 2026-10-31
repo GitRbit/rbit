@@ -1,0 +1,28 @@
+{% extends "admin/layout.html" %}
+{% import "macros.html" as ui %}
+{% block admin_content %}
+<div class="mb-5"><h2 class="text-xl font-semibold tracking-tight">{% if restarting %}Restarting server{% else %}Restart server{% endif %}</h2></div>
+<section class="box max-w-xl p-5">
+  {% if restarting %}
+  <h3 class="flex items-center gap-2 text-sm font-medium">{% call ui::icon("refresh", "size-4 text-ink-muted") %}{% endcall %}Restart requested</h3>
+  <p class="mt-3 text-[13px] text-ink-muted">The server is finishing active HTTP requests, stopping SSH and background jobs, and closing storage before restarting. Long-running transfers can take a while to finish.</p>
+  <p class="mt-3 text-xs text-ink-muted" data-restart-status role="status">Waiting for the server to return…</p>
+  <a class="btn mt-5" href="/admin" hx-boost="false">Return to dashboard</a>
+  <noscript><p class="mt-3 text-xs text-ink-muted">Wait a moment, then return to the dashboard to reconnect.</p></noscript>
+  <script src="{{ page.asset("admin-restart.js") }}" type="module"></script>
+  {% else if available %}
+  <h3 class="text-sm font-medium">Restart this rbit application?</h3>
+  <p class="mt-3 text-[13px] text-ink-muted">The site will be briefly unavailable while the application shuts down and starts again with its saved configuration. HTTP requests are allowed to finish; SSH connections will close. Users will keep their saved sessions.</p>
+  <p class="mt-3 text-xs text-ink-muted">This action is recorded in the administration audit log.</p>
+  <form class="mt-5 flex flex-wrap gap-2" method="post" action="/admin/restart" hx-boost="false">
+    <input type="hidden" name="confirmation" value="restart">
+    <button type="submit" class="btn btn-primary">{% call ui::icon("refresh", "size-3.5") %}{% endcall %}Restart server</button>
+    <a class="btn" href="/admin">Cancel</a>
+  </form>
+  {% else %}
+  <h3 class="text-sm font-medium">Restart is unavailable</h3>
+  <p class="mt-3 text-[13px] text-ink-muted">This server host does not support application restarts. Restart rbit using your service manager.</p>
+  <a class="btn mt-5" href="/admin">Back to dashboard</a>
+  {% endif %}
+</section>
+{% endblock %}

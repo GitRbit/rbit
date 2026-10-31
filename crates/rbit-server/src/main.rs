@@ -32,9 +32,64 @@ use crate::cli::{Cli, Command, UserCommand};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    #[cfg(windows)]
+    let restart_worker = cli.restart_worker;
+    // Resolve before serving so replacing the installed executable still restarts
+    // the original path, even on systems that label a running old inode "deleted".
+    let mut replacement = std::process::Command::new(std::env::current_exe()?);
+    replacement.args(std::env::args_os().skip(1));
+    let runtime = tokio::runtime::Runtime::new()?;
+    let result = runtime.block_on(run(cli));
+    // Release listeners, workers and redb's exclusive file lock before relaunching.
+    drop(runtime);
+    if result? {
+        #[cfg(windows)]
+        if restart_worker {
+            // The original process supervises every replacement, so repeated
+            // restarts keep a fixed two-process tree and a stable service PID.
+            std::process::exit(75);
+        }
+        relaunch(&mut replacement)?;
+    }
+    Ok(())
+}
+
+fn relaunch(command: &mut std::process::Command) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // Replaces this process, preserving the PID tracked by systemd and Docker.
+        Err(command.exec())
+    }
+    #[cfg(windows)]
+    {
+        use std::io::IsTerminal as _;
+        use std::os::windows::process::CommandExt as _;
+        command.arg("--restart-worker");
+        if !std::io::stdin().is_terminal() && !std::io::stdout().is_terminal() && !std::io::stderr().is_terminal() {
+            // Preserve an existing interactive console, and keep headless servers hidden.
+            command.creation_flags(0x0800_0000);
+        }
+        loop {
+            let mut child = command.spawn()?;
+            tracing::info!(process_id = child.id(), "replacement application started");
+            let status = child.wait()?;
+            if status.code() == Some(75) {
+                continue;
+            }
+            return if status.success() { Ok(()) } else { Err(std::io::Error::other(format!("replacement application exited: {status}"))) };
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = command;
+        Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "application restarts are unsupported on this platform"))
+    }
+}
+
+async fn run(cli: Cli) -> anyhow::Result<bool> {
     // Before anything can open a TLS connection (webhook deliveries, mail, mirror checks):
     // every rustls user in the process then agrees on `ring`, whatever its features.
     rbit_services::webhooks::delivery::install_crypto_provider();
@@ -53,10 +108,10 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command.unwrap_or(Command::Serve) {
         Command::Serve => serve::run(config).await,
-        Command::Migrate => serve::migrate(config).await,
-        Command::Backup { output } => backup::run(config, output).await,
+        Command::Migrate => serve::migrate(config).await.map(|()| false),
+        Command::Backup { output } => backup::run(config, output).await.map(|()| false),
         Command::User { command: UserCommand::Create { username, email, admin } } => {
-            serve::create_user(config, username, email, admin).await
+            serve::create_user(config, username, email, admin).await.map(|()| false)
         }
         Command::Client(_) => unreachable!("handled before the configuration is loaded"),
     }
