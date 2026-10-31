@@ -7,7 +7,6 @@ use super::{layout::Page, org::OrgHeader, repo::RepoHeader};
 #[derive(Debug, Clone)]
 pub struct ExtensionLink {
     pub label: String,
-    pub key: String,
     pub url: String,
     pub icon: &'static str,
     pub active: bool,
@@ -154,8 +153,21 @@ impl Page {
     fn extension_link(&self, link: &UiLink, context: &Context<'_>) -> Option<ExtensionLink> {
         let url = link.target.render(context.owner, context.repo).ok()?;
         let active = self.path == url || self.path.strip_prefix(&url).is_some_and(|rest| rest.starts_with('/'));
-        let key = url.rsplit('/').next().unwrap_or_default().to_owned();
-        Some(ExtensionLink { key, label: self.extension_message(&link.label), url, icon: link.icon.as_str(), active })
+        Some(ExtensionLink { label: self.extension_message(&link.label), url, icon: link.icon.as_str(), active })
+    }
+}
+
+impl<'a> Context<'a> {
+    fn repository(header: &'a RepoHeader) -> Self {
+        // RepoHeader is constructed only after the route's repository access check.
+        Self {
+            owner: Some(&header.owner),
+            repo: Some(&header.name),
+            repository_reader: true,
+            repository_admin: header.can_admin,
+            enabled_plugins: &header.enabled_plugins,
+            organization_admin: false,
+        }
     }
 }
 
@@ -319,19 +331,5 @@ mod tests {
         println!(
             "16 links, 1000 warmed samples, identical HTML; core p50={core_p50}ns p95={core_p95}ns; plugin p50={plugin_p50}ns p95={plugin_p95}ns"
         );
-    }
-}
-
-impl<'a> Context<'a> {
-    fn repository(header: &'a RepoHeader) -> Self {
-        // RepoHeader is constructed only after the route's repository access check.
-        Self {
-            owner: Some(&header.owner),
-            repo: Some(&header.name),
-            repository_reader: true,
-            repository_admin: header.can_admin,
-            enabled_plugins: &header.enabled_plugins,
-            organization_admin: false,
-        }
     }
 }

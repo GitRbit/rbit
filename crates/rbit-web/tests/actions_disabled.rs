@@ -164,9 +164,14 @@ async fn no_page_offers_actions() {
         "/acme/settings/hooks/new",
     ] {
         let page = fixture.page(path).await;
-        for marker in
-            ["data-repo-tab=\"actions\"", "/alice/rocket/actions", "/settings/actions", "/admin/runners", "workflow_run", "workflow_job"]
-        {
+        for marker in [
+            "data-repo-tab=\"rbit.actions:actions-repository-tab\"",
+            "/alice/rocket/actions",
+            "/settings/actions",
+            "/admin/runners",
+            "workflow_run",
+            "workflow_job",
+        ] {
             assert!(!page.contains(marker), "{path} shows {marker}");
         }
     }

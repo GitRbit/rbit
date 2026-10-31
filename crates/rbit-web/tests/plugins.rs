@@ -221,7 +221,7 @@ async fn one_router_reflects_enable_and_disable_in_pages_navigation_and_openapi(
         let (status, _, _) = fixture.get("/alice/rocket/actions").await;
         assert_eq!(status, if enabled { StatusCode::OK } else { StatusCode::NOT_FOUND });
         let (_, body, _) = fixture.get("/alice/rocket").await;
-        assert_eq!(body.contains("data-repo-tab=\"actions\""), enabled);
+        assert_eq!(body.contains("data-repo-tab=\"rbit.actions:actions-repository-tab\""), enabled);
         let (_, body, _) = fixture.get("/api/v1/openapi.json").await;
         let document: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(document["paths"].as_object().unwrap().keys().any(|path| path.contains("/actions/")), enabled);

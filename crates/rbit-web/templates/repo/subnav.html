@@ -34,7 +34,7 @@
     <a class="tab" data-repo-tab="releases" data-preload="visible" href="{{ header.releases_url }}" {% if header.active_tab == "releases" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-releases") }}</a>
     <a class="tab" data-repo-tab="activity" data-preload="visible" href="{{ header.activity_url }}" {% if header.active_tab == "activity" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "repo-subnav-a-activity") }}</a>
     {% for extension in page.repository_tabs(header) %}{% for link in extension.links %}
-    <a class="tab" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}" data-repo-tab="{{ link.key }}" data-preload="visible" href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>
+    <a class="tab" data-plugin-ui="{{ extension.id }}" data-plugin-owner="{{ extension.owner }}" data-plugin-generation="{{ extension.generation }}" data-repo-tab="{{ extension.id }}" data-preload="visible" href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>
     {% endfor %}{% endfor %}
     {% if header.can_admin %}
     <a class="tab" data-repo-tab="settings" href="{{ header.settings_url }}" {% if header.active_tab == "settings" %}aria-current="page"{% endif %}>{{ crate::i18n::text("core", "nav-settings") }}</a>
