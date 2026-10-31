@@ -20,7 +20,8 @@ Mutations use POST at the same reserved global or repository namespace as pages:
 `/{owner}/{repo}/-/plugins/{plugin}/{path}`. Paths are validated literal suffixes,
 not patterns or arbitrary router mounts. Global mutations require `SignedIn` or
 `SiteAdmin`; repository mutations require `RepositoryWriter` or
-`RepositoryAdmin`. Public and read-only audiences cannot register mutations.
+`RepositoryAdmin`. Public and read-only audiences cannot register ordinary mutations.
+The sealed locale-preference capability below is the explicit guest exception.
 The host resolves the actor and repository permissions before admitting a handler.
 
 A GET page explicitly declares the mutation paths it needs using
@@ -109,7 +110,8 @@ bounded output and escaping responsibilities as GET pages.
 
 ## Host validation and CSRF
 
-The adapter accepts only uncompressed `application/x-www-form-urlencoded` input,
+For ordinary forms, the adapter accepts only uncompressed
+`application/x-www-form-urlencoded` input,
 with an optional UTF-8 charset. Encoded bodies are bounded to 32 KiB before
 parsing. Schemas have at most 32 domain fields; text fields have at most 4096
 bytes. Unknown fields, duplicate decoded names, malformed escapes, invalid UTF-8,
@@ -145,12 +147,58 @@ reuse a deleted ID. These proofs therefore do not promise invalidation after
 every delete-and-recreate at the same path. The host still checks current access;
 plugins needing stale-object protection must enforce domain version preconditions.
 
+## Explicit upload and guest preference capabilities
+
+`compiled_upload` pairs a global `SiteAdmin` descriptor with
+`MutationDescriptor::with_upload(max_bytes)`. The descriptor must have an empty
+ordinary form schema and a positive limit no larger than 2 MiB. Factory/descriptor
+pairing is checked during registration: changing an input-kind enum does not grant
+another factory upload or anonymous privileges. The callback receives typed
+`UploadData` bytes and authenticated `MutationContext`, without filenames, MIME
+metadata, raw headers or a multipart stream.
+
+The host accepts only uncompressed multipart input for that declared capability:
+first one `_csrf` text field, then one `pack` binary field, with no further fields.
+Proof fields are capped at 128 bytes; framing adds at most 8 KiB to the declared
+archive limit. The complete wire body, including any MIME epilogue, is counted.
+The entire upload has a ten-second deadline, and at most four upload operations
+can be admitted across the host. Those permits supplement the ordinary 64-operation
+mutation limit and remain held through the guarded response lifetime. Session and
+administrator authorization are refreshed after reading and verifying the proof.
+The archive installer must still validate its own format and transactional writes.
+
+`MutationDescriptor::locale_preference` and `compiled_locale_preference` form a
+separate, sealed global capability. Its callback receives `PreferenceContext`
+with an optional authenticated actor and a typed `LocaleChoice`, and returns
+`PreferenceOutcome`. It cannot make an ordinary public mutation or name arbitrary
+cookie/header effects. `PreferenceOutcome::Selected { choice, redirect }` asks
+the host to set or clear only its locale preference cookie; the host controls its
+name, path, lifetime, HttpOnly, SameSite and Secure attributes. The language plugin
+also validates the choice against currently available locales and persists the
+preference for an authenticated account.
+
+A guest GET form receives an opaque browser-binding cookie and a separate
+browser-domain proof, bound to that browser, exact route, generation, registration
+version, host boot and expiry. HTTPS uses a Secure `__Host-` binding cookie; local
+HTTP has an explicitly separate fallback cookie. Authenticated forms use the
+session proof instead. Neither proof domain can authorize the other, and only a
+declared locale-preference route accepts the guest domain. Origin checks remain
+mandatory when the browser supplies them. Callback code receives no browser
+binding secret, session credentials, CookieJar or arbitrary request headers.
+
+Languages uses these APIs at `/-/plugins/rbit.i18n/language` and the installed
+`rbit.i18n-admin` pack-management routes. See [Languages](i18n.md) for lifecycle
+ownership and explicit `prepare_plugin_routes` startup integration. These are
+bounded native capabilities, not dynamically installed code or unrestricted HTTP
+middleware.
+
 ## Cancellation and commit lifetime
 
 Mutation admission is limited to 64 concurrent operations across the host and
 128 registered routes, with at most 32 routes per registration. Admission includes
 input reading, callback execution and the guarded response lifetime. Uploads have
-an absolute one-second deadline; drip-fed frames do not extend it. After reading
+an absolute one-second deadline for ordinary forms; declared binary uploads use
+the separate ten-second bound. Drip-fed frames do not extend either deadline. After reading
 and verifying a proof, the host refreshes session and repository authorization
 before entering native code. Callback
 HTTP waiting is bounded by a declared deadline of at most one second. Request

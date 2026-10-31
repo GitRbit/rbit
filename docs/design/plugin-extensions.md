@@ -7,7 +7,10 @@ request hooks, namespaced compiled native GET pages and typed POST mutations are
 implemented. Arbitrary route mounts, richer hook contexts and unrestricted
 middleware remain later stages. The [native page guide](../plugin-routes.md)
 documents rendering and host security profiles; [native plugin forms](../plugin-mutations.md)
-covers session-bound proofs, bounded schemas and owned commit lifetime.
+covers session-bound proofs, bounded schemas and owned commit lifetime, plus
+explicit administrator uploads and a sealed guest locale-preference capability.
+Languages exercises these APIs with separate active-provider and installed-admin
+route scopes; see [Languages](../i18n.md).
 
 ## Ownership and publication
 

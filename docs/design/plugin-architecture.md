@@ -11,7 +11,10 @@ lifecycle; [UI extensions](../plugin-ui.md) records the supported slots and boun
 [Native plugin pages](../plugin-routes.md) documents the namespaced compiled Askama GET
 registry and host-enforced permission profiles; [native plugin forms](../plugin-mutations.md)
 adds session-bound proofs, typed POST input and tracked commit lifetime. Legacy Actions
-routes remain in the host.
+routes remain in the host. Languages now uses the native registry for its active
+picker/preferences and separately scoped installed administrator pack repair. Its
+Web factories are bound explicitly before HTTP startup, without a Services-to-Web
+dependency.
 See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
 Source reference links below follow their current crate locations.
 

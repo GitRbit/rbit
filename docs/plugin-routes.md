@@ -4,9 +4,10 @@ Runtime page registration lets a trusted embedded plugin publish and remove
 compiled Askama pages without rebuilding the application router. It extends the
 same generation ownership used by [UI and request hooks](design/plugin-extensions.md).
 It does not load templates from uploaded files or provide a sandbox for native
-code. Existing Actions and i18n route tables remain compiled host routes in this
-phase; they are not silently migrated into the new registry. There is no dynamic
-installation of executable plugin code.
+code. Languages uses these registries for its picker and package administration;
+see [Languages](i18n.md) for active versus installed scope ownership. Existing
+Actions route tables remain compiled host routes. There is no dynamic installation
+of executable plugin code.
 
 ## Route ownership
 
@@ -31,6 +32,24 @@ handles cannot replace or remove a newer registration.
 The route registry revision contributes to the host's plugin revision. Publishing,
 replacing or removing routes therefore retires browser shell, history and preload
 identities on the same terms as UI registration. A cached link grants no authority.
+
+## Built-in startup composition
+
+The official server calls `rbit_web::prepare_plugin_routes(&state).await?` before
+serving HTTP. Embedded Web hosts must do the same after constructing `AppState`.
+Services supplies shared registries and accepts Web's compiled blueprints through
+`bind_i18n_routes(active, management)` without depending on Web. Binding is serialized
+with the provider controller and attaches to an already-active generation. Repeated
+preparation of a clone of the same host is idempotent; a different host cannot silently
+replace callbacks already bound to Services.
+
+Languages publishes `rbit.i18n` pages with its active scope. A separate
+`rbit.i18n-admin` installed scope retains administrator package repair while the
+provider is disabled or failed. Their different owners preserve the registry's
+single-batch-per-owner rule. Both scopes close terminally at host shutdown.
+Blueprints capture weak host references; they must not create a Services-to-callback
+ownership cycle. Existing GET bookmarks redirect to canonical plugin routes where
+supported; removed legacy POST handlers do not bypass registry admission or proofs.
 
 ## Host security remains in charge
 

@@ -17,6 +17,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Languages now uses scoped native Askama pages and forms for its picker and pack
+  management. Guest choices use host-bound proofs and a typed locale-cookie effect;
+  administrator uploads have a 2 MiB bound and four-operation limit. Separate installed
+  management routes remain available when catalogs are disabled or failed. Legacy
+  language GET bookmarks redirect; obsolete POST handlers are removed. Embedded hosts
+  explicitly prepare plugin routes before HTTP startup ([Languages](docs/i18n.md)).
 - Plugin-owned compiled Askama forms and runtime POST routes with host-enforced
   session and repository authorization, session-bound CSRF proofs and bounded typed
   input. Replacement invalidates old forms; cancellation preserves already-started
