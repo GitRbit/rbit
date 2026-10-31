@@ -1,5 +1,7 @@
 //! Real browser mutations keep host authentication, proofs and typed Askama output.
 
+mod security;
+
 use super::*;
 use rbit_services::plugin_pages::{
     FormAction, FormField, FormFieldKind, FormReference, FormSchema, FormValues, MutationAudience, MutationContext, MutationDescriptor,

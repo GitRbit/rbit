@@ -384,6 +384,6 @@ async fn runtime_route_registration_preserves_nested_navigation_identity() {
     fixture.services.shutdown().await;
 }
 
+mod forms;
 mod lifecycle;
 mod shutdown;
-mod forms;

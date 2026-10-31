@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Plugin-owned compiled Askama forms and runtime POST routes with host-enforced
+  session and repository authorization, session-bound CSRF proofs and bounded typed
+  input. Replacement invalidates old forms; cancellation preserves already-started
+  native commits until they finish, and shutdown drains them before core services.
+  See [native plugin forms](docs/plugin-mutations.md).
 - Runtime registration of compiled Askama plugin pages, with host-enforced global
   and repository permissions, bounded rendering and generation-owned cleanup.
   Replacement and disable revoke stale handlers; unread full and HTMX responses
