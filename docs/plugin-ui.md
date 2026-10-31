@@ -83,8 +83,10 @@ Reviewed modules keep that top level side-effect free, and allocate all behavior
 
 Only reviewed, host-shipped modules run in the forge origin. Compiled native plugins are
 trusted server code; scoped registration is lifecycle management, not a sandbox. General
-installable executable plugins, isolated third-party interactive frames, dynamic route
-installation and broader component schemas remain separate stages.
+installable executable plugins, isolated third-party interactive frames, arbitrary route
+captures and broader component schemas remain separate stages. Namespaced runtime
+[Askama pages](plugin-routes.md) and [typed forms and mutations](plugin-mutations.md)
+are supported by separate host-enforced contracts.
 
 See [plugin core](plugin-core.md), [languages](i18n.md), the
 [implementation plan](design/plugin-architecture.md) and
