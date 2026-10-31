@@ -189,3 +189,73 @@ async fn shutdown_preparation_is_terminal_cancels_extensions_and_keeps_core_open
     #[cfg(feature = "i18n")]
     assert_eq!(database.plugin_settings().desired_enabled("rbit.i18n").await.unwrap(), Some(true));
 }
+
+#[tokio::test]
+async fn mutation_commit_survives_waiter_abort_and_blocks_global_shutdown_until_finished() {
+    use plugin_mutations::{
+        FormAction, FormData, FormSchema, MutationAudience, MutationContext, MutationDescriptor, MutationOutcome, PageActor,
+        PluginRedirect, compiled_mutation,
+    };
+    let (_directory, database, services) = fixture().await;
+    let admin = administrator(&database).await;
+    let scope = PluginScope::new(Generation::INITIAL);
+    let owner = "example.forms".parse().unwrap();
+    let mutations = services.mutation_registry();
+    let started = Arc::new(tokio::sync::Notify::new());
+    let released = Arc::new(tokio::sync::Notify::new());
+    let descriptor = MutationDescriptor::new(
+        "save",
+        PageScope::Global,
+        "save",
+        MutationAudience::SignedIn,
+        Duration::from_secs(1),
+        FormSchema::new(Vec::new()).unwrap(),
+    )
+    .unwrap();
+    let commit_services = services.clone();
+    let commit_actor = admin.clone();
+    let ready = started.clone();
+    let release = released.clone();
+    let callback = compiled_mutation(descriptor, move |context, _| {
+        let (ready, release, core, actor) = (ready.clone(), release.clone(), commit_services.clone(), commit_actor.clone());
+        async move {
+            ready.notify_one();
+            context.cancellation_token().cancelled().await;
+            release.notified().await;
+            // The owned commit can still use domain services after its HTTP waiter ended.
+            core.accounts.start_session(&actor).await.unwrap();
+            Ok(MutationOutcome::<Example>::Redirect(PluginRedirect::new("edit").unwrap()))
+        }
+    });
+    let before = services.plugin_revision();
+    let registration = mutations.stage(owner, &scope, scope.generation(), vec![callback]).unwrap();
+    assert_eq!(services.plugin_revision(), before);
+    registration.publish().unwrap();
+    assert!(services.plugin_revision() > before);
+    let handle = mutations.snapshot().find(&"example.forms".parse().unwrap(), PageScope::Global, "save").unwrap();
+    let lease = handle.admit().unwrap();
+    let actor = PageActor { account_id: admin.id().0, is_admin: true };
+    let context = MutationContext::new(
+        actor,
+        None,
+        rbit_messages::LocaleSnapshot::english(0),
+        FormAction::new("save", "/-/plugins/example.forms/save", "host-proof").unwrap(),
+    );
+    let request = tokio::spawn(async move { lease.execute(context, FormData::new(Vec::new()).unwrap()).await });
+    started.notified().await;
+    request.abort();
+    assert!(request.await.unwrap_err().is_cancelled());
+    assert_eq!(scope.in_flight(), 1);
+
+    let closing = services.clone();
+    let mut shutdown = tokio::spawn(async move { closing.shutdown().await });
+    assert!(tokio::time::timeout(Duration::from_millis(20), &mut shutdown).await.is_err());
+    assert!(mutations.is_closed());
+    assert!(handle.admit().is_err());
+    assert!(registration.publish().is_err());
+    let session = services.accounts.start_session(&admin).await.unwrap();
+    assert!(services.accounts.resume_session(&session).await.unwrap().is_some());
+    released.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), shutdown).await.unwrap().unwrap();
+    assert_eq!(scope.in_flight(), 0, "global shutdown waited for the actual commit worker");
+}

@@ -13,6 +13,7 @@ mod i18n_plugin;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
 pub mod ui;
 pub use rbit_plugin_web as plugin_pages;
+pub use rbit_plugin_web as plugin_mutations;
 pub use rbit_plugin_web as request_hooks;
 #[cfg(test)]
 mod page_tests;
@@ -26,6 +27,7 @@ pub struct Services {
     ui: rbit_plugin_runtime::UiRegistry,
     request_hooks: request_hooks::RequestHookRegistry,
     pages: plugin_pages::PageRegistry,
+    mutations: plugin_mutations::MutationRegistry,
 }
 
 impl Deref for Services {
@@ -50,6 +52,7 @@ impl Services {
             ui,
             request_hooks: request_hooks::RequestHookRegistry::new(),
             pages: plugin_pages::PageRegistry::new(),
+            mutations: plugin_mutations::MutationRegistry::new(),
         })
     }
     pub fn spawn_background(&self) {
@@ -72,6 +75,7 @@ impl Services {
             .saturating_add(self.ui.snapshot().revision)
             .saturating_add(self.request_hooks.revision())
             .saturating_add(self.pages.revision())
+            .saturating_add(self.mutations.revision())
     }
     /// Immutable presentation data; snapshots never retain plugin authority or leases.
     pub fn ui_snapshot(&self) -> ui::UiSnapshot {
@@ -89,6 +93,10 @@ impl Services {
     /// Trusted host capability for registering compiled, generation-scoped pages.
     pub fn page_registry(&self) -> plugin_pages::PageRegistry {
         self.pages.clone()
+    }
+    /// Trusted host capability for registering compiled, generation-scoped mutations.
+    pub fn mutation_registry(&self) -> plugin_mutations::MutationRegistry {
+        self.mutations.clone()
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
@@ -169,6 +177,7 @@ impl Services {
     /// Terminally revoke plugin entry points before the host drains HTTP requests.
     /// Core services and stores remain available until asynchronous shutdown finishes.
     pub fn prepare_shutdown(&self) {
+        self.mutations.close();
         self.pages.close();
         self.request_hooks.close();
         self.i18n.prepare_shutdown();
@@ -176,6 +185,9 @@ impl Services {
     }
     pub async fn shutdown(&self) {
         self.prepare_shutdown();
+        // HTTP waiters may have ended while an owned native commit is still running.
+        // Keep domain services and stores open until the actual operation finishes.
+        self.mutations.wait_for_idle().await;
         self.i18n.shutdown().await;
         self.actions.shutdown().await;
         self.core.shutdown().await;
