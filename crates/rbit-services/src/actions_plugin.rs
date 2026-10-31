@@ -16,7 +16,7 @@ use rbit_actions::ActionsService;
 #[cfg(feature = "actions")]
 use rbit_plugin_api::{Generation, PluginId, PluginManifest};
 #[cfg(feature = "actions")]
-use rbit_plugin_runtime::{Plugin, PluginFuture, PluginManager, PluginScope};
+use rbit_plugin_runtime::{Plugin, PluginFuture, PluginManager, PluginScope, UiRegistration, UiRegistry};
 #[cfg(feature = "actions")]
 use std::{sync::Mutex, time::Duration};
 
@@ -43,6 +43,8 @@ struct Inner {
     desired_enabled: AtomicBool,
     #[cfg(feature = "actions")]
     controller: Arc<tokio::sync::Mutex<Controller>>,
+    #[cfg(feature = "actions")]
+    ui_registration: Arc<Mutex<Option<UiRegistration>>>,
 }
 
 #[cfg(feature = "actions")]
@@ -60,6 +62,8 @@ struct EmbeddedActions {
     staged: Arc<Mutex<Option<ActionsService>>>,
     observed_scope: Arc<RwLock<Option<PluginScope>>>,
     cancel_on_stop: AtomicBool,
+    ui: UiRegistry,
+    ui_registration: Arc<Mutex<Option<UiRegistration>>>,
 }
 
 #[cfg(feature = "actions")]
@@ -76,10 +80,14 @@ impl Plugin for EmbeddedActions {
     }
     fn start(&self, scope: PluginScope) -> PluginFuture {
         *self.observed_scope.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(scope.clone());
+        let registration = self.ui.stage(self.manifest.id.clone(), &scope, scope.generation(), crate::ui::actions());
+        let ui_registration = Arc::clone(&self.ui_registration);
         let service = ActionsService::with_scope(self.ctx.clone(), scope);
         *self.staged.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(service.clone());
         let ctx = self.ctx.clone();
         Box::pin(async move {
+            *ui_registration.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some(registration.map_err(|error| error.to_string())?);
             reconcile_pending(&ctx).await.map_err(|error| error.to_string())?;
             Ok(())
         })
@@ -118,7 +126,7 @@ async fn reconcile_pending(ctx: &ServiceContext) -> Result<(), ServiceError> {
 
 impl ActionsSlot {
     #[cfg(not(feature = "actions"))]
-    pub(crate) async fn new(ctx: ServiceContext) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(ctx: ServiceContext, _ui: rbit_plugin_runtime::UiRegistry) -> Result<Self, ServiceError> {
         let enabled = ctx.database.plugin_settings().desired_enabled(ACTIONS_ID).await?.unwrap_or(ctx.config.actions.enabled);
         if enabled {
             Err(ServiceError::Invalid("this distribution was built without Actions".to_owned()))
@@ -134,7 +142,7 @@ impl ActionsSlot {
         }
     }
     #[cfg(feature = "actions")]
-    pub(crate) async fn new(ctx: ServiceContext) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(ctx: ServiceContext, ui: UiRegistry) -> Result<Self, ServiceError> {
         #[cfg(feature = "actions")]
         {
             reconcile_pending(&ctx).await?;
@@ -149,12 +157,15 @@ impl ActionsSlot {
             };
             let background_started = Arc::new(AtomicBool::new(false));
             let observed_scope = Arc::new(RwLock::new(None));
+            let ui_registration = Arc::new(Mutex::new(None));
             let plugin = Arc::new(EmbeddedActions {
                 manifest,
                 ctx: ctx.clone(),
                 staged: Arc::new(Mutex::new(None)),
                 observed_scope: Arc::clone(&observed_scope),
                 cancel_on_stop: AtomicBool::new(false),
+                ui,
+                ui_registration: Arc::clone(&ui_registration),
             });
             let mut manager = PluginManager::new(semver::Version::new(1, 0, 0), Duration::from_secs(30));
             manager.install(plugin.clone()).map_err(ServiceError::internal)?;
@@ -171,6 +182,7 @@ impl ActionsSlot {
                     observed_scope,
                     desired_enabled: AtomicBool::new(enabled),
                     controller: Arc::new(tokio::sync::Mutex::new(Controller { manager, plugin })),
+                    ui_registration,
                 }),
             };
             if enabled {
@@ -353,11 +365,22 @@ impl ActionsSlot {
         self.inner.ctx.actions_availability.set_enabled(true);
         self.inner.revision.fetch_add(1, Ordering::AcqRel);
         drop(current);
+        let registration = self.inner.ui_registration.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        if let Err(error) = registration
+            .ok_or_else(|| ServiceError::internal(std::io::Error::other("Actions activated without staged UI")))
+            .and_then(|registration| registration.publish().map_err(ServiceError::internal))
+        {
+            self.unpublish();
+            return Err(error);
+        }
         Ok(())
     }
     #[cfg(feature = "actions")]
     fn unpublish(&self) {
         self.inner.ctx.actions_availability.set_enabled(false);
+        if let Some(registration) = &*self.inner.ui_registration.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+            registration.unpublish();
+        }
         let mut current = self.inner.current.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         // A publisher may have held this lock before the first revocation store.
         self.inner.ctx.actions_availability.set_enabled(false);

@@ -27,6 +27,7 @@ async fn absent_actions_cannot_be_enabled_and_disabling_persists_intent() {
     assert!(!services.actions_available());
     assert!(services.actions.is_none());
     assert!(services.actions_status().await.is_none());
+    assert_eq!(services.ui_snapshot().entries.len(), 0, "absent plugin code never registers UI");
     assert!(matches!(services.set_actions_enabled(&administrator, true).await, Err(rbit_services::ServiceError::Invalid(_))));
     assert_eq!(database.plugin_settings().desired_enabled("rbit.actions").await.unwrap(), None);
     services.set_actions_enabled(&administrator, false).await.unwrap();

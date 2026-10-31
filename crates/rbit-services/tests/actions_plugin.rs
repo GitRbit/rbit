@@ -111,6 +111,9 @@ async fn runtime_enable_and_disable_unpublish_before_draining_and_revoke_old_han
     let old = fixture.actions();
     let lease = old.admit().unwrap();
     let generation = lease.generation();
+    let old_ui = fixture.services.ui_snapshot();
+    assert_eq!(old_ui.entries.len(), 5);
+    assert!(old_ui.entries.iter().all(|entry| entry.owner.as_str() == ACTIONS_ID && entry.generation == generation));
     assert_eq!(fixture.services.actions_status().await.unwrap().state, PluginState::Active);
     let work = running_work(&fixture).await;
     old.spawn_background();
@@ -118,6 +121,8 @@ async fn runtime_enable_and_disable_unpublish_before_draining_and_revoke_old_han
     let services = fixture.services.clone();
     let disable = tokio::spawn(async move { services.set_actions_enabled(&admin, false).await });
     wait_for_unpublished(&fixture.services).await;
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0, "UI must disappear while old operations are still draining");
+    assert_eq!(old_ui.entries.len(), 5, "an in-flight render retains pure presentation data without blocking disable");
 
     assert!(!disable.is_finished(), "the admitted response must keep cleanup incomplete");
     assert!(fixture.services.actions_status().await.unwrap().in_flight >= 1);
@@ -140,10 +145,15 @@ async fn runtime_enable_and_disable_unpublish_before_draining_and_revoke_old_han
     let current = fixture.actions();
     let new_lease = current.admit().unwrap();
     assert_ne!(new_lease.generation(), generation, "reactivation must not resurrect stale handles");
+    let new_ui = fixture.services.ui_snapshot();
+    assert_eq!(new_ui.entries.len(), 5, "reactivation replaces registrations without duplicating them");
+    assert!(new_ui.entries.iter().all(|entry| entry.generation == new_lease.generation()));
+    assert!(new_ui.revision > old_ui.revision);
     assert!(current.authenticate_task(&work.token).await.unwrap().is_none());
     assert!(old.admit().is_err());
     drop(new_lease);
     fixture.services.shutdown().await;
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0);
 }
 
 #[tokio::test]
@@ -244,6 +254,7 @@ async fn cancelling_the_request_waiter_does_not_abandon_disable_or_release_its_l
     let request = tokio::spawn(async move { services.set_actions_enabled(&actor, false).await });
     wait_for_unpublished(&fixture.services).await;
     request.abort();
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0, "aborting the HTTP waiter cannot resurrect withdrawn UI");
     assert!(request.await.unwrap_err().is_cancelled());
     assert!(matches!(fixture.services.set_actions_enabled(&admin, true).await, Err(ServiceError::Conflict("plugin lifecycle operation"))));
     assert_eq!(fixture.services.actions_status().await.unwrap().state, PluginState::Quiescing);
@@ -269,5 +280,26 @@ async fn cancelling_the_request_waiter_does_not_abandon_disable_or_release_its_l
     .await
     .unwrap();
     assert!(fixture.services.actions.is_some());
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 5);
+    fixture.services.shutdown().await;
+}
+
+#[tokio::test]
+async fn repeated_activation_cycles_replace_ui_generations_without_leaking_contributions() {
+    let fixture = Fixture::with(|config| config.actions.enabled = false).await;
+    let admin = administrator(&fixture);
+    let mut previous_generation = None;
+    for _ in 0..3 {
+        assert_eq!(fixture.services.ui_snapshot().entries.len(), 0);
+        fixture.services.set_actions_enabled(&admin, true).await.unwrap();
+        let snapshot = fixture.services.ui_snapshot();
+        assert_eq!(snapshot.entries.len(), 5);
+        let generation = snapshot.entries[0].generation;
+        assert_ne!(Some(generation), previous_generation);
+        assert!(snapshot.entries.iter().all(|entry| entry.generation == generation));
+        previous_generation = Some(generation);
+        fixture.services.set_actions_enabled(&admin, false).await.unwrap();
+        assert_eq!(fixture.services.ui_snapshot().entries.len(), 0);
+    }
     fixture.services.shutdown().await;
 }

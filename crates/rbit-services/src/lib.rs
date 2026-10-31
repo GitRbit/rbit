@@ -11,6 +11,7 @@ mod actions_plugin;
 pub use actions_plugin::ActionsSlot;
 mod i18n_plugin;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
+pub mod ui;
 
 /// Composition root. Core services never depend on optional plugin implementations.
 #[derive(Debug, Clone)]
@@ -18,6 +19,7 @@ pub struct Services {
     core: Arc<rbit_services_base::Services>,
     pub actions: ActionsSlot,
     pub i18n: I18nSlot,
+    ui: rbit_plugin_runtime::UiRegistry,
 }
 
 impl Deref for Services {
@@ -32,9 +34,10 @@ impl Services {
         config.i18n.validate().map_err(ServiceError::Invalid)?;
         // Feature preparation has large state; keep it out of every caller's async frame.
         let core = Arc::new(Box::pin(rbit_services_base::Services::new(config, database, kv)).await?);
-        let actions = Box::pin(ActionsSlot::new(core.context().clone())).await?;
-        let i18n = Box::pin(I18nSlot::new(core.context().clone())).await?;
-        Ok(Self { core, actions, i18n })
+        let ui = rbit_plugin_runtime::UiRegistry::default();
+        let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone())).await?;
+        let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone())).await?;
+        Ok(Self { core, actions, i18n, ui })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -50,7 +53,11 @@ impl Services {
     }
     /// Revision used to invalidate feature-dependent browser navigation snapshots.
     pub fn plugin_revision(&self) -> u64 {
-        self.actions.revision().saturating_add(self.i18n.revision())
+        self.actions.revision().saturating_add(self.i18n.revision()).saturating_add(self.ui.snapshot().revision)
+    }
+    /// Immutable presentation data; snapshots never retain plugin authority or leases.
+    pub fn ui_snapshot(&self) -> ui::UiSnapshot {
+        self.ui.snapshot()
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())

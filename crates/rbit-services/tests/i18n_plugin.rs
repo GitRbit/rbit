@@ -101,11 +101,16 @@ async fn disabled_install_then_live_update_and_disable_preserve_consistent_old_d
     assert_eq!(installed.message_count, 1);
     assert!(installed.message_total > 1);
     assert!(!fixture.services.i18n_enabled());
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0, "installing data while disabled does not expose plugin UI");
     assert_eq!(fixture.services.locale_snapshot(Some("fr"), None, None).lang(), "en");
     fixture.services.set_account_locale(&fixture.reader, Some("fr")).await.unwrap();
     fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
     let old = fixture.services.locale_snapshot(Some("fr"), None, None);
     let generation = fixture.services.i18n_status().await.unwrap().generation;
+    let old_ui = fixture.services.ui_snapshot();
+    assert_eq!(old_ui.entries.len(), 1);
+    assert_eq!(old_ui.entries[0].owner.as_str(), I18N_ID);
+    assert_eq!(Some(old_ui.entries[0].generation), generation);
     assert_eq!((old.lang(), old.text("core", "nav-explore")), ("fr", "Explorer".to_owned()));
     assert_eq!(old.text("core", "nav-sign-in"), "Sign in");
     let revision = fixture.services.plugin_revision();
@@ -119,14 +124,21 @@ async fn disabled_install_then_live_update_and_disable_preserve_consistent_old_d
     assert!(fixture.services.plugin_revision() > revision);
     tokio::time::timeout(Duration::from_secs(2), fixture.services.set_i18n_enabled(&fixture.admin, false)).await.unwrap().unwrap();
     assert_eq!(fixture.services.locale_snapshot(Some("fr"), None, None).lang(), "en");
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0);
+    assert_eq!(old_ui.entries.len(), 1, "retained presentation snapshots do not keep a generation admitted");
     assert_eq!(old.text("core", "nav-explore"), "Explorer", "data snapshots carry no authority and cannot deadlock disable");
     assert_eq!(fixture.database.language_packs().account_locale(fixture.reader.id()).await.unwrap().as_deref(), Some("fr"));
     assert!(fixture.services.remove_language_pack(&fixture.admin, "example.french").await.unwrap());
     fixture.services.set_i18n_enabled(&fixture.admin, true).await.unwrap();
     assert_ne!(fixture.services.i18n_status().await.unwrap().generation, generation);
+    let current_ui = fixture.services.ui_snapshot();
+    assert_eq!(current_ui.entries.len(), 1);
+    assert_eq!(Some(current_ui.entries[0].generation), fixture.services.i18n_status().await.unwrap().generation);
+    assert!(current_ui.revision > old_ui.revision);
     assert_eq!(fixture.services.available_locales(), ["en"]);
     assert_eq!(fixture.services.locale_snapshot(Some("fr"), None, None).lang(), "en");
     fixture.services.shutdown().await;
+    assert_eq!(fixture.services.ui_snapshot().entries.len(), 0);
 }
 
 #[tokio::test]
@@ -239,6 +251,7 @@ async fn a_corrupt_stored_package_fails_to_english_and_can_be_removed_without_pa
     fixture.services.shutdown().await;
     let resumed = Services::new(Arc::clone(&fixture.config), &fixture.database, &fixture.kv).await.unwrap();
     assert!(!resumed.i18n_enabled());
+    assert_eq!(resumed.ui_snapshot().entries.len(), 0, "failed preparation must not publish staged UI");
     assert_eq!(resumed.locale_snapshot(Some("fr"), None, None).lang(), "en");
     assert_ne!(resumed.i18n_status().await.unwrap().state, PluginState::Active);
     resumed.set_i18n_enabled(&fixture.admin, false).await.unwrap();

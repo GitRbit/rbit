@@ -30,6 +30,7 @@ async fn unavailable_provider_rejects_enablement_without_losing_preferences_or_i
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     assert!(!services.i18n_available());
     assert!(!services.i18n_enabled());
+    assert_eq!(services.ui_snapshot().entries.len(), 0, "missing i18n code cannot publish language settings UI");
     assert_eq!(services.locale_snapshot(Some("fr"), None, None).lang(), "en");
     assert!(matches!(services.set_i18n_enabled(&admin, true).await, Err(ServiceError::Invalid(_))));
     assert!(

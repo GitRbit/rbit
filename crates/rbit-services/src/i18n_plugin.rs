@@ -25,7 +25,7 @@ use rbit_messages::{English, MessageSchema, Messages};
 #[cfg(feature = "i18n")]
 use rbit_plugin_api::{DesiredState, PluginManifest, PluginState};
 #[cfg(feature = "i18n")]
-use rbit_plugin_runtime::{Plugin, PluginFuture, PluginManager, PluginScope};
+use rbit_plugin_runtime::{Plugin, PluginFuture, PluginManager, PluginScope, UiRegistration};
 #[cfg(feature = "i18n")]
 use rbit_storage::sqlite::language_packs::{LanguagePack as StoredPack, NewLanguagePack};
 #[cfg(feature = "i18n")]
@@ -53,6 +53,8 @@ struct Inner {
     status: RwLock<Option<PluginStatus>>,
     shutting_down: AtomicBool,
     controller: Arc<tokio::sync::Mutex<Controller>>,
+    #[cfg(feature = "i18n")]
+    ui_activation: Arc<Mutex<Option<(PluginScope, UiRegistration)>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +80,8 @@ struct EmbeddedI18n {
     ctx: ServiceContext,
     publication: Arc<RwLock<Publication>>,
     staged: Arc<Mutex<Option<Arc<LiveCatalog>>>>,
+    ui: rbit_plugin_runtime::UiRegistry,
+    ui_activation: Arc<Mutex<Option<(PluginScope, UiRegistration)>>>,
 }
 
 #[cfg(feature = "i18n")]
@@ -87,10 +91,14 @@ impl Plugin for EmbeddedI18n {
     }
 
     fn start(&self, scope: PluginScope) -> PluginFuture {
+        let registration = self.ui.stage(self.manifest.id.clone(), &scope, scope.generation(), crate::ui::i18n());
+        let ui_activation = Arc::clone(&self.ui_activation);
         let ctx = self.ctx.clone();
         let staged = Arc::clone(&self.staged);
         let publication = Arc::clone(&self.publication);
         Box::pin(async move {
+            *ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some((scope.clone(), registration.map_err(|error| error.to_string())?));
             let records = ctx.database.language_packs().list().await.map_err(|error| error.to_string())?;
             let revision = next_revision(&publication).map_err(|error| error.to_string())?;
             let lease = scope.try_acquire(scope.generation()).map_err(|error| error.to_string())?;
@@ -113,11 +121,12 @@ impl Plugin for EmbeddedI18n {
 }
 
 impl I18nSlot {
-    pub(crate) async fn new(ctx: ServiceContext) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(ctx: ServiceContext, ui: rbit_plugin_runtime::UiRegistry) -> Result<Self, ServiceError> {
         let revision = initial_revision()?;
         let enabled = ctx.database.plugin_settings().desired_enabled(I18N_ID).await?.unwrap_or(ctx.config.i18n.enabled);
         #[cfg(not(feature = "i18n"))]
         {
+            let _ui = ui;
             if enabled {
                 return Err(ServiceError::Invalid("this distribution was built without i18n".to_owned()));
             }
@@ -137,6 +146,7 @@ impl I18nSlot {
             // memory is gone, and English stays published until a new catalog is ready.
             ctx.database.plugin_settings().complete_disable(I18N_ID).await?;
             let publication = Arc::new(RwLock::new(Publication { revision, live: None }));
+            let ui_activation = Arc::new(Mutex::new(None));
             let plugin = Arc::new(EmbeddedI18n {
                 manifest: PluginManifest {
                     id: I18N_ID.parse().map_err(ServiceError::internal)?,
@@ -149,6 +159,8 @@ impl I18nSlot {
                 ctx: ctx.clone(),
                 publication: Arc::clone(&publication),
                 staged: Arc::new(Mutex::new(None)),
+                ui,
+                ui_activation: Arc::clone(&ui_activation),
             });
             let mut manager = PluginManager::new(semver::Version::new(1, 0, 0), Duration::from_secs(30));
             manager.install(plugin.clone()).map_err(ServiceError::internal)?;
@@ -159,6 +171,7 @@ impl I18nSlot {
                     status: RwLock::new(manager.status(&plugin.manifest.id)),
                     shutting_down: AtomicBool::new(false),
                     controller: Arc::new(tokio::sync::Mutex::new(Controller { manager, plugin })),
+                    ui_activation,
                 }),
             };
             if enabled {
@@ -455,6 +468,11 @@ impl I18nSlot {
     }
 
     fn unpublish(&self) {
+        #[cfg(feature = "i18n")]
+        if let Some((scope, registration)) = &*self.inner.ui_activation.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+            registration.unpublish();
+            scope.quiesce();
+        }
         let mut publication = self.inner.publication.write().unwrap_or_else(std::sync::PoisonError::into_inner);
         #[cfg(feature = "i18n")]
         {
@@ -484,6 +502,21 @@ impl I18nSlot {
         }
         publication.revision = staged.revision;
         publication.live = Some(staged);
+        drop(publication);
+        let registration = self
+            .inner
+            .ui_activation
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(|(_, registration)| registration.clone());
+        if let Err(error) = registration
+            .ok_or_else(|| ServiceError::internal(std::io::Error::other("i18n activated without staged UI")))
+            .and_then(|registration| registration.publish().map_err(ServiceError::internal))
+        {
+            self.unpublish();
+            return Err(error);
+        }
         Ok(())
     }
 
