@@ -54,7 +54,8 @@ rbit/
     ├── rbit-messages/       # Shared message schema and built-in English fallback
     ├── rbit-i18n/           # Optional bounded Fluent catalogs and data-only language packs
     ├── rbit-plugin-api/     # Validated manifests, service declarations and lifecycle contracts
-    ├── rbit-plugin-runtime/ # Embedded plugin controller, dependencies and generation scopes
+    ├── rbit-plugin-runtime/ # Embedded plugin controller, dependencies, scoped UI/callback registries
+    ├── rbit-plugin-web/     # Bounded metadata middleware hooks without Axum or forge dependencies
     └── rbit-e2e/            # End-to-end and Git compatibility tests (test-only)
 ```
 
@@ -1571,6 +1572,11 @@ lifecycle management and generation-scoped disposal. Actions is an optional crat
 intent. The UI and API documentation follow active publication. Request bodies, response
 streams, Git completion and blocking producers retain leases until cleanup completes.
 Localization and data-only language-pack installation are described in [languages](i18n.md).
+[UI extensions](plugin-ui.md) use scope-owned registrations and compiled Askama rendering.
+The shared scoped registry also powers metadata-only request middleware through
+`rbit-plugin-web`; the Axum adapter remains in `rbit-web`. Host authentication, Origin,
+body, caching and security-header policy remain outside plugin control. See
+[scoped extension contracts](design/plugin-extensions.md) for bounds and cleanup.
 Executable package installation and sandboxed execution remain later stages of the
 [implementation plan](design/plugin-architecture.md).
 

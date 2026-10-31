@@ -2,13 +2,14 @@
 
 Status: proposed implementation plan. Baseline: `main` at `9f07d6f`, inspected on October 30, 2026.
 
-Implementation progress: Actions is now an optional embedded plugin with live administrator
-controls, request and stream admission, persisted intent and crash-safe revocation. The next
-stage adds optional embedded i18n, installable data-only packs, locale preferences and catalog
-revision invalidation; [languages](../i18n.md) records the delivered coverage and remaining
-email/dynamic-prose conversion. See
-[plugin core](../plugin-core.md) for the delivered behavior and remaining stages. Source
-reference links below follow their current crate locations.
+Implementation progress: Actions and i18n are optional embedded plugins with live
+administrator controls. Language packs, account preferences and locale revision invalidation
+are delivered; [languages](../i18n.md) records their coverage. Runtime UI contributions now
+use scoped registrations and compiled Askama host components, with a shared browser cleanup
+lifecycle; [UI extensions](../plugin-ui.md) records the supported slots and boundaries.
+[Scoped extension and middleware design](plugin-extensions.md) covers the next host interface.
+See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
+Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.
 

@@ -98,9 +98,12 @@ OpenAPI are generated from current availability rather than the immutable startu
 A feature revision invalidates preloads and restored navigation snapshots. HTML reads that
 cross a revision transition refresh instead of caching an inconsistent shell.
 
-Actions log enhancements load only on job pages and dispose their listeners when those pages
-are replaced. The loader accepts only the trusted same-origin Actions asset; arbitrary
-third-party scripts do not gain access to the forge origin.
+Plugin UI contributions register with a scope and generation, update atomically and clear
+synchronously on quiesce. Actions and Languages navigation/settings use those registrations.
+Each page renders an immutable snapshot through compiled Askama components. The shared
+browser lifecycle loads approved enhancements on matching roots and disposes their listeners,
+timers, observers and pending work on navigation or observed provider changes. See
+[UI extensions](plugin-ui.md) for slots, bounds and the trusted native boundary.
 
 ## Contracts and dependency boundaries
 
@@ -117,12 +120,30 @@ for retry. The controller currently supports trusted embedded implementations, n
 untrusted native-code sandbox. Host authorization and the current generation remain
 mandatory when exposing an implementation to HTTP.
 
+## Custom middleware and other extensions
+
+`ScopedExtensionRegistry<T>` generalizes the registration lifetime to trusted callback
+adapters. Retained snapshots require fresh admission; replacement and unpublication revoke
+old batches even while the parent plugin remains active. Resource limits include staged
+registrations. Callback values retire outside registry and scope cleanup locks.
+
+`rbit-plugin-web` supplies the first request-hook adapter. Trusted composition code accesses
+`Services::request_hooks()`, stages validated hooks under a plugin scope and publishes after
+readiness. Hooks receive a bounded method and matched-route pattern, can continue with safe
+diagnostic headers or return a fixed denial, and run within per-hook and total deadlines.
+The host retains authentication, Origin checks, request/response bodies, cache policy and
+security headers. Exact recovery and operational route patterns bypass hooks so a broken
+policy cannot block sign-in, plugin administration or health probes; their normal host
+security checks still run. This is an initial middleware contract; raw Axum layers, private request
+context and arbitrary response transformation require additional reviewed interfaces.
+See [scoped extension contracts](design/plugin-extensions.md).
+
 ## Verification
 
 The focused checks are:
 
 ```sh
-cargo test --locked -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-actions-core
+cargo test --locked -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-plugin-web -p rbit-actions-core
 cargo test --locked -p rbit-services --test integration actions_plugin
 cargo test --locked -p rbit-services --no-default-features --test integration actions_unavailable
 cargo check --locked -p rbit-server --no-default-features

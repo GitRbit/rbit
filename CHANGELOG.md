@@ -17,6 +17,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Runtime UI extension registrations with atomic updates, generation-owned cleanup and
+  compiled Askama navigation, cards, notices and lists. Actions and Languages use scoped
+  contributions; trusted browser enhancements share bounded, cancellable resource ownership.
+  See [UI extensions](docs/plugin-ui.md).
+- Reusable scoped extension registries and bounded runtime request middleware hooks.
+  Custom trusted hooks receive declared route metadata, can reject requests or add safe
+  diagnostic headers, and retain generation admission through cancellation and deadlines.
+  Host authentication, Origin, bodies and security headers remain host-controlled.
+
 - Plugin core with optional Actions: administrators can enable and disable Actions in
   **Admin → Plugins** without restarting the forge. Persisted intent, scoped admission,
   cancellable request/response streams and durable revocation/check-report recovery keep
