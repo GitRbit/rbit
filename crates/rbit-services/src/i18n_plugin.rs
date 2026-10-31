@@ -190,14 +190,18 @@ impl I18nSlot {
         }
     }
 
+    #[cfg(not(feature = "i18n"))]
+    pub fn snapshot(&self, _account: Option<&str>, _cookie: Option<&str>, _accept: Option<&str>) -> LocaleSnapshot {
+        LocaleSnapshot::english(self.revision())
+    }
+
+    #[cfg(feature = "i18n")]
     pub fn snapshot(&self, account: Option<&str>, cookie: Option<&str>, accept: Option<&str>) -> LocaleSnapshot {
         let publication = self.inner.publication.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         #[cfg(feature = "i18n")]
         if let Some(live) = &publication.live {
             return live.catalogs.negotiate(account, cookie, accept, &self.inner.ctx.config.i18n.default_locale);
         }
-        #[cfg(not(feature = "i18n"))]
-        let _preferences = (account, cookie, accept);
         LocaleSnapshot::english(publication.revision)
     }
 
@@ -277,15 +281,23 @@ impl I18nSlot {
         .map_err(ServiceError::internal)?
     }
 
+    #[cfg(not(feature = "i18n"))]
+    pub(crate) fn install(&self, _actor: &User, bytes: &[u8]) -> std::future::Ready<Result<LanguagePackInfo, ServiceError>> {
+        let result = self.check_running().and_then(|()| {
+            if bytes.is_empty() || bytes.len() > MAX_LANGUAGE_PACK_BYTES {
+                Err(ServiceError::Invalid("a language pack must contain between 1 byte and 2 MiB of compressed data".to_owned()))
+            } else {
+                Err(ServiceError::Invalid("this distribution was built without i18n".to_owned()))
+            }
+        });
+        std::future::ready(result)
+    }
+
+    #[cfg(feature = "i18n")]
     pub(crate) async fn install(&self, actor: &User, bytes: &[u8]) -> Result<LanguagePackInfo, ServiceError> {
         self.check_running()?;
         if bytes.is_empty() || bytes.len() > MAX_LANGUAGE_PACK_BYTES {
             return Err(ServiceError::Invalid("a language pack must contain between 1 byte and 2 MiB of compressed data".to_owned()));
-        }
-        #[cfg(not(feature = "i18n"))]
-        {
-            let _actor = actor;
-            Err(ServiceError::Invalid("this distribution was built without i18n".to_owned()))
         }
         #[cfg(feature = "i18n")]
         {
