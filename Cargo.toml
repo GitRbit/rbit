@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime", "crates/rbit-services-base", "crates/rbit-actions"]
+members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime", "crates/rbit-services-base", "crates/rbit-actions", "crates/rbit-messages", "crates/rbit-i18n"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -28,6 +28,9 @@ rbit-actions-core = { path = "crates/rbit-actions-core" }
 rbit-plugin-api = { path = "crates/rbit-plugin-api" }
 rbit-plugin-runtime = { path = "crates/rbit-plugin-runtime" }
 
+rbit-messages = { path = "crates/rbit-messages" }
+rbit-i18n = { path = "crates/rbit-i18n" }
+
 # Async runtime & web
 tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "process", "signal", "io-util", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io"] }
@@ -39,6 +42,12 @@ futures-util = "0.3"
 async-compression = { version = "0.4", features = ["tokio", "gzip"] }
 # Static assets are compressed once at the highest quality instead of per response.
 brotli = "9"
+
+# Optional catalog engine; shared English messages do not depend on it.
+fluent-bundle = "=0.16.0"
+fluent-syntax = "=0.12.0"
+unic-langid = "=0.9.6"
+intl_pluralrules = "=7.0.2"
 
 # Templates & content
 askama = "0.16"
