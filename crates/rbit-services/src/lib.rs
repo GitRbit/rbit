@@ -12,7 +12,10 @@ pub use actions_plugin::ActionsSlot;
 mod i18n_plugin;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
 pub mod ui;
+pub use rbit_plugin_web as plugin_pages;
 pub use rbit_plugin_web as request_hooks;
+#[cfg(test)]
+mod page_tests;
 
 /// Composition root. Core services never depend on optional plugin implementations.
 #[derive(Debug, Clone)]
@@ -22,6 +25,7 @@ pub struct Services {
     pub i18n: I18nSlot,
     ui: rbit_plugin_runtime::UiRegistry,
     request_hooks: request_hooks::RequestHookRegistry,
+    pages: plugin_pages::PageRegistry,
 }
 
 impl Deref for Services {
@@ -39,7 +43,14 @@ impl Services {
         let ui = rbit_plugin_runtime::UiRegistry::default();
         let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone())).await?;
         let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone())).await?;
-        Ok(Self { core, actions, i18n, ui, request_hooks: request_hooks::RequestHookRegistry::new() })
+        Ok(Self {
+            core,
+            actions,
+            i18n,
+            ui,
+            request_hooks: request_hooks::RequestHookRegistry::new(),
+            pages: plugin_pages::PageRegistry::new(),
+        })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -60,6 +71,7 @@ impl Services {
             .saturating_add(self.i18n.revision())
             .saturating_add(self.ui.snapshot().revision)
             .saturating_add(self.request_hooks.revision())
+            .saturating_add(self.pages.revision())
     }
     /// Immutable presentation data; snapshots never retain plugin authority or leases.
     pub fn ui_snapshot(&self) -> ui::UiSnapshot {
@@ -73,6 +85,10 @@ impl Services {
     /// Trusted host capability for registering bounded, generation-scoped request hooks.
     pub fn request_hooks(&self) -> request_hooks::RequestHookRegistry {
         self.request_hooks.clone()
+    }
+    /// Trusted host capability for registering compiled, generation-scoped pages.
+    pub fn page_registry(&self) -> plugin_pages::PageRegistry {
+        self.pages.clone()
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
