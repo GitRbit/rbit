@@ -32,6 +32,41 @@ the form target and `FormAction::csrf()` in a hidden `_csrf` input. Use normal
 Askama escaping; do not mark action, proof or user input as safe HTML. Neither the
 session token nor its digest is passed to plugin callbacks.
 
+For example, the matching compiled GET view can render the issued action directly.
+When authorization does not permit the mutation, its action is absent and the view
+omits the form. Native submissions use the ordinary host 303/422 behavior.
+
+```rust,ignore
+use rbit_services::plugin_pages::{
+    compiled_form_page, CompiledPage, FormAction, FormReference,
+    PageAudience, PageDescriptor, PageScope,
+};
+use std::time::Duration;
+
+#[derive(askama::Template)]
+#[template(source = r#"
+{% if let Some(form) = form %}
+<form method="post" action="{{ form.action() }}" hx-boost="false">
+  <input type="hidden" name="_csrf" value="{{ form.csrf() }}">
+  <label>Title <input name="title" required maxlength="200"></label>
+  <button type="submit">Save</button>
+</form>
+{% endif %}
+"#, ext = "html")]
+struct Editor { form: Option<FormAction> }
+
+let page = compiled_form_page(
+    PageDescriptor::new(
+        "edit", PageScope::Repository, "edit", PageAudience::RepositoryReader,
+        Duration::from_secs(1),
+    )?.with_forms(vec![FormReference::new("save", "save")?])?,
+    |_, actions| async move {
+        CompiledPage::new("Edit", Editor { form: actions.get("save").cloned() })
+    },
+);
+// Stage and publish this page under the same owner/scope/generation as its mutation.
+```
+
 For example, a schema and typed callback can be built as follows. The surrounding
 startup controller supplies the scope and generation and owns publication.
 
@@ -79,6 +114,9 @@ with an optional UTF-8 charset. Encoded bodies are bounded to 32 KiB before
 parsing. Schemas have at most 32 domain fields; text fields have at most 4096
 bytes. Unknown fields, duplicate decoded names, malformed escapes, invalid UTF-8,
 reserved domain field names and values outside the declared schema are rejected.
+Boolean values must be the literal `true` or `false`; checkboxes should explicitly
+use `value="true"`. An absent optional field remains absent. Text limits count
+UTF-8 bytes, so browser character limits supplement server validation.
 The host `_csrf` field is removed before typed callback input is constructed.
 Form values and proof-bearing structures redact secrets from debug output.
 
