@@ -266,6 +266,9 @@ pub struct PreparedPackage {
     control: StageControl,
 }
 impl PreparedPackage {
+    pub fn wire_bytes(&self) -> u64 {
+        self.archive.wire_bytes()
+    }
     pub fn manifest(&self) -> &PackageManifest {
         self.archive.manifest()
     }

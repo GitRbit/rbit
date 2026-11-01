@@ -1,5 +1,45 @@
 # Plugin core handoff
 
+## Durable package records and backup integration — 2026-11-01
+
+The host coordinator now retains validated archives without activation or trust
+approval. The fixed private package root is provisioned by the host. Admission is
+bounded and owned through blocking I/O and journal settlement; waiter cancellation
+cannot release capacity early or abort a possible commit. Administrator authority
+is refreshed after staging and again before publication. Shutdown closes admission
+and drains owners before core stores close.
+
+Migration `0063` adds immutable digest objects, full-version pins and revision-fenced
+operation records. Its separate lazy FULL-synchronous writer leaves ordinary request
+connections at NORMAL. Idle/lifetime reapers are disabled with zero minimum
+connections, so an unused ledger opens no connection or maintenance timer. Database
+shutdown closes both pools. Windows matching-existing publication still needs an
+exact prior durable installation record or remains awaiting durability.
+
+Backup format 5 reads its own SQLite snapshot, validates every retained object and
+installation pin, and verifies exact copied size/SHA256/EOF before completion.
+Missing/corrupt objects fail without a final manifest. Pending operations assert no
+durable object and their private files are omitted. Objects remain append-only;
+full reconciliation and garbage collection require further coordination.
+
+See [package contracts and remaining boundaries](plugin-packages.md). The full
+local workspace passes 2,423 tests, zero failures and five ignored manual benchmarks
+across 74 suites. Strict Rust 1.99 workspace/all-target Clippy, formatting and all
+four core/UI dependency profiles pass. Focused evidence includes nine core-only
+coordinator tests, eleven backup integration tests, two backup helpers, seven ledger
+tests and nineteen existing upgrade tests. No dependency version/checksum changes;
+only existing package edges were added. Final-head hosted CI remains required.
+
+The preceding `0f1a632` Linux CI passed 2,393 tests, including all eleven real Unix
+store tests. Its only reported failure was newer diagnostic-assertion lint rules;
+`0caf4c1` fixes those, and the complete local 1.99 lint now passes. That earlier CI
+result does not certify the installation coordinator/backup increment or Windows.
+
+The broader goal remains active: administrator HTTP/CLI transport, complete package
+recovery, publisher policy/grants, independently installed native workers, first-party
+service/Web ports, the Wasm adapter and unresolved performance/release gates remain
+required. PR #47 stays open and unmerged.
+
 ## Package validation foundations — 2026-10-31
 
 `rbit-plugin-api` now has bounded versioned package metadata for native, Wasm and

@@ -34,6 +34,7 @@ pub mod mirrors;
 pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
+pub mod plugin_installations;
 pub mod plugin_settings;
 mod pool;
 pub mod preferences;
@@ -75,6 +76,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Database {
     pool: SqlitePool,
+    /// Lazy FULL-synchronous writer, used only by the host package ledger.
+    package_pool: SqlitePool,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -103,7 +106,7 @@ impl Database {
 
         let pool = SqlitePoolOptions::new()
             .max_connections(std::thread::available_parallelism().map_or(4, |n| n.get().clamp(2, 16)).try_into().unwrap_or(4))
-            .connect_with(options)
+            .connect_with(options.clone())
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
 
@@ -116,7 +119,15 @@ impl Database {
         };
         reseal::check_key(&pool, &key, key_file).await?;
         reseal::seal_plaintext(&pool, &key).await?;
-        let database = Self { pool, key };
+        let package_pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .min_connections(0)
+            // With no idle/lifetime reaper, an unused ledger owns no periodic
+            // maintenance task or timer. Its single connection closes with us.
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_lazy_with(options.create_if_missing(false).synchronous(SqliteSynchronous::Full));
+        let database = Self { pool, package_pool, key };
         database.optimize().await?;
         Ok(database)
     }
@@ -238,6 +249,11 @@ impl Database {
         language_packs::LanguagePackStore::new(self.store("language_packs"))
     }
 
+    /// Host package installation ledger. Never grants trust or enables a plugin.
+    pub fn plugin_installations(&self) -> plugin_installations::PluginInstallationStore {
+        plugin_installations::PluginInstallationStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_installations"))
+    }
+
     /// Persisted desired state for optional plugins, independent of feature packages.
     pub fn plugin_settings(&self) -> plugin_settings::PluginSettingsStore {
         plugin_settings::PluginSettingsStore::new(self.store("plugin_settings"))
@@ -356,6 +372,7 @@ impl Database {
 
     /// Flushes the WAL and closes all connections. Call during graceful shutdown.
     pub async fn close(&self) {
+        self.package_pool.close().await;
         self.pool.close().await;
     }
 }

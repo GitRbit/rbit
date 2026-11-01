@@ -70,6 +70,7 @@ mod notification_email;
 mod notifications;
 mod orgs;
 mod passkeys;
+mod plugin_packages;
 mod preferences;
 mod profiles;
 mod protection;

@@ -70,7 +70,8 @@ async fn backup_writes_a_restorable_snapshot() {
     assert!(output.status.success(), "backup failed: {}", String::from_utf8_lossy(&output.stderr));
 
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
-    assert_eq!(manifest["format"], 4);
+    assert_eq!(manifest["format"], 5);
+    assert_eq!(manifest["plugin_packages"], 0);
     assert_eq!(manifest["secret_key"], "secret.key");
     assert_eq!(std::fs::read(backup.join("secret.key")).unwrap(), std::fs::read(data_dir.join("secret.key")).unwrap());
     #[cfg(unix)]
@@ -238,4 +239,228 @@ async fn backup_includes_lfs_objects() {
 
     let copied = backup.join(object.strip_prefix(&data_dir).unwrap());
     assert_eq!(std::fs::read(&copied).unwrap(), b"large file content");
+}
+
+fn archive_digest(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    use std::fmt::Write as _;
+    let mut value = String::with_capacity(64);
+    for byte in sha2::Sha256::digest(bytes) {
+        write!(value, "{byte:02x}").unwrap();
+    }
+    value
+}
+
+/// Real canonical package bytes and their typed, passive ledger declaration.
+fn package_fixture() -> (Vec<u8>, rbit_plugin_api::PackageManifest) {
+    let payload = b"generic plugin backup payload";
+    let manifest = serde_json::json!({
+        "schema_version":1,
+        "plugin":{"id":"example.backup", "version":"1.0.0", "host_api":"^1"},
+        "kind":{"type":"data"},
+        "files":[{"path":"data/file", "size":payload.len(), "sha256":archive_digest(payload)}],
+        "budgets":{"memory_bytes":1024,"concurrent_calls":1,"call_timeout_ms":1000,"storage_bytes":0,"event_queue_capacity":0}
+    });
+    let json = serde_json::to_vec(&manifest).unwrap();
+    let mut bytes = Vec::new();
+    for (path, body) in [("package.json", json.as_slice()), ("data/file", payload.as_slice())] {
+        let mut header = tar::Header::new_ustar();
+        header.set_path(path).unwrap();
+        header.set_size(body.len() as u64);
+        header.set_mode(0o644);
+        header.set_uid(0);
+        header.set_gid(0);
+        header.set_mtime(0);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_cksum();
+        bytes.extend_from_slice(header.as_bytes());
+        bytes.extend_from_slice(body);
+        bytes.resize(bytes.len().next_multiple_of(512), 0);
+    }
+    bytes.resize(bytes.len() + 1024, 0);
+    (bytes, serde_json::from_value(manifest).unwrap())
+}
+
+async fn seed_package(data: &Path) -> (PathBuf, Vec<u8>) {
+    use rbit_storage::sqlite::plugin_installations::{InstallationDescriptor, OperationId};
+    std::fs::create_dir_all(data).unwrap();
+    let database = Database::open(&data.join("rbit.db")).await.unwrap();
+    let (bytes, manifest) = package_fixture();
+    let descriptor = InstallationDescriptor::new(manifest, archive_digest(&bytes).parse().unwrap(), bytes.len() as u64).unwrap();
+    let store = database.plugin_installations();
+    for token in ["backup-first", "backup-shared-object"] {
+        let token = OperationId::new(token).unwrap();
+        store.begin(&token, &descriptor, None, rbit_core::Timestamp::now()).await.unwrap();
+        store.complete(&token, 0, rbit_core::Timestamp::now()).await.unwrap();
+    }
+    // Pending intent carries no durable object assertion, so its absent archive
+    // must not be mistaken for installed state during backup.
+    let mut pending_manifest = descriptor.manifest().clone();
+    pending_manifest.plugin.id = "example.pending".parse().unwrap();
+    let pending = InstallationDescriptor::new(pending_manifest, "f".repeat(64).parse().unwrap(), 1024).unwrap();
+    store.begin(&OperationId::new("pending").unwrap(), &pending, None, rbit_core::Timestamp::now()).await.unwrap();
+    database.close().await;
+    let root = data.join("plugins").join("packages");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join(format!("{}.rbit-plugin", archive_digest(&bytes)));
+    std::fs::write(&path, &bytes).unwrap();
+    (path, bytes)
+}
+
+async fn package_sql(data: &Path, sql: &'static str) {
+    use sqlx::{ConnectOptions, Connection};
+    let mut connection =
+        sqlx::sqlite::SqliteConnectOptions::new().filename(data.join("rbit.db")).foreign_keys(false).connect().await.unwrap();
+    sqlx::raw_sql(sql).execute(&mut connection).await.unwrap();
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn backup_restores_retained_package_pins_and_copies_shared_objects_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let (path, bytes) = seed_package(&data).await;
+    // Unreferenced staging and CAS objects do not belong to the durable ledger.
+    std::fs::write(path.parent().unwrap().join("not-in-ledger.rbit-plugin"), b"unreferenced").unwrap();
+    let backup = dir.path().join("backup");
+    let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(backup.join("manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["format"], 5);
+    assert_eq!(manifest["plugin_packages"], 1);
+    let copied = backup.join(path.strip_prefix(&data).unwrap());
+    assert_eq!(std::fs::read(&copied).unwrap(), bytes);
+    assert_eq!(std::fs::read_dir(copied.parent().unwrap()).unwrap().count(), 1);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&copied).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    let restored = Database::open(&backup.join("rbit.db")).await.unwrap();
+    let installed =
+        restored.plugin_installations().installation(&"example.backup".parse().unwrap(), &"1.0.0".parse().unwrap()).await.unwrap().unwrap();
+    assert_eq!(installed.descriptor.digest().as_str(), archive_digest(&bytes));
+    assert_eq!(restored.plugin_installations().objects(None).await.unwrap().len(), 1);
+    restored.close().await;
+}
+
+#[tokio::test]
+async fn backup_includes_retained_package_objects_without_an_installation_pin() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let (path, bytes) = seed_package(&data).await;
+    package_sql(&data, "DELETE FROM plugin_installations").await;
+    let backup = dir.path().join("backup");
+    let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(std::fs::read(backup.join(path.strip_prefix(&data).unwrap())).unwrap(), bytes);
+}
+
+#[tokio::test]
+async fn backup_fails_before_final_manifest_for_missing_or_corrupt_package_objects() {
+    for damage in ["missing", "digest", "short", "trailing", "directory"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let (path, mut bytes) = seed_package(&data).await;
+        match damage {
+            "missing" => std::fs::remove_file(&path).unwrap(),
+            "digest" => {
+                bytes[1024] ^= 1;
+                std::fs::write(&path, &bytes).unwrap();
+            }
+            "short" => std::fs::write(&path, b"short").unwrap(),
+            "trailing" => {
+                bytes.push(0);
+                std::fs::write(&path, &bytes).unwrap();
+            }
+            "directory" => {
+                std::fs::remove_file(&path).unwrap();
+                std::fs::create_dir(&path).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert!(!output.status.success(), "{damage}");
+        assert!(!backup.join("manifest.json").exists(), "{damage}");
+    }
+}
+
+#[tokio::test]
+async fn backup_rejects_missing_or_mismatched_ledger_pins_and_arbitrary_digest_paths() {
+    for damage in ["missing-object-row", "wrong-identity", "digest-path", "manifest-json", "capacity"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        seed_package(&data).await;
+        let sql = match damage {
+            "missing-object-row" => "DELETE FROM plugin_objects",
+            "wrong-identity" => "DROP TRIGGER plugin_installations_pin; UPDATE plugin_installations SET plugin_id = 'example.other'",
+            "digest-path" => {
+                "PRAGMA ignore_check_constraints = ON; DROP TRIGGER plugin_objects_immutable; UPDATE plugin_objects SET digest = '../outside'"
+            }
+            "manifest-json" => {
+                "DROP TRIGGER plugin_objects_immutable; UPDATE plugin_objects SET manifest = '{\"sensitive-unknown-field\":true}'"
+            }
+            "capacity" => {
+                "DROP TRIGGER plugin_objects_capacity; WITH RECURSIVE tally(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM tally WHERE x < 1024) INSERT INTO plugin_objects (digest, manifest, wire_bytes, recorded_at) SELECT printf('%064x', x), '{}', 1, 0 FROM tally"
+            }
+            _ => unreachable!(),
+        };
+        package_sql(&data, sql).await;
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert!(!output.status.success(), "{damage}");
+        assert!(!backup.join("manifest.json").exists(), "{damage}");
+        assert!(!dir.path().join("outside").exists());
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("sensitive-unknown-field"));
+        if damage == "capacity" {
+            assert!(String::from_utf8_lossy(&output.stderr).contains("inventory exceeds its bound"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn backup_accepts_pre_package_databases_but_rejects_partial_or_missing_current_ledgers() {
+    for damage in ["legacy", "partial", "current-missing"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        seed_package(&data).await;
+        package_sql(&data, "DROP TABLE plugin_package_operations").await;
+        if damage != "partial" {
+            package_sql(&data, "DROP TABLE plugin_installations; DROP TABLE plugin_objects").await;
+        }
+        if damage == "legacy" {
+            package_sql(&data, "DELETE FROM _sqlx_migrations WHERE version >= 63").await;
+        }
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert_eq!(output.status.success(), damage == "legacy", "{damage}: {}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(backup.join("manifest.json").exists(), damage == "legacy");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn backup_rejects_symlinked_package_files_and_directory_components() {
+    for component in ["file", "packages", "plugins"] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let (path, bytes) = seed_package(&data).await;
+        let original = match component {
+            "file" => path,
+            "packages" => data.join("plugins").join("packages"),
+            "plugins" => data.join("plugins"),
+            _ => unreachable!(),
+        };
+        let outside = dir.path().join("outside");
+        std::fs::rename(&original, &outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &original).unwrap();
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert!(!output.status.success(), "{component}");
+        assert!(!backup.join("manifest.json").exists());
+        if component == "file" {
+            assert_eq!(std::fs::read(&outside).unwrap(), bytes);
+        }
+    }
 }

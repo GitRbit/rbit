@@ -18,6 +18,7 @@ i18n = ["rbit-services/i18n", "rbit-web/i18n"]
 
 [dependencies]
 rbit-core.workspace = true
+rbit-plugin-api.workspace = true
 rbit-storage.workspace = true
 rbit-services.workspace = true
 rbit-web.workspace = true
@@ -34,6 +35,7 @@ tracing-subscriber.workspace = true
 rbit-git.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 time.workspace = true
 # The command-line client: the REST API over HTTPS (ring-backed rustls, as the server's other
@@ -43,12 +45,13 @@ toml.workspace = true
 tar.workspace = true
 flate2.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 rbit-services.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-# L: Git LFS object ids in the backup test.
-sha2.workspace = true
 
 [lints]
 workspace = true

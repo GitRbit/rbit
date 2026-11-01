@@ -1,5 +1,5 @@
 //! `rbit backup --output DIR`: a consistent snapshot of the database, repositories,
-//! release files and Git LFS objects, safe to take while the server is running.
+//! release files, Git LFS objects and installed plugin archives while the server runs.
 //!
 //! The backup directory mirrors the data directory, so restoring is a copy:
 //!
@@ -9,6 +9,7 @@
 //! ├── repositories/<owner>/<id>.git  # bare mirrors made with `git clone --mirror`
 //! ├── attachments/<repo>/<asset>     # files attached to releases
 //! ├── lfs/<aa>/<bb>/<oid>            # Git LFS objects
+//! ├── plugins/packages/<digest>.rbit-plugin # retained generic plugin archives
 //! ├── secret.key                     # the key that seals stored credentials (see below)
 //! └── manifest.json                  # written last: its presence marks a complete backup
 //! ```
@@ -31,7 +32,12 @@
 //!    mirror secrets, saved SMTP and OIDC secrets) cannot be read after a restore. A key
 //!    kept elsewhere (`[storage] secret_key_file`) is left out on purpose, so database and
 //!    key can be stored apart; it must then be backed up separately.
-//! 6. `manifest.json` records the format, version, time and counts.
+//! 6. Retained generic package objects and installation pins come from the same
+//!    database snapshot. Every referenced archive is copied once and verified by
+//!    exact size and SHA256. Missing or corrupt objects fail the backup. Package
+//!    storage is append-only; garbage collection must coordinate with backups
+//!    before that policy changes. Private staging and pending intents are excluded.
+//! 7. `manifest.json` records the format, version, time and counts.
 //!
 //! The backup directory is created private to its owner (0700) and the database, key and
 //! manifest are written 0600 on Unix: they hold password hashes and the sealing key.
@@ -40,6 +46,7 @@
 //! rebuildable caches. After a restore, users sign in again and caches refill on demand.
 
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process::Stdio,
     str::FromStr,
@@ -49,13 +56,22 @@ use std::{
 use anyhow::{Context, bail};
 use rbit_core::{AccountId, Config, RepoId, lfs::LfsOid};
 use rbit_git::RepositoryStorage;
+use rbit_plugin_api::{MAX_PACKAGE_MANIFEST_BYTES, PackageManifest, Sha256Digest};
+use rbit_storage::sqlite::plugin_installations::InstallationDescriptor;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, Connection, sqlite::SqliteConnectOptions};
-use tokio::{io::AsyncWriteExt, process::Command, sync::Semaphore, task::JoinSet};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+    sync::Semaphore,
+    task::JoinSet,
+};
 
 /// Bumped whenever the layout of a backup directory changes (2: release attachments,
-/// 3: Git LFS objects, 4: the secret key file).
-const FORMAT_VERSION: u32 = 4;
+/// 3: Git LFS objects, 4: the secret key file, 5: generic plugin archive objects).
+const FORMAT_VERSION: u32 = 5;
+const MAX_PACKAGE_OBJECTS: usize = 1024;
 /// The secret key file's name inside the backup, as in the data directory.
 const SECRET_KEY_FILE: &str = "secret.key";
 /// Repositories copied at the same time.
@@ -84,6 +100,8 @@ pub struct Manifest {
     pub lfs_objects: u64,
     /// Git LFS objects (ids) recorded in the database whose file did not exist.
     pub missing_lfs_objects: Vec<String>,
+    /// Verified retained generic plugin archives copied into `plugins/packages/`.
+    pub plugin_packages: u64,
     /// [`SECRET_KEY_FILE`] when included, otherwise where the key must be backed up from.
     pub secret_key: String,
     pub kv_store: &'static str,
@@ -100,6 +118,7 @@ pub async fn run(config: Config, output: PathBuf) -> anyhow::Result<()> {
         missing_attachments = manifest.missing_attachments.len(),
         lfs_objects = manifest.lfs_objects,
         missing_lfs_objects = manifest.missing_lfs_objects.len(),
+        plugin_packages = manifest.plugin_packages,
         "backup complete"
     );
     Ok(())
@@ -118,7 +137,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     // `VACUUM INTO` accepts an empty file, so the snapshot is private from the start.
     drop(create_private_file(&snapshot).await?);
     snapshot_database(&source, &snapshot).await?;
-    let Inventory { accounts, repositories, assets, lfs_objects } = read_inventory(&snapshot).await?;
+    let Inventory { accounts, repositories, assets, lfs_objects, plugin_packages } = read_inventory(&snapshot).await?;
     tracing::info!(
         accounts,
         repositories = repositories.len(),
@@ -132,6 +151,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
     let copied = copy_repositories(&config.repository.git_binary, &storage, &target, &repositories).await?;
     let attachments = copy_attachments(&config.storage.attachments_dir(), &output.join("attachments"), &assets).await?;
     let lfs = copy_lfs_objects(&config.storage.lfs_dir(), &output.join("lfs"), &lfs_objects).await?;
+    let plugin_packages = copy_plugin_packages(&config.storage.data_dir, output, &plugin_packages).await?;
     let secret_key = copy_secret_key(config, &output.join(SECRET_KEY_FILE)).await?;
 
     let manifest = Manifest {
@@ -146,6 +166,7 @@ pub async fn create(config: &Config, output: &Path) -> anyhow::Result<Manifest> 
         missing_attachments: attachments.missing,
         lfs_objects: lfs.copied,
         missing_lfs_objects: lfs.missing,
+        plugin_packages,
         secret_key,
         kv_store: "not included: it holds only sessions and caches, which are rebuilt",
     };
@@ -227,6 +248,7 @@ struct Inventory {
     assets: Vec<(i64, i64)>,
     /// Ids of Git LFS objects.
     lfs_objects: Vec<LfsOid>,
+    plugin_packages: Vec<PackageObject>,
 }
 
 async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
@@ -235,6 +257,7 @@ async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
     let rows: Vec<(i64, i64)> = sqlx::query_as("SELECT id, owner_id FROM repositories ORDER BY id").fetch_all(&mut connection).await?;
     let assets: Vec<(i64, i64)> = sqlx::query_as("SELECT repo_id, id FROM release_assets ORDER BY id").fetch_all(&mut connection).await?;
     let oids: Vec<String> = sqlx::query_scalar("SELECT oid FROM lfs_objects ORDER BY oid").fetch_all(&mut connection).await?;
+    let plugin_packages = read_package_inventory(&mut connection).await?;
     connection.close().await?;
     let lfs_objects =
         oids.iter().map(|oid| LfsOid::parse(oid).with_context(|| format!("invalid LFS object id {oid:?}"))).collect::<Result<_, _>>()?;
@@ -243,7 +266,160 @@ async fn read_inventory(snapshot: &Path) -> anyhow::Result<Inventory> {
         repositories: rows.into_iter().map(|(id, owner)| (RepoId(id), AccountId(owner))).collect(),
         assets,
         lfs_objects,
+        plugin_packages,
     })
+}
+
+struct PackageObject {
+    digest: Sha256Digest,
+    wire_bytes: u64,
+}
+
+/// Read only the immutable backup database. Pending operations assert no durable
+/// object, whereas every retained object and installation pin must survive restore.
+async fn read_package_inventory(connection: &mut sqlx::SqliteConnection) -> anyhow::Result<Vec<PackageObject>> {
+    let tables: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('plugin_objects', 'plugin_installations', 'plugin_package_operations')")
+        .fetch_one(&mut *connection).await?;
+    if tables != 3 {
+        let migrations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = '_sqlx_migrations'")
+            .fetch_one(&mut *connection)
+            .await?;
+        let current: bool = if migrations == 0 {
+            false
+        } else {
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version >= 63)").fetch_one(&mut *connection).await?
+        };
+        anyhow::ensure!(tables == 0 && !current, "incomplete generic plugin package ledger in backup snapshot");
+        return Ok(Vec::new());
+    }
+    // Fetch only bounded identities/sizes first; read at most one 1 MiB manifest
+    // at a time rather than allocating every retained descriptor together.
+    let rows: Vec<(String, i64, i64)> =
+        sqlx::query_as("SELECT digest, wire_bytes, length(CAST(manifest AS BLOB)) FROM plugin_objects ORDER BY digest LIMIT 1025")
+            .fetch_all(&mut *connection)
+            .await?;
+    anyhow::ensure!(rows.len() <= MAX_PACKAGE_OBJECTS, "generic plugin package inventory exceeds its bound");
+    let mut objects = Vec::with_capacity(rows.len());
+    let mut identities = BTreeMap::new();
+    let mut total = 0_u64;
+    let max_manifest_bytes = i64::try_from(MAX_PACKAGE_MANIFEST_BYTES)?;
+    for (digest, wire_bytes, manifest_bytes) in rows {
+        anyhow::ensure!((1..=max_manifest_bytes).contains(&manifest_bytes), "invalid package manifest length in backup snapshot");
+        let digest: Sha256Digest = digest.parse().context("invalid package archive digest in backup snapshot")?;
+        let wire_bytes = u64::try_from(wire_bytes).context("invalid package archive size in backup snapshot")?;
+        let json: String = sqlx::query_scalar("SELECT manifest FROM plugin_objects WHERE digest = ?")
+            .bind(digest.as_str())
+            .fetch_one(&mut *connection)
+            .await?;
+        let manifest: PackageManifest =
+            serde_json::from_str(&json).map_err(|_| anyhow::anyhow!("invalid package manifest in backup snapshot"))?;
+        let descriptor =
+            InstallationDescriptor::new(manifest, digest.clone(), wire_bytes).context("invalid package object in backup snapshot")?;
+        let previous = identities.insert(
+            digest.as_str().to_owned(),
+            (descriptor.manifest().plugin.id.to_string(), descriptor.manifest().plugin.version.to_string()),
+        );
+        anyhow::ensure!(previous.is_none(), "duplicate package archive identity in backup snapshot");
+        total = total.checked_add(wire_bytes).context("package backup inventory size overflow")?;
+        objects.push(PackageObject { digest, wire_bytes });
+    }
+    let pins: Vec<(String, String, String, Option<String>)> = sqlx::query_as("SELECT i.plugin_id, i.version, i.digest, o.digest FROM plugin_installations i LEFT JOIN plugin_objects o ON o.digest = i.digest ORDER BY i.plugin_id, i.version LIMIT 1025")
+        .fetch_all(&mut *connection).await?;
+    anyhow::ensure!(pins.len() <= MAX_PACKAGE_OBJECTS, "generic plugin installation inventory exceeds its bound");
+    for (id, version, digest, present) in pins {
+        anyhow::ensure!(present.is_some(), "installed plugin references a missing archive object");
+        anyhow::ensure!(identities.get(&digest) == Some(&(id, version)), "installed plugin identity differs from its archive manifest");
+    }
+    Ok(objects)
+}
+
+async fn nonsymlink_directory(path: &Path) -> anyhow::Result<()> {
+    let metadata = tokio::fs::symlink_metadata(path).await.context("package backup directory is unavailable")?;
+    anyhow::ensure!(metadata.is_dir() && !metadata.file_type().is_symlink(), "package backup directory must be a nonsymlink directory");
+    Ok(())
+}
+
+async fn create_package_directory(path: &Path) -> anyhow::Result<()> {
+    let mut builder = tokio::fs::DirBuilder::new();
+    // Parents are checked separately; never follow an existing parent link
+    // while recursively creating a package subtree.
+    builder.recursive(false);
+    #[cfg(unix)]
+    builder.mode(0o700);
+    match builder.create(path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error.into()),
+    }
+    nonsymlink_directory(path).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if tokio::fs::symlink_metadata(path).await?.permissions().mode() & 0o077 != 0 {
+            bail!("package backup directory must be private");
+        }
+    }
+    Ok(())
+}
+
+/// CAS objects are append-only: a snapshot pin cannot race object garbage
+/// collection. Validate/copy one opened file through bounded buffers; no payload
+/// names or plugin/version strings become filesystem paths.
+async fn copy_plugin_packages(source: &Path, output: &Path, objects: &[PackageObject]) -> anyhow::Result<u64> {
+    nonsymlink_directory(output).await?;
+    let target_plugins = output.join("plugins");
+    create_package_directory(&target_plugins).await?;
+    let target = target_plugins.join("packages");
+    create_package_directory(&target).await?;
+    if objects.is_empty() {
+        return Ok(0);
+    }
+    nonsymlink_directory(source).await?;
+    let source_plugins = source.join("plugins");
+    nonsymlink_directory(&source_plugins).await?;
+    let source = source_plugins.join("packages");
+    nonsymlink_directory(&source).await?;
+    for object in objects {
+        let filename = format!("{}.rbit-plugin", object.digest.as_str());
+        let from = source.join(&filename);
+        let metadata = tokio::fs::symlink_metadata(&from).await.context("referenced plugin archive is missing")?;
+        anyhow::ensure!(metadata.is_file() && !metadata.file_type().is_symlink(), "plugin archive must be a nonsymlink regular file");
+        anyhow::ensure!(metadata.len() == object.wire_bytes, "plugin archive size differs from backup inventory");
+        let mut options = tokio::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        #[cfg(windows)]
+        // Open the reparse point itself instead of following its target.
+        options.custom_flags(0x0020_0000);
+        let mut input = options.open(&from).await.context("cannot open referenced plugin archive")?;
+        let metadata = input.metadata().await?;
+        anyhow::ensure!(
+            metadata.is_file() && !metadata.file_type().is_symlink() && metadata.len() == object.wire_bytes,
+            "opened plugin archive differs from backup inventory"
+        );
+        let mut file = create_private_file(&target.join(filename)).await?;
+        let mut digest = Sha256::new();
+        let mut remaining = object.wire_bytes;
+        let mut buffer = vec![0; 64 * 1024];
+        while remaining != 0 {
+            let count = usize::try_from(remaining.min(buffer.len() as u64))?;
+            let read = input.read(&mut buffer[..count]).await?;
+            anyhow::ensure!(read != 0, "plugin archive is truncated");
+            file.write_all(&buffer[..read]).await?;
+            digest.update(&buffer[..read]);
+            remaining -= read as u64;
+        }
+        anyhow::ensure!(input.read(&mut [0; 1]).await? == 0, "plugin archive has trailing bytes");
+        let actual = LfsOid::from_digest(digest.finalize().into());
+        anyhow::ensure!(actual.as_str() == object.digest.as_str(), "plugin archive digest differs from backup inventory");
+        file.sync_all().await?;
+    }
+    #[cfg(unix)]
+    for directory in [target.as_path(), target_plugins.as_path(), output] {
+        tokio::fs::File::open(directory).await?.sync_all().await?;
+    }
+    Ok(u64::try_from(objects.len())?)
 }
 
 #[derive(Debug)]
@@ -395,4 +571,42 @@ async fn run_git(git: &Path, configure: impl FnOnce(&mut Command)) -> anyhow::Re
 
 fn now_rfc3339() -> anyhow::Result<String> {
     Ok(time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339)?)
+}
+
+#[cfg(test)]
+mod package_backup_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn package_copy_never_overwrites_an_existing_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source");
+        let output = directory.path().join("output");
+        create_private_dir(&source.join("plugins").join("packages")).await.unwrap();
+        create_private_dir(&output).await.unwrap();
+        let bytes = b"verified package archive";
+        let digest = LfsOid::from_digest(Sha256::digest(bytes).into()).as_str().parse::<Sha256Digest>().unwrap();
+        let filename = format!("{}.rbit-plugin", digest.as_str());
+        tokio::fs::write(source.join("plugins").join("packages").join(&filename), bytes).await.unwrap();
+        create_package_directory(&output.join("plugins")).await.unwrap();
+        let target = output.join("plugins").join("packages");
+        create_package_directory(&target).await.unwrap();
+        tokio::fs::write(target.join(&filename), b"existing target").await.unwrap();
+        let object = PackageObject { digest, wire_bytes: bytes.len() as u64 };
+        assert!(copy_plugin_packages(&source, &output, &[object]).await.is_err());
+        assert_eq!(tokio::fs::read(target.join(filename)).await.unwrap(), b"existing target");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn package_copy_rejects_target_directory_links_before_creating_children() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("output");
+        let outside = directory.path().join("outside");
+        create_private_dir(&output).await.unwrap();
+        create_private_dir(&outside).await.unwrap();
+        std::os::unix::fs::symlink(&outside, output.join("plugins")).unwrap();
+        assert!(copy_plugin_packages(directory.path(), &output, &[]).await.is_err());
+        assert!(!outside.join("packages").exists());
+    }
 }

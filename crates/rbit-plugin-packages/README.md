@@ -106,10 +106,11 @@ checks. The caller must enforce transport/operation deadlines and retain its
 owned admission lease until the operation returns; staging itself does not
 provide global concurrency or disk admission policy.
 
-This is an archive object store, not complete installation or recovery support.
-A future coordinator must durably associate plugin IDs and versions with
-objects, reconcile interrupted publication and private remnants, verify
-publisher trust, enforce grants and lifecycle policy, and execute only through
-an approved adapter. Staging writes no installation ledger or live intent and
-grants no capabilities. A digest proves byte agreement, not publisher identity
-or code safety.
+This crate is an archive object store, not complete installation or recovery
+support. The host [installation coordinator](../../docs/plugin-packages.md) separately
+associates immutable objects with plugin IDs/full versions and durable journal
+records. Complete reconciliation of interrupted publication/private remnants,
+publisher trust, grants, lifecycle policy and execution through an approved
+adapter remain subsequent stages. Staging itself writes no installation ledger
+or live intent and grants no capabilities. A digest proves byte agreement, not
+publisher identity or code safety.

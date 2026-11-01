@@ -28,8 +28,11 @@ paths, size/digest declarations and requested resources. `rbit-plugin-packages` 
 bounded canonical archives and hashes payloads without extracting them. These do not
 install or run packages. Host-owned staging now validates into the same private inode
 and publishes a digest-addressed archive without replacement, with explicit durability
-and cleanup receipts. Persistent installation metadata, trust, worker protocols and
-execution remain unimplemented.
+and cleanup receipts. The host coordinator now retains durable, disabled/unreviewed
+version pins and revision-fenced operations through a separate lazy FULL-synchronous
+writer. Backup format 5 verifies all retained archive objects from its SQLite snapshot;
+see [package records](../plugin-packages.md). Administrator installation transport,
+complete reconciliation, trust, worker protocols and execution remain unimplemented.
 Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.
@@ -329,7 +332,7 @@ Ship pseudolocales for expansion and RTL first, then a reviewed non-English pack
 
 ## 11 Package management and administrator experience
 
-Use immutable archive objects in `<data_dir>/plugins/packages/<archive-sha256>.rbit-plugin`, with plugin ID/version associations in the installation ledger and separate writable data in `<data_dir>/plugins/data/<id>`. Digest-only object filenames avoid platform reserved-name and version-encoding ambiguity. Stage uploads in private directories on the same filesystem, validate and synchronize the exact staged inode, then publish without replacement. Unix hard-link publication synchronizes the directory; Windows uses a write-through move. A matching existing Windows object still requires a prior durable receipt or explicit reconciliation. Resolve future extracted runtime paths relative to verified package roots. Installation never runs arbitrary package scripts. See the [archive store contract](../../crates/rbit-plugin-packages/README.md) for deployment preconditions and failure receipts.
+Use immutable archive objects in `<data_dir>/plugins/packages/<archive-sha256>.rbit-plugin`, with plugin ID/version associations in the installation ledger and future separate writable data under `<data_dir>/plugins/data/<host-encoded-id>`. The host must encode or hash canonical IDs into portable filenames; a valid plugin ID can still be a reserved filesystem stem. Digest-only object filenames avoid platform reserved-name and version-encoding ambiguity. Stage uploads in private directories on the same filesystem, validate and synchronize the exact staged inode, then publish without replacement. Unix hard-link publication synchronizes the directory; Windows uses a write-through move. A matching existing Windows object still requires a prior durable receipt or explicit reconciliation. Resolve future extracted runtime paths relative to verified package roots. Installation never runs arbitrary package scripts. See the [archive store contract](../../crates/rbit-plugin-packages/README.md) for deployment preconditions and failure receipts.
 
 Manifest fields cover package kind, ID, version, host API range, platform target, entry point, required/provided services, requested capabilities, declared contributions, resource budgets and schema compatibility. The host revalidates runtime registrations against that manifest. Content hashes ensure integrity; publisher signatures and pinned keys establish a separate trust decision. Support offline installation and a local allowlist first. An online marketplace is outside the initial scope.
 

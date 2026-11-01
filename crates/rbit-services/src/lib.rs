@@ -15,7 +15,9 @@ mod i18n_plugin;
 mod i18n_routes;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
 pub use i18n_routes::I18nRouteBundle;
+mod plugin_packages;
 pub mod ui;
+pub use plugin_packages::{PackageInstallOutcome, PluginPackageService};
 pub use rbit_plugin_web as plugin_pages;
 pub use rbit_plugin_web as plugin_mutations;
 pub use rbit_plugin_web as request_hooks;
@@ -32,6 +34,7 @@ pub struct Services {
     core: Arc<rbit_services_base::Services>,
     pub actions: ActionsSlot,
     pub i18n: I18nSlot,
+    pub packages: PluginPackageService,
     ui: rbit_plugin_runtime::UiRegistry,
     request_hooks: request_hooks::RequestHookRegistry,
     pages: plugin_pages::PageRegistry,
@@ -55,7 +58,8 @@ impl Services {
         let mutations = plugin_mutations::MutationRegistry::new();
         let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone(), pages.clone(), mutations.clone())).await?;
         let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone(), pages.clone(), mutations.clone())).await?;
-        Ok(Self { core, actions, i18n, ui, request_hooks: request_hooks::RequestHookRegistry::new(), pages, mutations })
+        let packages = PluginPackageService::new(core.context());
+        Ok(Self { core, actions, i18n, packages, ui, request_hooks: request_hooks::RequestHookRegistry::new(), pages, mutations })
     }
     pub fn spawn_background(&self) {
         self.core.spawn_background();
@@ -187,6 +191,7 @@ impl Services {
     /// Terminally revoke plugin entry points before the host drains HTTP requests.
     /// Core services and stores remain available until asynchronous shutdown finishes.
     pub fn prepare_shutdown(&self) {
+        self.packages.prepare_shutdown();
         self.mutations.close();
         self.pages.close();
         self.request_hooks.close();
@@ -200,6 +205,7 @@ impl Services {
         self.mutations.wait_for_idle().await;
         self.i18n.shutdown().await;
         self.actions.shutdown().await;
+        self.packages.shutdown().await;
         self.core.shutdown().await;
     }
 }

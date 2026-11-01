@@ -22,19 +22,21 @@ rbit-actions = { workspace = true, optional = true }
 rbit-core.workspace = true
 rbit-storage.workspace = true
 rbit-plugin-api.workspace = true
+rbit-plugin-packages.workspace = true
 rbit-plugin-runtime.workspace = true
 rbit-plugin-web.workspace = true
 tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 semver.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tar.workspace = true
 askama.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 reqwest.workspace = true
-tokio-util.workspace = true
 ssh-key.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true

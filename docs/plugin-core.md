@@ -219,3 +219,8 @@ credential padding, paused stream cancellation and conditional enhancement clean
 Package archive parser validation also has a standalone, sanitizer-enabled
 [fuzz workspace](../fuzz/README.md), with bounded campaigns and reproducible seeds.
 It exercises validation only; it does not install or execute packages.
+
+The host [package installation coordinator and journal](plugin-packages.md) retain
+validated archive objects with durable version pins and backup coverage. These
+records remain disabled and unreviewed; administrative transport, trust and worker
+execution are subsequent stages.

@@ -17,6 +17,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A bounded host package installation coordinator and durable SQLite journal for
+  immutable archive/version pins, cancellation-owned operations and explicit
+  durability recovery states. Records remain disabled and unreviewed. Backup
+  format 5 verifies and retains every journaled archive object before completion.
+  Administrator HTTP/CLI installation and executable workers remain later stages.
+
 - Host-owned private staging of validated plugin archives and no-clobber,
   digest-addressed publication. Receipts distinguish visibility, durability and
   cleanup; this stores archive objects without granting installation authority.

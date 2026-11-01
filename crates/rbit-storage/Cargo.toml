@@ -10,6 +10,8 @@ autotests = false
 
 [dependencies]
 rbit-core.workspace = true
+rbit-plugin-api.workspace = true
+semver.workspace = true
 sqlx.workspace = true
 redb.workspace = true
 serde.workspace = true

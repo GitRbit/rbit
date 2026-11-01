@@ -9,6 +9,7 @@ rbit is one binary plus the `git` executable. All state lives in one data direct
 | `repositories/<owner-id>/<repo-id>.git` | Bare Git repositories | **Yes** |
 | `attachments/<repo-id>/<asset-id>` | Files attached to releases | **Yes** (not `attachments/tmp`) |
 | `lfs/<aa>/<bb>/<oid>` | Git LFS objects, stored once however many repositories use them | **Yes** |
+| `plugins/packages/<archive-sha256>.rbit-plugin` | Immutable generic plugin archives recorded by the host installation ledger | **Yes**, all retained ledger objects |
 | `tmp/` | Scratch space: merges, web edits, cross-fork overlays, LFS uploads in progress | No (swept at start-up) |
 | `rbit.redb` | Login sessions and rebuildable caches | No (see [Backups](#backups)) |
 | `actions/secrets.key` | The key that seals Actions secrets (only with Actions enabled) | **Separately**: not in `rbit backup` |
@@ -620,8 +621,9 @@ DIR/
 ├── repositories/<owner-id>/<repo-id>.git   bare mirror of every repository in that snapshot
 ├── attachments/<repo-id>/<asset-id>   every release file listed in that snapshot
 ├── lfs/<aa>/<bb>/<oid>                every Git LFS object listed in that snapshot
+├── plugins/packages/<digest>.rbit-plugin   every retained generic plugin archive in the snapshot
 ├── secret.key                         the secret key, when it lives in the data directory
-└── manifest.json                      format (4), version, time, counts; written last
+└── manifest.json                      format (5), version, time, counts; written last
 ```
 
 The backup directory is created `0700` and the database, key and manifest `0600`: the
@@ -642,11 +644,21 @@ are skipped, and a file whose release was deleted after the snapshot is listed u
 one removed after the snapshot (no repository used it any more) is listed under
 `missing_lfs_objects`.
 
+Generic plugin archives are copied once per whole-archive SHA256 digest from the
+installation ledger in that same SQLite snapshot, including retained rollback objects.
+Copies check exact size, digest and actual EOF. A missing, corrupt, linked or
+mismatched referenced object fails the backup before `manifest.json` is written;
+it is never silently replaced or fetched. Incomplete operations and private staging
+remnants do not assert a durable object and are not copied. The initial store is
+append-only: do not remove ledger objects behind a running backup. Restore preserves
+installation records and pending operations without granting trust or enabling code.
+
 **The redb store (`rbit.redb`) is not backed up.** It holds only login sessions and
 caches. After a restore everyone signs in again and caches refill on demand.
 
 A backup is complete when `manifest.json` exists. The command exits non-zero, without a
-manifest, if any repository could not be copied.
+manifest, if any repository could not be copied or a retained plugin archive could
+not be verified and copied.
 
 Schedule it with a systemd timer or cron, as the service user, and copy the result off the
 machine (restic, borg, rsync, object storage):
@@ -666,12 +678,13 @@ The backup directory mirrors the data directory, so restoring is a copy:
 3. Copy the backup into place, excluding the manifest, and fix ownership:
    ```bash
    sudo mkdir -m 0750 /var/lib/rbit
-   sudo cp -a DIR/rbit.db DIR/secret.key DIR/repositories DIR/attachments DIR/lfs /var/lib/rbit/
+   sudo cp -a DIR/rbit.db DIR/secret.key DIR/repositories DIR/attachments DIR/lfs DIR/plugins /var/lib/rbit/
    sudo chown -R rbit:rbit /var/lib/rbit
    ```
    For Docker, copy into the volume, e.g.
-   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/secret.key /backup/repositories /backup/attachments /backup/lfs /data/ && chown -R 10001:10001 /data'`.
-   Backups in format 3 have no `secret.key`, format 2 no `lfs/` (and format 1 no
+   `docker run --rm -v rbit-data:/data -v "$PWD/DIR":/backup:ro debian:bookworm-slim sh -c 'cp -a /backup/rbit.db /backup/secret.key /backup/repositories /backup/attachments /backup/lfs /backup/plugins /data/ && chown -R 10001:10001 /data'`.
+   Backups before format 5 have no `plugins/`. Format 3 has no `secret.key`,
+   format 2 no `lfs/` (and format 1 no
    `attachments/`): leave out what is not there. With `storage.secret_key_file` set,
    restore the key from where you keep it instead.
 4. Start rbit. Pending migrations (if the backup came from an older version) run on
