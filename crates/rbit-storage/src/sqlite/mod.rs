@@ -84,7 +84,8 @@ pub struct Database {
     // two external identity linking, three personal access token, four SSH key,
     // five recovery SQL, ten two-factor, four profile credential and two account rename methods,
     // plus bound session write workers (purge certification is per write batch),
-    // and four direct collaborator assignment APIs (not transfers/cascades).
+    // and four direct collaborator assignment APIs (not transfers/cascades),
+    // plus four existing-organization membership/base-permission APIs.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
@@ -273,7 +274,7 @@ impl Database {
     }
 
     pub fn orgs(&self) -> orgs::OrgStore {
-        orgs::OrgStore::new(self.store("orgs"))
+        orgs::OrgStore::new(self.store("orgs"), self.authority_domain.writer())
     }
 
     pub fn profiles(&self) -> profiles::ProfileStore {

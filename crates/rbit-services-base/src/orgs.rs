@@ -128,7 +128,7 @@ impl OrgService {
                 tracing::info!(org = %org.name(), member = %user.name, role = role.as_str(), by = %actor.name(), "member added");
                 Ok(())
             }
-            Err(StorageError::Conflict(_)) => Err(ServiceError::Invalid(format!("{} is already a member", user.name))),
+            Err(StorageError::Conflict("member")) => Err(ServiceError::Invalid(format!("{} is already a member", user.name))),
             Err(other) => Err(other.into()),
         }
     }

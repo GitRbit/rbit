@@ -322,3 +322,25 @@ async fn explore_searches_public_repositories_by_page() {
     let none = repos.explore(&RepoSearch { text: "hidden".into(), ..RepoSearch::default() }).await.unwrap();
     assert_eq!((none.total, none.page, none.repos.len()), (0, 1, 0));
 }
+
+#[tokio::test]
+async fn stopped_membership_writer_is_not_misreported_as_duplicate() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", true).await;
+    let fresh = fixture.user("fresh", false).await;
+    let org = fixture.org(&alice, "acme").await;
+    let before = fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items;
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close()); // Synchronous writer stop; pool close is not polled.
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        fixture.services.orgs.add_member(&alice, &org, fresh.name().as_str(), OrgRole::Member),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(result, Err(ServiceError::Conflict("organization membership writers stopped"))));
+    assert_eq!(fixture.database.orgs().role_of(org.account.id, fresh.id()).await.unwrap(), None);
+    assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+}

@@ -108,11 +108,13 @@ pub(crate) async fn role_of<'e>(
 #[derive(Debug, Clone)]
 pub struct OrgStore {
     pool: Pool,
+    // Only the four existing-organization role/base mutations are enrolled here.
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl OrgStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// Creates the account, its profile and the creator's owner membership atomically.
@@ -221,14 +223,25 @@ impl OrgStore {
     }
 
     pub async fn set_base_permission(&self, org: AccountId, permission: BasePermission) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_membership_mutation_error)?;
+        let result = self.set_base_permission_raw(org, permission).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn set_base_permission_raw(&self, org: AccountId, permission: BasePermission) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query(
             "INSERT INTO org_profiles (account_id, member_permission) VALUES (?1, ?2) \
              ON CONFLICT (account_id) DO UPDATE SET member_permission = ?2",
         )
         .bind(org.0)
         .bind(permission.as_str())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -268,19 +281,40 @@ impl OrgStore {
 
     /// Adds `user` with `role`. [`StorageError::Conflict`] if they already are a member.
     pub async fn add_member(&self, org: AccountId, user: AccountId, role: OrgRole) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_membership_mutation_error)?;
+        let result = self.add_member_raw(org, user, role).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn add_member_raw(&self, org: AccountId, user: AccountId, role: OrgRole) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO org_members (org_id, user_id, role) VALUES (?, ?, ?)")
             .bind(org.0)
             .bind(user.0)
             .bind(role.as_str())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| StorageError::from_insert(e, "member"))?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Changes `user`'s role. Demoting the last owner is refused in the same statement,
     /// so concurrent demotions can never leave the organisation ownerless.
     pub async fn set_role(&self, org: AccountId, user: AccountId, role: OrgRole) -> Result<MembershipChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_membership_mutation_error)?;
+        let result = self.set_role_raw(org, user, role).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn set_role_raw(&self, org: AccountId, user: AccountId, role: OrgRole) -> Result<MembershipChange, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "UPDATE org_members SET role = ?3 WHERE org_id = ?1 AND user_id = ?2 \
              AND (?3 = 'owner' OR role <> 'owner' \
@@ -289,21 +323,33 @@ impl OrgStore {
         .bind(org.0)
         .bind(user.0)
         .bind(role.as_str())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         self.outcome(org, user, result.rows_affected()).await
     }
 
     /// Removes `user` from `org`. Removing the last owner is refused in the same statement.
     pub async fn remove_member(&self, org: AccountId, user: AccountId) -> Result<MembershipChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_membership_mutation_error)?;
+        let result = self.remove_member_raw(org, user).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn remove_member_raw(&self, org: AccountId, user: AccountId) -> Result<MembershipChange, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "DELETE FROM org_members WHERE org_id = ?1 AND user_id = ?2 \
              AND (role <> 'owner' OR (SELECT COUNT(*) FROM org_members WHERE org_id = ?1 AND role = 'owner') > 1)",
         )
         .bind(org.0)
         .bind(user.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         self.outcome(org, user, result.rows_affected()).await
     }
 
@@ -318,3 +364,13 @@ impl OrgStore {
         })
     }
 }
+
+fn org_membership_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "organization membership mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "organization membership writers stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;

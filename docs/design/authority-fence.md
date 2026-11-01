@@ -3,7 +3,8 @@
 The authority fence coordinates policy mutations, user account creation, external
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
 factors, profile credentials, account renames and administrator role changes,
-suspension, account deletion, direct collaborator assignments and bound session mutations
+suspension, account deletion, direct collaborator assignments, existing-organization
+membership/base permissions and bound session mutations
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
 **Unavailable**.
@@ -17,7 +18,8 @@ work. An unused domain starts no task, timer or database query.
 Policy initialization, epoch renewal, review/selection/clear, user account creation,
 identity linking/unlinking, token and key creation/deletion and the three moderation
 mutations, together with SQL recovery, factor and profile credential mutations,
-account renames and direct collaborator assignments, acquire that permit
+account renames, direct collaborator assignments and existing-organization
+membership/base permissions, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -205,10 +207,26 @@ cost; timestamp expressions now run after transaction acquisition, without a
 wall-clock equivalence or performance-parity claim. Existing service authorization
 and audit/event order remain unchanged. The host translates only the duplicate
 `collaborator` conflict into an already-present message; stopped/capacity conflicts
-retain their original service classification. Repository transfer, organization-member
-triggers and deletion cascades can also revoke collaborator rows and are separate
-writer categories. This is neither complete collaborator-table coverage nor fresh
-request-time authorization.
+retain their original service classification. Repository transfer and deletion
+cascades remain separate writer categories. Organization-member trigger effects
+are covered only through the selected member-removal operation described below.
+This is neither complete collaborator-table coverage nor fresh request-time
+authorization.
+
+Four existing-organization APIs also enroll once: add member, change role, remove
+member and set base permission. Each awaits its outer SQL commit. The original
+same-statement last-owner predicates stay in SQL; Done, LastOwner and NotMember
+are settled business values, including no-write outcomes. The original outcome
+reader runs after commit while the mutation remains active. Member removal also
+acknowledges its real team-membership/collaborator cleanup trigger in that same
+transaction, without nested public store calls. Other organizations and personal
+repositories retain their grants; team repository grants remain while the removed
+user loses membership. Base-permission changes preserve profile fields, and
+profile edits preserve an existing nondefault permission. The host maps only the
+`member` duplicate conflict to an already-present response. Creation/deletion,
+other cascades and team grant APIs remain separate categories; existing manager
+checks, last-owner messages and audit/event behavior are unchanged. Enrollment does
+not refresh preloaded actor or organization authorization.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -252,7 +270,8 @@ remain independent. This does not prove that SQLite or redb resources have exite
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
-two account rename methods, four direct collaborator assignments, the three moderation
+two account rename methods, four direct collaborator assignments, four existing-
+organization membership/base methods, the three moderation
 methods and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
 forced administrator, email-reset and response-deferred self-service commands
