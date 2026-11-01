@@ -432,10 +432,10 @@ pub struct PageRouteSnapshot {
 }
 impl PageRouteSnapshot {
     pub fn len(&self) -> usize {
-        self.inner.entries.len()
+        self.inner.entries().len()
     }
     pub fn is_empty(&self) -> bool {
-        self.inner.entries.is_empty()
+        self.inner.entries().is_empty()
     }
     pub const fn revision(&self) -> u64 {
         self.inner.revision
@@ -444,9 +444,8 @@ impl PageRouteSnapshot {
         if !validate_page_path(path) {
             return None;
         }
-        let index = self.inner.entries.iter().position(|entry| {
-            &entry.owner == owner
-                && entry.metadata::<PageDescriptor>().is_some_and(|descriptor| descriptor.scope == scope && descriptor.path == path)
+        let (index, _) = self.inner.owner_entries(owner).find(|(_, entry)| {
+            entry.metadata::<PageDescriptor>().is_some_and(|descriptor| descriptor.scope == scope && descriptor.path == path)
         })?;
         Some(PageRouteHandle { snapshot: self.clone(), index })
     }
@@ -458,13 +457,13 @@ pub struct PageRouteHandle {
 }
 impl PageRouteHandle {
     pub fn descriptor(&self) -> &PageDescriptor {
-        self.snapshot.inner.entries[self.index].metadata().expect("page metadata is paired at registration")
+        self.snapshot.inner.entries()[self.index].metadata().expect("page metadata is paired at registration")
     }
     pub fn owner(&self) -> &PluginId {
-        &self.snapshot.inner.entries[self.index].owner
+        &self.snapshot.inner.entries()[self.index].owner
     }
     pub fn generation(&self) -> Generation {
-        self.snapshot.inner.entries[self.index].generation
+        self.snapshot.inner.entries()[self.index].generation
     }
     pub fn admit(&self) -> Result<PageLease, PageError> {
         let large_permit = if self.descriptor().body_limit > MAX_PAGE_BODY_BYTES {
@@ -473,7 +472,7 @@ impl PageRouteHandle {
             None
         };
         let permit = Arc::clone(&self.snapshot.renders).try_acquire_owned().map_err(|_| PageError::Unavailable)?;
-        let inner = self.snapshot.inner.entries[self.index].admit().map_err(|_| PageError::Unavailable)?;
+        let inner = self.snapshot.inner.entries()[self.index].admit().map_err(|_| PageError::Unavailable)?;
         Ok(PageLease { inner, permit, large_permit })
     }
 }

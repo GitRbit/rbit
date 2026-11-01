@@ -17,6 +17,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Native plugin page and form lookup uses a publication-time owner index, limiting
+  route comparisons to the selected plugin's bounded registration batch. Immutable
+  snapshots retain the existing generation checks and weak callback ownership.
+
 - Actions browser pages and forms now use generation-owned native plugin routes and
   compiled Askama documents. Host-issued proofs protect every mutation, including
   bounded dispatch inputs, organization configuration and one-time runner token replies.

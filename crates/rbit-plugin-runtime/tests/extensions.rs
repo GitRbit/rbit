@@ -22,27 +22,27 @@ async fn staging_admission_replacement_and_operation_drain_are_generation_owned(
     let registry = ScopedExtensionRegistry::default();
     let scope = scope(1);
     let handle = registry.stage(owner(), &scope, scope.generation(), vec!["first".to_owned()]).unwrap();
-    assert!(registry.snapshot().entries.is_empty());
+    assert!(registry.snapshot().entries().is_empty());
     handle.publish().unwrap();
     let old = registry.snapshot();
-    assert!(Arc::ptr_eq(&old.entries, &registry.snapshot().entries));
-    let lease = old.entries[0].admit().unwrap();
+    assert!(std::ptr::eq(old.entries(), registry.snapshot().entries()));
+    let lease = old.entries()[0].admit().unwrap();
     assert_eq!(lease.value(), "first");
     let cancellation = lease.cancellation_token();
     handle.replace(vec!["second".to_owned()]).unwrap();
-    assert!(old.entries[0].admit().is_err());
+    assert!(old.entries()[0].admit().is_err());
     assert!(cancellation.is_cancelled());
     let new = registry.snapshot();
     assert_eq!(new.revision, old.revision + 1);
-    assert_eq!(new.entries[0].admit().unwrap().value(), "second");
-    let child = new.entries[0].cancellation_token();
+    assert_eq!(new.entries()[0].admit().unwrap().value(), "second");
+    let child = new.entries()[0].cancellation_token();
     child.cancel();
-    assert!(new.entries[0].admit().is_ok());
+    assert!(new.entries()[0].admit().is_ok());
     assert!(matches!(scope.dispose(Duration::ZERO).await, Err(DrainError::Timeout { in_flight: 1 })));
     drop(lease);
     scope.dispose(Duration::from_secs(1)).await.unwrap();
-    assert!(registry.snapshot().entries.is_empty());
-    assert!(new.entries[0].admit().is_err());
+    assert!(registry.snapshot().entries().is_empty());
+    assert!(new.entries()[0].admit().is_err());
 }
 
 #[test]
@@ -52,18 +52,18 @@ fn withdrawing_or_dropping_registry_revokes_retained_snapshots_without_closing_s
     let handle = registry.stage(owner(), &scope, scope.generation(), vec![1]).unwrap();
     handle.publish().unwrap();
     let snapshot = registry.snapshot();
-    let lease = snapshot.entries[0].admit().unwrap();
+    let lease = snapshot.entries()[0].admit().unwrap();
     let cancellation = lease.cancellation_token();
     assert!(handle.unpublish());
     assert!(!scope.is_closed());
-    assert!(snapshot.entries[0].admit().is_err());
+    assert!(snapshot.entries()[0].admit().is_err());
     assert!(cancellation.is_cancelled());
     drop(lease);
     let new = registry.stage(owner(), &scope, scope.generation(), vec![2]).unwrap();
     new.publish().unwrap();
     let snapshot = registry.snapshot();
     drop(registry);
-    assert!(snapshot.entries[0].admit().is_err());
+    assert!(snapshot.entries()[0].admit().is_err());
     assert!(new.publish().is_err());
 }
 
@@ -78,7 +78,7 @@ fn total_capacity_includes_staged_entries_and_invalid_replace_is_atomic() {
     first.publish().unwrap();
     second.publish().unwrap();
     let snapshot = registry.snapshot();
-    assert_eq!(snapshot.entries.len(), 16);
+    assert_eq!(snapshot.entries().len(), 16);
     assert!(first.replace(Vec::new()).is_err());
     assert_eq!(registry.snapshot().revision, snapshot.revision);
     assert!(first.replace(vec![0; 33]).is_err());
@@ -98,7 +98,7 @@ fn stale_handles_cannot_replace_or_withdraw_same_generation_number_reuse() {
     assert!(!old.unpublish());
     assert!(matches!(old.replace(vec![9]), Err(ExtensionRegistryError::Stale)));
     first.quiesce();
-    assert_eq!(*registry.snapshot().entries[0].admit().unwrap().value(), 2);
+    assert_eq!(*registry.snapshot().entries()[0].admit().unwrap().value(), 2);
 }
 
 struct Reentrant {
@@ -165,8 +165,8 @@ fn racing_close_and_publish_never_leave_admissible_callbacks() {
         barrier.wait();
         scope.quiesce();
         let snapshot = worker.join().unwrap();
-        assert!(snapshot.entries.iter().all(|entry| entry.admit().is_err()));
-        assert!(registry.snapshot().entries.is_empty());
+        assert!(snapshot.entries().iter().all(|entry| entry.admit().is_err()));
+        assert!(registry.snapshot().entries().is_empty());
     }
 }
 
@@ -200,7 +200,7 @@ fn selection_metadata_is_paired_with_callback_and_never_requires_admitting_other
         .unwrap();
     registration.publish().unwrap();
     let old = registry.snapshot();
-    let selected = old.entries.iter().find(|entry| entry.metadata::<String>().is_some_and(|path| path == "old-route")).unwrap();
+    let selected = old.entries().iter().find(|entry| entry.metadata::<String>().is_some_and(|path| path == "old-route")).unwrap();
     assert_eq!(scope.in_flight(), 0);
     assert!(selected.metadata::<u64>().is_none());
     let lease = selected.admit().unwrap();
@@ -211,8 +211,8 @@ fn selection_metadata_is_paired_with_callback_and_never_requires_admitting_other
     assert_eq!(selected.metadata::<String>().unwrap(), "old-route");
     assert!(selected.admit().is_err());
     let current = registry.snapshot();
-    assert_eq!(current.entries[0].metadata::<String>().unwrap(), "new-route");
-    assert_eq!(*current.entries[0].admit().unwrap().value(), 30);
+    assert_eq!(current.entries()[0].metadata::<String>().unwrap(), "new-route");
+    assert_eq!(*current.entries()[0].admit().unwrap().value(), 30);
 }
 
 struct ReentrantMetadata {
@@ -262,11 +262,11 @@ async fn retained_metadata_snapshots_do_not_keep_disposed_callbacks_alive() {
         .publish()
         .unwrap();
     let retained = registry.snapshot();
-    assert_eq!(retained.entries[0].metadata::<String>().unwrap(), "route");
+    assert_eq!(retained.owner_entries(&owner()).next().unwrap().1.metadata::<String>().unwrap(), "route");
     scope.dispose(Duration::from_secs(1)).await.unwrap();
     assert_eq!(drops.load(Ordering::SeqCst), 1, "metadata snapshots cannot retain captured services after disposal");
-    assert_eq!(retained.entries[0].metadata::<String>().unwrap(), "route");
-    assert!(retained.entries[0].admit().is_err());
+    assert_eq!(retained.owner_entries(&owner()).next().unwrap().1.metadata::<String>().unwrap(), "route");
+    assert!(retained.owner_entries(&owner()).next().unwrap().1.admit().is_err());
 }
 
 #[tokio::test]
@@ -276,14 +276,14 @@ async fn only_admitted_operations_keep_withdrawn_callback_resources_alive() {
     let drops = Arc::new(AtomicUsize::new(0));
     registry.stage(owner(), &scope, scope.generation(), vec![DropCounter(Arc::clone(&drops))]).unwrap().publish().unwrap();
     let retained = registry.snapshot();
-    let lease = retained.entries[0].admit().unwrap();
+    let lease = retained.entries()[0].admit().unwrap();
     scope.quiesce();
     assert_eq!(drops.load(Ordering::SeqCst), 0);
     assert!(matches!(scope.dispose(Duration::ZERO).await, Err(DrainError::Timeout { in_flight: 1 })));
     drop(lease);
     assert_eq!(drops.load(Ordering::SeqCst), 1);
     scope.dispose(Duration::from_secs(1)).await.unwrap();
-    assert!(retained.entries[0].admit().is_err());
+    assert!(retained.entries()[0].admit().is_err());
 }
 
 #[tokio::test]
@@ -294,13 +294,13 @@ async fn terminal_close_revokes_clones_and_retained_authority_without_disposing_
     let handle = registry.stage(owner(), &scope, scope.generation(), vec![1]).unwrap();
     handle.publish().unwrap();
     let snapshot = registry.snapshot();
-    let lease = snapshot.entries[0].admit().unwrap();
+    let lease = snapshot.entries()[0].admit().unwrap();
     let token = lease.cancellation_token();
     cloned.close();
     assert!(registry.is_closed());
     assert!(token.is_cancelled());
-    assert!(snapshot.entries[0].admit().is_err());
-    assert!(registry.snapshot().entries.is_empty());
+    assert!(snapshot.entries()[0].admit().is_err());
+    assert!(registry.snapshot().entries().is_empty());
     assert!(!scope.is_closed(), "registry withdrawal does not dispose arbitrary scope resources");
     assert_eq!(scope.in_flight(), 1);
     assert!(matches!(handle.publish(), Err(ExtensionRegistryError::Closed)));
@@ -334,7 +334,86 @@ fn terminal_close_racing_staging_and_publication_always_wins_eventually() {
         registry.close();
         worker.join().unwrap();
         assert!(registry.is_closed());
-        assert!(registry.snapshot().entries.is_empty());
+        assert!(registry.snapshot().entries().is_empty());
         assert!(registry.stage(owner(), &scope, scope.generation(), vec![3]).is_err());
     }
+}
+
+#[test]
+fn owner_index_tracks_publication_replacement_withdrawal_and_scope_cleanup() {
+    let registry = ScopedExtensionRegistry::default();
+    let alpha: PluginId = "example.alpha".parse().unwrap();
+    let beta: PluginId = "example.beta".parse().unwrap();
+    let missing: PluginId = "example.missing".parse().unwrap();
+    let alpha_scope = scope(5000);
+    let beta_scope = scope(5001);
+    let alpha_registration = registry.stage(alpha.clone(), &alpha_scope, alpha_scope.generation(), vec![10, 11]).unwrap();
+    let beta_registration = registry.stage(beta.clone(), &beta_scope, beta_scope.generation(), vec![20, 21, 22]).unwrap();
+    assert_eq!(registry.snapshot().owner_entries(&alpha).count(), 0);
+    beta_registration.publish().unwrap();
+    let single = registry.snapshot();
+    assert_eq!(single.owner_entries(&beta).count(), 3);
+    assert_eq!(single.owner_entries(&alpha).count(), 0);
+    assert_eq!(single.owner_entries(&missing).count(), 0);
+    alpha_registration.publish().unwrap();
+    let original = registry.snapshot();
+    let cloned = original.clone();
+    assert!(std::ptr::eq(original.entries(), cloned.entries()));
+    for (owner, expected) in [(&alpha, vec![0, 1]), (&beta, vec![2, 3, 4])] {
+        let selected: Vec<_> = original.owner_entries(owner).collect();
+        assert_eq!(selected.iter().map(|(index, _)| *index).collect::<Vec<_>>(), expected);
+        for (index, entry) in selected {
+            assert_eq!(&entry.owner, owner);
+            assert!(std::ptr::eq(entry, &raw const original.entries()[index]));
+        }
+    }
+    assert_eq!(original.owner_entries(&missing).count(), 0);
+    assert_eq!(alpha_scope.in_flight(), 0, "index lookup must not admit callbacks");
+    assert_eq!(beta_scope.in_flight(), 0);
+
+    alpha_registration.replace(vec![12]).unwrap();
+    let replaced = registry.snapshot();
+    assert_eq!(replaced.owner_entries(&beta).map(|(index, _)| index).collect::<Vec<_>>(), vec![1, 2, 3]);
+    assert_eq!(*replaced.owner_entries(&alpha).next().unwrap().1.admit().unwrap().value(), 12);
+    assert!(original.owner_entries(&alpha).all(|(_, entry)| entry.admit().is_err()));
+    assert_eq!(original.owner_entries(&beta).count(), 3, "retained snapshot offsets stay immutable");
+
+    assert!(alpha_registration.unpublish());
+    let withdrawn = registry.snapshot();
+    assert_eq!(withdrawn.owner_entries(&alpha).count(), 0);
+    assert_eq!(withdrawn.owner_entries(&beta).map(|(index, _)| index).collect::<Vec<_>>(), vec![0, 1, 2]);
+    beta_scope.quiesce();
+    assert_eq!(registry.snapshot().owner_entries(&beta).count(), 0);
+    assert!(withdrawn.owner_entries(&beta).all(|(_, entry)| entry.admit().is_err()));
+    registry.close();
+    assert_eq!(registry.snapshot().owner_entries(&alpha).count(), 0);
+    assert_eq!(registry.snapshot().owner_entries(&beta).count(), 0);
+}
+
+#[test]
+fn owner_index_is_complete_for_one_hundred_plugins_and_empty_default_snapshots() {
+    let empty = rbit_plugin_runtime::ExtensionSnapshot::<usize>::default();
+    assert_eq!(empty.owner_entries(&owner()).count(), 0);
+    let registry = ScopedExtensionRegistry::default();
+    let scopes: Vec<_> = (6000..6100).map(scope).collect();
+    for (index, scope) in scopes.iter().enumerate().rev() {
+        registry
+            .stage(format!("example.owner-{index}").parse().unwrap(), scope, scope.generation(), vec![index])
+            .unwrap()
+            .publish()
+            .unwrap();
+    }
+    let snapshot = registry.snapshot();
+    assert_eq!(snapshot.entries().len(), 100);
+    for index in 0..100 {
+        let owner = format!("example.owner-{index}").parse().unwrap();
+        let selected: Vec<_> = snapshot.owner_entries(&owner).collect();
+        assert_eq!(selected.len(), 1);
+        let (absolute, entry) = selected[0];
+        assert!(std::ptr::eq(entry, &raw const snapshot.entries()[absolute]));
+        assert_eq!(*entry.admit().unwrap().value(), index);
+    }
+    registry.close();
+    assert!(registry.snapshot().entries().is_empty());
+    assert!(snapshot.entries().iter().all(|entry| entry.admit().is_err()));
 }

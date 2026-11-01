@@ -11,7 +11,7 @@ impl RequestHookSnapshot {
     /// Run deterministic metadata hooks inside generation admission and bounded time.
     /// Cancellation drops the callback future before releasing its operation lease.
     pub async fn evaluate(&self, request: &RequestMetadata) -> HookDecision {
-        if self.inner.entries.len() > MAX_HOOKS {
+        if self.inner.entries().len() > MAX_HOOKS {
             return HookDecision::Reject(Rejection::Unavailable);
         }
         if self.is_empty() {
@@ -24,7 +24,7 @@ impl RequestHookSnapshot {
         };
         let deadline = Instant::now() + MAX_PIPELINE_DEADLINE;
         let mut admitted = Vec::with_capacity(self.len());
-        for entry in self.inner.entries.iter() {
+        for entry in self.inner.entries() {
             let Ok(lease) = entry.admit() else { return HookDecision::Reject(Rejection::Unavailable) };
             admitted.push((entry.owner.clone(), entry.generation, lease));
         }

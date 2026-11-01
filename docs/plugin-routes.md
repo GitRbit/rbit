@@ -238,8 +238,21 @@ the scope synchronously removes discovery and prevents new admission before the
 host awaits audit or draining. Retaining an earlier route snapshot cannot bypass
 that gate.
 
-Lookup snapshots retain immutable descriptors and weak callback references. Closing
-the scope releases registry-owned callback captures once already
+Lookup snapshots retain immutable descriptors and weak callback references. A shared
+owner index is built with each published entry array. Page and mutation lookup selects
+the requested plugin's range before comparing scope and path, examining at most its
+32 registrations. It does not rebuild an index, allocate a lookup key or admit unrelated
+callbacks on the request path. Entries and their index share one immutable `Arc`,
+so snapshot clones still require one reference-count increment. Empty and
+single-owner registries skip hashing. Taking a fresh registry snapshot still checks
+owners for closed scopes; this cleanup cost is separate from indexed route selection.
+
+The native SDK exposes `ExtensionSnapshot::entries()` as a read-only slice and
+`owner_entries(&PluginId)` as indexed entries from that same snapshot. The former public
+`entries` field is private to keep the entry array and index consistent. Callback leases,
+generation checks and revocation are unchanged.
+
+Closing the scope releases registry-owned callback captures once already
 admitted leases finish, even if an old route handle is retained. Passive metadata
 can remain available without preserving executable callback resource graphs.
 This releases runtime resources; compiled native machine code stays in the server
@@ -328,6 +341,42 @@ Rust 1.99.1, release optimization with LTO disabled and 16 code-generation units
 These are local samples, not a deployment latency guarantee. Keep the measured
 scope and compiler settings with any comparison; the HTTP pipeline and final-body
 supervisor are deliberately outside this microbenchmark.
+
+The separate lookup benchmark measures pages and mutations with 0, 10 and 100
+unrelated plugin owners (one route each, plus a lexically last target owner). It
+reports hits and missing paths with both fresh and retained snapshots, including
+handle destruction but excluding admission and rendering. Each case warms 32
+batches, then records 256 batches of 1,000 operations; p50/p95 describe batch-average
+nanoseconds per operation. Run both revisions on idle hardware with the same compiler
+and release settings; fresh snapshots include the existing closed-scope cleanup scan.
+
+```sh
+CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+  cargo test --release --locked -p rbit-plugin-web --test lookup_benchmark -- --ignored --nocapture
+```
+
+An idle Apple M4 run on 2026-10-31 compared baseline `9fd65b9` with this owner-index
+implementation using Rust 1.95.0, release optimization, LTO disabled and 16 code-generation
+units. Baseline and candidate binaries ran sequentially in baseline/candidate/candidate/
+baseline order. The first pair measured retained-snapshot successful lookups as follows
+(nanoseconds per operation, p50 / p95 of batch averages):
+
+| Registry | Unrelated owners | Baseline | Owner index |
+| --- | ---: | ---: | ---: |
+| Pages | 0 | 18.29 / 18.38 | 23.21 / 24.17 |
+| Pages | 10 | 21.54 / 22.96 | 28.21 / 28.38 |
+| Pages | 100 | 44.42 / 49.25 | 28.12 / 31.96 |
+| Mutations | 0 | 18.33 / 19.67 | 18.83 / 19.17 |
+| Mutations | 10 | 22.58 / 22.88 | 28.96 / 29.42 |
+| Mutations | 100 | 44.83 / 47.58 | 29.25 / 29.46 |
+
+The repeated pair retained the same tradeoff: indexing adds several nanoseconds at
+small owner counts, while 100-owner hit lookup fell from roughly 45 ns to 28–29 ns.
+Missing paths at 100 owners fell from roughly 40–41 ns to 23 ns. Fresh snapshots still
+cost roughly 0.6–0.7 microseconds at 100 owners because scope cleanup remains linear.
+This establishes bounded route selection, not constant-cost snapshot acquisition or
+an end-to-end latency result; it does not certify the separate two-percent core-page
+performance gate. No production deadline, queue, capacity or retry policy changed.
 
 Full document factories can read `FormActions::appearance()` for the host-validated
 theme slug and unread-notification indicator. The host projects these from its

@@ -533,7 +533,7 @@ mod tests {
         registration.publish().unwrap();
         slot.prepare_shutdown();
         assert!(observed.load(Ordering::Acquire), "native cleanup can reenter snapshot with no publication guard held");
-        assert!(registry.snapshot().entries.is_empty());
+        assert!(registry.snapshot().entries().is_empty());
         services.shutdown().await;
     }
 

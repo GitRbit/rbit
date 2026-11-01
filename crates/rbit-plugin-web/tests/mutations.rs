@@ -63,6 +63,64 @@ async fn wait_count(count: &AtomicUsize, value: usize) {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn owner_lookup_preserves_mutation_identity_after_replacement_and_index_shifts() {
+    let registry = MutationRegistry::new();
+    let first: PluginId = "example.first".parse().unwrap();
+    let second: PluginId = "example.second".parse().unwrap();
+    let first_scope = scope();
+    let second_scope = scope();
+    let first_calls = Arc::default();
+    let second_calls = Arc::default();
+    let first_registration =
+        registry.stage(first.clone(), &first_scope, first_scope.generation(), vec![registration(&first_calls)]).unwrap();
+    first_registration.publish().unwrap();
+    let repository_mutation = compiled_mutation(
+        MutationDescriptor::new(
+            "save",
+            PageScope::Repository,
+            "save",
+            MutationAudience::RepositoryWriter,
+            Duration::from_secs(1),
+            schema(),
+        )
+        .unwrap(),
+        |context, _| async move {
+            Ok(MutationOutcome::Invalid(CompiledPage::new("Repo", Editor { form: context.form, text: "Repository".into() })?))
+        },
+    );
+    registry
+        .stage(second.clone(), &second_scope, second_scope.generation(), vec![registration(&second_calls), repository_mutation])
+        .unwrap()
+        .publish()
+        .unwrap();
+    let snapshot = registry.snapshot();
+    let stale_first = snapshot.find(&first, PageScope::Global, "save").unwrap();
+    let retained_second = snapshot.find(&second, PageScope::Global, "save").unwrap();
+    assert_eq!(retained_second.owner(), &second);
+    assert_eq!(snapshot.find(&second, PageScope::Repository, "save").unwrap().descriptor().scope(), PageScope::Repository);
+    assert!(snapshot.find(&first, PageScope::Repository, "save").is_none());
+    assert!(snapshot.find(&second, PageScope::Global, "missing").is_none());
+    assert!(snapshot.find(&"example.absent".parse().unwrap(), PageScope::Global, "save").is_none());
+    first_registration.replace(vec![registration(&first_calls)]).unwrap();
+    assert!(stale_first.admit().is_err());
+    assert!(registry.snapshot().find(&first, PageScope::Global, "save").unwrap().version() > stale_first.version());
+    assert!(first_registration.unpublish());
+    // Both old and rebuilt snapshots must still invoke the second owner's callback.
+    let current = registry.snapshot().find(&second, PageScope::Global, "save").unwrap();
+    for route in [&retained_second, &current] {
+        let form = FormAction::new("save", "/-/plugins/example.second/save", "proof").unwrap();
+        let context = MutationContext::new(PageActor { account_id: 1, is_admin: false }, None, LocaleSnapshot::english(0), form);
+        drop(route.admit().unwrap().execute(context, input()).await.unwrap());
+    }
+    assert_eq!(first_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(second_calls.load(Ordering::SeqCst), 2);
+    second_scope.quiesce();
+    assert!(retained_second.admit().is_err());
+    assert!(current.admit().is_err());
+    assert!(registry.snapshot().is_empty());
+}
 #[test]
 fn strict_schemas_and_input_reject_unbounded_unknown_duplicate_and_reserved_values() {
     for fields in [

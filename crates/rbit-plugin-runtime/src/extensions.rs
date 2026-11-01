@@ -8,8 +8,9 @@ use crate::{Admission, AdmissionError, OperationLease, PluginScope};
 use rbit_plugin_api::{Generation, PluginId};
 use std::{
     any::Any,
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fmt,
+    ops::Range,
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
@@ -95,7 +96,7 @@ impl<T> Default for State<T> {
             closing_tokens: Vec::new(),
             groups: BTreeMap::new(),
             next_token: 1,
-            snapshot: ExtensionSnapshot { revision: 1, entries: Arc::from([]) },
+            snapshot: ExtensionSnapshot { revision: 1, ..ExtensionSnapshot::default() },
             capacity: crate::MAX_PLUGINS * MAX_SCOPED_EXTENSIONS,
             retired: Retired::default(),
         }
@@ -106,23 +107,28 @@ impl<T> State<T> {
         self.groups.values().map(|group| group.batch.values.len()).sum()
     }
     fn rebuild(&mut self) {
-        let entries: Vec<_> = self
-            .groups
-            .iter()
-            .filter(|(_, group)| group.published && !group.admission.is_closed())
-            .flat_map(|(owner, group)| {
-                group.batch.values.iter().map(move |value| ExtensionEntry {
-                    owner: owner.clone(),
-                    generation: group.generation,
-                    value: Arc::downgrade(&value.value),
-                    metadata: value.metadata.clone(),
-                    admission: group.admission.clone(),
-                    active: Arc::clone(&group.batch.active),
-                    cancellation: group.batch.cancellation.clone(),
-                })
-            })
-            .collect();
-        let snapshot = ExtensionSnapshot { revision: self.snapshot.revision.saturating_add(1), entries: entries.into() };
+        let mut entries = Vec::new();
+        let mut owners = HashMap::new();
+        for (owner, group) in &self.groups {
+            if !group.published || group.admission.is_closed() {
+                continue;
+            }
+            let start = entries.len();
+            entries.extend(group.batch.values.iter().map(|value| ExtensionEntry {
+                owner: owner.clone(),
+                generation: group.generation,
+                value: Arc::downgrade(&value.value),
+                metadata: value.metadata.clone(),
+                admission: group.admission.clone(),
+                active: Arc::clone(&group.batch.active),
+                cancellation: group.batch.cancellation.clone(),
+            }));
+            owners.insert(owner.clone(), start..entries.len());
+        }
+        let snapshot = ExtensionSnapshot {
+            revision: self.snapshot.revision.saturating_add(1),
+            data: Arc::new(SnapshotData { entries: entries.into_boxed_slice(), owners }),
+        };
         self.retired.snapshots.push(std::mem::replace(&mut self.snapshot, snapshot));
     }
     fn purge_closed(&mut self) {
@@ -172,21 +178,52 @@ fn with_state<T, R>(state: &Mutex<State<T>>, operation: impl FnOnce(&mut State<T
 /// resources stay alive solely through a current batch or an admitted operation.
 pub struct ExtensionSnapshot<T> {
     pub revision: u64,
-    pub entries: Arc<[ExtensionEntry<T>]>,
+    data: Arc<SnapshotData<T>>,
+}
+struct SnapshotData<T> {
+    entries: Box<[ExtensionEntry<T>]>,
+    owners: HashMap<PluginId, Range<usize>>,
+}
+impl<T> ExtensionSnapshot<T> {
+    /// Published entries in deterministic owner and registration order.
+    pub fn entries(&self) -> &[ExtensionEntry<T>] {
+        &self.data.entries
+    }
+
+    /// Selects one owner's entries without inspecting unrelated registrations.
+    ///
+    /// The immutable index is built during publication and shared by snapshot
+    /// clones. Returned indices address `entries()` in this same snapshot.
+    /// Reading metadata grants no authority; invoking a callback still requires
+    /// fresh admission through the selected entry.
+    pub fn owner_entries(&self, owner: &PluginId) -> impl Iterator<Item = (usize, &ExtensionEntry<T>)> {
+        // Keep empty and single-provider registries as cheap as direct selection.
+        let range = if self.data.owners.len() <= 1 {
+            if self.data.entries.first().is_some_and(|entry| &entry.owner == owner) { 0..self.data.entries.len() } else { 0..0 }
+        } else {
+            self.data.owners.get(owner).cloned().unwrap_or(0..0)
+        };
+        let start = range.start;
+        self.data.entries[range].iter().enumerate().map(move |(offset, entry)| (start + offset, entry))
+    }
 }
 impl<T> Clone for ExtensionSnapshot<T> {
     fn clone(&self) -> Self {
-        Self { revision: self.revision, entries: Arc::clone(&self.entries) }
+        Self { revision: self.revision, data: Arc::clone(&self.data) }
     }
 }
 impl<T> Default for ExtensionSnapshot<T> {
     fn default() -> Self {
-        Self { revision: 0, entries: Arc::from([]) }
+        Self { revision: 0, data: Arc::new(SnapshotData { entries: Box::new([]), owners: HashMap::new() }) }
     }
 }
 impl<T> fmt::Debug for ExtensionSnapshot<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ExtensionSnapshot").field("revision", &self.revision).field("entries", &self.entries.len()).finish()
+        f.debug_struct("ExtensionSnapshot")
+            .field("revision", &self.revision)
+            .field("entries", &self.data.entries.len())
+            .field("owners", &self.data.owners.len())
+            .finish()
     }
 }
 

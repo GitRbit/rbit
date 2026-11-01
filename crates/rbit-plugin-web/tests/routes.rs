@@ -55,6 +55,48 @@ fn exact_routes_are_namespaced_and_cannot_claim_host_paths() {
 }
 
 #[tokio::test]
+async fn owner_lookup_preserves_scope_path_and_authority_across_snapshot_changes() {
+    let registry = PageRegistry::new();
+    let first: PluginId = "example.first".parse().unwrap();
+    let second: PluginId = "example.second".parse().unwrap();
+    let first_scope = scope();
+    let second_scope = scope();
+    let repository_page = compiled_page(
+        PageDescriptor::new("same", PageScope::Repository, "same", PageAudience::RepositoryReader, Duration::from_secs(1)).unwrap(),
+        |_| async { CompiledPage::new("Repo", Message { value: "Repository".into() }) },
+    );
+    let first_registration =
+        registry.stage(first.clone(), &first_scope, first_scope.generation(), vec![page("same", "same", "First")]).unwrap();
+    first_registration.publish().unwrap();
+    let second_registration = registry
+        .stage(second.clone(), &second_scope, second_scope.generation(), vec![page("same", "same", "Second"), repository_page])
+        .unwrap();
+    second_registration.publish().unwrap();
+    let snapshot = registry.snapshot();
+    let stale_first = snapshot.find(&first, PageScope::Global, "same").unwrap();
+    let retained_second = snapshot.find(&second, PageScope::Global, "same").unwrap();
+    assert_eq!(retained_second.owner(), &second);
+    assert_eq!(retained_second.admit().unwrap().render(context()).await.unwrap().html(), "<p>Second</p>");
+    assert_eq!(snapshot.find(&second, PageScope::Repository, "same").unwrap().descriptor().scope(), PageScope::Repository);
+    assert!(snapshot.find(&first, PageScope::Repository, "same").is_none());
+    assert!(snapshot.find(&second, PageScope::Global, "missing").is_none());
+    assert!(snapshot.find(&"example.absent".parse().unwrap(), PageScope::Global, "same").is_none());
+    first_registration.replace(vec![page("updated", "updated", "Updated")]).unwrap();
+    assert!(stale_first.admit().is_err());
+    assert!(registry.snapshot().find(&first, PageScope::Global, "same").is_none());
+    assert_eq!(registry.snapshot().find(&first, PageScope::Global, "updated").unwrap().owner(), &first);
+    assert!(first_registration.unpublish());
+    // Removing the preceding owner's entries changes current absolute indices.
+    let current = registry.snapshot().find(&second, PageScope::Global, "same").unwrap();
+    assert_eq!(current.admit().unwrap().render(context()).await.unwrap().html(), "<p>Second</p>");
+    assert_eq!(retained_second.admit().unwrap().render(context()).await.unwrap().html(), "<p>Second</p>");
+    second_scope.quiesce();
+    assert!(current.admit().is_err());
+    assert!(retained_second.admit().is_err());
+    assert!(registry.snapshot().is_empty());
+}
+
+#[tokio::test]
 async fn compiled_template_escaping_and_atomic_lookup_replacement() {
     let registry = PageRegistry::new();
     let scope = scope();

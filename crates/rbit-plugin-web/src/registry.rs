@@ -73,10 +73,10 @@ pub struct RequestHookSnapshot {
 }
 impl RequestHookSnapshot {
     pub fn is_empty(&self) -> bool {
-        self.inner.entries.is_empty()
+        self.inner.entries().is_empty()
     }
     pub fn len(&self) -> usize {
-        self.inner.entries.len()
+        self.inner.entries().len()
     }
     pub const fn revision(&self) -> u64 {
         self.inner.revision

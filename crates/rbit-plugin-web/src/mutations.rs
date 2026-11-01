@@ -500,24 +500,25 @@ pub struct MutationRouteSnapshot {
 }
 impl MutationRouteSnapshot {
     pub fn len(&self) -> usize {
-        self.inner.entries.len()
+        self.inner.entries().len()
     }
     pub fn is_empty(&self) -> bool {
-        self.inner.entries.is_empty()
+        self.inner.entries().is_empty()
     }
     pub fn revision(&self) -> u64 {
         self.inner.revision
     }
     pub fn routes(&self) -> impl Iterator<Item = MutationRouteHandle> + '_ {
-        (0..self.inner.entries.len()).map(|index| MutationRouteHandle { snapshot: self.clone(), index })
+        (0..self.inner.entries().len()).map(|index| MutationRouteHandle { snapshot: self.clone(), index })
     }
     pub fn find(&self, owner: &PluginId, scope: PageScope, path: &str) -> Option<MutationRouteHandle> {
         if !validate_page_path(path) {
             return None;
         }
-        let index = self.inner.entries.iter().position(|entry| {
-            &entry.owner == owner && entry.metadata::<Metadata>().is_some_and(|m| m.descriptor.scope == scope && m.descriptor.path == path)
-        })?;
+        let (index, _) = self
+            .inner
+            .owner_entries(owner)
+            .find(|(_, entry)| entry.metadata::<Metadata>().is_some_and(|m| m.descriptor.scope == scope && m.descriptor.path == path))?;
         Some(MutationRouteHandle { snapshot: self.clone(), index })
     }
 }
@@ -528,7 +529,7 @@ pub struct MutationRouteHandle {
 }
 impl MutationRouteHandle {
     fn metadata(&self) -> &Metadata {
-        self.snapshot.inner.entries[self.index].metadata().expect("paired mutation metadata")
+        self.snapshot.inner.entries()[self.index].metadata().expect("paired mutation metadata")
     }
     pub fn descriptor(&self) -> &MutationDescriptor {
         &self.metadata().descriptor
@@ -537,10 +538,10 @@ impl MutationRouteHandle {
         self.metadata().version
     }
     pub fn owner(&self) -> &PluginId {
-        &self.snapshot.inner.entries[self.index].owner
+        &self.snapshot.inner.entries()[self.index].owner
     }
     pub fn generation(&self) -> Generation {
-        self.snapshot.inner.entries[self.index].generation
+        self.snapshot.inner.entries()[self.index].generation
     }
     pub fn admit(&self) -> Result<MutationLease, MutationError> {
         let large_permit = if self.descriptor().body_limit > crate::MAX_PAGE_BODY_BYTES {
@@ -554,7 +555,7 @@ impl MutationRouteHandle {
             None
         };
         let permit = Arc::clone(&self.snapshot.operations).try_acquire_owned().map_err(|_| MutationError::Unavailable)?;
-        let inner = self.snapshot.inner.entries[self.index].admit().map_err(|_| MutationError::Unavailable)?;
+        let inner = self.snapshot.inner.entries()[self.index].admit().map_err(|_| MutationError::Unavailable)?;
         Ok(MutationLease { inner, permit, upload_permit, large_permit })
     }
 }

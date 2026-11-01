@@ -1,5 +1,48 @@
 # Plugin core handoff
 
+## Resumed — 2026-10-31
+
+The user resumed work from PR #47 at `9fd65b9`, with a team reviewing architecture,
+validation and security. The checkout tracks `plugin-core`; `origin/main` is already
+an ancestor. Author and committer remain `ChaseTheCode`; the repository-local HTTPS
+credential helper uses the authenticated GitRbit account for pushes.
+
+The next increment adds a shared publication-time owner index for native page/form
+selection. Immutable snapshots retain weak callback ownership, one shared `Arc`, exact
+generation admission and synchronous closed-scope filtering. Empty/single-owner lookup
+skips hashing; other lookups inspect only the requested owner's bounded batch. The
+native SDK's entry array is now a read-only `entries()` slice to preserve index pairing.
+Multi-owner, scope, replacement, shifted-index and stale-authority regressions cover
+the boundary. [Route documentation](plugin-routes.md) records the reproducible lookup
+benchmark, measured small-registry overhead and larger-registry improvement.
+
+The installed Rust 1.95 toolchain also exposed existing strict Clippy diagnostics.
+A separate mechanical cleanup preserves duration values, fixes documentation markup
+and exact-value test assertions, and simplifies an equivalent SSH data match.
+No dependency, migration, production security limit or retry policy changes.
+
+Full Cargo validation exposed a pre-existing artifact-test diagnostic subscriber
+conflicting with the SQL query counter's global subscriber in the shared Web test
+binary. Request-local diagnostic dispatch fixes that conflict while retaining the
+counter assertions and the native deadline; nextest's separate test processes had
+hidden it. An explicit observed-query assertion in the artifact scenario now catches
+the conflict in an isolated process too. Keep this test-fixture fix in its own commit.
+
+Local validation passed 2,359 workspace tests with five manual benchmarks ignored,
+strict workspace/all-target Clippy, formatting, 213 frontend tests, all language-pack
+and message checks, generated asset parity, and all three dependency profile guards.
+The strengthened artifact scenario also passed alone after the full suite. The idle
+release lookup benchmark passed in both comparison orders; it is not an HTTP latency
+gate. Require all 11 CI jobs on the exact pushed head before certifying this increment;
+use the live PR checks for the current result.
+Starting-head run `41268349947` at `9fd65b9` has now passed Linux (2,349 tests) and
+Windows (2,341 tests), with four manual benchmarks skipped on each platform. The
+previously failing Windows artifact-page scenario passed in 0.654 seconds. These
+results certify only the starting head; its remaining profiles/release checks and
+the resumed increment's exact-head checks are separate requirements.
+The previous stopping point below is historical evidence, not certification of the
+resumed changes. Leave PR #47 open and unmerged.
+
 ## Stopping point — 2026-10-31
 
 Work is paused at the user's request. Implementation is committed and pushed to
