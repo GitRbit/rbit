@@ -19,7 +19,7 @@ use rbit_services::{
     protection::ProtectionInput,
     ssh_keys::{AddDeployKey, AddSshKey},
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 const NULL_DEVICE: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
@@ -37,7 +37,7 @@ impl Harness {
         Box::pin(async move {
             let dir = tempfile::tempdir().unwrap();
             let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-            let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+            let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
             let mut config = Config::default();
             config.storage.data_dir = dir.path().join("data");
             config.ssh.enabled = true;

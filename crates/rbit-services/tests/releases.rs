@@ -10,7 +10,7 @@ use std::{
 
 use rbit_core::{Config, PushSource, User, Visibility};
 use rbit_services::{CreateRepository, DomainEvent, RepoContext, ServiceError, Services, releases::ReleaseInput};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 use tokio::io::AsyncReadExt;
 
 struct Fixture {
@@ -24,7 +24,7 @@ impl Fixture {
     async fn new(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         configure(&mut config);

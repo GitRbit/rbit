@@ -10,7 +10,7 @@ use std::{
 
 use rbit_core::Config;
 use rbit_services::{Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 struct Server {
     child: Child,
@@ -46,7 +46,7 @@ async fn seed(data: &Path) -> String {
     config.storage.data_dir = data.to_owned();
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let admin = services
         .accounts

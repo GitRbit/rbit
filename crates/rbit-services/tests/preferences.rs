@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use rbit_core::{Config, User};
 use rbit_services::{ServiceError, Services};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 async fn fixture() -> (tempfile::TempDir, Database, Services) {
     let dir = tempfile::tempdir().unwrap();
     let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-    let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+    let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
     let services = Services::new(Arc::new(Config::default()), &database, &kv).await.unwrap();
     (dir, database, services)
 }

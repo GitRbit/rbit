@@ -74,11 +74,16 @@ pub struct StoredSession {
 #[derive(Debug, Clone)]
 pub struct SessionStore {
     db: Arc<redb::Database>,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl SessionStore {
-    pub(crate) fn new(db: Arc<redb::Database>) -> Self {
-        Self { db }
+    pub(crate) fn new(db: Arc<redb::Database>, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { db, writer }
+    }
+
+    pub(super) fn is_bound_to(&self, writer: &rbit_authority_fence::WriterRegistration) -> bool {
+        self.writer.same_domain(writer)
     }
 
     /// Creates the tables so read transactions never fail on a fresh database, and drops
@@ -289,7 +294,7 @@ mod tests {
     fn store() -> (tempfile::TempDir, SessionStore) {
         let dir = tempfile::tempdir().unwrap();
         let db = redb::Database::create(dir.path().join("kv.redb")).unwrap();
-        let store = SessionStore::new(Arc::new(db));
+        let store = SessionStore::new(Arc::new(db), rbit_authority_fence::Domain::new().writer());
         store.ensure_table().unwrap();
         (dir, store)
     }

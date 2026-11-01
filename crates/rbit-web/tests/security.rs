@@ -9,7 +9,7 @@ use axum::{
 };
 use rbit_core::{Config, Visibility};
 use rbit_services::{CreateRepository, Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use rbit_web::AppState;
 use tower::ServiceExt;
 
@@ -32,7 +32,7 @@ impl Fixture {
         configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(config.clone(), &database, &kv).await.unwrap();
         let router = rbit_web::router(AppState::new(config, services.clone()));

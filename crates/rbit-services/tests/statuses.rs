@@ -15,7 +15,7 @@ use rbit_services::{
     statuses::NewStatus,
     webhooks::{HookTarget, WebhookInput},
 };
-use rbit_storage::{Database, KvStore, NewUser, sqlite::webhooks::SecretUpdate};
+use rbit_storage::{Database, NewUser, sqlite::webhooks::SecretUpdate};
 use serde_json::Value;
 
 struct Fixture {
@@ -42,7 +42,7 @@ impl Fixture {
         config.webhooks.allow_private_addresses = true;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let user = |name: &'static str| {
             let database = database.clone();

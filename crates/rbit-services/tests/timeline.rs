@@ -12,7 +12,7 @@ use rbit_services::{
     CreateRepository, DomainEvent, IssueContext, RepoContext, ServiceError, Services,
     timeline::{StateChange, TimelineEntry},
 };
-use rbit_storage::{Database, KvStore, NewUser, sqlite::issues::NewIssue};
+use rbit_storage::{Database, NewUser, sqlite::issues::NewIssue};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
 struct Fixture {
@@ -27,7 +27,7 @@ impl Fixture {
     async fn new(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         configure(&mut config);

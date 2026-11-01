@@ -15,7 +15,7 @@ use rbit_services::{
     audit::{AuditAction, AuditCategory},
     two_factor::{GitPasswordOutcome, PasskeyRegistered, RECOVERY_CODE_COUNT, SecondFactorProof, SignInOutcome},
 };
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -36,7 +36,7 @@ impl Fixture {
         config.storage.data_dir = dir.path().to_path_buf();
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(config, &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }

@@ -463,7 +463,7 @@ mod tests {
     }
 
     fn open_cache(dir: &tempfile::TempDir) -> InsightsCache {
-        KvStore::open(&dir.path().join("kv.redb")).unwrap().insights()
+        KvStore::open_bound(&dir.path().join("kv.redb"), rbit_authority_fence::Domain::new().writer()).unwrap().insights()
     }
 
     #[test]
@@ -481,10 +481,10 @@ mod tests {
         let path = dir.path().join("kv.redb");
         let records = (vec![("commit".into(), 42, "author@example.com".into())], true);
         {
-            let store = KvStore::open(&path).unwrap();
+            let store = KvStore::open_bound(&path, rbit_authority_fence::Domain::new().writer()).unwrap();
             store.insights().put_contributions("tip", "v2:all", Arc::new(records.clone())).await.unwrap();
         }
-        let store = KvStore::open(&path).unwrap();
+        let store = KvStore::open_bound(&path, rbit_authority_fence::Domain::new().writer()).unwrap();
         let cache = store.insights();
         assert_eq!(cache.contributions("tip", "v2:all").await.unwrap(), Some(records));
         assert_eq!(cache.contributions("new-tip", "v2:all").await.unwrap(), None);
@@ -601,7 +601,7 @@ mod tests {
     #[tokio::test]
     async fn undecodable_values_are_misses() {
         let dir = tempfile::tempdir().unwrap();
-        let store = KvStore::open(&dir.path().join("kv.redb")).unwrap();
+        let store = KvStore::open_bound(&dir.path().join("kv.redb"), rbit_authority_fence::Domain::new().writer()).unwrap();
         let cache = store.insights();
         let tx = cache.db.begin_write().unwrap();
         tx.open_table(LANGUAGE_STATS).unwrap().insert("c1", [0xff_u8, 0xff, 0xff].as_slice()).unwrap();

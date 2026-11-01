@@ -90,7 +90,7 @@ impl Fixture {
         config.storage.data_dir = dir.path().to_path_buf();
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         Self { dir, database, kv, config, services }
     }

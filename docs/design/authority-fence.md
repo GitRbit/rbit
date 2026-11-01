@@ -99,6 +99,14 @@ mapping, current-password/suspension predicates and the existing redirect trigge
 remain unchanged. Case-only changes do not create redirects, and old names are not
 sign-in aliases. Each rename adds two transaction control statements.
 
+`Database::open_kv` creates session-capable KV handles with the same immutable
+in-process registration. Services reject a mismatched SQL/KV pair before their
+first query or bootstrap action; independently opened SQL handles stay different
+domains even when their file path is the same. The public unbound KV constructor
+is removed, and cache consumers retain their existing cache handle. This binding
+alone does not enroll session mutation workers or constructor transactions and
+does not establish physical ownership. Those remain prerequisites below.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -129,8 +137,8 @@ identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods and the three moderation methods obtained from the same
 database handle or its clones. It does not coordinate independently opened SQLite
-pools, another process, password changes, other credentials, KV sessions or other
-authority writers. It does not prove SQLite worker termination or physical store
+pools, another process, complete SQL-plus-KV credential changes, session workers
+or other authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.
 

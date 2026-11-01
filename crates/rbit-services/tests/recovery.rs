@@ -18,7 +18,7 @@ use rbit_services::{
     recovery::{EMAIL_UNAVAILABLE, RequestThrottle},
 };
 use rbit_storage::{
-    Database, KvStore, NewUser,
+    Database, NewUser,
     sqlite::recovery::{NewEmailToken, TokenPurpose},
 };
 
@@ -79,7 +79,7 @@ impl Fixture {
         let config = Arc::new(config);
 
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
 
         let ctx = ServiceContext {

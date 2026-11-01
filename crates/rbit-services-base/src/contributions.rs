@@ -235,7 +235,7 @@ mod tests {
     use super::*;
     use rbit_core::Config;
     use rbit_git::{RepositoryReader, RepositoryStorage};
-    use rbit_storage::{Database, KvStore};
+    use rbit_storage::Database;
 
     #[test]
     fn daily_counts_keep_second_bounds_negative_dates_and_partial_status() {
@@ -295,7 +295,7 @@ mod tests {
         config.storage.data_dir = dir.path().join("data");
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let signup = crate::SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };
         let ada = services.accounts.create_user(signup, Some(true)).await.unwrap();
@@ -336,7 +336,7 @@ mod tests {
         config.storage.data_dir = dir.path().join("data");
         std::fs::create_dir_all(&config.storage.data_dir).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let ctx = ServiceContext {
             repositories: RepositoryStorage::new(config.storage.repositories_dir()),
             config: Arc::new(config),

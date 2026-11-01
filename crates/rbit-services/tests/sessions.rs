@@ -28,7 +28,7 @@ impl Fixture {
         config.storage.data_dir = dir.path().to_path_buf();
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(config, &database, &kv).await.unwrap();
         Self { _dir: dir, services }
     }
@@ -164,7 +164,7 @@ async fn with_max_age(dir: &tempfile::TempDir, max_age_days: u32) -> (Services, 
     config.storage.data_dir = dir.path().to_path_buf();
     config.security.session_max_age_days = max_age_days;
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let input = SignUp { username: "alice".to_owned(), email: "alice@example.com".to_owned(), password: PASSWORD.to_owned() };
     let alice = services.accounts.create_user(input, None).await.unwrap();

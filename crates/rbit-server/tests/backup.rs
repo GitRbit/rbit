@@ -9,7 +9,7 @@ use std::{
 
 use rbit_core::{Config, Visibility, lfs::LfsOid};
 use rbit_services::{CreateRepository, Services, SignUp, releases::ReleaseInput};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -28,7 +28,7 @@ async fn populate(data_dir: &Path) -> (PathBuf, PathBuf) {
     config.storage.data_dir = data_dir.to_owned();
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
 
     let signup = SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };
@@ -160,7 +160,7 @@ async fn attach_release_file(data_dir: &Path) -> PathBuf {
     let mut config = Config::default();
     config.storage.data_dir = data_dir.to_owned();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let attachments = config.storage.attachments_dir();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let id = database.accounts().find_account_by_name("ada").await.unwrap().unwrap().id;
@@ -207,7 +207,7 @@ async fn store_lfs_object(data_dir: &Path, content: &[u8]) -> PathBuf {
     let mut config = Config::default();
     config.storage.data_dir = data_dir.to_owned();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let lfs_dir = config.storage.lfs_dir();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let id = database.accounts().find_account_by_name("ada").await.unwrap().unwrap().id;

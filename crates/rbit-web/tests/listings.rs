@@ -5,7 +5,7 @@ use axum::{
 };
 use rbit_core::{Config, Visibility};
 use rbit_services::{CreateRepository, Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use std::{
     io::Write,
     path::Path,
@@ -34,7 +34,7 @@ async fn listings_page_search_pin_metadata_and_preserve_private_access() {
     config.security.rate_limit = false;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let db = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = db.open_kv(&config.storage.kv_path()).unwrap();
     let config = Arc::new(config);
     let services = Services::new(Arc::clone(&config), &db, &kv).await.unwrap();
     let owner = services

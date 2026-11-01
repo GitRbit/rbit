@@ -193,7 +193,7 @@ mod tests {
         config.storage.data_dir = dir.path().join("data");
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = rbit_storage::Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = rbit_storage::KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let signup = crate::SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };
         let ada = services.accounts.create_user(signup, Some(true)).await.unwrap();

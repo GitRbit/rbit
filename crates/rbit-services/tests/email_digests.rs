@@ -72,7 +72,7 @@ impl Fixture {
     async fn new(visibility: Visibility, configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         "https://git.example.com".clone_into(&mut config.server.public_url);

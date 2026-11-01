@@ -34,7 +34,7 @@ impl Fixture {
         configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = rbit_storage::KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }

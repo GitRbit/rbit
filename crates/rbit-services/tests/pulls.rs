@@ -71,7 +71,7 @@ impl Fixture {
         config.storage.data_dir = dir.path().join("data");
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let alice = user(&database, "alice").await;
         let bob = user(&database, "bob").await;

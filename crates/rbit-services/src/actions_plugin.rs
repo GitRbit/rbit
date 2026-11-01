@@ -492,7 +492,7 @@ async fn record_change(audit: &crate::AuditService, actor: &User, enabled: bool)
 mod tests {
     use super::*;
     use rbit_core::Config;
-    use rbit_storage::{Database, KvStore};
+    use rbit_storage::Database;
 
     #[derive(Debug)]
     struct ReenterPublication {
@@ -516,7 +516,7 @@ mod tests {
         config.actions.enabled = true;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let slot = services.actions.clone();
         let scope = slot.inner.observed_scope.read().unwrap().clone().unwrap();
@@ -545,7 +545,7 @@ mod tests {
         config.updates.check_for_updates = false;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = crate::Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let slot = services.actions.clone();
         let mut controller = slot.inner.controller.lock().await;

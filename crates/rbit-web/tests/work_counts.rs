@@ -15,7 +15,7 @@ use axum::{
 };
 use rbit_core::{Config, User, Visibility, membership::Permission};
 use rbit_services::{CreateRepository, DomainEvent, Services, SignUp, forks::ForkInput, issues::NewIssueInput, pulls::NewPullInput};
-use rbit_storage::{Database, KvStore, Work, count_work};
+use rbit_storage::{Database, Work, count_work};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 use tower::ServiceExt;
 
@@ -47,7 +47,7 @@ impl Fixture {
         config.security.rate_limit = false;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         let events = services.events.subscribe();

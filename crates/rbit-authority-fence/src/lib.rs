@@ -126,6 +126,12 @@ pub struct WriterRegistration {
     inner: Arc<Inner>,
 }
 impl WriterRegistration {
+    /// Whether both registrations enroll the same in-process domain.
+    /// This does not establish physical store identity or execution authority.
+    pub fn same_domain(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
     /// Registers before waiting. A canceled queued ticket is known to have
     /// executed no enrolled work; after acquisition, Drop is sticky uncertainty.
     pub async fn begin(&self) -> Result<Mutation, BeginError> {

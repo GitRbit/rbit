@@ -14,7 +14,7 @@ use rbit_services::{
     issues::{LabelInput, MilestoneInput, NewIssueInput},
     timeline::{StateChange, TimelineEntry},
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 
 struct Fixture {
@@ -34,7 +34,7 @@ impl Fixture {
     async fn with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         // These tests make many changes in a row; throttling has its own test below.
@@ -606,7 +606,7 @@ async fn existing_mentions_are_backfilled_on_upgrade() {
         })
         .await
         .unwrap();
-    let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+    let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
     let mut config = Config::default();
     config.storage.data_dir = dir.path().to_path_buf();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();

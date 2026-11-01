@@ -11,7 +11,7 @@ use axum::{
 use rbit_core::{Config, Timestamp, User, actions::RunEvent};
 use rbit_services::{CreateRepository, Services, SignUp};
 use rbit_storage::{
-    Database, KvStore,
+    Database,
     sqlite::actions_runs::{NewJob, NewRun, RunStart},
 };
 use rbit_web::AppState;
@@ -38,7 +38,7 @@ impl Fixture {
         config.actions.enabled = true;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(config.clone(), &database, &kv).await.unwrap();
         let sign_up =

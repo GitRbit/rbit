@@ -435,7 +435,7 @@ mod tests {
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let sqlite_path = config.storage.sqlite_path();
         let database = Database::open(&sqlite_path).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
 
         let signup = SignUp { username: "ada".into(), email: "ada@example.com".into(), password: "correct horse battery".into() };

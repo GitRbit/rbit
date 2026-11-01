@@ -8,7 +8,7 @@ use rbit_services::{
     ProfileService, ServiceError, Services,
     profiles::{Profile, PublicProfile, UpdateProfile},
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 const PASSWORD: &str = "correct horse battery";
 
@@ -22,7 +22,7 @@ impl Fixture {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let services = Services::new(Arc::new(Config::default()), &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }

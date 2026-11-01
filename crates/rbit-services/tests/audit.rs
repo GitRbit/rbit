@@ -8,7 +8,7 @@ use rbit_services::{
     admin::{ListQuery, PAGE_SIZE},
     audit::{AuditAction, AuditCategory, AuditEntry},
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -23,7 +23,7 @@ impl Fixture {
         config.storage.data_dir = dir.path().to_path_buf();
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(config, &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }

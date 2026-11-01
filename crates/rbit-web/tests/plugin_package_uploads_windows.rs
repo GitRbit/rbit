@@ -82,7 +82,7 @@ impl Fixture {
         fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let root = config.storage.data_dir.join("plugins").join("packages");
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let mut users = Vec::new();
         for (name, is_admin) in [("alice", true), ("bob", false)] {
             users.push(

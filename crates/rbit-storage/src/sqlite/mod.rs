@@ -166,6 +166,22 @@ impl Database {
         &self.key
     }
 
+    /// Opens session-capable KV storage with this database's immutable logical binding.
+    /// Constructor/schema writes are not yet enrolled or physically brokered.
+    pub fn open_kv(&self, path: &Path) -> Result<crate::KvStore, StorageError> {
+        crate::KvStore::open_bound(path, self.authority_domain.writer())
+    }
+
+    /// Rejects a mismatched in-process SQL/session pairing before service initialization.
+    /// Matching does not certify physical file identity, ownership or execution readiness.
+    pub fn validate_kv_session_binding(&self, kv: &crate::KvStore) -> Result<(), StorageError> {
+        if kv.is_bound_to(&self.authority_domain.writer()) {
+            Ok(())
+        } else {
+            Err(StorageError::Conflict("session authority domain mismatch"))
+        }
+    }
+
     pub fn accounts(&self) -> AccountStore {
         AccountStore::new(self.store("accounts"), self.authority_domain.writer())
     }

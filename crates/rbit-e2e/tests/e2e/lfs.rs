@@ -15,7 +15,7 @@ use std::{
 use rbit_core::{Config, Visibility};
 use rbit_e2e::{Git, GitOutput, StatusCode, TestServer};
 use rbit_services::{CreateRepository, Services, SignUp, ssh_keys::AddSshKey};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 fn git_lfs_available() -> bool {
     let found = Command::new("git").args(["lfs", "version"]).output().is_ok_and(|output| output.status.success());
@@ -163,7 +163,7 @@ async fn git_lfs_over_ssh_uses_git_lfs_authenticate() {
     let config = Arc::new(config);
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
     let app = rbit_web::router(rbit_web::AppState::new(Arc::clone(&config), services.clone()));
     let server = tokio::spawn(async move { axum::serve(http, app.into_make_service_with_connect_info::<SocketAddr>()).await });

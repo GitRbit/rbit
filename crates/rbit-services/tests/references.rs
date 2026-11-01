@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use rbit_core::{Config, IssueKind, IssueNumber, User, Visibility};
 use rbit_services::{CreateRepository, Services, issues::NewIssueInput};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 async fn user(database: &Database, name: &str) -> User {
     database
@@ -25,7 +25,7 @@ async fn user(database: &Database, name: &str) -> User {
 async fn resolves_existing_numbers_and_accounts_in_one_batch() {
     let dir = tempfile::tempdir().unwrap();
     let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-    let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+    let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
     let mut config = Config::default();
     config.storage.data_dir = dir.path().to_path_buf();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use rbit_auth::AccessTokenSecret;
 use rbit_core::{AccessTokenId, Config, RepoAccess, Timestamp, TokenScope, User};
 use rbit_services::{AccessTokenService, CreateAccessToken, ServiceError, Services};
-use rbit_storage::{Database, KvStore, NewAccessToken, NewUser};
+use rbit_storage::{Database, NewAccessToken, NewUser};
 
 struct Fixture {
     _dir: tempfile::TempDir,
@@ -17,7 +17,7 @@ impl Fixture {
     async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let services = Services::new(Arc::new(Config::default()), &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }

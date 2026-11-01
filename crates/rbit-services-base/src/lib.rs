@@ -194,6 +194,7 @@ pub struct Services {
 
 impl Services {
     pub async fn new(config: Arc<Config>, database: &Database, kv: &KvStore) -> Result<Self, ServiceError> {
+        database.validate_kv_session_binding(kv)?;
         let ctx = ServiceContext {
             config: Arc::clone(&config),
             database: database.clone(),
@@ -331,3 +332,6 @@ impl Services {
         );
     }
 }
+
+#[cfg(test)]
+mod session_binding_tests;

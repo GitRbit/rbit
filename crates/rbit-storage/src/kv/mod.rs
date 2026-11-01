@@ -20,22 +20,30 @@ use crate::{StorageError, error::kv_error};
 #[derive(Debug, Clone)]
 pub struct KvStore {
     db: Arc<redb::Database>,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl KvStore {
-    pub fn open(path: &Path) -> Result<Self, StorageError> {
+    pub(crate) fn open_bound(path: &Path, writer: rbit_authority_fence::WriterRegistration) -> Result<Self, StorageError> {
         let db = redb::Database::create(path).map_err(kv_error)?;
-        let store = Self { db: Arc::new(db) };
+        let store = Self { db: Arc::new(db), writer };
         store.sessions().ensure_table()?;
         store.insights().ensure_tables()?;
         Ok(store)
     }
 
     pub fn sessions(&self) -> SessionStore {
-        SessionStore::new(Arc::clone(&self.db))
+        SessionStore::new(Arc::clone(&self.db), self.writer.clone())
+    }
+
+    pub(crate) fn is_bound_to(&self, writer: &rbit_authority_fence::WriterRegistration) -> bool {
+        self.writer.same_domain(writer) && self.sessions().is_bound_to(writer)
     }
 
     pub fn insights(&self) -> InsightsCache {
         InsightsCache::new(Arc::clone(&self.db))
     }
 }
+
+#[cfg(test)]
+mod binding_tests;

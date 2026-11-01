@@ -2,7 +2,7 @@
 
 use rbit_core::{Config, Timestamp};
 use rbit_services::{ServiceError, Services};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 use std::sync::Arc;
 
 #[tokio::test]
@@ -13,7 +13,7 @@ async fn unavailable_provider_rejects_enablement_without_losing_preferences_or_i
     config.updates.check_for_updates = false;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let admin = database
         .accounts()
         .create_user(NewUser {
@@ -52,7 +52,7 @@ async fn an_effectively_enabled_provider_missing_from_the_distribution_is_a_star
     config.i18n.enabled = true;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     assert!(
         matches!(Services::new(Arc::new(config), &database, &kv).await, Err(ServiceError::Invalid(message)) if message.contains("without i18n"))
     );

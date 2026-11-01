@@ -104,7 +104,7 @@ mod tests {
     };
     use rbit_core::{Config, Visibility};
     use rbit_services::{Services, SignUp};
-    use rbit_storage::{Database, KvStore, NewRepository, sqlite::orgs::NewOrganization};
+    use rbit_storage::{Database, NewRepository, sqlite::orgs::NewOrganization};
     use tower::ServiceExt;
 
     use crate::middleware::SESSION_COOKIE;
@@ -117,7 +117,7 @@ mod tests {
         config.storage.data_dir = dir.path().join("data");
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         let router = crate::router(crate::AppState::new(config, services.clone()));

@@ -507,7 +507,7 @@ mod tests {
     use std::sync::Arc;
 
     use rbit_core::{Config, Visibility};
-    use rbit_storage::{Database, KvStore, NewUser};
+    use rbit_storage::{Database, NewUser};
 
     use super::*;
     use crate::{CreateRepository, Services};
@@ -515,7 +515,7 @@ mod tests {
     async fn fixture() -> (tempfile::TempDir, Services, User, RepoContext) {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();

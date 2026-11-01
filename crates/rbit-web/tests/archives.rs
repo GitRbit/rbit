@@ -8,7 +8,7 @@ use axum::{
 };
 use rbit_core::{Config, User, Visibility};
 use rbit_services::{CreateRepository, Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use tower::ServiceExt;
 
 const BANNER: &str = "This repository has been archived.";
@@ -28,7 +28,7 @@ impl Fixture {
         config.security.rate_limit = false;
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let db = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = db.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &db, &kv).await.unwrap();
         let signup = SignUp { username: "keeper".into(), email: "keeper@example.com".into(), password: "correct horse battery".into() };

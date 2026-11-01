@@ -182,3 +182,14 @@ async fn terminal_wait_deadline_does_not_certify_pending_or_ready_after_expiry()
     assert!(matches!(shutdown.drain(Instant::now()).await, Err(DrainError::Deadline)));
     drop(shutdown.drain(deadline()).await.unwrap());
 }
+
+#[test]
+fn registration_identity_is_shared_only_by_the_same_domain() {
+    let domain = Domain::new();
+    let writer = domain.writer();
+    assert!(writer.same_domain(&writer.clone()));
+    assert!(writer.same_domain(&domain.clone().writer()));
+    assert!(!writer.same_domain(&Domain::new().writer()));
+    domain.stop_writers();
+    assert!(writer.same_domain(&domain.writer()));
+}

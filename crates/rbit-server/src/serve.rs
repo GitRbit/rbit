@@ -21,7 +21,7 @@ struct Storage {
 
 async fn open_storage(config: &Config) -> anyhow::Result<Storage> {
     let database = open_database(config).await?;
-    let kv = KvStore::open(&config.storage.kv_path()).context("cannot open key/value store")?;
+    let kv = database.open_kv(&config.storage.kv_path()).context("cannot open key/value store")?;
     Ok(Storage { database, kv })
 }
 

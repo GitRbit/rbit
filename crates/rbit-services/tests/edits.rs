@@ -10,7 +10,7 @@ use rbit_services::{
     edits::{CommitInput, CommitTarget, EditAccess, EditFailure, MIRROR_READ_ONLY},
     protection::ProtectionInput,
 };
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -68,7 +68,7 @@ impl Fixture {
     async fn with(configure: impl FnOnce(&mut Config)) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let database = Database::open(&dir.path().join("rbit.db")).await.unwrap();
-        let kv = KvStore::open(&dir.path().join("rbit.redb")).unwrap();
+        let kv = database.open_kv(&dir.path().join("rbit.redb")).unwrap();
         let mut config = Config::default();
         config.storage.data_dir = dir.path().to_path_buf();
         config.server.public_url = "https://code.example.com".into();

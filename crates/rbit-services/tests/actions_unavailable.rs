@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use rbit_core::Config;
 use rbit_services::{Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 #[tokio::test]
 async fn absent_actions_cannot_be_enabled_and_disabling_persists_intent() {
@@ -14,7 +14,7 @@ async fn absent_actions_cannot_be_enabled_and_disabling_persists_intent() {
     config.updates.check_for_updates = false;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let administrator = services
         .accounts
@@ -45,7 +45,7 @@ async fn persisted_intent_overrides_the_startup_default_in_core_only_builds() {
     config.actions.enabled = true;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let settings = database.plugin_settings();
 
     settings.set_desired_enabled("rbit.actions", false, None, rbit_core::Timestamp(1)).await.unwrap();

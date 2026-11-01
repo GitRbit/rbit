@@ -5,7 +5,7 @@ use axum::{
 };
 use rbit_core::{Config, Visibility};
 use rbit_services::{CreateOrganization, CreateRepository, Services};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 use std::{path::Path, process::Command, sync::Arc};
 use tower::ServiceExt;
 
@@ -41,7 +41,7 @@ async fn contribution_counts_respect_visibility_authors_branches_and_years() {
     config.security.rate_limit = false;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let config = Arc::new(config);
     let services = Services::new(config.clone(), &database, &kv).await.unwrap();
     let alice = database

@@ -19,7 +19,7 @@ async fn a_mirror_fetch_is_reported_as_a_mirror_push() {
     config.mirrors.allow_private_addresses = true;
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = rbit_storage::KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
     let alice = database
         .accounts()

@@ -286,7 +286,7 @@ mod tests {
             std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
             let path = config.storage.sqlite_path();
             let database = Database::open(&path).await.unwrap();
-            let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+            let kv = database.open_kv(&config.storage.kv_path()).unwrap();
             let mut users = Vec::new();
             for (name, is_admin) in [("policy-admin", true), ("policy-reader", false)] {
                 users.push(

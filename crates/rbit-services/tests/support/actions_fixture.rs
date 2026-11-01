@@ -7,7 +7,7 @@ use std::{path::Path, process::Command, sync::Arc};
 
 use rbit_core::{Config, Permission, RefUpdate, Timestamp, User, Visibility, actions::Run};
 use rbit_services::{ActionsService, CreateRepository, RepoContext, Services};
-use rbit_storage::{Database, KvStore, NewUser};
+use rbit_storage::{Database, NewUser};
 
 pub fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -65,7 +65,7 @@ impl Fixture {
         configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(Arc::new(config), &database, &kv).await.unwrap();
         let (alice, carol, rita, bob) =
             (user(&database, "alice").await, user(&database, "carol").await, user(&database, "rita").await, user(&database, "bob").await);

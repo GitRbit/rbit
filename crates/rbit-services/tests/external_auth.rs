@@ -18,7 +18,7 @@ use rbit_services::{
     audit::{AuditAction, AuditCategory},
     external_auth::{Callback, CallbackParams, ExternalSignIn, VerifiedIdentity},
 };
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 const PASSWORD: &str = "correct horse battery";
 
@@ -53,7 +53,7 @@ impl Fixture {
         configure(&mut config);
         let config = Arc::new(config);
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let services = Services::new(config, &database, &kv).await.unwrap();
         Self { _dir: dir, database, services }
     }
@@ -382,7 +382,7 @@ async fn invalid_provider_configuration_stops_start_up() {
     config.storage.data_dir = dir.path().to_path_buf();
     config.auth.providers = vec![ProviderConfig { issuer: None, ..provider("corp", ProviderKind::Oidc) }];
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let error = Services::new(Arc::new(config), &database, &kv).await.unwrap_err();
     assert!(error.to_string().contains("`issuer` is required"), "{error}");
 }

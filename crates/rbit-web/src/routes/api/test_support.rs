@@ -11,7 +11,7 @@ use axum::{
 };
 use rbit_core::{Config, TokenScope, User, Visibility};
 use rbit_services::{CreateAccessToken, CreateRepository, DomainEvent, Services, SignUp};
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use serde_json::Value;
 use tokio::sync::broadcast::{Receiver, error::TryRecvError};
 use tower::ServiceExt;
@@ -37,7 +37,7 @@ impl Fixture {
         configure(&mut config);
         std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
         let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-        let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+        let kv = database.open_kv(&config.storage.kv_path()).unwrap();
         let config = Arc::new(config);
         let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
         let router = crate::router(AppState::new(config, services.clone()));

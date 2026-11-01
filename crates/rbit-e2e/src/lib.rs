@@ -37,7 +37,7 @@ use std::{
 
 use rbit_core::Config;
 use rbit_services::Services;
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 use rbit_web::AppState;
 pub use reqwest::StatusCode;
 use reqwest::{
@@ -252,7 +252,7 @@ async fn boot(config: Config) -> Result<(axum::Router, Database, Services), Stri
     let storage = &config.storage;
     tokio::fs::create_dir_all(storage.repositories_dir()).await.map_err(|e| format!("cannot create the data directory: {e}"))?;
     let database = Database::open(&storage.sqlite_path()).await.map_err(|e| format!("cannot open SQLite: {e}"))?;
-    let kv = KvStore::open(&storage.kv_path()).map_err(|e| format!("cannot open redb: {e}"))?;
+    let kv = database.open_kv(&storage.kv_path()).map_err(|e| format!("cannot open redb: {e}"))?;
     let services = Services::new(Arc::clone(&config), &database, &kv).await.map_err(|e| format!("cannot build services: {e}"))?;
     services.spawn_background();
     let state = AppState::new(Arc::clone(&config), services.clone());

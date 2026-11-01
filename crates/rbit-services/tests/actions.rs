@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use rbit_core::Config;
 use rbit_services::Services;
-use rbit_storage::{Database, KvStore};
+use rbit_storage::Database;
 
 async fn services(configure: impl FnOnce(&mut Config)) -> (tempfile::TempDir, Arc<Config>, Services) {
     let dir = tempfile::tempdir().unwrap();
@@ -14,7 +14,7 @@ async fn services(configure: impl FnOnce(&mut Config)) -> (tempfile::TempDir, Ar
     configure(&mut config);
     std::fs::create_dir_all(config.storage.repositories_dir()).unwrap();
     let database = Database::open(&config.storage.sqlite_path()).await.unwrap();
-    let kv = KvStore::open(&config.storage.kv_path()).unwrap();
+    let kv = database.open_kv(&config.storage.kv_path()).unwrap();
     let config = Arc::new(config);
     let services = Services::new(Arc::clone(&config), &database, &kv).await.unwrap();
     (dir, config, services)
