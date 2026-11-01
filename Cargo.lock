@@ -4450,6 +4450,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-plugin-native"
+version = "0.1.5"
+dependencies = [
+ "rbit-plugin-api",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "rbit-plugin-packages"
 version = "0.1.5"
 dependencies = [

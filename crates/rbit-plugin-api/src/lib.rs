@@ -29,3 +29,6 @@ pub use policy::{
     PackageSelectionClearRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest, PolicyGrantRequests, PolicyGrantScope,
     PolicyRevision, RepositoryGrantId,
 };
+
+/// Passive native worker wire values, never launch authorization.
+pub mod worker;

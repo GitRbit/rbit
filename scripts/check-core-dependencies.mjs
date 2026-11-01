@@ -18,7 +18,8 @@ if (result.error || result.status !== 0) {
 }
 const actions = ["rbit-actions", "rbit-actions-web", "rbit-workflow", "serde-saphyr"];
 const catalogs = ["rbit-i18n", "rbit-i18n-web", "fluent-bundle", "fluent-syntax", "intl_pluralrules"];
-const forbidden = new Set(profile === "actions" ? catalogs : profile === "i18n" ? actions : [...actions, ...catalogs]);
+// The pure worker codec is not linked into any operational server profile yet.
+const forbidden = new Set(["rbit-plugin-native", ...(profile === "actions" ? catalogs : profile === "i18n" ? actions : [...actions, ...catalogs])]);
 if (!result.stdout.startsWith("rbit-server ")) {
   process.stderr.write("The core dependency graph did not contain the expected server root.\n");
   process.exit(1);

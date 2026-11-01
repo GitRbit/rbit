@@ -39,7 +39,7 @@ test("indirect implementation dependencies are rejected even behind a permitted 
     "rbit-web", "rbit-services", "rbit-services-base", "rbit-storage", "rbit-git", "rbit-auth",
     "rbit-transport", "rbit-mail", "rbit-actions", "rbit-actions-web", "rbit-workflow", "serde-saphyr",
     "rbit-plugin-host", "rbit-plugin-host-native", "rbit-plugin-actions", "rbit-plugin-actions-native", "rbit-plugin-i18n",
-    "rbit-plugin-packages", "rbit-plugin-packages-native",
+    "rbit-plugin-packages", "rbit-plugin-packages-native", "rbit-plugin-native", "rbit-plugin-native-transport",
     "rbit-i18n", "fluent-bundle", "fluent-syntax", "intl_pluralrules", "axum", "tower-http",
     "http", "http-body", "http-body-util", "hyper", "hyper-util", "hyper-rustls", "reqwest", "reqwest-middleware",
     "sqlx-core", "wasm-bindgen", "wasmtime", "wasmi", "wasmer", "wasmparser", "wat", "wast",

@@ -7,7 +7,7 @@ function forbidden(name) {
     || name === "rbit-workflow" || name === "serde-saphyr"
     || (name.startsWith("rbit-actions") && name !== "rbit-actions-core")
     || name === "rbit-i18n" || name.startsWith("rbit-i18n-")
-    || /^rbit-plugin-(?:host|actions|i18n|packages)(?:-|$)/.test(name)
+    || /^rbit-plugin-(?:host|actions|i18n|packages|native)(?:-|$)/.test(name)
     || /^(?:http|hyper|reqwest|axum|tower|sqlx|fluent|intl_pluralrules)(?:-|_|$)/.test(name)
     || /^(?:wasm|wat$|wast$)/.test(name);
 }

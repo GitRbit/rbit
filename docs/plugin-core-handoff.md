@@ -1,5 +1,21 @@
 # Plugin core handoff
 
+## Pure native probe codec — 2026-11-01
+
+The [worker protocol](design/native-worker-protocol.md) now has bounded passive SDK
+values and an isolated in-memory `rbit-plugin-native` codec/session crate. Ten native
+and 38 API tests pass, plus strict all-target lint, six actual dependency-profile
+guards and fifteen UI guard tests. No server profile links the native crate. The
+layer validates canonical framed messages, exact identities/effective limits,
+one outstanding request, bounded lifetime wire/frame work and terminal failures.
+
+It performs no admission, process/pipe I/O, timer or host call. Current policy still
+reports execution unavailable. Verified materialization, owned cancellable transport,
+safe process backends, durable attempts/reconciliation, explicit policy/re-review
+and writer-wide revocation remain prerequisites to an independent launch. These
+pure tests establish no OS cleanup, blocked-pipe deadline, sandbox or performance
+result. PR #47 and the broader modularization goal remain active.
+
 ## Runs/workflow document baseline — 2026-11-01
 
 Before extracting the runs/workflow GET request port, real-router tests capture

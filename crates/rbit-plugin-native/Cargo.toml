@@ -1,0 +1,16 @@
+[package]
+name = "rbit-plugin-native"
+description = "Pure bounded native worker codec; no process launch or authority."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-plugin-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
