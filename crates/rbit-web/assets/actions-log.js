@@ -15,7 +15,8 @@ let choices = { path: null, steps: new Map() };
 let openBefore = null;
 
 function chosen() {
-  if (choices.path !== location.pathname) choices = { path: location.pathname, steps: new Map() };
+  const path = location.pathname + (location.search ?? "");
+  if (choices.path !== path) choices = { path, steps: new Map() };
   return choices.steps;
 }
 

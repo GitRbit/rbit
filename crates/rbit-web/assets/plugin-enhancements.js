@@ -1,8 +1,18 @@
 // Only reviewed, host-shipped modules can enhance runtime contributions. DOM
 // attributes are hints and must match the active registry in the host shell.
 const DEFINITIONS = Object.freeze([
-  Object.freeze({ id: "actions.log", owner: "rbit.actions", rootId: "job", path: "/assets/actions-log.js", matchesPage: path => path.length <= 2048 && /^\/[^/]+\/[^/]+\/actions\/runs\/[0-9]{1,20}\/jobs\/[0-9]{1,20}$/.test(path) }),
+  Object.freeze({ id: "actions.log", owner: "rbit.actions", rootId: "job", path: "/assets/actions-log.js", matchesPage: actionsJobPage }),
 ]);
+function actionsJobPage(path, search = "") {
+  if (path.length > 2048 || search.length > 2048) return false;
+  if (/^\/[^/]+\/[^/]+\/actions\/runs\/[0-9]{1,20}\/jobs\/[0-9]{1,20}$/.test(path)) return true;
+  if (!/^\/[^/%]+\/[^/%]+\/-\/plugins\/rbit\.actions\/job$/.test(path)) return false;
+  const query = new URLSearchParams(search);
+  return [...query.keys()].length === 2 && ["run", "job"].every(key => {
+    const values = query.getAll(key);
+    return values.length === 1 && /^[1-9][0-9]{0,18}$/.test(values[0]) && BigInt(values[0]) <= 9223372036854775807n;
+  });
+}
 const MAX_RESOURCES = 256;
 const noop = () => {};
 
@@ -116,7 +126,7 @@ export function createEnhancementHost({
     return registry;
   }
   function candidate(definition) {
-    if (!definition.matchesPage(location.pathname)) return null;
+    if (!definition.matchesPage(location.pathname, location.search)) return null;
     const owner = approved().get(definition.id);
     if (!owner) return null;
     const roots = document.querySelectorAll("#" + definition.rootId);

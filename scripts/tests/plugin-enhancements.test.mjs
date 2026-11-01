@@ -213,3 +213,21 @@ test("failed imports and failed mounts retain the SSR fallback and can retry on 
   app.host.reconcile(); await flush(); assert.equal(attempts, 3);
   app.host.dispose(); assert.equal(disposed, 2);
 });
+
+
+test("canonical Actions job enhancements require exactly bounded run and job resources", async () => {
+  for (const [suffix, allowed] of [
+    ["?run=1&job=2", true], ["?job=2&run=1", true], ["", false],
+    ["?run=0&job=2", false], ["?run=1&job=2&job=3", false],
+    ["?run=1&job=2&extra=1", false], ["?run=9223372036854775808&job=2", false],
+    ["?run=01&job=2", false], ["?run=1&job=oops", false],
+  ]) {
+    let mounts = 0;
+    const app = fixture(() => Promise.resolve({ mount() { mounts++; } }));
+    app.location.pathname = "/alice/rocket/-/plugins/rbit.actions/job";
+    app.location.search = suffix;
+    app.host.start(); await flush();
+    assert.equal(mounts, allowed ? 1 : 0, suffix);
+    app.host.dispose();
+  }
+});

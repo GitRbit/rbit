@@ -106,3 +106,14 @@ test("unmount removes all listeners so a new activation does not duplicate behav
   job.dispose();
   assert.equal(job.listenerCount(), 0);
 });
+
+
+test("canonical query changes discard choices belonging to a different job", () => {
+  const job = page("/a/b/-/plugins/rbit.actions/job");
+  job.location.search = "?run=1&job=2";
+  const step = new Step(0, "success", false);
+  job.show([step]); job.click(step);
+  job.location.search = "?run=1&job=3";
+  job.navigate([new Step(0, "success", false)]);
+  assert.deepEqual(opened(job.refresh([new Step(0, "success", false)])), []);
+});
