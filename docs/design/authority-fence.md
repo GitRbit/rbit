@@ -26,6 +26,23 @@ writers from starting until that guard is dropped. It cannot certify an uncertai
 domain. Dropping the drain guard releases serialization and opens no execution
 gate.
 
+## Permanent writer closure
+
+Stopping writers is irreversible within the domain. It rejects later requests and
+prevents already queued requests from starting SQL. An acquired mutation may still
+finish; dropping it remains uncertain. Cloned registrations observe the same stop.
+
+Terminal writer settlement requires stopped admission, no active mutations and no
+uncertainty. Queued tickets may remain owned, but can never start enrolled work.
+This is deliberately narrower than draining every future or resource: a forgotten
+queued future must not prevent proof that permanently stopped writers cannot issue
+new authority changes. Queue counters are retained until their tickets are dropped.
+
+Calling `Database::close()` stops its enrolled policy writers synchronously, even
+if the returned future is dropped without being polled. Awaiting that future closes
+the pools as before. This does not stop other stores' writers or prove that SQLite
+workers have exited.
+
 ## Coverage before execution
 
 This increment covers policy stores obtained from the same database handle or its

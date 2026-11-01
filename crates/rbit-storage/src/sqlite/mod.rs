@@ -378,10 +378,17 @@ impl Database {
         actions_caches::ActionsCacheStore::new(self.pool.clone())
     }
 
-    /// Flushes the WAL and closes all connections. Call during graceful shutdown.
-    pub async fn close(&self) {
-        self.package_pool.close().await;
-        self.pool.close().await;
+    /// Stops enrolled policy writers synchronously and requests pool closure during graceful shutdown.
+    /// Awaiting does not certify individual close errors or all SQL worker termination.
+    pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
+        // This executes when close() is CALLED, even if its future is never polled.
+        // It closes enrolled policy writers only, not every authority writer.
+        let shutdown = self.policy_domain.stop_writers();
+        async move {
+            let _shutdown = shutdown;
+            self.package_pool.close().await;
+            self.pool.close().await;
+        }
     }
 }
 

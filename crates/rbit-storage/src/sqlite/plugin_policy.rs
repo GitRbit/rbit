@@ -204,6 +204,12 @@ pub enum ApplyOutcome {
     GateSealed { gate: PolicyGate },
     CapacitySealed { gate: PolicyGate },
 }
+fn mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "package policy mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "package policy writer stopped",
+    })
+}
 #[derive(Debug, Clone)]
 pub struct PluginPolicyStore {
     pool: Pool,
@@ -216,7 +222,7 @@ impl PluginPolicyStore {
     /// Explicit authenticated initialization only. Reads/construction never open a
     /// gate. Randomness is generated before acquiring the FULL write transaction.
     pub async fn prepare(&self, actor: AccountId, now: Timestamp) -> Result<PolicyGate, StorageError> {
-        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let mutation = self.writer.begin().await.map_err(mutation_error)?;
         let result = epochs::bootstrap(&self.pool, actor, now).await;
         if result.is_ok() {
             mutation.complete();
@@ -230,7 +236,7 @@ impl PluginPolicyStore {
         request: &PackagePolicyRenewalRequest,
         now: Timestamp,
     ) -> Result<PolicyRenewalOutcome, StorageError> {
-        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let mutation = self.writer.begin().await.map_err(mutation_error)?;
         let result = epochs::renew(&self.pool, actor, id, request, now).await;
         if result.is_ok() {
             mutation.complete();
@@ -328,7 +334,7 @@ impl PluginPolicyStore {
         command: PolicyCommand,
         now: Timestamp,
     ) -> Result<ApplyOutcome, StorageError> {
-        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let mutation = self.writer.begin().await.map_err(mutation_error)?;
         let result = self.apply_raw(actor, id, command, now).await;
         if result.is_ok() {
             mutation.complete();
