@@ -19,6 +19,8 @@ use std::{
 };
 use tokio::io::AsyncReadExt as _;
 
+mod renewal;
+
 const ROOT: &str = "admin/plugin-policy";
 const LIMIT: usize = 64 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -54,6 +56,15 @@ pub enum PolicyCommand {
         #[arg(long)]
         operation_id: Option<String>,
     },
+    /// Deliberately renew a sealed epoch; never inherit reviews or selections.
+    Renew {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        operation_id: Option<String>,
+    },
+    /// Recover an immutable renewal receipt; never reopen an epoch.
+    RenewalOperation { id: String },
     /// Read an immutable receipt; 404 does not prove rollback or absence of a seal.
     Operation { id: String },
 }
@@ -69,6 +80,8 @@ enum Expected {
 
 pub(super) async fn run(api: &Api, command: PolicyCommand) -> anyhow::Result<i32> {
     let (method, path, body, expected) = match command {
+        PolicyCommand::Renew { request, operation_id } => return renewal::renew(api, request, operation_id).await,
+        PolicyCommand::RenewalOperation { id } => return renewal::operation(api, id).await,
         PolicyCommand::Status => (Method::GET, ROOT.to_owned(), None, Expected::Gate),
         PolicyCommand::Prepare => {
             eprintln!("Prepare has no receipt. Recover by running rbit plugin policy status with the same instance (--hostname).");

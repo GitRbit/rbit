@@ -125,6 +125,8 @@ an archive never starts a worker, enables a plugin or issues a broker grant.
 | `rbit plugin policy select --request FILE [--operation-id ID]` | Select the exact candidate under the current allowed review. |
 | `rbit plugin policy clear --request FILE [--operation-id ID]` | Clear selection while retaining its revision; does not revoke review. |
 | `rbit plugin policy operation ID` | Recover an immutable receipt. |
+| `rbit plugin policy renew --request FILE [--operation-id ID]` | Explicitly renew a sealed epoch within finite retention capacity. |
+| `rbit plugin policy renewal-operation ID` | Recover an immutable renewal receipt. |
 
 Use `--hostname URL` (or `RBIT_HOST`) consistently for all commands in an operation.
 Prepare is an explicit change, not a prerequisite automatically performed by reads
@@ -153,6 +155,16 @@ Structured capacity/already-sealed outcomes preserve their JSON evidence and exi
 Responses are bounded to 64 KiB. Native intent acknowledges full service-user OS
 access; it does not create a broker sandbox. Wasm intent never permits native
 fallback. Runtime admission and worker enforcement remain subsequent stages.
+
+Renewal request files contain strict SDK renewal JSON, without a command envelope,
+and have a separate 1 KiB complete-file limit. Renew never prepares implicitly,
+chooses an epoch, inherits reviews or selections, or enables execution. It prints
+a known key before the request; recover with `rbit plugin policy renewal-operation
+-- ID` using the same instance (`--hostname`), plus policy status. Historical
+renewal receipts report evidence only and never open another epoch. A structured
+`retention_full` response exits 1 and preserves the sealed gate: the finite limit
+of two retired epochs requires a future explicit export/pruning maintenance
+protocol. Missing receipts and transport errors do not prove rollback.
 
 ## Local package store setup
 

@@ -40,7 +40,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
-time.workspace = true
+time = { workspace = true, features = ["parsing"] }
 # The command-line client: the REST API over HTTPS (ring-backed rustls, as the server's other
 # clients), its logins in TOML, and artifacts unpacked from their tar.gz.
 reqwest = { workspace = true, features = ["json", "rustls-no-provider", "stream"] }
