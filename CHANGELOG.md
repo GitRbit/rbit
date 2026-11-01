@@ -23,11 +23,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Bounded administrator renewal HTTP endpoints and `rbit plugin policy renew` /
+  `renewal-operation` commands with strict 1 KiB requests, 64 KiB receipt responses,
+  retained operation keys and exact recovery-hook exemptions. Historical evidence
+  and finite-retention failures remain explicit; renewal never enables or runs code.
+
 - Explicit backend renewal of a sealed policy epoch with exact fingerprint/seal
   comparisons, fresh host identity, exclusive owned maintenance and retained audit.
   Three epochs and two renewals bound recovery; old decisions never carry forward.
-  Backup validates both legacy policy snapshots and retained epoch graphs. Renewal
-  HTTP/CLI adapters and export/pruning remain future work; execution stays unavailable.
+  Backup validates both legacy policy snapshots and retained epoch graphs.
+  Export/pruning remains future work; execution stays unavailable.
 
 - Admin-PAT HTTP policy endpoints and `rbit plugin policy` commands for explicit
   prepare, exact-package inspection, review, selection, clearing and retained-key

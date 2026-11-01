@@ -1,5 +1,44 @@
 # Plugin core handoff
 
+## Bounded renewal HTTP and CLI adapters — 2026-11-01
+
+The dedicated `PUT`/`GET /api/v1/admin/plugin-policy-renewals/{operation_id}` routes
+and `rbit plugin policy renew --request FILE [--operation-id ID]` /
+`renewal-operation ID` commands expose the bounded backend transition explicitly.
+PUT sends strict raw SDK JSON, capped at 1 KiB before deserialization; responses
+remain capped at 64 KiB. Admin-PAT scope and live active administrator checks precede
+body polling, with the existing body/command deadlines and FULL transaction checks.
+The seven exact policy/package recovery patterns bypass optional hooks while all
+host authentication/transport guards remain active; unrelated API routes stay hooked.
+
+The CLI retains and prints the known key before PUT, uses fixed instance-relative
+paths, and never auto-prepares, approves, retries or follows server URLs/redirects.
+It validates source fingerprint/seal identity, distinct destination identity and
+Applied's Open destination gate. Historical receipts remain original evidence even
+when that destination has retired. GET returns receipt-only metadata and a separate
+gate URL. `retention_full` 409 retains a sealed gate and null receipt, creates no
+receipt/key reservation and exits nonzero. Lost responses/404 never prove rollback;
+recover the same key and inspect current status on the same instance.
+
+At most two renewals retain two retired plus one current epoch. No review,
+selection, grant or enabled intent carries forward. Execution remains unavailable
+for native, Wasm and data packages; renewal creates neither broker authority nor a
+sandbox/worker. Export/pruning, broader recovery, managed runtime barriers and the
+remaining service/Web extraction work are still required. PR #47 stays open and
+the modularization goal remains active.
+
+All 12 policy HTTP tests passed in default and core-only profiles, covering
+pre-body authority and headers, strict/exact/chunked 1 KiB bounds, cooperative
+deadlines, replay/stale/retention outcomes and receipt recovery after an admitted
+waiter drops. The complete Web suite passed 647 tests with four expected ignores,
+including actual-router deny/stalled-hook recovery. The complete server suite
+passed 46 tests, including fixed-destination CLI recovery, malformed-response
+refusal, backup and restart. All four dependency guards passed again. Functional
+tests used unchanged Rust 1.95. Strict Rust 1.99 workspace/all-target Clippy,
+formatting and whitespace checks passed with warnings denied. These
+results do not establish a new full-workspace or hosted-CI pass. Backend results
+in the next section belong to the preceding batch.
+
 ## Bounded backend policy renewal — 2026-11-01
 
 The SDK renewal comparisons, migration `0065`, epoch-aware storage and exclusive
@@ -26,8 +65,9 @@ schema detection never ignores a partial epoch graph because its marker is absen
 Retained archives remain part of the backup; epoch duplication does not duplicate
 shared digest objects. Restore changes no executable authority.
 
-Maintenance HTTP/CLI adapters are **not yet exposed**; ordinary policy HTTP/CLI
-commands do not rotate epochs or query renewal receipts. Every package remains
+At this backend checkpoint, maintenance HTTP/CLI adapters were not yet exposed;
+ordinary policy commands did not rotate epochs or query renewal receipts. The later
+adapter section above records the dedicated transport increment. Every package remains
 execution unavailable, broker grants remain empty, and future managed admission
 must fence retired generations and host calls before any runtime integration.
 Export/pruning, remaining recovery, native worker/sandbox adapters and first-party

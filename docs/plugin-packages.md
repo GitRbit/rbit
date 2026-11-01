@@ -148,7 +148,7 @@ enabled intent and presentation remain separate. Backup validates these bounded
 records in its immutable SQLite snapshot and preserves the epoch and seal; restore
 never executes a candidate.
 
-## Bounded backend epoch renewal
+## Bounded epoch renewal
 
 Migration `0065` retains at most three policy epochs: one current and two retired.
 At most two successful renewals fit this fixed retention budget. Within each epoch
@@ -185,12 +185,12 @@ recoverable through the backend `renewal_operation` method. After an uncertain
 response, inspect that receipt and the current gate before an explicit retry with
 the same actor, request and key; missing receipts never establish rollback.
 
-Maintenance renewal is **not exposed through HTTP or the CLI yet**. Existing
-`rbit plugin policy` commands and HTTP review/select/clear routes remain unchanged;
-the ordinary operation endpoint does not expose renewal receipts. The backend
-mechanism grants no executable authority: execution remains unavailable for every
-package, nonempty broker grants are rejected, and native workers/sandbox enforcement
-remain subsequent stages.
+Explicit renewal is exposed through the dedicated administrator renewal routes
+and `rbit plugin policy renew` / `renewal-operation` commands described below.
+Ordinary review/select/clear requests keep their existing format; the ordinary
+operation endpoint does not expose renewal receipts. Renewal grants no executable
+authority: execution remains unavailable for every package, nonempty broker grants
+are rejected, and native workers/sandbox enforcement remain subsequent stages.
 
 Backup format 5 validates both the frozen five-table `0064` graph and the complete
 seven-table `0065` graph, rejecting partial schemas even when migration markers are
@@ -274,10 +274,12 @@ routes. Successful and structured seal results report `execution: "unavailable"`
 native full service-user trust reviews and selected candidates. No broker grant,
 enabled intent or executable activation is issued.
 
-The exact policy and package-operation route patterns bypass optional request
-hooks so an extension cannot hide recovery receipts or block host policy changes.
-Host authentication and transport guards still apply; unrelated API routes remain
-subject to hooks.
+The package and policy APIs have seven exact recovery path exemptions from optional
+request hooks: the six distinct policy patterns below and
+`/api/v1/admin/plugin-package-operations/{operation_id}`.
+An extension cannot hide these receipts or block host policy changes. Host
+authentication and transport guards still apply; unrelated API routes remain
+subject to hooks. This exemption grants no administrator authority.
 
 Paths below are relative to `/api/v1`:
 
@@ -289,8 +291,11 @@ Paths below are relative to `/api/v1`:
 | GET | `/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}` | Inspect declarations of an exact installed archive. |
 | PUT | `/admin/plugin-policy-operations/{operation_id}` | Apply a strict review, select or clear request. |
 | GET | `/admin/plugin-policy-operations/{operation_id}` | Recover an immutable receipt for a retained key. |
+| PUT | `/admin/plugin-policy-renewals/{operation_id}` | Explicitly retire the observed sealed epoch using raw SDK JSON. |
+| GET | `/admin/plugin-policy-renewals/{operation_id}` | Recover an immutable renewal receipt without reading current policy. |
 
-PUT accepts `{"command":"review|select|clear","request":...}`, where `command` is
+The ordinary policy-operation PUT accepts
+`{"command":"review|select|clear","request":...}`, where `command` is
 one of those three strings and `request` is the corresponding strict SDK request.
 Choose the 1–64 character lowercase ASCII/digit/hyphen operation key before PUT.
 Each request carries the expected host fingerprint and exact revision expectations;
@@ -300,9 +305,10 @@ current host accepts only empty grants. Native approval requires the explicit
 `wasm_sandbox_required` and never permits native fallback. These decisions record
 metadata, not a sandbox or permission to run.
 
-Use exactly `application/json` with absent or `identity` content encoding. Complete
-JSON bodies, including unknown-length/chunked input, are capped at 64 KiB before
-parsing, with a 10-second body deadline inside the 25-second mutating-handler
+Use exactly `application/json` with absent or `identity` content encoding.
+Preparation and review/select/clear bodies are capped at 64 KiB before parsing;
+renewal bodies are capped at 1 KiB, including whitespace and unknown-length/chunked
+input. Both enforce a 10-second body deadline inside the 25-second mutating-handler
 deadline. Empty ready frames yield cooperatively. Compact responses are capped at
 64 KiB. They exclude canonical requests, complete archive file inventories and
 internal storage errors. Exact-package inspection exposes declared kind, host API,
@@ -324,3 +330,38 @@ same key and inspect both operation and gate before an explicit retry; the CLI
 never retries automatically or follows a returned URL. Prepare has no receipt:
 recover its outcome through gate inspection. Dropping a policy HTTP waiter does not
 cancel its admitted transaction owner, which remains tracked through commit.
+
+
+### Renewal transport and recovery
+
+`PUT /api/v1/admin/plugin-policy-renewals/{operation_id}` accepts the raw strict
+SDK request: `schema_version: 1`, `expected_host_policy`, and
+`expected_seal_operation`. It has no command envelope and accepts no requested
+destination epoch, approval, grant or enabled flag. Populate the observed fields
+from the current sealed gate; retain a different operation key before sending.
+The host publishes its fresh epoch and fingerprint only after its backend checks;
+the request cannot choose either destination value.
+
+Use `rbit plugin policy renew --request FILE [--operation-id ID]` with the intended
+`--hostname URL` (or `RBIT_HOST`). The file and complete HTTP body are each limited
+to 1 KiB. An omitted operation ID is generated and printed before PUT. Recover with
+`rbit plugin policy renewal-operation ID` on that same instance, and inspect
+`rbit plugin policy status` separately. These commands never automatically prepare,
+approve, retry, follow a redirect or follow a returned URL.
+
+Applied and historical responses use 200 and exit 0; historical output explicitly
+states no new epoch was opened. The compact receipt retains the original source
+and destination epochs/fingerprints, observed seal key, actor ID as an exact decimal
+string or null, RFC3339 time and a historical marker. An applied response's Open
+gate matches its destination. A historical receipt's destination may already have
+retired and does not imply current approval. GET is receipt-only, with a separate
+`gate_url`; it does not combine unrelated reads into an atomic snapshot.
+
+A structured `retention_full` 409 preserves its JSON evidence and exits nonzero.
+It leaves the current gate sealed, creates no renewal receipt and reserves no new
+key. GET 404, a timeout or a lost response never establishes rollback: an admitted
+renewal owner can finish after its HTTP waiter disappears. Inspect the renewal
+receipt and current gate before an explicit retry with the same actor/request/key.
+Ordinary policy operations and renewal receipts have separate URLs but share the
+backend global key reservation rules. Capacity remains finite at two renewals;
+export/pruning and managed execution are still future work.
