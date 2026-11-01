@@ -51,6 +51,8 @@ jobs:
       - run: cargo test --locked --package rbit-services --no-default-features --test integration actions_unavailable
       - run: cargo test --locked --package rbit-services --no-default-features --test integration i18n_unavailable
       - run: cargo test --locked --package rbit-services --no-default-features --test integration plugin_packages
+      - run: cargo test --locked --package rbit-services --no-default-features --lib package_policy
+      - run: cargo test --locked --package rbit-web --no-default-features --lib package_policy
       - run: cargo test --locked --package rbit-services --no-default-features --lib mutation_commit_survives_waiter_abort
       - run: cargo test --locked --package rbit-services --no-default-features --lib i18n_route_tests
       - run: cargo test --locked --package rbit-services --no-default-features --lib actions_route_tests
