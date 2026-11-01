@@ -60,11 +60,38 @@ npm run build                               # release embeds the generated asset
 CARGO_TARGET_DIR=target/perf-build cargo build --release -p rbit-server
 node scripts/perf/fixture.mjs                 # target/perf/fixture
 node scripts/perf/serve.mjs                   # second terminal; Ctrl+C stops it
-node scripts/perf/seed.mjs http://127.0.0.1:3005 # prints the four pages to probe
+# Save the instance setup token in an owned mode0600 file, then:
+node scripts/perf/seed.mjs http://127.0.0.1:3005 --setup-token-file /private/path/setup-token
 ```
 
 The launcher prints its base URL (default http://127.0.0.1:3005); pass that same origin
 to `seed.mjs`, for example `node scripts/perf/seed.mjs http://127.0.0.1:3005`.
+Only literal `127.0.0.1` or `[::1]` HTTP(S) origins are accepted; DNS names and
+alternate numeric spellings are rejected before private files or network access.
+For a fresh instance, pass its bootstrap setup token through an owned regular mode0600
+UTF-8 file (at most 4096 bytes), using the supported instance bootstrap/configuration
+flow to obtain it. Keep token bytes out of shell arguments and environment variables:
+
+```bash
+node scripts/perf/seed.mjs http://127.0.0.1:3005 --setup-token-file /private/path/setup-token
+```
+
+The optional file is submitted only as the official signup `setup_token` field. An
+existing account can still sign in without it; a fresh instance requiring a token
+fails without a valid one. The generated credentials file must also be owned mode0600;
+change the mode of an existing older fixture file before rerunning. These checks are
+supported on POSIX hosts; Windows seeding fails closed until ACL verification exists.
+Keep the fixture, credential files, their parent directories and the Git/Node binaries
+under the operator's control; this is local fixture tooling, not a hostile-filesystem
+sandbox.
+
+Git receives a private file-reading credential helper scoped to the exact HTTP(S)
+protocol, host and port, and repository path. Redirects are disabled. The push runs in
+a temporary bare context with a private HOME, isolated configuration and fixture
+objects, so inherited Git credentials, headers, hooks and URL rewrites do not carry
+into the push. Passwords and setup tokens are not passed in child arguments or
+environment variables. Child output and unvalidated redirect locations are withheld.
+
 Sign in at that origin's `/login` as `perf` with the password in
 `target/perf/credentials.txt` (the repository is public, so signing in only matters for
 the logged-in chrome). Then, on each page, in the devtools console:
@@ -263,7 +290,7 @@ the script runs, so every write also queues deliveries.
 # release build, seeded fixture (see "Reproduce"); then, with the server's environment:
 RBIT_OPERATIONS__METRICS=true RBIT_SECURITY__RATE_LIMIT=false \
 RBIT_WEBHOOKS__ALLOW_PRIVATE_ADDRESSES=true node scripts/perf/serve.mjs --port 3031 --data-dir target/perf/contention/data
-node scripts/perf/seed.mjs http://127.0.0.1:3031
+node scripts/perf/seed.mjs http://127.0.0.1:3031 --setup-token-file /private/path/setup-token
 node scripts/perf/contention.mjs setup http://127.0.0.1:3031
 node scripts/perf/contention.mjs run http://127.0.0.1:3031 --levels 4,16,64 --seconds 20 --output target/perf/contention/run-01.json
 ```

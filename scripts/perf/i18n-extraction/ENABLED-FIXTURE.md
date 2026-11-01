@@ -28,8 +28,10 @@ remain installed data in the fixture; they are not the chosen render locale here
    protocol, not protection against hostile same-user local port/PID races.
 2. Generate the deterministic existing fixture, then use `scripts/perf/seed.mjs`
    against that explicitly owned instance. The real first-account signup/setup flow
-   must establish the administrator; if a setup token is required, use the official
-   flow privately. Never insert an admin or session with SQL, synthesize signed
+   must establish the administrator. Read the owned instance's setup token privately
+   into an owned regular mode0600 file and pass only its path with
+   `--setup-token-file`; the helper submits the official signup field. Never insert
+   an admin or session with SQL, synthesize signed
    cookies, bypass Origin or infer privilege from a username. Retain Git refs/object
    identity and user/account row identity in private evidence.
 3. The existing seed helper keeps throwaway `login:password` in its ignored
@@ -45,7 +47,7 @@ remain installed data in the fixture; they are not the chosen render locale here
 python3 scripts/perf/i18n-extraction/owned-serve.py --build-record /ABS/A-default-build.json --data-dir /ABS/seed-data --metadata /ABS/seed-server.json --port 3005
 # In a separate controlled shell after the wrapper reports readiness:
 node scripts/perf/fixture.mjs
-node scripts/perf/seed.mjs http://127.0.0.1:3005
+node scripts/perf/seed.mjs http://127.0.0.1:3005 --setup-token-file /ABS/private-setup-token
 node scripts/perf/i18n-extraction/harness/seed-i18n.mjs /ABS/seed-server.json /ABS/private-login.json /ABS/exact-source/language-packs /ABS/seed-i18n-record.json
 ```
 
