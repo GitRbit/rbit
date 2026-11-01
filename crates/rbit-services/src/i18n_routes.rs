@@ -4,45 +4,26 @@ use std::sync::{Arc, Mutex};
 
 use rbit_plugin_api::Generation;
 use rbit_plugin_runtime::PluginScope;
-use rbit_plugin_web::{
-    MutationRegistration, MutationRegistry, MutationRouteRegistration, PageRegistration, PageRegistry, PageRouteRegistration,
-};
+use rbit_plugin_web::{MutationRegistry, PageRegistry, StagedRouteActivation};
 
 use crate::ServiceError;
 
-/// Reusable compiled factory blueprints. Capture weak host references so the
-/// composition root does not retain itself through these long-lived callbacks.
-#[derive(Debug, Clone, Default)]
-pub struct I18nRouteBundle {
-    pub pages: Vec<PageRegistration>,
-    pub mutations: Vec<MutationRegistration>,
-}
+/// Compatibility name for shared compiled factory blueprints.
+pub use rbit_plugin_web::RouteBundle as I18nRouteBundle;
 
 #[derive(Debug, Clone)]
 struct Activation {
     scope: PluginScope,
-    pages: Option<PageRouteRegistration>,
-    mutations: Option<MutationRouteRegistration>,
+    routes: StagedRouteActivation,
 }
 
 impl Activation {
     fn publish(&self) -> Result<(), ServiceError> {
-        if let Some(registration) = &self.mutations {
-            registration.publish().map_err(ServiceError::internal)?;
-        }
-        if let Some(registration) = &self.pages {
-            registration.publish().map_err(ServiceError::internal)?;
-        }
-        Ok(())
+        self.routes.publish().map_err(ServiceError::internal)
     }
 
     fn withdraw(&self) {
-        if let Some(registration) = &self.pages {
-            registration.unpublish();
-        }
-        if let Some(registration) = &self.mutations {
-            registration.unpublish();
-        }
+        self.routes.withdraw();
     }
 }
 
@@ -68,25 +49,8 @@ impl I18nRoutes {
 
     fn stage(&self, owner: &str, scope: &PluginScope, bundle: I18nRouteBundle) -> Result<Activation, ServiceError> {
         let owner: rbit_plugin_api::PluginId = owner.parse().map_err(ServiceError::internal)?;
-        let pages = if bundle.pages.is_empty() {
-            None
-        } else {
-            Some(self.pages.stage(owner.clone(), scope, scope.generation(), bundle.pages).map_err(ServiceError::internal)?)
-        };
-        let mutations = if bundle.mutations.is_empty() {
-            None
-        } else {
-            match self.mutations.stage(owner, scope, scope.generation(), bundle.mutations) {
-                Ok(registration) => Some(registration),
-                Err(error) => {
-                    if let Some(pages) = &pages {
-                        pages.unpublish();
-                    }
-                    return Err(ServiceError::internal(error));
-                }
-            }
-        };
-        Ok(Activation { scope: scope.clone(), pages, mutations })
+        let routes = bundle.stage(owner, scope, &self.pages, &self.mutations).map_err(ServiceError::internal)?;
+        Ok(Activation { scope: scope.clone(), routes })
     }
 
     /// Called under the slot's controller lock; no callback code runs under state locks.

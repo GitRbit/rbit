@@ -23,3 +23,6 @@ pub use capabilities::*;
 
 mod request;
 pub use request::*;
+
+mod route_bundle;
+pub use route_bundle::{RouteBundle, RouteBundleError, StagedRouteActivation};
