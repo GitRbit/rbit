@@ -1,6 +1,7 @@
 //! Compiled built-in Actions documents and forms, owned by its active plugin scope.
 mod environments;
 mod jobs;
+mod run_pages;
 mod runners;
 mod runs;
 mod settings;

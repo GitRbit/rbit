@@ -9,8 +9,12 @@ license.workspace = true
 [dependencies]
 askama.workspace = true
 rbit-ui.workspace = true
+rbit-plugin-web.workspace = true
 
 [dev-dependencies]
+tokio.workspace = true
+rbit-plugin-api.workspace = true
+rbit-plugin-runtime.workspace = true
 rbit-messages.workspace = true
 
 [lints]

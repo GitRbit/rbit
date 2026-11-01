@@ -4308,7 +4308,11 @@ version = "0.1.5"
 dependencies = [
  "askama",
  "rbit-messages",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-plugin-web",
  "rbit-ui",
+ "tokio",
 ]
 
 [[package]]

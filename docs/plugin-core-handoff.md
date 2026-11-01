@@ -77,6 +77,32 @@ state badge remains a draft. First-party host/service ports, durable trigger del
 managed executable adapters and the sandboxed runtime remain unfinished. PR #47
 and the broader runtime goal stay active; passive rendering is not completion.
 
+## Actions runs/workflow request port — 2026-11-01
+
+The optional `rbit-actions-web` crate owns exactly the runs/workflow GET
+registration descriptors, bounded query projection and request orchestration.
+A fixed two-registration array and concrete futures preserve the existing factory
+shape. Workflow names remain borrowed across host rendering; existing owned filter
+strings move into the domain query. The only new normal dependency is the existing
+foundational `rbit-plugin-web`; test edges reuse existing workspace packages.
+
+Web retains the weak blueprint and upgrades once per request, reloads the active
+actor and builds the host page before query parsing. It still owns SQL, repository
+read permission, workflow/dispatch policy, form proofs, locale, repository chrome
+and the unchanged full document template. Query allowlists, form declarations and
+the one-second deadline remain unchanged. Mutations and run detail remain in Web.
+
+Five fake-host cases cover exact declarations, query borrowing/permissive parsing,
+authority-before-malformed-query order, disposed hosts and generation revocation.
+The real-router baseline above separately pins host work and normalized documents.
+Local validation passed all 13 Actions leaf tests, 25 default and 24 Actions-only
+native host tests, ten i18n-only route tests and ten core-only form tests. Both
+runs/workflow cells preserve their original exact SQL and per-profile normalized
+HTML digests after extraction. Strict all-target lint and all four core/UI/feature
+dependency guards pass. Hosted validation at the published head remains required.
+These checks do not establish latency, allocations or completion of Actions service
+separation, native execution or the wider modularization goal.
+
 ## Shared scoped route ownership — 2026-11-01
 
 `rbit-plugin-web::RouteBundle` and `StagedRouteActivation` share the page/mutation

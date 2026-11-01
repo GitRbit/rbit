@@ -19,7 +19,7 @@ const CONTROLS: &[&str] = &["cancel", "rerun", "rerun-failed", "approve", "revie
 
 pub(super) fn bundle(weak: WeakAppState) -> Result<ActionsRouteBundle, ServiceError> {
     let mut bundle = ActionsRouteBundle::default();
-    workflow_pages(&weak, &mut bundle)?;
+    bundle.pages.extend(super::run_pages::pages(weak.clone())?);
     let forms = CONTROLS.iter().map(|name| FormReference::new(name, name)).collect::<Result<Vec<_>, _>>().map_err(super::declaration)?;
     let descriptor = PageDescriptor::new("run", PageScope::Repository, "run", PageAudience::RepositoryReader, Duration::from_secs(1))
         .and_then(|d| d.with_query(&["run", "jobs_page", "artifacts_page"]))
@@ -109,44 +109,6 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<ActionsRouteBundle, ServiceEr
     }));
     Ok(bundle)
 }
-fn workflow_pages(weak: &WeakAppState, bundle: &mut ActionsRouteBundle) -> Result<(), ServiceError> {
-    for path in ["runs", "workflow"] {
-        let descriptor = PageDescriptor::new(path, PageScope::Repository, path, PageAudience::RepositoryReader, Duration::from_secs(1))
-            .and_then(|d| d.with_query(&["workflow", "branch", "actor", "event", "status", "before", "ref"]))
-            .and_then(|d| d.with_forms(vec![FormReference::new("dispatch", "dispatch")?, FormReference::new("switch", "switch")?]))
-            .map_err(super::declaration)?
-            .with_document();
-        let weak = (*weak).clone();
-        bundle.pages.push(compiled_request_page(descriptor, move |context, forms, query| {
-            let weak = weak.clone();
-            async move {
-                let (state, viewer, mut page, owner, repo) = super::request(&weak, &context, forms).await?;
-                page.path = super::repo_url(&owner, &repo, path);
-                let list = runs::ListQuery {
-                    branch: query.get("branch").unwrap_or_default().into(),
-                    actor: query.get("actor").unwrap_or_default().into(),
-                    event: query.get("event").unwrap_or_default().into(),
-                    status: query.get("status").unwrap_or_default().into(),
-                    before: query
-                        .get("before")
-                        .map(str::parse)
-                        .transpose()
-                        .map_err(|_| rbit_services::plugin_pages::PageError::Forbidden)?,
-                    reference: query.get("ref").unwrap_or_default().into(),
-                };
-                let workflow = if path == "workflow" {
-                    Some(query.get("workflow").ok_or(rbit_services::plugin_pages::PageError::Forbidden)?)
-                } else {
-                    None
-                };
-                let view = runs::runs_page(&state, &viewer, page, &owner, &repo, workflow, &list, None).await.map_err(super::page_error)?;
-                super::document(view, context.locale)
-            }
-        }));
-    }
-    Ok(())
-}
-
 fn text(name: &str, max_bytes: usize, required: bool) -> FormField {
     FormField { name: name.into(), kind: FormFieldKind::Text { max_bytes, multiline: false }, required }
 }
