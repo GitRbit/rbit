@@ -228,6 +228,8 @@ async fn step_summaries_are_kept_once_and_shown_sanitised_on_the_run_page() {
 /// job still shows its own summary.
 #[tokio::test]
 async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() {
+    use tracing::instrument::WithSubscriber;
+
     let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
     let (linux, mac) = (fixture.runner(&["linux"]).await, fixture.runner(&["mac"]).await);
     let run = seed(&fixture, &[payload(&template("first", &["mac"], &[])), payload(&template("second", &["linux"], &[]))]).await;
@@ -246,9 +248,14 @@ async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() 
         .header(header::COOKIE, format!("rbit_session={}", token.encode()))
         .body(Body::empty())
         .unwrap();
-    let response = fixture.router.clone().oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    // A 503 deliberately has a generic body. Keep the existing boundary's
+    // PageError diagnostics local to this request, without owning the global
+    // subscriber used by SQL query instrumentation in the same test binary.
+    let diagnostics = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().finish();
+    let response = fixture.router.clone().oneshot(request).with_subscriber(diagnostics).await.unwrap();
+    let status = response.status();
     let page = String::from_utf8(to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec()).unwrap();
+    assert_eq!(status, StatusCode::OK, "run page response: {page}");
     assert!(page.contains("summary of the first job") && page.contains("summary of the second job"), "{page}");
 }
 
