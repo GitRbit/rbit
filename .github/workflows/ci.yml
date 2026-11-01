@@ -180,6 +180,26 @@ jobs:
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
+      # Keep the temporary build swap while compiling large templates, then return
+      # its disk space before fixtures create uncompressed packs and snapshots.
+      - name: Compile tests
+        run: cargo nextest run --workspace --locked --profile ci --no-run
+      - name: Release temporary Linux build swap
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          swap_file="${RUNNER_TEMP:?}/rbit-ci.swap"
+          df -h "$RUNNER_TEMP"
+          free -h
+          if [[ ! -f "$swap_file" || -L "$swap_file" ]]; then
+            echo "::error::Expected the regular temporary swap file created by prepare-build"
+            exit 1
+          fi
+          sudo swapoff -- "$swap_file"
+          sudo rm -- "$swap_file"
+          df -h "$RUNNER_TEMP"
+          free -h
       # Windows fixtures spawn Git processes and share a constrained disk. Bound test
       # concurrency rather than weakening native page deadlines or retrying failures.
       - run: cargo nextest run --workspace --locked --profile ci --test-threads ${{ matrix.os == 'windows-latest' && '2' || 'num-cpus' }}
