@@ -4,12 +4,12 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha2::{Digest as _, Sha256};
 use std::fmt::Write as _;
 
-struct Document {
-    headers: HeaderMap,
-    html: String,
-    queries: Vec<String>,
+pub(super) struct Document {
+    pub(super) headers: HeaderMap,
+    pub(super) html: String,
+    pub(super) queries: Vec<String>,
 }
-async fn measured_summary(fixture: &Fixture, cookie: &str, path: &str) -> Document {
+pub(super) async fn measured_summary(fixture: &Fixture, cookie: &str, path: &str) -> Document {
     let counter = crate::query_count::QueryCounter::new();
     let (status, headers, html) = counter.measure(request(fixture, cookie, Method::GET, path, String::new())).await;
     assert_eq!(status, StatusCode::OK, "{path}");
@@ -23,17 +23,20 @@ async fn measured_summary(fixture: &Fixture, cookie: &str, path: &str) -> Docume
     Document { headers, html, queries }
 }
 fn assert_full_host_contract(document: &Document, title: &str, heading: &str) {
+    assert_host_document(document, title, heading);
+    assert!(document.html.contains("data-actions-summary"));
+}
+pub(super) fn assert_host_document(document: &Document, title: &str, heading: &str) {
     let html = &document.html;
     assert_document_appearance(html, "base24-berlin", "dark");
     assert_eq!(html.matches("<!doctype html>").count(), 1);
     assert_eq!(html.matches("<title>").count(), 1);
     assert!(html.contains(&format!("<title>{}</title>", Escaped { value: title }.render().unwrap())));
-    assert_eq!(html.matches("<h1").count(), 1, "generic fragment title must not replace or duplicate summary heading");
+    assert_eq!(html.matches("<h1").count(), 1, "generic fragment title must not replace or duplicate the document heading");
     assert!(html.contains(&Escaped { value: heading }.render().unwrap()));
     let body = html.split("<body ").nth(1).unwrap().split('>').next().unwrap();
     assert!(body.contains("hx-history=\"false\"") && body.contains("hx-boost=\"false\""));
     assert!(body.contains("data-signed-in"));
-    assert!(html.contains("data-actions-summary"));
     let active: Vec<_> = html
         .split("<a ")
         .filter_map(|element| {
@@ -123,7 +126,7 @@ async fn summary_representation_preserves_single_host_expansion_document_securit
 // Versioned domain + fixed-width big-endian count and per-statement UTF-8 byte
 // lengths make the fingerprint unambiguous, retaining duplicate statements.
 // The caller sorts only completion order; SQL bytes are never normalized.
-fn sql_multiset_digest(statements: &[String]) -> String {
+pub(super) fn sql_multiset_digest(statements: &[String]) -> String {
     let mut digest = Sha256::new();
     digest.update(b"rbit-summary-host-sql-multiset-v1\0");
     digest.update(u64::try_from(statements.len()).unwrap().to_be_bytes());

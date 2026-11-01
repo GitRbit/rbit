@@ -253,3 +253,6 @@ async fn native_actions_owned_success_and_validation_documents_preserve_host_the
 
 #[path = "actions_summary_host_contract.rs"]
 mod native_actions_summary_host_contract;
+
+#[path = "actions_log_host_contract.rs"]
+mod native_actions_log_host_contract;
