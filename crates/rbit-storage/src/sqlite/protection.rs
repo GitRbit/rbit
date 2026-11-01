@@ -94,11 +94,12 @@ pub enum RuleChange {
 #[derive(Debug, Clone)]
 pub struct BranchProtectionStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl BranchProtectionStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// The rules of `repo`, by pattern, with their allowed users and teams (by name) and
@@ -184,6 +185,15 @@ impl BranchProtectionStore {
     /// Adds a rule to `repo`. [`StorageError::Conflict`] (`"pattern"`) if `repo` already has
     /// a rule for this pattern.
     pub async fn create(&self, repo: RepoId, input: &RuleInput, creator: AccountId) -> Result<RuleChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(protection_mutation_error)?;
+        let result = self.create_raw(repo, input, creator).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn create_raw(&self, repo: RepoId, input: &RuleInput, creator: AccountId) -> Result<RuleChange, StorageError> {
         let now = Timestamp::now().seconds();
         let mut tx = self.pool.begin().await?;
         let settings = &input.settings;
@@ -212,9 +222,11 @@ impl BranchProtectionStore {
         .await
         .map_err(|e| StorageError::from_insert(e, "pattern"))?;
         let Some(id) = id else {
+            tx.rollback().await?;
             return Ok(RuleChange::TooManyRules);
         };
         if !insert_grants(&mut tx, repo, id, input).await? {
+            tx.rollback().await?;
             return Ok(RuleChange::TeamOutsideOrganization);
         }
         tx.commit().await?;
@@ -224,6 +236,15 @@ impl BranchProtectionStore {
     /// Replaces rule `id` of `repo` (pattern, flags, users and teams).
     /// [`StorageError::Conflict`] (`"pattern"`) if another rule has the new pattern.
     pub async fn update(&self, repo: RepoId, id: ProtectionId, input: &RuleInput) -> Result<RuleChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(protection_mutation_error)?;
+        let result = self.update_raw(repo, id, input).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn update_raw(&self, repo: RepoId, id: ProtectionId, input: &RuleInput) -> Result<RuleChange, StorageError> {
         let mut tx = self.pool.begin().await?;
         let settings = &input.settings;
         let result = sqlx::query(
@@ -248,12 +269,14 @@ impl BranchProtectionStore {
         .await
         .map_err(|e| StorageError::from_insert(e, "pattern"))?;
         if result.rows_affected() == 0 {
+            tx.rollback().await?;
             return Ok(RuleChange::NotFound);
         }
         sqlx::query("DELETE FROM branch_protection_users WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM branch_protection_teams WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
         sqlx::query("DELETE FROM branch_protection_required_checks WHERE rule_id = ?").bind(id.0).execute(&mut *tx).await?;
         if !insert_grants(&mut tx, repo, id.0, input).await? {
+            tx.rollback().await?;
             return Ok(RuleChange::TeamOutsideOrganization);
         }
         tx.commit().await?;
@@ -262,15 +285,27 @@ impl BranchProtectionStore {
 
     /// Deletes rule `id` of `repo`. Returns whether it existed.
     pub async fn delete(&self, repo: RepoId, id: ProtectionId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(protection_mutation_error)?;
+        let result = self.delete_raw(repo, id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn delete_raw(&self, repo: RepoId, id: ProtectionId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result =
-            sqlx::query("DELETE FROM branch_protections WHERE id = ? AND repo_id = ?").bind(id.0).bind(repo.0).execute(&self.pool).await?;
+            sqlx::query("DELETE FROM branch_protections WHERE id = ? AND repo_id = ?").bind(id.0).bind(repo.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 }
 
-/// Writes the allowed users and teams and the required contexts of rule `id`. `false` (and nothing more written) if
-/// a team does not belong to the organisation owning `repo`; the caller then drops the
-/// transaction.
+/// Writes the allowed users, teams and required contexts of rule `id`.
+/// A foreign or missing team returns `false`; earlier entries may have been written
+/// tentatively. The caller must await rollback of the complete transaction before
+/// acknowledging that refusal, including any preceding rule/child replacement.
 async fn insert_grants(tx: &mut WriteTransaction, repo: RepoId, id: i64, input: &RuleInput) -> Result<bool, StorageError> {
     for context in &input.contexts {
         sqlx::query("INSERT OR IGNORE INTO branch_protection_required_checks (rule_id, context) VALUES (?, ?)")
@@ -348,3 +383,19 @@ fn protection(
         updated_at: Timestamp(row.updated_at),
     })
 }
+
+// Only direct rule graph create/update/delete are enrolled; other originating
+// transfer/cascade writers and service freshness remain separate categories.
+fn protection_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::AdmissionUnavailable {
+        scope: "branch protection",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
+}
+
+#[cfg(test)]
+#[path = "protection/fence_tests.rs"]
+mod fence_tests;

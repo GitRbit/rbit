@@ -351,7 +351,7 @@ fn required_contexts(contexts: &[String]) -> Result<Vec<StatusContext>, ServiceE
 
 fn pattern_taken(error: StorageError) -> ServiceError {
     match error {
-        StorageError::Conflict(_) => ServiceError::Invalid("a rule for this pattern already exists".to_owned()),
+        StorageError::Conflict("pattern") => ServiceError::Invalid("a rule for this pattern already exists".to_owned()),
         other => other.into(),
     }
 }

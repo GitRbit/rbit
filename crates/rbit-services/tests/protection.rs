@@ -23,6 +23,7 @@ const ID: &str = "1111111111111111111111111111111111111111";
 struct Fixture {
     dir: tempfile::TempDir,
     services: Services,
+    database: Database,
     /// Owns `acme`.
     olga: User,
     /// On team `core`, which may write to `acme/rocket`.
@@ -67,7 +68,7 @@ impl Fixture {
         let core = services.teams.open(Some(&olga), &acme, "core").await.unwrap();
         services.teams.add_member(&olga, &core, "bob").await.unwrap();
         services.teams.set_repository(&olga, &core, "rocket", Permission::Write).await.unwrap();
-        let fixture = Self { dir, services, olga, bob, carol, rita };
+        let fixture = Self { dir, services, database, olga, bob, carol, rita };
         let rocket = fixture.repo(&fixture.olga).await;
         fixture.services.collaborators.add(&fixture.olga, &rocket, "carol", Permission::Write).await.unwrap();
         fixture.services.collaborators.add(&fixture.olga, &rocket, "rita", Permission::Read).await.unwrap();
@@ -390,4 +391,45 @@ async fn required_status_checks_are_validated_and_reach_the_merge_rules() {
 
     let created = fixture.audit(AuditAction::BranchProtectionCreated).await;
     assert!(created.iter().any(|event| event.detail == "main (no force pushes, no deletion, status checks)"), "{created:?}");
+}
+
+#[tokio::test]
+async fn typed_protection_stop_preserves_pattern_validation_and_all_three_service_errors() {
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+    let fixture = Fixture::new().await;
+    let repo = fixture.repo(&fixture.olga).await;
+    let protection = &fixture.services.protection;
+    let original = protection.create(&fixture.olga, &repo, &input("main", RuleSettings::default())).await.unwrap();
+    assert!(invalid(protection.create(&fixture.olga, &repo, &input("main", RuleSettings::default())).await).contains("already exists"));
+    let before = fixture.services.audit.recent_for(&fixture.olga, 50).await.unwrap();
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close()); // Synchronous writer stop only; pool closure stays unpolled.
+    let stopped = |result: &Result<(), ServiceError>| {
+        assert!(matches!(
+            result,
+            Err(ServiceError::AdmissionUnavailable { scope: "branch protection", reason: rbit_storage::AdmissionReason::Stopped })
+        ));
+    };
+    stopped(
+        &tokio::time::timeout(WAIT, protection.create(&fixture.olga, &repo, &input("new", RuleSettings::default())))
+            .await
+            .unwrap()
+            .map(|_| ()),
+    );
+    stopped(
+        &tokio::time::timeout(WAIT, protection.update(&fixture.olga, &repo, original.id, &input("changed", RuleSettings::default())))
+            .await
+            .unwrap()
+            .map(|_| ()),
+    );
+    stopped(&tokio::time::timeout(WAIT, protection.delete(&fixture.olga, &repo, original.id)).await.unwrap());
+    let current = fixture.database.branch_protection().get(repo.repo.repo.id, original.id).await.unwrap().unwrap();
+    assert_eq!(current.rule, original.rule);
+    assert_eq!(current.created_by, original.created_by);
+    assert_eq!(current.created_at, original.created_at);
+    assert_eq!(current.updated_at, original.updated_at);
+    assert_eq!(fixture.database.branch_protection().list(repo.repo.repo.id).await.unwrap().len(), 1);
+    assert_eq!(fixture.services.audit.recent_for(&fixture.olga, 50).await.unwrap(), before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
 }

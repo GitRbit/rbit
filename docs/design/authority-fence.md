@@ -299,7 +299,8 @@ identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, four direct collaborator assignments, four existing-
 organization membership/base methods, four direct team membership/repository-grant
-methods, the three moderation methods and bound session workers
+methods, three direct branch-protection rule graph methods, the three moderation
+methods and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
 forced administrator, email-reset and response-deferred self-service commands
 described above. It does not coordinate
@@ -319,10 +320,33 @@ Membership and repository grants are distinct relationships: removing a member
 preserves the team's repository grant for other members, and removing a grant
 preserves membership. Branch-protection team attribution follows membership even
 without an explicit repository grant. Team creation, name/profile updates,
-deletion, transfers, other cascades and branch-protection mutations remain separate
-writer categories. This partial enrollment does not establish fresh request
+deletion, transfers and other originating cascades remain separate writer
+categories; direct branch-protection mutations are addressed below. This partial enrollment does not establish fresh request
 authorization, physical ownership or execution readiness. Added transaction control
 statements are not a claim of query-count or latency parity.
+
+The three direct branch-protection rule writers enroll the complete rule graph:
+pattern, every flag, allowed users and teams, and required status contexts. The
+private child-row helper shares the caller's transaction and never acquires a
+second mutation. The existing same-statement 50-rule cap, pattern uniqueness,
+repository/id scoping and same-organization team predicates remain unchanged.
+Read methods remain outside admission and retain their existing query structure.
+
+Successful create/update acknowledge their existing COMMIT. Four business refusal
+paths now await rollback before acknowledging TooManyRules, NotFound or a foreign
+team: the helper may already have inserted contexts, users or valid teams, and an
+update may already have replaced the old child graph. A failed or interrupted
+rollback is not a clean refusal. Delete uses an acknowledged outer COMMIT,
+including missing-rule results and its own child cascades. SQL errors still leave
+acquired uncertainty; later passive success does not clear it.
+
+Only the exact pattern conflict becomes duplicate-pattern validation. Service
+validation and preloaded actor checks still precede the storage boundary; service
+audit and saved-rule reads still follow it. These guards do not own those tails or
+establish fresh request authorization. External account/team/repository deletion,
+repository transfer and other inputs to push/merge authorization remain separate
+originating writer categories. No physical-driver shutdown, crash reconciliation,
+native execution readiness or query-count/latency parity follows from this slice.
 
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same

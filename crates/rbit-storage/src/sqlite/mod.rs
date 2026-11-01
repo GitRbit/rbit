@@ -86,7 +86,8 @@ pub struct Database {
     // plus bound session write workers (purge certification is per write batch),
     // and four direct collaborator assignment APIs (not transfers/cascades),
     // plus four existing-organization membership/base-permission APIs
-    // and four direct team membership/repository-grant APIs (not team lifecycle).
+    // and four direct team membership/repository-grant APIs (not team lifecycle),
+    // plus three direct branch-protection rule graph APIs (not other cascade origins).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
@@ -369,7 +370,7 @@ impl Database {
     }
 
     pub fn branch_protection(&self) -> protection::BranchProtectionStore {
-        protection::BranchProtectionStore::new(self.store("branch_protection"))
+        protection::BranchProtectionStore::new(self.store("branch_protection"), self.authority_domain.writer())
     }
 
     // Milestone 3: commit statuses (S).
