@@ -19,6 +19,11 @@ const FILE_LIMIT: u64 = MAX_ARCHIVE_WIRE_BYTES - 1;
 
 #[derive(Debug, Subcommand)]
 pub enum PluginCommand {
+    /// Review passive package policy; never start or enable a plugin.
+    Policy {
+        #[command(subcommand)]
+        command: super::policy::PolicyCommand,
+    },
     /// Stream an archive to an administrator endpoint; neither enable nor trust it.
     Install {
         file: PathBuf,
@@ -32,6 +37,7 @@ pub enum PluginCommand {
 
 pub(super) async fn run(api: &Api, command: PluginCommand) -> anyhow::Result<i32> {
     let (status, value) = match command {
+        PluginCommand::Policy { command } => return super::policy::run(api, command).await,
         PluginCommand::Install { file, operation_id } => {
             let id = match operation_id {
                 Some(id) => parse_id(&id)?,
@@ -64,11 +70,11 @@ pub(super) async fn run(api: &Api, command: PluginCommand) -> anyhow::Result<i32
     Ok(code)
 }
 
-fn parse_id(value: &str) -> anyhow::Result<OperationId> {
+pub(super) fn parse_id(value: &str) -> anyhow::Result<OperationId> {
     OperationId::new(value).map_err(|_| anyhow::anyhow!("operation ID must contain 1-64 lowercase ASCII letters, digits or hyphens"))
 }
 
-fn fresh_id() -> anyhow::Result<OperationId> {
+pub(super) fn fresh_id() -> anyhow::Result<OperationId> {
     let mut bytes = [0; 16];
     getrandom::fill(&mut bytes).context("cannot generate package operation ID")?;
     let hex = b"0123456789abcdef";

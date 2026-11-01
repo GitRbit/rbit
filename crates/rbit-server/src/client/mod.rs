@@ -17,6 +17,7 @@
 mod commands;
 mod hosts;
 mod packages;
+mod policy;
 
 use std::time::Duration;
 
