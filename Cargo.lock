@@ -4408,6 +4408,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-plugin-packages"
+version = "0.1.5"
+dependencies = [
+ "rbit-plugin-api",
+ "serde_json",
+ "sha2 0.11.1",
+ "tar",
+ "thiserror",
+]
+
+[[package]]
 name = "rbit-plugin-runtime"
 version = "0.1.5"
 dependencies = [

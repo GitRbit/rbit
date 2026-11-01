@@ -1,5 +1,35 @@
 # Plugin core handoff
 
+## Package validation foundations — 2026-10-31
+
+`rbit-plugin-api` now has bounded versioned package metadata for native, Wasm and
+data adapters, portable payload paths, SHA256/size declarations and requested resource
+ceilings. Requests grant no authority. `rbit-plugin-packages` validates complete
+canonical uncompressed USTAR archives without extracting or executing anything.
+It caps metadata before parsing, streams payload hashing through a fixed heap buffer
+and enforces exact membership, sizes, hashes, padding and termination. Its README
+defines the intentionally narrow packaging profile accepted by the validator.
+Both changes received independent security review. Existing dependency versions and
+migrations remain unchanged; the only lockfile addition is the local package crate.
+
+Focused validation passes 24 API tests and 12 archive tests, strict all-target Clippy
+for both crates, formatting and whitespace checks. All 219 frontend/tooling tests,
+the generated asset build and shared UI/core dependency guards pass; generated assets
+remain unchanged. CI includes the archive suite in the isolated contract job.
+Require all 11 jobs on the final pushed head; earlier-head checks do not certify these
+new contracts. The full workspace result below belongs to the preceding UI extraction.
+
+The paired release HTTP experiment compares exact archived `0075cec` and `3b9f263`
+sources. Its baseline binary has completed with production fat LTO and one codegen
+unit; the candidate build and measurements remain pending. Source/build provenance,
+scripts and raw evidence live under ignored `target/perf/ui-extraction/`.
+
+The next package milestone is immutable staging and persistent installation metadata,
+followed by bounded worker framing/supervision and an independently built native sample
+installed on a running core-only server. First-party Actions/i18n still need narrow
+host-service ports and independent Web extraction; the Wasm adapter and release gates
+remain required. The broader goal is active and PR #47 stays open and unmerged.
+
 ## Shared presentation foundation — 2026-10-31
 
 The next extraction introduces `rbit-ui` below Web. It owns passive components,

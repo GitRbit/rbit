@@ -17,6 +17,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Streaming validation of canonical uncompressed plugin archives, including bounded
+  manifest parsing, actual payload size/SHA256 checks and strict archive termination.
+  The validator writes no files and executes no code; package staging remains later work.
+
 - Bounded plugin package metadata contracts for native executables, Wasm components
   and data packages, with portable file paths, size/digest declarations and requested
   resource budgets. These are validation primitives; executable installation and

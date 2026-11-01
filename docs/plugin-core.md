@@ -161,6 +161,21 @@ establish publisher trust separately, stage immutable versions and admit workers
 through the lifecycle coordinator. Worker framing, host-service ports, persistent
 installation state and the optional Wasm host remain required work.
 
+`rbit-plugin-packages::validate_archive` now checks an entire uncompressed package
+against its descriptor without extracting files. It caps metadata before parsing,
+streams payloads through a fixed 64 KiB heap buffer and verifies every declared size
+and SHA256 digest. Unknown, duplicate and missing files fail validation, as do links,
+extension records, nonzero padding, truncation and trailing bytes. Diagnostics do not
+include arbitrary manifest keys or payload data. Synchronous input readers still need
+a host-enforced deadline; a byte limit alone does not prevent a stalled read.
+
+Packages use a deliberately narrow canonical USTAR profile, with `package.json` first,
+regular files only and exactly two zero blocks followed by EOF. Generic tar archives,
+including extra record padding and common alternate header encodings, may be rejected.
+See the [exact format and limits](../crates/rbit-plugin-packages/README.md) before
+implementing a packager. Validation establishes agreement with the descriptor, not
+publisher identity, trust, installation or permission to execute.
+
 ## Custom middleware and other extensions
 
 `ScopedExtensionRegistry<T>` generalizes the registration lifetime to trusted callback
@@ -185,6 +200,7 @@ The focused checks are:
 
 ```sh
 cargo test --locked -p rbit-plugin-api -p rbit-plugin-runtime -p rbit-plugin-web -p rbit-actions-core
+cargo test --locked -p rbit-plugin-packages
 cargo test --locked -p rbit-services --test integration actions_plugin
 cargo test --locked -p rbit-services --no-default-features --test integration actions_unavailable
 cargo check --locked -p rbit-server --no-default-features

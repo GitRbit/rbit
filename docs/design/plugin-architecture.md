@@ -24,8 +24,10 @@ wrapper no longer import Web. Native Actions uses that shared wrapper. Full shel
 templates and host-built page/repository chrome remain in Web; separating those data
 contracts is the next prerequisite for an independent `rbit-actions-web` crate.
 The API also has bounded package metadata contracts for adapter kind, portable payload
-paths, size/digest declarations and requested resources. These do not install or run
-packages; immutable staging, trust, worker protocols and execution remain unimplemented.
+paths, size/digest declarations and requested resources. `rbit-plugin-packages` validates
+bounded canonical archives and hashes payloads without extracting them. These do not
+install or run packages; immutable staging, trust, worker protocols and execution remain
+unimplemented.
 Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.
@@ -109,6 +111,7 @@ Introduce these crates incrementally as the first extraction needs them:
 | Crate | Responsibility |
 | --- | --- |
 | `rbit-plugin-api` | Plugin IDs, manifests, service keys, typed envelopes, generations, error codes and protocol negotiation; no Axum or SQLx |
+| `rbit-plugin-packages` | Bounded package archive validation; host-owned staging and installation remain to be implemented |
 | `rbit-plugin-runtime` | Graph resolution, lifecycle transactions, resource scopes, admission leases and immutable snapshots |
 | `rbit-plugin-web` | Dynamic route dispatcher, host middleware profiles, UI slots, assets and OpenAPI composition |
 | `rbit-ui` | Shared components, semantic tokens, page contracts, English messages and reusable Askama templates |

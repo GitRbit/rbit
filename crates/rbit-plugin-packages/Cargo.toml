@@ -1,0 +1,19 @@
+[package]
+name = "rbit-plugin-packages"
+description = "Bounded streaming validation of declarative plugin package archives."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-plugin-api.workspace = true
+sha2.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tar.workspace = true
+
+[lints]
+workspace = true
