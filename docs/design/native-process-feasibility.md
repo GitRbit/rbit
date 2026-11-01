@@ -91,8 +91,41 @@ workspace/all-target Rust 1.99 lint. The waiter tests have not yet run on Linux;
 the earlier `469307c` Linux result covers only its original three OS tests. This
 increment adds no dependency, production runtime or executable availability.
 
-Still required: real Hello/Ready and partial-frame session deadlines, graceful
-Stop/TERM escalation, production waiter-loss ownership/admission, bounded flood queues,
+## Codec-aware fixed child
+
+Two more cases use the actual Session over pipes. The parent dispatches one exact
+ignored test through current_exe with a fixed good/bad-Ready mode and a mandatory
+raw acknowledgement. Wrong filters or zero selected tests cannot satisfy that
+acknowledgement. No compiler or binary discovery runs inside the tests.
+
+This fixture explicitly reverses its response channel: SDK frames use stderr and
+stdin carries host requests; stdout contains only separately drained libtest text.
+Neither channel scans noise for a frame prefix. The stdout drain has a 16 KiB
+output cap plus one EOF probe, fixed 512-byte buffers and a 20-second absolute deadline. Its charge
+and deadline survive cancellation by the protocol branch; in-flight reservations
+stay conservatively charged rather than resetting after an uncertain transfer.
+
+The good case shares one five-second deadline across acknowledgement/Hello/Ready,
+then separate five-second deadlines across Ping/Pong and Stop/Stopped/SDK EOF.
+Only after both actual pipe EOFs and Session::finish does it reap the child
+naturally, require successful exit and observe group absence. The bad case requires
+the specific terminal identity error from a canonical Ready with the wrong nonce;
+it then forces the still-owned group and requires reap, absence and both EOFs.
+Noise, wrong dispatch or a timeout cannot pass as the expected identity rejection.
+
+The child uses the real canonical decoder/encoder for exactly three fixed requests.
+Its blocking IO has no independent timer; the parent owns deadlines and cleanup.
+This is a controlled SDK fixture, not an installed package, general worker session
+implementation or worker-side deadline guarantee. It adds no graceful TERM test,
+partial-frame session timeout, flood supervisor or production launcher.
+
+All six macOS OS tests and ten codec tests pass locally, with one child helper
+ignored by the outer harness and actually dispatched by its two parents. Strict
+full workspace/all-target Rust 1.99 lint passes. The new waiter/protocol cases still
+need Linux hosted execution; no Windows backend or performance result is claimed.
+
+Still required: production Hello/Ready and partial-frame session deadlines, graceful
+TERM escalation, production waiter-loss ownership/admission, bounded flood queues,
 repeated FD/task/process leak checks, supported platform backends, durable attempt
 settlement/restart recovery, executable image preparation, explicit execution-policy
 review and enforced precommit revocation across every relevant writer. These two

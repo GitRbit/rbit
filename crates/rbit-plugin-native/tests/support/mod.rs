@@ -28,17 +28,37 @@ const EXIT_FIRST: &str =
 pub enum Helper {
     Echo,
     Blocked,
+    Protocol,
+    BadReady,
     #[cfg(target_os = "linux")]
     ExitFirst,
 }
 impl Helper {
-    fn script(self) -> &'static str {
+    fn command(self) -> io::Result<Command> {
+        let mut command = match self {
+            Self::Protocol | Self::BadReady => Command::new(std::env::current_exe()?),
+            _ => Command::new("/bin/sh"),
+        };
+        command.env_clear().current_dir("/");
         match self {
-            Self::Echo => ECHO,
-            Self::Blocked => BLOCKED,
+            Self::Protocol | Self::BadReady => {
+                let mode = if matches!(self, Self::Protocol) { "good" } else { "bad_ready" };
+                command
+                    .args(["--exact", "protocol_fixture::protocol_child", "--ignored", "--nocapture", "--test-threads=1"])
+                    .env("RBIT_FIXED_PROTOCOL_MODE", mode);
+            }
+            Self::Echo => {
+                command.args(["-c", ECHO]);
+            }
+            Self::Blocked => {
+                command.args(["-c", BLOCKED]);
+            }
             #[cfg(target_os = "linux")]
-            Self::ExitFirst => EXIT_FIRST,
+            Self::ExitFirst => {
+                command.args(["-c", EXIT_FIRST]);
+            }
         }
+        Ok(command)
     }
 }
 
@@ -149,16 +169,7 @@ pub struct Leader {
 impl Leader {
     pub fn spawn(helper: Helper) -> io::Result<(Self, Pipes)> {
         let sigchild = signal(SignalKind::child())?;
-        let script = helper.script();
-        let mut child = Command::new("/bin/sh")
-            .args(["-c", script])
-            .env_clear()
-            .current_dir("/")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()?;
+        let mut child = helper.command()?.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0).spawn()?;
         let raw = match i32::try_from(child.id()) {
             Ok(pid) if pid > 1 => pid,
             _ => {
@@ -216,6 +227,11 @@ impl Leader {
             Ok(()) | Err(Errno::ESRCH) => {}
             Err(error) => return Err(errno(error)),
         }
+        self.reap_owned().await
+    }
+    /// Graceful caller must first establish both pipe EOFs and protocol Stop.
+    /// No real group signal is permitted after this reaps the owned leader.
+    pub async fn reap_owned(&mut self) -> io::Result<(ExitStatus, GroupObservation)> {
         let end = deadline();
         loop {
             let observed = self.child.as_mut().ok_or_else(|| io::Error::other("missing owned leader"))?.try_wait();

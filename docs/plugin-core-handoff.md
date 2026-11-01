@@ -2,6 +2,14 @@
 
 ## Controlled Unix pipe feasibility — 2026-11-01
 
+The codec-aware fixed child now passes actual Hello/Ready, Ping/Pong and
+Stop/Stopped/EOF with natural exit, plus exact wrong-nonce rejection and forced
+settlement. Its SDK responses use an explicit test-only stderr channel; libtest
+stdout has a separate persistent quota/deadline without noise scanning. All six
+macOS OS tests and ten codec tests pass, plus full strict workspace Rust 1.99 lint.
+The ignored helper is actually dispatched/acknowledged by its parents. New
+waiter/protocol cases still need Linux CI; no installed package or runtime exists.
+
 Two further waiter-loss tests pass locally: the owner retains process/pipes/permit
 after caller loss through actual settlement, and a failed injected gate leaves
 admission closed despite successful cleanup. Both exercise real start rejection.

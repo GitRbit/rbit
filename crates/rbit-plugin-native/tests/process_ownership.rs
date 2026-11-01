@@ -1,4 +1,6 @@
 #![cfg(unix)]
+#[path = "support/protocol_fixture.rs"]
+mod protocol_fixture;
 mod support;
 #[path = "support/waiter_ownership.rs"]
 mod waiter_ownership;
