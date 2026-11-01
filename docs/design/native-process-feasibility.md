@@ -54,15 +54,45 @@ deprecated AsyncFd API; both were corrected without suppressions. An initial
 strict lint failure was corrected by removing redundant continues and fixing a
 documentation identifier.
 
-A third Linux-only test uses WNOWAIT to observe an exited but unreaped leader,
+A Linux-only test uses WNOWAIT to observe an exited but unreaped leader,
 then verifies descendant-held pipe blocking before force/reap/absence/EOF. It
-has not run locally and requires actual Linux hosted validation. The locked nix
+passed in the Linux contract job for `469307c` in
+[run 41320476868](https://github.com/GitRbit/rbit/actions/runs/41320476868);
+the complete exact-head matrix was still pending at that checkpoint. The locked nix
 safe waitid wrapper is unavailable on macOS, so exited-leader ownership remains
 unproven there. Windows has no backend or feasibility harness. Only existing
 locked Unix dev dependencies are added; production dependency graphs stay separate.
 
+## Waiter loss and admission ordering
+
+Two additional test-only cases exercise a supervisor that owns its child, pipes,
+permit and retained JoinHandle independently of the caller's response receiver.
+Dropping the caller requests cancellation. A checkpoint follows an actual Pending
+pipe-read poll; a finite, explicitly injected pre-cleanup gate makes retained
+admission observable. Both occupied checkpoints call the actual start function
+and require rejection before spawn. Two fixed cycles release that gate, then
+require real group force/reap/absence/EOF, task completion and renewed admission.
+
+A separate test closes the injected gate. Cleanup errors take precedence over
+the coordination error, so its expected gate-closed result follows successful
+real settlement. Admission nevertheless stays closed, and another start fails.
+The RAII guard closes the semaphore before its owned permit drops on uncertainty.
+The caller can neither abort the supervisor nor release its permit.
+
+Join deadlines borrow the retained handle. Failure-only abort attempts a bounded
+join and always reports unresolved cleanup; it cannot count as settlement.
+Assertion-unwind Drop cannot await: it closes admission and aborts, relying on
+the existing bounded child fallback when the task drops. This is not certified
+descendant cleanup. Early spawn/ack errors also use that fallback. No database or
+durable commit is tested, and the small fixed cycles are not general FD leak proof.
+
+All four macOS OS tests and ten codec tests pass locally, along with strict full
+workspace/all-target Rust 1.99 lint. The waiter tests have not yet run on Linux;
+the earlier `469307c` Linux result covers only its original three OS tests. This
+increment adds no dependency, production runtime or executable availability.
+
 Still required: real Hello/Ready and partial-frame session deadlines, graceful
-Stop/TERM escalation, waiter-loss ownership/admission, bounded flood queues,
+Stop/TERM escalation, production waiter-loss ownership/admission, bounded flood queues,
 repeated FD/task/process leak checks, supported platform backends, durable attempt
 settlement/restart recovery, executable image preparation, explicit execution-policy
 review and enforced precommit revocation across every relevant writer. These two

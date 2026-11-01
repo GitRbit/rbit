@@ -2,12 +2,21 @@
 
 ## Controlled Unix pipe feasibility — 2026-11-01
 
+Two further waiter-loss tests pass locally: the owner retains process/pipes/permit
+after caller loss through actual settlement, and a failed injected gate leaves
+admission closed despite successful cleanup. Both exercise real start rejection.
+All four macOS OS tests, ten codec tests and full Rust 1.99 workspace/all-target
+lint pass. These new waiter tests still need Linux CI. The original Linux WNOWAIT
+case passed the contract job at `469307c` in run 41320476868; its full matrix was
+pending. Failure-only abort/Drop remains explicitly uncertified cleanup, and no
+production runtime, durable attempt or execution authority is added.
+
 Separate [fixed-helper tests](design/native-process-feasibility.md) now exercise
 actual one-byte framing and stalled read/write deadlines on macOS, retaining an
 exclusive standard child handle through signal-before-reap and observed group/pipe
 settlement. Both OS tests and ten codec tests pass locally; strict Rust 1.99 crate
-lint and six dependency guards pass. A Linux-only WNOWAIT exited-leader test still
-requires hosted execution. The fresh-process/reaper assumptions, best-effort Drop
+lint and six dependency guards pass. Linux WNOWAIT has the scoped hosted result
+above. The fresh-process/reaper assumptions, best-effort Drop
 and macOS exited-leader gap are explicit. No production launcher, waiter-loss owner,
 attempt schema or executable availability is added; the full goal remains active.
 

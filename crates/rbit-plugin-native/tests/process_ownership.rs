@@ -1,5 +1,7 @@
 #![cfg(unix)]
 mod support;
+#[path = "support/waiter_ownership.rs"]
+mod waiter_ownership;
 use rbit_plugin_api::worker::WorkerMessage;
 use rbit_plugin_native::{Decoder, encode_worker};
 use std::{io, time::Duration};
