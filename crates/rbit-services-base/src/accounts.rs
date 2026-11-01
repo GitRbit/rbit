@@ -342,12 +342,6 @@ impl AccountService {
         PasswordChangeGuard { service: self.clone(), user, current: current.digest(), receiver: Some(self.events.subscribe()) }
     }
 
-    /// Recovery and administrative changes always revoke immediately, even while a
-    /// self-service request is in flight. A slow request must never postpone a reset.
-    pub(crate) async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
-        self.enforcer().end_sessions(user, None).await
-    }
-
     /// Records an already acknowledged forced revocation without another writer.
     pub(crate) async fn record_password_sessions_revoked(&self, user: AccountId, removed: usize) {
         self.enforcer().record_ended_sessions(user, removed).await;

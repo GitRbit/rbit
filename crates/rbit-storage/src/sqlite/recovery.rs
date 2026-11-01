@@ -229,7 +229,7 @@ impl RecoveryStore {
         }
         result
     }
-    async fn reset_password_raw(
+    pub(super) async fn reset_password_raw(
         &self,
         digest: &[u8; 32],
         password_hash: &str,

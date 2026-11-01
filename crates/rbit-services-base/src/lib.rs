@@ -312,7 +312,7 @@ impl Services {
         self.push_mirrors.spawn_background();
     }
 
-    /// Stops new owned administrator replacements before request draining.
+    /// Stops new owned password changes before request draining.
     pub fn prepare_shutdown(&self) {
         self.recovery.prepare_shutdown();
     }

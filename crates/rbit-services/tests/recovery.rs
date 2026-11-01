@@ -413,12 +413,71 @@ async fn forced_password_owner_shutdown_is_terminal_for_builder_and_main_service
     tokio::time::timeout(WAIT, fixture.recovery.shutdown()).await.unwrap().unwrap();
     assert!(matches!(
         fixture.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
-        Err(ServiceError::Conflict("administrator password commands stopped"))
+        Err(ServiceError::Conflict("password change commands stopped"))
     ));
     fixture.services.prepare_shutdown();
     assert!(matches!(
         fixture.services.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
-        Err(ServiceError::Conflict("administrator password commands stopped"))
+        Err(ServiceError::Conflict("password change commands stopped"))
     ));
     assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
+}
+
+#[tokio::test]
+async fn owned_email_reset_preserves_forced_sessions_audit_identity_and_builder_distinction() {
+    use rbit_services::{admin::ListQuery, audit::AuditAction};
+    for with_accounts in [false, true] {
+        let fixture = Fixture::new().await;
+        let admin = fixture.user("root", true).await;
+        let alice = fixture.user("alice", false).await;
+        let first = fixture.services.accounts.start_session(&alice).await.unwrap();
+        let second = fixture.services.accounts.start_session(&alice).await.unwrap();
+        let guard = fixture.services.accounts.guard_password_change(alice.id(), &first);
+        let recovery =
+            if with_accounts { fixture.recovery.clone() } else { RecoveryService::builder(fixture.services.context().clone()).build() };
+        let secret = SessionToken::generate();
+        fixture
+            .database
+            .recovery()
+            .insert(&NewEmailToken {
+                digest: secret.digest(),
+                account_id: alice.id(),
+                purpose: TokenPurpose::Reset,
+                email: alice.email.clone(),
+                expires_at: Timestamp(Timestamp::now().seconds() + 3600),
+            })
+            .await
+            .unwrap();
+        let mut events = fixture.services.events.subscribe();
+        tokio::time::timeout(WAIT, recovery.reset_password(&secret.encode(), NEW_PASSWORD.to_owned())).await.unwrap().unwrap();
+        assert!(fixture.services.accounts.resume_session(&first).await.unwrap().is_none());
+        assert!(fixture.services.accounts.resume_session(&second).await.unwrap().is_none());
+        guard.finish(false).await;
+        assert_eq!(tokio::time::timeout(WAIT, events.recv()).await.unwrap().unwrap(), DomainEvent::PasswordChanged { user: alice.id() });
+        let items = fixture.services.audit.list(&admin, None, &ListQuery::default()).await.unwrap().items;
+        let relevant: Vec<_> = items
+            .iter()
+            .filter(|event| matches!(event.action, AuditAction::PasswordReset | AuditAction::SessionsRevokedAfterPasswordChange))
+            .collect();
+        assert_eq!(relevant.len(), if with_accounts { 2 } else { 1 });
+        let reset = relevant[0];
+        assert_eq!(reset.action, AuditAction::PasswordReset);
+        assert_eq!(reset.actor_id, None);
+        assert_eq!(reset.actor_name.as_deref(), Some("alice"));
+        assert_eq!(reset.target_name.as_deref(), Some("alice"));
+        if with_accounts {
+            let ended = relevant[1];
+            assert_eq!(ended.action, AuditAction::SessionsRevokedAfterPasswordChange);
+            assert_eq!(ended.actor_id, Some(alice.id()));
+            assert_eq!(ended.actor_name.as_deref(), Some("alice"));
+            assert_eq!(ended.detail, "2 sessions ended");
+            assert_eq!(ended.target_name, None);
+        }
+        assert!(matches!(
+            tokio::time::timeout(WAIT, recovery.reset_password(&secret.encode(), PASSWORD.to_owned())).await.unwrap(),
+            Err(ServiceError::NotFound)
+        ));
+        assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+        tokio::time::timeout(WAIT, recovery.shutdown()).await.unwrap().unwrap();
+    }
 }

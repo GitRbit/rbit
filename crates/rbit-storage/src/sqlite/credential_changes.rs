@@ -7,10 +7,13 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rbit_authority_fence::{Mutation, WriterRegistration};
-use rbit_core::AccountId;
+use rbit_core::{AccountId, Timestamp};
 use tokio::sync::{Notify, oneshot};
 
-use super::profiles::ProfileStore;
+use super::{
+    profiles::ProfileStore,
+    recovery::{EmailTokenRecord, RecoveryStore},
+};
 use crate::{SessionStore, StorageError};
 
 const CAPACITY: usize = 2;
@@ -47,8 +50,14 @@ pub(super) struct Coordinator {
     inner: Arc<Inner>,
 }
 impl Coordinator {
-    pub(super) fn bind(&self, profiles: ProfileStore, sessions: SessionStore, writer: WriterRegistration) -> ForcedPasswordChanges {
-        ForcedPasswordChanges { coordinator: self.clone(), profiles, sessions, writer }
+    pub(super) fn bind(
+        &self,
+        profiles: ProfileStore,
+        recovery: RecoveryStore,
+        sessions: SessionStore,
+        writer: WriterRegistration,
+    ) -> ForcedPasswordChanges {
+        ForcedPasswordChanges { coordinator: self.clone(), profiles, recovery, sessions, writer }
     }
     pub(super) fn stop(&self) {
         self.inner.state().stopped = true;
@@ -81,6 +90,7 @@ pub struct ForcedPasswordDrainError;
 pub struct ForcedPasswordChanges {
     coordinator: Coordinator,
     profiles: ProfileStore,
+    recovery: RecoveryStore,
     sessions: SessionStore,
     writer: WriterRegistration,
 }
@@ -118,10 +128,35 @@ impl ForcedPasswordReservation {
         })
     }
 
+    /// Redeems an email reset and immediately revokes every session. `now` retains
+    /// the caller's captured-time policy; this does not promise commit-time expiry.
+    pub fn start_reset(
+        self,
+        digest: [u8; 32],
+        password_hash: String,
+        now: Timestamp,
+    ) -> Result<ForcedPasswordResult<Option<ResetPasswordSettlement>>, StorageError> {
+        self.start_operation(move |changes, command| async move {
+            run_reset_with(changes, command, &digest, &password_hash, now, |sessions, account, mutation, command| async move {
+                sessions.finish_forced_password(account, mutation, command).await
+            })
+            .await
+        })
+    }
+
     fn start_using<F, Fut>(self, account: AccountId, password_hash: String, operation: F) -> Result<ForcedPasswordResult, StorageError>
     where
         F: FnOnce(ForcedPasswordChanges, Arc<Command>, AccountId, String) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<usize, StorageError>> + Send + 'static,
+    {
+        self.start_operation(move |changes, command| operation(changes, command, account, password_hash))
+    }
+
+    fn start_operation<T, F, Fut>(self, operation: F) -> Result<ForcedPasswordResult<T>, StorageError>
+    where
+        T: Send + 'static,
+        F: FnOnce(ForcedPasswordChanges, Arc<Command>) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<T, StorageError>> + Send + 'static,
     {
         let runtime =
             tokio::runtime::Handle::try_current().map_err(|_| StorageError::Conflict("forced password command runtime unavailable"))?;
@@ -138,7 +173,7 @@ impl ForcedPasswordReservation {
         // mutex before spawn, which may synchronously destroy a rejected task.
         drop(state);
         drop(runtime.spawn(async move {
-            let result = operation(changes, command, account, password_hash).await;
+            let result = operation(changes, command).await;
             let _ = send.send(result);
         }));
         Ok(ForcedPasswordResult { receive })
@@ -147,11 +182,11 @@ impl ForcedPasswordReservation {
 
 /// Dropping this waiter never cancels the actual command or frees its reservation.
 #[derive(Debug)]
-pub struct ForcedPasswordResult {
-    receive: oneshot::Receiver<Result<usize, StorageError>>,
+pub struct ForcedPasswordResult<T = usize> {
+    receive: oneshot::Receiver<Result<T, StorageError>>,
 }
-impl ForcedPasswordResult {
-    pub async fn wait(self) -> Result<usize, StorageError> {
+impl<T> ForcedPasswordResult<T> {
+    pub async fn wait(self) -> Result<T, StorageError> {
         self.receive.await.map_err(|_| StorageError::Conflict("forced password command outcome unavailable"))?
     }
 }
@@ -186,7 +221,8 @@ impl Command {
             self.inner.uncertain();
         }
     }
-    /// Called within the actual KV worker, before ownership/result publication.
+    /// Called within the actual KV worker after its commit, or by the reset task
+    /// only after the SQL helper has explicitly acknowledged rollback on None.
     pub(crate) fn acknowledge(&self, mutation: Mutation, success: bool) {
         let mut phase = self.phase();
         if success && *phase == Phase::Authority {
@@ -242,5 +278,46 @@ where
     finish(changes.sessions, account, mutation, command).await
 }
 
+/// A committed reset and acknowledged end-all revocation, never a crash-atomic receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResetPasswordSettlement {
+    pub token: EmailTokenRecord,
+    pub removed_sessions: usize,
+}
+
+// Shared command/guard lifecycle, with a private fixed production continuation.
+async fn run_reset_with<F, Fut>(
+    changes: ForcedPasswordChanges,
+    command: Arc<Command>,
+    digest: &[u8; 32],
+    hash: &str,
+    now: Timestamp,
+    finish: F,
+) -> Result<Option<ResetPasswordSettlement>, StorageError>
+where
+    F: FnOnce(SessionStore, AccountId, Mutation, Arc<Command>) -> Fut,
+    Fut: std::future::Future<Output = Result<usize, StorageError>>,
+{
+    let _owner = AsyncOwner(command.clone());
+    let mutation = changes.writer.begin().await.map_err(|error| {
+        StorageError::Conflict(match error {
+            rbit_authority_fence::BeginError::Capacity => "forced password mutation capacity",
+            rbit_authority_fence::BeginError::Stopped => "forced password writer stopped",
+        })
+    })?;
+    *command.phase() = Phase::Authority;
+    let Some(token) = changes.recovery.reset_password_raw(digest, hash, now).await? else {
+        // Explicit awaited rollback occurred in the unchanged raw helper. No KV
+        // worker or success event is needed for this known no-write refusal.
+        command.acknowledge(mutation, true);
+        return Ok(None);
+    };
+    let removed_sessions = finish(changes.sessions, token.account_id, mutation, command).await?;
+    Ok(Some(ResetPasswordSettlement { token, removed_sessions }))
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod reset_tests;

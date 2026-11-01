@@ -198,33 +198,39 @@ impl RecoveryService {
     }
 
     /// Sets a new password through a reset link, which is used up. Validates the password
-    /// exactly like sign-up; an invalid password leaves the link usable.
+    /// exactly like sign-up; an invalid password leaves the link usable. After bounded
+    /// admission, initial-password checks, hashing and both store phases belong to the
+    /// server even if the request waiter disappears. SQL and KV are not crash-atomic.
     pub async fn reset_password(&self, token: &str, new_password: String) -> Result<(), ServiceError> {
         let account = self.reset_account(token).await?;
         validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        if self.ctx.database.accounts().password_change_required(account.id).await? {
-            let current = self.ctx.database.profiles().password_hash(account.id).await?.ok_or(ServiceError::NotFound)?;
-            if Passwords::verify(new_password.clone(), current).await? {
-                return Err(ServiceError::Invalid("choose a different password from your initial password".to_owned()));
-            }
-        }
-        let hash = Passwords::hash(new_password).await?;
-
         let digest = parse_token(token)?;
+        let changes = self.ctx.database.forced_password_changes(&self.ctx.kv)?;
         let service = self.clone();
-        crate::credentials::finish_update(async move {
-            service.store().reset_password(&digest, &hash, Timestamp::now()).await?.ok_or(ServiceError::NotFound)?;
-            service.password_changed(account.id).await?;
+        self.admin_passwords
+            .run(&changes, move |reservation| async move {
+                if service.ctx.database.accounts().password_change_required(account.id).await? {
+                    let current = service.ctx.database.profiles().password_hash(account.id).await?.ok_or(ServiceError::NotFound)?;
+                    if Passwords::verify(new_password.clone(), current).await? {
+                        return Err(ServiceError::Invalid("choose a different password from your initial password".to_owned()));
+                    }
+                }
+                let hash = Passwords::hash(new_password).await?;
+                // Preserve the existing captured-time expiry policy before guard wait.
+                let reset = reservation.start_reset(digest, hash, Timestamp::now())?.wait().await?.ok_or(ServiceError::NotFound)?;
+                if let Some(accounts) = &service.accounts {
+                    accounts.record_password_sessions_revoked(reset.token.account_id, reset.removed_sessions).await;
+                }
 
-            tracing::info!(user = %account.name, "password reset by email link");
-            service
-                .audit()
-                .record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str()))
-                .await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
+                tracing::info!(user = %account.name, "password reset by email link");
+                service
+                    .audit()
+                    .record(AuditEntry::new(AuditAction::PasswordReset).by_login(account.name.as_str()).on(account.name.as_str()))
+                    .await;
+                service.ctx.events.publish(DomainEvent::PasswordChanged { user: reset.token.account_id });
+                Ok(())
+            })
+            .await
     }
 
     async fn reset_account(&self, token: &str) -> Result<RecoveryAccount, ServiceError> {
@@ -356,7 +362,7 @@ impl RecoveryService {
             .await
     }
 
-    /// Stops only new owned administrator replacements, synchronously.
+    /// Stops new owned administrator and email-link replacements, synchronously.
     pub fn prepare_shutdown(&self) {
         self.admin_passwords.prepare_shutdown();
         self.ctx.database.prepare_forced_password_changes_shutdown();
@@ -451,15 +457,6 @@ impl RecoveryService {
     }
 
     // ------------------------------------------------------------------ helpers
-
-    async fn password_changed(&self, user: AccountId) -> Result<(), ServiceError> {
-        if let Some(accounts) = &self.accounts {
-            accounts.password_changed(user).await?;
-        } else {
-            self.ctx.kv.sessions().delete_for_account(user, None).await?;
-        }
-        Ok(())
-    }
 
     /// Stores a new token for the account's current address and returns the secret for the link.
     async fn issue(&self, account: &RecoveryAccount, purpose: TokenPurpose, lifetime: i64) -> Result<String, ServiceError> {

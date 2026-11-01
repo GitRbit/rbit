@@ -77,7 +77,7 @@ async fn lost_waiter_keeps_two_real_storage_then_audit_tail_owners_bounded_and_d
     assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap(), Vec::new());
     // Both storage slots are free, but the two audit tails must still bound admission.
     let third = owner.run(&f.changes(), |_| async { panic!("capacity refused before operation") }).await;
-    assert!(matches!(third, Err(ServiceError::Conflict("administrator password command capacity"))));
+    assert!(matches!(third, Err(ServiceError::Conflict("password change command capacity"))));
     for request in requests {
         request.abort();
         assert!(timeout(WAIT, request).await.unwrap().unwrap_err().is_cancelled());
@@ -88,10 +88,7 @@ async fn lost_waiter_keeps_two_real_storage_then_audit_tail_owners_bounded_and_d
     release.notify_waiters();
     timeout(WAIT, drain).await.unwrap().unwrap();
     assert_eq!(owner.inner.admission().active, 0);
-    assert!(matches!(
-        owner.run(&f.changes(), |_| async { Ok(()) }).await,
-        Err(ServiceError::Conflict("administrator password commands stopped"))
-    ));
+    assert!(matches!(owner.run(&f.changes(), |_| async { Ok(()) }).await, Err(ServiceError::Conflict("password change commands stopped"))));
 }
 
 #[tokio::test]
@@ -121,7 +118,7 @@ async fn close_and_registration_share_a_mutex_and_no_late_task_can_enter() {
     for _ in 0..2 {
         assert!(matches!(
             owner.clone().run(&f.changes(), |_| async { panic!("closed before spawn") }).await,
-            Err(ServiceError::Conflict("administrator password commands stopped"))
+            Err(ServiceError::Conflict("password change commands stopped"))
         ));
     }
     assert_eq!(owner.inner.admission().active, 0);
@@ -220,4 +217,63 @@ async fn waiter_loss_during_injected_hash_phase_keeps_owned_continuation_to_real
     timeout(WAIT, f.db.drain_forced_password_changes()).await.unwrap().unwrap();
     assert_eq!(f.db.profiles().password_hash(user).await.unwrap().as_deref(), Some("new"));
     assert_eq!(f.kv.sessions().list_for_account(user).await.unwrap(), Vec::new());
+}
+
+#[tokio::test]
+async fn reset_waiter_loss_during_owned_pre_sql_phase_continues_through_real_commits() {
+    let f = Fixture::new().await;
+    let owner = AdminPasswordOwner::default();
+    f.db.recovery()
+        .insert(&rbit_storage::sqlite::recovery::NewEmailToken {
+            digest: [7; 32],
+            account_id: f.user,
+            purpose: rbit_storage::sqlite::recovery::TokenPurpose::Reset,
+            email: "alice@example.com".parse().unwrap(),
+            expires_at: Timestamp(Timestamp::now().seconds() + 3600),
+        })
+        .await
+        .unwrap();
+    let (entered, entering) = tokio::sync::oneshot::channel();
+    let (release, releasing) = tokio::sync::oneshot::channel();
+    let (done, finishing) = tokio::sync::oneshot::channel();
+    let own = owner.clone();
+    let changes = f.changes();
+    let request = tokio::spawn(async move {
+        own.run(&changes, move |reservation| async move {
+            entered.send(()).unwrap();
+            timeout(WAIT, releasing).await.map_err(ServiceError::internal)?.map_err(ServiceError::internal)?;
+            let reset = reservation.start_reset([7; 32], "new".into(), Timestamp::now())?.wait().await?.ok_or(ServiceError::NotFound)?;
+            done.send(reset).unwrap();
+            Ok(())
+        })
+        .await
+    });
+    timeout(WAIT, entering).await.unwrap().unwrap();
+    request.abort();
+    assert!(timeout(WAIT, request).await.unwrap().unwrap_err().is_cancelled());
+    release.send(()).unwrap();
+    let reset = timeout(WAIT, finishing).await.unwrap().unwrap();
+    assert_eq!(reset.token.account_id, f.user);
+    assert_eq!(reset.removed_sessions, 1);
+    timeout(WAIT, owner.shutdown()).await.unwrap().unwrap();
+    timeout(WAIT, f.db.drain_forced_password_changes()).await.unwrap().unwrap();
+    assert_eq!(f.db.profiles().password_hash(f.user).await.unwrap().as_deref(), Some("new"));
+    assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap(), Vec::new());
+}
+
+#[tokio::test]
+async fn reset_none_returns_known_not_found_and_does_not_poison_shared_owner() {
+    let f = Fixture::new().await;
+    let owner = AdminPasswordOwner::default();
+    let result = owner
+        .run(&f.changes(), |reservation| async move {
+            reservation.start_reset([99; 32], "never".into(), Timestamp::now())?.wait().await?.ok_or(ServiceError::NotFound)?;
+            Ok(())
+        })
+        .await;
+    assert!(matches!(result, Err(ServiceError::NotFound)));
+    timeout(WAIT, owner.shutdown()).await.unwrap().unwrap();
+    timeout(WAIT, f.db.drain_forced_password_changes()).await.unwrap().unwrap();
+    assert_eq!(f.db.profiles().password_hash(f.user).await.unwrap().as_deref(), Some("old"));
+    assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap().len(), 1);
 }

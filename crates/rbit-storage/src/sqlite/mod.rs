@@ -195,7 +195,7 @@ impl Database {
     /// other credential flows and physical ownership remain outside this operation.
     pub fn forced_password_changes(&self, kv: &crate::KvStore) -> Result<credential_changes::ForcedPasswordChanges, StorageError> {
         self.validate_kv_session_binding(kv)?;
-        Ok(self.forced_passwords.bind(self.profiles(), kv.sessions(), self.authority_domain.writer()))
+        Ok(self.forced_passwords.bind(self.profiles(), self.recovery(), kv.sessions(), self.authority_domain.writer()))
     }
 
     /// Synchronously forbids new reservations and stale unstarted commands.

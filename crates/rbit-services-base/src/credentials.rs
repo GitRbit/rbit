@@ -22,8 +22,8 @@ where
     .map_err(ServiceError::internal)?
 }
 
-/// Owns only forced/admin replacement through its audit/event tail. Other credential
-/// flows still use `finish_update` and require separate lifecycle coordination.
+/// Owns forced/admin and email-reset replacements through their audit/event tails.
+/// Self-service still uses `finish_update` and needs separate lifecycle coordination.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AdminPasswordOwner {
     inner: std::sync::Arc<AdminInner>,
@@ -59,7 +59,7 @@ impl AdminPasswordOwner {
         self.prepare_shutdown();
         self.inner.tasks.wait().await;
         if self.inner.admission().uncertain {
-            return Err(ServiceError::Conflict("administrator password task settlement uncertain"));
+            return Err(ServiceError::Conflict("password change task settlement uncertain"));
         }
         Ok(())
     }
@@ -76,10 +76,10 @@ impl AdminPasswordOwner {
         let (reservation, mut owned) = {
             let mut state = self.inner.admission();
             if state.closed {
-                return Err(ServiceError::Conflict("administrator password commands stopped"));
+                return Err(ServiceError::Conflict("password change commands stopped"));
             }
             if state.active >= 2 {
-                return Err(ServiceError::Conflict("administrator password command capacity"));
+                return Err(ServiceError::Conflict("password change command capacity"));
             }
             let reservation = changes.reserve()?;
             let token = self.inner.tasks.token();
@@ -94,7 +94,7 @@ impl AdminPasswordOwner {
             // Storage independently retains uncertainty after possible writes.
             owned.acknowledged = true;
             if let Err(error) = &result {
-                tracing::error!(%error, "administrator password command returned failure");
+                tracing::error!(%error, "password change command returned failure");
             }
             drop(owned);
             let _ = send.send(result);

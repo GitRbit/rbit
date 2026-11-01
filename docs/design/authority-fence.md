@@ -145,8 +145,22 @@ and normally returned service failures are distinguished from unknown settlement
 The existing missing-account behavior, reset-link invalidation, session index and
 post-revocation audit wording remain intact. SQL and KV commits are sequential:
 a failure after SQL can leave a changed password and old sessions. This is not
-crash-safe revocation or a certificate for self-service, reset-link, deferred
+crash-safe revocation or a certificate for self-service or deferred
 password-change guards, independently opened stores or physical ownership.
+
+Email-link reset redemption uses that same coordinator, reservation limit and
+Recovery task owner. Its private SQL transaction and captured-time expiry policy
+remain unchanged; the account returned by the committed transaction selects the
+actual session revocation. A missing or refused token settles only after explicit
+SQL rollback and submits no KV write or success audit/event. Admission now owns
+initial-password checks and hashing before either store changes, even after waiter
+loss. Admin/reset commands share capacity and shutdown, with no second owner pool.
+A reset committed before KV failure can consume the link and change the password
+without ending sessions; retrying that consumed link cannot finish revocation.
+Durable reconciliation and credential enforcement remain future prerequisites.
+Self-service response attribution and deferred password-change guards remain outside
+this coverage. Existing reset preflight and captured-time freshness semantics are
+preserved, rather than promising a wall-clock check at commit time.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -179,7 +193,7 @@ identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, the three moderation methods and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
-forced administrator password command described above. It does not coordinate
+forced administrator and email-reset commands described above. It does not coordinate
 independently opened SQLite
 pools, another process, the remaining SQL-plus-KV credential changes, constructor writes
 or other authority writers. It does not prove SQLite worker termination or physical store
