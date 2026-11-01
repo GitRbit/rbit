@@ -19,6 +19,7 @@ use crate::{
 pub struct RepositoryStorage {
     root: PathBuf,
     locks: RepositoryLocks,
+    pub(crate) owned_edits: std::sync::Arc<crate::owned_edit::state::Registry>,
     #[cfg(test)]
     pub(crate) worker_gates: crate::worker_gate::WorkerGates,
 }
@@ -28,6 +29,7 @@ impl RepositoryStorage {
         Self {
             root: root.into(),
             locks: RepositoryLocks::default(),
+            owned_edits: std::sync::Arc::default(),
             #[cfg(test)]
             worker_gates: crate::worker_gate::WorkerGates::default(),
         }
@@ -70,13 +72,7 @@ impl RepositoryStorage {
         }
 
         let init_path = path.clone();
-        tokio::task::spawn_blocking(move || -> Result<(), GitError> {
-            std::fs::create_dir_all(&init_path)?;
-            gix::init_bare(&init_path).map_err(GitError::backend)?;
-            std::fs::write(init_path.join("HEAD"), format!("ref: {head_ref}\n"))?;
-            Ok(())
-        })
-        .await??;
+        tokio::task::spawn_blocking(move || -> Result<(), GitError> { create_fixed(&init_path, &head_ref) }).await??;
 
         tracing::info!(path = %path.display(), "initialised bare repository");
         Ok(path)
@@ -95,26 +91,7 @@ impl RepositoryStorage {
             return Err(GitError::NotFound("repository"));
         }
 
-        tokio::task::spawn_blocking(move || -> Result<(), GitError> {
-            let lock = path.join("HEAD.lock");
-            let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&lock)?;
-            let written = std::io::Write::write_all(
-                &mut file,
-                format!(
-                    "ref: {head_ref}
-"
-                )
-                .as_bytes(),
-            )
-            .and_then(|()| file.sync_all());
-            drop(file);
-            if let Err(error) = written.and_then(|()| std::fs::rename(&lock, path.join("HEAD"))) {
-                let _ = std::fs::remove_file(&lock);
-                return Err(error.into());
-            }
-            Ok(())
-        })
-        .await??;
+        tokio::task::spawn_blocking(move || -> Result<(), GitError> { set_head_fixed(&path, &head_ref) }).await??;
         Ok(())
     }
 
@@ -132,18 +109,49 @@ impl RepositoryStorage {
             if let Some(gate) = gate {
                 gate.enter();
             }
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(e.into()),
-            }
+            delete_fixed(&path)
         })
         .await?
     }
 }
 
+pub(crate) fn create_fixed(path: &Path, head_ref: &str) -> Result<(), GitError> {
+    std::fs::create_dir_all(path)?;
+    gix::init_bare(path).map_err(GitError::backend)?;
+    std::fs::write(path.join("HEAD"), format!("ref: {head_ref}\n"))?;
+    Ok(())
+}
+
+pub(crate) fn set_head_fixed(path: &Path, head_ref: &str) -> Result<(), GitError> {
+    let lock = path.join("HEAD.lock");
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&lock)?;
+    let written = std::io::Write::write_all(
+        &mut file,
+        format!(
+            "ref: {head_ref}
+"
+        )
+        .as_bytes(),
+    )
+    .and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = written.and_then(|()| std::fs::rename(&lock, path.join("HEAD"))) {
+        let _ = std::fs::remove_file(&lock);
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+pub(crate) fn delete_fixed(path: &Path) -> Result<(), GitError> {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// `refs/heads/{branch}`, if that is a valid Git reference name.
-fn head_ref(branch: &str) -> Result<String, GitError> {
+pub(crate) fn head_ref(branch: &str) -> Result<String, GitError> {
     let full = format!("refs/heads/{branch}");
     gix::refs::FullName::try_from(full.as_str()).map_err(|_| GitError::InvalidBranchName(branch.to_owned()))?;
     Ok(full)

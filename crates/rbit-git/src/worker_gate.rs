@@ -23,7 +23,7 @@ impl WorkerGates {
     pub(crate) fn take(&self) -> Option<WorkerGate> {
         self.0.lock().unwrap().take()
     }
-    fn install(&self) -> Controller {
+    pub(crate) fn install(&self) -> Controller {
         let (entered, entry) = oneshot::channel();
         let (release, wait) = mpsc::sync_channel(1);
         let mut state = self.0.lock().unwrap();
@@ -52,15 +52,15 @@ enum Decision {
     Proceed,
     Cancel,
 }
-struct Controller {
+pub(crate) struct Controller {
     entry: oneshot::Receiver<()>,
     release: Option<mpsc::SyncSender<Decision>>,
 }
 impl Controller {
-    async fn entered(&mut self) {
+    pub(crate) async fn entered(&mut self) {
         timeout(WAIT, &mut self.entry).await.unwrap().expect("actual worker never acknowledged entry");
     }
-    fn release(mut self) {
+    pub(crate) fn release(mut self) {
         self.release.take().unwrap().try_send(Decision::Proceed).expect("worker no longer waiting");
     }
 }

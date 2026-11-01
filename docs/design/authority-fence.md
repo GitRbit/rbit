@@ -430,6 +430,34 @@ audit or event work. Repository SQL enrollment and pre-effect owned service comm
 remain prerequisites; this change does not establish physical exclusion, crash
 reconciliation, performance parity or native execution availability.
 
+An unused trusted-Rust Git edit API reserves two flow/worker credits per storage
+instance and its clones before a repository ID or caller effects exist. Fallible
+attachment checks the same mutex as permanent admission closure and returns the
+original keepalive on refusal. A successful attachment binds once and keeps its
+credit through fixed create, HEAD update, delete and relocate phases, including
+after closure. The actual blocking worker owns the opaque Send keepalive and
+custody of the existing edit lease. Legacy operations share the same fixed
+synchronous bodies; they acquire no new admission or transaction control.
+
+Actual wrapper/internal-payload loss is sticky unknown. Bounded custody deliberately
+retains its credit and acquired lease until restart, even after the final storage
+handle disappears; it exposes no release or reopen for unknown state. Recoverable
+explicit quarantine moves its already allocated payload box into custody. Panic or
+closed-runtime destruction may instead destroy the keepalive. Ordinary Git errors
+return the whole edit; trusted finish requires actual SQL/backend settlement first
+and returns the keepalive for later private Storage acknowledgement. This is not a
+SQL proof supplied by arbitrary Rust values. Plain HTTP reply receivers are outside
+this API and must not become owner-loss markers in future Service adoption.
+
+The two-cell bound is per independently constructed storage. There is an additional
+registry allocation at construction and payload storage before attachment; allocation
+and latency parity remain unmeasured. Debug formats only copied scalar snapshots,
+and poisoned selected custody refuses attachment. No Storage/Services/Fork caller
+uses this API yet. Typed SQL provenance, owned fork processes, pre-effect command
+orchestration and all-eight Store/caller adoption remain required. Its drain is
+logical observation; it does not certify physical worker termination, filesystem
+containment, crash recovery or available managed execution.
+
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
 domain. Cross-store changes need one guard spanning their actual settlement.

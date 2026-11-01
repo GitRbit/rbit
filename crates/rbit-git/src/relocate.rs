@@ -49,22 +49,26 @@ pub async fn relocate(storage: &RepositoryStorage, repo: RepoId, from: AccountId
         if let Some(gate) = gate {
             gate.enter();
         }
-        if !source.is_dir() {
-            return Err(GitError::NotFound("repository"));
-        }
-        if target.exists() {
-            return Err(GitError::AlreadyExists);
-        }
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        rename_with_retry(&source, &target)?;
-        Ok(())
+        relocate_fixed(&source, &target)
     })
     .await??;
 
     tracing::info!(repo = repo.0, from = from.0, to = to.0, path = %moved.display(), "relocated bare repository");
     Ok(moved)
+}
+
+pub(crate) fn relocate_fixed(source: &std::path::Path, target: &std::path::Path) -> Result<(), GitError> {
+    if !source.is_dir() {
+        return Err(GitError::NotFound("repository"));
+    }
+    if target.exists() {
+        return Err(GitError::AlreadyExists);
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    rename_with_retry(source, target)?;
+    Ok(())
 }
 
 /// Delays before each retry of a rename that another process blocks (Windows only).
