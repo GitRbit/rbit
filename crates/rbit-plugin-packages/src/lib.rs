@@ -279,7 +279,7 @@ fn digest_matches(actual: &[u8], expected: &Sha256Digest) -> bool {
     }
     actual
         .iter()
-        .zip(expected.as_str().as_bytes().chunks_exact(2))
+        .zip(expected.as_str().as_bytes().as_chunks::<2>().0)
         .all(|(byte, pair)| pair[0] == HEX[usize::from(byte >> 4)] && pair[1] == HEX[usize::from(byte & 15)])
 }
 
