@@ -257,19 +257,38 @@ impl AccountStore {
     /// Changes an account's name, retaining its identity and recording the old name.
     /// Authorization belongs to the calling service; applies equally to organisations.
     pub async fn rename(&self, id: AccountId, name: &AccountName) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(rename_mutation_error)?;
+        let result = self.rename_raw(id, name).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn rename_raw(&self, id: AccountId, name: &AccountName) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("UPDATE accounts SET name = ?, updated_at = ? WHERE id = ?")
             .bind(name.as_str())
             .bind(Timestamp::now().seconds())
             .bind(id.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|error| StorageError::from_insert(error, "username"))?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Self-service rename only while the verified password remains current.
     pub async fn rename_if_password(&self, id: AccountId, name: &AccountName, expected: &str) -> Result<bool, StorageError> {
-        Ok(sqlx::query(
+        let mutation = self.writer.begin().await.map_err(rename_mutation_error)?;
+        let result = self.rename_if_password_raw(id, name, expected).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn rename_if_password_raw(&self, id: AccountId, name: &AccountName, expected: &str) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
+        let changed = sqlx::query(
             "UPDATE accounts SET name = ?1, updated_at = ?2 WHERE id = ?3 AND EXISTS \
             (SELECT 1 FROM user_logins WHERE account_id = ?3 AND password_hash = ?4 AND suspended_at IS NULL)",
         )
@@ -277,11 +296,13 @@ impl AccountStore {
         .bind(Timestamp::now().seconds())
         .bind(id.0)
         .bind(expected)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|error| StorageError::from_insert(error, "username"))?
         .rows_affected()
-            != 0)
+            != 0;
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// The current account behind a former name. Never used for sign-in or mentions.
@@ -379,3 +400,13 @@ pub(super) fn principal_mutation_error(error: rbit_authority_fence::BeginError) 
 
 #[cfg(test)]
 mod fence_tests;
+
+fn rename_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "account rename mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "account rename writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod rename_fence_tests;

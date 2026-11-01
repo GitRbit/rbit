@@ -81,7 +81,7 @@ pub struct Database {
     package_pool: SqlitePool,
     // Enrolled package policy, three account moderation, four principal creation,
     // two external identity linking, three personal access token, four SSH key,
-    // five recovery SQL, ten two-factor and four profile credential methods.
+    // five recovery SQL, ten two-factor, four profile credential and two account rename methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).

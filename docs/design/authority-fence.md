@@ -2,7 +2,7 @@
 
 The authority fence coordinates policy mutations, user account creation, external
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
-factors, profile credentials and administrator role changes,
+factors, profile credentials, account renames and administrator role changes,
 suspension and account deletion
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
@@ -17,7 +17,7 @@ work. An unused domain starts no task, timer or database query.
 Policy initialization, epoch renewal, review/selection/clear, user account creation,
 identity linking/unlinking, token and key creation/deletion and the three moderation
 mutations, together with SQL recovery, factor and profile credential mutations,
-acquire that permit
+and account renames, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -91,7 +91,13 @@ calling existing private helpers directly. Email changes retain their atomic
 verification and old-address token invalidation behavior. Password changes retain
 their current-hash predicate and reset-token revocation; a missing account or stale
 hash explicitly awaits rollback before its clean no-op result. Informational
-profile fields, account renames and later KV session revocation remain separate.
+profile fields and later KV session revocation remain separate.
+
+Both account rename methods enroll and await an outer commit, including missing
+accounts and conditional refusals. User and organisation IDs, username conflict
+mapping, current-password/suspension predicates and the existing redirect trigger
+remain unchanged. Case-only changes do not create redirects, and old names are not
+sign-in aliases. Each rename adds two transaction control statements.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -120,8 +126,8 @@ workers have exited.
 
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
-five SQL recovery methods, ten factor methods, four profile credential methods and
-the three moderation methods obtained from the same
+five SQL recovery methods, ten factor methods, four profile credential methods,
+two account rename methods and the three moderation methods obtained from the same
 database handle or its clones. It does not coordinate independently opened SQLite
 pools, another process, password changes, other credentials, KV sessions or other
 authority writers. It does not prove SQLite worker termination or physical store
