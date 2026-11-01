@@ -20,9 +20,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Durable digest-bound administrator reviews, candidate selections with retained
+  clearing revisions, exact operation receipts and a persistent fail-closed policy
+  seal. Candidates remain unavailable for execution; no broker grant is issued.
+
 - Passive digest-bound package review/selection contracts with explicit native
   full service-user trust, Wasm sandbox requirements, canonical revision strings
-  and bounded grant requests. They create no review ledger or executable authority.
+  and bounded grant requests. Request values carry no executable authority.
 
 - Local Unix `rbit package-store check/provision` commands resolve deployment storage
   without opening databases, explicitly create private synchronized roots and

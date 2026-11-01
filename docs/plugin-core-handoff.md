@@ -1,5 +1,48 @@
 # Plugin core handoff
 
+## Durable review and candidate policy — 2026-11-01
+
+Policy storage is committed as `a38cf3e`, owned Services as `808e363` and backup
+validation as `40063c9`. The batch adds migration `0064`, an owned Services facade
+and backup validation. Administrative initialization creates one persistent epoch and
+host-owned fingerprint. Exact installation references, current administrator
+rights and revision expectations are checked in the same FULL write transaction.
+Review history and operation receipts are immutable; cleared candidates retain
+revision tombstones. Replay acknowledges historical results without restoring old
+heads. At capacity or terminal revision, a valid rejected command commits only a
+sticky seal and bounded provenance. Ordinary APIs cannot reopen it.
+
+This stage grants no executable authority. Every candidate remains unavailable,
+nonempty broker grants are rejected, and embedded Actions/i18n desired state and
+presentation remain separate. Native intent explicitly acknowledges full service
+OS-user trust; Wasm intent requires a real sandbox and never permits native fallback.
+A future managed adapter must fence existing generations and host calls before
+publishing revocation; this metadata stage does not prove that runtime behavior.
+
+Local checks passed: 35 SDK tests, nine policy storage tests, 19 upgrade tests,
+three policy service tests in both default and core-only builds, and 35 server
+tests including backup and restart. Strict Rust 1.99 workspace/all-target lint and
+all four dependency guards passed. The full local workspace passed 2,476 tests,
+zero failures and eight ignored tests across 74 test summaries. Five ignores are
+manual checks and three require native Windows. Backup
+coverage preserves selected reviews, epochs and an already sealed snapshot, and
+rejects incomplete schemas or malformed singleton state. Corruption regression
+coverage includes empty receipt IDs skipped by pagination and NUL-hidden oversized
+scalars; byte bounds precede row materialization.
+
+The preceding `c9469e7` hosted run passed 10 of 11 jobs: all 2,444 Linux tests,
+release smoke checks, strict lint, advisories and all three feature profiles. Its Linux swap release reclaimed 8 GiB; that runner
+also had a larger disk than the earlier failing runner, so this is no identical-
+resource causality proof. Its Windows compile failure was an incorrect enum path
+in a new fixture, corrected in `a94b403`. The portable fixture now typechecks on all
+hosts; its three Windows behavior tests remain skipped elsewhere and require
+native CI. Validation of the next pushed head remains required.
+
+Policy HTTP/CLI adapters, deliberate maintenance/epoch renewal, full recovery,
+managed native execution, enforced broker grants, first-party service/Web
+separation, optional Wasm and final performance gates remain unfinished. PR #47
+stays open and unmerged, and the modularization goal remains active.
+
 ## Administrator package transport and setup — 2026-11-01
 
 Published package head: `c9469e7`. Admin-scoped PAT endpoints now stream canonical

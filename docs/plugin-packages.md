@@ -83,7 +83,7 @@ Actions/i18n desired state remains separate. A digest establishes byte agreement
 not publisher identity or code safety. Trust and effective limits must later bind
 to the exact installation digest and host policy revision.
 
-## Passive review and selection contracts
+## Review and candidate selection
 
 The SDK defines strict review and candidate-selection request values with exact
 plugin ID/full-version/archive-digest identity. Full SemVer build metadata remains
@@ -106,11 +106,43 @@ checks compare supplied manifest identity/kind/requested capabilities; the host 
 resolve the actual durable archive, current policy, recognized catalog, actor and
 live resource incarnation before any mutation or admission.
 
-These are passive request contracts. They create no review ledger, effective grant,
-runtime selection or executable authority. Durable review coordination is the next
-stage. Capacity or revision exhaustion must never leave old authority usable because
-a deny cannot be recorded; the host needs a durable deny path or a persistent closed
-execution/host-call gate that also revokes existing managed generations.
+Migration `0064` retains administrator review history, current review heads,
+candidate-selection heads, operation receipts and a persistent policy gate. The
+`Services.package_policy` facade exposes explicit initialization, inspection, review,
+selection, clearing and operation recovery. HTTP/CLI adapters for these policy
+operations are a subsequent increment; existing upload commands only install bytes.
+
+Initialization requires a current active administrator and a virgin empty policy
+ledger. It generates a persistent random epoch and host-owned fingerprint. Reads
+and construction never initialize policy. Inspection reports the exact installed
+package's declared kind, capability requests, host API and budgets, without its file
+inventory. The enforced capability catalog is empty: every nonempty grant request
+is rejected. Requested limits remain declarations, and every candidate reports
+execution **Unavailable**, including approved native or Wasm packages.
+
+Policy mutations use the existing lazy FULL writer. Active administrator authority,
+exact installation identity, fingerprint and current revisions are checked in the
+same short write transaction. A selection must name the current allowed review;
+revoking it leaves the old selection inspectable but invalid for future admission.
+Review/selection/clear operations use caller-known keys and canonical bounded
+receipts. Exact replay acknowledges history without restoring old heads. Bootstrap
+has no operation receipt; after a lost response, inspect the authoritative gate.
+
+Bounds are 4,096 reviews, 4,096 receipts and 1,024 heads of each kind. A valid mutation
+that would exceed a bound or exhaust a revision commits only a permanent seal and
+its bounded provenance, then reports that seal. It changes no review, candidate or
+receipt. Invalid/stale requests cannot seal policy. The seal survives restart and
+ordinary APIs cannot reopen it. Maintenance, pruning and epoch renewal are not
+implemented. Future adapters must enforce the seal against starts and existing
+generation/host-call admission before any live integration is accepted; this
+metadata increment proves no worker revocation.
+
+Two owned policy mutations may run at once. A dropped waiter leaves the transaction
+owner intact, and shutdown closes admission and drains it before stores close.
+Unused policy starts no worker, timer or query. Embedded Actions/i18n composition,
+enabled intent and presentation remain separate. Backup validates these bounded
+records in its immutable SQLite snapshot and preserves the epoch and seal; restore
+never executes a candidate.
 
 ## Recovery boundary
 
