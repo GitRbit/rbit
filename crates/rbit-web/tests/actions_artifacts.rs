@@ -9,6 +9,7 @@ use axum::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower::ServiceExt;
+use tracing::instrument::WithSubscriber;
 
 use crate::{
     actions_runner::Fixture,
@@ -200,16 +201,16 @@ async fn page(fixture: &Fixture, user: &rbit_core::User, path: &str) -> Answer {
         .header(header::COOKIE, format!("rbit_session={}", token.encode()))
         .body(Body::empty())
         .unwrap();
-    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    // Keep native-page diagnostics local to this request; SQL query counters in
+    // the same test binary own the global tracing subscriber.
+    let diagnostics = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().finish();
+    let response = fixture.router.clone().oneshot(request).with_subscriber(diagnostics).await.unwrap();
     let (status, headers) = (response.status(), response.headers().clone());
     Answer { status, headers, body: to_bytes(response.into_body(), usize::MAX).await.unwrap().to_vec() }
 }
 
 #[tokio::test]
 async fn run_pages_list_artifacts_and_readers_download_them() {
-    // Preserve the native deadline and report its error variant if this real page
-    // cannot complete on a contended runner; the HTTP response stays generic.
-    let _ = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().try_init();
     let fixture = Fixture::new().await;
     let credential = fixture.runner(&["linux"]).await;
     let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
@@ -225,7 +226,12 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
     let html = String::from_utf8_lossy(&shown.body).into_owned();
     assert!(html.contains("dist-linux") && html.contains("Artifacts"), "{html}");
     assert!(html.contains(">in 3 months</time>"), "the default 90 days, not \"just now\": {html}");
-    let artifact = fixture.database.actions_artifacts().of_run(run.id, rbit_core::Timestamp::now()).await.unwrap().remove(0);
+    // This must also work in nextest's isolated process: request diagnostics must
+    // not prevent later SQL query instrumentation from installing its subscriber.
+    let queries = crate::query_count::QueryCounter::new();
+    let artifact =
+        queries.measure(fixture.database.actions_artifacts().of_run(run.id, rbit_core::Timestamp::now())).await.unwrap().remove(0);
+    assert_eq!(queries.queries().len(), 1, "the artifact lookup must remain observable after page diagnostics");
     let download_url = format!("{run_url}/artifacts/{}", artifact.id.0);
     assert!(html.contains(&download_url));
 
