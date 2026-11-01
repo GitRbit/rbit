@@ -23,6 +23,9 @@ row-layout helpers, request-local messages and the captured-locale compiled-temp
 wrapper no longer import Web. Native Actions uses that shared wrapper. Full shell
 templates and host-built page/repository chrome remain in Web; separating those data
 contracts is the next prerequisite for an independent `rbit-actions-web` crate.
+The API also has bounded package metadata contracts for adapter kind, portable payload
+paths, size/digest declarations and requested resources. These do not install or run
+packages; immutable staging, trust, worker protocols and execution remain unimplemented.
 Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.

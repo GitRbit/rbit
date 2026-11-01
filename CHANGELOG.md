@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Bounded plugin package metadata contracts for native executables, Wasm components
+  and data packages, with portable file paths, size/digest declarations and requested
+  resource budgets. These are validation primitives; executable installation and
+  worker execution remain later stages.
+
 - A shared `rbit-ui` presentation crate for compiled-template locale capture, avatars,
   form errors, bounded listing controls, URL construction and fixed-height code rows.
   Web and native Actions templates share one locale context while host authorization

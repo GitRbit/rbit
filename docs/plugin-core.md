@@ -130,6 +130,37 @@ for retry. The controller currently supports trusted embedded implementations, n
 untrusted native-code sandbox. Host authorization and the current generation remain
 mandatory when exposing an implementation to HTTP.
 
+## Package metadata contracts
+
+`rbit-plugin-api::PackageManifest` introduces the metadata boundary for independently
+installed packages. Schema version 1 wraps the existing plugin/service/capability
+manifest and declares native code with a target and entrypoint, a Wasm component with
+an entrypoint, or data without an entrypoint. A target is a bounded declaration;
+the host must separately decide whether it supports that target and executable format.
+
+Each regular payload file declares a portable relative path, byte length and canonical
+lowercase SHA256 digest. Paths reject traversal, platform separators, Windows device
+names and ambiguous spellings. Validation rejects duplicate paths, conflicting file
+ancestors, inconsistent directory casing and absent or empty executable entrypoints.
+There may be at most 1,024 files, 256 MiB per file and 1 GiB total. These limits bound
+declarations; the installer must also enforce actual streamed and expanded sizes.
+
+Readers must cap the complete encoded manifest at 1 MiB **before** deserialization.
+The file-list deserializer additionally limits collection growth. Serde input and
+programmatically constructed values both require validation; call `validate()` after
+modifying public fields. Unknown fields and unsupported schema versions are rejected.
+
+Requested memory, concurrency, call deadline, storage and event-queue ceilings do not
+grant authority or enforce isolation. The future host intersects them with deployment
+policy and approved capabilities. In particular, a native process does not become a
+sandbox because its manifest requests a memory budget.
+
+This adds no archive extraction, package installation, trust decision or execution.
+The future installer must verify actual file contents, reject unsafe archive entries,
+establish publisher trust separately, stage immutable versions and admit workers only
+through the lifecycle coordinator. Worker framing, host-service ports, persistent
+installation state and the optional Wasm host remain required work.
+
 ## Custom middleware and other extensions
 
 `ScopedExtensionRegistry<T>` generalizes the registration lifetime to trusted callback
