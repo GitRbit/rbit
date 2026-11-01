@@ -711,6 +711,32 @@ async fn backup_rejects_missing_or_mismatched_ledger_pins_and_arbitrary_digest_p
 }
 
 #[tokio::test]
+async fn backup_rejects_malformed_inventory_scalars_before_materializing_strings() {
+    for sql in [
+        "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_objects_immutable; UPDATE plugin_objects SET digest=digest||char(0)||CAST(zeroblob(131072) AS TEXT)",
+        "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_installations_pin; UPDATE plugin_installations SET plugin_id=plugin_id||char(0)||CAST(zeroblob(131072) AS TEXT)",
+        "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_installations_pin; UPDATE plugin_installations SET version=version||char(0)||CAST(zeroblob(131072) AS TEXT)",
+        "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_installations_pin; UPDATE plugin_installations SET digest=digest||char(0)||CAST(zeroblob(131072) AS TEXT)",
+        "PRAGMA ignore_check_constraints=ON; DROP TRIGGER plugin_installations_pin; UPDATE plugin_installations SET plugin_id='';",
+        // Rebuild just the object table without STRICT to model a malformed
+        // snapshot with byte-bounded BLOBs that a String decoder must not reach.
+        "CREATE TABLE replacement(digest TEXT PRIMARY KEY,manifest TEXT,wire_bytes INTEGER,recorded_at INTEGER); INSERT INTO replacement SELECT * FROM plugin_objects; DROP TABLE plugin_objects; ALTER TABLE replacement RENAME TO plugin_objects; UPDATE plugin_objects SET digest=CAST(digest AS BLOB)",
+        "CREATE TABLE replacement(plugin_id TEXT,version TEXT,digest TEXT,installed_by INTEGER,installed_at INTEGER,PRIMARY KEY(plugin_id,version),UNIQUE(plugin_id,version,digest)); INSERT INTO replacement SELECT * FROM plugin_installations; DROP TABLE plugin_installations; ALTER TABLE replacement RENAME TO plugin_installations; UPDATE plugin_installations SET version=CAST(version AS BLOB)",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        seed_package(&data).await;
+        package_sql(&data, sql).await;
+        let backup = dir.path().join("backup");
+        let output = rbit(&data, &["backup", "--output", backup.to_str().unwrap()]);
+        assert!(!output.status.success());
+        assert!(!backup.join("manifest.json").exists());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("invalid generic plugin package inventory scalar"), "{stderr}");
+    }
+}
+
+#[tokio::test]
 async fn backup_accepts_pre_package_databases_but_rejects_partial_or_missing_current_ledgers() {
     for damage in ["legacy", "partial", "current-missing"] {
         let dir = tempfile::tempdir().unwrap();

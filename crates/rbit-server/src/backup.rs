@@ -293,6 +293,21 @@ async fn read_package_inventory(connection: &mut sqlx::SqliteConnection) -> anyh
         anyhow::ensure!(tables == 0 && !current, "incomplete generic plugin package ledger in backup snapshot");
         return Ok(Vec::new());
     }
+    // Check stored types and byte lengths before any inventory String is fetched.
+    // SQLite text length stops at NUL; CAST AS BLOB counts the complete value.
+    let malformed: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM plugin_objects WHERE CASE WHEN \
+         typeof(digest)='text' AND length(CAST(digest AS BLOB))=64 AND \
+         typeof(manifest)='text' AND length(CAST(manifest AS BLOB)) BETWEEN 1 AND 1048576 AND \
+         typeof(wire_bytes)='integer' AND wire_bytes BETWEEN 1 AND 2147483648 \
+         THEN 0 ELSE 1 END) OR EXISTS(SELECT 1 FROM plugin_installations WHERE CASE WHEN \
+         typeof(plugin_id)='text' AND length(CAST(plugin_id AS BLOB)) BETWEEN 1 AND 128 AND \
+         typeof(version)='text' AND length(CAST(version AS BLOB)) BETWEEN 1 AND 128 AND \
+         typeof(digest)='text' AND length(CAST(digest AS BLOB))=64 THEN 0 ELSE 1 END)",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
+    anyhow::ensure!(!malformed, "invalid generic plugin package inventory scalar in backup snapshot");
     // Fetch only bounded identities/sizes first; read at most one 1 MiB manifest
     // at a time rather than allocating every retained descriptor together.
     let rows: Vec<(String, i64, i64)> =
