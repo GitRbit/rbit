@@ -222,12 +222,37 @@ async fn active_admin_and_semantic_conflicts_do_not_seal_or_change_policy() {
 // Bulk fixture is one real SQLite transaction, not thousands of FULL fsyncs.
 // It builds valid canonical sequential decisions/receipts identical to store output.
 async fn fill_history(fixture: &Fixture) {
+    let epoch = fixture.db.plugin_policy().gate(fixture.admin).await.unwrap().epoch.unwrap();
     let mut connection = fixture.connection().await;
     let mut tx = connection.begin().await.unwrap();
-    sqlx::query("WITH RECURSIVE n(v) AS (VALUES(2) UNION ALL SELECT v+1 FROM n WHERE v<4096) INSERT INTO plugin_review_history SELECT digest,v,plugin_id,version,intent,json_set(request,'$.command.request.expected_review',json_object('kind','exact','revision',CAST(v-1 AS TEXT))),catalog_version,epoch,fingerprint,actor,created_at FROM plugin_review_history,n WHERE revision=1")
-        .execute(&mut *tx).await.unwrap();
-    sqlx::query("INSERT INTO plugin_policy_receipts SELECT 'bulk-'||revision,0,request,actor,plugin_id,digest,revision,epoch,fingerprint,created_at FROM plugin_review_history WHERE revision>1").execute(&mut *tx).await.unwrap();
-    sqlx::query("UPDATE plugin_review_heads SET revision=4096").execute(&mut *tx).await.unwrap();
+    let ordinal: i64 = sqlx::query_scalar("SELECT ordinal FROM plugin_policy_epochs WHERE epoch=?")
+        .bind(epoch.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    let initial: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_policy_receipts WHERE epoch=?")
+        .bind(epoch.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert!((1..=2).contains(&initial));
+    let seed_reviews: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM plugin_review_history WHERE epoch=?")
+        .bind(epoch.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(seed_reviews, 1);
+    let limit = 4096 - (initial - 1);
+    sqlx::query("WITH RECURSIVE n(v) AS (VALUES(2) UNION ALL SELECT v+1 FROM n WHERE v<?) INSERT INTO plugin_review_history(digest,revision,plugin_id,version,intent,request,catalog_version,epoch,fingerprint,actor,created_at) SELECT digest,v,plugin_id,version,intent,json_set(request,'$.command.request.expected_review',json_object('kind','exact','revision',CAST(v-1 AS TEXT))),catalog_version,epoch,fingerprint,actor,created_at FROM plugin_review_history,n WHERE epoch=? AND revision=1")
+        .bind(limit).bind(epoch.as_str()).execute(&mut *tx).await.unwrap();
+    sqlx::query("INSERT INTO plugin_policy_receipts(id,kind,request,actor,plugin_id,version,digest,result_revision,epoch,fingerprint,created_at) SELECT 'bulk-'||?||'-'||revision,0,request,actor,plugin_id,version,digest,revision,epoch,fingerprint,created_at FROM plugin_review_history WHERE epoch=? AND revision>1")
+        .bind(ordinal).bind(epoch.as_str()).execute(&mut *tx).await.unwrap();
+    sqlx::query("UPDATE plugin_review_heads SET revision=? WHERE epoch=?")
+        .bind(limit)
+        .bind(epoch.as_str())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 }
 
@@ -280,7 +305,7 @@ async fn receipt_capacity_and_concurrent_last_slot_preserve_atomic_rejection() {
     store.apply_selection(fixture.admin, &id("seed-select"), &select, Timestamp(5)).await.unwrap();
     let mut connection = fixture.connection().await;
     let mut tx = connection.begin().await.unwrap();
-    sqlx::query("WITH RECURSIVE n(v) AS (VALUES(2) UNION ALL SELECT v+1 FROM n WHERE v<4094) INSERT INTO plugin_policy_receipts SELECT 'select-'||v,1,json_set(request,'$.command.request.expected_selection',json_object('kind','exact','revision',CAST(v-1 AS TEXT))),actor,plugin_id,digest,v,epoch,fingerprint,created_at FROM plugin_policy_receipts,n WHERE id='seed-select'").execute(&mut *tx).await.unwrap();
+    sqlx::query("WITH RECURSIVE n(v) AS (VALUES(2) UNION ALL SELECT v+1 FROM n WHERE v<4094) INSERT INTO plugin_policy_receipts(id,kind,request,actor,plugin_id,version,digest,result_revision,epoch,fingerprint,created_at) SELECT 'select-'||v,1,json_set(request,'$.command.request.expected_selection',json_object('kind','exact','revision',CAST(v-1 AS TEXT))),actor,plugin_id,version,digest,v,epoch,fingerprint,created_at FROM plugin_policy_receipts,n WHERE id='seed-select'").execute(&mut *tx).await.unwrap();
     sqlx::query("UPDATE plugin_selection_heads SET revision=4094").execute(&mut *tx).await.unwrap();
     tx.commit().await.unwrap();
     validate_snapshot(&mut connection).await.unwrap();
@@ -403,3 +428,9 @@ async fn snapshot_rejects_nul_hidden_oversized_scalar_before_pagination() {
     assert!(validate_snapshot(&mut connection).await.is_err());
     fixture.db.close().await;
 }
+
+#[path = "plugin_policy_epochs.rs"]
+mod epochs;
+
+#[path = "plugin_policy_epoch_upgrade.rs"]
+mod epoch_upgrade;
