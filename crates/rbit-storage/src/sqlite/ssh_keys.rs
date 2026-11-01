@@ -190,17 +190,27 @@ fn insert_error(error: sqlx::Error) -> StorageError {
 #[derive(Debug, Clone)]
 pub struct SshKeyStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl SshKeyStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     // -------------------------------------------------------------- user keys
 
     /// [`StorageError::Conflict`] when the fingerprint is already registered anywhere.
     pub async fn add_user_key(&self, account_id: AccountId, new: &NewPublicKey) -> Result<SshKey, StorageError> {
+        let mutation = self.writer.begin().await.map_err(ssh_mutation_error)?;
+        let result = self.add_user_key_raw(account_id, new).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn add_user_key_raw(&self, account_id: AccountId, new: &NewPublicKey) -> Result<SshKey, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let row: SshKeyRow = sqlx::query_as(
             "INSERT INTO ssh_keys (account_id, title, public_key, algorithm, fingerprint, created_at) VALUES (?, ?, ?, ?, ?, ?) \
              RETURNING id, account_id, title, public_key, algorithm, fingerprint, created_at, last_used_at",
@@ -211,9 +221,10 @@ impl SshKeyStore {
         .bind(&new.algorithm)
         .bind(&new.fingerprint)
         .bind(Timestamp::now().seconds())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(insert_error)?;
+        tx.commit().await?;
         Ok(row.into())
     }
 
@@ -232,8 +243,18 @@ impl SshKeyStore {
 
     /// Deletes the key only if `account_id` owns it. Returns whether a key was removed.
     pub async fn delete_user_key(&self, account_id: AccountId, id: SshKeyId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(ssh_mutation_error)?;
+        let result = self.delete_user_key_raw(account_id, id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn delete_user_key_raw(&self, account_id: AccountId, id: SshKeyId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result =
-            sqlx::query("DELETE FROM ssh_keys WHERE id = ? AND account_id = ?").bind(id.0).bind(account_id.0).execute(&self.pool).await?;
+            sqlx::query("DELETE FROM ssh_keys WHERE id = ? AND account_id = ?").bind(id.0).bind(account_id.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -252,6 +273,15 @@ impl SshKeyStore {
 
     /// [`StorageError::Conflict`] when the fingerprint is already registered anywhere.
     pub async fn add_deploy_key(&self, repo_id: RepoId, new: &NewPublicKey, read_only: bool) -> Result<DeployKey, StorageError> {
+        let mutation = self.writer.begin().await.map_err(ssh_mutation_error)?;
+        let result = self.add_deploy_key_raw(repo_id, new, read_only).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn add_deploy_key_raw(&self, repo_id: RepoId, new: &NewPublicKey, read_only: bool) -> Result<DeployKey, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let row: DeployKeyRow = sqlx::query_as(
             "INSERT INTO deploy_keys (repo_id, title, public_key, algorithm, fingerprint, read_only, created_at) \
              VALUES (?, ?, ?, ?, ?, ?, ?) \
@@ -264,9 +294,10 @@ impl SshKeyStore {
         .bind(&new.fingerprint)
         .bind(read_only)
         .bind(Timestamp::now().seconds())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(insert_error)?;
+        tx.commit().await?;
         Ok(row.into())
     }
 
@@ -285,8 +316,18 @@ impl SshKeyStore {
 
     /// Deletes the key only if it belongs to `repo_id`. Returns whether a key was removed.
     pub async fn delete_deploy_key(&self, repo_id: RepoId, id: DeployKeyId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(ssh_mutation_error)?;
+        let result = self.delete_deploy_key_raw(repo_id, id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn delete_deploy_key_raw(&self, repo_id: RepoId, id: DeployKeyId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result =
-            sqlx::query("DELETE FROM deploy_keys WHERE id = ? AND repo_id = ?").bind(id.0).bind(repo_id.0).execute(&self.pool).await?;
+            sqlx::query("DELETE FROM deploy_keys WHERE id = ? AND repo_id = ?").bind(id.0).bind(repo_id.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -363,6 +404,16 @@ impl SshKeyStore {
             .transpose()
     }
 }
+
+fn ssh_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "SSH key mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "SSH key writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;
 
 #[cfg(test)]
 mod tests {
