@@ -108,7 +108,8 @@ pub(crate) async fn role_of<'e>(
 #[derive(Debug, Clone)]
 pub struct OrgStore {
     pool: Pool,
-    // Only the four existing-organization role/base mutations are enrolled here.
+    // The four role/base mutations and two lifecycle entries share this registration.
+    // Display-only profile updates remain outside this selected authority scope.
     writer: rbit_authority_fence::WriterRegistration,
 }
 
@@ -119,6 +120,15 @@ impl OrgStore {
 
     /// Creates the account, its profile and the creator's owner membership atomically.
     pub async fn create(&self, new: NewOrganization) -> Result<Organization, StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_lifecycle_mutation_error)?;
+        let result = self.create_raw(new).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn create_raw(&self, new: NewOrganization) -> Result<Organization, StorageError> {
         let now = Timestamp::now().seconds();
         let mut tx = self.pool.begin().await?;
 
@@ -200,13 +210,24 @@ impl OrgStore {
     /// repositories (their bare repositories on disk would otherwise be orphaned).
     /// Returns whether it was deleted.
     pub async fn delete_if_empty(&self, org: AccountId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(org_lifecycle_mutation_error)?;
+        let result = self.delete_if_empty_raw(org).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn delete_if_empty_raw(&self, org: AccountId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "DELETE FROM accounts WHERE id = ?1 AND kind = 'organization' \
              AND NOT EXISTS (SELECT 1 FROM repositories WHERE owner_id = ?1)",
         )
         .bind(org.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -375,5 +396,18 @@ fn org_membership_mutation_error(error: rbit_authority_fence::BeginError) -> Sto
     }
 }
 
+fn org_lifecycle_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::AdmissionUnavailable {
+        scope: "organization",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
+}
+
 #[cfg(test)]
 mod fence_tests;
+
+#[cfg(test)]
+mod lifecycle_fence_tests;

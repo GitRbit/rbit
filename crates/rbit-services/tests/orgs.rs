@@ -347,3 +347,56 @@ async fn stopped_membership_writer_is_not_misreported_as_duplicate() {
     assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
     assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
 }
+
+#[tokio::test]
+async fn lifecycle_business_errors_and_stopped_admission_keep_their_distinct_meaning() {
+    let fixture = Fixture::new().await;
+    let alice = fixture.user("alice", true).await;
+    let org = fixture.org(&alice, "acme").await;
+    let create = |name: &str| CreateOrganization { name: name.into(), ..CreateOrganization::default() };
+    assert!(matches!(fixture.services.orgs.create(&alice, create("ALICE")).await, Err(ServiceError::Conflict("name"))));
+    fixture.repo_in(&alice, "acme", "rocket", Visibility::Private).await.unwrap();
+    let expected = "acme still owns 1 repository; delete them or transfer them to another owner first";
+    assert!(
+        matches!(fixture.services.orgs.delete(&alice, &org, " acme ").await, Err(ServiceError::Invalid(message)) if message == expected)
+    );
+    assert!(matches!(fixture.services.orgs.delete(&alice, &org, "wrong").await,
+        Err(ServiceError::Invalid(message)) if message == "type acme to confirm"));
+    let before = fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items;
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close()); // Synchronous enrolled-writer stop; pool close is unpolled.
+    let orgs = &fixture.services.orgs;
+    let create_result = tokio::time::timeout(std::time::Duration::from_secs(5), orgs.create(&alice, create("fresh"))).await.unwrap();
+    let delete_result = tokio::time::timeout(std::time::Duration::from_secs(5), orgs.delete(&alice, &org, "ACME")).await.unwrap();
+    for result in [create_result.map(|_| ()), delete_result] {
+        assert!(matches!(
+            result,
+            Err(ServiceError::AdmissionUnavailable { scope: "organization", reason: rbit_storage::AdmissionReason::Stopped })
+        ));
+    }
+    assert!(matches!(orgs.delete(&alice, &org, "wrong").await,
+        Err(ServiceError::Invalid(message)) if message == "type acme to confirm"));
+    assert!(fixture.database.orgs().find_by_name("fresh").await.unwrap().is_none());
+    assert_eq!(fixture.database.orgs().role_of(org.account.id, alice.id()).await.unwrap(), Some(OrgRole::Owner));
+    assert_eq!(fixture.database.orgs().count_repositories(org.account.id).await.unwrap(), 1);
+    assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+}
+
+#[tokio::test]
+async fn creation_policy_still_refuses_before_stopped_storage_admission() {
+    let fixture = Fixture::new().await;
+    let root = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    fixture.set_org_creation(&root, OrgCreationPolicy::AdminsOnly).await;
+    let database = fixture.database.clone();
+    drop(database.close());
+    let create = || CreateOrganization { name: "fresh".into(), ..CreateOrganization::default() };
+    assert!(matches!(fixture.services.orgs.create(&alice, create()).await, Err(ServiceError::Forbidden)));
+    assert!(matches!(
+        fixture.services.orgs.create(&root, create()).await,
+        Err(ServiceError::AdmissionUnavailable { scope: "organization", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
+    assert!(fixture.database.orgs().find_by_name("fresh").await.unwrap().is_none());
+}

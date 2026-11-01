@@ -4,7 +4,8 @@ The authority fence coordinates policy mutations, user account creation, externa
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
 factors, profile credentials, account renames and administrator role changes,
 suspension, account deletion, direct collaborator assignments, existing-organization
-membership/base permissions, direct team operations, branch-protection rule graphs
+membership/base permissions, organization lifecycle, direct team operations and
+branch-protection rule graphs
 and bound session mutations
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
@@ -20,8 +21,8 @@ Policy initialization, epoch renewal, review/selection/clear, user account creat
 identity linking/unlinking, token and key creation/deletion and the three moderation
 mutations, together with SQL recovery, factor and profile credential mutations,
 account renames, direct collaborator assignments and existing-organization
-membership/base permissions, direct team operations and branch-protection rule
-graphs, acquire that permit
+membership/base permissions, organization lifecycle, direct team operations and
+branch-protection rule graphs, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -225,9 +226,10 @@ transaction, without nested public store calls. Other organizations and personal
 repositories retain their grants; team repository grants remain while the removed
 user loses membership. Base-permission changes preserve profile fields, and
 profile edits preserve an existing nondefault permission. The host maps only the
-`member` duplicate conflict to an already-present response. Creation/deletion,
-other cascades and team grant APIs remain separate categories; existing manager
-checks, last-owner messages and audit/event behavior are unchanged. Enrollment does
+`member` duplicate conflict to an already-present response. Organization lifecycle
+and team grants are addressed separately; other originating cascades remain
+separate categories. Existing manager checks, last-owner messages and audit/event
+behavior are unchanged. Enrollment does
 not refresh preloaded actor or organization authorization.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
@@ -300,7 +302,8 @@ This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, four direct collaborator assignments, four existing-
-organization membership/base methods, all seven direct TeamStore writer methods,
+organization membership/base methods and two organization lifecycle methods,
+all seven direct TeamStore writer methods,
 three direct branch-protection rule graph methods, the three moderation methods
 and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
@@ -373,6 +376,32 @@ complete direct TeamStore coverage does not imply complete table-writer coverage
 Independent opens, actual driver tails, physical ownership and native execution
 remain outside the proof. Three added begin/commit pairs do not establish measured
 query-count, allocation or latency parity.
+
+Organization creation and conditional empty deletion use the existing organization
+registration with the private diagnostic scope `organization`. The four existing
+role/base-permission methods retain their `organization membership` scope. These
+six authority APIs share the same Database domain; display-only organization
+profile updates remain outside this selection.
+
+Creation keeps its existing account/profile/creator-owner transaction and awaited
+COMMIT. The direct owner INSERT acquires no nested registration. The returned
+Organization is built from already typed fields. Conditional deletion preserves
+its single-statement account-kind and NOT EXISTS repository predicates and awaits
+an outer COMMIT before either bool result. A preliminary repository count would
+not provide the same protection and is not substituted. Existing business name
+conflicts and false outcomes retain their classifications; errors or acquired
+cancellation leave conservative uncertainty.
+
+A deletable organization can still have its own profile, memberships, teams and
+supported organization-scoped children. Its deletion owns the actual FK/trigger
+cleanup in the same transaction. It cannot validly own repository-backed team or
+protection grants while satisfying the no-repositories condition. Other originating
+account, repository and transfer operations remain separate writers. Caller policy,
+manager and confirmation checks precede storage; the service's later false-result
+repository count remains outside its guard. Neither lifecycle operation adds a new
+audit/event producer or REST endpoint. Physical ownership, driver termination,
+crash recovery, fresh authorization and native execution remain unproven; added
+transaction control is not a claim of performance parity.
 
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
