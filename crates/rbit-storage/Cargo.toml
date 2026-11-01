@@ -28,6 +28,7 @@ futures-util.workspace = true
 aes-gcm.workspace = true
 base64.workspace = true
 getrandom.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 metrics-exporter-prometheus.workspace = true

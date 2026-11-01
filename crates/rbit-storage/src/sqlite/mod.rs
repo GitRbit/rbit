@@ -35,6 +35,7 @@ pub mod notification_email;
 pub mod notifications;
 pub mod orgs;
 pub mod plugin_installations;
+pub mod plugin_policy;
 pub mod plugin_settings;
 mod pool;
 pub mod preferences;
@@ -252,6 +253,11 @@ impl Database {
     /// Host package installation ledger. Never grants trust or enables a plugin.
     pub fn plugin_installations(&self) -> plugin_installations::PluginInstallationStore {
         plugin_installations::PluginInstallationStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_installations"))
+    }
+
+    /// Passive managed-package policy, on the same lazy FULL writer as installations.
+    pub fn plugin_policy(&self) -> plugin_policy::PluginPolicyStore {
+        plugin_policy::PluginPolicyStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_policy"))
     }
 
     /// Persisted desired state for optional plugins, independent of feature packages.
