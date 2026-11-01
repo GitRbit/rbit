@@ -24,7 +24,8 @@ pub use ui::{
 };
 
 pub use policy::{
-    ExpectedPolicyRevision, HostPolicyFingerprint, InstalledPackageRef, MAX_POLICY_GRANTS, MAX_POLICY_REQUEST_BYTES, POLICY_SCHEMA_VERSION,
-    PackageReviewIntent, PackageReviewRequest, PackageSelectionClearRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest,
-    PolicyGrantRequests, PolicyGrantScope, PolicyRevision, RepositoryGrantId,
+    ExpectedPolicyRevision, HostPolicyFingerprint, InstalledPackageRef, MAX_POLICY_GRANTS, MAX_POLICY_RENEWAL_REQUEST_BYTES,
+    MAX_POLICY_REQUEST_BYTES, POLICY_SCHEMA_VERSION, PackagePolicyRenewalRequest, PackageReviewIntent, PackageReviewRequest,
+    PackageSelectionClearRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest, PolicyGrantRequests, PolicyGrantScope,
+    PolicyRevision, RepositoryGrantId,
 };

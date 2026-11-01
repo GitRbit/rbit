@@ -27,6 +27,9 @@ use serde::{
 
 use crate::{CapabilityId, PackageKind, PackageManifest, PluginId, Sha256Digest};
 
+mod renewal;
+pub use renewal::{MAX_POLICY_RENEWAL_REQUEST_BYTES, PackagePolicyRenewalRequest};
+
 pub const POLICY_SCHEMA_VERSION: u32 = 1;
 pub const MAX_POLICY_REQUEST_BYTES: usize = 64 * 1024;
 pub const MAX_POLICY_GRANTS: usize = 128;
@@ -37,6 +40,10 @@ const MAX_FULL_VERSION_BYTES: usize = 128;
 pub enum PolicyError {
     #[error("unsupported policy request schema")]
     Schema,
+    #[error("expected 1-64 lowercase ASCII letters, digits or hyphens for the observed seal operation")]
+    SealOperation,
+    #[error("canonical renewal request exceeds its byte bound")]
+    RenewalRequestSize,
     #[error("invalid bounded canonical full package version")]
     Version,
     #[error("expected canonical positive decimal value within the signed 64-bit domain")]
