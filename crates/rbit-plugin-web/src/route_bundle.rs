@@ -29,7 +29,7 @@ pub enum RouteBundleError {
 impl RouteBundle {
     /// Stages pages first, then mutations, without publishing either batch.
     /// A second-stage failure explicitly removes the first reservation: dropping
-    /// its handle alone would leave the batch owned by its PluginScope.
+    /// its handle alone would leave the batch owned by its `PluginScope`.
     pub fn stage(
         self,
         owner: PluginId,

@@ -66,13 +66,32 @@ constant folding, equal renderer-call cost or equal total allocation. Parent
 `Template::render` reserves its own `SIZE_HINT`; replacing an expanded macro with
 a nested expression can reduce that reservation, removing old overreservation or
 causing more String growth. No reservation heuristic or latency certification is
-introduced. Release measurements remain separate, including the ongoing i18n
-comparison whose frozen source arms precede this Icon change.
+introduced. Release measurements remain separate; the isolated i18n result above applies
+to frozen source arms that precede this Icon change.
 
-The shared route-bundle extraction is drafted but not applied; the Actions state
-badge is also a draft. First-party host/service ports, durable trigger delivery,
+The shared route-bundle extraction is applied as described below; the Actions
+state badge remains a draft. First-party host/service ports, durable trigger delivery,
 managed executable adapters and the sandboxed runtime remain unfinished. PR #47
 and the broader runtime goal stay active; passive rendering is not completion.
+
+## Shared scoped route ownership — 2026-11-01
+
+`rbit-plugin-web::RouteBundle` and `StagedRouteActivation` share the page/mutation
+registration ownership previously duplicated by the Actions and i18n controllers.
+Compatibility aliases preserve existing host callers. Services retains controller
+serialization, lifecycle intent, scope admission, authority and independent i18n
+management scope. No Cargo/dependency or template change is introduced.
+
+Staging reserves pages before mutations and releases the page reservation if the
+second stage fails. Publication remains sequential, mutations before pages; either
+publication error now withdraws both batches. Withdrawal revokes pages before
+mutations without closing the caller's scope or undoing effects of already admitted
+operations. Dropping local handles retains scope ownership. Registry observers may
+see intermediate publication; this is not a transaction across registries.
+
+Eight real-registry tests cover retained admission, staging/publication failure,
+retry, callback destruction outside locks, management independence and empty/Drop
+semantics. Host feature/lifecycle and document validation remain separate gates.
 
 ## Borrowed Actions step-log content — 2026-11-01
 
