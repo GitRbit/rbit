@@ -31,6 +31,40 @@ use crate::{
     },
 };
 
+/// Document factories construct their own full view. Their host authorization
+/// needs repository grants, not an extra Git ref/header/count expansion.
+enum AuthorizedRepository {
+    Document(Box<rbit_services::RepoContext>),
+    Shell(Box<RepoPage>),
+}
+impl AuthorizedRepository {
+    async fn load(
+        state: &AppState,
+        viewer: &Viewer,
+        owner: &str,
+        repo: &str,
+        presentation: rbit_services::plugin_pages::PagePresentation,
+    ) -> WebResult<Self> {
+        if presentation == rbit_services::plugin_pages::PagePresentation::Document {
+            Ok(Self::Document(Box::new(state.services.repositories.open(viewer.user(), owner, repo).await?)))
+        } else {
+            Ok(Self::Shell(Box::new(RepoPage::load(state, viewer, owner, repo).await?)))
+        }
+    }
+    fn ctx(&self) -> &rbit_services::RepoContext {
+        match self {
+            Self::Document(ctx) => ctx,
+            Self::Shell(page) => &page.ctx,
+        }
+    }
+    fn into_shell(self) -> WebResult<RepoPage> {
+        match self {
+            Self::Shell(page) => Ok(*page),
+            Self::Document(_) => Err(WebError::NotFound),
+        }
+    }
+}
+
 struct ShellPolicy {
     native_forms: bool,
     administrator: bool,
@@ -142,10 +176,10 @@ async fn repository(
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
     page.path = uri.path_and_query().map_or(uri.path(), |value| value.as_str()).to_owned();
     let route = lookup(&state, &uri, &path.plugin, &path.page, PageScope::Repository)?;
-    let loaded = RepoPage::load(&state, &viewer, &path.owner, &path.repo).await?;
+    let loaded = AuthorizedRepository::load(&state, &viewer, &path.owner, &path.repo, route.descriptor().presentation()).await?;
     match route.descriptor().audience() {
         PageAudience::RepositoryReader => {}
-        PageAudience::RepositoryAdmin if loaded.ctx.access.can_admin() => {}
+        PageAudience::RepositoryAdmin if loaded.ctx().access.can_admin() => {}
         _ => return Err(WebError::NotFound),
     }
     let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
@@ -163,16 +197,16 @@ async fn render(
     page: Page,
     viewer: &Viewer,
     session: Option<&crate::extract::CurrentSession>,
-    repository: Option<RepoPage>,
+    repository: Option<AuthorizedRepository>,
     (state, mut browser, query): (&AppState, browser_preference::BrowserForms, rbit_services::plugin_pages::PageQuery),
 ) -> WebResult<Response> {
     let context = PageContext {
         actor: viewer.user().map(|user| PageActor { account_id: user.id().0, is_admin: user.is_admin }),
         repository: repository.as_ref().map(|loaded| PageRepository {
-            repository_id: loaded.ctx.repo.repo.id.0,
-            owner: loaded.ctx.repo.owner.name.to_string(),
-            name: loaded.ctx.repo.repo.name.to_string(),
-            can_admin: loaded.ctx.access.can_admin(),
+            repository_id: loaded.ctx().repo.repo.id.0,
+            owner: loaded.ctx().repo.owner.name.to_string(),
+            name: loaded.ctx().repo.repo.name.to_string(),
+            can_admin: loaded.ctx().access.can_admin(),
         }),
         locale: page.locale.clone(),
     };
@@ -182,6 +216,7 @@ async fn render(
     let body = match lease.render_with_request(context, actions, query).await {
         Ok(body) => body,
         Err(PageError::Forbidden) => return Err(WebError::NotFound),
+        Err(PageError::Invalid(_)) => return Err(WebError::BadRequest("Invalid plugin page request.".into())),
         Err(_) => return Ok(unavailable()),
     };
     let owner = route.owner().to_string();
@@ -190,6 +225,7 @@ async fn render(
     let response = if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
         document(body)
     } else {
+        let repository = repository.map(AuthorizedRepository::into_shell).transpose()?;
         shell(page, repository, owner, path, body, policy, state)
     };
     let (guard, cancellation) = lease.into_parts();

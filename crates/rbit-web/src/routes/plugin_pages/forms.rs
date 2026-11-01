@@ -12,8 +12,8 @@ use rbit_services::plugin_pages::{
 };
 
 use super::{
-    AppState, GlobalPath, IntoResponse, OriginalUri, Page, PageActor, PageRouteHandle, PageScope, Path, PathRejection, PluginId, Redirect,
-    RepoPage, RepositoryPath, Request, Response, ShellPolicy, StatusCode, Uri, Viewer, WebError, WebResult,
+    AppState, AuthorizedRepository, GlobalPath, IntoResponse, OriginalUri, Page, PageActor, PageRouteHandle, PageScope, Path,
+    PathRejection, PluginId, Redirect, RepositoryPath, Request, Response, ShellPolicy, StatusCode, Uri, Viewer, WebError, WebResult,
     browser_preference::BrowserForms,
     form_input::{self, InputError, ParsedForm},
     header, shell, sign_in, validate_page_path,
@@ -39,7 +39,7 @@ fn now() -> Option<u64> {
     u64::try_from(rbit_core::Timestamp::now().seconds()).ok()
 }
 
-fn permitted(route: &MutationRouteHandle, viewer: &Viewer, repository: Option<&RepoPage>) -> bool {
+fn permitted(route: &MutationRouteHandle, viewer: &Viewer, repository: Option<&AuthorizedRepository>) -> bool {
     if route.descriptor().audience() == MutationAudience::LocalePreference {
         return repository.is_none() && route.descriptor().input_kind() == MutationInputKind::LocalePreference;
     }
@@ -47,29 +47,29 @@ fn permitted(route: &MutationRouteHandle, viewer: &Viewer, repository: Option<&R
     match route.descriptor().audience() {
         MutationAudience::SignedIn => repository.is_none(),
         MutationAudience::SiteAdmin => repository.is_none() && actor.is_admin,
-        MutationAudience::RepositoryWriter => repository.is_some_and(|repo| repo.ctx.can_write_content()),
-        MutationAudience::RepositoryAdmin => repository.is_some_and(|repo| repo.ctx.access.can_admin()),
+        MutationAudience::RepositoryWriter => repository.is_some_and(|repo| repo.ctx().can_write_content()),
+        MutationAudience::RepositoryAdmin => repository.is_some_and(|repo| repo.ctx().access.can_admin()),
         MutationAudience::RepositorySignedIn => repository.is_some(),
         MutationAudience::LocalePreference => false,
     }
 }
 
-fn action(route: &MutationRouteHandle, repository: Option<&RepoPage>) -> Option<String> {
-    let owner = repository.map(|repo| repo.ctx.repo.owner.name.as_str());
-    let name = repository.map(|repo| repo.ctx.repo.repo.name.as_str());
+fn action(route: &MutationRouteHandle, repository: Option<&AuthorizedRepository>) -> Option<String> {
+    let owner = repository.map(|repo| repo.ctx().repo.owner.name.as_str());
+    let name = repository.map(|repo| repo.ctx().repo.repo.name.as_str());
     route.descriptor().target(route.owner()).render(owner, name).ok()
 }
 
 fn binding<'a>(
     route: &MutationRouteHandle,
     actor: Option<&rbit_core::User>,
-    repository: Option<&RepoPage>,
+    repository: Option<&AuthorizedRepository>,
     action: &'a str,
 ) -> PluginCsrfBinding<'a> {
     PluginCsrfBinding {
         action,
         actor_id: actor.map_or(0, |actor| actor.id().0),
-        repository_id: repository.map(|repo| repo.ctx.repo.repo.id.0),
+        repository_id: repository.map(|repo| repo.ctx().repo.repo.id.0),
         generation: route.generation().get(),
         version: route.version(),
     }
@@ -80,7 +80,7 @@ pub(super) fn actions(
     route: &PageRouteHandle,
     viewer: &Viewer,
     session: Option<&CurrentSession>,
-    repository: Option<&RepoPage>,
+    repository: Option<&AuthorizedRepository>,
     state: &AppState,
     browser: &mut BrowserForms,
 ) -> FormActions {
@@ -116,7 +116,7 @@ fn sibling_actions(
     route: &MutationRouteHandle,
     viewer: &Viewer,
     session: Option<&CurrentSession>,
-    repository: Option<&RepoPage>,
+    repository: Option<&AuthorizedRepository>,
     state: &AppState,
     browser: &mut BrowserForms,
 ) -> FormActions {
@@ -192,7 +192,7 @@ pub(super) async fn repository(
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
     page.path = uri.path().to_owned();
     let route = lookup_mutation(&state, &uri, &path.plugin, &path.page, PageScope::Repository)?;
-    let repository = RepoPage::load(&state, &viewer, &path.owner, &path.repo).await?;
+    let repository = AuthorizedRepository::load(&state, &viewer, &path.owner, &path.repo, route.descriptor().presentation()).await?;
     if viewer.user().is_none() {
         return Ok(sign_in(&uri));
     }
@@ -207,7 +207,7 @@ async fn submit(
     route: MutationRouteHandle,
     page: Page,
     viewer: Viewer,
-    repository: Option<RepoPage>,
+    repository: Option<AuthorizedRepository>,
     state: AppState,
     uri: Uri,
     BrowserRequest { request, mut browser }: BrowserRequest,
@@ -263,7 +263,7 @@ async fn submit(
 fn mutation_context(
     route: &MutationRouteHandle,
     viewer: &Viewer,
-    repository: Option<&RepoPage>,
+    repository: Option<&AuthorizedRepository>,
     page: &Page,
     form: FormAction,
 ) -> WebResult<MutationContext> {
@@ -274,11 +274,11 @@ fn mutation_context(
         MutationContext::new(
             actor.ok_or(WebError::Forbidden)?,
             repository.map(|repo| MutationRepository {
-                repository_id: repo.ctx.repo.repo.id.0,
-                owner: repo.ctx.repo.owner.name.to_string(),
-                name: repo.ctx.repo.repo.name.to_string(),
-                can_write: repo.ctx.can_write_content(),
-                can_admin: repo.ctx.access.can_admin(),
+                repository_id: repo.ctx().repo.repo.id.0,
+                owner: repo.ctx().repo.owner.name.to_string(),
+                name: repo.ctx().repo.repo.name.to_string(),
+                can_write: repo.ctx().can_write_content(),
+                can_admin: repo.ctx().access.can_admin(),
             }),
             page.locale.clone(),
             form,
@@ -290,15 +290,15 @@ fn mutation_context(
 fn render_result(
     result: rbit_services::plugin_pages::MutationExecution,
     page: Page,
-    repository: Option<RepoPage>,
+    repository: Option<AuthorizedRepository>,
     route: &MutationRouteHandle,
     state: &AppState,
     browser: BrowserForms,
 ) -> WebResult<Response> {
     let (result, operation, cancellation) = result.into_parts();
     let (mut response, choice) = match result {
-        MutationResponse::Invalid(body) => (compiled_result(body, StatusCode::UNPROCESSABLE_ENTITY, page, repository, route, state), None),
-        MutationResponse::Success(body) => (compiled_result(body, StatusCode::OK, page, repository, route, state), None),
+        MutationResponse::Invalid(body) => (compiled_result(body, StatusCode::UNPROCESSABLE_ENTITY, page, repository, route, state)?, None),
+        MutationResponse::Success(body) => (compiled_result(body, StatusCode::OK, page, repository, route, state)?, None),
         MutationResponse::Redirect(target) => (redirect_to(&target, route, repository.as_ref())?, None),
         MutationResponse::LocalePreference { choice, redirect } => {
             if route.descriptor().input_kind() != MutationInputKind::LocalePreference {
@@ -316,30 +316,31 @@ fn compiled_result(
     body: rbit_services::plugin_pages::PageBody,
     status: StatusCode,
     page: Page,
-    repository: Option<RepoPage>,
+    repository: Option<AuthorizedRepository>,
     route: &MutationRouteHandle,
     state: &AppState,
-) -> Response {
+) -> WebResult<Response> {
     let mut response = if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
         super::document(body)
     } else {
         let policy = ShellPolicy { native_forms: true, administrator: route.descriptor().audience() == MutationAudience::SiteAdmin };
+        let repository = repository.map(AuthorizedRepository::into_shell).transpose()?;
         shell(page, repository, route.owner().to_string(), route.descriptor().path().to_owned(), body, policy, state)
     };
     *response.status_mut() = status;
-    response
+    Ok(response)
 }
 
 fn redirect_to(
     target: &rbit_services::plugin_pages::PluginRedirect,
     route: &MutationRouteHandle,
-    repository: Option<&RepoPage>,
+    repository: Option<&AuthorizedRepository>,
 ) -> WebResult<Response> {
     // Literal same-plugin/scope paths cannot redirect to external sites or core recovery routes.
     let query = target.query_string();
     let target = target.target(route.owner(), route.descriptor().scope());
     let target = target
-        .render(repository.map(|repo| repo.ctx.repo.owner.name.as_str()), repository.map(|repo| repo.ctx.repo.repo.name.as_str()))
+        .render(repository.map(|repo| repo.ctx().repo.owner.name.as_str()), repository.map(|repo| repo.ctx().repo.repo.name.as_str()))
         .map_err(WebError::internal)?;
     let target = if query.is_empty() { target } else { format!("{target}?{query}") };
     Ok(Redirect::to(&target).into_response())
@@ -350,9 +351,9 @@ async fn reauthorize(
     state: &AppState,
     session: Option<&CurrentSession>,
     actor_id: i64,
-    repository: Option<RepoPage>,
+    repository: Option<AuthorizedRepository>,
     route: &MutationRouteHandle,
-) -> WebResult<(Viewer, Option<RepoPage>)> {
+) -> WebResult<(Viewer, Option<AuthorizedRepository>)> {
     let Some(session) = session else {
         return if actor_id == 0 && repository.is_none() && route.descriptor().input_kind() == MutationInputKind::LocalePreference {
             Ok((Viewer(None), None))
@@ -366,8 +367,15 @@ async fn reauthorize(
     }
     let viewer = Viewer(Some(std::sync::Arc::new(signed_in.user)));
     let repository = if let Some(old) = repository {
-        let fresh = RepoPage::load(state, &viewer, old.ctx.repo.owner.name.as_str(), old.ctx.repo.repo.name.as_str()).await?;
-        if fresh.ctx.repo.repo.id != old.ctx.repo.repo.id {
+        let fresh = AuthorizedRepository::load(
+            state,
+            &viewer,
+            old.ctx().repo.owner.name.as_str(),
+            old.ctx().repo.repo.name.as_str(),
+            route.descriptor().presentation(),
+        )
+        .await?;
+        if fresh.ctx().repo.repo.id != old.ctx().repo.repo.id {
             return Err(WebError::Forbidden);
         }
         Some(fresh)
