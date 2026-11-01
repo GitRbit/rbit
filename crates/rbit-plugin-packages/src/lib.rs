@@ -103,6 +103,28 @@ pub enum ArchiveError {
 /// a complete archive, rather than a shared stream containing a following message.
 /// Blocking readers require a host-enforced deadline; byte bounds do not impose one.
 pub fn validate_archive(reader: impl Read) -> Result<ValidatedArchive, ArchiveError> {
+    validate_archive_with_sink(reader, &mut NoOutput)
+}
+
+// Tentative private writes only. The caller must not expose a sink's result until
+// the complete archive hashes, padding, terminator and actual EOF have succeeded.
+trait ArchiveSink {
+    fn manifest(&mut self, _manifest: &PackageManifest) -> Result<(), ArchiveError> {
+        Ok(())
+    }
+    fn begin(&mut self, _path: &PackagePath) -> Result<(), ArchiveError> {
+        Ok(())
+    }
+    fn chunk(&mut self, _bytes: &[u8]) -> Result<(), ArchiveError> {
+        Ok(())
+    }
+    fn end(&mut self) -> Result<(), ArchiveError> {
+        Ok(())
+    }
+}
+struct NoOutput;
+impl ArchiveSink for NoOutput {}
+fn validate_archive_with_sink(reader: impl Read, sink: &mut impl ArchiveSink) -> Result<ValidatedArchive, ArchiveError> {
     let mut input = WireReader { reader, bytes: 0 };
     let mut block = [0; BLOCK_BYTES];
     input.read_exact(&mut block)?;
@@ -129,6 +151,7 @@ pub fn validate_archive(reader: impl Read) -> Result<ValidatedArchive, ArchiveEr
         }
         expected.insert(file.path.as_str(), file);
     }
+    sink.manifest(&manifest)?;
     let mut payload_bytes = 0_u64;
     let mut buffer = vec![0; BUFFER_BYTES].into_boxed_slice();
     for _ in 0..manifest.files.len() {
@@ -142,18 +165,21 @@ pub fn validate_archive(reader: impl Read) -> Result<ValidatedArchive, ArchiveEr
             return Err(ArchiveError::FileSize);
         }
         payload_bytes = payload_bytes.checked_add(header.size).filter(|size| *size <= MAX_PACKAGE_BYTES).ok_or(ArchiveError::WireLimit)?;
+        sink.begin(&file.path)?;
         let mut digest = Sha256::new();
         let mut remaining = header.size;
         while remaining != 0 {
             let count = usize::try_from(remaining.min(BUFFER_BYTES as u64)).map_err(|_| ArchiveError::FileSize)?;
             input.read_exact(&mut buffer[..count])?;
             digest.update(&buffer[..count]);
+            sink.chunk(&buffer[..count])?;
             remaining -= count as u64;
         }
         if !digest_matches(&digest.finalize(), &file.sha256) {
             return Err(ArchiveError::Digest);
         }
         read_padding(&mut input, header.size)?;
+        sink.end()?;
     }
     if !expected.is_empty() {
         return Err(ArchiveError::MissingFile);
