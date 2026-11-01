@@ -384,9 +384,8 @@ impl Database {
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
         // This executes when close() is CALLED, even if its future is never polled.
         // It stops enrolled policy/account moderation writers, not every authority writer.
-        let shutdown = self.authority_domain.stop_writers();
+        drop(self.authority_domain.stop_writers());
         async move {
-            let _shutdown = shutdown;
             self.package_pool.close().await;
             self.pool.close().await;
         }
