@@ -310,18 +310,18 @@ async fn native_actions_step_summary_documents_bound_amplification_and_keep_full
     let cookie = format!("rbit_session={}", fixture.services.accounts.start_session(&fixture.alice).await.unwrap().encode());
     let base = "/alice/rocket/-/plugins/rbit.actions";
     let (status, page) = summary_document(&fixture, &cookie, &format!("{base}/run?run={}", run.number)).await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "summary document response: {page}");
     assert!(page.len() < 256 * 1024, "run preview is bounded");
     assert!(page.contains(&format!("{base}/summary?run={}", run.number)));
     let summary = format!("{base}/summary?run={}&job={}", run.number, job.id.0);
     let (status, page) = summary_document(&fixture, &cookie, &format!("{summary}&step=0")).await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "summary document response: {page}");
     assert!(page.contains("FULL_SOURCE_TAIL_MARKER"), "the complete source remains accessible");
     assert!(page.contains("showing its Markdown source"));
     assert!(!page.contains("<script>summary_untrusted()"));
     assert!(page.contains("step=1"));
     let (status, page) = summary_document(&fixture, &cookie, &format!("{summary}&step=1")).await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "summary document response: {page}");
     assert!(page.contains("SECOND_STEP_COMPLETE") && page.contains("step=0"));
     assert!(!page.contains("FULL_SOURCE_TAIL_MARKER"));
 
@@ -350,9 +350,14 @@ async fn native_actions_step_summary_documents_bound_amplification_and_keep_full
 }
 
 async fn summary_document(fixture: &Fixture, cookie: &str, path: &str) -> (StatusCode, String) {
+    use tracing::instrument::WithSubscriber;
+
     let request =
         Request::builder().uri(path).header(header::HOST, "git.example.com").header(header::COOKIE, cookie).body(Body::empty()).unwrap();
-    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    // Keep PageError diagnostics local to this request; SQL query tests own the
+    // global subscriber. Preserve the existing deadline and bounded body capture.
+    let diagnostics = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().finish();
+    let response = fixture.router.clone().oneshot(request).with_subscriber(diagnostics).await.unwrap();
     let status = response.status();
     if status == StatusCode::OK {
         assert!(response.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("no-store"));
