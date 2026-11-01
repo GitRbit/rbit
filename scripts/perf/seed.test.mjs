@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -200,4 +200,57 @@ posixTest("external and ambiguous fixture origins fail before private reads or n
   }
   assert.equal(seedOptions(["http://127.0.0.1:3005/instance"], f.root).base, "http://127.0.0.1:3005/instance");
   assert.equal(seedOptions(["http://[::1]:3005/instance"], f.root).base, "http://[::1]:3005/instance");
+});
+
+posixTest("repeated Git array metadata is ignored without weakening unique authority fields", (t) => {
+  const f = fixture(t), remote = "http://127.0.0.1:3005/perf/perf-fixture.git";
+  const input = "capability[]=authtype\ncapability[]=state\nprotocol=http\nhost=127.0.0.1:3005\npath=perf/perf-fixture.git\nwwwauth[]=Basic realm=fixture\nwwwauth[]=Other realm=fixture\n";
+  assert.equal(credentialReply("get", remote, f.credentialsFile, input + "\n"), `username=perf\npassword=${PASSWORD}\n\n`);
+  for (const duplicate of ["protocol=http", "host=127.0.0.1:3005", "path=perf/perf-fixture.git", "unknown=value\nunknown=value", "capability[]=bad\rmetadata"]) {
+    assert.equal(credentialReply("get", remote, join(f.root, "missing"), input + duplicate + "\n\n"), "");
+  }
+});
+
+posixTest("actual Git HTTP dry-run authenticates an isolated push without transmitting a pack", async (t) => {
+  const f = fixture(t), local = join(f.root, "source"), remoteRepo = join(f.root, "remote.git");
+  mkdirSync(local);
+  const env = { PATH: process.env.PATH, HOME: f.root, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" };
+  const git = (args, cwd = local) => execFileSync("git", args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+  git(["init", "-b", "main"]);
+  writeFileSync(join(local, "file.txt"), "synthetic fixture\n");
+  git(["add", "."]);
+  git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "fixture"]);
+  git(["branch", "big-change"]);
+  git(["init", "--bare", remoteRepo]);
+  let challenged = 0, authenticated = 0, posts = 0;
+  const expected = "Basic " + Buffer.from(`perf:${PASSWORD}`).toString("base64");
+  const s = await server(t, (request) => {
+    if (request.url.endsWith("/signup")) return { status: 303, headers: { Location: "/", "Set-Cookie": "rbit_session=synthetic; Path=/" } };
+    if (request.url.includes("/info/refs")) {
+      assert.equal(request.url, "/instance/perf/perf-fixture.git/info/refs?service=git-receive-pack");
+      if (!request.headers.authorization) { challenged++; return { status: 401, headers: { "WWW-Authenticate": 'Basic realm="fixture"' } }; }
+      assert.equal(request.headers.authorization, expected);
+      authenticated++;
+      const service = Buffer.from("# service=git-receive-pack\n");
+      const advertisement = git(["receive-pack", "--stateless-rpc", "--advertise-refs", remoteRepo]);
+      return { status: 200, headers: { "Content-Type": "application/x-git-receive-pack-advertisement" }, body: Buffer.concat([Buffer.from((service.length + 4).toString(16).padStart(4, "0")), service, Buffer.from("0000"), advertisement]) };
+    }
+    if (request.url.endsWith("/git-receive-pack")) { posts++; return { status: 500 }; }
+  });
+  const options = { base: s.base, fixture: local, credentialsFile: f.credentialsFile };
+  const source = `import {execFileSync} from 'node:child_process'; import {seed} from ${JSON.stringify(new URL("./seed.mjs", import.meta.url).href)}; seed(${JSON.stringify(options)}, {log(){},git(command,args,options){if(args.includes('push'))args.splice(args.indexOf('push')+1,0,'--dry-run');return execFileSync(command,args,options);}}).catch(()=>{console.error('synthetic dry-run failed');process.exitCode=1;});`;
+  const child = spawn(process.execPath, ["--input-type=module", "-e", source], { env: { PATH: process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] });
+  const timer = setTimeout(() => child.kill("SIGKILL"), 10_000);
+  t.after(() => { clearTimeout(timer); child.kill(); });
+  let output = "";
+  for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => { output += chunk; });
+  const [exit, signal] = await once(child, "exit");
+  clearTimeout(timer);
+  assert.equal(exit, 0, "synthetic dry-run must finish successfully");
+  assert.equal(signal, null);
+  assert.equal(output.includes(PASSWORD), false);
+  assert.equal(challenged, 1);
+  assert.equal(authenticated, 1);
+  assert.equal(posts, 0);
+  assert.equal(git(["for-each-ref", "--format=%(refname)"], remoteRepo).toString(), "");
 });

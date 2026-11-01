@@ -55,7 +55,11 @@ export function credentialReply(action, configured, credentialsFile, input) {
     const at = line.indexOf("=");
     if (at <= 0) return "";
     const key = line.slice(0, at), value = line.slice(at + 1);
-    if (fields.has(key) || /[\r\0]/.test(value)) return "";
+    if (/[\r\0]/.test(value)) return "";
+    // Git may send several capabilities and authentication challenges. They are
+    // bounded metadata, not authority; all scalar fields must remain unique.
+    if (key === "capability[]" || key === "wwwauth[]") continue;
+    if (fields.has(key)) return "";
     fields.set(key, value);
   }
   if (fields.get("protocol") !== expected.protocol.slice(0, -1) || fields.get("path") !== expected.pathname.slice(1)) return "";
