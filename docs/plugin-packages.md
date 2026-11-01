@@ -93,6 +93,11 @@ Grant requests are bounded to 128 unique explicit capability/scope tuples and so
 canonically for replay comparison. Hosts must cap complete input at 64 KiB before
 parsing and revalidate programmatically modified requests.
 
+Clearing a candidate also requires an explicit revision and host policy expectation.
+The host must retain and advance a cleared selection's revision; clearing never
+turns it back into never-created state. Policy fingerprints must include a persistent
+maintenance epoch so requests from before deliberate repair cannot regain validity.
+
 Review intent explicitly distinguishes denial, data-only approval, native full
 service-user trust and Wasm-sandbox-required approval. Native code with that OS
 identity can access host files, processes and sockets outside a broker; broker

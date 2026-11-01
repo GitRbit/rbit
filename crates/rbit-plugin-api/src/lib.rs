@@ -25,6 +25,6 @@ pub use ui::{
 
 pub use policy::{
     ExpectedPolicyRevision, HostPolicyFingerprint, InstalledPackageRef, MAX_POLICY_GRANTS, MAX_POLICY_REQUEST_BYTES, POLICY_SCHEMA_VERSION,
-    PackageReviewIntent, PackageReviewRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest, PolicyGrantRequests,
-    PolicyGrantScope, PolicyRevision, RepositoryGrantId,
+    PackageReviewIntent, PackageReviewRequest, PackageSelectionClearRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest,
+    PolicyGrantRequests, PolicyGrantScope, PolicyRevision, RepositoryGrantId,
 };

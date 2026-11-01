@@ -122,7 +122,10 @@ pub enum ExpectedPolicyRevision {
     Exact { revision: PolicyRevision },
 }
 
-/// Compare-only host policy identity. SHA syntax proves neither trust nor authority.
+/// Compare-only host policy identity. Hosts must bind the persistent maintenance
+/// epoch as well as the enforced catalog and execution policy, so old requests
+/// cannot regain validity after deliberate repair/reopening. SHA syntax proves
+/// neither trust nor authority; the client never supplies the authoritative value.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct HostPolicyFingerprint(Sha256Digest);
@@ -401,6 +404,51 @@ impl TryFrom<PackageSelectionRequestWire> for PackageSelectionRequest {
             package: value.package,
             expected_selection: value.expected_selection,
             expected_review_revision: value.expected_review_revision,
+            expected_host_policy: value.expected_host_policy,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+}
+
+/// Clear a candidate while retaining its persistent revision. A cleared selection
+/// is a tombstone, not absent history: hosts must never reset its CAS revision or
+/// let a later `Absent` expectation match it. This request does not revoke a review
+/// or stop a worker; those remain separately coordinated host operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "PackageSelectionClearRequestWire")]
+pub struct PackageSelectionClearRequest {
+    pub schema_version: u32,
+    pub plugin_id: PluginId,
+    pub expected_selection: ExpectedPolicyRevision,
+    pub expected_host_policy: HostPolicyFingerprint,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PackageSelectionClearRequestWire {
+    schema_version: u32,
+    plugin_id: PluginId,
+    expected_selection: ExpectedPolicyRevision,
+    expected_host_policy: HostPolicyFingerprint,
+}
+impl PackageSelectionClearRequest {
+    pub fn new(plugin_id: PluginId, expected_selection: ExpectedPolicyRevision, expected_host_policy: HostPolicyFingerprint) -> Self {
+        Self { schema_version: POLICY_SCHEMA_VERSION, plugin_id, expected_selection, expected_host_policy }
+    }
+    pub fn validate(&self) -> Result<(), PolicyError> {
+        if self.schema_version != POLICY_SCHEMA_VERSION {
+            return Err(PolicyError::Schema);
+        }
+        Ok(())
+    }
+}
+impl TryFrom<PackageSelectionClearRequestWire> for PackageSelectionClearRequest {
+    type Error = PolicyError;
+    fn try_from(value: PackageSelectionClearRequestWire) -> Result<Self, Self::Error> {
+        let request = Self {
+            schema_version: value.schema_version,
+            plugin_id: value.plugin_id,
+            expected_selection: value.expected_selection,
             expected_host_policy: value.expected_host_policy,
         };
         request.validate()?;
@@ -692,5 +740,31 @@ mod tests {
         let mut changed = request;
         changed.schema_version = 0;
         assert_eq!(changed.validate(), Err(PolicyError::Schema));
+    }
+
+    #[test]
+    fn clearing_requires_explicit_cas_and_cannot_encode_revision_reset() {
+        let request = PackageSelectionClearRequest::new(
+            "example.greeter".parse().unwrap(),
+            ExpectedPolicyRevision::Exact { revision: PolicyRevision::new(9_007_199_254_740_993).unwrap() },
+            fingerprint(),
+        );
+        let wire = serde_json::to_value(&request).unwrap();
+        assert_eq!(wire["expected_selection"]["revision"], "9007199254740993");
+        assert_eq!(serde_json::from_value::<PackageSelectionClearRequest>(wire.clone()).unwrap(), request);
+        for field in ["plugin_id", "expected_selection", "expected_host_policy"] {
+            let mut value = wire.clone();
+            value.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<PackageSelectionClearRequest>(value).is_err());
+        }
+        for field in ["reset_revision", "enabled", "package", "expected_review_revision"] {
+            let mut value = wire.clone();
+            value.as_object_mut().unwrap().insert(field.to_owned(), json!(true));
+            assert!(serde_json::from_value::<PackageSelectionClearRequest>(value).is_err());
+        }
+        let mut invalid = request;
+        invalid.schema_version = 0;
+        assert_eq!(invalid.validate(), Err(PolicyError::Schema));
+        assert!(serde_json::from_value::<PackageSelectionClearRequest>(serde_json::to_value(invalid).unwrap()).is_err());
     }
 }
