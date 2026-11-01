@@ -80,10 +80,22 @@ fn normalized_document(html: &str) -> String {
     }
     final_document
 }
-fn emit_cell(route: &str, document: &Document) {
+fn normalized_host_document(html: &str, generation: u64) -> String {
+    assert!(generation > 0);
+    let ui = format!("data-plugin-owner=\"rbit.actions\" data-plugin-generation=\"{generation}\"");
+    let enhancement =
+        format!("&#34;generation&#34;:&#34;{generation}&#34;,&#34;id&#34;:&#34;actions.log&#34;,&#34;owner&#34;:&#34;rbit.actions&#34;");
+    assert_eq!(html.matches(&ui).count(), 1, "Actions tab uses the live host generation");
+    assert_eq!(html.matches(&enhancement).count(), 1, "Actions enhancement uses the same live generation");
+    let canonical_ui = "data-plugin-owner=\"rbit.actions\" data-plugin-generation=\"1\"";
+    let canonical_enhancement =
+        "&#34;generation&#34;:&#34;1&#34;,&#34;id&#34;:&#34;actions.log&#34;,&#34;owner&#34;:&#34;rbit.actions&#34;";
+    normalized_document(&html.replacen(&ui, canonical_ui, 1).replacen(&enhancement, canonical_enhancement, 1))
+}
+fn emit_cell(route: &str, document: &Document, generation: u64) {
     let mut statements = document.queries.clone();
     statements.sort();
-    let normalized = normalized_document(&document.html);
+    let normalized = normalized_host_document(&document.html, generation);
     let mut normalized_hash = String::with_capacity(64);
     for byte in Sha256::digest(normalized.as_bytes()) {
         use std::fmt::Write as _;
@@ -121,12 +133,12 @@ fn emit_cell(route: &str, document: &Document) {
         sql_multiset_digest(&statements)
     );
 }
-async fn stable_cell(fixture: &Fixture, cookie: &str, path: &str) -> Document {
+async fn stable_cell(fixture: &Fixture, cookie: &str, path: &str, generation: u64) -> Document {
     let first = measured_summary(fixture, cookie, path).await;
     let second = measured_summary(fixture, cookie, path).await;
     assert_eq!(
-        normalized_document(&first.html),
-        normalized_document(&second.html),
+        normalized_host_document(&first.html, generation),
+        normalized_host_document(&second.html, generation),
         "declared normalization must produce stable same-state documents"
     );
     let mut first_sql = first.queries.clone();
@@ -183,14 +195,15 @@ async fn runs_and_workflow_documents_preserve_host_work_forms_identity_and_priva
     fixture.actions().set_workflow_disabled(&fixture.alice, &repo, ".rbit/workflows/ci.yml", true).await.unwrap();
     let owner = format!("{}; rbit-theme=base24-berlin", cookie(&fixture).await);
     let outsider = unrelated_session(&fixture).await;
+    let generation = fixture.services.actions_status().await.unwrap().generation.unwrap().get();
     let filters = "branch=main&actor=alice&event=push";
     let runs = format!("{RUNS}?{filters}");
     let workflow = format!("{WORKFLOW}&{filters}");
     for path in [&runs, &workflow] {
         assert_eq!(request(&fixture, &owner, Method::GET, path, String::new()).await.0, StatusCode::OK);
     }
-    let all = stable_cell(&fixture, &owner, &runs).await;
-    let selected = stable_cell(&fixture, &owner, &workflow).await;
+    let all = stable_cell(&fixture, &owner, &runs, generation).await;
+    let selected = stable_cell(&fixture, &owner, &workflow, generation).await;
     let site = fixture.services.instance.current().site_name;
     assert_host_document(&all, &format!("Actions · alice/rocket · {site}"), "All workflow runs");
     assert_host_document(&selected, &format!("CI · Actions · alice/rocket · {site}"), "CI");
@@ -203,8 +216,8 @@ async fn runs_and_workflow_documents_preserve_host_work_forms_identity_and_priva
     assert!(selected.html.contains("name=\"_csrf\" value=\""));
     assert!(selected.html.contains("Enable workflow"));
     assert!(!selected.html.contains("name=\"inputs["), "disabled workflow cannot offer a dispatch form");
-    emit_cell("runs-owner-filtered", &all);
-    emit_cell("workflow-owner-disabled-filtered", &selected);
+    emit_cell("runs-owner-filtered", &all, generation);
+    emit_cell("workflow-owner-disabled-filtered", &selected, generation);
     for path in [&runs, &workflow] {
         assert_private_denials(&fixture, path, &outsider).await;
     }
@@ -239,4 +252,17 @@ fn normalization_preserves_locale_and_relative_plugin_publication_revision() {
     assert_ne!(normalized_document(&document(100, 111)), normalized_document(&document(200, 212)));
     let other = "<body data-locale-revision=\"es:100\" data-plugin-revision=\"111\"></body>";
     assert_eq!(normalized_document(other), other);
+}
+
+#[test]
+fn host_generation_must_match_both_actions_identities_before_canonicalization() {
+    let document = |generation| {
+        format!(
+            "<a data-plugin-owner=\"rbit.actions\" data-plugin-generation=\"{generation}\"></a><body data-plugin-enhancements=\"[{{&#34;generation&#34;:&#34;{generation}&#34;,&#34;id&#34;:&#34;actions.log&#34;,&#34;owner&#34;:&#34;rbit.actions&#34;}}]\"></body>"
+        )
+    };
+    assert_eq!(normalized_host_document(&document(4), 4), normalized_host_document(&document(1), 1));
+    assert!(std::panic::catch_unwind(|| normalized_host_document(&document(4), 1)).is_err());
+    let mixed = document(4).replacen("data-plugin-generation=\"4\"", "data-plugin-generation=\"1\"", 1);
+    assert!(std::panic::catch_unwind(|| normalized_host_document(&mixed, 4)).is_err());
 }

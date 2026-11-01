@@ -12,9 +12,12 @@ filters/polling and anonymous/non-administrator outsider concealment are checked
 
 Normalization replaces CSRF values, complete time elements, validated footer
 request-duration text, the numeric update-observation revision and the random
-English catalog revision base. It preserves the locale and aggregate plugin
-revision delta, notice state, markup and other values. Tests reject malformed
-durations and distinguish changed publication deltas. This is fixture-specific
+English catalog revision base. Both Actions generation fields must match the
+fixture’s active host generation before canonicalization; the process-global
+generation allocator makes a fixed literal invalid across fixtures. It preserves
+the locale and aggregate plugin revision delta, notice state, markup and other
+values. Tests reject malformed durations and distinguish changed publication
+deltas. This is fixture-specific
 SQL/normalized-document evidence, not raw HTML equality, individual registry
 revision equality or a latency/allocation result. Failed draft baseline runs and
 source corrections remain in ignored local evidence.
