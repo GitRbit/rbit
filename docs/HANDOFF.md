@@ -1,5 +1,8 @@
 # rbit — Handoff
 
+For the paused plugin-core PR workstream and pending Actions route validation, use the
+[plugin core handoff](plugin-core-handoff.md). The release history below is separate.
+
 ## Current project status — 2026-10-25
 
 The public, open-source upstream is [GitRbit/rbit](https://github.com/GitRbit/rbit),
