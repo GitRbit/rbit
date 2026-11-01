@@ -1,0 +1,14 @@
+<section hx-history="false" hx-boost="false" data-actions-summary>
+  <a class="text-xs text-ink-muted hover:underline" href="{{ run_url }}">{{ crate::i18n::text("actions", "actions-run-a-actions") }}</a>
+  <h1 class="mb-4 mt-3 break-words text-xl font-semibold">{{ heading }}</h1>
+  {% if let Some(html) = html %}
+  <article class="prose-rbit box overflow-x-auto px-4 py-4 sm:px-6">{{ html|safe }}</article>
+  {% else %}
+  <p class="mb-3 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-summary-source-fallback") }}</p>
+  <pre class="box overflow-x-auto whitespace-pre-wrap break-words p-4 text-[13px]">{{ source }}</pre>
+  {% endif %}
+  <nav class="mt-4 flex justify-between gap-4" aria-label="{{ crate::i18n::text("actions", "summary-steps") }}">
+    {% if let Some(url) = previous %}<a class="btn" href="{{ url }}">{{ crate::i18n::text("core", "macros-a-previous") }}</a>{% else %}<span></span>{% endif %}
+    {% if let Some(url) = next %}<a class="btn" href="{{ url }}">{{ crate::i18n::text("core", "macros-a-next") }}</a>{% endif %}
+  </nav>
+</section>

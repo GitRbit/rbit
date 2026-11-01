@@ -10,11 +10,12 @@ autotests = false
 
 [features]
 default = ["actions", "i18n"]
-actions = ["rbit-services/actions", "dep:rbit-workflow"]
+actions = ["rbit-services/actions", "dep:rbit-workflow", "dep:rbit-actions-web"]
 
 i18n = ["rbit-services/i18n", "dep:rbit-i18n-web"]
 
 [dependencies]
+rbit-actions-web = { workspace = true, optional = true }
 rbit-i18n-web = { workspace = true, optional = true }
 rbit-ui.workspace = true
 rbit-messages.workspace = true

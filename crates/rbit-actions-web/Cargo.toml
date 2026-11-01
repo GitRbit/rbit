@@ -1,0 +1,17 @@
+[package]
+name = "rbit-actions-web"
+description = "Compiled first-party Actions presentation without forge service or HTTP dependencies."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+askama.workspace = true
+rbit-ui.workspace = true
+
+[dev-dependencies]
+rbit-messages.workspace = true
+
+[lints]
+workspace = true

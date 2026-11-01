@@ -18,6 +18,8 @@
 
 @source "../templates";
 @source "../src";
+@source "../../rbit-actions-web/templates";
+@source "../../rbit-actions-web/src";
 @source "../../rbit-i18n-web/templates";
 @source "../../rbit-i18n-web/src";
 

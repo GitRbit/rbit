@@ -16,7 +16,7 @@ if (result.error || result.status !== 0) {
   process.stderr.write(result.error?.message ?? result.stderr ?? "Unable to inspect the core dependency graph.\n");
   process.exit(1);
 }
-const actions = ["rbit-actions", "rbit-workflow", "serde-saphyr"];
+const actions = ["rbit-actions", "rbit-actions-web", "rbit-workflow", "serde-saphyr"];
 const catalogs = ["rbit-i18n", "rbit-i18n-web", "fluent-bundle", "fluent-syntax", "intl_pluralrules"];
 const forbidden = new Set(profile === "actions" ? catalogs : profile === "i18n" ? actions : [...actions, ...catalogs]);
 if (!result.stdout.startsWith("rbit-server ")) {

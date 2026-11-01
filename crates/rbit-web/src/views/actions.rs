@@ -609,26 +609,7 @@ impl SummaryView {
 pub struct SummaryPage {
     pub page: Page,
     pub header: RepoHeader,
-    pub run_url: String,
-    pub job: String,
-    pub number: i64,
-    pub html: Option<String>,
-    pub source: String,
-    pub previous: Option<String>,
-    pub next: Option<String>,
-}
-
-impl SummaryPage {
-    pub fn heading(&self) -> String {
-        self.page.locale.format(&rbit_messages::MessageRef {
-            namespace: "actions",
-            key: "summary-step-title",
-            args: &[
-                rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&self.job) },
-                rbit_messages::Argument { name: "step", value: rbit_messages::Value::Text(&self.number.to_string()) },
-            ],
-        })
-    }
+    pub content: rbit_actions_web::SummaryContent,
 }
 
 // Actions: artifacts (A).

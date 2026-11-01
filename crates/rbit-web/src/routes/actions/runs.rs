@@ -536,15 +536,17 @@ pub(crate) async fn summary_page(
         key: "summary-title",
         args: &[rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&detail.job.name) }],
     });
+    let heading = page.locale.format(&rbit_messages::MessageRef {
+        namespace: "actions",
+        key: "summary-step-title",
+        args: &[
+            rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&detail.job.name) },
+            rbit_messages::Argument { name: "step", value: rbit_messages::Value::Text(&summary.number.to_string()) },
+        ],
+    });
     Ok(crate::views::actions::SummaryPage {
         page: page.titled(title),
         header: loaded.header(state, "rbit.actions:actions-repository-tab"),
-        run_url: urls.run(run),
-        job: detail.job.name,
-        number: summary.number,
-        html,
-        source: summary.text,
-        previous,
-        next,
+        content: rbit_actions_web::SummaryContent { heading, run_url: urls.run(run), html, source: summary.text, previous, next },
     })
 }

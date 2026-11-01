@@ -4303,6 +4303,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-actions-web"
+version = "0.1.5"
+dependencies = [
+ "askama",
+ "rbit-messages",
+ "rbit-ui",
+]
+
+[[package]]
 name = "rbit-auth"
 version = "0.1.5"
 dependencies = [
@@ -4700,6 +4709,7 @@ dependencies = [
  "proptest",
  "pulldown-cmark",
  "qrcode",
+ "rbit-actions-web",
  "rbit-auth",
  "rbit-core",
  "rbit-git",
