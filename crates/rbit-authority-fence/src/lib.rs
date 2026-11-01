@@ -18,6 +18,8 @@ pub const MAX_MUTATIONS: usize = 128;
 /// Point-in-time enrolled counters, never an execution/readiness certificate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Snapshot {
+    /// Acquired enrollments, including suspended operations and pending resumes.
+    /// At most one holds serial; this is not a physical worker count.
     pub active: usize,
     pub queued: usize,
     pub uncertain: bool,
@@ -78,6 +80,7 @@ impl Domain {
         Snapshot { active: state.active, queued: state.queued, uncertain: state.uncertain, writers_stopped: state.writers_stopped }
     }
     /// Irreversibly rejects future and queued-not-started enrolled mutations.
+    /// Already acquired suspended enrollments may resume their unfinished work.
     /// This happens synchronously; dropping the token never re-enables writers.
     pub fn stop_writers(&self) -> WriterShutdown {
         self.inner.state().writers_stopped = true;
@@ -86,6 +89,8 @@ impl Domain {
     }
     /// Holds serialization on success. Only enrolled mutations are quiescent;
     /// queued/new writers cannot execute while the returned guard is retained.
+    /// Suspended enrollments remain active, so they prevent clean quiescence even
+    /// when serial is available; drain releases serial before waiting for them.
     /// No physical SQL worker/pool, other domain, or store shutdown proof.
     pub async fn drain(&self, deadline: Instant) -> Result<QuiescentGuard, DrainError> {
         loop {
@@ -159,7 +164,7 @@ impl WriterRegistration {
             ticket.queued = false;
         }
         self.inner.changed.notify_waiters();
-        Ok(Mutation { inner: self.inner.clone(), _permit: permit, complete: false })
+        Ok(Mutation { enrollment: ActiveEnrollment { inner: self.inner.clone(), complete: false }, _permit: permit })
     }
 }
 #[derive(Debug)]
@@ -176,16 +181,15 @@ impl Drop for Ticket {
     }
 }
 
-/// Nonclone owned mutation. Complete only after the entire enrolled operation
-/// returns a certified success; errors/cancellation/panic leave sticky uncertainty.
+// Exactly one owner travels through Mutation -> SuspendedMutation -> Mutation.
+// Declaration order keeps enrollment Drop/uncertainty before serial unlock.
 #[derive(Debug)]
-pub struct Mutation {
+struct ActiveEnrollment {
     inner: Arc<Inner>,
-    _permit: OwnedMutexGuard<()>,
     complete: bool,
 }
-impl Mutation {
-    pub fn complete(mut self) {
+impl ActiveEnrollment {
+    fn complete(mut self) {
         {
             let mut state = self.inner.state();
             state.active -= 1;
@@ -194,7 +198,7 @@ impl Mutation {
         self.inner.changed.notify_waiters();
     }
 }
-impl Drop for Mutation {
+impl Drop for ActiveEnrollment {
     fn drop(&mut self) {
         if !self.complete {
             let mut state = self.inner.state();
@@ -203,6 +207,64 @@ impl Drop for Mutation {
             drop(state);
             self.inner.changed.notify_waiters();
         }
+    }
+}
+
+/// Nonclone owned mutation. Complete only after the entire enrolled operation
+/// returns acknowledged success; errors/cancellation/panic leave sticky uncertainty.
+#[derive(Debug)]
+pub struct Mutation {
+    enrollment: ActiveEnrollment,
+    _permit: OwnedMutexGuard<()>,
+}
+impl Mutation {
+    /// A trusted application acknowledgement, not verification of driver settlement.
+    /// Completion drops active enrollment before releasing this serial permit.
+    pub fn complete(self) {
+        let Self { enrollment, _permit: permit } = self;
+        enrollment.complete();
+        drop(permit);
+    }
+
+    /// Releases serial while retaining the SAME active enrollment for unfinished
+    /// later phases. Call only after the current phase's COMMIT/rollback is actually
+    /// acknowledged; never suspend an outstanding SQL/IO future to call it settled.
+    /// This does not admit new work or certify completion. Other writers may proceed.
+    pub fn suspend(self) -> SuspendedMutation {
+        let Self { enrollment, _permit: permit } = self;
+        drop(permit);
+        SuspendedMutation { enrollment }
+    }
+}
+
+/// An already acquired unfinished operation with serial released. No new admission,
+/// generation authority or reopening. Drop (including an unpolled/canceled resume)
+/// marks uncertainty; ownership remains counted until completion or uncertain Drop.
+#[derive(Debug)]
+pub struct SuspendedMutation {
+    enrollment: ActiveEnrollment,
+}
+impl SuspendedMutation {
+    /// Reacquires only serial, retaining the original active count and capacity slot.
+    /// Allowed after writer stop because this operation was already acquired. No new
+    /// ticket or stop check occurs. Cancellation during this wait is uncertain.
+    pub async fn resume(self) -> Mutation {
+        let Self { enrollment } = self;
+        let permit = enrollment.inner.serial.clone().lock_owned().await;
+        Mutation { enrollment, _permit: permit }
+    }
+
+    /// Trusted follower acknowledgement for an already acquired operation whose
+    /// remaining effect was coalesced into an actual batch under a correctly paired
+    /// resumed leader. Call only AFTER that batch's final COMMIT acknowledgment,
+    /// while the leader still holds serial; settle the leader last.
+    ///
+    /// This method does not verify domain/account identity, IO or commit success.
+    /// The trusted typed host must validate those before IO. It is not an execution,
+    /// cross-store atomicity or physical-worker settlement certificate. Dropping an
+    /// unfinished token instead remains uncertain; no cancellation is called clean.
+    pub fn complete(self) {
+        self.enrollment.complete();
     }
 }
 
@@ -233,7 +295,9 @@ pub struct WriterShutdown {
     inner: Arc<Inner>,
 }
 impl WriterShutdown {
-    /// Waits for acquired mutations only. Old queued tickets may remain parked,
+    /// Waits for acquired enrollments, INCLUDING suspended operations/resume waits.
+    /// They can resume after stop and must never be ignored as ineligible tickets.
+    /// Old queued tickets may remain parked,
     /// but the irreversible pre/post-acquisition check prevents their work forever.
     /// Success does not say queued futures, SQL workers or resources were drained.
     pub async fn drain(&self, deadline: Instant) -> Result<StoppedWriters, DrainError> {
@@ -265,7 +329,8 @@ impl WriterShutdown {
         }
     }
 }
-/// Permanently closed enrolled authority with no acquired uncertain mutation.
+/// Permanently closed enrolled authority with no active or uncertain enrollment,
+/// including suspended operations. This token never authorizes execution.
 /// Known-ineligible queued futures may still exist. Not an execution capability,
 /// all-worker/physical-store shutdown certificate or cross-domain ownership proof.
 #[derive(Debug)]
@@ -289,3 +354,6 @@ impl std::error::Error for DrainError {}
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod suspension_tests;

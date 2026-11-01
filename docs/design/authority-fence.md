@@ -168,6 +168,20 @@ writers from starting until that guard is dropped. It cannot certify an uncertai
 domain. Dropping the drain guard releases serialization and opens no execution
 gate.
 
+A mutation can release serialization between acknowledged phases while retaining
+its active enrollment in an opaque suspended token. Other writers can proceed,
+but both drains continue waiting for that unfinished operation. Resuming retains
+the same capacity slot and is allowed after writer stop; dropping the token or
+its resume future records uncertainty. Active counts include suspended work,
+while at most one operation holds serialization. Current production callers do
+not use this primitive yet; self-service response finalization remains uncovered.
+
+Suspended follower completion is a trusted application acknowledgement for a
+coalesced effect. A typed caller must validate domain and account pairing before
+IO, await the actual final commit, then complete followers while the resumed
+leader retains serialization and complete the leader last. The neutral primitive
+does not verify store identity or commit success.
+
 ## Permanent writer closure
 
 Stopping writers is irreversible within the domain. It rejects later requests and
