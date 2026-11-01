@@ -21,3 +21,6 @@
 
 # Agent worktrees (temporary checkouts of feature branches)
 /.claude/worktrees/
+
+# Python performance tooling
+__pycache__/

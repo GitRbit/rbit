@@ -1,0 +1,19 @@
+{
+  "schema": 2,
+  "experimentManifestSha256": null,
+  "pilotCompleteRecord": null,
+  "pilotCompleteRecordSha256": null,
+  "pilotAnalysis": null,
+  "pilotAnalysisSha256": null,
+  "analysisImplementationSha256": null,
+  "frozenAtUTC": null,
+  "selectedPairs": {
+    "default-disabled": null,
+    "core-only": null,
+    "i18n-enabled": null
+  },
+  "selectionUsesOnlySameBinaryPilot": true,
+  "confirmatoryEffectNotInspected": true,
+  "precisionLimitedProfiles": [],
+  "planImplementationSha256": null
+}

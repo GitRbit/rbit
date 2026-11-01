@@ -1,0 +1,48 @@
+{
+  "revision": null,
+  "sourceDir": null,
+  "sourceArchive": null,
+  "archiveSha256": null,
+  "sourceFilesManifest": null,
+  "sourceFilesManifestSha256": null,
+  "targetDir": null,
+  "executable": null,
+  "binarySha256": null,
+  "cargoLockSha256": null,
+  "packageLockSha256": null,
+  "assetManifest": null,
+  "assetManifestSha256": null,
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "-p",
+    "rbit-server"
+  ],
+  "features": [],
+  "rustcVV": null,
+  "cargoVV": null,
+  "target": null,
+  "buildEnvironment": {
+    "RUSTFLAGS": "",
+    "CARGO_ENCODED_RUSTFLAGS": "",
+    "CARGO_BUILD_RUSTFLAGS": "",
+    "CARGO_PROFILE_RELEASE_LTO": "",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "",
+    "CARGO_PROFILE_RELEASE_PANIC": ""
+  },
+  "effectiveReleaseProfile": {
+    "lto": "fat",
+    "codegen-units": 1,
+    "panic": "abort",
+    "strip": "symbols"
+  },
+  "buildLog": null,
+  "buildLogSha256": null,
+  "configInputsRecord": null,
+  "configInputsRecordSha256": null,
+  "outputEnvironment": {
+    "CARGO_TARGET_DIR": null
+  }
+}

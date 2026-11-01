@@ -221,6 +221,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # Nested prospective perf tests use synthetic samples/mock HTTP only.
+      - run: node --test scripts/perf/i18n-extraction/harness/contexts.test.mjs
+      # Existing runner Python; test.py requires >=3.11. NumPy parity is optional.
+      - run: python3 scripts/perf/i18n-extraction/test.py
       - run: node scripts/check-messages.mjs
       - run: python3 scripts/build-language-packs.py --check
       # Vendored scripts and generated icons are committed; the build must not change them.

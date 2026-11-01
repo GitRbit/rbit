@@ -1,0 +1,260 @@
+{
+  "schema": 2,
+  "status": "DRAFT_NOT_MEASURED",
+  "baselineRevision": "d3dc8980dd091c31ceffc61f916ca282b10ab506",
+  "candidateRevision": "b951eed02f7fb13994d013f71b9ce87206f59f41",
+  "runRoot": null,
+  "fixtureDirectory": null,
+  "quiescentSeedDirectory": null,
+  "seedFileManifest": null,
+  "semanticChecksRecord": null,
+  "machineAndIdleConditionsRecord": null,
+  "freezeRecord": null,
+  "profiles": [
+    {
+      "name": "default-disabled",
+      "features": [],
+      "artifacts": {
+        "A": null,
+        "B": null
+      },
+      "pages": [
+        {
+          "name": "home",
+          "path": "/",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "repository",
+          "path": "/perf/perf-fixture",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "medium",
+          "path": "/perf/perf-fixture/blob/main/src/medium.rs",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "compare",
+          "path": "/perf/perf-fixture/compare/main...big-change",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        }
+      ],
+      "runtimeEnv": {
+        "RUST_LOG": "warn",
+        "RBIT_ACTIONS__ENABLED": "false",
+        "RBIT_I18N__ENABLED": "false",
+        "RBIT_SSH__ENABLED": "false",
+        "RBIT_UPDATES__CHECK_FOR_UPDATES": "false",
+        "RBIT_SECURITY__RATE_LIMIT": "false",
+        "RBIT_MAIL__TRANSPORT": "log"
+      },
+      "requestContexts": {
+        "anonymous": {
+          "kind": "anonymous"
+        }
+      }
+    },
+    {
+      "name": "core-only",
+      "features": [
+        "--no-default-features"
+      ],
+      "artifacts": {
+        "A": null,
+        "B": null
+      },
+      "pages": [
+        {
+          "name": "home",
+          "path": "/",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "repository",
+          "path": "/perf/perf-fixture",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "medium",
+          "path": "/perf/perf-fixture/blob/main/src/medium.rs",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        },
+        {
+          "name": "compare",
+          "path": "/perf/perf-fixture/compare/main...big-change",
+          "contains": "id=\"main\"",
+          "context": "anonymous"
+        }
+      ],
+      "runtimeEnv": {
+        "RUST_LOG": "warn",
+        "RBIT_ACTIONS__ENABLED": "false",
+        "RBIT_I18N__ENABLED": "false",
+        "RBIT_SSH__ENABLED": "false",
+        "RBIT_UPDATES__CHECK_FOR_UPDATES": "false",
+        "RBIT_SECURITY__RATE_LIMIT": "false",
+        "RBIT_MAIL__TRANSPORT": "log"
+      },
+      "requestContexts": {
+        "anonymous": {
+          "kind": "anonymous"
+        }
+      }
+    },
+    {
+      "name": "i18n-enabled",
+      "features": [],
+      "artifacts": {
+        "A": null,
+        "B": null
+      },
+      "runtimeEnv": {
+        "RUST_LOG": "warn",
+        "RBIT_ACTIONS__ENABLED": "false",
+        "RBIT_I18N__ENABLED": "true",
+        "RBIT_SSH__ENABLED": "false",
+        "RBIT_UPDATES__CHECK_FOR_UPDATES": "false",
+        "RBIT_SECURITY__RATE_LIMIT": "false",
+        "RBIT_MAIL__TRANSPORT": "log",
+        "RBIT_I18N__DEFAULT_LOCALE": "es"
+      },
+      "requestContexts": {
+        "guest": {
+          "kind": "guest",
+          "bootstrapPath": "/-/plugins/rbit.i18n/language"
+        },
+        "admin": {
+          "kind": "admin-session",
+          "credentialsFile": null,
+          "loginPath": "/login",
+          "bootstrapPath": "/-/plugins/rbit.i18n-admin/packs"
+        }
+      },
+      "pages": [
+        {
+          "name": "language-picker",
+          "path": "/-/plugins/rbit.i18n/language",
+          "context": "guest",
+          "contains": "id=\"locale\"",
+          "requiredMarkers": [
+            "value=\"es\"",
+            "value=\"en-XA\"",
+            "value=\"ar-XB\"",
+            "name=\"_csrf\"",
+            ">Idioma</label>",
+            "<!doctype html>",
+            "lang=\"es\"",
+            "dir=\"ltr\""
+          ],
+          "forbiddenMarkers": [
+            "data-signed-in"
+          ],
+          "contentLanguage": "es"
+        },
+        {
+          "name": "language-packs",
+          "path": "/-/plugins/rbit.i18n-admin/packs",
+          "context": "admin",
+          "contains": "id=\"language-pack\"",
+          "requiredMarkers": [
+            "language.es",
+            "language.en-xa",
+            "language.ar-xb",
+            "packs/install",
+            "packs/remove",
+            "name=\"_csrf\"",
+            "Instalar paquete de idioma",
+            "<!doctype html>",
+            "lang=\"es\"",
+            "dir=\"ltr\""
+          ],
+          "contentLanguage": "es"
+        }
+      ]
+    }
+  ],
+  "warmups": 20,
+  "rounds": 100,
+  "ports": [
+    3045,
+    3046
+  ],
+  "pilot": {
+    "AA": 12,
+    "BB": 12,
+    "eligibleConfirmatoryPairs": [
+      80,
+      160,
+      320
+    ],
+    "precisionTargetPercentagePoints": 1.25,
+    "rule": "Independent same-binary pilot only; select smallest eligible N meeting the frozen analysis precision criterion in every registered page for this profile; if none qualifies, cap at 320 and label precision limited or improve conditions before beginning confirmation. No A/B peeking or pass-based stopping."
+  },
+  "confirmatoryControls": {
+    "AA_before": 10,
+    "AA_after": 10,
+    "BB_interleaved": 10
+  },
+  "analysis": {
+    "primary": "Percent change in pooled-request warm HTTP totalMs p95 within each frozen profile/page cell; whole process pairs are independent bootstrap units.",
+    "primaryCells": 10,
+    "familywiseAlpha": 0.05,
+    "oneSidedCellAlpha": 0.005,
+    "replicates": 20000,
+    "seed": "20261101-i18n-frozen-v1",
+    "quantiles": "linear interpolation at (n-1)*q",
+    "sensitivity": "resample paired process clusters then circular contiguous blocks of 10 paired rounds inside each selected cluster; do not pool profiles",
+    "precisionCriterion": "For each candidate N, same-binary pilot bootstrap draws N process pairs with replacement; use max(distance from bootstrap median to alpha/1-alpha quantiles), across A/A and B/B and pages. Freeze smallest qualifying N per profile before A/B. This pilot estimate is not a guarantee.",
+    "gate": "All ten prospectively declared one-sided familywise 95% upper bounds must be <= +2%; no post-data family change, controls separate, no favorable stopping.",
+    "descriptive": [
+      "p50",
+      "p95",
+      "ordinary two-sided 95% CI",
+      "per-process p95 deltas",
+      "A/A and B/B distributions",
+      "headersMs",
+      "renderMs"
+    ],
+    "invalidBlocks": "Retain all evidence; fail/invalidate protocol on mismatched provenance, incomplete responses, failed shutdown or unplanned workload/config changes. Never remove slow valid blocks.",
+    "estimandFormula": "For q in {.50,.95}: ratio = Qq(union over all paired processes of B requests) / Qq(union over all paired processes of A requests); effectPercent=100*(ratio-1). Whole processes are bootstrap units. This is not the mean/median of per-process relative quantiles. Only the ten pooled-request p95 cells define the primary simultaneous gate."
+  },
+  "seedFileManifestSha256": null,
+  "protocolVersion": "i18n-extraction-ten-cell-v2",
+  "samplerPath": null,
+  "samplerCapabilitiesRecord": null,
+  "limits": {
+    "readinessSeconds": 30,
+    "samplerSeconds": 120,
+    "shutdownSeconds": 30
+  },
+  "realHostSmokeEvidence": null,
+  "realHostSmokeEvidenceSha256": null,
+  "sourceArchives": {
+    "A": {
+      "revision": "d3dc8980dd091c31ceffc61f916ca282b10ab506",
+      "tree": "7e8d398eca7f402740483bcdbf6fde9c40cfb581",
+      "archive_sha256": "824d57c91625174d6b194510ab794fcd7f6d4a393bf841e7a90b60ae99971c36",
+      "archive_command": "git archive --format=tar d3dc8980dd091c31ceffc61f916ca282b10ab506",
+      "lockfile_sha256": "cf53f5f5ca005c5f93f0ef6549ed7e5e20e2929be88ebba5b34b6a8063721bfc",
+      "path": null
+    },
+    "B": {
+      "revision": "b951eed02f7fb13994d013f71b9ce87206f59f41",
+      "tree": "5a735cba45fe6e54e6445ccf300fa689a17efbdd",
+      "archive_sha256": "65e0b9282228d5753f743e6e5f408bb85ba5e4cb96d0365f7d28347302bab3e0",
+      "archive_command": "git archive --format=tar b951eed02f7fb13994d013f71b9ce87206f59f41",
+      "lockfile_sha256": "a2a118fa435bb2fdce84387256c655bb084f7c2984d91dc3d03e5094937ad2d5",
+      "path": null
+    }
+  },
+  "realHostSmokeProtocol": null,
+  "realHostSmokeProtocolSha256": null
+}
