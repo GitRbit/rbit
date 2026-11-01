@@ -18,6 +18,13 @@ private directory and protect its ancestors and Windows ACL before use. Package
 operations never create or relax that root. On Unix its permission bits must be
 0700. Callers cannot supply a different object-store root.
 
+For Unix local setup, stop the server and run `rbit package-store provision` as its
+service account using the same deployment configuration, then restart after the
+command completes. `rbit package-store check` inspects current permissions without
+opening databases. Provision creates only missing private components and synchronizes
+their parent entries; it never repairs existing modes or paths. Ownership and stable
+trusted ancestors remain deployment prerequisites. See [local CLI setup](cli.md#local-package-store-setup).
+
 Installation requires an opaque operation token chosen by the authenticated host
 administrator or CLI before upload, never by package/plugin metadata. The token
 grants no authority and is never a filesystem name. Two

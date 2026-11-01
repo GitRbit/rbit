@@ -32,6 +32,11 @@ pub enum Command {
         #[arg(long, short)]
         output: PathBuf,
     },
+    /// Check or explicitly provision the local configured package store.
+    PackageStore {
+        #[command(subcommand)]
+        command: PackageStoreCommand,
+    },
     /// Manage user accounts.
     User {
         #[command(subcommand)]
@@ -52,4 +57,13 @@ pub enum UserCommand {
         #[arg(long)]
         admin: bool,
     },
+}
+
+/// Local filesystem administration, separate from remote `plugin install`.
+#[derive(Debug, Subcommand)]
+pub enum PackageStoreCommand {
+    /// Inspect the existing private root without changing it.
+    Check,
+    /// Create missing private components; never repair existing paths.
+    Provision,
 }

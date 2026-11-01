@@ -16,21 +16,36 @@ const ENV_PREFIX: &str = "RBIT_";
 const LEGACY_ENV_PREFIX: &str = "RUSTIT_";
 const ENV_SEPARATOR: &str = "__";
 
-pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
+/// Deployment configuration only: never opens SQLite, redb or a sealing key.
+fn deployment_figment(file: Option<&Path>) -> anyhow::Result<Figment> {
     let mut figment = Figment::from(Serialized::defaults(Config::default()));
     if let Some(file) = file {
         anyhow::ensure!(file.exists(), "configuration file {} does not exist", file.display());
         figment = figment.merge(Toml::file(file));
     }
-    // Locate the database using deployment sources only. Storage relocation is an offline operation.
-    let locator: Config = figment
+    Ok(figment)
+}
+
+/// Storage relocation is exclusively controlled by deployment configuration.
+fn storage_locator(figment: &Figment) -> anyhow::Result<Config> {
+    figment
         .clone()
         .merge(
             Env::prefixed(LEGACY_ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")),
         )
         .merge(Env::prefixed(ENV_PREFIX).split(ENV_SEPARATOR).filter(|key| key.as_str().to_ascii_lowercase().starts_with("storage.")))
         .extract()
-        .context("invalid storage configuration")?;
+        .context("invalid storage configuration")
+}
+
+/// Resolve the same fixed data directory as normal startup, without opening persistent stores.
+pub fn load_storage_location(file: Option<&Path>) -> anyhow::Result<std::path::PathBuf> {
+    Ok(storage_locator(&deployment_figment(file)?)?.storage.data_dir)
+}
+
+pub async fn load(file: Option<&Path>) -> anyhow::Result<Config> {
+    let mut figment = deployment_figment(file)?;
+    let locator = storage_locator(&figment)?;
     if locator.storage.sqlite_path().exists() && std::env::var_os("RBIT_IGNORE_ADMIN_CONFIG").is_none() {
         let database = rbit_storage::Database::open_with_key_file(&locator.storage.sqlite_path(), &locator.storage.secret_key_path())
             .await
@@ -136,5 +151,26 @@ mod tests {
                 ("AUTH__PROVIDERS__0__CLIENT_SECRET".to_owned(), "new".to_owned())
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod package_store_location_tests {
+    use super::*;
+
+    #[test]
+    fn storage_location_does_not_open_database_or_create_a_sealing_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        std::fs::create_dir(&data).unwrap();
+        let sentinel = b"invalid SQLite must never be opened";
+        std::fs::write(data.join("rbit.db"), sentinel).unwrap();
+        let file = temp.path().join("rbit.toml");
+        let directory = data.to_str().unwrap();
+        let document = format!("[storage]\ndata_dir = {}\n", toml::Value::String(directory.to_owned()));
+        std::fs::write(&file, document).unwrap();
+        assert_eq!(load_storage_location(Some(&file)).unwrap(), data);
+        assert_eq!(std::fs::read(data.join("rbit.db")).unwrap(), sentinel);
+        assert_eq!(std::fs::read_dir(&data).unwrap().count(), 1);
     }
 }

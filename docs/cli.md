@@ -107,3 +107,22 @@ result is pending and exits 8; complete exits 0, a recorded error exits
 
 Windows servers currently refuse uploads until supported host root verification is
 available; operation inspection remains available.
+
+## Local package store setup
+
+On Unix, stop the server before provisioning a new store. Run as the service
+account with the same deployment configuration:
+
+```bash
+rbit --config /etc/rbit/rbit.toml package-store provision
+rbit --config /etc/rbit/rbit.toml package-store check
+```
+
+The configured data directory must already exist, have trusted ownership and stable
+ancestors, and forbid group/world writes. Provision creates only missing `plugins`
+and `packages` directories with mode 0700 and synchronizes them and their parents.
+Existing unsafe paths or permissions are refused. Start the server after provision
+completes. Check inspects permissions; it does not prove earlier crash durability.
+These local commands resolve storage configuration without opening SQLite or redb.
+Windows root verification/provisioning is unsupported; this command cannot make
+Windows HTTP uploads available.

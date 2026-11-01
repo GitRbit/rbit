@@ -21,6 +21,7 @@ mod backup;
 mod cli;
 mod client;
 mod config;
+mod package_store;
 mod serve;
 mod ssh;
 mod telemetry;
@@ -104,6 +105,10 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
     telemetry::init();
     // `RUSTIT_CONFIG` is the variable's name from before the rename to rbit.
     let file = cli.config.or_else(|| std::env::var_os("RUSTIT_CONFIG").map(std::path::PathBuf::from));
+    if let Some(Command::PackageStore { command }) = cli.command {
+        let data_dir = config::load_storage_location(file.as_deref())?;
+        return package_store::run(data_dir, command).await.map(|()| false);
+    }
     let config = config::load(file.as_deref()).await?;
 
     match cli.command.unwrap_or(Command::Serve) {
@@ -113,6 +118,7 @@ async fn run(cli: Cli) -> anyhow::Result<bool> {
         Command::User { command: UserCommand::Create { username, email, admin } } => {
             serve::create_user(config, username, email, admin).await.map(|()| false)
         }
+        Command::PackageStore { .. } => unreachable!("handled before database-backed configuration"),
         Command::Client(_) => unreachable!("handled before the configuration is loaded"),
     }
 }

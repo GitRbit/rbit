@@ -20,6 +20,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Local Unix `rbit package-store check/provision` commands resolve deployment storage
+  without opening databases, explicitly create private synchronized roots and
+  refuse unsafe existing paths. Windows verification remains unsupported.
+
 - `rbit plugin install FILE` streams immutable archives with a retained operation
   key; `rbit plugin operation ID` inspects recovery state. Uploads never retry or
   follow redirects, and pending durability never reports installation success.
