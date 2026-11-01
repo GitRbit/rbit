@@ -226,6 +226,11 @@ in raw output but excluded from summaries. JSONL is appended after every request
 includes all samples and median/interquartile range/p95. A failed request, redirect,
 unexpected status, compressed response or missing HTML marker makes the run invalid and
 sets a failing exit status. Output files are exclusive; use a new name for each run.
+Marker matching scans the complete stream with at most 255 bytes of retained overlap,
+so large document heads and split UTF-8 characters are supported without buffering the
+whole body. Configured markers must contain 1–256 UTF-8 bytes.
+Reports also record the sampler checkout fingerprint and SHA256 hashes of the measurement
+script and its support module, separately from server binary/source provenance.
 
 `headersMs` measures time to response headers; `totalMs` includes reading and hashing the
 body; `renderMs` is the server's timing header and remains absent if unavailable.

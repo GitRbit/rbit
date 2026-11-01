@@ -213,6 +213,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Performance HTTP sampling now validates markers throughout streamed documents,
+  including large heads and split UTF-8 sequences, with bounded retained memory.
+  Reports record sampler source hashes alongside server provenance.
 - Wait for repository readers and background jobs to release their files before deletion,
   preventing intermittent failures on Windows after a push or while viewing settings.
 - Editing an issue or pull request's title or description no longer fails with "database

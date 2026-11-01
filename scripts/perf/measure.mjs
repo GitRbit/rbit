@@ -6,7 +6,13 @@ import http from "node:http";
 import { cpus, freemem, platform, release, totalmem } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fingerprint, orderForRound, summarize } from "./support.mjs";
+import { fingerprint, hashFile, orderForRound, summarize } from "./support.mjs";
+
+function pageMarker(page) {
+  const value = page.contains ?? 'id="main"';
+  if (typeof value !== "string" || !value || Buffer.byteLength(value) > 256) throw new Error("page marker must contain 1–256 UTF-8 bytes");
+  return Buffer.from(value);
+}
 
 export function validateConfig(input) {
   const config = { rounds: 6, warmups: 2, timeoutMs: 60000, maxBytes: 64 * 1024 * 1024, ...input };
@@ -32,11 +38,13 @@ export function validateConfig(input) {
     if (page.mode !== undefined && !["document", "partial", "preload"].includes(page.mode)) throw new Error("invalid page mode");
     if (page.status !== undefined && ![200, 204].includes(page.status)) throw new Error("expected status must be 200 or 204");
     if (page.mode === "partial" && !page.scope) throw new Error("partial pages require a repository scope");
+    pageMarker(page);
   }
   return config;
 }
 
 export function requestSample(url, page, options, agent) {
+  const marker = pageMarker(page);
   const headers = { "Accept-Encoding": "identity", Accept: "text/html" };
   if (["partial", "preload"].includes(page.mode)) Object.assign(headers, { "HX-Request": "true", "Rbit-Nav-Epoch": "benchmark" });
   if (page.scope) headers["Rbit-Partial"] = page.scope;
@@ -46,7 +54,8 @@ export function requestSample(url, page, options, agent) {
     const request = http.get(url, { agent, headers }, (response) => {
       const headersMs = performance.now() - start;
       let bytes = 0;
-      let prefix = "";
+      let markerSeen = false;
+      let tail = Buffer.alloc(0);
       const hash = createHash("sha256");
       response.on("data", (chunk) => {
         bytes += chunk.length;
@@ -57,7 +66,18 @@ export function requestSample(url, page, options, agent) {
           return;
         }
         hash.update(chunk);
-        if (prefix.length < 65536) prefix += chunk.toString("utf8").slice(0, 65536 - prefix.length);
+        if (!markerSeen) {
+          const overlap = marker.length - 1;
+          markerSeen = chunk.includes(marker) || Buffer.concat([tail, chunk.subarray(0, overlap)]).includes(marker);
+          if (!markerSeen) {
+            // Copy only the bounded suffix; retaining a subarray can keep an entire chunk alive.
+            tail = chunk.length >= overlap
+              ? Buffer.from(chunk.subarray(chunk.length - overlap))
+              : Buffer.from(Buffer.concat([tail, chunk]).subarray(-overlap));
+          } else {
+            tail = Buffer.alloc(0);
+          }
+        }
       });
       // A truncated body can fail after headers without a request-level error.
       response.once("error", (error) => { clearTimeout(timer); reject(error); });
@@ -69,7 +89,7 @@ export function requestSample(url, page, options, agent) {
         if (status !== (page.status ?? 200)) errors.push(`unexpected HTTP ${status}`);
         if (response.headers["content-encoding"] && response.headers["content-encoding"] !== "identity") errors.push("server ignored identity encoding");
         if (status === 200 && !String(response.headers["content-type"]).includes("text/html")) errors.push("expected HTML");
-        if (status === 200 && !prefix.includes(page.contains ?? 'id="main"')) errors.push("expected page marker missing from first 64 KiB");
+        if (status === 200 && !markerSeen) errors.push("expected page marker missing from response");
         if (status === 204 && bytes !== 0) errors.push("204 response contained a body");
         const timing = response.headers["server-timing"] ?? "";
         const render = /(?:^|,)\s*render;dur=([\d.]+)/.exec(timing);
@@ -100,6 +120,11 @@ async function main() {
   const report = {
     schema: 1, startedAt: new Date().toISOString(), workload: "anonymous serial HTTP, warmed server, identity body encoding, persistent connection per variant, no browser cache",
     config, servers: metadata, fixture: fingerprint(relative(config.fixture)),
+    harness: {
+      source: fingerprint(resolve(import.meta.dirname, "../..")),
+      measureSha256: await hashFile(fileURLToPath(import.meta.url)),
+      supportSha256: await hashFile(resolve(import.meta.dirname, "support.mjs")),
+    },
     machine: { platform: platform(), release: release(), node: process.version, cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemory: totalmem(), freeMemoryAtStart: freemem() },
     samples: [],
   };

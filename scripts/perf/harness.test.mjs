@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
@@ -35,6 +36,10 @@ test("configuration rejects incomparable or unsafe inputs and defaults to releas
   }
   assert.throws(() => validateConfig({ ...config(), warmups: 0 }));
   assert.throws(() => validateConfig({ ...config(), rounds: 1 }));
+  for (const contains of ["", 1, "x".repeat(257), "é".repeat(129)]) {
+    const input = config(); input.pages[0].contains = contains;
+    assert.throws(() => validateConfig(input), /page marker/);
+  }
 });
 
 test("source exports cannot inherit an unrelated ancestor revision", () => {
@@ -80,6 +85,32 @@ test("HTTP samples preserve payload and reject redirects, errors, and oversized 
   await assert.rejects(requestSample(`${base}/page`, {}, { ...options, maxBytes: 2 }), /maxBytes/);
 });
 
+test("HTTP markers may follow large heads and span chunks or UTF-8 code points", async (t) => {
+  const head = `<html><head>${"x".repeat(80 * 1024)}</head><main `;
+  const marker = 'data-test="main-é✓"';
+  const base = await server(t, async (request, response) => {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.write(head);
+    if (request.url === "/late") response.end('id="main">late</main></html>');
+    else {
+      // Separate transfer chunks deliberately split every multi-byte character too.
+      for (const byte of Buffer.from(marker)) {
+        response.write(Buffer.from([byte]));
+        await new Promise(setImmediate);
+      }
+      response.end('>split</main></html>');
+    }
+  });
+  const options = { timeoutMs: 1000, maxBytes: 256 * 1024 };
+  assert.equal((await requestSample(`${base}/late`, {}, options)).valid, true);
+  const split = await requestSample(`${base}/split`, { contains: marker }, options);
+  assert.equal(split.valid, true);
+  const expected = `${head}${marker}>split</main></html>`;
+  assert.equal(split.bodyBytes, Buffer.byteLength(expected));
+  assert.equal(split.bodySha256, createHash("sha256").update(expected).digest("hex"));
+  assert.equal((await requestSample(`${base}/split`, { contains: `${marker}!` }, options)).valid, false);
+});
+
 test("CLI records every warmup/sample and refuses mismatched profiles", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "rbit-perf-test-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -93,6 +124,8 @@ test("CLI records every warmup/sample and refuses mismatched profiles", async (t
   await promisify(execFile)(process.execPath, [join(import.meta.dirname, "measure.mjs"), file]);
   const report = JSON.parse(await readFile(join(dir, input.output), "utf8"));
   assert.equal(report.valid, true);
+  assert.equal(report.harness.measureSha256, createHash("sha256").update(await readFile(join(import.meta.dirname, "measure.mjs"))).digest("hex"));
+  assert.equal(report.harness.supportSha256.length, 64);
   assert.deepEqual(report.samples.map((sample) => sample.variant), ["before", "after", "before", "after", "after", "before", "before", "after"]);
   assert.equal(report.summary[0].totalMs.count, 3);
   assert.equal(report.summary[0].renderMs.count, 0, "missing timing is never counted as zero");
