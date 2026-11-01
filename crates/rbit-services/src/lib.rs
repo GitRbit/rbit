@@ -34,9 +34,10 @@ pub use rbit_storage::sqlite::plugin_installations::{
 pub use rbit_storage::sqlite::plugin_policy::{
     ApplyOutcome as PackagePolicyOutcome, PolicyCommand as PackagePolicyCommand, PolicyGate as PackagePolicyGate,
     PolicyGateState as PackagePolicyGateState, PolicyPackageDeclarations as PackagePolicyDeclarations,
-    PolicyPackageSnapshot as PackagePolicyProposal, PolicyReceipt as PackagePolicyReceipt, PolicyReview as PackagePolicyReview,
-    PolicySeal as PackagePolicySeal, PolicySealReason as PackagePolicySealReason, PolicySelection as PackagePolicySelection,
-    PolicySnapshot as PackagePolicySnapshot,
+    PolicyPackageSnapshot as PackagePolicyProposal, PolicyReceipt as PackagePolicyReceipt,
+    PolicyRenewalOutcome as PackagePolicyRenewalOutcome, PolicyRenewalReceipt as PackagePolicyRenewalReceipt,
+    PolicyReview as PackagePolicyReview, PolicySeal as PackagePolicySeal, PolicySealReason as PackagePolicySealReason,
+    PolicySelection as PackagePolicySelection, PolicySnapshot as PackagePolicySnapshot,
 };
 #[cfg(test)]
 mod actions_route_tests;

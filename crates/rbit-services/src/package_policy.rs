@@ -9,13 +9,18 @@ use std::{
 };
 
 use rbit_core::{Timestamp, User};
-use rbit_plugin_api::{InstalledPackageRef, PackageReviewRequest, PackageSelectionClearRequest, PackageSelectionRequest, PluginId};
+use rbit_plugin_api::{
+    InstalledPackageRef, PackagePolicyRenewalRequest, PackageReviewRequest, PackageSelectionClearRequest, PackageSelectionRequest, PluginId,
+};
 use rbit_services_base::{ServiceContext, ServiceError};
 use rbit_storage::{
     StorageError,
     sqlite::{
         plugin_installations::OperationId,
-        plugin_policy::{ApplyOutcome, PluginPolicyStore, PolicyGate, PolicyPackageSnapshot, PolicyReceipt, PolicySnapshot},
+        plugin_policy::{
+            ApplyOutcome, PluginPolicyStore, PolicyGate, PolicyPackageSnapshot, PolicyReceipt, PolicyRenewalOutcome, PolicyRenewalReceipt,
+            PolicySnapshot,
+        },
     },
 };
 use tokio::sync::oneshot;
@@ -58,16 +63,22 @@ struct Inner {
 struct Admission {
     closed: bool,
     active: BTreeSet<String>,
+    maintenance: bool,
 }
 
 struct OwnedOperation {
     inner: Arc<Inner>,
     key: String,
+    maintenance: bool,
     _token: TaskTrackerToken,
 }
 impl Drop for OwnedOperation {
     fn drop(&mut self) {
-        self.inner.admission.lock().unwrap_or_else(std::sync::PoisonError::into_inner).active.remove(&self.key);
+        let mut admission = self.inner.admission.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        admission.active.remove(&self.key);
+        if self.maintenance {
+            admission.maintenance = false;
+        }
     }
 }
 
@@ -89,6 +100,25 @@ impl PackagePolicyService {
         let store = self.inner.store.clone();
         let actor = actor.id();
         self.own("prepare".to_owned(), async move { store.prepare(actor, Timestamp::now()).await }).await
+    }
+
+    /// Explicit sealed-epoch renewal; never automatic and exclusive with admitted mutations.
+    pub async fn renew(
+        &self,
+        actor: &User,
+        id: OperationId,
+        request: PackagePolicyRenewalRequest,
+    ) -> Result<PolicyRenewalOutcome, ServiceError> {
+        administrator(actor)?;
+        request.validate().map_err(|_| ServiceError::Invalid("invalid package policy renewal request".to_owned()))?;
+        let key = format!("renewal:{}", id.as_str());
+        let store = self.inner.store.clone();
+        let actor = actor.id();
+        self.own_with_admission(key, async move { store.renew(actor, &id, &request, Timestamp::now()).await }, true).await
+    }
+    pub async fn renewal_operation(&self, actor: &User, id: &OperationId) -> Result<Option<PolicyRenewalReceipt>, ServiceError> {
+        self.check_read(actor)?;
+        self.inner.store.renewal_operation(actor.id(), id).await.map_err(policy_error)
     }
 
     pub async fn gate(&self, actor: &User) -> Result<PolicyGate, ServiceError> {
@@ -145,6 +175,15 @@ impl PackagePolicyService {
         key: String,
         operation: impl Future<Output = Result<T, StorageError>> + Send + 'static,
     ) -> Result<T, ServiceError> {
+        self.own_with_admission(key, operation, false).await
+    }
+
+    async fn own_with_admission<T: Send + 'static>(
+        &self,
+        key: String,
+        operation: impl Future<Output = Result<T, StorageError>> + Send + 'static,
+        maintenance: bool,
+    ) -> Result<T, ServiceError> {
         let owned = {
             let mut admission =
                 self.inner.admission.lock().map_err(|_| ServiceError::Conflict("package policy coordinator unavailable"))?;
@@ -154,12 +193,16 @@ impl PackagePolicyService {
             if admission.active.contains(&key) {
                 return Err(ServiceError::Conflict("package policy operation already active"));
             }
+            if admission.maintenance || (maintenance && !admission.active.is_empty()) {
+                return Err(ServiceError::Conflict("package policy maintenance admission"));
+            }
             if admission.active.len() >= MAX_OPERATIONS {
                 return Err(ServiceError::Conflict("package policy operation admission"));
             }
             let token = self.inner.tasks.token();
             admission.active.insert(key.clone());
-            OwnedOperation { inner: Arc::clone(&self.inner), key, _token: token }
+            admission.maintenance = maintenance;
+            OwnedOperation { inner: Arc::clone(&self.inner), key, maintenance, _token: token }
         };
         let (sender, receiver) = oneshot::channel();
         tokio::spawn(async move {
@@ -419,6 +462,11 @@ mod tests {
             service.review(&fixture.admin, OperationId::new("owned-three").unwrap(), request.clone()).await,
             Err(ServiceError::Conflict("package policy operation admission"))
         ));
+        let maintenance = PackagePolicyRenewalRequest::new(request.expected_host_policy.clone(), "unused-seal").unwrap();
+        assert!(matches!(
+            service.renew(&fixture.admin, OperationId::new("blocked-maintenance").unwrap(), maintenance).await,
+            Err(ServiceError::Conflict("package policy maintenance admission"))
+        ));
         assert!(matches!(
             service.review(&fixture.admin, OperationId::new("owned-one").unwrap(), request).await,
             Err(ServiceError::Conflict("package policy operation already active"))
@@ -445,6 +493,105 @@ mod tests {
         let first = store.operation(fixture.admin.id(), &OperationId::new("owned-one").unwrap()).await.unwrap();
         let second = store.operation(fixture.admin.id(), &OperationId::new("owned-two").unwrap()).await.unwrap();
         assert_ne!(first.is_some(), second.is_some());
+        fixture.close().await;
+    }
+
+    // Real capacity fixture in one SQLite transaction; it does not execute an archive.
+    async fn sealed_epoch(fixture: &Fixture, request: &PackageReviewRequest) -> PolicyGate {
+        use sqlx::{ConnectOptions as _, Connection as _};
+        let service = &fixture.services.package_policy;
+        assert!(matches!(
+            service.review(&fixture.admin, OperationId::new("seed").unwrap(), request.clone()).await.unwrap(),
+            ApplyOutcome::Applied { .. }
+        ));
+        let mut connection = sqlx::sqlite::SqliteConnectOptions::new().filename(&fixture.path).foreign_keys(true).connect().await.unwrap();
+        let mut tx = connection.begin().await.unwrap();
+        sqlx::query("WITH RECURSIVE n(v) AS (VALUES(2) UNION ALL SELECT v+1 FROM n WHERE v<4096) INSERT INTO plugin_review_history(digest,revision,plugin_id,version,intent,request,catalog_version,epoch,fingerprint,actor,created_at) SELECT digest,v,plugin_id,version,intent,json_set(request,'$.command.request.expected_review',json_object('kind','exact','revision',CAST(v-1 AS TEXT))),catalog_version,epoch,fingerprint,actor,created_at FROM plugin_review_history,n WHERE revision=1").execute(&mut *tx).await.unwrap();
+        sqlx::query("INSERT INTO plugin_policy_receipts(id,kind,request,actor,plugin_id,version,digest,result_revision,epoch,fingerprint,created_at) SELECT 'bulk-service-'||revision,0,request,actor,plugin_id,version,digest,revision,epoch,fingerprint,created_at FROM plugin_review_history WHERE revision>1").execute(&mut *tx).await.unwrap();
+        sqlx::query("UPDATE plugin_review_heads SET revision=4096").execute(&mut *tx).await.unwrap();
+        tx.commit().await.unwrap();
+        connection.close().await.unwrap();
+        let mut next = request.clone();
+        next.expected_review = ExpectedPolicyRevision::Exact { revision: rbit_plugin_api::PolicyRevision::new(4096).unwrap() };
+        next.intent = PackageReviewIntent::Deny {};
+        let ApplyOutcome::CapacitySealed { gate } =
+            service.review(&fixture.admin, OperationId::new("maintenance-seal").unwrap(), next).await.unwrap()
+        else {
+            panic!("expected real capacity seal")
+        };
+        gate
+    }
+
+    #[tokio::test]
+    async fn exclusive_renewal_owner_survives_waiter_loss_and_shutdown() {
+        use sqlx::{ConnectOptions as _, Connection as _};
+        let fixture = Fixture::new().await;
+        let package = fixture.package().await;
+        let service = fixture.services.package_policy.clone();
+        let gate = service.prepare(&fixture.admin).await.unwrap();
+        let review = PackageReviewRequest::new(
+            package.clone(),
+            ExpectedPolicyRevision::Absent {},
+            gate.fingerprint.unwrap(),
+            PackageReviewIntent::NativeFullServiceUserTrust {},
+            PolicyGrantRequests::new(Vec::new()).unwrap(),
+        )
+        .unwrap();
+        let sealed = sealed_epoch(&fixture, &review).await;
+        let request =
+            PackagePolicyRenewalRequest::new(sealed.fingerprint.clone().unwrap(), sealed.seal.as_ref().unwrap().operation.as_str())
+                .unwrap();
+        let key = OperationId::new("owned-renewal").unwrap();
+        let revision = fixture.services.plugin_revision();
+        let mut blocker = sqlx::sqlite::SqliteConnectOptions::new().filename(&fixture.path).connect().await.unwrap();
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut blocker).await.unwrap();
+        let waiter = tokio::spawn({
+            let service = service.clone();
+            let actor = fixture.admin.clone();
+            let request = request.clone();
+            let key = key.clone();
+            async move { service.renew(&actor, key, request).await }
+        });
+        wait_active(&service, 1).await;
+        assert!(service.inner.admission.lock().unwrap().maintenance);
+        assert!(matches!(
+            service.review(&fixture.admin, OperationId::new("blocked-write").unwrap(), review).await,
+            Err(ServiceError::Conflict("package policy maintenance admission"))
+        ));
+        assert!(matches!(
+            service.renew(&fixture.admin, OperationId::new("blocked-renewal").unwrap(), request.clone()).await,
+            Err(ServiceError::Conflict("package policy maintenance admission"))
+        ));
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+        assert!(service.inner.admission.lock().unwrap().maintenance);
+        service.prepare_shutdown();
+        let drain = tokio::spawn({
+            let service = service.clone();
+            async move { service.shutdown().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!drain.is_finished());
+        sqlx::query("COMMIT").execute(&mut blocker).await.unwrap();
+        blocker.close().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(30), drain).await.unwrap().unwrap();
+        assert!(!service.inner.admission.lock().unwrap().maintenance);
+        assert!(service.inner.admission.lock().unwrap().active.is_empty());
+        let store = fixture.database.plugin_policy();
+        let receipt = store.renewal_operation(fixture.admin.id(), &key).await.unwrap().unwrap();
+        assert_eq!(Some(receipt.source_epoch), sealed.epoch);
+        let current = store.gate(fixture.admin.id()).await.unwrap();
+        assert_eq!(current.state, PolicyGateState::Open);
+        assert_ne!(current.fingerprint, sealed.fingerprint);
+        assert!(store.inspect(fixture.admin.id(), package.plugin_id()).await.unwrap().selection.is_none());
+        assert!(store.inspect_package(fixture.admin.id(), &package).await.unwrap().review.is_none());
+        assert!(matches!(
+            store.renew(fixture.admin.id(), &key, &request, Timestamp::now()).await.unwrap(),
+            PolicyRenewalOutcome::HistoricalReceipt { .. }
+        ));
+        assert_eq!(fixture.services.plugin_revision(), revision);
+        assert_eq!(fixture.services.actions_background_tasks(), 0);
+        assert!(!fixture.path.parent().unwrap().join("plugins").exists());
         fixture.close().await;
     }
 }
