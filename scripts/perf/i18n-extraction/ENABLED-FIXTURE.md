@@ -1,7 +1,9 @@
 # Enabled-i18n fixture and actual callback prerequisites
 
-Prepare this fixture after the pinned release artifacts exist and all concurrent
-compilation has finished. Keep setup separate from pilot and confirmatory requests.
+Prepare this fixture with the completed, verified baseline default-feature artifact.
+Fixture setup and smoke are functional checks; record concurrent build activity in
+their evidence. Finish all compilation and heavy CPU work, then verify the registered
+idle/thermal conditions before pilot or confirmatory timing.
 
 Use only the three actual bundled validated archives; do not manufacture additional
 packages or claim a maximum-capacity inventory workload:
@@ -58,7 +60,13 @@ contain all three IDs. Idempotent existing exact archives may be retained, but a
 conflict fails setup rather than silently changing fixture bytes.
 
 5. Stop the seed wrapper cleanly, drain/close all stores, verify no live writer or
-   SQLite sidecar remains, and inspect read-only state. In the closed SQLite DB,
+   SQLite sidecar remains, and inspect read-only state. After establishing that
+   no writer, open handle or sidecar exists, Python SQLite inspections may use
+   `mode=ro&immutable=1` to avoid recreating empty WAL/shared-memory files. Ordinary
+   `mode=ro` can recreate those files. If this occurs, record it and perform an
+   explicit closed-store checkpoint; verify the base DB hash and final sidecar
+   absence. Never delete a possibly uncheckpointed WAL or use immutable mode on a
+   live store. In the closed SQLite DB,
    `SELECT plugin_id,enabled FROM plugin_settings WHERE plugin_id IN
    ('rbit.i18n','rbit.actions')` must return no rows for this fresh fixture. A persisted
    false would override enabled-profile environment just as a true would override
