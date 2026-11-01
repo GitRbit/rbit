@@ -59,10 +59,9 @@ impl RouteBundle {
 ///
 /// The host retains the scope, controller serialization and admission fence.
 /// Publication is sequential with explicit rollback, NOT an atomic transaction
-/// across registries: observers may see the intermediate publication. After a
-/// publication error, the host must explicitly withdraw this activation. The
-/// caller alone owns opening/closing its scope. Already admitted operation effects
-/// are not undone by withdrawing registrations.
+/// across registries: observers may see the intermediate publication. A failure
+/// withdraws this activation's batches but never closes the caller's scope.
+/// Registration rollback does not undo effects of already admitted operations.
 ///
 /// Cloning/dropping handles preserves existing registry semantics: the scope owns
 /// registrations even if all local handles are dropped. Use withdraw or quiesce
@@ -74,14 +73,20 @@ pub struct StagedRouteActivation {
 }
 impl StagedRouteActivation {
     /// Publishes mutations before pages, matching the original host adapters.
-    /// On error the caller must explicitly withdraw both batches before ending
-    /// its failed activation; publication is not a combined transaction.
+    /// On either error, withdraws both batches before returning. Withdrawal is
+    /// terminal for these handles; retry by staging a fresh bundle.
     pub fn publish(&self) -> Result<(), RouteBundleError> {
-        if let Some(registration) = &self.mutations {
-            registration.publish()?;
+        if let Some(registration) = &self.mutations
+            && let Err(error) = registration.publish()
+        {
+            self.withdraw();
+            return Err(error.into());
         }
-        if let Some(registration) = &self.pages {
-            registration.publish()?;
+        if let Some(registration) = &self.pages
+            && let Err(error) = registration.publish()
+        {
+            self.withdraw();
+            return Err(error.into());
         }
         Ok(())
     }

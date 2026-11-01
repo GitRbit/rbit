@@ -91,6 +91,34 @@ fn failed_second_stage_releases_the_staged_page_owner_for_retry() {
 }
 
 #[test]
+fn failed_first_publication_releases_staged_pages_without_quiescing_scope() {
+    let (pages, mutations, scope) = (PageRegistry::new(), MutationRegistry::new(), scope());
+    let routes = bundle().stage(owner(), &scope, &pages, &mutations).unwrap();
+    mutations.close();
+    assert!(matches!(routes.publish(), Err(RouteBundleError::Mutation(_))));
+    let retry = RouteBundle { pages: vec![page()], mutations: Vec::new() }.stage(owner(), &scope, &pages, &mutations).unwrap();
+    retry.publish().unwrap();
+    assert!(page_handle(&pages).is_some());
+    assert!(!scope.is_closed());
+}
+
+#[test]
+fn failed_second_publication_rolls_back_mutations_and_revokes_retained_handles() {
+    let (pages, mutations, scope) = (PageRegistry::new(), MutationRegistry::new(), scope());
+    let routes = bundle().stage(owner(), &scope, &pages, &mutations).unwrap();
+    routes.publish().unwrap();
+    let retained = mutation_handle(&mutations).unwrap();
+    pages.close();
+    assert!(matches!(routes.publish(), Err(RouteBundleError::Page(_))));
+    assert!(retained.admit().is_err());
+    assert_eq!(mutations.snapshot().len(), 0);
+    let retry = RouteBundle { pages: Vec::new(), mutations: vec![mutation()] }.stage(owner(), &scope, &pages, &mutations).unwrap();
+    retry.publish().unwrap();
+    assert!(mutation_handle(&mutations).is_some());
+    assert!(!scope.is_closed());
+}
+
+#[test]
 fn dropping_registration_handles_preserves_scope_ownership_and_management_is_independent() {
     let (pages, mutations, active) = (PageRegistry::new(), MutationRegistry::new(), scope());
     let management = scope();
