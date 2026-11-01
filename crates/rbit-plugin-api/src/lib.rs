@@ -7,6 +7,7 @@ mod identifiers;
 mod lifecycle;
 mod manifest;
 mod package;
+mod policy;
 mod ui;
 
 pub use identifiers::{CapabilityId, IdentifierError, PluginId, ServiceId};
@@ -20,4 +21,10 @@ pub use package::{
 pub use ui::{
     MAX_UI_BYTES, MAX_UI_CONTRIBUTIONS, MAX_UI_LIST_ITEMS, UiContent, UiContribution, UiContributionId, UiContributionSet, UiIcon, UiLink,
     UiMessage, UiNoticeTone, UiSlot, UiTarget, UiTone, UiValidationError, UiVisibility,
+};
+
+pub use policy::{
+    ExpectedPolicyRevision, HostPolicyFingerprint, InstalledPackageRef, MAX_POLICY_GRANTS, MAX_POLICY_REQUEST_BYTES, POLICY_SCHEMA_VERSION,
+    PackageReviewIntent, PackageReviewRequest, PackageSelectionRequest, PolicyError, PolicyGrantRequest, PolicyGrantRequests,
+    PolicyGrantScope, PolicyRevision, RepositoryGrantId,
 };

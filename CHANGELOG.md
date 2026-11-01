@@ -20,6 +20,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Passive digest-bound package review/selection contracts with explicit native
+  full service-user trust, Wasm sandbox requirements, canonical revision strings
+  and bounded grant requests. They create no review ledger or executable authority.
+
 - Local Unix `rbit package-store check/provision` commands resolve deployment storage
   without opening databases, explicitly create private synchronized roots and
   refuse unsafe existing paths. Windows verification remains unsupported.

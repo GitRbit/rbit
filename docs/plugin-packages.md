@@ -83,6 +83,30 @@ Actions/i18n desired state remains separate. A digest establishes byte agreement
 not publisher identity or code safety. Trust and effective limits must later bind
 to the exact installation digest and host policy revision.
 
+## Passive review and selection contracts
+
+The SDK defines strict review and candidate-selection request values with exact
+plugin ID/full-version/archive-digest identity. Full SemVer build metadata remains
+part of identity. Revisions and repository subjects use canonical positive decimal
+strings within the signed 64-bit range, preserving exact browser JSON precision.
+Grant requests are bounded to 128 unique explicit capability/scope tuples and sorted
+canonically for replay comparison. Hosts must cap complete input at 64 KiB before
+parsing and revalidate programmatically modified requests.
+
+Review intent explicitly distinguishes denial, data-only approval, native full
+service-user trust and Wasm-sandbox-required approval. Native code with that OS
+identity can access host files, processes and sockets outside a broker; broker
+grants cannot sandbox it. Wasm intent never permits a native fallback. Declaration
+checks compare supplied manifest identity/kind/requested capabilities; the host must
+resolve the actual durable archive, current policy, recognized catalog, actor and
+live resource incarnation before any mutation or admission.
+
+These are passive request contracts. They create no review ledger, effective grant,
+runtime selection or executable authority. Durable review coordination is the next
+stage. Capacity or revision exhaustion must never leave old authority usable because
+a deny cannot be recorded; the host needs a durable deny path or a persistent closed
+execution/host-call gate that also revokes existing managed generations.
+
 ## Recovery boundary
 
 A crash before publication can leave private staging remnants and pending intent.
