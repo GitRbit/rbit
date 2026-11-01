@@ -1,7 +1,7 @@
 # Closed authority writer coordination
 
 The authority fence coordinates policy mutations, user account creation, external
-identity bindings, personal access tokens, SSH keys and administrator role changes,
+identity bindings, personal access tokens, SSH keys, SQL recovery and administrator role changes,
 suspension and account deletion
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
@@ -15,7 +15,7 @@ work. An unused domain starts no task, timer or database query.
 
 Policy initialization, epoch renewal, review/selection/clear, user account creation,
 identity linking/unlinking, token and key creation/deletion and the three moderation
-mutations acquire that permit
+mutations, together with the five SQL recovery mutations, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -65,6 +65,16 @@ control statements each. Account/repository cascades are separate writers, and t
 does not make the existing service count-then-insert resource checks atomic or stop
 an already running Git command.
 
+The five SQL recovery mutations share the domain. Token insertion retains its
+expired-token sweep transaction; consumption, revocation and email verification
+await an outer commit, including no-op results. A reset that cannot redeem its
+token explicitly awaits rollback before returning `None`. Successful resets retain
+their existing atomic password, verification and reset-token changes. Purpose,
+expiry, current-email and suspension predicates remain unchanged. The three newly
+transactional methods add two control statements each. The later KV session
+revocation and owned service task are outside this SQL settlement claim; complete
+cross-store coordination remains required before execution authority can be issued.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -92,7 +102,7 @@ workers have exited.
 
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
-the three moderation methods obtained from the same
+five SQL recovery methods and the three moderation methods obtained from the same
 database handle or its clones. It does not coordinate independently opened SQLite
 pools, another process, password changes, other credentials, KV sessions or other
 authority writers. It does not prove SQLite worker termination or physical store

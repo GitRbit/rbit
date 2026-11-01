@@ -126,15 +126,24 @@ macro_rules! honoured {
 #[derive(Debug, Clone)]
 pub struct RecoveryStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl RecoveryStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// Stores a token. Also sweeps tokens that expired, so the table stays small.
     pub async fn insert(&self, token: &NewEmailToken) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(recovery_mutation_error)?;
+        let result = self.insert_raw(token).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn insert_raw(&self, token: &NewEmailToken) -> Result<(), StorageError> {
         let now = Timestamp::now().seconds();
         let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM email_tokens WHERE expires_at <= ?").bind(now).execute(&mut *tx).await?;
@@ -176,6 +185,20 @@ impl RecoveryStore {
         purpose: TokenPurpose,
         now: Timestamp,
     ) -> Result<Option<EmailTokenRecord>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(recovery_mutation_error)?;
+        let result = self.consume_raw(digest, purpose, now).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn consume_raw(
+        &self,
+        digest: &[u8; 32],
+        purpose: TokenPurpose,
+        now: Timestamp,
+    ) -> Result<Option<EmailTokenRecord>, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let row: Option<TokenRow> = sqlx::query_as(concat!(
             "UPDATE email_tokens AS t SET used_at = ?1 WHERE ",
             honoured!(),
@@ -184,8 +207,9 @@ impl RecoveryStore {
         .bind(now.seconds())
         .bind(digest.as_slice())
         .bind(purpose.as_str())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
         row.map(EmailTokenRecord::try_from).transpose()
     }
 
@@ -193,6 +217,19 @@ impl RecoveryStore {
     /// every other reset link in one transaction. Concurrent links cannot both win,
     /// and email changes or suspension before the write invalidate the reset.
     pub async fn reset_password(
+        &self,
+        digest: &[u8; 32],
+        password_hash: &str,
+        now: Timestamp,
+    ) -> Result<Option<EmailTokenRecord>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(recovery_mutation_error)?;
+        let result = self.reset_password_raw(digest, password_hash, now).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn reset_password_raw(
         &self,
         digest: &[u8; 32],
         password_hash: &str,
@@ -210,7 +247,10 @@ impl RecoveryStore {
         .bind(TokenPurpose::Reset.as_str())
         .fetch_optional(&mut *tx)
         .await?;
-        let Some(row) = row else { return Ok(None) };
+        let Some(row) = row else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
         let record = EmailTokenRecord::try_from(row)?;
         sqlx::query("UPDATE user_logins SET password_hash = ?, password_change_required = 0, email_verified_at = ? WHERE account_id = ?")
             .bind(password_hash)
@@ -229,12 +269,22 @@ impl RecoveryStore {
 
     /// Uses up every outstanding token of `purpose` for the account. Returns how many.
     pub async fn revoke_all(&self, account_id: AccountId, purpose: TokenPurpose) -> Result<u64, StorageError> {
+        let mutation = self.writer.begin().await.map_err(recovery_mutation_error)?;
+        let result = self.revoke_all_raw(account_id, purpose).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn revoke_all_raw(&self, account_id: AccountId, purpose: TokenPurpose) -> Result<u64, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("UPDATE email_tokens SET used_at = ? WHERE account_id = ? AND purpose = ? AND used_at IS NULL")
             .bind(Timestamp::now().seconds())
             .bind(account_id.0)
             .bind(purpose.as_str())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected())
     }
 
@@ -253,12 +303,22 @@ impl RecoveryStore {
     /// Records that the account's address was verified, provided it is still `email`.
     /// Returns whether the account was updated.
     pub async fn mark_verified(&self, account_id: AccountId, email: &Email, at: Timestamp) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(recovery_mutation_error)?;
+        let result = self.mark_verified_raw(account_id, email, at).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn mark_verified_raw(&self, account_id: AccountId, email: &Email, at: Timestamp) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("UPDATE user_logins SET email_verified_at = ? WHERE account_id = ? AND email = ?")
             .bind(at.seconds())
             .bind(account_id.0)
             .bind(email.as_str())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -279,3 +339,13 @@ impl RecoveryStore {
         Ok(verified.into_iter().map(AccountId).collect())
     }
 }
+
+fn recovery_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "recovery mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "recovery writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;

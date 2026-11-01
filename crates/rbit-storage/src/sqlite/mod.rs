@@ -80,7 +80,8 @@ pub struct Database {
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
     // Enrolled package policy, three account moderation, four principal creation,
-    // two external identity linking, three personal access token and four SSH key methods.
+    // two external identity linking, three personal access token, four SSH key
+    // and five recovery SQL methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -182,7 +183,7 @@ impl Database {
     }
 
     pub fn recovery(&self) -> recovery::RecoveryStore {
-        recovery::RecoveryStore::new(self.store("recovery"))
+        recovery::RecoveryStore::new(self.store("recovery"), self.authority_domain.writer())
     }
 
     pub fn ssh_keys(&self) -> ssh_keys::SshKeyStore {
@@ -380,11 +381,11 @@ impl Database {
         actions_caches::ActionsCacheStore::new(self.pool.clone())
     }
 
-    /// Stops enrolled policy and account moderation writers synchronously and requests pool closure during graceful shutdown.
+    /// Stops enrolled authority writers synchronously and requests pool closure during graceful shutdown.
     /// Awaiting does not certify individual close errors or all SQL worker termination.
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
         // This executes when close() is CALLED, even if its future is never polled.
-        // It stops enrolled policy/account moderation writers, not every authority writer.
+        // It stops enrolled writers, not every authority writer.
         drop(self.authority_domain.stop_writers());
         async move {
             self.package_pool.close().await;
