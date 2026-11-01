@@ -218,25 +218,37 @@ impl SessionStore {
 
     /// Deletes every session of `account` except `keep`; returns how many were removed.
     pub async fn delete_for_account(&self, account: AccountId, keep: Option<[u8; 32]>) -> Result<usize, StorageError> {
-        self.write(move |db| {
-            let tx = db.begin_write().map_err(kv_error)?;
-            let digests: Vec<[u8; 32]> = {
-                let index = tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?;
-                index
-                    .range((account.0, &[0_u8; 32])..=(account.0, &[0xff_u8; 32]))
-                    .map_err(kv_error)?
-                    .map(|entry| entry.map(|(key, _)| *key.value().1).map_err(kv_error))
-                    .collect::<Result<_, _>>()?
-            };
-            let mut removed = 0;
-            for digest in digests.iter().filter(|digest| Some(**digest) != keep) {
-                remove(&tx, digest)?;
-                removed += 1;
-            }
-            tx.commit().map_err(kv_error)?;
-            Ok(removed)
+        self.write(move |db| delete_account_sessions(db, account, keep)).await
+    }
+
+    // Only the typed storage coordinator constructs this private ownership bridge.
+    pub(crate) async fn finish_forced_password(
+        &self,
+        account: AccountId,
+        mutation: rbit_authority_fence::Mutation,
+        command: Arc<crate::sqlite::credential_changes::Command>,
+    ) -> Result<usize, StorageError> {
+        self.finish_forced_password_with(account, mutation, command, |db, account| delete_account_sessions(db, account, None)).await
+    }
+
+    // Monomorphized fault seam; production supplies the fixed revoke-all function.
+    pub(crate) async fn finish_forced_password_with<F>(
+        &self,
+        account: AccountId,
+        mutation: rbit_authority_fence::Mutation,
+        command: Arc<crate::sqlite::credential_changes::Command>,
+        operation: F,
+    ) -> Result<usize, StorageError>
+    where
+        F: FnOnce(&redb::Database, AccountId) -> Result<usize, StorageError> + Send + 'static,
+    {
+        let db = self.db.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = operation(&db, account);
+            command.acknowledge(mutation, result.is_ok());
+            result
         })
-        .await
+        .await?
     }
 
     /// Deletes expired sessions from one snapshot/time, rechecking each candidate
@@ -271,6 +283,25 @@ impl SessionStore {
             state = tokio::task::spawn_blocking(move || scan(state)).await??;
         }
     }
+}
+
+pub(crate) fn delete_account_sessions(db: &redb::Database, account: AccountId, keep: Option<[u8; 32]>) -> Result<usize, StorageError> {
+    let tx = db.begin_write().map_err(kv_error)?;
+    let digests: Vec<[u8; 32]> = {
+        let index = tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?;
+        index
+            .range((account.0, &[0_u8; 32])..=(account.0, &[0xff_u8; 32]))
+            .map_err(kv_error)?
+            .map(|entry| entry.map(|(key, _)| *key.value().1).map_err(kv_error))
+            .collect::<Result<_, _>>()?
+    };
+    let mut removed = 0;
+    for digest in digests.iter().filter(|digest| Some(**digest) != keep) {
+        remove(&tx, digest)?;
+        removed += 1;
+    }
+    tx.commit().map_err(kv_error)?;
+    Ok(removed)
 }
 
 fn put_session(db: &redb::Database, digest: &[u8; 32], record: &SessionRecord) -> Result<(), StorageError> {

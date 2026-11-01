@@ -86,6 +86,7 @@ pub struct VerifiedEmail {
 
 #[derive(Debug, Clone)]
 pub struct RecoveryService {
+    admin_passwords: crate::credentials::AdminPasswordOwner,
     ctx: ServiceContext,
     mail: MailService,
     throttle: Arc<dyn RequestThrottle>,
@@ -137,6 +138,7 @@ impl RecoveryServiceBuilder {
     pub fn build(self) -> RecoveryService {
         let ctx = self.ctx;
         RecoveryService {
+            admin_passwords: crate::credentials::AdminPasswordOwner::default(),
             mail: self.mail.unwrap_or_else(|| MailService::new(ctx.clone())),
             throttle: self.throttle.unwrap_or_else(|| Arc::new(ThrottleService::new(ctx.clone()))),
             instance: self.instance,
@@ -325,7 +327,9 @@ impl RecoveryService {
     }
 
     /// Sets a user's password directly (for instances without email, or locked-out users).
-    /// Validated like sign-up; outstanding reset links stop working.
+    /// Validated like sign-up; outstanding reset links stop working. After bounded
+    /// admission, the server owns hashing and both store phases even if the request
+    /// waiter disappears. This does not make SQL and KV commits crash-atomic.
     pub async fn admin_set_password(&self, actor: &User, target: AccountId, new_password: String) -> Result<(), ServiceError> {
         require_admin(actor)?;
         let account = self.store().find_account(target).await?.ok_or(ServiceError::NotFound)?;
@@ -333,19 +337,38 @@ impl RecoveryService {
             return Err(ServiceError::Invalid("change your own password from your account settings".to_owned()));
         }
         validate_password(self.ctx.config.security.min_password_length, &new_password)?;
-        let hash = Passwords::hash(new_password).await?;
+        let changes = self.ctx.database.forced_password_changes(&self.ctx.kv)?;
         let service = self.clone();
         let actor = actor.clone();
-        crate::credentials::finish_update(async move {
-            service.ctx.database.profiles().set_password_hash(account.id, &hash).await?;
-            service.password_changed(account.id).await?;
+        self.admin_passwords
+            .run(&changes, move |reservation| async move {
+                let hash = Passwords::hash(new_password).await?;
+                let removed = reservation.start(account.id, hash)?.wait().await?;
+                if let Some(accounts) = &service.accounts {
+                    accounts.record_password_sessions_revoked(account.id, removed).await;
+                }
 
-            tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
-            service.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(&actor).on(account.name.as_str())).await;
-            service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
-            Ok(())
-        })
-        .await
+                tracing::info!(admin = %actor.name(), user = %account.name, "administrator set a password");
+                service.audit().record(AuditEntry::new(AuditAction::PasswordSet).by(&actor).on(account.name.as_str())).await;
+                service.ctx.events.publish(DomainEvent::PasswordChanged { user: account.id });
+                Ok(())
+            })
+            .await
+    }
+
+    /// Stops only new owned administrator replacements, synchronously.
+    pub fn prepare_shutdown(&self) {
+        self.admin_passwords.prepare_shutdown();
+        self.ctx.database.prepare_forced_password_changes_shutdown();
+    }
+
+    /// Drains actual forced-command leases and the audit/event task tail. This is
+    /// not a physical-worker or all-credential-flow termination certificate.
+    pub async fn shutdown(&self) -> Result<(), ServiceError> {
+        self.prepare_shutdown();
+        let tasks = self.admin_passwords.shutdown().await;
+        let storage = self.ctx.database.drain_forced_password_changes().await.map_err(ServiceError::internal);
+        tasks.and(storage)
     }
 
     // ------------------------------------------------------------------ background

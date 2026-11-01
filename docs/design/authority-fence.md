@@ -126,6 +126,28 @@ stops; non-success does not imply rollback. A failed actual write batch is uncer
 These checks do not make blocking IO cancellable or certify constructor writes,
 physical resource release or whole SQL-plus-KV service task settlement.
 
+Forced administrator password replacement uses a typed, database-owned command
+paired with its already-bound KV handle. Two storage reservations bound admission
+before hashing; two Recovery task slots retain hashing and the audit/event tail.
+Once validated and admitted, losing the request no longer cancels that continuation,
+including its pre-SQL hash phase. One mutation spans the acknowledged SQL password
+transaction and actual redb revoke-all transaction, with no nested public enrollment.
+The actual KV worker retains both the mutation and a command lease. An async owner
+lost before acknowledgment records sticky uncertainty even while that worker lives;
+its later success cannot erase the unknown outcome.
+
+Terminal admission and registration share a mutex, released before task spawning:
+a stopped runtime may synchronously destroy the captured task. Stale unstarted
+reservations reject before SQL; active commands finish their raw KV phase after
+writer stop. Shutdown drains retained command leases and Recovery task outcomes,
+which are distinct from physical SQLx worker termination. Known pre-write refusal
+and normally returned service failures are distinguished from unknown settlement.
+The existing missing-account behavior, reset-link invalidation, session index and
+post-revocation audit wording remain intact. SQL and KV commits are sequential:
+a failure after SQL can leave a changed password and old sessions. This is not
+crash-safe revocation or a certificate for self-service, reset-link, deferred
+password-change guards, independently opened stores or physical ownership.
+
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
 writers from starting until that guard is dropped. It cannot certify an uncertain
@@ -146,7 +168,8 @@ new authority changes. Queue counters are retained until their tickets are dropp
 
 Calling `Database::close()` stops its enrolled writers synchronously, even
 if the returned future is dropped without being polled. Awaiting that future closes
-the pools as before. Bound session workers share this stop; unrelated domains
+the pools after draining retained forced-password command leases. Unknown outcomes
+are logged as unresolved. Bound session workers share this stop; unrelated domains
 remain independent. This does not prove that SQLite or redb resources have exited.
 
 ## Coverage before execution
@@ -155,8 +178,10 @@ This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, the three moderation methods and bound session workers
-obtained from the same database handle or its clones. It does not coordinate independently opened SQLite
-pools, another process, complete SQL-plus-KV credential changes, constructor writes
+obtained from the same database handle or its clones. It also covers the narrow
+forced administrator password command described above. It does not coordinate
+independently opened SQLite
+pools, another process, the remaining SQL-plus-KV credential changes, constructor writes
 or other authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.

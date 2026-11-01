@@ -12,6 +12,8 @@ use std::{path::Path, sync::Arc};
 pub use insights::{
     CachedCommit, CachedComparisonCounts, CachedContributions, CachedLanguage, CachedLanguageStats, CachedLastCommits, InsightsCache,
 };
+#[cfg(test)]
+pub(crate) use sessions::delete_account_sessions;
 pub use sessions::{SessionRecord, SessionStore, StoredSession};
 
 use crate::{StorageError, error::kv_error};

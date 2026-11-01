@@ -4,6 +4,7 @@ mod access_tokens;
 mod accounts;
 // Actions: foundation (F).
 mod actions_rows;
+pub mod credential_changes;
 // Actions: artifacts (A).
 pub mod actions_artifacts;
 // Actions: shared cache.
@@ -85,6 +86,7 @@ pub struct Database {
     // plus bound session write workers (purge certification is per write batch).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
+    forced_passwords: credential_changes::Coordinator,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -134,7 +136,13 @@ impl Database {
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_lazy_with(options.create_if_missing(false).synchronous(SqliteSynchronous::Full));
-        let database = Self { pool, package_pool, key, authority_domain: rbit_authority_fence::Domain::new() };
+        let database = Self {
+            pool,
+            package_pool,
+            key,
+            authority_domain: rbit_authority_fence::Domain::new(),
+            forced_passwords: credential_changes::Coordinator::default(),
+        };
         database.optimize().await?;
         Ok(database)
     }
@@ -181,6 +189,27 @@ impl Database {
         } else {
             Err(StorageError::Conflict("session authority domain mismatch"))
         }
+    }
+
+    /// Pairs only this Database with its already-bound session store. Constructor IO,
+    /// other credential flows and physical ownership remain outside this operation.
+    pub fn forced_password_changes(&self, kv: &crate::KvStore) -> Result<credential_changes::ForcedPasswordChanges, StorageError> {
+        self.validate_kv_session_binding(kv)?;
+        Ok(self.forced_passwords.bind(self.profiles(), kv.sessions(), self.authority_domain.writer()))
+    }
+
+    /// Synchronously forbids new reservations and stale unstarted commands.
+    pub fn prepare_forced_password_changes_shutdown(&self) {
+        self.forced_passwords.stop();
+    }
+
+    /// Waits actual command leases, including blocking-worker tails. Uncertainty is
+    /// sticky; success is not proof of physical pool/worker termination.
+    pub fn drain_forced_password_changes(
+        &self,
+    ) -> impl std::future::Future<Output = Result<(), credential_changes::ForcedPasswordDrainError>> + Send + '_ {
+        self.prepare_forced_password_changes_shutdown();
+        self.forced_passwords.drain()
     }
 
     pub fn accounts(&self) -> AccountStore {
@@ -401,10 +430,14 @@ impl Database {
     /// Stops enrolled authority writers synchronously and requests pool closure during graceful shutdown.
     /// Awaiting does not certify individual close errors or all SQL worker termination.
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
+        self.prepare_forced_password_changes_shutdown();
         // This executes when close() is CALLED, even if its future is never polled.
         // It stops enrolled writers, not every authority writer.
         drop(self.authority_domain.stop_writers());
         async move {
+            if let Err(error) = self.drain_forced_password_changes().await {
+                tracing::error!(%error, "closing pools after uncertain forced password command; no clean ownership release");
+            }
             self.package_pool.close().await;
             self.pool.close().await;
         }

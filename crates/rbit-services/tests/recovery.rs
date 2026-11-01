@@ -398,3 +398,27 @@ async fn every_flow_explains_when_email_is_disabled() {
     // Setting a password needs no email.
     fixture.recovery.admin_set_password(&admin, alice.id(), NEW_PASSWORD.to_owned()).await.unwrap();
 }
+
+#[tokio::test]
+async fn forced_password_owner_shutdown_is_terminal_for_builder_and_main_service() {
+    let fixture = Fixture::new().await;
+    let admin = fixture.user("root", true).await;
+    let alice = fixture.user("alice", false).await;
+    let session = fixture.services.accounts.start_session(&alice).await.unwrap();
+    let mut events = fixture.services.events.subscribe();
+    tokio::time::timeout(WAIT, fixture.recovery.admin_set_password(&admin, alice.id(), NEW_PASSWORD.to_owned())).await.unwrap().unwrap();
+    assert_eq!(tokio::time::timeout(WAIT, events.recv()).await.unwrap().unwrap(), DomainEvent::PasswordChanged { user: alice.id() });
+    assert!(fixture.services.accounts.resume_session(&session).await.unwrap().is_none());
+    fixture.recovery.prepare_shutdown();
+    tokio::time::timeout(WAIT, fixture.recovery.shutdown()).await.unwrap().unwrap();
+    assert!(matches!(
+        fixture.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
+        Err(ServiceError::Conflict("administrator password commands stopped"))
+    ));
+    fixture.services.prepare_shutdown();
+    assert!(matches!(
+        fixture.services.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
+        Err(ServiceError::Conflict("administrator password commands stopped"))
+    ));
+    assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
+}

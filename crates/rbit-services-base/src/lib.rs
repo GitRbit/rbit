@@ -312,10 +312,20 @@ impl Services {
         self.push_mirrors.spawn_background();
     }
 
-    /// Stops background work (jobs, webhook deliveries, mirror fetches, release clean-up,
-    /// commit references, notifications, merges) and waits, bounded, for it to finish.
-    /// Call during graceful shutdown, before closing the stores.
+    /// Stops new owned administrator replacements before request draining.
+    pub fn prepare_shutdown(&self) {
+        self.recovery.prepare_shutdown();
+    }
+
+    /// Drains owned forced-password work before closing stores, then stops background
+    /// subsystems using their existing bounds. Credential backend settlement is not
+    /// aborted to manufacture a successful bounded shutdown; unresolved work must remain
+    /// owned. This does not certify physical worker termination or other credential flows.
     pub async fn shutdown(&self) {
+        self.prepare_shutdown();
+        if let Err(error) = self.recovery.shutdown().await {
+            tracing::error!(%error, "forced password shutdown remains uncertain; no clean ownership release");
+        }
         tokio::join!(
             self.updates.shutdown(),
             self.jobs.shutdown(),

@@ -153,7 +153,7 @@ impl ProfileStore {
         result
     }
 
-    async fn replace_password_hash(
+    pub(super) async fn replace_password_hash(
         &self,
         account_id: AccountId,
         password_hash: &str,

@@ -221,6 +221,7 @@ impl Services {
     /// Terminally revoke plugin entry points before the host drains HTTP requests.
     /// Core services and stores remain available until asynchronous shutdown finishes.
     pub fn prepare_shutdown(&self) {
+        self.core.prepare_shutdown();
         self.package_policy.prepare_shutdown();
         self.packages.prepare_shutdown();
         self.mutations.close();

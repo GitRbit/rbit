@@ -348,6 +348,11 @@ impl AccountService {
         self.enforcer().end_sessions(user, None).await
     }
 
+    /// Records an already acknowledged forced revocation without another writer.
+    pub(crate) async fn record_password_sessions_revoked(&self, user: AccountId, removed: usize) {
+        self.enforcer().record_ended_sessions(user, removed).await;
+    }
+
     /// A self-service change can retain its guarded current session. All other sessions
     /// end when that request completes; without a guard they end before returning.
     pub(crate) async fn password_changed_preserving_current(&self, user: AccountId) -> Result<(), ServiceError> {
@@ -370,13 +375,17 @@ impl SessionEnforcer {
     /// Ends the user's sessions (all of them, or all but `keep`) and records it.
     async fn end_sessions(&self, user: AccountId, keep: Option<TokenDigest>) -> Result<(), ServiceError> {
         let removed = self.sessions.delete_for_account(user, keep).await?;
+        self.record_ended_sessions(user, removed).await;
+        Ok(())
+    }
+
+    async fn record_ended_sessions(&self, user: AccountId, removed: usize) {
         let mut entry = AuditEntry::new(AuditAction::SessionsRevokedAfterPasswordChange)
             .detail(format!("{removed} session{} ended", if removed == 1 { "" } else { "s" }));
         if let Ok(Some(found)) = self.accounts.find_user(user).await {
             entry = entry.by(&found);
         }
         self.audit.record(entry).await;
-        Ok(())
     }
 
     async fn end_all_sessions(&self, user: AccountId) {
