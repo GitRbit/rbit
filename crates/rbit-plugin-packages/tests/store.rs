@@ -187,16 +187,16 @@ fn invalid_archives_and_wire_quota_failures_remove_private_staging() {
     assert!(matches!(failure.error(), StoreError::Archive(_)));
     assert_eq!(failure.visibility(), PublicationVisibility::NotAttempted);
     assert_eq!(failure.cleanup(), CleanupStatus::Complete);
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
     let bytes = archive();
     // The wire quota includes room to attempt the final EOF probe.
     let bounds = StageControl::new(Instant::now() + Duration::from_mins(1), bytes.len() as u64).unwrap();
     let failure = store.stage(Cursor::new(&bytes), bounds).unwrap_err();
     assert_eq!(failure.error(), StoreError::WireLimit);
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
     let bounds = StageControl::new(Instant::now() + Duration::from_mins(1), bytes.len() as u64 + 1).unwrap();
     store.stage(Cursor::new(&bytes), bounds).unwrap().discard().unwrap();
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
 }
 
 struct CancellingReader {
@@ -231,7 +231,7 @@ fn cancellation_deadline_and_source_errors_cleanup_and_have_static_messages() {
     let failure = store.stage(BrokenReader, control()).unwrap_err();
     assert_eq!(failure.error(), StoreError::Read);
     assert!(!failure.to_string().contains("sensitive"));
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
 }
 
 #[test]
@@ -245,9 +245,9 @@ fn cancellation_before_publish_and_explicit_discard_do_not_publish() {
     assert_eq!(failure.error(), StoreError::Cancelled);
     assert_eq!(failure.visibility(), PublicationVisibility::NotAttempted);
     assert_eq!(failure.cleanup(), CleanupStatus::Complete);
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
     store.stage(Cursor::new(archive()), control()).unwrap().discard().unwrap();
-    assert!(children(root.path()).is_empty());
+    assert_eq!(children(root.path()), Vec::<PathBuf>::new());
 }
 
 #[test]
