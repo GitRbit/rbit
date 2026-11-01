@@ -19,11 +19,18 @@ use crate::{
 pub struct RepositoryStorage {
     root: PathBuf,
     locks: RepositoryLocks,
+    #[cfg(test)]
+    pub(crate) worker_gates: crate::worker_gate::WorkerGates,
 }
 
 impl RepositoryStorage {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), locks: RepositoryLocks::default() }
+        Self {
+            root: root.into(),
+            locks: RepositoryLocks::default(),
+            #[cfg(test)]
+            worker_gates: crate::worker_gate::WorkerGates::default(),
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -114,13 +121,24 @@ impl RepositoryStorage {
     /// Permanently removes a repository from disk after readers and background jobs
     /// release their open files, keeping new work out until deletion finishes.
     pub async fn delete(&self, owner: AccountId, repo: RepoId) -> Result<(), GitError> {
-        let _lease = self.exclusive(repo).await;
+        let lease = self.exclusive(repo).await;
         let path = self.path_for(owner, repo);
-        match tokio::fs::remove_dir_all(&path).await {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        #[cfg(test)]
+        let gate = self.worker_gates.take();
+        tokio::task::spawn_blocking(move || -> Result<(), GitError> {
+            // The actual filesystem worker retains exclusion if its async waiter leaves.
+            let _lease = lease;
+            #[cfg(test)]
+            if let Some(gate) = gate {
+                gate.enter();
+            }
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await?
     }
 }
 

@@ -40,7 +40,15 @@ pub async fn relocate(storage: &RepositoryStorage, repo: RepoId, from: AccountId
 
     let moved = target.clone();
     let lease = storage.exclusive(repo).await;
+    #[cfg(test)]
+    let gate = storage.worker_gates.take();
     tokio::task::spawn_blocking(move || -> Result<(), GitError> {
+        // Do not release the moving flag while this worker can still rename the directory.
+        let _lease = lease;
+        #[cfg(test)]
+        if let Some(gate) = gate {
+            gate.enter();
+        }
         if !source.is_dir() {
             return Err(GitError::NotFound("repository"));
         }
@@ -54,7 +62,6 @@ pub async fn relocate(storage: &RepositoryStorage, repo: RepoId, from: AccountId
         Ok(())
     })
     .await??;
-    drop(lease);
 
     tracing::info!(repo = repo.0, from = from.0, to = to.0, path = %moved.display(), "relocated bare repository");
     Ok(moved)

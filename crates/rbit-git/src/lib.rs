@@ -56,3 +56,6 @@ pub use model::{
 pub use push::{RefSnapshot, RefUpdate};
 pub use reader::RepositoryReader;
 pub use storage::RepositoryStorage;
+
+#[cfg(test)]
+mod worker_gate;

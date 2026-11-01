@@ -403,6 +403,22 @@ audit/event producer or REST endpoint. Physical ownership, driver termination,
 crash recovery, fresh authorization and native execution remain unproven; added
 transaction control is not a claim of performance parity.
 
+Repository deletion and relocation retain their existing exclusive lease in the
+actual blocking filesystem worker. Canceling an async waiter does not release the
+moving flag while that worker can still remove or rename the directory. Deletion
+runs the same synchronous directory removal with missing-directory success;
+relocation preserves its fixed Windows retry schedule and same-owner early return.
+Private per-storage test gates verify actual worker entry, canceled-waiter lease
+retention and real success/error filesystem outcomes. No new production API,
+coordinator or worker admission is introduced by this lifetime correction.
+
+This lease is cooperative: the existing ten-second reader wait can expire, and
+independently constructed storage handles do not share locks merely because their
+paths match. Worker completion does not certify the caller's later SQL, compensation,
+audit or event work. Repository SQL enrollment and pre-effect owned service commands
+remain prerequisites; this change does not establish physical exclusion, crash
+reconciliation, performance parity or native execution availability.
+
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same
 domain. Cross-store changes need one guard spanning their actual settlement.
