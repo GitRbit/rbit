@@ -124,6 +124,23 @@ ignored by the outer harness and actually dispatched by its two parents. Strict
 full workspace/all-target Rust 1.99 lint passes. The new waiter/protocol cases still
 need Linux hosted execution; no Windows backend or performance result is claimed.
 
+## Permission-unknown group observations
+
+Two expanded parallel runs exposed post-reap EPERM in the waiter tests; stage
+diagnostics distinguished it from force signalling, child reap and pipe EOF.
+Both failures are retained. The matching Darwin 25.5 kernel's
+[group-signal implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-12377.121.6/bsd/kern/kern_sig.c#L1613)
+can return EPERM for an existing group with no eligible members. This is a
+plausible mechanism, not proof of the failed groups' exact original state.
+
+The presence observer now treats EPERM as unknown and continues only its bounded
+signal-zero observations. The original five-second deadline and ten-millisecond
+poll interval remain; only actual ESRCH before the deadline establishes absence.
+Persistent permission denial still fails, and no real signal is authorized after
+reap. Deadline checks precede and follow each probe. Three injected observation
+tests verify unknown followed by absence, permanent denial, and unknown followed
+by presence then another error. These are branch tests, separate from OS evidence.
+
 Still required: production Hello/Ready and partial-frame session deadlines, graceful
 TERM escalation, production waiter-loss ownership/admission, bounded flood queues,
 repeated FD/task/process leak checks, supported platform backends, durable attempt

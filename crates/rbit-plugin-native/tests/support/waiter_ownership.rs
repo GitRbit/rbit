@@ -136,8 +136,8 @@ async fn wait_for_cancellation(output: &Output, mut cancel: watch::Receiver<bool
 async fn settle(leader: &mut Leader, pipes: &Pipes) -> io::Result<ExitStatus> {
     let (status, group) = leader.force_and_reap().await?;
     group.absent().await?;
-    pipes.output.eof().await?;
-    pipes.error.eof().await?;
+    pipes.output.eof().await.map_err(|error| io::Error::new(error.kind(), format!("waiter stdout EOF: {error}")))?;
+    pipes.error.eof().await.map_err(|error| io::Error::new(error.kind(), format!("waiter stderr EOF: {error}")))?;
     Ok(status)
 }
 

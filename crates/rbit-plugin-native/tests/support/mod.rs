@@ -75,6 +75,10 @@ fn errno(error: Errno) -> io::Error {
     io::Error::from_raw_os_error(error as i32)
 }
 
+fn owned_error(stage: &str, pgid: Pid, error: &io::Error) -> io::Error {
+    io::Error::new(error.kind(), format!("{stage} for owned helper group {pgid}: {error}"))
+}
+
 #[derive(Debug)]
 pub struct Input(Sender);
 impl Input {
@@ -260,20 +264,35 @@ impl Leader {
 pub struct GroupObservation(Pid);
 impl GroupObservation {
     pub async fn absent(&self) -> io::Result<()> {
-        let end = deadline();
-        loop {
-            match killpg(self.0, None::<Signal>) {
-                Err(Errno::ESRCH) => return Ok(()),
-                Ok(()) => {}
-                Err(error) => return Err(errno(error)),
-            }
-            if Instant::now() >= end {
-                return Err(timeout());
-            }
-            sleep(Duration::from_millis(10)).await;
-        }
+        wait_for_absence(deadline(), || killpg(self.0, None::<Signal>))
+            .await
+            .map_err(|error| owned_error("post-reap presence observation", self.0, &error))
     }
 }
+
+async fn wait_for_absence(end: Instant, mut observe: impl FnMut() -> Result<(), Errno>) -> io::Result<()> {
+    let mut permission_unknown = false;
+    loop {
+        if Instant::now() >= end {
+            return Err(if permission_unknown { errno(Errno::EPERM) } else { timeout() });
+        }
+        let observation = observe();
+        permission_unknown = matches!(observation, Err(Errno::EPERM));
+        if Instant::now() >= end {
+            return Err(if permission_unknown { errno(Errno::EPERM) } else { timeout() });
+        }
+        match observation {
+            Err(Errno::ESRCH) => return Ok(()),
+            // A permission error does not establish absence. Darwin can also
+            // report it while an existing group has no signalable members.
+            // Keep observing under the original deadline; only ESRCH succeeds.
+            Ok(()) | Err(Errno::EPERM) => {}
+            Err(error) => return Err(errno(error)),
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+}
+
 fn bounded_reap(child: &mut Child) {
     let end = WallInstant::now() + Duration::from_secs(2);
     loop {
@@ -295,5 +314,52 @@ impl Drop for Leader {
             let _ = killpg(self.pgid, Signal::SIGKILL);
             bounded_reap(&mut child);
         }
+    }
+}
+
+#[cfg(test)]
+mod observations {
+    use super::*;
+
+    #[tokio::test]
+    async fn permission_unknown_requires_a_later_actual_absence() {
+        let mut calls = 0;
+        wait_for_absence(deadline(), || {
+            calls += 1;
+            if calls == 1 { Err(Errno::EPERM) } else { Err(Errno::ESRCH) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(calls, 2);
+    }
+
+    #[tokio::test]
+    async fn permanent_permission_unknown_fails_at_the_deadline() {
+        let mut calls = 0;
+        let error = wait_for_absence(Instant::now() + Duration::from_millis(10), || {
+            calls += 1;
+            Err(Errno::EPERM)
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(calls > 0);
+    }
+
+    #[tokio::test]
+    async fn permission_unknown_followed_by_presence_never_establishes_absence() {
+        let mut calls = 0;
+        let error = wait_for_absence(deadline(), || {
+            calls += 1;
+            match calls {
+                1 => Err(Errno::EPERM),
+                2 => Ok(()),
+                _ => Err(Errno::EINVAL),
+            }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(calls, 3);
     }
 }
