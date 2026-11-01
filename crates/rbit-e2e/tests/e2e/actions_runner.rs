@@ -138,7 +138,7 @@ async fn native_post(client: &Client, page: &str, action: &str, form: &[(&str, &
         .find(|form| form.contains(&marker))
         .expect("the authorized browser receives the requested native form");
     let proof = attribute_after(form_html, r#"name="_csrf""#, "value").expect("the form contains a host proof");
-    assert!(!proof.is_empty());
+    assert_ne!(proof, "");
     let mut fields = form.to_vec();
     fields.push(("_csrf", &proof));
     let response = client.post_with(action, &fields, &[("Origin", origin)]).await;
@@ -146,18 +146,14 @@ async fn native_post(client: &Client, page: &str, action: &str, form: &[(&str, &
     response
 }
 
-#[tokio::test]
-async fn a_real_runner_runs_a_pushed_workflow() {
-    let binary = runner_binary();
-    let server = TestServer::start_with(|config| config.actions.enabled = true);
-    let alice = server.sign_up("alice").await;
-    alice.create_repo("alice", "rocket", "public").await;
+/// Configure repository Actions through the same native forms used by the browser.
+async fn configure_actions(alice: &Client, server: &TestServer) {
     let settings = "/alice/rocket/-/plugins/rbit.actions/settings";
-    native_post(&alice, settings, settings, &[("enabled", "on"), ("token_permission", "read")], server.base_url())
+    native_post(alice, settings, settings, &[("enabled", "on"), ("token_permission", "read")], server.base_url())
         .await
         .expect_status(StatusCode::SEE_OTHER);
     native_post(
-        &alice,
+        alice,
         settings,
         &format!("{settings}/secrets"),
         &[("kind", "secret"), ("name", "GREETING"), ("value", "s3cr3t-greeting")],
@@ -166,7 +162,7 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     .await
     .expect_status(StatusCode::SEE_OTHER);
     native_post(
-        &alice,
+        alice,
         settings,
         &format!("{settings}/variables"),
         &[("kind", "variable"), ("name", "REGION"), ("value", "eu-west")],
@@ -174,6 +170,15 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     )
     .await
     .expect_status(StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn a_real_runner_runs_a_pushed_workflow() {
+    let binary = runner_binary();
+    let server = TestServer::start_with(|config| config.actions.enabled = true);
+    let alice = server.sign_up("alice").await;
+    alice.create_repo("alice", "rocket", "public").await;
+    configure_actions(&alice, &server).await;
 
     // A token from the native runners page registers the actual host runner.
     let runners_path = "/alice/rocket/-/plugins/rbit.actions/settings/runners";
