@@ -12,7 +12,7 @@
           }
         ],
         "summary": "Inspect administrative gate without initialization",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -36,7 +36,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -65,7 +65,7 @@
           }
         ],
         "summary": "Explicit virgin bootstrap, never reopen or approve",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -89,7 +89,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -106,7 +106,7 @@
         },
         "requestBody": {
           "required": true,
-          "description": "Strict complete JSON body <=65536bytes; revisions are canonical strings; full fingerprint/CAS required.",
+          "description": "Strict complete JSON body at most 65,536 bytes; revisions are canonical strings; full fingerprint/CAS required.",
           "content": {
             "application/json": {
               "schema": {
@@ -140,7 +140,7 @@
           }
         ],
         "summary": "Inspect selected or cleared metadata",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Response echoes validated top-level plugin_id even when selection/current_review is null.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Response echoes validated top-level plugin_id even when selection/current_review is null.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -164,7 +164,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -222,7 +222,7 @@
           }
         ],
         "summary": "Inspect exact durable declarations for deliberate review",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -246,7 +246,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -286,7 +286,7 @@
           }
         ],
         "summary": "Record explicit review/select/clear without activation",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -310,7 +310,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -327,7 +327,7 @@
         },
         "requestBody": {
           "required": true,
-          "description": "Strict complete JSON body <=65536bytes; revisions are canonical strings; full fingerprint/CAS required.",
+          "description": "Strict complete JSON body at most 65,536 bytes; revisions are canonical strings; full fingerprint/CAS required.",
           "content": {
             "application/json": {
               "schema": {
@@ -348,7 +348,7 @@
           }
         ],
         "summary": "Read immutable historical receipt, not current approval",
-        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON is capped at 64 KiB, with a 10-second body deadline and a 25-second command deadline within the normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
         "responses": {
           "200": {
             "description": "Passive state or recorded/historical command; execution remains unavailable"
@@ -372,7 +372,7 @@
             "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
           },
           "413": {
-            "description": "Complete JSON body exceeds64KiB"
+            "description": "Complete JSON body exceeds 64 KiB"
           },
           "415": {
             "description": "JSON and identity-only encoding required"
@@ -385,6 +385,148 @@
           },
           "503": {
             "description": "Temporary service admission or shutdown unavailable"
+          }
+        }
+      }
+    },
+    "/admin/plugin-policy-renewals/{operation_id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "operation_id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "renewPackagePolicyEpoch",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Explicitly retire the exact sealed epoch into an empty bounded current epoch",
+        "description": "Admin PAT and live active-administrator check before any body polling. The FULL owned transaction rechecks authority, exact fingerprint/seal key, global key and retained graph. At most two renewals retain two retired plus one current epoch. No reviews/selections/grants/enabled intent carry forward. A ten-second body deadline inside the 25-second command deadline; dropping HTTP waiter never aborts an admitted owner. Location retains the known renewal URL. All successful/structured results are passive; execution unavailable. No auto-approval, retry or URL follow.",
+        "x-max-request-body-bytes": 1024,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyRenewalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied or historical receipt; execution unavailable. Historical replay never rotates twice or restores old decisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyRenewalMutationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON or invalid transport framing."
+          },
+          "401": {
+            "description": "Admin PAT required; browser/session/workflow credentials grant no access."
+          },
+          "403": {
+            "description": "Admin token scope and current active site administrator required."
+          },
+          "404": {
+            "description": "No renewal receipt; inspect the gate before retrying. Missing receipt never establishes rollback."
+          },
+          "408": {
+            "description": "Absolute deadline expired; the owned transaction may still commit."
+          },
+          "409": {
+            "description": "Stale sealed fingerprint/seal key, global operation-key conflict, or bounded retention full. Structured retention_full has outcome retention_full, null receipt and the unchanged Sealed gate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/PolicyRenewalMutationResult"
+                    },
+                    {
+                      "type": "object",
+                      "description": "Static ordinary conflict error."
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Complete JSON input exceeds 1,024 bytes, including chunked body or whitespace."
+          },
+          "415": {
+            "description": "Expected exactly application/json and absent/identity content encoding."
+          },
+          "422": {
+            "description": "Unknown fields or invalid strict SDK request."
+          },
+          "500": {
+            "description": "Uncertain storage/bounded response failure; inspect receipt and gate."
+          },
+          "503": {
+            "description": "Exclusive maintenance admission, service shutdown or temporary unavailability."
+          }
+        }
+      },
+      "get": {
+        "operationId": "inspectPackagePolicyRenewal",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Recover immutable renewal evidence using the retained key",
+        "description": "Admin PAT and current active administrator required. Returns original historical transition fields only, bounded to 64 KiB, with a separate gate_url. The old destination need not be current. GET 404, timeout or lost response cannot prove rollback; inspect the gate before explicit same-key recovery.",
+        "responses": {
+          "200": {
+            "description": "Immutable historical receipt; current gate is intentionally not read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyRenewalReceiptResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON or invalid transport framing."
+          },
+          "401": {
+            "description": "Admin PAT required; browser/session/workflow credentials grant no access."
+          },
+          "403": {
+            "description": "Admin token scope and current active site administrator required."
+          },
+          "404": {
+            "description": "No renewal receipt; inspect the gate before retrying. Missing receipt never establishes rollback."
+          },
+          "500": {
+            "description": "Uncertain storage/bounded response failure; inspect receipt and gate."
+          },
+          "503": {
+            "description": "Exclusive maintenance admission, service shutdown or temporary unavailability."
           }
         }
       }
@@ -440,7 +582,7 @@
               "revision": {
                 "type": "string",
                 "pattern": "^[1-9][0-9]{0,18}$",
-                "description": "Canonical decimal string,1..9223372036854775807; numbers rejected."
+                "description": "Canonical decimal string, 1..9223372036854775807; numbers rejected."
               }
             },
             "required": [
@@ -557,7 +699,7 @@
           "expected_review_revision": {
             "type": "string",
             "pattern": "^[1-9][0-9]{0,18}$",
-            "description": "Canonical decimal string,1..9223372036854775807; numbers rejected."
+            "description": "Canonical decimal string, 1..9223372036854775807; numbers rejected."
           }
         },
         "required": [
@@ -682,13 +824,204 @@
               "null"
             ],
             "pattern": "^[1-9][0-9]{0,18}$",
-            "description": "Original select request review revision; null for review/clear. Canonical decimal string1..i64MAX."
+            "description": "Original select request review revision; null for review/clear. Canonical decimal string 1..i64MAX."
           }
         },
         "required": [
           "intent",
           "expected_review_revision"
         ]
+      },
+      "PolicyRenewalRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "expected_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_seal_operation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          }
+        },
+        "required": [
+          "schema_version",
+          "expected_host_policy",
+          "expected_seal_operation"
+        ],
+        "description": "Strict raw SDK request, no command envelope. Complete encoded HTTP body (including whitespace) is capped at 1,024 bytes before deserialization. Host generates the destination epoch; no requested approval/grant/activation fields."
+      },
+      "PolicyRenewalReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "kind": {
+            "const": "renew"
+          },
+          "historical": {
+            "type": "boolean"
+          },
+          "source_epoch": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "source_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "destination_epoch": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "destination_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_seal_operation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "actor_id": {
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "description": "Canonical positive decimal account ID within i64 range."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "operation_id",
+          "kind",
+          "historical",
+          "source_epoch",
+          "source_host_policy",
+          "destination_epoch",
+          "destination_host_policy",
+          "expected_seal_operation",
+          "actor_id",
+          "created_at"
+        ],
+        "description": "Immutable original transition evidence. Source/destination epochs and fingerprints differ. Historical destination need not be current. Canonical request bytes and file inventory are never returned."
+      },
+      "PolicyRenewalMutationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "execution": {
+            "const": "unavailable"
+          },
+          "operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "url": {
+            "type": "string"
+          },
+          "gate_url": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "historical_receipt",
+              "retention_full"
+            ]
+          },
+          "receipt": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PolicyRenewalReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gate": {
+            "type": "object",
+            "description": "Compact gate from the same committing/historical read transaction. Applied is Open and matches receipt destination; historical gate need not match it. Retention-full remains Sealed."
+          }
+        },
+        "required": [
+          "schema_version",
+          "execution",
+          "operation_id",
+          "url",
+          "gate_url",
+          "outcome",
+          "receipt",
+          "gate"
+        ],
+        "description": "No executable authority, grants or enabled intent. Retention-full 409 creates no receipt or reserved key and changes no epoch."
+      },
+      "PolicyRenewalReceiptResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "execution": {
+            "const": "unavailable"
+          },
+          "operation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "url": {
+            "type": "string"
+          },
+          "gate_url": {
+            "type": "string"
+          },
+          "outcome": {
+            "const": "historical_receipt"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/PolicyRenewalReceipt"
+          }
+        },
+        "required": [
+          "schema_version",
+          "execution",
+          "operation_id",
+          "url",
+          "gate_url",
+          "outcome",
+          "receipt"
+        ],
+        "description": "Receipt-only historical response, historical=true. Follow no returned URL automatically. Inspect gate separately; these are not one atomic snapshot."
       }
     }
   }

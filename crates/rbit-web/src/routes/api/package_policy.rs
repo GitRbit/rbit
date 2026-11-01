@@ -27,6 +27,8 @@ use serde_json::{Value, json};
 use std::{pin::Pin, time::Duration};
 use tokio::time::Instant;
 
+mod renewal;
+
 const ROOT: &str = "/admin/plugin-policy";
 const OPERATIONS: &str = "/admin/plugin-policy-operations/{operation_id}";
 const RESPONSE_LIMIT: usize = 64 * 1024;
@@ -34,14 +36,16 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(25);
 const BODY_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(super) fn routes() -> Vec<ApiRoute> {
-    vec![
+    let mut routes = vec![
         route(Get, ROOT, gate),
         route(Post, "/admin/plugin-policy/prepare", prepare),
         route(Get, "/admin/plugin-policy/candidates/{plugin_id}", inspect),
         route(Get, "/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}", proposal),
         route(Put, OPERATIONS, apply),
         route(Get, OPERATIONS, operation),
-    ]
+    ];
+    routes.extend(renewal::routes());
+    routes
 }
 fn administrator(caller: &Caller) -> ApiResult<&User> {
     let actor = caller.require(TokenScope::Admin)?;
@@ -53,9 +57,12 @@ fn administrator(caller: &Caller) -> ApiResult<&User> {
 fn fault(error: &ServiceError) -> ApiError {
     match error {
         ServiceError::Forbidden => ApiError::forbidden("Active site administrator required"),
-        ServiceError::Conflict("server shutdown" | "package policy operation admission" | "package policy coordinator unavailable") => {
-            ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Package policy administration unavailable")
-        }
+        ServiceError::Conflict(
+            "server shutdown"
+            | "package policy operation admission"
+            | "package policy coordinator unavailable"
+            | "package policy maintenance admission",
+        ) => ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Package policy administration unavailable"),
         ServiceError::Conflict("empty host capability catalog" | "package review declaration mismatch") => {
             ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "Unsupported passive package policy declaration")
         }
@@ -223,7 +230,7 @@ async fn operation(State(state): State<AppState>, caller: Caller, Path(raw): Pat
     )
 }
 
-fn check_headers(headers: &HeaderMap) -> ApiResult<()> {
+fn check_headers(headers: &HeaderMap, limit: usize) -> ApiResult<()> {
     if headers.get_all(header::CONTENT_TYPE).iter().count() != 1 || headers[header::CONTENT_TYPE].as_bytes() != b"application/json" {
         return Err(ApiError::new(StatusCode::UNSUPPORTED_MEDIA_TYPE, "Expected application/json"));
     }
@@ -242,23 +249,29 @@ fn check_headers(headers: &HeaderMap) -> ApiResult<()> {
             .filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
             .and_then(|v| v.parse::<u64>().ok())
             .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Invalid Content-Length"))?;
-        if value > MAX_POLICY_REQUEST_BYTES as u64 {
-            return Err(ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "Policy request exceeds 64 KiB"));
+        if value > limit as u64 {
+            return Err(body_limit_error(limit));
         }
     }
     Ok(())
 }
-async fn read_json<T: DeserializeOwned>(mut body: Body, headers: &HeaderMap, deadline: Instant) -> ApiResult<T> {
+fn body_limit_error(limit: usize) -> ApiError {
+    ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, format!("Policy request exceeds {limit} bytes"))
+}
+async fn read_json<T: DeserializeOwned>(body: Body, headers: &HeaderMap, deadline: Instant) -> ApiResult<T> {
+    read_json_limited(body, headers, deadline, MAX_POLICY_REQUEST_BYTES).await
+}
+async fn read_json_limited<T: DeserializeOwned>(mut body: Body, headers: &HeaderMap, deadline: Instant, limit: usize) -> ApiResult<T> {
     use http_body::Body as _;
-    check_headers(headers)?;
+    check_headers(headers, limit)?;
     let deadline = deadline.min(Instant::now() + BODY_TIMEOUT);
     tokio::time::timeout_at(deadline, async move {
         let mut bytes = Vec::new();
         while let Some(frame) = std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)).await {
             let frame = frame.map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Policy body could not be read"))?;
             if let Ok(data) = frame.into_data() {
-                if data.len() > MAX_POLICY_REQUEST_BYTES - bytes.len() {
-                    return Err(ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "Policy request exceeds 64 KiB"));
+                if data.len() > limit - bytes.len() {
+                    return Err(body_limit_error(limit));
                 }
                 bytes.extend_from_slice(&data);
             }
@@ -328,7 +341,7 @@ mod tests {
     };
     use tower::ServiceExt as _;
 
-    async fn fixture() -> (Fixture, User, String) {
+    pub(super) async fn fixture() -> (Fixture, User, String) {
         let fixture = Fixture::new(|config| {
             config.actions.enabled = false;
             config.i18n.enabled = false;
@@ -352,7 +365,7 @@ mod tests {
         let token = fixture.token(&admin, TokenScope::Admin).await;
         (fixture, admin, token)
     }
-    fn stalled(polls: Arc<AtomicUsize>) -> Body {
+    pub(super) fn stalled(polls: Arc<AtomicUsize>) -> Body {
         Body::from_stream(futures_util::stream::poll_fn(move |_| {
             polls.fetch_add(1, Ordering::SeqCst);
             Poll::<Option<Result<axum::body::Bytes, std::io::Error>>>::Pending
@@ -466,7 +479,7 @@ mod tests {
         let error = tokio::time::timeout(Duration::from_secs(1), read).await.unwrap().unwrap_err();
         assert_eq!(error.status, StatusCode::REQUEST_TIMEOUT);
     }
-    async fn seed_native(fixture: &Fixture, admin: &User) -> InstalledPackageRef {
+    pub(super) async fn seed_native(fixture: &Fixture, admin: &User) -> InstalledPackageRef {
         let manifest:PackageManifest=serde_json::from_value(json!({"schema_version":1,"plugin":{"id":"example.independent","version":"1.0.0+outside.server","host_api":"^1","capabilities":[]},"kind":{"type":"native","target":"x86_64-unknown-linux-gnu","entrypoint":"greeter"},"files":[{"path":"greeter","size":1,"sha256":"a".repeat(64)}],"budgets":{"memory_bytes":1024,"concurrent_calls":1,"call_timeout_ms":1000,"storage_bytes":0,"event_queue_capacity":0}})).unwrap();
         // Trusted installation assertion fixture, not proof of archive materialization.
         let descriptor = PackageInstallationDescriptor::new(manifest, "b".repeat(64).parse().unwrap(), 4096).unwrap();
@@ -755,12 +768,12 @@ mod tests {
     #[test]
     fn policy_openapi_is_strict_and_covers_only_named_administration() {
         let document: Value = serde_json::from_str(include_str!("openapi/package_policy.json")).unwrap();
-        assert_eq!(document["paths"].as_object().unwrap().len(), 5);
+        assert_eq!(document["paths"].as_object().unwrap().len(), 6);
         assert_eq!(document["components"]["schemas"]["PolicyReviewRequest"]["properties"]["grants"]["maxItems"], 0);
         assert_eq!(document["components"]["schemas"]["PolicyExactPackage"]["additionalProperties"], false);
         for path in document["paths"].as_object().unwrap().keys() {
             assert!(!path.contains("activate"));
         }
-        assert_eq!(routes().len(), 6);
+        assert_eq!(routes().len(), 8);
     }
 }
