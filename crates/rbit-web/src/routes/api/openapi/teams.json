@@ -379,6 +379,12 @@
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/AdmissionUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/OutcomeUnavailable"
           }
         }
       },
@@ -406,6 +412,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/AdmissionUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/OutcomeUnavailable"
           }
         }
       }
@@ -565,6 +577,12 @@
           },
           "422": {
             "$ref": "#/components/responses/ValidationFailed"
+          },
+          "503": {
+            "$ref": "#/components/responses/AdmissionUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/OutcomeUnavailable"
           }
         }
       },
@@ -592,6 +610,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/AdmissionUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/OutcomeUnavailable"
           }
         }
       }

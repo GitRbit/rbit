@@ -18,6 +18,7 @@ struct Fixture {
     _dir: tempfile::TempDir,
 
     services: Services,
+    database: Database,
     olga: User,
     bob: User,
     eve: User,
@@ -60,7 +61,7 @@ impl Fixture {
             let input = CreateRepository { name: name.into(), description: String::new(), visibility };
             services.repositories.create_in(&olga, "acme", input).await.unwrap();
         }
-        Self { _dir: dir, services, olga, bob, eve, root, acme }
+        Self { _dir: dir, services, database, olga, bob, eve, root, acme }
     }
 
     async fn team(&self, name: &str) -> TeamContext {
@@ -231,4 +232,40 @@ async fn owners_change_the_base_permission() {
     orgs.set_base_permission(&fixture.root, &fixture.acme, BasePermission::Write).await.unwrap();
     assert_eq!(fixture.access(&fixture.bob, "rocket").await, RepoAccess::Write);
     assert_eq!(fixture.access(&fixture.olga, "rocket").await, RepoAccess::Admin, "owners always administer");
+}
+
+#[tokio::test]
+async fn typed_team_writer_stop_preserves_duplicate_and_readonly_ensure_behavior() {
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+    let fixture = Fixture::new().await;
+    let core = fixture.team("core").await;
+    let teams = &fixture.services.teams;
+    teams.add_member(&fixture.olga, &core, "olga").await.unwrap();
+    teams.set_repository(&fixture.olga, &core, "rocket", Permission::Read).await.unwrap();
+    invalid(teams.add_member(&fixture.olga, &core, "olga").await, "already on this team");
+    assert!(!teams.ensure_member(&fixture.olga, &core, "olga").await.unwrap());
+    // Bob is an eligible organisation member but is not yet on this team.
+    assert!(!fixture.database.teams().is_member(core.team.id, fixture.bob.id()).await.unwrap());
+    let before = fixture.services.audit.list(&fixture.root, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items;
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close()); // Synchronous stop only; pool closure stays unpolled.
+    let stopped = |result: &Result<(), ServiceError>| {
+        assert!(matches!(
+            result,
+            Err(ServiceError::AdmissionUnavailable { scope: "team", reason: rbit_storage::AdmissionReason::Stopped })
+        ));
+    };
+    stopped(&tokio::time::timeout(WAIT, teams.add_member(&fixture.olga, &core, "bob")).await.unwrap());
+    stopped(&tokio::time::timeout(WAIT, teams.ensure_member(&fixture.olga, &core, "bob")).await.unwrap().map(|_| ()));
+    stopped(&tokio::time::timeout(WAIT, teams.remove_member(&fixture.olga, &core, "olga")).await.unwrap());
+    stopped(&tokio::time::timeout(WAIT, teams.set_repository(&fixture.olga, &core, "rocket", Permission::Write)).await.unwrap());
+    stopped(&tokio::time::timeout(WAIT, teams.remove_repository(&fixture.olga, &core, "rocket")).await.unwrap());
+    assert!(!tokio::time::timeout(WAIT, teams.ensure_member(&fixture.olga, &core, "olga")).await.unwrap().unwrap());
+    assert!(!fixture.database.teams().is_member(core.team.id, fixture.bob.id()).await.unwrap());
+    assert!(fixture.database.teams().is_member(core.team.id, fixture.olga.id()).await.unwrap());
+    let rocket = fixture.database.repositories().find_by_path("acme", "rocket").await.unwrap().unwrap();
+    assert_eq!(fixture.database.teams().grants_for_repository(rocket.repo.id).await.unwrap()[0].permission, Permission::Read);
+    assert_eq!(fixture.services.audit.list(&fixture.root, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
 }

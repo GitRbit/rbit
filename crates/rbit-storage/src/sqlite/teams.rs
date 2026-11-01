@@ -78,11 +78,12 @@ pub enum TeamChange {
 #[derive(Debug, Clone)]
 pub struct TeamStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl TeamStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     /// [`StorageError::Conflict`] (`"team name"`) if the organisation already has a team
@@ -170,28 +171,60 @@ impl TeamStore {
     /// Adds `user` to `team` if they belong to the team's organisation.
     /// [`StorageError::Conflict`] (`"team member"`) if they already are on the team.
     pub async fn add_member(&self, team: TeamId, user: AccountId) -> Result<TeamChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.add_member_raw(team, user).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn add_member_raw(&self, team: TeamId, user: AccountId) -> Result<TeamChange, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "INSERT INTO team_members (team_id, user_id) SELECT ?1, ?2 \
              WHERE EXISTS (SELECT 1 FROM teams t JOIN org_members m ON m.org_id = t.org_id WHERE t.id = ?1 AND m.user_id = ?2)",
         )
         .bind(team.0)
         .bind(user.0)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| StorageError::from_insert(e, "team member"))?;
+        tx.commit().await?;
         Ok(if result.rows_affected() > 0 { TeamChange::Done } else { TeamChange::OutsideOrganization })
     }
 
     /// Removes `user` from `team`. Returns whether they were on it.
     pub async fn remove_member(&self, team: TeamId, user: AccountId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.remove_member_raw(team, user).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn remove_member_raw(&self, team: TeamId, user: AccountId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result =
-            sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?").bind(team.0).bind(user.0).execute(&self.pool).await?;
+            sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?").bind(team.0).bind(user.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
     /// Grants `team` `permission` on `repo` (or changes it), if the repository belongs to
     /// the team's organisation.
     pub async fn set_repository(&self, team: TeamId, repo: RepoId, permission: Permission) -> Result<TeamChange, StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.set_repository_raw(team, repo, permission).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn set_repository_raw(&self, team: TeamId, repo: RepoId, permission: Permission) -> Result<TeamChange, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "INSERT INTO team_repositories (team_id, repo_id, permission) SELECT ?1, ?2, ?3 \
              WHERE EXISTS (SELECT 1 FROM teams t JOIN repositories r ON r.owner_id = t.org_id WHERE t.id = ?1 AND r.id = ?2) \
@@ -200,18 +233,30 @@ impl TeamStore {
         .bind(team.0)
         .bind(repo.0)
         .bind(permission.as_str())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(if result.rows_affected() > 0 { TeamChange::Done } else { TeamChange::OutsideOrganization })
     }
 
     /// Revokes `team`'s access to `repo`. Returns whether it had any.
     pub async fn remove_repository(&self, team: TeamId, repo: RepoId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.remove_repository_raw(team, repo).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn remove_repository_raw(&self, team: TeamId, repo: RepoId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("DELETE FROM team_repositories WHERE team_id = ? AND repo_id = ?")
             .bind(team.0)
             .bind(repo.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -254,3 +299,19 @@ impl TeamStore {
         rows.into_iter().map(|row| Ok(TeamGrant { team: row.team.try_into()?, permission: parse_permission(&row.permission)? })).collect()
     }
 }
+
+// Only these four direct membership/grant APIs are enrolled. Team identity,
+// transfer, other trigger/cascade paths and service freshness remain separate.
+fn team_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::AdmissionUnavailable {
+        scope: "team",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
+}
+
+#[cfg(test)]
+#[path = "teams/fence_tests.rs"]
+mod fence_tests;

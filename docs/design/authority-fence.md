@@ -298,8 +298,8 @@ This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, four direct collaborator assignments, four existing-
-organization membership/base methods, the three moderation
-methods and bound session workers
+organization membership/base methods, four direct team membership/repository-grant
+methods, the three moderation methods and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
 forced administrator, email-reset and response-deferred self-service commands
 described above. It does not coordinate
@@ -308,6 +308,21 @@ pools, another process, other cross-store operations, constructor writes
 or other authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.
+
+The four direct team operations enroll membership additions/removals and repository
+grant changes/removals. Their same-organization predicates remain inside the SQL
+statement; each public result, including absent relationships and no-op outcomes,
+follows an acknowledged outer COMMIT. Read methods and the service's already-member
+idempotent branch remain outside mutation admission.
+
+Membership and repository grants are distinct relationships: removing a member
+preserves the team's repository grant for other members, and removing a grant
+preserves membership. Branch-protection team attribution follows membership even
+without an explicit repository grant. Team creation, name/profile updates,
+deletion, transfers, other cascades and branch-protection mutations remain separate
+writer categories. This partial enrollment does not establish fresh request
+authorization, physical ownership or execution readiness. Added transaction control
+statements are not a claim of query-count or latency parity.
 
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same

@@ -85,7 +85,8 @@ pub struct Database {
     // five recovery SQL, ten two-factor, four profile credential and two account rename methods,
     // plus bound session write workers (purge certification is per write batch),
     // and four direct collaborator assignment APIs (not transfers/cascades),
-    // plus four existing-organization membership/base-permission APIs.
+    // plus four existing-organization membership/base-permission APIs
+    // and four direct team membership/repository-grant APIs (not team lifecycle).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     forced_passwords: credential_changes::Coordinator,
@@ -296,7 +297,7 @@ impl Database {
     }
 
     pub fn teams(&self) -> teams::TeamStore {
-        teams::TeamStore::new(self.store("teams"))
+        teams::TeamStore::new(self.store("teams"), self.authority_domain.writer())
     }
 
     pub fn webhooks(&self) -> webhooks::WebhookStore {

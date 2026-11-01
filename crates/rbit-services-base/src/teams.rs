@@ -165,7 +165,9 @@ impl TeamService {
                     team.org.name()
                 )));
             }
-            Err(StorageError::Conflict(_)) => return Err(ServiceError::Invalid(format!("{} is already on this team", user.name))),
+            Err(StorageError::Conflict("team member")) => {
+                return Err(ServiceError::Invalid(format!("{} is already on this team", user.name)));
+            }
             Err(other) => return Err(other.into()),
         }
         self.record(AuditAction::TeamChanged, actor, team, format!("added {}", user.name)).await;
