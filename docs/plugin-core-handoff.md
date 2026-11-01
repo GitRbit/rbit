@@ -1,5 +1,43 @@
 # Plugin core handoff
 
+## Shared fixed SVG Icon — 2026-11-01
+
+`rbit-ui::Icon` now owns the fixed 76-name SVG catalog. Its inline const constructor
+selects a private static shape before entering the short derived Askama wrapper.
+Only the class borrows caller data and remains escaped; the input name is not
+retained, emitted as markup or allowed to supply arbitrary SVG/HTML. Unknown names
+retain the original empty SVG. Web's existing icon macro delegates directly, while
+all other macros and host document/security/permission behavior remain in Web.
+This introduces no dependency or feature edge and no executable-package authority.
+
+The independent frozen old macro verifies all catalog names, unknown names and
+hostile class strings. Exact leading/trailing LF output is retained: the wrapper
+emits the trailing LF explicitly because Askama removes the final template-file LF.
+Tests also cover a temporary dynamic name dropped before rendering, direct/nested
+bounded writes, exact capacity and failure propagation without a completed child
+HTML String. Shared UI source/templates are included in message, HTMX and Tailwind
+scan roots; the private static shape is the only value marked safe in the wrapper.
+
+Final local validation passed 673 combined Web/UI tests and the focused core-only
+Web compatibility-macro test. Strict Rust 1.99 workspace/all-target Clippy passed.
+These are functional/source checks, not a new release timing result. Frontend,
+asset and dependency-boundary evidence is recorded separately from these Rust
+totals. Published-head hosted validation remains required.
+
+The catalog keeps the name-dependent lookup outside the opaque derived renderer
+and exposes ordinary inline selection across crates. It does not guarantee literal
+constant folding, equal renderer-call cost or equal total allocation. Parent
+`Template::render` reserves its own `SIZE_HINT`; replacing an expanded macro with
+a nested expression can reduce that reservation, removing old overreservation or
+causing more String growth. No reservation heuristic or latency certification is
+introduced. Release measurements remain separate, including the ongoing i18n
+comparison whose frozen source arms precede this Icon change.
+
+The shared route-bundle extraction is drafted but not applied; the Actions state
+badge is also a draft. First-party host/service ports, durable trigger delivery,
+managed executable adapters and the sandboxed runtime remain unfinished. PR #47
+and the broader runtime goal stay active; passive rendering is not completion.
+
 ## Borrowed Actions step-log content — 2026-11-01
 
 The shared `StepLog` model and compiled `StepLogBody` now live in `rbit-actions-web`.

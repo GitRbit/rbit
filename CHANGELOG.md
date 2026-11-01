@@ -23,6 +23,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared passive `rbit-ui::Icon` with a private fixed SVG catalog, borrowed escaped
+  class, preserved unknown-name fallback and exact macro whitespace. Existing Web
+  icon calls delegate directly without an intermediate rendered icon string.
+
 - Shared borrowed Actions step-log content for job previews and standalone log
   documents in `rbit-actions-web`. The host retains log permissions, current-task
   selection, byte/line limits, escaping, polling, raw streaming and retention;

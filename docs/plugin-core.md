@@ -117,6 +117,14 @@ Services, a database or a translation engine. The all-feature/all-target normal 
 is checked in CI. Page construction, assets, full chrome, authorization and security
 middleware stay host-owned; this is the foundation for further Web extraction.
 
+`rbit-ui::Icon::new(name, class)` selects a fixed private SVG shape and borrows only
+its escaped class. Unknown names preserve the empty SVG fallback. The Web icon macro
+is a direct compatibility delegate; its original leading and trailing line feeds
+remain unchanged. Fixed catalog markup is trusted compiled presentation, never
+caller-supplied HTML or package authority. Direct nested writes avoid an intermediate
+icon String, but renderer calls and parent buffer sizing still require performance
+measurement; this is not a latency or total-allocation parity claim.
+
 `rbit-plugin-api` validates bounded dotted identifiers, manifests, requested capabilities
 and service version requirements. A capability request is metadata, not authority.
 `rbit-plugin-runtime` resolves required providers, rejects cycles and ambiguous versions,
