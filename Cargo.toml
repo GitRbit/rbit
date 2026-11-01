@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime", "crates/rbit-services-base", "crates/rbit-actions", "crates/rbit-messages", "crates/rbit-i18n", "crates/rbit-plugin-web", "crates/rbit-ui", "crates/rbit-plugin-packages", "crates/rbit-i18n-web", "crates/rbit-actions-web", "crates/rbit-plugin-native"]
+members = ["crates/rbit-authority-fence", "crates/rbit-core", "crates/rbit-storage", "crates/rbit-auth", "crates/rbit-git", "crates/rbit-transport", "crates/rbit-services", "crates/rbit-web", "crates/rbit-server", "crates/rbit-ssh", "crates/rbit-mail", "crates/rbit-e2e", "crates/rbit-workflow", "crates/rbit-runner", "crates/rbit-actions-core", "crates/rbit-plugin-api", "crates/rbit-plugin-runtime", "crates/rbit-services-base", "crates/rbit-actions", "crates/rbit-messages", "crates/rbit-i18n", "crates/rbit-plugin-web", "crates/rbit-ui", "crates/rbit-plugin-packages", "crates/rbit-i18n-web", "crates/rbit-actions-web", "crates/rbit-plugin-native"]
 default-members = ["crates/rbit-server"]
 
 [workspace.package]
@@ -12,6 +12,7 @@ repository = "https://github.com/GitRbit/rbit"
 
 [workspace.dependencies]
 # Internal crates
+rbit-authority-fence = { path = "crates/rbit-authority-fence" }
 rbit-core = { path = "crates/rbit-core" }
 rbit-storage = { path = "crates/rbit-storage" }
 rbit-auth = { path = "crates/rbit-auth" }

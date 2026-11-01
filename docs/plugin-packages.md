@@ -127,6 +127,11 @@ Policy mutations use the existing lazy FULL writer. Active administrator authori
 exact installation identity, fingerprint and current revisions are checked in the
 same short write transaction. A selection must name the current allowed review;
 revoking it leaves the old selection inspectable but invalid for future admission.
+Policy writes obtained from one database handle and its clones also share a
+[closed writer domain](design/authority-fence.md). It serializes those mutations
+before SQL starts and retains uncertainty after an acquired mutation is cancelled
+or fails. This is partial coordination; it grants no execution authority and does
+not cover independent database opens or other authority writers.
 Review/selection/clear operations use caller-known keys and canonical bounded
 receipts. Exact replay acknowledges history without restoring old heads. Bootstrap
 has no operation receipt; after a lost response, inspect the authoritative gate.

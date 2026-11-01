@@ -21,6 +21,8 @@ pub const MAX_POLICY_RECEIPTS: i64 = 4096;
 pub const MAX_POLICY_HEADS: i64 = 1024;
 const CATALOG: &str = "empty-v1";
 mod epochs;
+#[cfg(test)]
+mod fence_tests;
 mod legacy_snapshot;
 mod snapshot;
 
@@ -205,15 +207,21 @@ pub enum ApplyOutcome {
 #[derive(Debug, Clone)]
 pub struct PluginPolicyStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 impl PluginPolicyStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
     /// Explicit authenticated initialization only. Reads/construction never open a
     /// gate. Randomness is generated before acquiring the FULL write transaction.
     pub async fn prepare(&self, actor: AccountId, now: Timestamp) -> Result<PolicyGate, StorageError> {
-        epochs::bootstrap(&self.pool, actor, now).await
+        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let result = epochs::bootstrap(&self.pool, actor, now).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
     pub async fn renew(
         &self,
@@ -222,7 +230,12 @@ impl PluginPolicyStore {
         request: &PackagePolicyRenewalRequest,
         now: Timestamp,
     ) -> Result<PolicyRenewalOutcome, StorageError> {
-        epochs::renew(&self.pool, actor, id, request, now).await
+        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let result = epochs::renew(&self.pool, actor, id, request, now).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
     pub async fn renewal_operation(&self, actor: AccountId, id: &OperationId) -> Result<Option<PolicyRenewalReceipt>, StorageError> {
         let mut tx = self.pool.begin().await?;
@@ -309,6 +322,20 @@ impl PluginPolicyStore {
         self.apply(actor, id, PolicyCommand::Clear(request.clone()), now).await
     }
     async fn apply(
+        &self,
+        actor: AccountId,
+        id: &OperationId,
+        command: PolicyCommand,
+        now: Timestamp,
+    ) -> Result<ApplyOutcome, StorageError> {
+        let mutation = self.writer.begin().await.map_err(|_| StorageError::Conflict("package policy mutation capacity"))?;
+        let result = self.apply_raw(actor, id, command, now).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn apply_raw(
         &self,
         actor: AccountId,
         id: &OperationId,

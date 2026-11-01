@@ -120,7 +120,7 @@ jobs:
       - run: node scripts/check-ui-dependencies.mjs
       - run: node scripts/check-i18n-web-dependencies.mjs
       - run: node scripts/check-actions-web-dependencies.mjs
-      - run: cargo test --locked -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-native -p rbit-plugin-packages -p rbit-plugin-runtime -p rbit-plugin-web -p rbit-ui -p rbit-messages -p rbit-i18n -p rbit-i18n-web -p rbit-actions-web
+      - run: cargo test --locked -p rbit-authority-fence -p rbit-actions-core -p rbit-plugin-api -p rbit-plugin-native -p rbit-plugin-packages -p rbit-plugin-runtime -p rbit-plugin-web -p rbit-ui -p rbit-messages -p rbit-i18n -p rbit-i18n-web -p rbit-actions-web
 
   lint:
     name: Format and clippy

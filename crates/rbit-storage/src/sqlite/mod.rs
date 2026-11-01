@@ -79,6 +79,8 @@ pub struct Database {
     pool: SqlitePool,
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
+    // Enrolled policy writes only; no duplicate-open or physical ownership claim.
+    policy_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -128,7 +130,7 @@ impl Database {
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_lazy_with(options.create_if_missing(false).synchronous(SqliteSynchronous::Full));
-        let database = Self { pool, package_pool, key };
+        let database = Self { pool, package_pool, key, policy_domain: rbit_authority_fence::Domain::new() };
         database.optimize().await?;
         Ok(database)
     }
@@ -257,7 +259,7 @@ impl Database {
 
     /// Passive managed-package policy, on the same lazy FULL writer as installations.
     pub fn plugin_policy(&self) -> plugin_policy::PluginPolicyStore {
-        plugin_policy::PluginPolicyStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_policy"))
+        plugin_policy::PluginPolicyStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_policy"), self.policy_domain.writer())
     }
 
     /// Persisted desired state for optional plugins, independent of feature packages.

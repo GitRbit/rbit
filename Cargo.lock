@@ -4337,6 +4337,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-authority-fence"
+version = "0.1.5"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "rbit-core"
 version = "0.1.5"
 dependencies = [
@@ -4664,6 +4671,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "postcard",
+ "rbit-authority-fence",
  "rbit-core",
  "rbit-plugin-api",
  "redb",
