@@ -1,5 +1,41 @@
 # Plugin core handoff
 
+## Shared presentation foundation — 2026-10-31
+
+The next extraction introduces `rbit-ui` below Web. It owns passive components,
+bounded listing controls, URL construction/redirect validation, code-row layout,
+the single locale context and the captured-locale compiled Askama wrapper. Web keeps
+compatibility exports; native Actions uses the shared wrapper. Constructors that
+resolve users/repositories, full chrome/templates, HTTP security, assets, CSRF keys
+and plugin admission stay host-owned. No `AppState` or Services capability was exported.
+
+CI now checks the UI's resolved normal dependency graph with all features and all
+targets selected. It rejects HTTP frameworks/clients, storage, host composition,
+optional implementations and executable/sandbox adapters, including indirect edges.
+Message validation scans the shared crate and recognizes its helpers while preserving
+schema and HTML-escaping checks. No third-party package version changed.
+
+The standalone UI suite passes 19 tests. Locale coverage includes nested/concurrent
+and cancelled scopes, detached template rendering, writer limits, runtime values and
+error restoration. A Web integration test exercises both helper paths against one
+captured locale. Frontend/tooling passes 219 tests; assets are unchanged, all three
+language packs reproduce, and all 1,908 messages/1,913 static references validate.
+The full workspace run passed 2,366 tests with five manual benchmarks ignored;
+strict workspace/all-target Clippy and formatting also passed.
+
+Baseline `0075cec` is preserved as an exact Git source archive with SHA-256 provenance
+under gitignored performance artifacts. A paired release HTTP comparison remains
+required; this code move is not evidence that the two-percent core-page latency gate
+has passed. Require all 11 CI jobs on the exact pushed head before certification.
+
+The next architectural prerequisite is passive page/repository chrome and shared shell
+templates. Keep host constructors, visibility projection, enhancement allowlisting,
+cached CSS/CSP handling and render-time footer timing in Web. Then extract Actions
+views and factories behind a narrow host adapter; moving or publicizing `AppState`
+would preserve the dependency knot. Managed executable packages and the sandboxed
+adapter remain required later stages in the original architecture plan. The broader
+modularization goal remains active; leave PR #47 open and unmerged.
+
 ## Resumed — 2026-10-31
 
 The user resumed work from PR #47 at `9fd65b9`, with a team reviewing architecture,

@@ -1,0 +1,19 @@
+[package]
+name = "rbit-ui"
+description = "Shared presentation models and compiled-template support without HTTP or feature implementations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rbit-core.workspace = true
+rbit-messages.workspace = true
+askama.workspace = true
+tokio.workspace = true
+percent-encoding.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

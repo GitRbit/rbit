@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A shared `rbit-ui` presentation crate for compiled-template locale capture, avatars,
+  form errors, bounded listing controls, URL construction and fixed-height code rows.
+  Web and native Actions templates share one locale context while host authorization
+  and HTTP security remain in the Web layer. CI checks the resolved UI dependency graph.
+
 - Native plugin page and form lookup uses a publication-time owner index, limiting
   route comparisons to the selected plugin's bounded registration batch. Immutable
   snapshots retain the existing generation checks and weak callback ownership.

@@ -14,6 +14,7 @@ use rbit_services::{
     ActionsRouteBundle, ServiceError,
     plugin_pages::{CompiledPage, FormActions, MutationContext, MutationError, PageContext, PageError},
 };
+use rbit_ui::template::Localized;
 use std::sync::Arc;
 
 pub(crate) fn bundle(weak: WeakAppState) -> Result<ActionsRouteBundle, ServiceError> {
@@ -110,30 +111,8 @@ fn mutation_error(error: WebError) -> MutationError {
     }
 }
 
-/// Keeps task-local template helpers on the captured immutable catalog even when
-/// the host executes a mutation in an independently owned task.
-struct Localized<T> {
-    template: T,
-    locale: LocaleSnapshot,
-}
-impl<T: Template> std::fmt::Display for Localized<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.render_into(f).map_err(|_| std::fmt::Error)
-    }
-}
-impl<T: Template> askama::FastWritable for Localized<T> {
-    fn write_into(&self, w: &mut dyn std::fmt::Write, values: &dyn askama::Values) -> askama::Result<()> {
-        self.render_into_with_values(w, values)
-    }
-}
-impl<T: Template> Template for Localized<T> {
-    const SIZE_HINT: usize = T::SIZE_HINT;
-    fn render_into_with_values(&self, w: &mut dyn std::fmt::Write, values: &dyn askama::Values) -> askama::Result<()> {
-        crate::i18n::render_scope(self.locale.clone(), || self.template.render_into_with_values(w, values))
-    }
-}
 fn document<T: Template>(template: T, locale: LocaleSnapshot) -> Result<CompiledPage<Localized<T>>, PageError> {
-    CompiledPage::new("Actions", Localized { template, locale })
+    CompiledPage::new("Actions", Localized::new(template, locale))
 }
 
 fn repo_url(owner: &str, repo: &str, path: &str) -> String {

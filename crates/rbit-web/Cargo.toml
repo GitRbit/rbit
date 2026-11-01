@@ -15,6 +15,7 @@ actions = ["rbit-services/actions", "dep:rbit-workflow"]
 i18n = ["rbit-services/i18n"]
 
 [dependencies]
+rbit-ui.workspace = true
 rbit-messages.workspace = true
 rbit-plugin-api.workspace = true
 rbit-plugin-runtime.workspace = true

@@ -23,3 +23,13 @@ test('translated snapshot output cannot bypass escaping, including formatted mes
   ]) assert.throws(() => validateMessageReferences(source, 'native.html', index), /must be HTML escaped/);
   assert.equal(validateMessageReferences('{{ messages.format(&reference) }}', 'native.html', index), 0);
 });
+
+test('shared UI helpers preserve schema checks and escaped translation output', () => {
+  assert.equal(validateMessageReferences('{{ rbit_ui::i18n::text("core", "title") }}', 'feature.html', index), 1);
+  for (const key of ['missing', 'count']) {
+    assert.throws(() => validateMessageReferences(`rbit_ui::i18n::text("core", "${key}")`, 'feature.html', index), /unknown or non-static/);
+  }
+  for (const expression of ['text("core", "title")', 'format_ref(&reference)', 'pack_count(count)', 'pack_coverage(count, total)']) {
+    assert.throws(() => validateMessageReferences(`{{ rbit_ui::i18n::${expression} | safe }}`, 'feature.html', index), /must be HTML escaped/);
+  }
+});

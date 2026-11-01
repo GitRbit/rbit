@@ -10,6 +10,15 @@ logs, archive downloads, runner protocol and REST endpoints retain their typed
 host transport adapters. There is no dynamic installation
 of executable plugin code.
 
+Shared native presentation helpers live in `rbit-ui`, independent of Web, Services,
+HTTP and optional implementations. Its `template::Localized<T>` constructor pairs a
+compiled Askama model with `context.locale.clone()` for rendering outside the original
+HTTP task. This uses the same locale context as existing `crate::i18n` template calls;
+it forwards the host's writer and runtime values directly, including writer errors.
+It changes neither the template's escaping mode nor the host output budget. Shared
+URL construction, listing and code-row helpers are available to feature crates without
+importing `rbit-web`. Full shell templates and host page construction remain in Web.
+
 ## Route ownership
 
 Global pages use `/-/plugins/{plugin}/{path}`; repository pages use

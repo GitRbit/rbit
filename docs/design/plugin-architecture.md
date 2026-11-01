@@ -18,6 +18,11 @@ picker/preferences and separately scoped installed administrator pack repair. It
 Web factories are bound explicitly before HTTP startup, without a Services-to-Web
 dependency.
 See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
+Shared presentation extraction has started in `rbit-ui`: passive view models, URL and
+row-layout helpers, request-local messages and the captured-locale compiled-template
+wrapper no longer import Web. Native Actions uses that shared wrapper. Full shell
+templates and host-built page/repository chrome remain in Web; separating those data
+contracts is the next prerequisite for an independent `rbit-actions-web` crate.
 Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.

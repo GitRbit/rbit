@@ -107,6 +107,16 @@ timers, observers and pending work on navigation or observed provider changes. S
 
 ## Contracts and dependency boundaries
 
+`rbit-ui` owns passive presentation primitives and the single task-local locale context
+used by host and feature templates. Its `template::Localized<T>` wraps compiled Askama
+models in an explicitly captured immutable locale, including independently owned mutation
+work; it forwards directly to the host's bounded writer. Web compatibility exports keep
+existing template calls on the same context. URL escaping/redirect validation, listing
+controls, avatars/form errors and code-row layout are reusable without importing Web,
+Services, a database or a translation engine. The all-feature/all-target normal dependency graph
+is checked in CI. Page construction, assets, full chrome, authorization and security
+middleware stay host-owned; this is the foundation for further Web extraction.
+
 `rbit-plugin-api` validates bounded dotted identifiers, manifests, requested capabilities
 and service version requirements. A capability request is metadata, not authority.
 `rbit-plugin-runtime` resolves required providers, rejects cycles and ambiguous versions,
@@ -149,6 +159,8 @@ cargo test --locked -p rbit-services --no-default-features --test integration ac
 cargo check --locked -p rbit-server --no-default-features
 cargo clippy --locked -p rbit-server -p rbit-services -p rbit-web --no-default-features --all-targets -- -D warnings
 node scripts/check-core-dependencies.mjs
+node scripts/check-ui-dependencies.mjs
+cargo test --locked -p rbit-ui
 ```
 
 The broader workspace suite preserves workflow and runner behavior. Lifecycle tests exercise

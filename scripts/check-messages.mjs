@@ -21,7 +21,11 @@ function* files(path) {
   }
 }
 let references = 0;
-for (const path of [...files(join(root, 'crates/rbit-web/src')), ...files(join(root, 'crates/rbit-web/templates'))]) {
+for (const path of [
+  ...files(join(root, 'crates/rbit-ui/src')),
+  ...files(join(root, 'crates/rbit-web/src')),
+  ...files(join(root, 'crates/rbit-web/templates')),
+]) {
   const source = readFileSync(path, 'utf8');
   references += validateMessageReferences(source, relative(root, path), index);
 }

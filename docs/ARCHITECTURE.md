@@ -52,6 +52,7 @@ rbit/
     ├── rbit-runner/         # The `rbit-runner` binary (not a default member): runs Actions jobs
     ├── rbit-actions-core/   # Host-independent Actions configuration and workflow permission policy
     ├── rbit-messages/       # Shared message schema and built-in English fallback
+    ├── rbit-ui/             # Passive presentation, shared locale scope and compiled-template support
     ├── rbit-i18n/           # Optional bounded Fluent catalogs and data-only language packs
     ├── rbit-plugin-api/     # Validated manifests, service declarations and lifecycle contracts
     ├── rbit-plugin-runtime/ # Embedded plugin controller, dependencies, scoped UI/callback registries
@@ -80,6 +81,15 @@ rbit/
 The composition facade hosts `rbit-plugin-runtime` and the embedded Actions adapter.
 `rbit-actions` depends on shared services, while shared services never import the Actions
 implementation or workflow parser. A server build can exclude that optional branch.
+
+`rbit-web` also depends on `rbit-ui`, a shared presentation foundation that imports
+core domain types, shared messages and compiled Askama support. It owns reusable view
+models, URL construction, listing controls, code-row layout and one locale context.
+It imports no HTTP framework, forge services, storage or optional implementation.
+`scripts/check-ui-dependencies.mjs` enforces that direction against the resolved normal
+dependency graph across all targets with every UI feature enabled. Existing Web module paths reexport the
+shared types; full page chrome, templates, request construction and authorization still
+belong to Web while the Actions Web extraction proceeds.
 
 `rbit-workflow` is pure (no I/O, no async, no other rbit crate) and shared by the server and
 `rbit-runner`, which depends on no server crate: the two agree on workflows, expressions and
