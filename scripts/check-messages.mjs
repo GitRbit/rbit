@@ -23,6 +23,8 @@ function* files(path) {
 let references = 0;
 for (const path of [
   ...files(join(root, 'crates/rbit-ui/src')),
+  ...files(join(root, 'crates/rbit-i18n-web/src')),
+  ...files(join(root, 'crates/rbit-i18n-web/templates')),
   ...files(join(root, 'crates/rbit-web/src')),
   ...files(join(root, 'crates/rbit-web/templates')),
 ]) {

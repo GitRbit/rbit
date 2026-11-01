@@ -18,6 +18,8 @@
 
 @source "../templates";
 @source "../src";
+@source "../../rbit-i18n-web/templates";
+@source "../../rbit-i18n-web/src";
 
 /* Interface direction follows the locale; machine text keeps its original order. */
 [dir="rtl"] :is(pre, code, .font-mono) { direction: ltr; unicode-bidi: isolate; }

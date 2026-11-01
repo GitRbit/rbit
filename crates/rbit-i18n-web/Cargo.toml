@@ -1,0 +1,20 @@
+[package]
+name = "rbit-i18n-web"
+description = "Compiled language preference and language-pack administration fragments behind narrow host ports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+askama.workspace = true
+rbit-messages.workspace = true
+rbit-plugin-web.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+rbit-plugin-api.workspace = true
+rbit-plugin-runtime.workspace = true
+
+[lints]
+workspace = true

@@ -3,9 +3,7 @@
 use crate::AppState;
 
 #[cfg(feature = "i18n")]
-mod language;
-#[cfg(feature = "i18n")]
-mod management;
+mod host;
 
 /// Bind native route blueprints before serving. Clones of this host share one
 /// initialization; a different host cannot replace an existing host's callbacks.
@@ -14,7 +12,7 @@ pub async fn prepare_plugin_routes(state: &AppState) -> Result<(), rbit_services
         .plugin_routes_ready
         .get_or_try_init(|| async {
             #[cfg(feature = "i18n")]
-            let (active, management) = (language::bundle(state.downgrade())?, management::bundle(state.downgrade())?);
+            let (active, management) = host::routes(state.downgrade())?;
             #[cfg(not(feature = "i18n"))]
             let (active, management) = (rbit_services::I18nRouteBundle::default(), rbit_services::I18nRouteBundle::default());
             state.services.bind_i18n_routes(active, management).await?;
@@ -39,26 +37,6 @@ async fn actor(state: &AppState, id: i64) -> Result<rbit_core::User, rbit_servic
         .await
         .map_err(|_| rbit_services::plugin_pages::MutationError::Unavailable)?
         .ok_or(rbit_services::plugin_pages::MutationError::Forbidden)
-}
-
-#[cfg(feature = "i18n")]
-fn title(messages: &rbit_messages::LocaleSnapshot, key: &str) -> String {
-    let text = messages.text("core", key);
-    let mut title = String::new();
-    for character in text.chars() {
-        let character = if character.is_control() { ' ' } else { character };
-        if title.len() + character.len_utf8() > 160 {
-            break;
-        }
-        title.push(character);
-    }
-    let title = title.trim();
-    if title.is_empty() { "Languages".to_owned() } else { title.to_owned() }
-}
-
-#[cfg(feature = "i18n")]
-fn declaration(error: impl std::fmt::Display) -> rbit_services::ServiceError {
-    rbit_services::ServiceError::Invalid(format!("invalid built-in language route: {error}"))
 }
 
 #[cfg(test)]

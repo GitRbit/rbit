@@ -1,16 +1,12 @@
+use crate::{InstallError, LanguageHost, LanguageRequest, PackSummary, Routes};
 use askama::Template;
 use rbit_messages::{Argument, LocaleSnapshot, MessageRef, Value};
-use rbit_services::{
-    I18nRouteBundle, LanguagePackInfo, ServiceError,
-    plugin_pages::{
-        CompiledPage, FormAction, FormField, FormFieldKind, FormReference, FormSchema, MutationAudience, MutationDescriptor, MutationError,
-        MutationOutcome, PageAudience, PageDescriptor, PageError, PageScope, PluginRedirect, compiled_form_page, compiled_mutation,
-        compiled_upload,
-    },
+use rbit_plugin_web::{
+    CompiledPage, FormAction, FormField, FormFieldKind, FormReference, FormSchema, MutationAudience, MutationDescriptor, MutationError,
+    MutationOutcome, PageAudience, PageDescriptor, PageError, PageScope, PluginRedirect, compiled_form_page, compiled_mutation,
+    compiled_upload,
 };
 use std::time::Duration;
-
-use crate::state::WeakAppState;
 
 #[derive(Debug)]
 struct Pack {
@@ -30,9 +26,9 @@ struct PackPage {
     error: Option<String>,
 }
 impl PackPage {
-    fn new(
+    fn new<Packs: ExactSizeIterator<Item = PackSummary>>(
         messages: LocaleSnapshot,
-        packs: Vec<LanguagePackInfo>,
+        packs: Packs,
         install: Option<FormAction>,
         remove: Option<FormAction>,
         error: Option<String>,
@@ -43,7 +39,6 @@ impl PackPage {
             args: &[Argument { name: "count", value: number(packs.len()) }],
         });
         let packs = packs
-            .into_iter()
             .map(|pack| Pack {
                 coverage: messages.format(&MessageRef {
                     namespace: "core",
@@ -65,20 +60,19 @@ fn number(value: usize) -> Value<'static> {
     Value::Number(f64::from(u32::try_from(value).unwrap_or(u32::MAX)))
 }
 
-pub(super) fn bundle(weak: WeakAppState) -> Result<I18nRouteBundle, ServiceError> {
+pub(super) fn bundle<H: LanguageHost>(host: H) -> Result<Routes, String> {
     let descriptor = PageDescriptor::new("packs", PageScope::Global, "packs", PageAudience::SiteAdmin, Duration::from_secs(1))
         .and_then(|descriptor| {
             descriptor.with_forms(vec![FormReference::new("install", "packs/install")?, FormReference::new("remove", "packs/remove")?])
         })
         .map_err(super::declaration)?;
-    let page_weak = weak.clone();
+    let page_host = host.clone();
     let page = compiled_form_page(descriptor, move |context, actions| {
-        let weak = page_weak.clone();
+        let host = page_host.clone();
         async move {
-            let state = weak.upgrade().ok_or(PageError::Unavailable)?;
+            let state = host.connect()?;
             let id = context.actor.ok_or(PageError::Forbidden)?.account_id;
-            let actor = super::actor(&state, id).await.map_err(|_| PageError::Forbidden)?;
-            let packs = state.services.language_packs(&actor).await.map_err(|_| PageError::Unavailable)?;
+            let packs = state.language_packs(id).await?;
             let title = super::title(&context.locale, "plugin-languages");
             CompiledPage::new(
                 &title,
@@ -86,7 +80,7 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<I18nRouteBundle, ServiceError
             )
         }
     });
-    let install_weak = weak.clone();
+    let install_host = host.clone();
     let install_descriptor = MutationDescriptor::new(
         "install",
         PageScope::Global,
@@ -98,21 +92,20 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<I18nRouteBundle, ServiceError
     .and_then(|descriptor| descriptor.with_upload(2 * 1024 * 1024))
     .map_err(super::declaration)?;
     let install = compiled_upload(install_descriptor, move |context, upload| {
-        let weak = install_weak.clone();
+        let host = install_host.clone();
         async move {
-            let state = weak.upgrade().ok_or(MutationError::Unavailable)?;
-            let actor = super::actor(&state, context.actor.account_id).await?;
-            match state.services.install_language_pack(&actor, upload.bytes()).await {
-                Ok(_) => Ok(MutationOutcome::Redirect(PluginRedirect::new("packs")?)),
-                Err(ServiceError::Invalid(message)) => {
-                    let packs = state.services.language_packs(&actor).await.map_err(|_| MutationError::Unavailable)?;
+            let state = host.connect().map_err(|_| MutationError::Unavailable)?;
+            let actor = context.actor.account_id;
+            match state.install_language_pack(actor, upload.bytes()).await {
+                Ok(()) => Ok(MutationOutcome::Redirect(PluginRedirect::new("packs")?)),
+                Err(InstallError::Invalid { message, packs }) => {
                     let title = super::title(&context.locale, "plugin-languages");
                     Ok(MutationOutcome::Invalid(CompiledPage::new(
                         &title,
                         PackPage::new(context.locale, packs, Some(context.form), None, Some(message)),
                     )?))
                 }
-                Err(ServiceError::Forbidden) => Err(MutationError::Forbidden),
+                Err(InstallError::Forbidden) => Err(MutationError::Forbidden),
                 Err(_) => Err(MutationError::Unavailable),
             }
         }
@@ -132,16 +125,13 @@ pub(super) fn bundle(weak: WeakAppState) -> Result<I18nRouteBundle, ServiceError
     )
     .map_err(super::declaration)?;
     let remove = compiled_mutation(remove_descriptor, move |context, values| {
-        let weak = weak.clone();
+        let host = host.clone();
         async move {
-            let state = weak.upgrade().ok_or(MutationError::Unavailable)?;
-            let actor = super::actor(&state, context.actor.account_id).await?;
+            let state = host.connect().map_err(|_| MutationError::Unavailable)?;
             let id = values.text("id").ok_or(MutationError::InvalidForm)?;
-            state.services.remove_language_pack(&actor, id).await.map_err(|error| {
-                if matches!(error, ServiceError::Forbidden) { MutationError::Forbidden } else { MutationError::Unavailable }
-            })?;
+            state.remove_language_pack(context.actor.account_id, id).await?;
             Ok(MutationOutcome::<PackPage>::Redirect(PluginRedirect::new("packs")?))
         }
     });
-    Ok(I18nRouteBundle { pages: vec![page], mutations: vec![install, remove] })
+    Ok(Routes { pages: vec![page], mutations: vec![install, remove] })
 }

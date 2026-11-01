@@ -4394,6 +4394,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbit-i18n-web"
+version = "0.1.5"
+dependencies = [
+ "askama",
+ "rbit-messages",
+ "rbit-plugin-api",
+ "rbit-plugin-runtime",
+ "rbit-plugin-web",
+ "tokio",
+]
+
+[[package]]
 name = "rbit-mail"
 version = "0.1.5"
 dependencies = [
@@ -4691,6 +4703,7 @@ dependencies = [
  "rbit-auth",
  "rbit-core",
  "rbit-git",
+ "rbit-i18n-web",
  "rbit-messages",
  "rbit-plugin-api",
  "rbit-plugin-packages",
