@@ -79,8 +79,9 @@ pub struct Database {
     pool: SqlitePool,
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
-    // Enrolled policy writes only; no duplicate-open or physical ownership claim.
-    policy_domain: rbit_authority_fence::Domain,
+    // Enrolled package policy + three account moderation methods only.
+    // No duplicate-open, all-writer or physical ownership claim.
+    authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
     key: SealingKey,
 }
@@ -130,7 +131,7 @@ impl Database {
             .idle_timeout(None)
             .max_lifetime(None)
             .connect_lazy_with(options.create_if_missing(false).synchronous(SqliteSynchronous::Full));
-        let database = Self { pool, package_pool, key, policy_domain: rbit_authority_fence::Domain::new() };
+        let database = Self { pool, package_pool, key, authority_domain: rbit_authority_fence::Domain::new() };
         database.optimize().await?;
         Ok(database)
     }
@@ -192,7 +193,7 @@ impl Database {
     }
 
     pub fn admin(&self) -> admin::AdminStore {
-        admin::AdminStore::new(self.store("admin"))
+        admin::AdminStore::new(self.store("admin"), self.authority_domain.writer())
     }
 
     pub fn instance_settings(&self) -> instance::InstanceSettingsStore {
@@ -259,7 +260,7 @@ impl Database {
 
     /// Passive managed-package policy, on the same lazy FULL writer as installations.
     pub fn plugin_policy(&self) -> plugin_policy::PluginPolicyStore {
-        plugin_policy::PluginPolicyStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_policy"), self.policy_domain.writer())
+        plugin_policy::PluginPolicyStore::new(pool::Pool::new(self.package_pool.clone(), "plugin_policy"), self.authority_domain.writer())
     }
 
     /// Persisted desired state for optional plugins, independent of feature packages.
@@ -378,12 +379,12 @@ impl Database {
         actions_caches::ActionsCacheStore::new(self.pool.clone())
     }
 
-    /// Stops enrolled policy writers synchronously and requests pool closure during graceful shutdown.
+    /// Stops enrolled policy and account moderation writers synchronously and requests pool closure during graceful shutdown.
     /// Awaiting does not certify individual close errors or all SQL worker termination.
     pub fn close(&self) -> impl std::future::Future<Output = ()> + Send + '_ {
         // This executes when close() is CALLED, even if its future is never polled.
-        // It closes enrolled policy writers only, not every authority writer.
-        let shutdown = self.policy_domain.stop_writers();
+        // It stops enrolled policy/account moderation writers, not every authority writer.
+        let shutdown = self.authority_domain.stop_writers();
         async move {
             let _shutdown = shutdown;
             self.package_pool.close().await;

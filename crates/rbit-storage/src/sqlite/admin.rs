@@ -162,14 +162,21 @@ macro_rules! select_user_record {
     };
 }
 
+fn moderation_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "account moderation mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "account moderation writer stopped",
+    })
+}
 #[derive(Debug, Clone)]
 pub struct AdminStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl AdminStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     pub async fn counts(&self) -> Result<InstanceCounts, StorageError> {
@@ -236,19 +243,38 @@ impl AdminStore {
 
     /// Grants administrator rights, or revokes them unless the user is the last active administrator.
     pub async fn set_admin(&self, id: AccountId, is_admin: bool) -> Result<Moderation, StorageError> {
+        let mutation = self.writer.begin().await.map_err(moderation_mutation_error)?;
+        let result = self.set_admin_raw(id, is_admin).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn set_admin_raw(&self, id: AccountId, is_admin: bool) -> Result<Moderation, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = if is_admin {
-            sqlx::query("UPDATE user_logins SET is_admin = 1 WHERE account_id = ?1").bind(id.0).execute(&self.pool).await?
+            sqlx::query("UPDATE user_logins SET is_admin = 1 WHERE account_id = ?1").bind(id.0).execute(&mut *tx).await?
         } else {
             sqlx::query(concat!("UPDATE user_logins SET is_admin = 0 WHERE account_id = ?1 AND ", not_last_admin!()))
                 .bind(id.0)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?
         };
+        tx.commit().await?;
         self.moderation_outcome(id, result.rows_affected()).await
     }
 
     /// Suspends the user (unless they are the last active administrator) or lifts a suspension.
     pub async fn set_suspended(&self, id: AccountId, suspended: bool) -> Result<Moderation, StorageError> {
+        let mutation = self.writer.begin().await.map_err(moderation_mutation_error)?;
+        let result = self.set_suspended_raw(id, suspended).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn set_suspended_raw(&self, id: AccountId, suspended: bool) -> Result<Moderation, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = if suspended {
             sqlx::query(concat!(
                 "UPDATE user_logins SET suspended_at = COALESCE(suspended_at, ?2) WHERE account_id = ?1 AND ",
@@ -256,21 +282,32 @@ impl AdminStore {
             ))
             .bind(id.0)
             .bind(Timestamp::now().seconds())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?
         } else {
-            sqlx::query("UPDATE user_logins SET suspended_at = NULL WHERE account_id = ?1").bind(id.0).execute(&self.pool).await?
+            sqlx::query("UPDATE user_logins SET suspended_at = NULL WHERE account_id = ?1").bind(id.0).execute(&mut *tx).await?
         };
+        tx.commit().await?;
         self.moderation_outcome(id, result.rows_affected()).await
     }
 
     /// Deletes a user account; everything it owns in `SQLite` cascades. Bare repositories on
     /// disk are the caller's responsibility (see [`Self::repositories_owned_by`]).
     pub async fn delete_user(&self, id: AccountId) -> Result<Moderation, StorageError> {
+        let mutation = self.writer.begin().await.map_err(moderation_mutation_error)?;
+        let result = self.delete_user_raw(id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn delete_user_raw(&self, id: AccountId) -> Result<Moderation, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(concat!("DELETE FROM accounts WHERE id = ?1 AND kind = 'user' AND ", not_last_admin!()))
             .bind(id.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         self.moderation_outcome(id, result.rows_affected()).await
     }
 
@@ -391,6 +428,9 @@ impl AdminStore {
         Ok(result.rows_affected() > 0)
     }
 }
+
+#[cfg(test)]
+mod fence_tests;
 
 #[cfg(test)]
 mod tests {

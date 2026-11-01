@@ -62,17 +62,17 @@ async fn database_clones_enroll_in_one_domain_and_canceled_queued_call_never_sta
     let fixture = Fixture::new().await;
     let cloned = fixture.db.clone();
     let store = cloned.plugin_policy();
-    let quiet = fixture.db.policy_domain.drain(deadline()).await.unwrap();
+    let quiet = fixture.db.authority_domain.drain(deadline()).await.unwrap();
     let mut queued = Box::pin(store.prepare(fixture.admin, Timestamp(1)));
     pending(queued.as_mut()).await;
-    assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 0, queued: 1, uncertain: false, writers_stopped: false });
-    assert_eq!(cloned.policy_domain.snapshot(), fixture.db.policy_domain.snapshot());
+    assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 0, queued: 1, uncertain: false, writers_stopped: false });
+    assert_eq!(cloned.authority_domain.snapshot(), fixture.db.authority_domain.snapshot());
     drop(queued);
-    assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: false, writers_stopped: false });
+    assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: false, writers_stopped: false });
     drop(quiet);
     assert_eq!(store.gate(fixture.admin).await.unwrap().state, PolicyGateState::Uninitialized);
     assert_eq!(store.prepare(fixture.admin, Timestamp(2)).await.unwrap().state, PolicyGateState::Open);
-    drop(fixture.db.policy_domain.drain(deadline()).await.unwrap());
+    drop(fixture.db.authority_domain.drain(deadline()).await.unwrap());
     fixture.db.close().await;
 }
 
@@ -81,10 +81,10 @@ async fn rejected_actor_and_later_success_preserve_passive_behavior_but_not_clea
     let fixture = Fixture::new().await;
     let store = fixture.db.plugin_policy();
     assert!(store.prepare(fixture.other, Timestamp(1)).await.is_err());
-    assert!(fixture.db.policy_domain.snapshot().uncertain);
+    assert!(fixture.db.authority_domain.snapshot().uncertain);
     assert_eq!(store.prepare(fixture.admin, Timestamp(2)).await.unwrap().state, PolicyGateState::Open);
-    assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: true, writers_stopped: false });
-    assert!(matches!(fixture.db.policy_domain.drain(deadline()).await, Err(DrainError::Uncertain)));
+    assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: true, writers_stopped: false });
+    assert!(matches!(fixture.db.authority_domain.drain(deadline()).await, Err(DrainError::Uncertain)));
     fixture.db.close().await;
 }
 
@@ -105,11 +105,11 @@ async fn prepare_renew_and_apply_cancellation_under_real_sql_writer_lock_remain_
             _ => Box::pin(async { store.apply_clear(fixture.admin, &id, &clear, Timestamp(1)).await.map(|_| ()) }),
         };
         pending(operation.as_mut()).await;
-        assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 1, queued: 0, uncertain: false, writers_stopped: false });
+        assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 1, queued: 0, uncertain: false, writers_stopped: false });
         drop(operation);
-        assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: true, writers_stopped: false });
+        assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: true, writers_stopped: false });
         sqlx::query("ROLLBACK").execute(&mut connection).await.unwrap();
-        assert!(matches!(fixture.db.policy_domain.drain(deadline()).await, Err(DrainError::Uncertain)));
+        assert!(matches!(fixture.db.authority_domain.drain(deadline()).await, Err(DrainError::Uncertain)));
         // SQLx may still settle canceled driver work; this is exactly why no
         // idle counter/pool close can certify that unknown work as clean.
         fixture.db.close().await;
@@ -134,8 +134,8 @@ async fn obtaining_then_dropping_unpolled_database_close_stops_all_policy_wrappe
     stopped(&store.renew(fixture.admin, &id, &renewal, Timestamp(1)).await);
     stopped(&store.apply_clear(fixture.admin, &id, &clear, Timestamp(1)).await);
     assert_eq!(store.gate(fixture.admin).await.unwrap().state, PolicyGateState::Uninitialized);
-    assert_eq!(fixture.db.policy_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: false, writers_stopped: true });
-    drop(fixture.db.policy_domain.stop_writers().drain(deadline()).await.unwrap());
+    assert_eq!(fixture.db.authority_domain.snapshot(), Snapshot { active: 0, queued: 0, uncertain: false, writers_stopped: true });
+    drop(fixture.db.authority_domain.stop_writers().drain(deadline()).await.unwrap());
     fixture.db.close().await;
 }
 
@@ -147,15 +147,15 @@ async fn terminal_close_waits_for_already_acquired_policy_commit_without_claimin
     sqlx::query("BEGIN IMMEDIATE").execute(&mut connection).await.unwrap();
     let mut operation = Box::pin(store.prepare(fixture.admin, Timestamp(1)));
     pending(operation.as_mut()).await;
-    assert_eq!(fixture.db.policy_domain.snapshot().active, 1);
+    assert_eq!(fixture.db.authority_domain.snapshot().active, 1);
     drop(fixture.db.close());
-    let shutdown = fixture.db.policy_domain.stop_writers();
+    let shutdown = fixture.db.authority_domain.stop_writers();
     let mut drain = Box::pin(shutdown.drain(deadline()));
     pending(drain.as_mut()).await;
     sqlx::query("ROLLBACK").execute(&mut connection).await.unwrap();
     assert_eq!(operation.await.unwrap().state, PolicyGateState::Open);
     drop(drain.await.unwrap());
     stopped(&store.prepare(fixture.admin, Timestamp(2)).await);
-    assert!(!fixture.db.policy_domain.snapshot().uncertain);
+    assert!(!fixture.db.authority_domain.snapshot().uncertain);
     fixture.db.close().await;
 }
