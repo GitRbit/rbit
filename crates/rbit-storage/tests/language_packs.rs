@@ -1,4 +1,4 @@
-//! Installation limits, atomic replacements, account preferences and SQLite persistence.
+//! Installation limits, atomic replacements, account preferences and `SQLite` persistence.
 
 use rbit_core::Timestamp;
 use rbit_storage::{

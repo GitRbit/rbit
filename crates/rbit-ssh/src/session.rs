@@ -490,11 +490,7 @@ async fn run_git(
     let pump = AbortOnDrop(tokio::spawn(async move {
         while let Some(message) = client.wait().await {
             match message {
-                ChannelMsg::Data { data } => {
-                    if feed.write_all(&data).await.is_err() {
-                        break;
-                    }
-                }
+                ChannelMsg::Data { data } if feed.write_all(&data).await.is_err() => break,
                 ChannelMsg::Eof | ChannelMsg::Close => break,
                 _ => {}
             }

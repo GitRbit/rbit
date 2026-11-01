@@ -591,7 +591,7 @@ mod tests {
         tx.commit().unwrap();
         cache.put_language_stats("fresh", &stats()).await.unwrap();
 
-        let report = cache.prune(Some(Duration::from_secs(60)), None).await.unwrap();
+        let report = cache.prune(Some(Duration::from_mins(1)), None).await.unwrap();
         assert_eq!(report, PruneReport { expired: 1, evicted: 0, remaining: 1 });
         assert_eq!(cache.language_stats("legacy").await.unwrap(), None);
         assert!(cache.language_stats("fresh").await.unwrap().is_some());

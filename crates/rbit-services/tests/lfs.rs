@@ -338,7 +338,7 @@ async fn deleting_a_repository_leaves_orphans_that_maintenance_removes() {
     store(&fixture.services, &kept, b"shared").await.unwrap();
 
     fixture.services.repo_settings.delete(&alice, &doomed, "alice/doomed").await.unwrap();
-    assert_eq!(lfs.prune_orphans(Duration::from_secs(3600)).await.unwrap(), 0, "within the grace period");
+    assert_eq!(lfs.prune_orphans(Duration::from_hours(1)).await.unwrap(), 0, "within the grace period");
     assert!(fixture.object_path(&oid_of(b"only in doomed")).is_file());
 
     tokio::time::sleep(Duration::from_millis(1100)).await;

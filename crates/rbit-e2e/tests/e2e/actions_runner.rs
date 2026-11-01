@@ -19,7 +19,7 @@ use rbit_e2e::{Client, Git, PASSWORD, Response, StatusCode, TestServer, attribut
 use serde_json::Value;
 
 /// How long the whole run may take: the runner polls, checks out and runs four short jobs.
-const RUN_DEADLINE: Duration = Duration::from_secs(240);
+const RUN_DEADLINE: Duration = Duration::from_mins(4);
 
 /// The `rbit-runner` built by `cargo test --workspace` (the runner's own
 /// integration test makes cargo build its binary) or `cargo build -p rbit-runner`.

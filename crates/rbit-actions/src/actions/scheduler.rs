@@ -6,14 +6,14 @@
 //!   once (§11.8: labels and scope matched in SQL, oldest claimable job first); on a claim
 //!   it mints the task token and assembles the job specification. Otherwise it waits on a
 //!   `Notify` that every move of the version wakes, until `[actions] long_poll_seconds`
-//!   have passed. An idle runner therefore costs one parked future and no SQLite access.
+//!   have passed. An idle runner therefore costs one parked future and no `SQLite` access.
 //! * One poll per runner: a second one ends the first, which answers empty. At most
 //!   `[actions] max_polls` are held open across the instance; beyond that a poll is
 //!   `unavailable`.
 //! * A poll carries an `Idempotency-Key`. A retried poll — its answer was lost — gets the
 //!   same task with a freshly minted token (only digests are stored, so the old value
 //!   cannot be handed out again). The keys of claims are remembered in memory; a retry
-//!   that crossed a restart is looked up in SQLite, once per runner and process.
+//!   that crossed a restart is looked up in `SQLite`, once per runner and process.
 //! * The specification comes from the job's stored [`JobTemplate`] (JSON), the `github`
 //!   context of `context.rs` (never with the token), the dispatch inputs, the results and
 //!   outputs of the jobs it needs, and — for trusted runs only — the secrets of

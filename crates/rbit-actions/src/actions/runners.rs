@@ -4,7 +4,7 @@
 //!
 //! * [`RunnerCache`] holds every registered runner by the SHA-256 digest of its credential
 //!   (`rbrn_…`, `rbit_auth::RunnerCredential`): authenticating a call is one hash and one
-//!   map lookup, with no SQLite access, which is what lets an idle long poll cost nothing.
+//!   map lookup, with no `SQLite` access, which is what lets an idle long poll cost nothing.
 //!   It is loaded from `actions_runners` on first use and kept current by every change this
 //!   module makes to a runner. When a runner was last seen is kept in memory too and written
 //!   to `last_online` by the sweeper, at most once a minute ([`ActionsService::flush_seen`]).
@@ -93,7 +93,7 @@ pub struct CachedRunner {
     /// The idempotency keys of this runner's recent claims and their tasks, so a retried
     /// poll is recognised without a query (see [`super::scheduler`]).
     recent_keys: Mutex<VecDeque<(String, TaskId)>>,
-    /// Whether this process has looked a key of this runner up in SQLite yet: a retry
+    /// Whether this process has looked a key of this runner up in `SQLite` yet: a retry
     /// across a restart is found there once; claims since are in `recent_keys`.
     pub(super) keys_loaded: AtomicBool,
 }

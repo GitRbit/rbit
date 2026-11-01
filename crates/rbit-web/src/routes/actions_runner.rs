@@ -22,7 +22,7 @@
 //! [`ErrorCode`] (`unauthenticated`, `throttled`, …), both from fixed sets.
 //!
 //! [`RunnerCaller`] authenticates a runner call: `Authorization: Bearer rbrn_…`, checked
-//! against the runner cache only (one digest, one map lookup, no SQLite). Only failed
+//! against the runner cache only (one digest, one map lookup, no `SQLite`). Only failed
 //! authentication spends the client's `RunnerAuth` budget; registrations spend
 //! `RunnerRegister`, and a wrong registration token costs extra.
 //!

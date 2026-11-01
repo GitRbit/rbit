@@ -466,7 +466,7 @@ pub struct Pacing {
 pub const SHUTDOWN_REPORT_DEADLINE: Duration = Duration::from_secs(30);
 
 /// A disconnected runner cannot retain task authority indefinitely after plugin disable.
-pub const TASK_AUTHORITY_TIMEOUT: Duration = Duration::from_secs(120);
+pub const TASK_AUTHORITY_TIMEOUT: Duration = Duration::from_mins(2);
 
 impl Pacing {
     /// The server's heartbeat interval, never longer than the protocol allows.

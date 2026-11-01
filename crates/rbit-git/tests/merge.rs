@@ -61,7 +61,7 @@ impl Fixture {
         commit(&work, "main.txt", b"main\n", "main-1");
         let bare = dir.path().join("base.git");
         git(dir.path(), &["clone", "-q", "--bare", work.to_str().unwrap(), bare.to_str().unwrap()]);
-        let env = MergeEnvironment { git_binary: "git".into(), tmp_dir: dir.path().join("tmp"), timeout: Duration::from_secs(60) };
+        let env = MergeEnvironment { git_binary: "git".into(), tmp_dir: dir.path().join("tmp"), timeout: Duration::from_mins(1) };
         Self { dir, work, bare, env }
     }
 

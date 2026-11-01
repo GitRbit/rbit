@@ -390,7 +390,7 @@ async fn terminal_hook_registry_close_cancels_pending_callback_and_refuses_repub
     let scope = scope();
     let calls = Arc::default();
     let drops = Arc::default();
-    let make = || descriptor("pending", 0, Duration::from_secs(60), &calls, &drops, HookDecision::Continue(Vec::new()));
+    let make = || descriptor("pending", 0, Duration::from_mins(1), &calls, &drops, HookDecision::Continue(Vec::new()));
     let registration = registry.stage("example.close".parse().unwrap(), &scope, scope.generation(), vec![make()]).unwrap();
     registration.publish().unwrap();
     let retained = registry.snapshot();

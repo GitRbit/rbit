@@ -133,7 +133,7 @@ async fn cancellation_and_deadlines_do_not_release_blocking_work_or_duplicate_it
     let request_calls = Arc::clone(&calls);
     let request = tokio::spawn(async move {
         request_service
-            .get_or_compute(request_key, Duration::from_secs(60), move |permit| async move {
+            .get_or_compute(request_key, Duration::from_mins(1), move |permit| async move {
                 tokio::task::spawn_blocking(move || {
                     let _permit = permit;
                     request_calls.fetch_add(1, Ordering::SeqCst);

@@ -61,7 +61,7 @@ impl Fixture {
         git(&work, &["commit", "-q", "-m", "initial"]);
         let bare = dir.path().join("repo.git");
         git(dir.path(), &["clone", "-q", "--bare", work.to_str().unwrap(), bare.to_str().unwrap()]);
-        let env = MergeEnvironment { git_binary: "git".into(), tmp_dir: dir.path().join("tmp"), timeout: Duration::from_secs(60) };
+        let env = MergeEnvironment { git_binary: "git".into(), tmp_dir: dir.path().join("tmp"), timeout: Duration::from_mins(1) };
         Self { dir, bare, env, author: CommitIdentity { name: "Ada Lovelace".into(), email: "ada@example.com".into() } }
     }
 

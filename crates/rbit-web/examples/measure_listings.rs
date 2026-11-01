@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("BENCHMARK_URL={base}");
     println!("HEAD={head}");
     println!("REPORT={}", output.join("candidate-listings.json").display());
-    tokio::time::sleep(Duration::from_secs(120)).await;
+    tokio::time::sleep(Duration::from_mins(2)).await;
     handle.abort();
     Ok(())
 }

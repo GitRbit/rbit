@@ -191,7 +191,7 @@ async fn abandoning_disposal_does_not_reopen_the_generation() {
         })
         .unwrap();
     let disposing_scope = scope.clone();
-    let disposing = tokio::spawn(async move { disposing_scope.dispose(Duration::from_secs(60)).await });
+    let disposing = tokio::spawn(async move { disposing_scope.dispose(Duration::from_mins(1)).await });
     cancellation_seen.await.unwrap();
     disposing.abort();
     assert!(disposing.await.unwrap_err().is_cancelled());

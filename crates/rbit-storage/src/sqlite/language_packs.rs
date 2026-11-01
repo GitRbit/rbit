@@ -10,7 +10,7 @@ pub const MAX_LANGUAGE_PACK_BYTES: usize = 2 * 1024 * 1024;
 /// Maximum installed language packs, including packs whose provider is disabled.
 pub const MAX_LANGUAGE_PACKS: usize = 64;
 
-/// An installed archive and its validated metadata, included in SQLite backups.
+/// An installed archive and its validated metadata, included in `SQLite` backups.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguagePack {
     pub id: String,
@@ -139,7 +139,7 @@ impl LanguagePackStore {
     }
 
     /// Writes a complete archive atomically; `false` means the installation cap was hit.
-    /// Updating an existing ID remains permitted at capacity. SQLite also enforces the
+    /// Updating an existing ID remains permitted at capacity. `SQLite` also enforces the
     /// cap and byte limit against writers that bypass this trusted store API.
     pub async fn put(&self, pack: &NewLanguagePack<'_>) -> Result<bool, StorageError> {
         let mut transaction = self.pool.begin_immediate().await?;

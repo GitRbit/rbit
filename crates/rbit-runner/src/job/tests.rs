@@ -67,7 +67,7 @@ async fn execute_with(
     }
     during(Arc::clone(&reporter));
     let executor = JobExecutor::new(Arc::new(loaded));
-    let result = tokio::time::timeout(Duration::from_secs(60), executor.execute(spec, Arc::clone(&reporter))).await.unwrap();
+    let result = tokio::time::timeout(Duration::from_mins(1), executor.execute(spec, Arc::clone(&reporter))).await.unwrap();
     (result, reporter, work)
 }
 
@@ -427,15 +427,13 @@ async fn steps_after_a_cancellation_share_a_budget() {
     let spec = host_job(vec![step("echo")]);
     let reporter = Arc::new(Reporter::new(spec.task_id, &work.path().join("task"), 1).unwrap());
     let mut job = Job::prepare(&loaded(work.path()), spec, reporter).unwrap();
-    let signal = job.stop_signal(Some(Duration::from_secs(3600)));
-    assert!(
-        signal.interrupt.is_some() && signal.deadline.is_some_and(|(_, why)| why == StopReason::StepTimeout(Duration::from_secs(3600)))
-    );
+    let signal = job.stop_signal(Some(Duration::from_hours(1)));
+    assert!(signal.interrupt.is_some() && signal.deadline.is_some_and(|(_, why)| why == StopReason::StepTimeout(Duration::from_hours(1))));
 
     job.interrupted_at = Some(Instant::now().checked_sub(CANCEL_BUDGET.checked_sub(Duration::from_secs(1)).unwrap()).unwrap());
     let short = job.stop_signal(Some(Duration::from_millis(1)));
     assert_eq!(short.deadline.map(|(_, why)| why), Some(StopReason::StepTimeout(Duration::from_millis(1))));
-    let signal = job.stop_signal(Some(Duration::from_secs(3600)));
+    let signal = job.stop_signal(Some(Duration::from_hours(1)));
     assert!(signal.interrupt.is_none(), "a cancellation does not stop the steps it allows");
     assert_eq!(signal.deadline.map(|(_, why)| why), Some(StopReason::Budget));
     tokio::time::timeout(Duration::from_secs(5), signal.wait()).await.unwrap();

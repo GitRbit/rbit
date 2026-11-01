@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(first.totals.responses, [0, 1, 0, 0, 1]);
         assert_eq!(first.totals.duration_us, 40_000);
         assert_eq!(first.totals.git, [1, 1]);
-        assert_eq!(first.seconds, 5.0);
+        assert_eq!(first.seconds.to_bits(), 5.0_f64.to_bits());
         for i in 2..=65 {
             monitor.sample(monitor.started + Duration::from_secs(i * 5), i * 5);
         }

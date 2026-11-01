@@ -56,7 +56,7 @@ fn status(state: ServiceState, wait: Duration, failed: bool) -> ServiceStatus {
 fn service_main(_arguments: Vec<OsString>) {
     let Some((config, name)) = SERVICE.get().cloned() else { return };
     let grace = crate::config::load(&config)
-        .map_or(Duration::from_secs(600), |loaded| Duration::from_secs(loaded.config.shutdown_grace_seconds + 60));
+        .map_or(Duration::from_mins(10), |loaded| Duration::from_secs(loaded.config.shutdown_grace_seconds + 60));
     let handler = move |control| match control {
         ServiceControl::Stop | ServiceControl::Preshutdown | ServiceControl::Shutdown => {
             tracing::info!("the service manager asks the runner to stop");

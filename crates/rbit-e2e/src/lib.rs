@@ -59,7 +59,7 @@ pub const SETUP_TOKEN: &str = "e2e-setup-token";
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 
 /// The upper bound for a single HTTP request made by a [`Client`].
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const REQUEST_TIMEOUT: Duration = Duration::from_mins(1);
 
 // ------------------------------------------------------------------ server
 

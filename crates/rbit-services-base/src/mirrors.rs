@@ -61,7 +61,7 @@ const BATCH: u32 = 16;
 /// How long [`MirrorService::shutdown`] waits for running fetches.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Bound for asking the upstream for its default branch.
-const HEAD_TIMEOUT: Duration = Duration::from_secs(60);
+const HEAD_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Raw "mirror a repository" input.
 #[derive(Debug, Clone, Default)]

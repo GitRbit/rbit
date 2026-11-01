@@ -372,7 +372,7 @@ async fn a_container_runner_runs_a_pushed_workflow() {
     let cancelled_jobs = json(&api, &server.url(&format!("/api/v1/repos/alice/probe/actions/runs/{}/jobs", slow[1]["id"]))).await;
     let cancelled_log = alice.get(&raw(&slow[1], &cancelled_jobs["jobs"][0])).await.body;
     assert!(cancelled_log.contains("rbit-e2e-sleeping"), "the cancelled job's log kept its output: {cancelled_log}");
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + Duration::from_mins(1);
     loop {
         let left = containers_running("sleep 601");
         if left.is_empty() {

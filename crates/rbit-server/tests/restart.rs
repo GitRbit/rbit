@@ -83,7 +83,7 @@ metrics = {metrics}
 }
 
 async fn wait_for_ssh(address: SocketAddr) {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + Duration::from_mins(1);
     loop {
         if tokio::net::TcpStream::connect(address).await.is_ok() {
             return;

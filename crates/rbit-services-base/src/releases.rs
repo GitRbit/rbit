@@ -928,7 +928,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.part"), "x").unwrap();
         std::fs::write(dir.path().join("keep.txt"), "x").unwrap();
-        assert_eq!(sweep_stale_uploads(dir.path(), Duration::from_secs(3600)).await, 0, "fresh uploads stay");
+        assert_eq!(sweep_stale_uploads(dir.path(), Duration::from_hours(1)).await, 0, "fresh uploads stay");
         assert_eq!(sweep_stale_uploads(dir.path(), Duration::ZERO).await, 1);
         assert!(dir.path().join("keep.txt").exists());
         assert_eq!(sweep_stale_uploads(&dir.path().join("missing"), Duration::ZERO).await, 0);

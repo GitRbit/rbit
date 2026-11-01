@@ -25,7 +25,7 @@ use super::PullService;
 use crate::{DomainEvent, RepoContext, ServiceError};
 
 /// How often the mergeability worker looks for `unknown` rows without being woken.
-pub const MERGEABILITY_TICK: Duration = Duration::from_secs(60);
+pub const MERGEABILITY_TICK: Duration = Duration::from_mins(1);
 /// Pull requests the worker picks up per pass.
 const BATCH: u32 = 16;
 /// How long [`PullService::shutdown`] waits for background work.

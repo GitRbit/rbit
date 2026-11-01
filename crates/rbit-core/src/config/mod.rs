@@ -274,7 +274,7 @@ mod tests {
     fn repository_limits_have_floors() {
         let defaults = RepositoryConfig::default();
         assert_eq!(defaults.max_push_bytes(), Some(2 * 1024 * 1024 * 1024));
-        assert_eq!(defaults.git_idle_timeout(), Duration::from_secs(300));
+        assert_eq!(defaults.git_idle_timeout(), Duration::from_mins(5));
         let zeroed = RepositoryConfig {
             max_git_processes: 0,
             max_git_requests_per_ip: 0,

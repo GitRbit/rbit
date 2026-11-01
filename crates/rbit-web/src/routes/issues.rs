@@ -310,7 +310,7 @@ async fn show(
 
 /// Marks `user`'s notification about the thread they are viewing read, and refreshes the
 /// header's unread dot. Only a thread with an unread notification (`thread_unread`, read
-/// with the sidebar's subscription) is written to, since the write takes SQLite's write
+/// with the sidebar's subscription) is written to, since the write takes `SQLite`'s write
 /// lock even when it changes no row, and the dot is read again only when the write
 /// changed one.
 pub(super) async fn mark_viewed(state: &AppState, page: &mut Page, user: &User, issue: IssueId, thread_unread: bool) {

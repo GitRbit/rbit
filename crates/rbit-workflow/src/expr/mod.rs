@@ -900,8 +900,8 @@ mod tests {
         assert_eq!(to_text(&number_value(2.0)), "2");
         assert_eq!(to_text(&number_value(-0.0)), "-0");
         assert_eq!(number_value(1e300), json!(1e300));
-        for (text, number) in [("", 0.0), (" 12 ", 12.0), ("-1.5e1", -15.0), ("+3", 3.0), ("0x1f", 31.0), ("-0x1", -1.0)] {
-            assert_eq!(to_number(&json!(text)), number, "{text}");
+        for (text, number) in [("", 0.0_f64), (" 12 ", 12.0), ("-1.5e1", -15.0), ("+3", 3.0), ("0x1f", 31.0), ("-0x1", -1.0)] {
+            assert_eq!(to_number(&json!(text)).to_bits(), number.to_bits(), "{text}");
         }
         for text in ["abc", "inf", "NaN", "1x", "0x", "--1"] {
             assert!(to_number(&json!(text)).is_nan(), "{text}");

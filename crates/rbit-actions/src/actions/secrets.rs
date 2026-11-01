@@ -1,4 +1,4 @@
-//! Secrets and variables: the key file (`<data_dir>/actions/secrets.key`, never in SQLite),
+//! Secrets and variables: the key file (`<data_dir>/actions/secrets.key`, never in `SQLite`),
 //! sealing and opening with AES-256-GCM bound to the secret's scope and id, owner and
 //! repository CRUD, and what a task receives (§6.3 and §11.10 of `docs/design/actions.md`).
 //!

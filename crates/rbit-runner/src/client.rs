@@ -38,7 +38,7 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Artifact uploads and downloads (the server allows them an hour).
 const ARTIFACT_TIMEOUT: Duration = Duration::from_hours(1);
 /// The longest `Retry-After` honoured; a larger one is clamped.
-const MAX_RETRY_AFTER: Duration = Duration::from_secs(600);
+const MAX_RETRY_AFTER: Duration = Duration::from_mins(10);
 /// The largest error body read.
 const MAX_ERROR_BODY: usize = 64 * 1024;
 /// The largest successful answer read: a job specification may carry up to 1024 secrets
@@ -151,7 +151,7 @@ pub struct Backoff {
 
 impl Backoff {
     /// The reconnect backoff of §12.5.4: 1 s to 60 s.
-    pub const RECONNECT: Self = Self::new(Duration::from_secs(1), Duration::from_secs(60));
+    pub const RECONNECT: Self = Self::new(Duration::from_secs(1), Duration::from_mins(1));
 
     pub const fn new(first: Duration, max: Duration) -> Self {
         Self { first, max, ceiling: first }

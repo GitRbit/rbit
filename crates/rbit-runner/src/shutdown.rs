@@ -186,7 +186,7 @@ mod tests {
     async fn a_stop_file_is_a_request() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(crate::service::stop_file(dir.path()), "stop").unwrap();
-        let shutdown = Shutdown::listen(Duration::from_secs(600), dir.path(), false);
+        let shutdown = Shutdown::listen(Duration::from_mins(10), dir.path(), false);
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(!shutdown.stop_polling.is_cancelled(), "a request left from before the start is dropped");
         crate::service::request_stop(dir.path(), true).unwrap();
@@ -198,7 +198,7 @@ mod tests {
     async fn a_second_signal_cancels_at_once() {
         let shutdown = Shutdown::default();
         let started = tokio::time::Instant::now();
-        shutdown.drive(async {}, Duration::from_secs(600), async {}).await;
+        shutdown.drive(async {}, Duration::from_mins(10), async {}).await;
         assert!(shutdown.stop_polling.is_cancelled() && shutdown.cancel_tasks.is_cancelled());
         assert!(started.elapsed() < Duration::from_secs(5));
     }

@@ -102,7 +102,7 @@ struct Inner {
     scope: PluginScope,
     started: AtomicBool,
     /// The scheduler's version: moves whenever a job becomes waiting or a runner's labels
-    /// change, so a poll that already looked at this version waits without SQLite.
+    /// change, so a poll that already looked at this version waits without `SQLite`.
     tasks_version: AtomicI64,
     /// Workflow evaluations at once (`[actions] evaluation_concurrency`).
     evaluations: Arc<Semaphore>,

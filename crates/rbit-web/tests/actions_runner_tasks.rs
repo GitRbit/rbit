@@ -1,6 +1,6 @@
 //! The runner protocol's task calls over HTTP (`docs/design/actions.md` §12.6): the long
 //! poll — claims, empty answers, wake-ups, one poll per runner, the instance's cap,
-//! idempotent retries, and that an idle poll touches no SQLite — what a claimed job's
+//! idempotent retries, and that an idle poll touches no `SQLite` — what a claimed job's
 //! specification holds, task state calls — steps, outputs, results, cancellation and
 //! ephemeral runners — and log appends by line offset with the reads pages use. Jobs are
 //! seeded through the store with job template payloads.

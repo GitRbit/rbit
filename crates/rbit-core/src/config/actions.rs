@@ -11,7 +11,7 @@ pub use rbit_actions_core::{ActionsConfig, EVALUATION_CONCURRENCY};
 use super::StorageConfig;
 
 impl StorageConfig {
-    /// Actions state outside SQLite: logs, artifacts, caches and the default secrets key.
+    /// Actions state outside `SQLite`: logs, artifacts, caches and the default secrets key.
     /// Created only when Actions is enabled; backup policy is defined by the host.
     pub fn actions_dir(&self) -> PathBuf {
         self.data_dir.join("actions")

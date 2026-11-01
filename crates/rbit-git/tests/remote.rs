@@ -14,7 +14,7 @@ use rbit_git::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-const TIMEOUT: Duration = Duration::from_secs(60);
+const TIMEOUT: Duration = Duration::from_mins(1);
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")

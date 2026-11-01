@@ -94,7 +94,7 @@ impl Api {
         let http = reqwest::Client::builder()
             .user_agent(concat!("rbit-cli/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(300))
+            .timeout(Duration::from_mins(5))
             .build()
             .context("cannot set up HTTPS")?;
         Ok(Self { http, base: base.trim_end_matches('/').to_owned(), token })

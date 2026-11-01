@@ -169,7 +169,7 @@ async fn last_commits_follow_merged_side_branches() {
 #[tokio::test]
 async fn last_commits_respect_the_commit_bound() {
     let (_dir, reader) = fixture();
-    let limits = LastCommitLimits { max_commits: 1, deadline: Duration::from_secs(60) };
+    let limits = LastCommitLimits { max_commits: 1, deadline: Duration::from_mins(1) };
     let result = reader.last_commits("main".into(), String::new(), names(&["notes.txt", "README.md"]), limits).await.unwrap();
 
     assert!(!result.timed_out);

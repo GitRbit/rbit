@@ -364,7 +364,7 @@ pub fn rate_limit_wait(status: StatusCode, headers: &HeaderMap, now: Timestamp) 
         return Some(Duration::from_secs(u64::try_from(reset - now.seconds()).unwrap_or(0) + 1));
     }
     // A secondary limit without a hint: GitHub asks for at least a minute.
-    (status == StatusCode::TOO_MANY_REQUESTS).then_some(Duration::from_secs(60))
+    (status == StatusCode::TOO_MANY_REQUESTS).then_some(Duration::from_mins(1))
 }
 
 /// After a successful response that used up the budget: how long until it resets.
@@ -509,7 +509,7 @@ mod tests {
         let used_up = headers(&[("x-ratelimit-remaining", "0"), ("x-ratelimit-reset", "1030")]);
         assert_eq!(rate_limit_wait(StatusCode::FORBIDDEN, &used_up, now), Some(Duration::from_secs(31)));
         assert_eq!(rate_limit_wait(StatusCode::TOO_MANY_REQUESTS, &headers(&[("retry-after", "7")]), now), Some(Duration::from_secs(7)));
-        assert_eq!(rate_limit_wait(StatusCode::TOO_MANY_REQUESTS, &HeaderMap::new(), now), Some(Duration::from_secs(60)));
+        assert_eq!(rate_limit_wait(StatusCode::TOO_MANY_REQUESTS, &HeaderMap::new(), now), Some(Duration::from_mins(1)));
         assert_eq!(rate_limit_wait(StatusCode::FORBIDDEN, &HeaderMap::new(), now), None, "a plain 403 is a permission problem");
         assert_eq!(rate_limit_wait(StatusCode::OK, &used_up, now), None);
         assert_eq!(exhausted_until_reset(&used_up, now), Some(Duration::from_secs(31)));

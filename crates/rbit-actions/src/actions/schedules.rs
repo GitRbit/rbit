@@ -36,7 +36,7 @@ use super::{
 use crate::ServiceError;
 
 /// How often the ticker looks for due entries.
-pub const TICK: Duration = Duration::from_secs(60);
+pub const TICK: Duration = Duration::from_mins(1);
 /// Consecutive workflow errors that pause an entry.
 pub const PAUSE_AFTER_FAILURES: i64 = 3;
 /// Entries started by one tick at most; the rest are due on the next.

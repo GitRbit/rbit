@@ -61,7 +61,7 @@ mod tests {
     fn defaults_and_lifetime() {
         let config = LfsConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.token_lifetime(), Duration::from_secs(3600));
+        assert_eq!(config.token_lifetime(), Duration::from_hours(1));
         assert_eq!(LfsConfig { token_lifetime_seconds: 0, ..config }.token_lifetime(), Duration::from_secs(1));
         let storage = StorageConfig { data_dir: PathBuf::from("data"), secret_key_file: None };
         assert_eq!(storage.lfs_dir(), PathBuf::from("data").join("lfs"));

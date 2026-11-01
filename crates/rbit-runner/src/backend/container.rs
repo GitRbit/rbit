@@ -66,7 +66,7 @@ pub const MOUNT_ROOT: &str = "/__w";
 /// The `PATH` assumed when the image's own cannot be read.
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 /// How long a short CLI command (a probe, `rm`) may take.
-const SHORT: Duration = Duration::from_secs(120);
+const SHORT: Duration = Duration::from_mins(2);
 /// How long services may take to become healthy.
 const HEALTH_TIMEOUT: Duration = Duration::from_mins(10);
 /// The `busybox` image, multi-platform, for [`reclaim_run`] (`[container] helper_image`).
