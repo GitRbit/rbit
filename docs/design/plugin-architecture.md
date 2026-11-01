@@ -10,8 +10,10 @@ lifecycle; [UI extensions](../plugin-ui.md) records the supported slots and boun
 [Scoped extension and middleware design](plugin-extensions.md) covers typed request hooks.
 [Native plugin pages](../plugin-routes.md) documents the namespaced compiled Askama GET
 registry and host-enforced permission profiles; [native plugin forms](../plugin-mutations.md)
-adds session-bound proofs, typed POST input and tracked commit lifetime. Legacy Actions
-routes remain in the host. Languages now uses the native registry for its active
+adds session-bound proofs, typed POST input and tracked commit lifetime. Actions browser pages and forms now use the native registry, with generation-owned
+cleanup, bounded query/form projection and full compiled Askama documents; see
+[Actions native routes](../actions-plugin-routes.md). Specialized streaming, badge,
+REST and runner transports retain their host adapters. Languages uses the native registry for its active
 picker/preferences and separately scoped installed administrator pack repair. Its
 Web factories are bound explicitly before HTTP startup, without a Services-to-Web
 dependency.

@@ -10,7 +10,9 @@ documents rendering and host security profiles; [native plugin forms](../plugin-
 covers session-bound proofs, bounded schemas and owned commit lifetime, plus
 explicit administrator uploads and a sealed guest locale-preference capability.
 Languages exercises these APIs with separate active-provider and installed-admin
-route scopes; see [Languages](../i18n.md).
+route scopes; see [Languages](../i18n.md). Actions also uses the native registries
+for browser pages and mutations; [Actions native routes](../actions-plugin-routes.md)
+records query/form profiles, authorization and specialized transport boundaries.
 
 ## Ownership and publication
 

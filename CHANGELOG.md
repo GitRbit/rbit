@@ -17,6 +17,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Actions browser pages and forms now use generation-owned native plugin routes and
+  compiled Askama documents. Host-issued proofs protect every mutation, including
+  bounded dispatch inputs, organization configuration and one-time runner token replies.
+  Disable withdraws pages/forms and re-enable invalidates old proofs. Legacy GETs redirect;
+  obsolete browser POST handlers are removed. Job previews are bounded while raw logs stay
+  complete. See [Actions native routes](docs/actions-plugin-routes.md).
+
 - Languages now uses scoped native Askama pages and forms for its picker and pack
   management. Guest choices use host-bound proofs and a typed locale-cookie effect;
   administrator uploads have a 2 MiB bound and four-operation limit. Separate installed

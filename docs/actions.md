@@ -9,6 +9,10 @@ guide covers turning Actions on, registering a runner, the workflow syntax rbit 
 how it differs from GitHub. Operators should also read
 [Runners in deployment.md](deployment.md#actions-and-runners).
 
+Browser pages and forms now use [scoped native plugin routes](actions-plugin-routes.md).
+Legacy page GET bookmarks redirect while Actions is active; old browser POST handlers
+are removed. REST, runner, badge and download transport paths are unchanged.
+
 ## Turning it on
 
 1. An administrator opens **Admin → Plugins** and enables **Actions**, without restarting

@@ -52,6 +52,7 @@ jobs:
       - run: cargo test --locked --package rbit-services --no-default-features --test integration i18n_unavailable
       - run: cargo test --locked --package rbit-services --no-default-features --lib mutation_commit_survives_waiter_abort
       - run: cargo test --locked --package rbit-services --no-default-features --lib i18n_route_tests
+      - run: cargo test --locked --package rbit-services --no-default-features --lib actions_route_tests
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_ui_registration
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_route_registration
       - run: cargo test --locked --package rbit-web --no-default-features --test integration runtime_form_mutations
@@ -86,10 +87,15 @@ jobs:
       - run: cargo clippy --locked -p rbit-server -p rbit-services -p rbit-web --no-default-features --features ${{ matrix.plugin }} --all-targets -- -D warnings
       - run: cargo test --locked -p rbit-services --no-default-features --features ${{ matrix.plugin }} --test integration i18n_
       - run: cargo test --locked -p rbit-services --no-default-features --features ${{ matrix.plugin }} --lib i18n_route_tests
+      - run: cargo test --locked -p rbit-services --no-default-features --features ${{ matrix.plugin }} --lib actions_route_tests
       - if: matrix.plugin == 'i18n'
         run: cargo test --locked -p rbit-web --no-default-features --features i18n --test integration native_i18n_routes
       - if: matrix.plugin == 'i18n'
         run: cargo test --locked -p rbit-web --no-default-features --features i18n --lib native_i18n_routes
+      - if: matrix.plugin == 'actions'
+        run: cargo test --locked -p rbit-web --no-default-features --features actions --test integration native_actions_
+      - if: matrix.plugin == 'actions'
+        run: cargo test --locked -p rbit-web --no-default-features --features actions --lib native_actions_
 
   plugin-core:
     name: Plugin core contracts and lifecycle

@@ -1572,6 +1572,12 @@ lifecycle management and generation-scoped disposal. Actions is an optional crat
 intent. The UI and API documentation follow active publication. Request bodies, response
 streams, Git completion and blocking producers retain leases until cleanup completes.
 Localization and data-only language-pack installation are described in [languages](i18n.md).
+Actions browser pages and mutations now use the same generation-owned native registries:
+compiled full Askama documents, explicit host proofs, bounded query/form projection and
+fresh resource authorization. Legacy browser GETs redirect and old browser POST handlers
+are removed; badges, raw logs, archives, REST and runner transport keep specialized adapters.
+See [Actions native browser routes](actions-plugin-routes.md) for canonical paths, response
+budgets, keyset metadata lists and selected editors.
 [UI extensions](plugin-ui.md) use scope-owned registrations and compiled Askama rendering.
 The shared scoped registry also powers metadata-only request middleware through
 `rbit-plugin-web`; the Axum adapter remains in `rbit-web`. Host authentication, Origin,
