@@ -7,6 +7,8 @@
 pub mod blocks;
 pub mod components;
 pub mod i18n;
+mod icon;
+pub use icon::Icon;
 pub mod pagination;
 pub mod template;
 pub mod text;

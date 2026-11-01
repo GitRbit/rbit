@@ -22,6 +22,8 @@ test("nothing rbit renders or scripts uses hx-on, whose scan the vendored htmx s
   const offenders = [];
   for (const [dir, extensions] of [
     ["crates/rbit-web/templates", [".html"]],
+    ["crates/rbit-ui/templates", [".html"]],
+    ["crates/rbit-ui/src", [".rs"]],
     ["crates/rbit-actions-web/templates", [".html"]],
     ["crates/rbit-actions-web/src", [".rs"]],
     ["crates/rbit-i18n-web/templates", [".html"]],
