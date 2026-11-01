@@ -168,13 +168,18 @@ presentation adjustment. Functional checks used unchanged Rust 1.95. Strict Rust
 1.99 workspace/all-target Clippy passed with warnings denied, as did final
 formatting, whitespace, all five dependency guards, all 225 frontend tests and
 message-reference checks. Core-only and Actions-only exclusion is checked by the
-resolved dependency graphs; new published-head hosted profile checks remain
-required. These results are not a new complete-workspace total.
+resolved dependency graphs. Later presentation head `9b51df3` passed all eleven
+[hosted checks](https://github.com/GitRbit/rbit/actions/runs/41300463802), including
+Linux, native Windows, release, core-only and both optional profiles. These local
+results are not a new complete-workspace total.
 
 Performance baseline A is `d3dc8980dd091c31ceffc61f916ca282b10ab506`; the isolated
 presentation candidate B is `b951eed02f7fb13994d013f71b9ce87206f59f41`. Source and lockfile
-identities are recorded in the local validation evidence. Release executables and
-new paired latency measurements have not been produced for these revisions.
+identities are recorded in the local validation evidence. Independent default-feature
+release exports now pass the committed provenance checks using production Rust 1.95,
+fat LTO, one codegen unit and unchanged asset inputs. Executable SHA-256 values are
+`96d599cdc9908ea5d048dadcfc98d2eaffbf88276d4b6430b6089e0bfc2f44fe` (A) and
+`58ed092c69e4ca984e740108e32c2f5d310d527c241c493b460479f36e857c32` (B).
 Fresh isolated A/B asset builds with the same Tailwind 4.3.3 produced identical
 145,155-byte CSS (SHA-256
 `eb9b42f76df3a8b9336ad313e680232735db901bea8459a5fbda4013c6662b67`);
@@ -182,6 +187,29 @@ the other 540 assets are unchanged and both moved templates are byte-identical.
 The original ignored CSS baseline was stale even against fresh A, so equality
 is against the fresh A/B builds, not that stale artifact. Local evidence is
 `target/i18n-web-extraction/css-parity/report.json`.
+
+The [prospective ten-cell protocol](../scripts/perf/i18n-extraction/README.md)
+and owned executor are committed. Its registered real-host A/B smoke passed: separate
+guest picker and actual password-authenticated administrator inventory contexts both
+rendered Spanish with the three pinned packs, using distinct owned process origins.
+Both processes finalized without forced termination and the common seed stayed
+byte-identical. The smoke result SHA-256 is
+`a7952feec156de55e721b77e08dffa10c06cc4b14dcc2755de869b7be46bfbf8`; its finalized
+executor protocol SHA-256 is
+`c81ffad4778fdb65b090e6f5fa01d01849b1594380ca3df32773d0d91ac937b9`. Local records
+are under `target/i18n-web-extraction/experiment-v1/`; their complete source/binary/
+seed/profile/harness identities and clean exits were rechecked by the committed planner.
+
+The fixture uses the real first-administrator signup, Git upload, pull request and
+administrator pack-install forms. Closed-store integrity/foreign-key checks, exact
+refs and BLOB hashes passed. A single malformed archive upload on a disposable clone
+of each arm returned the expected 422 validation document; after clean shutdown, every
+pack column and archive BLOB remained identical to the original seed. No SQL privilege
+injection, synthetic signed cookie or package execution is involved. Those checks and
+the registered smoke are functional only and record concurrent compilation honestly.
+All required feature-profile artifacts and idle-machine conditions must be established
+before the same-binary pilot, frozen sample-size choice and confirmatory measurements.
+No pilot, warmup or measured latency rounds have been collected at this checkpoint.
 
 No new performance result is established here. The earlier 0075cec-to-3b9 shared-UI
 comparison remains inconclusive at the 2% repository-page bound and does not isolate
