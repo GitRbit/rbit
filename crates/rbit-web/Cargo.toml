@@ -61,6 +61,8 @@ rbit-workflow = { workspace = true, optional = true }
 flate2.workspace = true
 
 [dev-dependencies]
+# Deterministic HTTP waiter-drop regression against a real SQLite writer barrier.
+sqlx.workspace = true
 proptest.workspace = true
 # Actions (F): the query counter shared with rbit-storage's tests.
 tracing-subscriber.workspace = true

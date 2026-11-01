@@ -1,0 +1,695 @@
+{
+  "paths": {
+    "/admin/plugin-policy": {
+      "get": {
+        "operationId": "inspectPackagePolicyGate",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Inspect administrative gate without initialization",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        }
+      }
+    },
+    "/admin/plugin-policy/prepare": {
+      "post": {
+        "operationId": "preparePackagePolicy",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Explicit virgin bootstrap, never reopen or approve",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "Strict complete JSON body <=65536bytes; revisions are canonical strings; full fingerprint/CAS required.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyPrepareRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/plugin-policy/candidates/{plugin_id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "plugin_id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ],
+      "get": {
+        "operationId": "inspectPackagePolicyCandidate",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Inspect selected or cleared metadata",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Response echoes validated top-level plugin_id even when selection/current_review is null.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        }
+      }
+    },
+    "/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "plugin_id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        {
+          "in": "path",
+          "name": "full_version",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        {
+          "in": "path",
+          "name": "digest",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      ],
+      "get": {
+        "operationId": "inspectPackagePolicyProposal",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Inspect exact durable declarations for deliberate review",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        }
+      }
+    },
+    "/admin/plugin-policy-operations/{operation_id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "operation_id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      ],
+      "put": {
+        "operationId": "applyPackagePolicy",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Record explicit review/select/clear without activation",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "description": "Strict complete JSON body <=65536bytes; revisions are canonical strings; full fingerprint/CAS required.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyCommand"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "inspectPackagePolicyOperation",
+        "tags": [
+          "admin package policy"
+        ],
+        "security": [
+          {
+            "token": []
+          }
+        ],
+        "summary": "Read immutable historical receipt, not current approval",
+        "description": "Admin-scoped PAT plus current active administrator checked before body polling and again in the owned mutation transaction. Session/workflow credentials grant no access. All outputs explicitly execution unavailable; no trust inheritance, enabled intent, worker, broker authority or native/Wasm activation. JSON64KiB absolute body10s, whole command25s within normal API timeout. Caller retains operation key before PUT; no automatic retry. Prepare has no receipt and recovers by gate inspection. Responses are compact, excluding canonical requests/file inventories. Receipt summary contains original review intent or selection expected_review_revision, never the canonical request; historical receipt is not current authority.",
+        "responses": {
+          "200": {
+            "description": "Passive state or recorded/historical command; execution remains unavailable"
+          },
+          "400": {
+            "description": "Malformed JSON or request transport"
+          },
+          "401": {
+            "description": "Admin PAT authentication required"
+          },
+          "403": {
+            "description": "Active site administrator and Admin scope required"
+          },
+          "404": {
+            "description": "No receipt; inspect gate for committed seal, never infer rollback"
+          },
+          "408": {
+            "description": "Absolute deadline expired; owned commit may still settle"
+          },
+          "409": {
+            "description": "Stale revision/identity, historical conflict, or permanent gate seal; capacity_sealed means seal committed but requested command rejected"
+          },
+          "413": {
+            "description": "Complete JSON body exceeds64KiB"
+          },
+          "415": {
+            "description": "JSON and identity-only encoding required"
+          },
+          "422": {
+            "description": "Strict schema/identity/intent/grant declaration rejected"
+          },
+          "500": {
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+          },
+          "503": {
+            "description": "Temporary service admission or shutdown unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PolicyExactPackage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "plugin_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Exact canonical full SemVer, including build metadata."
+          },
+          "archive_digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "plugin_id",
+          "version",
+          "archive_digest"
+        ]
+      },
+      "PolicyExpectedRevision": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "absent"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "exact"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$",
+                "description": "Canonical decimal string,1..9223372036854775807; numbers rejected."
+              }
+            },
+            "required": [
+              "kind",
+              "revision"
+            ]
+          }
+        ]
+      },
+      "PolicyReviewIntent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "deny"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "data_only"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "native_full_service_user_trust"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "wasm_sandbox_required"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        ]
+      },
+      "PolicyReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "expected_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "package": {
+            "$ref": "#/components/schemas/PolicyExactPackage"
+          },
+          "expected_review": {
+            "$ref": "#/components/schemas/PolicyExpectedRevision"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/PolicyReviewIntent"
+          },
+          "grants": {
+            "type": "array",
+            "maxItems": 0,
+            "description": "Explicit complete replacement. Current host catalog is empty; no grants can be approved."
+          }
+        },
+        "required": [
+          "schema_version",
+          "expected_host_policy",
+          "package",
+          "expected_review",
+          "intent",
+          "grants"
+        ]
+      },
+      "PolicySelectionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "expected_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "package": {
+            "$ref": "#/components/schemas/PolicyExactPackage"
+          },
+          "expected_selection": {
+            "$ref": "#/components/schemas/PolicyExpectedRevision"
+          },
+          "expected_review_revision": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "description": "Canonical decimal string,1..9223372036854775807; numbers rejected."
+          }
+        },
+        "required": [
+          "schema_version",
+          "expected_host_policy",
+          "package",
+          "expected_selection",
+          "expected_review_revision"
+        ]
+      },
+      "PolicyClearRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          },
+          "expected_host_policy": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "plugin_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "expected_selection": {
+            "$ref": "#/components/schemas/PolicyExpectedRevision"
+          }
+        },
+        "required": [
+          "schema_version",
+          "expected_host_policy",
+          "plugin_id",
+          "expected_selection"
+        ]
+      },
+      "PolicyCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "const": "review"
+              },
+              "request": {
+                "$ref": "#/components/schemas/PolicyReviewRequest"
+              }
+            },
+            "required": [
+              "command",
+              "request"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "const": "select"
+              },
+              "request": {
+                "$ref": "#/components/schemas/PolicySelectionRequest"
+              }
+            },
+            "required": [
+              "command",
+              "request"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "const": "clear"
+              },
+              "request": {
+                "$ref": "#/components/schemas/PolicyClearRequest"
+              }
+            },
+            "required": [
+              "command",
+              "request"
+            ]
+          }
+        ]
+      },
+      "PolicyPrepareRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": 1
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "PolicyReceiptSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "deny",
+              "data_only",
+              "native_full_service_user_trust",
+              "wasm_sandbox_required",
+              null
+            ],
+            "description": "Original review intent for review receipts; null for select/clear. Historical intent is not current authorization."
+          },
+          "expected_review_revision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[1-9][0-9]{0,18}$",
+            "description": "Original select request review revision; null for review/clear. Canonical decimal string1..i64MAX."
+          }
+        },
+        "required": [
+          "intent",
+          "expected_review_revision"
+        ]
+      }
+    }
+  }
+}

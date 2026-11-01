@@ -32,6 +32,7 @@ mod hooks;
 mod issues;
 mod json;
 mod notifications;
+mod package_policy;
 mod pagination;
 mod plugin_packages;
 mod protection;
@@ -203,6 +204,7 @@ pub fn table(config: &Config) -> Vec<ApiRoute> {
     routes.extend(teams::routes());
     routes.extend(releases::routes());
     routes.extend(plugin_packages::routes());
+    routes.extend(package_policy::routes());
     routes.extend(forks::routes());
     // Milestone 3: commit statuses (S).
     routes.extend(statuses::routes());
@@ -240,7 +242,7 @@ const ACTIONS_FRAGMENTS: [(&str, &str); 3] = [
 #[cfg(not(feature = "actions"))]
 const ACTIONS_FRAGMENTS: [(&str, &str); 0] = [];
 
-const FRAGMENTS: [(&str, &str); 10] = [
+const FRAGMENTS: [(&str, &str); 11] = [
     ("issues", include_str!("openapi/issues.json")),
     ("notifications", include_str!("openapi/notifications.json")),
     ("pulls", include_str!("openapi/pulls.json")),
@@ -251,6 +253,7 @@ const FRAGMENTS: [(&str, &str); 10] = [
     ("releases", include_str!("openapi/releases.json")),
     ("forks", include_str!("openapi/forks.json")),
     ("plugin_packages", include_str!("openapi/plugin_packages.json")),
+    ("package_policy", include_str!("openapi/package_policy.json")),
     // Milestone 3: commit statuses (S).
     ("statuses", include_str!("openapi/statuses.json")),
 ];
