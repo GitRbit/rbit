@@ -26,7 +26,8 @@ identical generated assets and recorded source/binary hashes. Initial warmed p95
 changes were below one percent, but same-binary controls exposed enough process
 variation that the two-percent gate remains unresolved. The completed 60-block fresh-process paired experiment
 leaves the repository page inconclusive at the two-percent bound; the report records
-all four page intervals and same-binary controls. All 120 restart-only samples were valid; these are not
+all four page intervals and same-binary controls in
+[the performance report](../scripts/perf/UI-EXTRACTION.md). All 120 restart-only samples were valid; these are not
 disk-cold measurements. Scripts and raw evidence live under ignored
 `target/perf/ui-extraction/`.
 

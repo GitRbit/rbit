@@ -293,3 +293,6 @@ blame (`BlameLimits::max_file_bytes`); above it the blob page is plain text and 
 refuses. The big change (~25,000 changed lines) exceeds `DiffLimits::max_total_lines`
 (20,000), so the compare and pull request pages show the first files in full and the
 rest truncated, as a real oversized change would.
+
+The [shared UI extraction experiment](UI-EXTRACTION.md) records a process-paired
+release comparison, same-binary controls and the unresolved two-percent p95 gate.
