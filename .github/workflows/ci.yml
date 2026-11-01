@@ -175,7 +175,9 @@ jobs:
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2
         with:
           tool: cargo-nextest
-      - run: cargo nextest run --workspace --locked --profile ci
+      # Windows fixtures spawn Git processes and share a constrained disk. Bound test
+      # concurrency rather than weakening native page deadlines or retrying failures.
+      - run: cargo nextest run --workspace --locked --profile ci --test-threads ${{ matrix.os == 'windows-latest' && '2' || 'num-cpus' }}
 
   assets:
     name: Front-end build

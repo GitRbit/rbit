@@ -223,7 +223,10 @@ async fn render(
         Ok(body) => body,
         Err(PageError::Forbidden) => return Err(WebError::NotFound),
         Err(PageError::Invalid(_)) => return Err(WebError::BadRequest("Invalid plugin page request.".into())),
-        Err(_) => return Ok(unavailable()),
+        Err(error) => {
+            tracing::debug!(owner = %route.owner(), route = route.descriptor().path(), error = ?error, "plugin page unavailable");
+            return Ok(unavailable());
+        }
     };
     let owner = route.owner().to_string();
     let path = route.descriptor().path().to_owned();

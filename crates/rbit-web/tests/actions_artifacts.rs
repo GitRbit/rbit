@@ -207,6 +207,9 @@ async fn page(fixture: &Fixture, user: &rbit_core::User, path: &str) -> Answer {
 
 #[tokio::test]
 async fn run_pages_list_artifacts_and_readers_download_them() {
+    // Preserve the native deadline and report its error variant if this real page
+    // cannot complete on a contended runner; the HTTP response stays generic.
+    let _ = tracing_subscriber::fmt().with_env_filter("rbit_web::routes::plugin_pages=debug").with_test_writer().try_init();
     let fixture = Fixture::new().await;
     let credential = fixture.runner(&["linux"]).await;
     let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
