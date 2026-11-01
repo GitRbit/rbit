@@ -28,8 +28,8 @@ const README_NAMES: &[&str] = &["readme.md", "readme.markdown", "readme", "readm
 ///
 /// Readers from [`crate::RepositoryStorage::reader`] also hold the repository's
 /// [lease](crate::lease) while they have it open — for each operation, or for a pinned
-/// reader as long as its opened repository lives — so a transfer waits for them instead
-/// of failing on Windows.
+/// reader as long as its opened repository lives. A transfer normally waits for them,
+/// but its reader-wait budget can expire and a Windows rename may still fail.
 #[derive(Debug, Clone)]
 pub struct RepositoryReader {
     path: PathBuf,
@@ -40,8 +40,8 @@ pub struct RepositoryReader {
     pinned: Option<Arc<Mutex<Option<Pinned>>>>,
 }
 
-/// A pinned reader's opened repository and the lease that keeps it in place. Fields drop
-/// in order: the repository's files are closed before the lease is released.
+/// A pinned reader's opened repository and optional cooperative move lease. Fields
+/// drop in order: the repository's files close before the lease is released.
 #[derive(Debug)]
 struct Pinned {
     repo: gix::ThreadSafeRepository,
@@ -67,8 +67,8 @@ impl RepositoryReader {
     /// the way of `git gc` and repository deletion. Objects and references written
     /// meanwhile are still seen: gitoxide re-scans the packs when an object is missing
     /// and reads references from disk on every lookup. Its lease (if any) is held from
-    /// the first operation until the last clone is dropped, so the repository cannot be
-    /// moved during the request.
+    /// the first operation until the last clone is dropped. A move can still proceed
+    /// after its reader-wait budget expires.
     #[must_use]
     pub fn pinned(&self) -> Self {
         Self { path: self.path.clone(), lock: self.lock.clone(), pinned: Some(Arc::default()) }

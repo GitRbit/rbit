@@ -9,15 +9,17 @@
 //! Work inside a repository's directory therefore holds a shared [`RepositoryLease`] for
 //! its duration: every [`RepositoryReader`] operation does so automatically when the
 //! reader came from [`RepositoryStorage::reader`], and a pinned reader holds one for as
-//! long as its opened repository lives. Moving the directory waits until no lease is held
-//! and keeps new ones waiting until the move is done.
+//! long as its opened repository lives. Moving the directory normally waits until no
+//! lease is held and keeps new readers waiting while the move owns its lease. The
+//! reader-wait fallback below means this is cooperative coordination, not physical
+//! exclusion for the entire lifetime of every shared lease.
 //!
 //! New leases wait only for a move that is actually under way, never for one that is
 //! merely waiting. Leases may therefore be taken while holding another (a pinned page
 //! reader next to a plain one, say) without any risk of deadlock. In exchange a steady
 //! stream of overlapping work could keep a move waiting, so a move waits at most
-//! [`MAX_WAIT`] and then goes ahead regardless (the rename is then retried and may fail,
-//! which the transfer rolls back cleanly).
+//! [`MAX_WAIT`] and then goes ahead despite remaining readers. The rename may fail;
+//! a later SQL failure triggers a separate, fallible compensation attempt in Services.
 //!
 //! [`RepositoryReader`]: crate::RepositoryReader
 //! [`RepositoryStorage::reader`]: crate::RepositoryStorage::reader
@@ -89,8 +91,9 @@ impl RepositoryLock {
     }
 }
 
-/// Shared permission to work inside a repository's directory; it is not moved while
-/// this is held. Dropping it releases the permission.
+/// Shared permission to work inside a repository's directory. A move normally waits
+/// for this lease, but may proceed after its reader-wait budget expires. Dropping the
+/// lease releases this cooperative permission; it is not physical exclusion.
 #[derive(Debug)]
 pub struct RepositoryLease {
     lock: Arc<RepositoryLock>,

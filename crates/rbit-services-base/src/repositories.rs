@@ -170,8 +170,9 @@ impl RepositoryService {
     /// Creates a repository owned by the account called `owner`: `actor` themselves, or
     /// an organisation `actor` belongs to (site administrators may use any organisation).
     ///
-    /// Creates the metadata row and the bare repository. If the on-disk step fails the
-    /// row is removed again, so the two never drift apart.
+    /// Creates the metadata row before initialising the bare repository. If that disk
+    /// step reports an error, metadata deletion is attempted. The effects are separate:
+    /// cleanup failure or cancellation can leave partial metadata or files.
     pub async fn create_in(&self, actor: &User, owner: &str, input: CreateRepository) -> Result<OwnedRepository, ServiceError> {
         let owner = self.owner_for_new_repository(actor, owner.trim()).await?;
         let name: RepoName = input.name.trim().parse()?;

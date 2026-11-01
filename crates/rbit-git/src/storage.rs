@@ -44,14 +44,16 @@ impl RepositoryStorage {
     }
 
     /// A reader whose every operation holds a [`RepositoryLease`] while it has the
-    /// repository open, so the repository is never moved under it.
+    /// repository open. Moves normally wait for readers, but may proceed after the
+    /// reader-wait budget expires; this lease is cooperative coordination.
     pub fn reader(&self, owner: AccountId, repo: RepoId) -> RepositoryReader {
         RepositoryReader::new(self.path_for(owner, repo)).with_lock(self.locks.lock_for(repo))
     }
 
-    /// Waits until `repo` is not being moved and keeps it in place while the lease is
-    /// held. Take one around work that opens files in the repository outside a
-    /// [`RepositoryReader`] (a `git` process, for example). Leases may be nested.
+    /// Waits until `repo` is not being moved and takes a shared lease. A later move
+    /// normally waits for it, but may proceed after its reader-wait budget expires.
+    /// Take one around work that opens files outside a [`RepositoryReader`] (a `git`
+    /// process, for example). Leases may be nested; they are not physical exclusion.
     pub async fn lease(&self, repo: RepoId) -> RepositoryLease {
         self.locks.shared(repo).await
     }

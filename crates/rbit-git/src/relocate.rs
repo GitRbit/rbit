@@ -3,15 +3,15 @@
 //!
 //! Milestone 2 workstream A (access) owns this file.
 //!
-//! Both paths live under the same storage root, so the move is a single same-filesystem
-//! `rename`: it either happens completely or not at all, and never copies data. The
-//! target's parent directory is created when the new owner has no repositories yet.
+//! Moves use `rename` without a copy fallback. A cross-filesystem layout returns an
+//! error even when both paths are under the configured storage root. The target's
+//! parent directory is created when the new owner has no repositories yet.
 //!
 //! Windows refuses to rename a directory while any file inside it is open. The move
-//! therefore takes the repository's lease exclusively (see [`crate::lease`]): it waits for
-//! readers and background jobs that have the repository open — after a push, the cache
-//! warm-up is usually still reading it — and holds new ones back until it is done. A
-//! pinned reader serving a page holds the lease for the whole request.
+//! therefore takes the repository's move lease (see [`crate::lease`]): it normally waits
+//! for readers and background jobs, then holds new readers back in the actual worker.
+//! After the reader-wait budget expires it may proceed despite existing readers. A
+//! pinned reader serving a page holds a shared lease for the whole request.
 //!
 //! Processes outside rbit's control can still have a file open for a moment: a `git`
 //! process serving a clone, or a virus scanner or search indexer inspecting the pack a

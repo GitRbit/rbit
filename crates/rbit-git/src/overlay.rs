@@ -32,7 +32,7 @@ pub const MERGES_DIR: &str = "merges";
 #[derive(Debug)]
 pub struct Overlay {
     path: PathBuf,
-    /// Keeps the repositories it reads in place (no transfer moves them meanwhile).
+    /// Cooperative source leases; moves may proceed after their reader-wait budget.
     leases: Vec<RepositoryLease>,
 }
 

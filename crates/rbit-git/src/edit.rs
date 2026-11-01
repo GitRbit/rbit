@@ -177,8 +177,8 @@ impl EditWorkspace {
         Ok(Self { scratch, binary: env.git_binary.clone(), repo: repo.to_owned(), timeout: env.timeout })
     }
 
-    /// Keeps `lease` (on the repository) until the workspace is dropped, so the repository
-    /// is not moved while the workspace reads its objects.
+    /// Keeps the repository's shared `lease` until the workspace is dropped. A move
+    /// normally waits for it, but may proceed after its reader-wait budget expires.
     #[must_use]
     pub fn holding(mut self, lease: RepositoryLease) -> Self {
         self.scratch = self.scratch.holding(lease);

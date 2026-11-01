@@ -133,9 +133,10 @@ impl RepoSettingsService {
     /// (stars cascade). `confirmation` must be the full `owner/name`; `actor` is the
     /// administrator doing it (the access check itself is `repo`'s).
     ///
-    /// Disk first: if that fails nothing is lost from the database and the deletion can
-    /// simply be retried; if the database step fails afterwards, a retry still succeeds
-    /// because removing an already-missing directory is not an error.
+    /// Disk removal precedes metadata deletion; these effects are not atomic. A later
+    /// database failure can leave metadata referring to missing files. Removing an
+    /// already-missing directory succeeds, but an error or cancellation does not prove
+    /// rollback or establish that automatically retrying the whole operation is safe.
     pub async fn delete(&self, actor: &User, repo: &RepoContext, confirmation: &str) -> Result<(), ServiceError> {
         require_admin(repo)?;
         let full_name = repo.repo.full_name();

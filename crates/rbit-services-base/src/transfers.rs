@@ -9,10 +9,12 @@
 //!   any user or organisation. Suspended users cannot receive repositories.
 //! * The full `owner/name` must be typed to confirm. A repository of the same name at the
 //!   new owner is a validation error and leaves everything as it was.
-//! * The bare repository is moved first (one same-filesystem rename), then the owner is
-//!   changed in a transaction that also drops the old organisation's team grants. If the
-//!   database step fails the directory is moved back, so disk and database never disagree.
-//! * Collaborators, stars and everything else keyed by the repository id stay.
+//! * The bare repository is moved first, then the owner is changed in a transaction
+//!   that also drops the old organisation's team grants and the new owner's redundant
+//!   collaborator grant. If the database step reports an error, moving the directory
+//!   back is attempted. Compensation failure or cancellation can leave partial state;
+//!   the filesystem and SQL effects are not atomic.
+//! * The repository id, stars and other collaborators remain unchanged.
 //!   [`DomainEvent::RepositoryTransferred`] is published and the transfer is audited.
 
 use rbit_core::{Account, Repository, User, repository::OwnedRepository};

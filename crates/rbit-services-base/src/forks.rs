@@ -13,8 +13,10 @@
 //! * A fork cannot be made public while its parent, or any repository further up the
 //!   fork network, is private ([`has_private_ancestor`]): that would publish the private
 //!   history. (Forks are not removed when someone loses access to the parent.)
-//! * The row is created first; if the disk step (or recording the relationship) fails,
-//!   the row is removed again so metadata and disk never drift apart.
+//! * The row is created first. If copying or recording the relationship reports an
+//!   error, partial-file removal and metadata deletion are attempted separately.
+//!   Cleanup failure or cancellation can leave partial state; these effects are not
+//!   atomic and do not provide durable reconciliation.
 //! * Forking publishes [`DomainEvent::RepositoryForked`] — not `RepositoryCreated`.
 //! * Deleting the parent leaves its forks intact; they simply lose their parent.
 
@@ -75,7 +77,8 @@ impl ForkService {
 
         let target = self.ctx.repositories.path_for(owner.id, repo.id);
         let copied = async {
-            // The parent stays in place (no transfer moves it) while it is copied.
+            // Hold a shared lease while copying. A move can still proceed after its
+            // reader-wait budget expires; this is not physical exclusion.
             let lease = self.ctx.repositories.lease(source.id).await;
             fork_repository(&self.ctx.config.repository.git_binary, &parent.disk_path, &target).await?;
             drop(lease);
