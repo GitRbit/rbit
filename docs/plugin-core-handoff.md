@@ -1,5 +1,50 @@
 # Plugin core handoff
 
+## Optional Actions step-summary content — 2026-11-01
+
+`rbit-actions-web` now owns only the compiled step-summary content model/template.
+Web retains its full document, page/repository chrome, native route factory and
+captured-locale wrapper. Direct `HtmlSafe`/`FastWritable` composition uses the same
+bounded outer writer; it does not render an intermediate content String. Existing
+source/HTML/link buffers move into the passive model, and the host computes the
+same localized heading. Repository authorization, job/run/current-task identity,
+indexed step navigation, 512 KiB Markdown sanitizer, source fallback, one-second
+callback deadline, 2 MiB output cap and response guard remain host-owned.
+
+The optional content crate has only Askama/shared-UI normal dependencies. Its
+all-feature/all-target guard rejects host, storage, HTTP, workflow and Actions
+implementation edges; core-only and i18n-only graphs exclude it. Message, markup,
+asset and isolated-contract checks cover the moved template. Its optional HTML
+field accepts trusted host-sanitizer output by contract; it does not validate
+arbitrary HTML or establish external-package trust. Other Actions presentation, callbacks and domain projection
+remain unfinished; no runtime/worker/trust capability is added by this slice.
+
+The four standalone content tests passed, including nested output failure at the
+real 2 MiB document cap, source escaping, host-sanitized markup and captured locale.
+Standalone strict lint passed with warnings denied. The pre-extraction real HTTP
+regression at `bf55ae8` observed 11 application SQL statements for each of rendered
+HTML and escaped-source summaries, with exact sorted-multiset SHA-256
+`eb6f2dde73de96b0e2bfb69b2dbcd909c7dcb8861ce3f8cfe2f3452d25216ad8`.
+That fingerprint preserves SQL bytes and multiplicity using versioned length-prefix
+encoding; it is work evidence for this fixture, not a latency result or every route.
+
+Code checkpoint `861ac950837e3ab568f9d886bfb11915b802fb4e` passed the complete
+Web suite (648 tests, four expected ignores) and all four presentation tests.
+The Actions-only profile passed one unit and 18 real HTTP tests, including this
+regression in the existing `native_actions_` CI filter. Both default and
+Actions-only post-extraction fixtures retained exactly 11 SQL statements and the
+same fingerprint above, with the full document/security assertions passing.
+These query-work checks establish no latency result.
+
+Functional checks used unchanged Rust 1.95. Strict Rust 1.99 workspace/all-target
+Clippy passed with warnings denied. Formatting, whitespace, all six resolved
+dependency guards, 230 frontend tests, 1,908 messages and 1,914 static references
+passed. All 541 generated assets remain byte-identical to the fresh preceding
+source baseline. No new complete-workspace total is claimed. Hosted checks for
+this code remain required after publication; earlier hosted evidence belongs to
+its recorded revisions. The broader modularization goal and PR #47 remain active
+and unmerged.
+
 ## Optional i18n presentation extraction — 2026-11-01
 
 `rbit-i18n-web` now owns the compiled language picker, pack-management templates

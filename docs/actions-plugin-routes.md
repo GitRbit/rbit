@@ -108,6 +108,29 @@ a rerun. Ordinary documents do not add browser-cookie parsing for non-locale for
 The existing owned native commit rules apply: a timed-out or aborted HTTP waiter
 cannot undo an already-started write; do not automatically retry an unknown outcome.
 
+## Step-summary presentation boundary
+
+The optional `rbit-actions-web` crate owns the compiled `SummaryContent` model and
+step-summary content template. Its normal dependencies are Askama and shared UI;
+it imports no Web, Services, storage, Git, HTTP, workflow or Actions implementation.
+Core-only and i18n-only distributions exclude it. Message, markup and asset scans
+follow its source/templates; CI checks its all-feature/all-target normal graph.
+
+Web retains `SummaryPage`, `Page`, `RepoHeader`, the base document and repository
+navigation. The concrete content template nests through Askama's `HtmlSafe` and
+`FastWritable` path into the existing bounded writer, without a rendered content
+String or another async callback. The outer captured-locale wrapper applies to
+nested labels; the host computes the existing localized heading and moves existing
+source/HTML/link buffers. The full-document descriptor and its one-second deadline,
+2 MiB output cap, response lease, appearance and security middleware are unchanged.
+
+Repository/current-task checks, summary lookup, indexed neighboring steps, URL
+construction and the 512 KiB Markdown sanitization bound remain host-owned. The
+content's optional HTML is explicitly trusted output from that host sanitizer;
+this compiled first-party contract neither sanitizes arbitrary HTML nor establishes
+external-package trust. Source fallback and all ordinary fields remain escaped.
+Other Actions views and factory/service wiring remain in Web for later extractions.
+
 ## Compatibility and transport boundaries
 
 Legacy browser GET bookmarks redirect to the corresponding native page while Actions

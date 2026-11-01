@@ -20,9 +20,11 @@ dependency.
 See [plugin core](../plugin-core.md) for retained behavior and later package/sandbox stages.
 Shared presentation extraction has started in `rbit-ui`: passive view models, URL and
 row-layout helpers, request-local messages and the captured-locale compiled-template
-wrapper no longer import Web. Native Actions uses that shared wrapper. Full shell
-templates and host-built page/repository chrome remain in Web; separating those data
-contracts is the next prerequisite for an independent `rbit-actions-web` crate.
+wrapper no longer import Web. Native Actions uses that shared wrapper. The optional
+`rbit-actions-web` now owns compiled step-summary content composed directly into a
+Web-owned full document. Full shell templates and host-built page/repository chrome
+remain in Web. Further Actions content and narrow host ports can follow this boundary
+without exporting the composition root or adding a second repository-header load.
 The API also has bounded package metadata contracts for adapter kind, portable payload
 paths, size/digest declarations and requested resources. `rbit-plugin-packages` validates
 bounded canonical archives and hashes payloads without extracting them. These do not

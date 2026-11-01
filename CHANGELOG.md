@@ -23,6 +23,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `rbit-actions-web` compiled step-summary content, nested directly into
+  the existing host document. Web retains repository authorization, navigation,
+  captured locale, bounded Markdown sanitization and response security; summary
+  source buffers move without an intermediate rendered HTML string.
+
 - Optional `rbit-i18n-web` compiled language fragments behind narrow request-scoped
   host ports, preserving current authorization, borrowed uploads, weak host ownership
   and disabled-provider repair. CI checks the resolved all-target dependency boundary;
