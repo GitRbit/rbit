@@ -148,6 +148,7 @@ async fn token(services: &Services, user: &User, scope: TokenScope) -> String {
     services.tokens.create(user, CreateAccessToken { name: format!("{scope:?}"), scope, expires_in_days: None }).await.unwrap().1
 }
 #[tokio::test]
+#[cfg_attr(not(windows), ignore = "requires native Windows package upload policy")]
 async fn package_upload_authorization_and_header_rejections_do_not_poll_any_body_frame() {
     let fixture = Fixture::new().await;
     let write_token = token(&fixture.services, &fixture.admin, TokenScope::Write).await;
@@ -186,6 +187,7 @@ async fn package_upload_authorization_and_header_rejections_do_not_poll_any_body
 }
 
 #[tokio::test]
+#[cfg_attr(not(windows), ignore = "requires native Windows package upload policy")]
 async fn expired_revoked_suspended_and_disabled_api_uploads_are_rejected_before_body_polling() {
     let fixture = Fixture::new().await;
     let expired = rbit_auth::AccessTokenSecret::generate();
@@ -217,7 +219,10 @@ async fn expired_revoked_suspended_and_disabled_api_uploads_are_rejected_before_
         );
         assert_eq!(observation.polls.load(Ordering::SeqCst), 0);
     }
-    assert_eq!(fixture.database.admin().set_suspended(fixture.admin.id(), true).await.unwrap(), rbit_storage::Moderation::Applied);
+    assert_eq!(
+        fixture.database.admin().set_suspended(fixture.admin.id(), true).await.unwrap(),
+        rbit_storage::sqlite::admin::Moderation::Applied
+    );
     let (body, _sender, observation) = probe_body();
     assert_eq!(
         fixture.request(Fixture::upload("suspended", Some(&fixture.admin_token), axum::body::Body::new(body))).await.status(),
@@ -238,6 +243,7 @@ async fn expired_revoked_suspended_and_disabled_api_uploads_are_rejected_before_
 }
 
 #[tokio::test]
+#[cfg_attr(not(windows), ignore = "requires native Windows package upload policy")]
 async fn windows_admin_put_is_unavailable_without_polling_and_operation_queries_remain_available() {
     let fixture = Fixture::new().await;
     let (body, _sender, observation) = probe_body();

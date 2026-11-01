@@ -57,5 +57,6 @@ mod work_counts;
 // Host-only administrative package ingress remains available without optional plugins.
 #[cfg(not(windows))]
 mod plugin_package_uploads;
-#[cfg(windows)]
+// Typecheck this portable fixture on every host; its Windows behavior tests are
+// ignored elsewhere and must still run on native Windows CI.
 mod plugin_package_uploads_windows;
