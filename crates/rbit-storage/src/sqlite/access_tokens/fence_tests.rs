@@ -66,7 +66,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped<T: std::fmt::Debug>(result: &Result<T, StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("access token writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "access token", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &AccessTokenStore, owner: AccountId, id: AccessTokenId, kind: usize) -> Result<(), StorageError> {
     match kind {
@@ -126,7 +129,10 @@ async fn token_paths_share_policy_serial_and_terminal_stop_without_blocking_read
     drop(quiet);
     stopped(&limited.await);
     stopped(&delete.await);
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for kind in 0..3 {
         stopped(&mutation(&store, fixture.alice, first.id, kind).await);
         stopped(&mutation(&fixture.db.access_tokens(), fixture.alice, first.id, kind).await);

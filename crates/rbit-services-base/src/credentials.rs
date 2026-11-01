@@ -41,7 +41,7 @@ impl AdminPasswordOwner {
         self.prepare_shutdown();
         self.inner.tasks.wait().await;
         if self.inner.admission().uncertain {
-            return Err(ServiceError::Conflict("password change task settlement uncertain"));
+            return Err(ServiceError::OutcomeUnavailable { scope: "password change task" });
         }
         Ok(())
     }
@@ -58,10 +58,16 @@ impl AdminPasswordOwner {
         let (reservation, mut owned) = {
             let mut state = self.inner.admission();
             if state.closed {
-                return Err(ServiceError::Conflict("password change commands stopped"));
+                return Err(ServiceError::AdmissionUnavailable {
+                    scope: "password change",
+                    reason: rbit_storage::AdmissionReason::Stopped,
+                });
             }
             if state.active >= 2 {
-                return Err(ServiceError::Conflict("password change command capacity"));
+                return Err(ServiceError::AdmissionUnavailable {
+                    scope: "password change",
+                    reason: rbit_storage::AdmissionReason::Capacity,
+                });
             }
             let reservation = changes.reserve()?;
             let token = self.inner.tasks.token();
@@ -81,7 +87,7 @@ impl AdminPasswordOwner {
             drop(owned);
             let _ = send.send(result);
         }));
-        receive.await.map_err(ServiceError::internal)?
+        receive.await.map_err(|_| ServiceError::OutcomeUnavailable { scope: "password change task" })?
     }
 }
 #[derive(Debug)]

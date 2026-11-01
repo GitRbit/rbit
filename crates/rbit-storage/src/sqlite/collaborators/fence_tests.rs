@@ -161,7 +161,10 @@ async fn cloned_and_new_handles_reject_all_four_after_unpolled_close() {
         let c = if fresh { database.collaborators() } else { collaborators.clone() };
         let r = if fresh { database.repositories() } else { repositories.clone() };
         for op in OPERATIONS {
-            assert!(matches!(apply(&f, &c, &r, op).await, Err(StorageError::Conflict("collaborator writers stopped"))));
+            assert!(matches!(
+                apply(&f, &c, &r, op).await,
+                Err(StorageError::AdmissionUnavailable { scope: "collaborator", reason: crate::AdmissionReason::Stopped })
+            ));
         }
     }
     assert_eq!(f.provenance(f.bob).await.0, Some(f.alice.0));

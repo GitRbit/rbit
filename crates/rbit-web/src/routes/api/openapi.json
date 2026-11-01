@@ -198,7 +198,9 @@
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
-          "422": { "$ref": "#/components/responses/ValidationFailed" }
+          "422": { "$ref": "#/components/responses/ValidationFailed" },
+          "500": { "$ref": "#/components/responses/OutcomeUnavailable" },
+          "503": { "$ref": "#/components/responses/AdmissionUnavailable" }
         }
       }
     },
@@ -541,6 +543,8 @@
       "X-Total-Count": { "description": "Items across all pages.", "schema": { "type": "integer" } }
     },
     "responses": {
+      "AdmissionUnavailable": { "description": "Operation admission is unavailable. This does not establish rollback of prior phases or other operations, or promise that retry is safe. No Retry-After is supplied.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "OutcomeUnavailable": { "description": "Operation outcome is unconfirmed. Do not infer rollback or retry automatically. No Retry-After is supplied.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "Unauthorized": { "description": "No or an invalid token (`WWW-Authenticate: Bearer`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "Forbidden": { "description": "The caller may see this but not do it (or the token's scope is too narrow)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
       "MovedPermanently": { "description": "The repository was renamed or transferred; `Location` and `url` name the same endpoint under its current name (GET and HEAD)", "headers": { "Location": { "$ref": "#/components/headers/Location" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Moved" } } } },

@@ -82,7 +82,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped(result: &Result<(), StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("SSH key writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "SSH key", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &SshKeyStore, f: &Fixture, user_id: SshKeyId, deploy_id: DeployKeyId, kind: usize) -> Result<(), StorageError> {
     match kind {
@@ -167,7 +170,10 @@ async fn all_four_key_paths_share_policy_queue_and_terminal_cloned_handle_stop()
     for operation in operations {
         stopped(&operation.await);
     }
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for kind in 0..4 {
         stopped(&mutation(&store, &f, user_id, deploy_id, kind).await);
         stopped(&mutation(&f.db.ssh_keys(), &f, user_id, deploy_id, kind).await);

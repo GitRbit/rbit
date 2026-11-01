@@ -6,6 +6,14 @@ use rbit_storage::StorageError;
 /// Outcomes a caller must handle. Messages of the user-facing variants are safe to display.
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
+    /// This admission boundary refused work; not a whole-request rollback or retry promise.
+    #[error("Operation admission is unavailable.")]
+    AdmissionUnavailable { scope: &'static str, reason: rbit_storage::AdmissionReason },
+
+    /// Completion is unconfirmed; consumers must not infer rollback or retry safety.
+    #[error("Operation outcome is unconfirmed. Do not retry automatically.")]
+    OutcomeUnavailable { scope: &'static str },
+
     /// Input failed validation; the message explains how to fix it.
     #[error("{0}")]
     Invalid(String),
@@ -53,6 +61,8 @@ impl ServiceError {
 impl From<StorageError> for ServiceError {
     fn from(error: StorageError) -> Self {
         match error {
+            StorageError::AdmissionUnavailable { scope, reason } => Self::AdmissionUnavailable { scope, reason },
+            StorageError::OutcomeUnavailable { scope } => Self::OutcomeUnavailable { scope },
             StorageError::RegistrationClosed => Self::RegistrationClosed,
             StorageError::Conflict(field) => Self::Conflict(field),
             other => Self::internal(other),
@@ -84,5 +94,33 @@ impl From<rbit_git::GitError> for ServiceError {
 impl From<rbit_auth::PasswordError> for ServiceError {
     fn from(error: rbit_auth::PasswordError) -> Self {
         Self::internal(error)
+    }
+}
+
+#[cfg(test)]
+mod typed_error_tests {
+    use super::ServiceError;
+    use rbit_storage::{AdmissionReason, StorageError};
+
+    #[test]
+    fn storage_error_classes_survive_service_conversion() {
+        for reason in [
+            AdmissionReason::Capacity,
+            AdmissionReason::Stopped,
+            AdmissionReason::Busy,
+            AdmissionReason::RuntimeUnavailable,
+            AdmissionReason::CoordinatorUnavailable,
+        ] {
+            let error = ServiceError::from(StorageError::AdmissionUnavailable { scope: "private operation", reason });
+            assert!(matches!(error, ServiceError::AdmissionUnavailable { scope: "private operation", reason: actual } if actual == reason));
+            assert_eq!(error.to_string(), "Operation admission is unavailable.");
+        }
+        let error = ServiceError::from(StorageError::OutcomeUnavailable { scope: "private operation" });
+        assert!(matches!(error, ServiceError::OutcomeUnavailable { scope: "private operation" }));
+        assert_eq!(error.to_string(), "Operation outcome is unconfirmed. Do not retry automatically.");
+        assert!(matches!(ServiceError::from(StorageError::Invariant("immutable binding mismatch")), ServiceError::Internal(_)));
+        let duplicate = ServiceError::from(StorageError::Conflict("email"));
+        assert!(matches!(duplicate, ServiceError::Conflict("email")));
+        assert_eq!(duplicate.to_string(), "email is already taken");
     }
 }

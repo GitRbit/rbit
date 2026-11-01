@@ -339,7 +339,10 @@ async fn stopped_membership_writer_is_not_misreported_as_duplicate() {
     )
     .await
     .unwrap();
-    assert!(matches!(result, Err(ServiceError::Conflict("organization membership writers stopped"))));
+    assert!(matches!(
+        result,
+        Err(ServiceError::AdmissionUnavailable { scope: "organization membership", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
     assert_eq!(fixture.database.orgs().role_of(org.account.id, fresh.id()).await.unwrap(), None);
     assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
     assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));

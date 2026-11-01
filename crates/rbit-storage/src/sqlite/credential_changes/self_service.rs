@@ -61,10 +61,10 @@ impl SelfPasswordChanges {
     pub fn reserve(&self) -> Result<SelfPasswordReservation, StorageError> {
         let mut state = self.coordinator.inner.state();
         if state.stopped {
-            return Err(StorageError::Conflict("self password commands stopped"));
+            return Err(StorageError::AdmissionUnavailable { scope: "self password", reason: crate::AdmissionReason::Stopped });
         }
         if state.reserved >= super::CAPACITY {
-            return Err(StorageError::Conflict("self password command capacity"));
+            return Err(StorageError::AdmissionUnavailable { scope: "self password", reason: crate::AdmissionReason::Capacity });
         }
         state.reserved += 1;
         let command = Arc::new(SelfCommand { inner: self.coordinator.inner.clone(), phase: AtomicU8::new(RESERVED) });
@@ -79,7 +79,7 @@ impl SelfPasswordChanges {
         action: SelfPasswordAction,
     ) -> Result<SelfPasswordBatch, StorageError> {
         if changes.is_empty() || changes.len() > super::CAPACITY {
-            return Err(StorageError::Conflict("self password batch size"));
+            return Err(StorageError::Invariant("self password batch size"));
         }
         let first = &changes[0];
         let account = first.account;
@@ -89,12 +89,12 @@ impl SelfPasswordChanges {
                 || !pending.changes.sessions.same_instance(&self.sessions)
                 || pending.account != account
         }) {
-            return Err(StorageError::Conflict("self password batch binding mismatch"));
+            return Err(StorageError::Invariant("self password batch binding mismatch"));
         }
         {
             let _state = self.coordinator.inner.state();
             if changes.iter().any(|pending| pending.owner.0.phase.load(Ordering::Relaxed) != PENDING) {
-                return Err(StorageError::Conflict("self password batch outcome unavailable"));
+                return Err(StorageError::OutcomeUnavailable { scope: "self password batch" });
             }
         }
         let runtime = first.runtime.clone();
@@ -110,14 +110,16 @@ pub struct SelfPasswordReservation {
 }
 impl SelfPasswordReservation {
     pub fn start(self, account: AccountId, new_hash: String, expected_hash: String) -> Result<SelfPasswordResult, StorageError> {
-        let runtime =
-            tokio::runtime::Handle::try_current().map_err(|_| StorageError::Conflict("self password command runtime unavailable"))?;
+        let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::AdmissionUnavailable {
+            scope: "self password",
+            reason: crate::AdmissionReason::RuntimeUnavailable,
+        })?;
         let (send, receive) = oneshot::channel();
         let inner = self.command.inner.clone();
         let state = inner.state();
         if state.stopped {
             drop(state);
-            return Err(StorageError::Conflict("self password commands stopped"));
+            return Err(StorageError::AdmissionUnavailable { scope: "self password", reason: crate::AdmissionReason::Stopped });
         }
         let Self { changes, command } = self;
         drop(state); // A closed runtime can synchronously destroy the captured owner.
@@ -139,7 +141,7 @@ pub struct SelfPasswordResult {
 }
 impl SelfPasswordResult {
     pub async fn wait(self) -> Result<Option<PendingSelfPasswordChange>, StorageError> {
-        self.receive.await.map_err(|_| StorageError::Conflict("self password SQL outcome unavailable"))?
+        self.receive.await.map_err(|_| StorageError::OutcomeUnavailable { scope: "self password SQL" })?
     }
 }
 
@@ -197,7 +199,7 @@ pub struct SelfPasswordBatchResult {
 }
 impl SelfPasswordBatchResult {
     pub async fn wait(self) -> Result<usize, StorageError> {
-        self.receive.await.map_err(|_| StorageError::Conflict("self password batch outcome unavailable"))?
+        self.receive.await.map_err(|_| StorageError::OutcomeUnavailable { scope: "self password batch" })?
     }
 }
 
@@ -255,11 +257,12 @@ async fn run_sql(
     runtime: tokio::runtime::Handle,
 ) -> Result<Option<PendingSelfPasswordChange>, StorageError> {
     let mut owner = Some(SelfOwner(command.clone()));
-    let mutation = changes.writer.begin().await.map_err(|error| {
-        StorageError::Conflict(match error {
-            BeginError::Capacity => "self password mutation capacity",
-            BeginError::Stopped => "self password writer stopped",
-        })
+    let mutation = changes.writer.begin().await.map_err(|error| StorageError::AdmissionUnavailable {
+        scope: "self password",
+        reason: match error {
+            BeginError::Capacity => crate::AdmissionReason::Capacity,
+            BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
     })?;
     {
         let _state = command.inner.state();
@@ -289,7 +292,7 @@ where
     {
         let _state = inner.state();
         if batch.changes.iter().any(|pending| pending.owner.0.phase.load(Ordering::Relaxed) != PENDING) {
-            return Err(StorageError::Conflict("self password batch outcome unavailable"));
+            return Err(StorageError::OutcomeUnavailable { scope: "self password batch" });
         }
         for pending in &batch.changes {
             pending.owner.0.phase.store(FINALIZING, Ordering::Relaxed);

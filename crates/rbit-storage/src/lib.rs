@@ -15,7 +15,7 @@ pub mod sealing;
 pub mod sqlite;
 mod work;
 
-pub use error::StorageError;
+pub use error::{AdmissionReason, StorageError};
 pub use kv::{KvStore, SessionRecord, SessionStore};
 pub use sealing::SealingKey;
 pub use sqlite::{AccessTokenStore, AccountStore, Database, NewAccessToken, NewRepository, NewUser, RepositoryStore, SessionUser};

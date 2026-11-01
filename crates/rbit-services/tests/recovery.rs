@@ -413,12 +413,12 @@ async fn forced_password_owner_shutdown_is_terminal_for_builder_and_main_service
     tokio::time::timeout(WAIT, fixture.recovery.shutdown()).await.unwrap().unwrap();
     assert!(matches!(
         fixture.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
-        Err(ServiceError::Conflict("password change commands stopped"))
+        Err(ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Stopped })
     ));
     fixture.services.prepare_shutdown();
     assert!(matches!(
         fixture.services.recovery.admin_set_password(&admin, alice.id(), PASSWORD.to_owned()).await,
-        Err(ServiceError::Conflict("password change commands stopped"))
+        Err(ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Stopped })
     ));
     assert!(fixture.services.accounts.authenticate("alice", NEW_PASSWORD.to_owned()).await.is_ok());
 }

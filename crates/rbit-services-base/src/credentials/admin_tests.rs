@@ -77,7 +77,10 @@ async fn lost_waiter_keeps_two_real_storage_then_audit_tail_owners_bounded_and_d
     assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap(), Vec::new());
     // Both storage slots are free, but the two audit tails must still bound admission.
     let third = owner.run(&f.changes(), |_| async { panic!("capacity refused before operation") }).await;
-    assert!(matches!(third, Err(ServiceError::Conflict("password change command capacity"))));
+    assert!(matches!(
+        third,
+        Err(ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Capacity })
+    ));
     for request in requests {
         request.abort();
         assert!(timeout(WAIT, request).await.unwrap().unwrap_err().is_cancelled());
@@ -88,7 +91,10 @@ async fn lost_waiter_keeps_two_real_storage_then_audit_tail_owners_bounded_and_d
     release.notify_waiters();
     timeout(WAIT, drain).await.unwrap().unwrap();
     assert_eq!(owner.inner.admission().active, 0);
-    assert!(matches!(owner.run(&f.changes(), |_| async { Ok(()) }).await, Err(ServiceError::Conflict("password change commands stopped"))));
+    assert!(matches!(
+        owner.run(&f.changes(), |_| async { Ok(()) }).await,
+        Err(ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
 }
 
 #[tokio::test]
@@ -101,7 +107,7 @@ async fn private_task_panic_is_not_certified_by_an_empty_tracker() {
             panic!("injected service owner panic");
         })
         .await;
-    assert!(result.is_err());
+    assert!(matches!(result, Err(ServiceError::OutcomeUnavailable { scope: "password change task" })));
     assert_eq!(owner.inner.admission().active, 0);
     assert!(owner.shutdown().await.is_err(), "empty tracker does not prove the service task acknowledged its result");
     assert_eq!(f.db.profiles().password_hash(f.user).await.unwrap().as_deref(), Some("old"));
@@ -118,7 +124,7 @@ async fn close_and_registration_share_a_mutex_and_no_late_task_can_enter() {
     for _ in 0..2 {
         assert!(matches!(
             owner.clone().run(&f.changes(), |_| async { panic!("closed before spawn") }).await,
-            Err(ServiceError::Conflict("password change commands stopped"))
+            Err(ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Stopped })
         ));
     }
     assert_eq!(owner.inner.admission().active, 0);
@@ -147,7 +153,10 @@ async fn close_during_injected_hash_phase_returns_known_refusal_without_false_un
     owner.prepare_shutdown();
     f.db.prepare_forced_password_changes_shutdown();
     release.send(()).unwrap();
-    assert!(matches!(timeout(WAIT, request).await.unwrap().unwrap(), Err(ServiceError::Conflict("forced password commands stopped"))));
+    assert!(matches!(
+        timeout(WAIT, request).await.unwrap().unwrap(),
+        Err(ServiceError::AdmissionUnavailable { scope: "forced password", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
     timeout(WAIT, owner.shutdown()).await.unwrap().unwrap();
     timeout(WAIT, f.db.drain_forced_password_changes()).await.unwrap().unwrap();
     assert_eq!(f.db.profiles().password_hash(user).await.unwrap().as_deref(), Some("old"));

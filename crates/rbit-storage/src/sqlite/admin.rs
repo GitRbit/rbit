@@ -163,10 +163,13 @@ macro_rules! select_user_record {
 }
 
 fn moderation_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "account moderation mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "account moderation writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "account moderation",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 #[derive(Debug, Clone)]
 pub struct AdminStore {

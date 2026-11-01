@@ -218,7 +218,10 @@ async fn lost_reset_receiver_shares_admin_quota_and_finishes_after_terminal_clos
     assert_eq!(f.hash().await, "new");
     assert!(f.db.recovery().find_valid(&[1; 32], TokenPurpose::Reset, now).await.unwrap().is_none());
     let other = f.changes().reserve().unwrap();
-    assert!(matches!(f.changes().reserve(), Err(StorageError::Conflict("forced password command capacity"))));
+    assert!(matches!(
+        f.changes().reserve(),
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Capacity })
+    ));
     let accounts = f.db.accounts();
     let name = "after".parse().unwrap();
     let mut unrelated = Box::pin(accounts.rename(f.user, &name));

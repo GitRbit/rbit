@@ -185,19 +185,24 @@ impl PackagePolicyService {
         maintenance: bool,
     ) -> Result<T, ServiceError> {
         let owned = {
-            let mut admission =
-                self.inner.admission.lock().map_err(|_| ServiceError::Conflict("package policy coordinator unavailable"))?;
+            let mut admission = self.inner.admission.lock().map_err(|_| ServiceError::AdmissionUnavailable {
+                scope: "package policy",
+                reason: rbit_storage::AdmissionReason::CoordinatorUnavailable,
+            })?;
             if admission.closed {
-                return Err(ServiceError::Conflict("server shutdown"));
+                return Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Stopped });
             }
             if admission.active.contains(&key) {
                 return Err(ServiceError::Conflict("package policy operation already active"));
             }
             if admission.maintenance || (maintenance && !admission.active.is_empty()) {
-                return Err(ServiceError::Conflict("package policy maintenance admission"));
+                return Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Busy });
             }
             if admission.active.len() >= MAX_OPERATIONS {
-                return Err(ServiceError::Conflict("package policy operation admission"));
+                return Err(ServiceError::AdmissionUnavailable {
+                    scope: "package policy",
+                    reason: rbit_storage::AdmissionReason::Capacity,
+                });
             }
             let token = self.inner.tasks.token();
             admission.active.insert(key.clone());
@@ -212,13 +217,20 @@ impl PackagePolicyService {
             drop(owned);
             let _ = sender.send(result);
         });
-        receiver.await.map_err(ServiceError::internal)?
+        receiver.await.map_err(|_| ServiceError::OutcomeUnavailable { scope: "package policy" })?
     }
 
     fn check_read(&self, actor: &User) -> Result<(), ServiceError> {
         administrator(actor)?;
-        let admission = self.inner.admission.lock().map_err(|_| ServiceError::Conflict("package policy coordinator unavailable"))?;
-        if admission.closed { Err(ServiceError::Conflict("server shutdown")) } else { Ok(()) }
+        let admission = self.inner.admission.lock().map_err(|_| ServiceError::AdmissionUnavailable {
+            scope: "package policy",
+            reason: rbit_storage::AdmissionReason::CoordinatorUnavailable,
+        })?;
+        if admission.closed {
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Stopped })
+        } else {
+            Ok(())
+        }
     }
 
     pub(crate) fn prepare_shutdown(&self) {
@@ -351,7 +363,10 @@ mod tests {
         assert_eq!(service.gate(&fixture.admin).await.unwrap().state, PolicyGateState::Uninitialized);
         assert!(!fixture.path.parent().unwrap().join("plugins").exists());
         service.shutdown().await;
-        assert!(matches!(service.prepare(&fixture.admin).await, Err(ServiceError::Conflict("server shutdown"))));
+        assert!(matches!(
+            service.prepare(&fixture.admin).await,
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Stopped })
+        ));
         fixture.close().await;
     }
 
@@ -460,12 +475,12 @@ mod tests {
         wait_active(&service, 2).await;
         assert!(matches!(
             service.review(&fixture.admin, OperationId::new("owned-three").unwrap(), request.clone()).await,
-            Err(ServiceError::Conflict("package policy operation admission"))
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Capacity })
         ));
         let maintenance = PackagePolicyRenewalRequest::new(request.expected_host_policy.clone(), "unused-seal").unwrap();
         assert!(matches!(
             service.renew(&fixture.admin, OperationId::new("blocked-maintenance").unwrap(), maintenance).await,
-            Err(ServiceError::Conflict("package policy maintenance admission"))
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Busy })
         ));
         assert!(matches!(
             service.review(&fixture.admin, OperationId::new("owned-one").unwrap(), request).await,
@@ -556,11 +571,11 @@ mod tests {
         assert!(service.inner.admission.lock().unwrap().maintenance);
         assert!(matches!(
             service.review(&fixture.admin, OperationId::new("blocked-write").unwrap(), review).await,
-            Err(ServiceError::Conflict("package policy maintenance admission"))
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Busy })
         ));
         assert!(matches!(
             service.renew(&fixture.admin, OperationId::new("blocked-renewal").unwrap(), request.clone()).await,
-            Err(ServiceError::Conflict("package policy maintenance admission"))
+            Err(ServiceError::AdmissionUnavailable { scope: "package policy", reason: rbit_storage::AdmissionReason::Busy })
         ));
         waiter.abort();
         assert!(waiter.await.unwrap_err().is_cancelled());

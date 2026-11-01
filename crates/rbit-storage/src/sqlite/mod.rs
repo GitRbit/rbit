@@ -191,7 +191,7 @@ impl Database {
         if kv.is_bound_to(&self.authority_domain.writer()) {
             Ok(())
         } else {
-            Err(StorageError::Conflict("session authority domain mismatch"))
+            Err(StorageError::Invariant("session authority domain mismatch"))
         }
     }
 

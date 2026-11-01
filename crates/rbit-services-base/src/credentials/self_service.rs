@@ -55,7 +55,7 @@ impl SelfPasswordOwner {
         self.prepare_shutdown();
         self.inner.tasks.wait().await;
         if self.inner.admission().uncertain {
-            return Err(ServiceError::Conflict("self password task settlement uncertain"));
+            return Err(ServiceError::OutcomeUnavailable { scope: "self password task" });
         }
         Ok(())
     }
@@ -64,14 +64,17 @@ impl SelfPasswordOwner {
         F: FnOnce(SelfPasswordReservation, Arc<FlowLease>) -> Fut + Send + 'static,
         Fut: Future<Output = Result<(), ServiceError>> + Send + 'static,
     {
-        let runtime = Handle::try_current().map_err(ServiceError::internal)?;
+        let runtime = Handle::try_current().map_err(|_| ServiceError::AdmissionUnavailable {
+            scope: "self password task",
+            reason: rbit_storage::AdmissionReason::RuntimeUnavailable,
+        })?;
         let (reservation, lease) = {
             let mut state = self.inner.admission();
             if state.closed {
-                return Err(ServiceError::Conflict("self password commands stopped"));
+                return Err(ServiceError::AdmissionUnavailable { scope: "self password", reason: rbit_storage::AdmissionReason::Stopped });
             }
             if state.active >= 2 {
-                return Err(ServiceError::Conflict("self password command capacity"));
+                return Err(ServiceError::AdmissionUnavailable { scope: "self password", reason: rbit_storage::AdmissionReason::Capacity });
             }
             let reservation = changes.reserve()?;
             let token = self.inner.tasks.token();
@@ -90,7 +93,7 @@ impl SelfPasswordOwner {
             drop(initial);
             let _ = send.send(result);
         }));
-        receive.await.map_err(ServiceError::internal)?
+        receive.await.map_err(|_| ServiceError::OutcomeUnavailable { scope: "self password task" })?
     }
 }
 
@@ -166,7 +169,7 @@ pub(crate) struct Completion {
 impl Completion {
     pub(crate) async fn wait(self) -> Result<(), ServiceError> {
         match self.receive {
-            Some(receive) => receive.await.map_err(ServiceError::internal)?,
+            Some(receive) => receive.await.map_err(|_| ServiceError::OutcomeUnavailable { scope: "self password task" })?,
             None => Ok(()),
         }
     }

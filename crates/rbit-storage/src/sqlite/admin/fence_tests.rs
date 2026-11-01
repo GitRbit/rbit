@@ -60,7 +60,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped<T: std::fmt::Debug>(result: &Result<T, StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("account moderation writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "account moderation", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 
 #[tokio::test]
@@ -103,7 +106,10 @@ async fn policy_and_moderation_clones_share_serial_and_stop_without_serializing_
     drop(fixture.db.authority_domain.stop_writers().drain(deadline()).await.unwrap());
     drop(quiet);
     stopped(&moderation.await);
-    assert!(matches!(policy_write.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        policy_write.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     stopped(&old_admin.set_admin(fixture.bob, false).await);
     stopped(&clone.admin().set_suspended(fixture.bob, true).await);
     stopped(&fixture.db.admin().delete_user(fixture.bob).await);

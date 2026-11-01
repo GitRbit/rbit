@@ -392,20 +392,26 @@ pub(super) async fn insert_user(
 }
 
 pub(super) fn principal_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "principal creation mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "principal creation writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "principal creation",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]
 mod fence_tests;
 
 fn rename_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "account rename mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "account rename writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "account rename",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

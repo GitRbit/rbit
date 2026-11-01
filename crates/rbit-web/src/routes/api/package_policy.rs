@@ -57,12 +57,13 @@ fn administrator(caller: &Caller) -> ApiResult<&User> {
 fn fault(error: &ServiceError) -> ApiError {
     match error {
         ServiceError::Forbidden => ApiError::forbidden("Active site administrator required"),
-        ServiceError::Conflict(
-            "server shutdown"
-            | "package policy operation admission"
-            | "package policy coordinator unavailable"
-            | "package policy maintenance admission",
-        ) => ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Package policy administration unavailable"),
+        ServiceError::AdmissionUnavailable { .. } => {
+            ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Package policy administration unavailable")
+        }
+        ServiceError::OutcomeUnavailable { .. } => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Package policy outcome unconfirmed; inspect operation and gate. Do not retry automatically.",
+        ),
         ServiceError::Conflict("empty host capability catalog" | "package review declaration mismatch") => {
             ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "Unsupported passive package policy declaration")
         }
@@ -775,5 +776,25 @@ mod tests {
             assert!(!path.contains("activate"));
         }
         assert_eq!(routes().len(), 8);
+    }
+}
+
+#[cfg(test)]
+mod typed_admission_fault_tests {
+    use super::*;
+    #[test]
+    fn typed_faults_do_not_become_conflicts_or_input_faults() {
+        let error = ServiceError::AdmissionUnavailable { scope: "private operation", reason: rbit_storage::AdmissionReason::Stopped };
+        let response = fault(&error);
+        assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(response.retry_after.is_none());
+        assert!(!response.message.contains("private operation"));
+        let error = ServiceError::OutcomeUnavailable { scope: "private operation" };
+        let response = fault(&error);
+        assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(response.retry_after.is_none());
+        assert!(response.message.contains("inspect"));
+        assert!(response.message.contains("Do not retry automatically"));
+        assert!(!response.message.contains("private operation"));
     }
 }

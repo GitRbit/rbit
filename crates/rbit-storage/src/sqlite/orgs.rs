@@ -366,10 +366,13 @@ impl OrgStore {
 }
 
 fn org_membership_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "organization membership mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "organization membership writers stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "organization membership",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

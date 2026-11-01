@@ -265,6 +265,33 @@ the pools after draining retained forced and self-password command leases. Unkno
 are logged as unresolved. Bound session workers share this stop; unrelated domains
 remain independent. This does not prove that SQLite or redb resources have exited.
 
+## Coordination errors
+
+Business conflicts retain their existing duplicate and policy-state behavior.
+`AdmissionUnavailable` carries a typed reason for refusal at one admission boundary.
+It does not promise that an earlier phase, an earlier purge batch or another
+operation had no effects. For example, organization repository creation can reach
+the guarded creator grant after creating the repository.
+
+`OutcomeUnavailable` means completion was not acknowledged. It establishes neither
+rollback nor successful publication, and consumers must not retry automatically.
+Immutable store-binding and private batch-shape violations are internal invariants,
+not duplicate values. Ordinary SQLite, redb and task errors retain their existing
+classification; this is not a complete uncertain-commit reconciliation protocol.
+
+Generic Web, JSON and LFS responses use 503 for admission refusal and 500 for
+unconfirmed outcomes, without a `Retry-After` header or diagnostic scope in the
+response. Package publication retains its existing 503 inspection/reconciliation
+protocol, with store visibility, receipt and cleanup facts classified first. The
+Actions runner protocol also retains its existing unavailable code, with explicit
+unconfirmed-outcome wording. These protocol status codes do not establish retry
+safety. Existing validation, duplicate, rate-limit and committed policy-seal
+responses are preserved.
+
+Changing an error class does not complete or clear an acquired mutation, command
+owner or suspended continuation. Sticky uncertainty and all drain conditions remain
+unchanged; managed execution remains unavailable.
+
 ## Coverage before execution
 
 This increment covers policy writes, the four user-creation methods, external

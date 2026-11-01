@@ -98,10 +98,10 @@
             "description": "Strict schema/identity/intent/grant declaration rejected"
           },
           "500": {
-            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation An unconfirmed outcome requires inspection, not automatic retry; rollback is not implied."
           },
           "503": {
-            "description": "Temporary service admission or shutdown unavailable"
+            "description": "Temporary service admission or shutdown unavailable Admission can be refused before this phase starts. This is not a whole-operation rollback or safe-retry promise; no Retry-After is supplied."
           }
         },
         "requestBody": {
@@ -319,10 +319,10 @@
             "description": "Strict schema/identity/intent/grant declaration rejected"
           },
           "500": {
-            "description": "Uncertain storage or bounded response failure; inspect gate/operation"
+            "description": "Uncertain storage or bounded response failure; inspect gate/operation An unconfirmed outcome requires inspection, not automatic retry; rollback is not implied."
           },
           "503": {
-            "description": "Temporary service admission or shutdown unavailable"
+            "description": "Temporary service admission or shutdown unavailable Admission can be refused before this phase starts. This is not a whole-operation rollback or safe-retry promise; no Retry-After is supplied."
           }
         },
         "requestBody": {
@@ -480,10 +480,10 @@
             "description": "Unknown fields or invalid strict SDK request."
           },
           "500": {
-            "description": "Uncertain storage/bounded response failure; inspect receipt and gate."
+            "description": "Uncertain storage/bounded response failure; inspect receipt and gate. An unconfirmed outcome requires inspection, not automatic retry; rollback is not implied."
           },
           "503": {
-            "description": "Exclusive maintenance admission, service shutdown or temporary unavailability."
+            "description": "Exclusive maintenance admission, service shutdown or temporary unavailability. Admission can be refused before this phase starts. This is not a whole-operation rollback or safe-retry promise; no Retry-After is supplied."
           }
         }
       },

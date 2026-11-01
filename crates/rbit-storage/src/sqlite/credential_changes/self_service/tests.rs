@@ -156,11 +156,17 @@ async fn conditional_false_is_acknowledged_without_kv_and_slots_are_independent(
     let f = Fixture::new().await;
     let a = f.changes().reserve().unwrap();
     let b = f.changes().reserve().unwrap();
-    assert!(matches!(f.changes().reserve(), Err(StorageError::Conflict("self password command capacity"))));
+    assert!(matches!(
+        f.changes().reserve(),
+        Err(StorageError::AdmissionUnavailable { scope: "self password", reason: crate::AdmissionReason::Capacity })
+    ));
     let forced = f.db.forced_password_changes(&f.kv).unwrap();
     let forced_a = forced.reserve().unwrap();
     let forced_b = forced.reserve().unwrap();
-    assert!(matches!(forced.reserve(), Err(StorageError::Conflict("forced password command capacity"))));
+    assert!(matches!(
+        forced.reserve(),
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Capacity })
+    ));
     assert!(timeout(WAIT, a.start(f.user, "never".into(), "stale".into()).unwrap().wait()).await.unwrap().unwrap().is_none());
     assert!(timeout(WAIT, b.start(AccountId(i64::MAX), "never".into(), "old".into()).unwrap().wait()).await.unwrap().unwrap().is_none());
     assert_eq!(f.hash().await, "old");
@@ -194,7 +200,7 @@ async fn immutable_receiver_factory_rejects_same_domain_different_kv_before_io()
     let other_factory = f.db.self_password_changes(&other_kv).unwrap();
     assert!(matches!(
         other_factory.prepare_batch(vec![change], SelfPasswordAction::EndAll),
-        Err(StorageError::Conflict("self password batch binding mismatch"))
+        Err(StorageError::Invariant("self password batch binding mismatch"))
     ));
     assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap().len(), 2);
     assert_eq!(other_kv.sessions().list_for_account(f.user).await.unwrap(), Vec::new());
@@ -215,7 +221,7 @@ async fn mixed_accounts_and_domains_are_rejected_before_any_revocation() {
         };
         assert!(matches!(
             f.changes().prepare_batch(vec![a, b], SelfPasswordAction::EndAll),
-            Err(StorageError::Conflict("self password batch binding mismatch"))
+            Err(StorageError::Invariant("self password batch binding mismatch"))
         ));
         assert_eq!(f.kv.sessions().list_for_account(f.user).await.unwrap().len(), 2);
         assert_eq!(other.kv.sessions().list_for_account(other.user).await.unwrap().len(), 2);
@@ -341,7 +347,7 @@ async fn dropped_final_receiver_still_settles_real_worker_and_terminal_refuses_s
     f.db.prepare_self_password_changes_shutdown();
     assert!(matches!(
         reservation.start(f.user, "never".into(), "new".into()),
-        Err(StorageError::Conflict("self password commands stopped"))
+        Err(StorageError::AdmissionUnavailable { scope: "self password", reason: crate::AdmissionReason::Stopped })
     ));
     assert!(f.db.clone().self_password_changes(&f.kv).unwrap().reserve().is_err());
     drop(batch.start());

@@ -66,7 +66,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped(result: &Result<(), StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("recovery writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "recovery", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &RecoveryStore, f: &Fixture, kind: usize) -> Result<(), StorageError> {
     match kind {
@@ -202,7 +205,10 @@ async fn recovery_five_paths_share_policy_queue_and_terminal_old_fresh_handle_st
     for operation in operations {
         stopped(&operation.await);
     }
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for kind in 0..5 {
         stopped(&mutation(&store, &f, kind).await);
         stopped(&mutation(&f.db.recovery(), &f, kind).await);

@@ -62,7 +62,7 @@
             "description": "Uncertain coordinator failure; inspect status"
           },
           "503": {
-            "description": "Admission/store unavailable, host reconciliation required, or Windows upload lacks supported host root verification"
+            "description": "Admission/store unavailable, host reconciliation required, or Windows upload lacks supported host root verification Admission can be refused before this phase starts. This is not a whole-operation rollback or safe-retry promise; no Retry-After is supplied. An unconfirmed publication outcome can also use 503; inspect its operation status and reconcile rather than retry automatically."
           }
         },
         "requestBody": {

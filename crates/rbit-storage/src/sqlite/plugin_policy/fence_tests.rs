@@ -117,7 +117,10 @@ async fn prepare_renew_and_apply_cancellation_under_real_sql_writer_lock_remain_
 }
 
 fn stopped<T: std::fmt::Debug>(result: &Result<T, StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("package policy writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 
 #[tokio::test]

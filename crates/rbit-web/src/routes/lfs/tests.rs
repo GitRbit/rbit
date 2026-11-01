@@ -428,3 +428,29 @@ async fn the_blob_page_shows_lfs_objects_and_raw_serves_them() {
     let (_, bytes) = fixture.send("GET", "/alice/assets/raw/main/missing.bin", None, Vec::new()).await;
     assert_eq!(&bytes[..], &missing_pointer[..], "without the object, raw serves the pointer");
 }
+
+#[tokio::test]
+async fn typed_admission_and_outcome_errors_keep_lfs_status_and_no_retry_header() {
+    use axum::response::IntoResponse;
+    for (error, expected, message) in [
+        (
+            rbit_services::ServiceError::AdmissionUnavailable {
+                scope: "private operation",
+                reason: rbit_storage::AdmissionReason::Stopped,
+            },
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Operation admission is unavailable.",
+        ),
+        (
+            rbit_services::ServiceError::OutcomeUnavailable { scope: "private operation" },
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Operation outcome is unconfirmed. Do not retry automatically.",
+        ),
+    ] {
+        let response = super::LfsError::from(error).into_response();
+        assert_eq!(response.status(), expected);
+        assert!(!response.headers().contains_key(header::RETRY_AFTER));
+        let bytes = axum::body::to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), json!({"message": message}));
+    }
+}

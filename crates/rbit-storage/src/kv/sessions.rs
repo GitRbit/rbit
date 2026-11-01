@@ -278,7 +278,7 @@ impl SessionStore {
             let result = operation(&db, worker.account, worker.keep);
             let acknowledged = worker.acknowledge(result.is_ok());
             if result.is_ok() && !acknowledged {
-                return Err(StorageError::Conflict("self password command settlement uncertain"));
+                return Err(StorageError::OutcomeUnavailable { scope: "self password" });
             }
             result
         })
@@ -299,7 +299,11 @@ impl SessionStore {
         S: Fn(PurgeState) -> Result<PurgeState, StorageError> + Clone + Send + 'static,
         W: Fn(PurgeState, &redb::Database) -> Result<PurgeState, StorageError> + Clone + Send + 'static,
     {
-        let reservation = self.purge.clone().try_acquire_owned().map_err(|_| StorageError::Conflict("session purge capacity"))?;
+        let reservation = self
+            .purge
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| StorageError::AdmissionUnavailable { scope: "session purge", reason: crate::AdmissionReason::Capacity })?;
         let db = Arc::clone(&self.db);
         let first_scan = scan.clone();
         let mut state = tokio::task::spawn_blocking(move || first_scan(PurgeState::snapshot(&db, reservation)?)).await??;
@@ -393,10 +397,13 @@ impl PurgeState {
 }
 
 fn session_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "session mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "session writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "session",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 /// A snapshot may contain keys that another request has replaced or revoked.

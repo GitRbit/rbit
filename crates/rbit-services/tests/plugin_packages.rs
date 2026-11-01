@@ -352,7 +352,7 @@ async fn waiter_cancellation_retains_admission_and_shutdown_drains_actual_blocki
     entered.await.unwrap();
     assert!(matches!(
         fixture.services.packages.install(&fixture.admin, id("third"), Cursor::new(data()), deadline(), MAX_ARCHIVE_WIRE_BYTES).await,
-        Err(ServiceError::Conflict("package operation admission"))
+        Err(ServiceError::AdmissionUnavailable { scope: "package operation", reason: rbit_storage::AdmissionReason::Capacity })
     ));
     fixture.services.prepare_shutdown();
     let services = fixture.services.clone();
@@ -360,7 +360,7 @@ async fn waiter_cancellation_retains_admission_and_shutdown_drains_actual_blocki
     assert!(tokio::time::timeout(Duration::from_millis(20), &mut shutdown).await.is_err());
     assert!(matches!(
         fixture.services.packages.install(&fixture.admin, id("closed"), Cursor::new(data()), deadline(), MAX_ARCHIVE_WIRE_BYTES).await,
-        Err(ServiceError::Conflict("server shutdown"))
+        Err(ServiceError::AdmissionUnavailable { scope: "package operation", reason: rbit_storage::AdmissionReason::Stopped })
     ));
     release(&first_gate);
     release(&second_gate);
@@ -376,11 +376,11 @@ async fn waiter_cancellation_retains_admission_and_shutdown_drains_actual_blocki
             .packages
             .install(&fixture.admin, id("after-stores-close"), Cursor::new(data()), deadline(), MAX_ARCHIVE_WIRE_BYTES)
             .await,
-        Err(ServiceError::Conflict("server shutdown"))
+        Err(ServiceError::AdmissionUnavailable { scope: "package operation", reason: rbit_storage::AdmissionReason::Stopped })
     ));
     assert!(matches!(
         fixture.services.packages.operation(&fixture.admin, &id("first")).await,
-        Err(ServiceError::Conflict("server shutdown"))
+        Err(ServiceError::AdmissionUnavailable { scope: "package operation", reason: rbit_storage::AdmissionReason::Stopped })
     ));
 }
 

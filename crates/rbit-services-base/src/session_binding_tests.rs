@@ -15,7 +15,11 @@ async fn mismatched_session_binding_is_rejected_before_sql_or_bootstrap_initiali
     // exact mismatch instead proves validation precedes that query; no claim
     // is made about constructor work that happened before this service call.
     let result = Box::pin(Services::new(Arc::new(config), &original, &kv)).await;
-    assert!(matches!(result, Err(ServiceError::Conflict("session authority domain mismatch"))));
+    let Err(ServiceError::Internal(error)) = result else { panic!("expected internal binding failure") };
+    assert!(matches!(
+        error.downcast_ref::<rbit_storage::StorageError>(),
+        Some(rbit_storage::StorageError::Invariant("session authority domain mismatch"))
+    ));
     assert!(!untouched.exists());
     other.close().await;
 }

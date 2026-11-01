@@ -56,7 +56,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped(result: &Result<(), StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("account rename writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "account rename", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &AccountStore, account: AccountId, conditional: bool) -> Result<(), StorageError> {
     let name: AccountName = "changed".parse().unwrap();
@@ -160,7 +163,10 @@ async fn renames_share_policy_queue_and_terminal_old_fresh_handle_stop() {
     drop(f.db.authority_domain.stop_writers().drain(deadline()).await.unwrap());
     drop(quiet);
     stopped(&generic.await);
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for conditional in [false, true] {
         stopped(&mutation(&store, f.alice, conditional).await);
         stopped(&mutation(&f.db.accounts(), f.alice, conditional).await);

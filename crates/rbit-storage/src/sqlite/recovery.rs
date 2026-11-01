@@ -341,10 +341,13 @@ impl RecoveryStore {
 }
 
 fn recovery_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "recovery mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "recovery writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "recovery",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

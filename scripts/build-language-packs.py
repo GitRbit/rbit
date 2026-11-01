@@ -26,6 +26,8 @@ SPANISH = {
  'Support':'Ayuda', 'Status':'Estado', 'Enabled':'Activado', 'Disabled':'Desactivado', 'Enabled by default':'Activado de forma predeterminada',
  'Close':'Cerrar', 'Filter':'Filtrar', 'Clear':'Limpiar', 'Jobs':'Trabajos', 'Run workflow':'Ejecutar flujo de trabajo',
 }
+# Published pack versions are immutable; bump only locales whose archive content changes.
+PACK_VERSIONS = {'es': '1.1.0', 'en-XA': '1.2.0', 'ar-XB': '1.2.0'}
 ACCENTS = str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 'ȦƁƇḒḖƑƓĦĪĴĶĿḾȠǾƤɊŘŞŦŬṼẆẊẎẐȧƀƈḓḗƒɠħīĵķŀḿƞǿƥɋřşŧŭṽẇẋẏẑ')
 def quoted(text):
     # Fluent string literals support Unicode escapes, not JSON's short control escapes.
@@ -66,7 +68,7 @@ def build(locale, messages):
         if lines:
             path='catalogs/'+namespace+'.ftl'; catalogs[namespace]=path;files[path]=''.join(lines).encode()
     manifest='schema = 1\n'+''.join(k+' = '+quoted(v)+'\n' for k,v in {
-      'id':'language.'+locale.lower(),'version':'1.1.0','locale':locale,'direction':'rtl' if locale=='ar-XB' else 'ltr',
+      'id':'language.'+locale.lower(),'version':PACK_VERSIONS[locale],'locale':locale,'direction':'rtl' if locale=='ar-XB' else 'ltr',
       'message_schema':'^1.0','publisher':'Rbit example language data','license':'MIT OR Apache-2.0','license_file':'LICENSE.txt'}.items())
     manifest+='\n[catalogs]\n'+''.join(k+' = '+quoted(v)+'\n' for k,v in catalogs.items())
     manifest+='\n[checksums]\n'+''.join(quoted(k)+' = '+quoted(hashlib.sha256(v).hexdigest())+'\n' for k,v in sorted(files.items()))

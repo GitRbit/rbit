@@ -206,7 +206,10 @@ impl Connection {
 /// Logs an unexpected error and returns the generic message shown to the client.
 fn internal(error: &ServiceError) -> String {
     tracing::error!(%error, "SSH request failed");
-    "internal error; please try again later".to_owned()
+    match error {
+        ServiceError::AdmissionUnavailable { .. } | ServiceError::OutcomeUnavailable { .. } => error.to_string(),
+        _ => "internal error; please try again later".to_owned(),
+    }
 }
 
 /// Accepts a request, shows `message` on the client's stderr and ends the channel with
@@ -636,5 +639,19 @@ struct AbortOnDrop(JoinHandle<()>);
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+#[cfg(test)]
+mod typed_error_tests {
+    use super::{ServiceError, internal};
+
+    #[test]
+    fn typed_authority_errors_do_not_gain_ssh_retry_advice() {
+        let unavailable = ServiceError::AdmissionUnavailable { scope: "private context", reason: rbit_storage::AdmissionReason::Stopped };
+        assert_eq!(internal(&unavailable), "Operation admission is unavailable.");
+        let unknown = ServiceError::OutcomeUnavailable { scope: "private context" };
+        assert_eq!(internal(&unknown), "Operation outcome is unconfirmed. Do not retry automatically.");
+        assert_eq!(internal(&ServiceError::NotFound), "internal error; please try again later");
     }
 }

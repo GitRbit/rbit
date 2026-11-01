@@ -529,10 +529,13 @@ async fn replace_codes(tx: &mut super::pool::Conn, account: AccountId, digests: 
 }
 
 fn factor_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "two-factor mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "two-factor writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "two-factor",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

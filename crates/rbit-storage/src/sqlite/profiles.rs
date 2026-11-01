@@ -183,10 +183,13 @@ impl ProfileStore {
 }
 
 fn profile_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "profile credential mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "profile credential writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "profile credential",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

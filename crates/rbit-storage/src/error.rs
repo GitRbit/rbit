@@ -1,7 +1,29 @@
 //! Errors returned by the `SQLite` and key/value stores.
 
+/// Why an operation was refused at its admission boundary. This is not a retry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdmissionReason {
+    Capacity,
+    Stopped,
+    Busy,
+    RuntimeUnavailable,
+    CoordinatorUnavailable,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    /// This phase was not admitted. Earlier phases or other commands may have committed.
+    #[error("Operation admission is unavailable.")]
+    AdmissionUnavailable { scope: &'static str, reason: AdmissionReason },
+
+    /// Completion is not acknowledged. This never establishes rollback or safe retry.
+    #[error("Operation outcome is unconfirmed. Do not retry automatically.")]
+    OutcomeUnavailable { scope: &'static str },
+
+    /// An internal immutable binding or private input invariant was violated.
+    #[error("internal storage invariant: {0}")]
+    Invariant(&'static str),
+
     #[error("registration is closed on this instance")]
     RegistrationClosed,
 

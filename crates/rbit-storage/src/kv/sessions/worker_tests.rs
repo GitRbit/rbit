@@ -150,7 +150,7 @@ async fn bounded_admission_precedes_submission_and_queued_cancel_stays_clean() {
             Ok(())
         })
         .await;
-    assert!(matches!(refused, Err(StorageError::Conflict("session mutation capacity"))));
+    assert!(matches!(refused, Err(StorageError::AdmissionUnavailable { scope: "session", reason: crate::AdmissionReason::Capacity })));
     assert!(!submitted.load(Ordering::SeqCst));
     drop(queued);
     assert_eq!(f.domain.snapshot().queued, 0);
@@ -208,7 +208,7 @@ async fn stop_blocks_each_actual_writer_but_live_reads_and_live_only_scan_stay_i
         f.store.get([2; 32]).await.map(|_| ()),
         f.store.purge_expired().await.map(|_| ()),
     ] {
-        assert!(matches!(result, Err(StorageError::Conflict("session writer stopped"))));
+        assert!(matches!(result, Err(StorageError::AdmissionUnavailable { scope: "session", reason: crate::AdmissionReason::Stopped })));
     }
     assert!(f.store.get([1; 32]).await.unwrap().is_some());
     assert_eq!(f.store.list_for_account(AccountId(1)).await.unwrap().len(), 1);
@@ -241,7 +241,10 @@ async fn lost_scan_waiter_retains_one_purge_reservation_without_holding_authorit
     timeout(WAIT, gate.entered.notified()).await.unwrap();
     waiter.abort();
     assert!(timeout(WAIT, waiter).await.unwrap().unwrap_err().is_cancelled());
-    assert!(matches!(f.kv.clone().sessions().purge_expired().await, Err(StorageError::Conflict("session purge capacity"))));
+    assert!(matches!(
+        f.kv.clone().sessions().purge_expired().await,
+        Err(StorageError::AdmissionUnavailable { scope: "session purge", reason: crate::AdmissionReason::Capacity })
+    ));
     assert_eq!(f.domain.snapshot().active, 0);
     f.store.put([255; 32], record(2, 3600)).await.unwrap(); // Real writer interleaves while scan is gated.
     release.send(()).unwrap();
@@ -328,7 +331,7 @@ async fn stop_between_acknowledged_batches_is_known_partial_maintenance() {
             PurgeState::flush,
         )
         .await;
-    assert!(matches!(result, Err(StorageError::Conflict("session writer stopped"))));
+    assert!(matches!(result, Err(StorageError::AdmissionUnavailable { scope: "session", reason: crate::AdmissionReason::Stopped })));
     assert_eq!(rows(&f.store), 1);
     assert!(!f.domain.snapshot().uncertain);
     drop(f.domain.stop_writers().drain(Instant::now() + WAIT).await.unwrap());

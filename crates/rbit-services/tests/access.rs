@@ -454,7 +454,10 @@ async fn stopped_collaborator_writer_is_not_misreported_as_a_duplicate() {
     )
     .await
     .unwrap();
-    assert!(matches!(result, Err(ServiceError::Conflict("collaborator writers stopped"))));
+    assert!(matches!(
+        result,
+        Err(ServiceError::AdmissionUnavailable { scope: "collaborator", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
     assert_eq!(fixture.database.collaborators().permission(repo, fresh.id()).await.unwrap(), None);
     assert_eq!(fixture.services.audit.list(&alice, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
     assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));

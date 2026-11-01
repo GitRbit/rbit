@@ -315,6 +315,10 @@ impl std::error::Error for RunnerError {}
 impl From<ServiceError> for RunnerError {
     fn from(error: ServiceError) -> Self {
         match error {
+            // This protocol has only Unavailable (503), not a separate internal-error code.
+            // Preserve that wire code without turning an unknown outcome into retry advice.
+            ServiceError::AdmissionUnavailable { .. } => Self::unavailable("Operation admission is unavailable."),
+            ServiceError::OutcomeUnavailable { .. } => Self::unavailable("Operation outcome is unconfirmed. Do not retry automatically."),
             ServiceError::NotFound => Self::not_found("not found"),
             ServiceError::Forbidden => Self::forbidden(error.to_string()),
             ServiceError::Invalid(message) => Self::bad_request(message),
@@ -907,5 +911,31 @@ mod tests {
         assert_eq!(internal.code(), ErrorCode::Unavailable);
         assert!(!internal.body.message.contains("disk"), "internal details stay in the log");
         assert_eq!(RunnerError::log_gap(4).body.next_line, Some(4));
+    }
+}
+
+#[cfg(test)]
+mod typed_error_tests {
+    use super::{ErrorCode, RunnerError, ServiceError};
+
+    #[test]
+    fn constrained_runner_protocol_retains_safe_typed_error_messages() {
+        for (error, message) in [
+            (
+                ServiceError::AdmissionUnavailable { scope: "private context", reason: rbit_storage::AdmissionReason::Stopped },
+                "Operation admission is unavailable.",
+            ),
+            (
+                ServiceError::OutcomeUnavailable { scope: "private context" },
+                "Operation outcome is unconfirmed. Do not retry automatically.",
+            ),
+        ] {
+            let error = RunnerError::from(error);
+            assert_eq!(error.code(), ErrorCode::Unavailable);
+            assert_eq!(error.body.message, message);
+            assert!(error.retry_after_seconds.is_none());
+        }
+        let error = RunnerError::from(ServiceError::Conflict("existing business conflict"));
+        assert_eq!(error.body.message, "the server could not handle the call; try again later");
     }
 }

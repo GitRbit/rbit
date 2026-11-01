@@ -173,10 +173,13 @@ impl CollaboratorStore {
 // Shared only by the four selected direct assignment entries. Other repository
 // mutations/triggers/cascades remain separate categories, not covered implicitly.
 pub(super) fn collaborator_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "collaborator mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "collaborator writers stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "collaborator",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

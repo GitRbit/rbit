@@ -75,7 +75,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped(result: &Result<(), StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("profile credential writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "profile credential", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &ProfileStore, f: &Fixture, kind: usize) -> Result<(), StorageError> {
     let email: Email = "new@example.com".parse().unwrap();
@@ -181,7 +184,10 @@ async fn four_profile_credentials_share_policy_queue_and_terminal_cloned_handle_
     for operation in operations {
         stopped(&operation.await);
     }
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for kind in 0..4 {
         stopped(&mutation(&store, &f, kind).await);
         stopped(&mutation(&f.db.profiles(), &f, kind).await);

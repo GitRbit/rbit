@@ -99,10 +99,10 @@ impl ForcedPasswordChanges {
     pub fn reserve(&self) -> Result<ForcedPasswordReservation, StorageError> {
         let mut state = self.coordinator.inner.state();
         if state.stopped {
-            return Err(StorageError::Conflict("forced password commands stopped"));
+            return Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Stopped });
         }
         if state.reserved >= CAPACITY {
-            return Err(StorageError::Conflict("forced password command capacity"));
+            return Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Capacity });
         }
         state.reserved += 1;
         let command = Arc::new(Command { inner: self.coordinator.inner.clone(), phase: Mutex::new(Phase::Reserved) });
@@ -158,15 +158,17 @@ impl ForcedPasswordReservation {
         F: FnOnce(ForcedPasswordChanges, Arc<Command>) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<T, StorageError>> + Send + 'static,
     {
-        let runtime =
-            tokio::runtime::Handle::try_current().map_err(|_| StorageError::Conflict("forced password command runtime unavailable"))?;
+        let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::AdmissionUnavailable {
+            scope: "forced password",
+            reason: crate::AdmissionReason::RuntimeUnavailable,
+        })?;
         let (send, receive) = oneshot::channel();
         let inner = self.command.inner.clone();
         // Same mutex as stop/reserve: a stale reservation cannot start after stop.
         let state = inner.state();
         if state.stopped {
             drop(state);
-            return Err(StorageError::Conflict("forced password commands stopped"));
+            return Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Stopped });
         }
         let Self { changes, command } = self;
         // Ownership was admitted above. Drain already counts it; release the
@@ -187,7 +189,7 @@ pub struct ForcedPasswordResult<T = usize> {
 }
 impl<T> ForcedPasswordResult<T> {
     pub async fn wait(self) -> Result<T, StorageError> {
-        self.receive.await.map_err(|_| StorageError::Conflict("forced password command outcome unavailable"))?
+        self.receive.await.map_err(|_| StorageError::OutcomeUnavailable { scope: "forced password" })?
     }
 }
 
@@ -266,11 +268,12 @@ where
     Fut: std::future::Future<Output = Result<usize, StorageError>>,
 {
     let _owner = AsyncOwner(command.clone());
-    let mutation = changes.writer.begin().await.map_err(|error| {
-        StorageError::Conflict(match error {
-            rbit_authority_fence::BeginError::Capacity => "forced password mutation capacity",
-            rbit_authority_fence::BeginError::Stopped => "forced password writer stopped",
-        })
+    let mutation = changes.writer.begin().await.map_err(|error| StorageError::AdmissionUnavailable {
+        scope: "forced password",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
     })?;
     *command.phase() = Phase::Authority;
     // Preserve the unconditional setter's missing-account/no-op behavior.
@@ -299,11 +302,12 @@ where
     Fut: std::future::Future<Output = Result<usize, StorageError>>,
 {
     let _owner = AsyncOwner(command.clone());
-    let mutation = changes.writer.begin().await.map_err(|error| {
-        StorageError::Conflict(match error {
-            rbit_authority_fence::BeginError::Capacity => "forced password mutation capacity",
-            rbit_authority_fence::BeginError::Stopped => "forced password writer stopped",
-        })
+    let mutation = changes.writer.begin().await.map_err(|error| StorageError::AdmissionUnavailable {
+        scope: "forced password",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
     })?;
     *command.phase() = Phase::Authority;
     let Some(token) = changes.recovery.reset_password_raw(digest, hash, now).await? else {

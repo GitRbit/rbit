@@ -62,7 +62,10 @@ async fn create(db: &Database, kind: usize, name: &str) -> Result<User, StorageE
     }
 }
 fn stopped(result: &Result<User, StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("principal creation writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "principal creation", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 
 #[tokio::test]
@@ -137,8 +140,14 @@ async fn four_creation_paths_share_policy_and_moderation_queue_and_terminal_stop
     for creation in creations {
         stopped(&creation.await);
     }
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
-    assert!(matches!(moderation.await, Err(StorageError::Conflict("account moderation writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
+    assert!(matches!(
+        moderation.await,
+        Err(StorageError::AdmissionUnavailable { scope: "account moderation", reason: crate::AdmissionReason::Stopped })
+    ));
     stopped(&old_accounts.create_user(user("old")).await);
     stopped(&old_accounts.create_user_with_initial_password(user("old")).await);
     stopped(&old_accounts.register_user(user("old"), true).await);

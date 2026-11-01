@@ -116,15 +116,24 @@ impl PluginPackageService {
         }
         let control = StageControl::new(deadline.min(now + MAX_DURATION), wire_quota).map_err(ServiceError::internal)?;
         let owned = {
-            let mut admission = self.inner.admission.lock().map_err(|_| ServiceError::Conflict("package coordinator unavailable"))?;
+            let mut admission = self.inner.admission.lock().map_err(|_| ServiceError::AdmissionUnavailable {
+                scope: "package operation",
+                reason: rbit_storage::AdmissionReason::CoordinatorUnavailable,
+            })?;
             if admission.closed {
-                return Err(ServiceError::Conflict("server shutdown"));
+                return Err(ServiceError::AdmissionUnavailable {
+                    scope: "package operation",
+                    reason: rbit_storage::AdmissionReason::Stopped,
+                });
             }
             if admission.active.contains_key(id.as_str()) {
                 return Err(ServiceError::Conflict("package operation already active"));
             }
             if admission.active.len() >= MAX_OPERATIONS {
-                return Err(ServiceError::Conflict("package operation admission"));
+                return Err(ServiceError::AdmissionUnavailable {
+                    scope: "package operation",
+                    reason: rbit_storage::AdmissionReason::Capacity,
+                });
             }
             let token = self.inner.tasks.token();
             admission.active.insert(id.as_str().to_owned(), control.clone());
@@ -141,7 +150,7 @@ impl PluginPackageService {
             drop(owned);
             let _ = sender.send(result);
         });
-        let result = receiver.await.map_err(ServiceError::internal)?;
+        let result = receiver.await.map_err(|_| ServiceError::OutcomeUnavailable { scope: "package operation" })?;
         drop(waiter);
         result
     }
@@ -291,8 +300,15 @@ impl PluginPackageService {
     }
 
     fn check_running(&self) -> Result<(), ServiceError> {
-        let admission = self.inner.admission.lock().map_err(|_| ServiceError::Conflict("package coordinator unavailable"))?;
-        if admission.closed { Err(ServiceError::Conflict("server shutdown")) } else { Ok(()) }
+        let admission = self.inner.admission.lock().map_err(|_| ServiceError::AdmissionUnavailable {
+            scope: "package operation",
+            reason: rbit_storage::AdmissionReason::CoordinatorUnavailable,
+        })?;
+        if admission.closed {
+            Err(ServiceError::AdmissionUnavailable { scope: "package operation", reason: rbit_storage::AdmissionReason::Stopped })
+        } else {
+            Ok(())
+        }
     }
 
     pub(crate) fn prepare_shutdown(&self) {

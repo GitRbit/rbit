@@ -406,10 +406,13 @@ impl SshKeyStore {
 }
 
 fn ssh_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
-    StorageError::Conflict(match error {
-        rbit_authority_fence::BeginError::Capacity => "SSH key mutation capacity",
-        rbit_authority_fence::BeginError::Stopped => "SSH key writer stopped",
-    })
+    StorageError::AdmissionUnavailable {
+        scope: "SSH key",
+        reason: match error {
+            rbit_authority_fence::BeginError::Capacity => crate::AdmissionReason::Capacity,
+            rbit_authority_fence::BeginError::Stopped => crate::AdmissionReason::Stopped,
+        },
+    }
 }
 
 #[cfg(test)]

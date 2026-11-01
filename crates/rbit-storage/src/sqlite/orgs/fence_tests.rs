@@ -238,7 +238,10 @@ async fn old_cloned_and_new_handles_reject_all_four_after_unpolled_close() {
     for fresh in [false, true] {
         let store = if fresh { database.orgs() } else { old.clone() };
         for operation in OPERATIONS {
-            assert!(matches!(apply(&f, &store, operation).await, Err(StorageError::Conflict("organization membership writers stopped"))));
+            assert!(matches!(
+                apply(&f, &store, operation).await,
+                Err(StorageError::AdmissionUnavailable { scope: "organization membership", reason: crate::AdmissionReason::Stopped })
+            ));
         }
     }
     assert_eq!(old.role_of(f.org, f.bob).await.unwrap(), Some(OrgRole::Member));

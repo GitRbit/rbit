@@ -88,6 +88,10 @@ impl ApiError {
     /// Maps a service error, attributing validation failures to `field`.
     pub fn service(error: ServiceError, field: &str) -> Self {
         match error {
+            ServiceError::AdmissionUnavailable { .. } => Self::new(StatusCode::SERVICE_UNAVAILABLE, "Operation admission is unavailable."),
+            ServiceError::OutcomeUnavailable { .. } => {
+                Self::new(StatusCode::INTERNAL_SERVER_ERROR, "Operation outcome is unconfirmed. Do not retry automatically.")
+            }
             ServiceError::Invalid(message) => Self::invalid(field, message),
             ServiceError::Conflict(what) => Self::new(StatusCode::CONFLICT, format!("{what} is already taken")),
             ServiceError::NotFound => Self::not_found(),
@@ -202,5 +206,31 @@ mod tests {
         assert_eq!(status, StatusCode::FORBIDDEN);
         let (status, json, _) = body(ServiceError::Archived.into()).await;
         assert_eq!((status, json["message"].as_str()), (StatusCode::FORBIDDEN, Some("Repository was archived so is read-only.")));
+    }
+    #[tokio::test]
+    async fn typed_admission_and_outcomes_are_not_validation_or_retry_promises() {
+        for (error, expected, message) in [
+            (
+                ServiceError::AdmissionUnavailable { scope: "private operation", reason: rbit_storage::AdmissionReason::Capacity },
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Operation admission is unavailable.",
+            ),
+            (
+                ServiceError::OutcomeUnavailable { scope: "private operation" },
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Operation outcome is unconfirmed. Do not retry automatically.",
+            ),
+            (
+                ServiceError::internal(rbit_storage::StorageError::Invariant("private operation")),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "An unexpected error occurred. It has been logged.",
+            ),
+        ] {
+            let (status, json, headers) = body(ApiError::service(error, "username")).await;
+            assert_eq!(status, expected);
+            assert_eq!(json, serde_json::json!({ "message": message }));
+            assert!(!headers.contains_key(header::RETRY_AFTER));
+            assert!(!json.to_string().contains("private operation"));
+        }
     }
 }

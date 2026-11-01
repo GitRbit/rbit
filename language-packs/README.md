@@ -13,5 +13,9 @@ zero/one/many handling; browser plural categories use the browser's `Intl.Plural
 Regenerate: `python3 scripts/build-language-packs.py`.
 Check: `python3 scripts/build-language-packs.py --check`.
 
+Published pack versions are immutable. When generated content changes, bump that
+locale in `PACK_VERSIONS` before rebuilding so installed packs can be upgraded.
+The pseudolocales are version 1.2.0; the unchanged Spanish starter remains 1.1.0.
+
 See [authoring, trust and resource limits](../docs/i18n.md). Checksums are integrity metadata,
 not a publisher signature. Do not install translations from a publisher you do not trust.

@@ -236,9 +236,15 @@ fn fault(error: &ServiceError, source: Fault) -> ApiError {
     }
     match error {
         ServiceError::Forbidden => ApiError::forbidden("Active site administrator required"),
-        ServiceError::Conflict("package operation admission" | "server shutdown") => {
+        ServiceError::AdmissionUnavailable { .. } => {
             ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "Package operation admission unavailable")
         }
+        // Preserve this protocol's existing 503 inspection/reconciliation contract.
+        // Status never establishes rollback or retry safety; StoreFailure facts above win.
+        ServiceError::OutcomeUnavailable { .. } => ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Package outcome unconfirmed; inspect operation status or reconcile the host. Do not retry automatically.",
+        ),
         ServiceError::Conflict(_) => ApiError::new(StatusCode::CONFLICT, "Package operation conflicts with recorded or active work"),
         ServiceError::Invalid(_) => ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "Invalid package operation"),
         _ => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Package operation failed; inspect its status"),
@@ -462,5 +468,25 @@ mod tests {
         headers.remove(header::CONTENT_LENGTH);
         headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
         assert_eq!(check_headers(&headers).unwrap_err().status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+}
+
+#[cfg(test)]
+mod typed_admission_fault_tests {
+    use super::*;
+    #[test]
+    fn typed_faults_do_not_become_conflicts_or_input_faults() {
+        let error = ServiceError::AdmissionUnavailable { scope: "private operation", reason: rbit_storage::AdmissionReason::Stopped };
+        let response = fault(&error, Fault::Quota);
+        assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(response.retry_after.is_none());
+        assert!(!response.message.contains("private operation"));
+        let error = ServiceError::OutcomeUnavailable { scope: "private operation" };
+        let response = fault(&error, Fault::Quota);
+        assert_eq!(response.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(response.retry_after.is_none());
+        assert!(response.message.contains("inspect"));
+        assert!(response.message.contains("Do not retry automatically"));
+        assert!(!response.message.contains("private operation"));
     }
 }

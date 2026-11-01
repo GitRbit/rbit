@@ -45,9 +45,18 @@ async fn sql_and_kv_session_handles_share_serial_and_terminal_stop() {
     assert!(sessions.get([2; 32]).await.unwrap().is_none());
     drop(clone.close());
     drop(quiet);
-    assert!(matches!(account.await, Err(StorageError::Conflict("principal creation writer stopped"))));
-    assert!(matches!(sessions.delete([1; 32]).await, Err(StorageError::Conflict("session writer stopped"))));
-    assert!(matches!(kv.sessions().delete([1; 32]).await, Err(StorageError::Conflict("session writer stopped"))));
+    assert!(matches!(
+        account.await,
+        Err(StorageError::AdmissionUnavailable { scope: "principal creation", reason: crate::AdmissionReason::Stopped })
+    ));
+    assert!(matches!(
+        sessions.delete([1; 32]).await,
+        Err(StorageError::AdmissionUnavailable { scope: "session", reason: crate::AdmissionReason::Stopped })
+    ));
+    assert!(matches!(
+        kv.sessions().delete([1; 32]).await,
+        Err(StorageError::AdmissionUnavailable { scope: "session", reason: crate::AdmissionReason::Stopped })
+    ));
     drop(database.authority_domain.stop_writers().drain(Instant::now() + Duration::from_secs(5)).await.unwrap());
     assert!(sessions.get([1; 32]).await.unwrap().is_some());
     database.close().await;

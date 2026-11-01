@@ -59,7 +59,13 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped<T: std::fmt::Debug>(result: &Result<T, StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("external identity linking writer stopped"))), "{result:?}");
+    assert!(
+        matches!(
+            result,
+            Err(StorageError::AdmissionUnavailable { scope: "external identity linking", reason: crate::AdmissionReason::Stopped })
+        ),
+        "{result:?}"
+    );
 }
 
 #[tokio::test]
@@ -129,7 +135,10 @@ async fn shared_queue_cancel_and_terminal_stop_cover_old_and_fresh_linking_handl
     drop(clone.close());
     drop(fixture.db.authority_domain.stop_writers().drain(deadline()).await.unwrap());
     drop(quiet);
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     stopped(&link.await);
     stopped(&unlink.await);
     stopped(&store.link(fixture.bob, identity("github", "bob"), Timestamp(3)).await);

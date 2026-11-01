@@ -27,7 +27,7 @@ async fn separate_database_opens_even_on_the_same_file_cannot_silently_rebind_se
     let original = Database::open(&path).await.unwrap();
     let independent = Database::open(&path).await.unwrap();
     let kv = original.open_kv(&dir.path().join("kv.redb")).unwrap();
-    assert!(matches!(independent.validate_kv_session_binding(&kv), Err(StorageError::Conflict("session authority domain mismatch"))));
+    assert!(matches!(independent.validate_kv_session_binding(&kv), Err(StorageError::Invariant("session authority domain mismatch"))));
     assert!(original.validate_kv_session_binding(&kv).is_ok());
     independent.close().await;
     original.close().await;

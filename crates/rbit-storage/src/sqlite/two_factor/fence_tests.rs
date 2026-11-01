@@ -67,7 +67,10 @@ async fn pending<F: Future + ?Sized>(mut future: Pin<&mut F>) {
     .await;
 }
 fn stopped(result: &Result<(), StorageError>) {
-    assert!(matches!(result, Err(StorageError::Conflict("two-factor writer stopped"))), "{result:?}");
+    assert!(
+        matches!(result, Err(StorageError::AdmissionUnavailable { scope: "two-factor", reason: crate::AdmissionReason::Stopped })),
+        "{result:?}"
+    );
 }
 async fn mutation(store: &TwoFactorStore, account: AccountId, id: i64, kind: usize) -> Result<(), StorageError> {
     match kind {
@@ -209,7 +212,10 @@ async fn all_ten_factor_mutations_share_policy_queue_and_terminal_old_fresh_stop
     for operation in operations {
         stopped(&operation.await);
     }
-    assert!(matches!(review.await, Err(StorageError::Conflict("package policy writer stopped"))));
+    assert!(matches!(
+        review.await,
+        Err(StorageError::AdmissionUnavailable { scope: "package policy", reason: crate::AdmissionReason::Stopped })
+    ));
     for kind in 0..10 {
         stopped(&mutation(&store, f.alice, id, kind).await);
         stopped(&mutation(&f.db.two_factor(), f.alice, id, kind).await);

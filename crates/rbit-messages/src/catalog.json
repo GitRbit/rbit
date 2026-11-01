@@ -2918,6 +2918,11 @@
   },
   {
     "namespace": "core",
+    "key": "error-admission-unavailable",
+    "english": "Operation admission is unavailable."
+  },
+  {
+    "namespace": "core",
     "key": "error-internal",
     "english": "An unexpected error occurred. It has been logged."
   },
@@ -2925,6 +2930,11 @@
     "namespace": "core",
     "key": "error-not-found",
     "english": "The page you were looking for doesn't exist, or you don't have access to it."
+  },
+  {
+    "namespace": "core",
+    "key": "error-outcome-unavailable",
+    "english": "Operation outcome is unconfirmed. Do not retry automatically."
   },
   {
     "namespace": "core",
@@ -2940,6 +2950,11 @@
     "namespace": "core",
     "key": "error-title-page-not-found",
     "english": "Page not found"
+  },
+  {
+    "namespace": "core",
+    "key": "error-title-service-unavailable",
+    "english": "Service unavailable"
   },
   {
     "namespace": "core",

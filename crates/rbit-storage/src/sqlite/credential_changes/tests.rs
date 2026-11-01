@@ -129,10 +129,16 @@ async fn reservation_bounds_and_terminal_start_are_clean_without_sql() {
     let changes = f.changes();
     let a = changes.reserve().unwrap();
     let b = changes.reserve().unwrap();
-    assert!(matches!(changes.reserve(), Err(StorageError::Conflict("forced password command capacity"))));
+    assert!(matches!(
+        changes.reserve(),
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Capacity })
+    ));
     let close = f.db.close(); // synchronous terminal close, never polled here
     drop(close);
-    assert!(matches!(a.start(f.user, "never".into()), Err(StorageError::Conflict("forced password commands stopped"))));
+    assert!(matches!(
+        a.start(f.user, "never".into()),
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Stopped })
+    ));
     let mut drain = Box::pin(f.db.drain_forced_password_changes());
     pending(drain.as_mut()).await; // forgotten reservations are still counted
     drop(b);
@@ -191,7 +197,10 @@ async fn abort_async_owner_with_real_worker_retains_slot_and_sticky_uncertainty(
     assert_eq!(f.db.forced_passwords.inner.state().reserved, 1);
     assert!(f.db.forced_passwords.inner.state().uncertain);
     let other = changes.reserve().unwrap();
-    assert!(matches!(changes.reserve(), Err(StorageError::Conflict("forced password command capacity"))));
+    assert!(matches!(
+        changes.reserve(),
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::Capacity })
+    ));
     let mut drain = Box::pin(f.db.drain_forced_password_changes());
     pending(drain.as_mut()).await;
     release.send(()).unwrap();
@@ -236,7 +245,7 @@ async fn actual_sql_commit_then_injected_worker_error_or_panic_is_not_rollback()
 async fn mismatch_and_queued_cancellation_never_submit_sql() {
     let f = Fixture::new().await;
     let other = Database::open(&f.directory.path().join("other.db")).await.unwrap();
-    assert!(matches!(other.forced_password_changes(&f.kv), Err(StorageError::Conflict("session authority domain mismatch"))));
+    assert!(matches!(other.forced_password_changes(&f.kv), Err(StorageError::Invariant("session authority domain mismatch"))));
     let quiet = f.db.authority_domain.drain(Instant::now() + WAIT).await.unwrap();
     let reservation = f.changes().reserve().unwrap();
     let ForcedPasswordReservation { changes, command } = reservation;
@@ -284,7 +293,7 @@ fn start_without_current_runtime_is_known_prewrite_rejection() {
     let reservation = f.changes().reserve().unwrap();
     assert!(matches!(
         reservation.start(f.user, "never".into()),
-        Err(StorageError::Conflict("forced password command runtime unavailable"))
+        Err(StorageError::AdmissionUnavailable { scope: "forced password", reason: crate::AdmissionReason::RuntimeUnavailable })
     ));
     runtime.block_on(async {
         assert_eq!(f.hash().await, "old");

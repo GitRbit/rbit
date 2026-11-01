@@ -77,9 +77,12 @@ pub async fn forgot(
     Ok(form_error_response(&error, page))
 }
 
-/// A form re-rendered after `error`: 429 with `Retry-After` when rate limited, 422 otherwise.
+/// Form errors retain their class: admission 503, unconfirmed outcome 500,
+/// rate limiting 429 with `Retry-After`, business validation 422.
 pub(crate) fn form_error_response(error: &ServiceError, page: impl IntoResponse) -> Response {
     match error {
+        ServiceError::AdmissionUnavailable { .. } => (StatusCode::SERVICE_UNAVAILABLE, page).into_response(),
+        ServiceError::OutcomeUnavailable { .. } => (StatusCode::INTERNAL_SERVER_ERROR, page).into_response(),
         ServiceError::RateLimited { retry_after_seconds } => {
             (StatusCode::TOO_MANY_REQUESTS, [(header::RETRY_AFTER, retry_after_seconds.to_string())], page).into_response()
         }
@@ -165,4 +168,30 @@ pub async fn verify(State(state): State<AppState>, page: Page, Path(token): Path
         Err(other) => return Err(other.into()),
     };
     Ok((SECRET_URL_HEADERS, response).into_response())
+}
+
+#[cfg(test)]
+mod typed_form_error_tests {
+    use super::form_error_response;
+    use axum::http::{StatusCode, header};
+    use rbit_services::ServiceError;
+
+    #[test]
+    fn form_status_does_not_turn_admission_or_lost_outcome_into_validation() {
+        for (error, expected) in [
+            (
+                ServiceError::AdmissionUnavailable { scope: "password change", reason: rbit_storage::AdmissionReason::Stopped },
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+            (ServiceError::OutcomeUnavailable { scope: "password change" }, StatusCode::INTERNAL_SERVER_ERROR),
+            (ServiceError::Invalid("existing validation".into()), StatusCode::UNPROCESSABLE_ENTITY),
+        ] {
+            let response = form_error_response(&error, "form");
+            assert_eq!(response.status(), expected);
+            assert!(!response.headers().contains_key(header::RETRY_AFTER));
+        }
+        let response = form_error_response(&ServiceError::RateLimited { retry_after_seconds: 7 }, "form");
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()[header::RETRY_AFTER], "7");
+    }
 }

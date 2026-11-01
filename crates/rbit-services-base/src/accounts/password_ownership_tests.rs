@@ -290,7 +290,10 @@ async fn admitted_self_slots_stay_charged_while_forced_quota_remains_independent
     f.injected_commit("two").await;
     let (owner, changes) = f.services.accounts.self_password_owner();
     let refusal = owner.run(changes, |_, _| async { panic!("capacity must refuse before verification/spawn") }).await;
-    assert!(matches!(refusal, Err(ServiceError::Conflict("self password command capacity"))));
+    assert!(matches!(
+        refusal,
+        Err(ServiceError::AdmissionUnavailable { scope: "self password", reason: rbit_storage::AdmissionReason::Capacity })
+    ));
     let forced = f.ctx().database.forced_password_changes(&f.ctx().kv).unwrap();
     let a = forced.reserve().unwrap();
     let b = forced.reserve().unwrap();
@@ -348,7 +351,10 @@ async fn known_wrong_password_and_stopped_start_do_not_fake_lost_task_outcomes()
     f.drain().await;
     assert!(f.live(&f.current).await && f.live(&f.other).await);
     let result = f.services.profiles.change_password(&f.user, PASSWORD.into(), NEW_PASSWORD.into()).await;
-    assert!(matches!(result, Err(ServiceError::Conflict("self password commands stopped"))));
+    assert!(matches!(
+        result,
+        Err(ServiceError::AdmissionUnavailable { scope: "self password", reason: rbit_storage::AdmissionReason::Stopped })
+    ));
 }
 
 #[tokio::test]
@@ -374,7 +380,7 @@ async fn service_tail_capacity_is_per_construction_but_storage_binding_is_shared
     let (owner, changes) = f.services.accounts.self_password_owner();
     assert!(matches!(
         owner.run(changes, |_, _| async { panic!("same construction full") }).await,
-        Err(ServiceError::Conflict("self password command capacity"))
+        Err(ServiceError::AdmissionUnavailable { scope: "self password", reason: rbit_storage::AdmissionReason::Capacity })
     ));
     let independent = AccountService::new(
         f.ctx().config.clone(),
