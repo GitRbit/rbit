@@ -21,6 +21,11 @@ only by you on Unix. `RBIT_TOKEN` (or `GH_TOKEN`) in the environment wins over a
 login, which suits CI. `rbit auth token` prints a stored token for scripts, and
 `rbit auth logout --hostname …` forgets it.
 
+The CLI accepts HTTP(S) instance URLs with an optional deployment path. API requests
+stay on that origin and within that path. Redirects are returned to the caller without
+following them; configure the final instance URL when a proxy redirects requests.
+Credentials in URLs, fragments and ambiguous path traversal are rejected.
+
 ## Which repository
 
 Commands work on `--repo owner/name` (`-R`), or on the repository the current directory's
