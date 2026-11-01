@@ -47,7 +47,7 @@
           {% if let Some(duration) = step.duration %}<span class="shrink-0 whitespace-nowrap text-xs tabular-nums text-ink-faint">{{ duration }}</span>{% endif %}
         </summary>
         <div class="border-t border-line">
-          {% include "actions/step_body.html" %}
+          {{ step.log_body() }}
         </div>
       </details>
     </li>

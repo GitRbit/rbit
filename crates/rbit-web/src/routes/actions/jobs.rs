@@ -27,7 +27,8 @@ use crate::{
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, StateLook, StepLog, StepLogPage, StepView, open_one,
+            ActionsUrls, JOB_PAGE_STEP_BYTES, JOB_PAGE_STEP_LINES, JobPage, RunSummary, StateLook, StepLog, StepLogPage, StepView,
+            open_one, step_log_view,
         },
         layout::Page,
     },
@@ -56,7 +57,7 @@ async fn step_log(
         return Ok(None);
     }
     let window = actions.step_log(repo, task, step.number, LogRange::Tail, lines, bytes).await?;
-    Ok(Some(StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default())))
+    Ok(Some(step_log_view(&window, u64::try_from(step.log_index).unwrap_or_default())))
 }
 
 fn preview_steps(steps: &[Step]) -> Vec<&Step> {

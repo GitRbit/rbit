@@ -1,11 +1,11 @@
-{#- A step's log as file-viewer lines; expects `step: StepView` (views::actions). -#}
-{% if let Some(log) = step.log %}
+{#- A step's log as file-viewer lines; borrows host-projected log data and a host-constructed log URL. -#}
+{% if let Some(log) = log %}
   {% if log.expired %}
   <p class="px-4 py-3 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-step-body-p-this-log-was-removed-by-the-log-retention") }}</p>
   {% else if log.lines.is_empty() %}
   <p class="px-4 py-3 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-step-body-p-no-output") }}</p>
   {% else %}
-  {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{{ crate::i18n::text("actions", "actions-step-body-p-earlier-lines-are-left-out") }}{% if !step.log_url.is_empty() %} <a class="link" href="{{ step.log_url }}">{{ crate::i18n::text("actions", "actions-step-body-a-show-more-of-this-step") }}</a>{{ crate::i18n::text("actions", "actions-step-body-p-or") }}{% endif %} {{ crate::i18n::text("actions", "actions-step-body-p-download-the-raw-log-for-all-of-it") }}</p>{% endif %}
+  {% if log.more_before %}<p class="border-b border-line px-4 py-2 text-xs text-ink-muted">{{ crate::i18n::text("actions", "actions-step-body-p-earlier-lines-are-left-out") }}{% if !log_url.is_empty() %} <a class="link" href="{{ log_url }}">{{ crate::i18n::text("actions", "actions-step-body-a-show-more-of-this-step") }}</a>{{ crate::i18n::text("actions", "actions-step-body-p-or") }}{% endif %} {{ crate::i18n::text("actions", "actions-step-body-p-download-the-raw-log-for-all-of-it") }}</p>{% endif %}
   <div class="overflow-x-auto">
     <div class="code-lines {{ log.columns() }}">
       {%- for block in log.blocks() %}

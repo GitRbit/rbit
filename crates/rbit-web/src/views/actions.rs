@@ -21,11 +21,7 @@ use rbit_services::actions::{logs::LogWindow, statuses::duration};
 
 use crate::{
     render::escape_html,
-    views::{
-        blocks::{Block, blocks, column_class, markup_columns},
-        layout::Page,
-        repo::{CodeLine, RepoHeader},
-    },
+    views::{layout::Page, repo::RepoHeader},
 };
 
 /// How a state is shown: the key picks the icon in `actions/state.html`.
@@ -766,38 +762,18 @@ pub fn log_line_html(line: &str) -> String {
     escape_html(&line)
 }
 
-/// A step's log lines, ready for `repo/code` blocks.
-#[derive(Debug, Clone, Default)]
-pub struct StepLog {
-    /// Escaped HTML, one per line.
-    pub lines: Vec<String>,
-    /// The step-relative number of `lines[0]`, from 1.
-    pub first: usize,
-    /// Earlier lines were left out (see the step's log page or the raw log).
-    pub more_before: bool,
-    pub truncated: bool,
-    pub expired: bool,
-}
+// Passive storage-free view; host formatting and bounded LogWindow selection stay here.
+pub use rbit_actions_web::StepLog;
 
-impl StepLog {
-    /// `window` of a step whose log starts at task-log line `step_start`.
-    pub fn new(window: &LogWindow, step_start: u64) -> Self {
-        let first = usize::try_from(window.first_line.saturating_sub(step_start)).unwrap_or(0) + 1;
-        Self {
-            lines: window.lines.iter().map(|line| log_line_html(line)).collect(),
-            first,
-            more_before: window.more_before,
-            truncated: window.truncated,
-            expired: window.expired,
-        }
-    }
-
-    pub fn blocks(&self) -> Vec<Block<CodeLine<'_>>> {
-        blocks(self.lines.iter().enumerate().map(|(index, html)| CodeLine { number: self.first + index, html }))
-    }
-
-    pub fn columns(&self) -> String {
-        column_class(self.lines.iter().map(|line| markup_columns(line)).max().unwrap_or(0))
+/// Project one already-authorized, bounded log window without cloning its raw lines.
+pub(crate) fn step_log_view(window: &LogWindow, step_start: u64) -> StepLog {
+    let first = usize::try_from(window.first_line.saturating_sub(step_start)).unwrap_or(0) + 1;
+    StepLog {
+        lines: window.lines.iter().map(|line| log_line_html(line)).collect(),
+        first,
+        more_before: window.more_before,
+        truncated: window.truncated,
+        expired: window.expired,
     }
 }
 
@@ -826,6 +802,10 @@ pub struct StepView {
 }
 
 impl StepView {
+    pub fn log_body(&self) -> rbit_actions_web::StepLogBody<'_> {
+        rbit_actions_web::StepLogBody { log: self.log.as_ref(), log_url: &self.log_url }
+    }
+
     pub fn new(step: &Step, log: Option<StepLog>, log_url: String) -> Self {
         Self {
             number: step.number,

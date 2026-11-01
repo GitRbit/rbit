@@ -14,7 +14,7 @@
     <a class="btn h-10 sm:h-8" href="{{ raw_url }}" hx-boost="false">{% call ui::icon("file-text", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-step-log-a-raw-log") }}</a>
   </div>
   <div class="box mt-6 overflow-hidden">
-    {% include "actions/step_body.html" %}
+    {{ step.log_body() }}
   </div>
 </section>
 </div>
