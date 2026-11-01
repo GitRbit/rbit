@@ -48,6 +48,7 @@ pub enum MutationAudience {
     SiteAdmin,
     RepositoryWriter,
     RepositoryAdmin,
+    RepositorySignedIn,
     /// Only the sealed locale-preference callback may use this guest-capable policy.
     LocalePreference,
 }
@@ -66,6 +67,8 @@ pub struct MutationDescriptor {
     deadline: Duration,
     form: FormSchema,
     input_kind: MutationInputKind,
+    presentation: crate::PagePresentation,
+    body_limit: usize,
 }
 impl MutationDescriptor {
     pub fn new(
@@ -82,7 +85,10 @@ impl MutationDescriptor {
         if !matches!(
             (scope, audience),
             (PageScope::Global, MutationAudience::SignedIn | MutationAudience::SiteAdmin)
-                | (PageScope::Repository, MutationAudience::RepositoryWriter | MutationAudience::RepositoryAdmin)
+                | (
+                    PageScope::Repository,
+                    MutationAudience::RepositoryWriter | MutationAudience::RepositoryAdmin | MutationAudience::RepositorySignedIn
+                )
         ) {
             return Err(MutationError::Invalid("scope and audience mismatch"));
         }
@@ -94,7 +100,27 @@ impl MutationDescriptor {
             deadline,
             form,
             input_kind: MutationInputKind::Form,
+            presentation: crate::PagePresentation::Shell,
+            body_limit: crate::MAX_PAGE_BODY_BYTES,
         })
+    }
+    pub fn with_body_limit(mut self, bytes: usize) -> Result<Self, MutationError> {
+        if bytes == 0 || bytes > crate::MAX_LARGE_PAGE_BODY_BYTES {
+            return Err(MutationError::Invalid("mutation body limit"));
+        }
+        self.body_limit = bytes;
+        Ok(self)
+    }
+    pub const fn body_limit(&self) -> usize {
+        self.body_limit
+    }
+    #[must_use]
+    pub fn with_document(mut self) -> Self {
+        self.presentation = crate::PagePresentation::Document;
+        self
+    }
+    pub const fn presentation(&self) -> crate::PagePresentation {
+        self.presentation
     }
     pub fn with_upload(mut self, max_bytes: usize) -> Result<Self, MutationError> {
         if self.scope != PageScope::Global
@@ -168,16 +194,32 @@ pub struct MutationContext {
     pub form: FormAction,
     cancellation: CancellationToken,
     preference_principal: bool,
+    forms: crate::FormActions,
 }
 impl MutationContext {
     pub fn new(actor: PageActor, repository: Option<MutationRepository>, locale: LocaleSnapshot, form: FormAction) -> Self {
-        Self { actor, repository, locale, form, cancellation: CancellationToken::new(), preference_principal: false }
+        Self {
+            actor,
+            repository,
+            locale,
+            forms: crate::FormActions::new(vec![form.clone()]).expect("one valid form"),
+            form,
+            cancellation: CancellationToken::new(),
+            preference_principal: false,
+        }
+    }
+    pub fn forms(&self) -> &crate::FormActions {
+        &self.forms
+    }
+    pub fn set_forms(&mut self, forms: crate::FormActions) {
+        self.forms = forms;
     }
     pub fn for_preference(actor: Option<PageActor>, locale: LocaleSnapshot, form: FormAction) -> Self {
         Self {
             actor: actor.unwrap_or(PageActor { account_id: 0, is_admin: false }),
             repository: None,
             locale,
+            forms: crate::FormActions::new(vec![form.clone()]).expect("one valid form"),
             form,
             cancellation: CancellationToken::new(),
             preference_principal: true,
@@ -211,35 +253,51 @@ impl MutationContext {
             MutationAudience::SiteAdmin => self.actor.is_admin,
             MutationAudience::RepositoryWriter => self.repository.as_ref().is_some_and(|r| r.can_write),
             MutationAudience::RepositoryAdmin => self.repository.as_ref().is_some_and(|r| r.can_admin),
+            MutationAudience::RepositorySignedIn => self.repository.is_some(),
             MutationAudience::LocalePreference => preference,
         };
         if allowed { Ok(()) } else { Err(MutationError::Forbidden) }
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginRedirect(String);
+pub struct PluginRedirect {
+    path: String,
+    query: crate::PageQuery,
+}
 impl PluginRedirect {
     pub fn new(path: &str) -> Result<Self, MutationError> {
         if !validate_page_path(path) {
             return Err(MutationError::Invalid("redirect path"));
         }
-        Ok(Self(path.into()))
+        Ok(Self { path: path.into(), query: crate::PageQuery::default() })
     }
     pub fn path(&self) -> &str {
-        &self.0
+        &self.path
+    }
+    pub fn with_query(mut self, pairs: &[(&str, &str)]) -> Result<Self, MutationError> {
+        self.query = crate::PageQuery::new(pairs.iter().map(|(key, value)| ((*key).into(), (*value).into())).collect())?;
+        if self.query.encoded().len() > crate::MAX_QUERY_BYTES {
+            return Err(MutationError::Invalid("redirect query size"));
+        }
+        Ok(self)
+    }
+    pub fn query_string(&self) -> String {
+        self.query.encoded()
     }
     pub fn target(&self, owner: &PluginId, scope: PageScope) -> UiTarget {
-        target(owner, scope, &self.0)
+        target(owner, scope, &self.path)
     }
 }
 #[derive(Debug)]
 pub enum MutationOutcome<T: Template> {
     Redirect(PluginRedirect),
+    Success(CompiledPage<T>),
     Invalid(CompiledPage<T>),
 }
 #[derive(Debug)]
 pub enum MutationResponse {
     Redirect(PluginRedirect),
+    Success(PageBody),
     Invalid(PageBody),
     LocalePreference { choice: crate::LocaleChoice, redirect: PluginRedirect },
 }
@@ -262,7 +320,7 @@ enum FactoryKind {
 
 type MutationFuture<'a> = Pin<Box<dyn Future<Output = Result<MutationResponse, MutationError>> + Send + 'a>>;
 trait Mutator: Send + Sync {
-    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_>;
+    fn execute(&self, context: MutationContext, input: ValidatedInput, limit: usize) -> MutationFuture<'_>;
 }
 struct TemplateMutator<F>(F);
 impl<T, F, Fut> Mutator for TemplateMutator<F>
@@ -271,14 +329,15 @@ where
     F: Fn(MutationContext, FormValues) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
 {
-    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
+    fn execute(&self, context: MutationContext, input: ValidatedInput, limit: usize) -> MutationFuture<'_> {
         Box::pin(async move {
             let ValidatedInput::Form(form) = input else {
                 return Err(MutationError::Invalid("factory input kind"));
             };
             match (self.0)(context, form).await? {
                 MutationOutcome::Redirect(path) => Ok(MutationResponse::Redirect(path)),
-                MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
+                MutationOutcome::Success(page) => Ok(MutationResponse::Success(page.render_with_limit(limit)?)),
+                MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render_with_limit(limit)?)),
             }
         })
     }
@@ -323,6 +382,7 @@ pub struct MutationRegistry {
     operations: Arc<Semaphore>,
     versions: Arc<AtomicU64>,
     uploads: Arc<Semaphore>,
+    large: Arc<Semaphore>,
 }
 impl Default for MutationRegistry {
     fn default() -> Self {
@@ -336,6 +396,7 @@ impl MutationRegistry {
             operations: Arc::new(Semaphore::new(MAX_CONCURRENT_MUTATIONS)),
             versions: Arc::new(AtomicU64::new(1)),
             uploads: Arc::new(Semaphore::new(crate::MAX_CONCURRENT_UPLOADS)),
+            large: Arc::new(Semaphore::new(crate::MAX_CONCURRENT_LARGE_DOCUMENTS)),
         }
     }
     pub fn close(&self) {
@@ -357,7 +418,12 @@ impl MutationRegistry {
         self.inner.snapshot().revision
     }
     pub fn snapshot(&self) -> MutationRouteSnapshot {
-        MutationRouteSnapshot { inner: self.inner.snapshot(), operations: Arc::clone(&self.operations), uploads: Arc::clone(&self.uploads) }
+        MutationRouteSnapshot {
+            inner: self.inner.snapshot(),
+            operations: Arc::clone(&self.operations),
+            uploads: Arc::clone(&self.uploads),
+            large: Arc::clone(&self.large),
+        }
     }
     pub fn stage(
         &self,
@@ -430,6 +496,7 @@ pub struct MutationRouteSnapshot {
     inner: ExtensionSnapshot<MutationRegistration>,
     operations: Arc<Semaphore>,
     uploads: Arc<Semaphore>,
+    large: Arc<Semaphore>,
 }
 impl MutationRouteSnapshot {
     pub fn len(&self) -> usize {
@@ -440,6 +507,9 @@ impl MutationRouteSnapshot {
     }
     pub fn revision(&self) -> u64 {
         self.inner.revision
+    }
+    pub fn routes(&self) -> impl Iterator<Item = MutationRouteHandle> + '_ {
+        (0..self.inner.entries.len()).map(|index| MutationRouteHandle { snapshot: self.clone(), index })
     }
     pub fn find(&self, owner: &PluginId, scope: PageScope, path: &str) -> Option<MutationRouteHandle> {
         if !validate_page_path(path) {
@@ -473,6 +543,11 @@ impl MutationRouteHandle {
         self.snapshot.inner.entries[self.index].generation
     }
     pub fn admit(&self) -> Result<MutationLease, MutationError> {
+        let large_permit = if self.descriptor().body_limit > crate::MAX_PAGE_BODY_BYTES {
+            Some(Arc::clone(&self.snapshot.large).try_acquire_owned().map_err(|_| MutationError::Unavailable)?)
+        } else {
+            None
+        };
         let upload_permit = if matches!(self.descriptor().input_kind, MutationInputKind::Upload { .. }) {
             Some(Arc::clone(&self.snapshot.uploads).try_acquire_owned().map_err(|_| MutationError::Unavailable)?)
         } else {
@@ -480,7 +555,7 @@ impl MutationRouteHandle {
         };
         let permit = Arc::clone(&self.snapshot.operations).try_acquire_owned().map_err(|_| MutationError::Unavailable)?;
         let inner = self.snapshot.inner.entries[self.index].admit().map_err(|_| MutationError::Unavailable)?;
-        Ok(MutationLease { inner, permit, upload_permit })
+        Ok(MutationLease { inner, permit, upload_permit, large_permit })
     }
 }
 #[derive(Debug)]
@@ -488,6 +563,7 @@ pub struct MutationLease {
     inner: ExtensionLease<MutationRegistration>,
     permit: OwnedSemaphorePermit,
     upload_permit: Option<OwnedSemaphorePermit>,
+    large_permit: Option<OwnedSemaphorePermit>,
 }
 impl MutationLease {
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -546,7 +622,7 @@ impl MutationLease {
                         return Err(MutationError::Timeout);
                     }
                     started.store(true, Ordering::Release);
-                    entry.callback.execute(context, input).await
+                    entry.callback.execute(context, input, entry.descriptor.body_limit).await
                 };
                 tokio::pin!(callback);
                 tokio::select! {biased;
@@ -579,7 +655,10 @@ impl MutationLease {
     pub fn into_parts(self) -> (MutationOperation, CancellationToken) {
         let (registration, lease, cancellation) = self.inner.into_parts();
         drop(registration);
-        (MutationOperation { _lease: lease, _permit: self.permit, _upload_permit: self.upload_permit }, cancellation)
+        (
+            MutationOperation { _lease: lease, _permit: self.permit, _upload_permit: self.upload_permit, _large_permit: self.large_permit },
+            cancellation,
+        )
     }
 }
 #[derive(Debug)]
@@ -587,6 +666,7 @@ pub struct MutationOperation {
     _lease: OperationLease,
     _permit: OwnedSemaphorePermit,
     _upload_permit: Option<OwnedSemaphorePermit>,
+    _large_permit: Option<OwnedSemaphorePermit>,
 }
 
 struct CancelWaiter(CancellationToken);
@@ -614,14 +694,15 @@ where
     F: Fn(MutationContext, crate::UploadData) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<MutationOutcome<T>, MutationError>> + Send + 'static,
 {
-    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
+    fn execute(&self, context: MutationContext, input: ValidatedInput, limit: usize) -> MutationFuture<'_> {
         Box::pin(async move {
             let ValidatedInput::Upload(upload) = input else {
                 return Err(MutationError::Invalid("factory input kind"));
             };
             match (self.0)(context, upload).await? {
                 MutationOutcome::Redirect(path) => Ok(MutationResponse::Redirect(path)),
-                MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
+                MutationOutcome::Success(page) => Ok(MutationResponse::Success(page.render_with_limit(limit)?)),
+                MutationOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render_with_limit(limit)?)),
             }
         })
     }
@@ -642,7 +723,7 @@ where
     F: Fn(crate::PreferenceContext, crate::LocaleChoice) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<PreferenceOutcome<T>, MutationError>> + Send + 'static,
 {
-    fn execute(&self, context: MutationContext, input: ValidatedInput) -> MutationFuture<'_> {
+    fn execute(&self, context: MutationContext, input: ValidatedInput, limit: usize) -> MutationFuture<'_> {
         Box::pin(async move {
             let ValidatedInput::LocalePreference(choice) = input else {
                 return Err(MutationError::Invalid("factory input kind"));
@@ -656,7 +737,7 @@ where
             };
             match (self.0)(context, choice).await? {
                 PreferenceOutcome::Selected { choice, redirect } => Ok(MutationResponse::LocalePreference { choice, redirect }),
-                PreferenceOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render()?)),
+                PreferenceOutcome::Invalid(page) => Ok(MutationResponse::Invalid(page.render_with_limit(limit)?)),
             }
         })
     }

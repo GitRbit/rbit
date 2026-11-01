@@ -5,8 +5,9 @@ compiled Askama pages without rebuilding the application router. It extends the
 same generation ownership used by [UI and request hooks](design/plugin-extensions.md).
 It does not load templates from uploaded files or provide a sandbox for native
 code. Languages uses these registries for its picker and package administration;
-see [Languages](i18n.md) for active versus installed scope ownership. Existing
-Actions route tables remain compiled host routes. There is no dynamic installation
+see [Languages](i18n.md) for active versus installed scope ownership. Actions HTML pages and forms also use scoped native registrations; badges, raw
+logs, archive downloads, runner protocol and REST endpoints retain their typed
+host transport adapters. There is no dynamic installation
 of executable plugin code.
 
 ## Route ownership
@@ -38,7 +39,8 @@ identities on the same terms as UI registration. A cached link grants no authori
 The official server calls `rbit_web::prepare_plugin_routes(&state).await?` before
 serving HTTP. Embedded Web hosts must do the same after constructing `AppState`.
 Services supplies shared registries and accepts Web's compiled blueprints through
-`bind_i18n_routes(active, management)` without depending on Web. Binding is serialized
+`bind_i18n_routes(active, management)` and `bind_actions_routes(bundle)` without
+depending on Web. Binding is serialized
 with the provider controller and attaches to an already-active generation. Repeated
 preparation of a clone of the same host is idempotent; a different host cannot silently
 replace callbacks already bound to Services.
@@ -46,10 +48,32 @@ replace callbacks already bound to Services.
 Languages publishes `rbit.i18n` pages with its active scope. A separate
 `rbit.i18n-admin` installed scope retains administrator package repair while the
 provider is disabled or failed. Their different owners preserve the registry's
-single-batch-per-owner rule. Both scopes close terminally at host shutdown.
+single-batch-per-owner rule. Both scopes close terminally at host shutdown. Actions uses its single active
+`rbit.actions` generation for all native pages and mutations; disabling Actions
+withdraws its entire route bundle while core lifecycle controls remain available.
 Blueprints capture weak host references; they must not create a Services-to-callback
 ownership cycle. Existing GET bookmarks redirect to canonical plugin routes where
 supported; removed legacy POST handlers do not bypass registry admission or proofs.
+
+## Declared query input and exact resource routes
+
+Use `PageDescriptor::with_query(&["run", "job"])` and `compiled_request_page` when
+an exact page needs resource selectors or filters. The factory receives
+`PageContext`, authorized `FormActions`, and a validated `PageQuery`; use
+`query.get("run")` and perform domain-specific parsing before loading the resource.
+The host never forwards a raw URI. Undeclared or duplicate names, malformed
+encoding, control characters and invalid UTF-8 are refused. There are at most
+16 fields, 2 KiB per value and 8 KiB of decoded keys and values. Resource IDs in
+queries are selectors, not permission grants: host repository access and domain
+ownership checks still apply on every request.
+
+Actions deliberately uses exact page paths rather than dynamically registering
+one route per run: repository suffixes include `runs`, `workflow?workflow=ci.yml`,
+`run?run=12`, `job?run=12&job=34`, and `logs?run=12&job=34&step=0`. Workflow names,
+filters and resource selectors are encoded as query values. Status views continue
+to use bounded HTMX polling; this does not introduce a server-sent event endpoint.
+Old HTML GET bookmarks redirect to the canonical namespace. Old POST URLs do not
+execute mutations or redirect a submitted body to a new handler.
 
 ## Host security remains in charge
 
@@ -100,6 +124,22 @@ compile a template, read a template file or
 perform a database query. A request renders through the host's bounded writer;
 oversized or failed output never becomes a partially published response.
 
+By default the compiled result is a fragment inside a host-owned shell.
+`PageDescriptor::with_document()` opts a trusted compiled page into
+`PagePresentation::Document`: its Askama type renders the complete document,
+including existing repository, organization, account or administrator chrome.
+The host avoids wrapping it in a second shell. This does not grant response header,
+cache, authentication or transport control: admission, output bounds, no-store,
+security headers and final-body supervision still apply. A document template must
+keep proofs and sensitive content out of HTMX history and use native form
+navigation where required. Actions templates use `hx-history="false"` and
+`hx-boost="false"` around their native page content.
+
+Capture the request's immutable locale in a template wrapper when rendering inside
+an independently owned mutation task. Request task-local state is not inherited
+by spawned workers; the compiled template must render under the captured locale
+rather than accidentally falling back to English.
+
 The bounded rendered-page result is an explicit native privilege. Declarative UI
 and installable language packs still cannot supply HTML, scripts, CSS or template
 source. Only approved native handlers can produce compiled page output. Security
@@ -108,9 +148,18 @@ headers and approved asset rules still apply to the resulting HTML.
 The registry allows 128 total staged and published pages, at most 32 in one
 generation's batch, and 64 concurrent admitted page operations. A descriptor's
 deadline is between 1 ms and 1 second. The page title is limited to 160 bytes and
-the compiled fragment to 256 KiB. The bridge renders directly into a bounded
+the compiled output, fragment or document, to 256 KiB by default. The bridge renders directly into a bounded
 writer and ignores Askama's allocation size hint. It also checks cancellation and
 the elapsed deadline after synchronous rendering before publishing output.
+
+`PageDescriptor::with_body_limit(bytes)` explicitly chooses a positive output
+limit up to 2 MiB. A limit above the default 256 KiB also acquires one of eight
+large-document permits in the shared GET registry, in addition to an ordinary
+page permit. Both remain held through callback rendering, host transforms and
+final response consumption, drop or generation cancellation. An unread response
+cannot bypass that aggregate capacity bound. Prefer bounded previews and links to
+streaming transport for large logs; raising the document limit is an explicit
+reviewed resource policy, not a replacement for pagination or truncation.
 
 Output limits constrain response memory; they do not preempt arbitrary native
 CPU work. Callbacks must remain cooperative, avoid blocking request executors and

@@ -20,7 +20,11 @@ Mutations use POST at the same reserved global or repository namespace as pages:
 `/{owner}/{repo}/-/plugins/{plugin}/{path}`. Paths are validated literal suffixes,
 not patterns or arbitrary router mounts. Global mutations require `SignedIn` or
 `SiteAdmin`; repository mutations require `RepositoryWriter` or
-`RepositoryAdmin`. Public and read-only audiences cannot register ordinary mutations.
+`RepositoryAdmin`. `RepositorySignedIn` is an explicit policy floor for domain-
+authorized operations such as deployment reviews by designated readers; it still
+requires signed-in repository read access and the callback must enforce the
+operation-specific domain rule. It does not imply write or administrator access.
+Public audiences cannot register ordinary mutations.
 The sealed locale-preference capability below is the explicit guest exception.
 The host resolves the actor and repository permissions before admitting a handler.
 
@@ -36,6 +40,9 @@ session token nor its digest is passed to plugin callbacks.
 For example, the matching compiled GET view can render the issued action directly.
 When authorization does not permit the mutation, its action is absent and the view
 omits the form. Native submissions use the ordinary host 303/422 behavior.
+For validation rerenders, `MutationContext::forms()` contains the currently
+authorized same-owner, same-scope, same-generation sibling actions, bounded to
+32 entries. It grants no session or proof-issuing capability.
 
 ```rust,ignore
 use rbit_services::plugin_pages::{
@@ -103,10 +110,26 @@ batch.publish()?;
 ```
 
 `MutationOutcome::Invalid(CompiledPage<T>)` renders a bounded compiled validation
-page with status 422. `Redirect(PluginRedirect)` accepts only a validated literal
+page with status 422. `Success(CompiledPage<T>)` renders a successful response with
+status 200, for example a one-time runner registration token. Do not place such
+secrets in redirect query strings or shared caches. `Redirect(PluginRedirect)` accepts only a validated literal
 path in the same plugin and scope; it cannot redirect to an external origin or a
-core administration route. Templates remain compiled Rust types, with the same
+core administration route. `PluginRedirect::with_query(&[("run", "12")])` adds
+bounded encoded query values to that same validated target; it does not allow a
+new origin, namespace or arbitrary redirect header.
+`MutationDescriptor::with_document()` uses the same reviewed full-document
+presentation as compiled GET pages, without duplicating host chrome. Templates
+remain compiled Rust types, with the same
 bounded output and escaping responsibilities as GET pages.
+
+`MutationDescriptor::with_body_limit(bytes)` independently sets the compiled
+response output limit, defaulting to 256 KiB and capped at 2 MiB. This is distinct
+from the submitted form's encoded-body limit. Responses declared above 256 KiB
+also consume one of eight large-document permits in the shared mutation registry,
+in addition to an ordinary operation permit. The GET and mutation registries have
+separate eight-permit pools. A mutation retains its permits through actual native
+work completion and the final guarded response lifetime; callback completion alone
+does not release capacity for an unread successful or validation document.
 
 ## Host validation and CSRF
 
@@ -114,13 +137,35 @@ For ordinary forms, the adapter accepts only uncompressed
 `application/x-www-form-urlencoded` input,
 with an optional UTF-8 charset. Encoded bodies are bounded to 32 KiB before
 parsing. Schemas have at most 32 domain fields; text fields have at most 4096
-bytes. Unknown fields, duplicate decoded names, malformed escapes, invalid UTF-8,
+bytes. Unknown fields, duplicate decoded scalar names, malformed escapes, invalid UTF-8,
 reserved domain field names and values outside the declared schema are rejected.
 Boolean values must be the literal `true` or `false`; checkboxes should explicitly
 use `value="true"`. An absent optional field remains absent. Text limits count
 UTF-8 bytes, so browser character limits supplement server validation.
 The host `_csrf` field is removed before typed callback input is constructed.
 Form values and proof-bearing structures redact secrets from debug output.
+
+Larger text is an explicit schema choice: `FormSchema::large_text(fields)` allows
+up to 64 KiB per declared text field and a 256 KiB encoded body. Ordinary schemas
+retain the 4 KiB/32 KiB defaults. This preserves Actions secret and variable limits
+without raising limits for every form. All body limits apply before decoding;
+percent-encoded input consumes its actual wire size.
+
+Declare repeated values using `FormFieldKind::TextList { max_items, max_bytes,
+multiline }` and retrieve them with `FormValues::list`. Lists allow at most
+128 items. `FormSchema::with_prefix("inputs[", "]", 25, 4096)` permits a bounded
+map of workflow-defined input names; unknown names outside that declaration remain
+invalid. A prefix permits at most 32 entries, and the whole schema permits at most
+256 wire pairs. `FormValues::to_pairs()` preserves validated names and expands
+only declared list fields. Duplicate scalar, dynamic-prefix and `_csrf` fields
+remain errors. Render a boolean once, such as a select or an optional checkbox;
+do not combine a hidden `false` with a duplicate checked `true` field.
+
+Actions mutation paths are exact suffixes such as `cancel` or `rerun-job`.
+Resource IDs travel as declared form fields and receive fresh domain ownership
+and permission checks. The proof binds the action and generation; it does not make
+an arbitrary submitted run, job or environment authorized. Secret values are not
+returned in validation pages or debug output.
 
 The host issues an opaque HMAC proof with a random boot key and nonce. It binds
 the session digest, actor ID, repository ID when applicable, exact canonical

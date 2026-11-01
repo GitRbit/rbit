@@ -49,6 +49,7 @@ fn permitted(route: &MutationRouteHandle, viewer: &Viewer, repository: Option<&R
         MutationAudience::SiteAdmin => repository.is_none() && actor.is_admin,
         MutationAudience::RepositoryWriter => repository.is_some_and(|repo| repo.ctx.can_write_content()),
         MutationAudience::RepositoryAdmin => repository.is_some_and(|repo| repo.ctx.access.can_admin()),
+        MutationAudience::RepositorySignedIn => repository.is_some(),
         MutationAudience::LocalePreference => false,
     }
 }
@@ -109,6 +110,40 @@ pub(super) fn actions(
         actions.set_locale_preference(browser.selected());
     }
     actions
+}
+
+fn sibling_actions(
+    route: &MutationRouteHandle,
+    viewer: &Viewer,
+    session: Option<&CurrentSession>,
+    repository: Option<&RepoPage>,
+    state: &AppState,
+    browser: &mut BrowserForms,
+) -> FormActions {
+    let Some(now) = now() else {
+        return FormActions::default();
+    };
+    let snapshot = state.services.mutation_registry().snapshot();
+    let mut forms = Vec::new();
+    for (index, sibling) in snapshot.routes().enumerate() {
+        if sibling.owner() != route.owner()
+            || sibling.generation() != route.generation()
+            || sibling.descriptor().scope() != route.descriptor().scope()
+            || !permitted(&sibling, viewer, repository)
+        {
+            continue;
+        }
+        let Some(action) = action(&sibling, repository) else {
+            continue;
+        };
+        let Some(proof) = browser.issue(state, &sibling, &binding(&sibling, viewer.user(), repository, &action), session, now) else {
+            continue;
+        };
+        if let Ok(form) = FormAction::new(&format!("route-{index}"), &action, &proof) {
+            forms.push(form);
+        }
+    }
+    FormActions::new(forms).unwrap_or_default()
 }
 
 fn lookup_mutation(state: &AppState, uri: &Uri, owner: &str, path: &str, scope: PageScope) -> WebResult<MutationRouteHandle> {
@@ -175,7 +210,7 @@ async fn submit(
     repository: Option<RepoPage>,
     state: AppState,
     uri: Uri,
-    BrowserRequest { request, browser }: BrowserRequest,
+    BrowserRequest { request, mut browser }: BrowserRequest,
 ) -> WebResult<Response> {
     let actor_id = viewer.user().map_or(0, |actor| actor.id().0);
     let session = request.extensions().get::<CurrentSession>().cloned();
@@ -189,11 +224,11 @@ async fn submit(
     if !form_input::acceptable_origin(request.headers(), &state.config.server.public_url) {
         return Err(WebError::Forbidden);
     }
-    if let Err(status) = check_input_headers(route.descriptor().input_kind(), request.headers()) {
+    if let Err(status) = check_input_headers(route.descriptor(), request.headers()) {
         return Ok(failure(status));
     }
     let Ok(lease) = route.admit() else { return Ok(mutation_unavailable()) };
-    let parsed = match read_submission(request, route.descriptor().input_kind(), &lease.cancellation_token()).await {
+    let parsed = match read_submission(request, route.descriptor(), &lease.cancellation_token()).await {
         Ok(parsed) => parsed,
         Err(StatusCode::SERVICE_UNAVAILABLE) => return Ok(mutation_unavailable()),
         Err(status) => return Ok(failure(status)),
@@ -205,10 +240,13 @@ async fn submit(
     }
     let (viewer, repository) = reauthorize(&state, session.as_ref(), actor_id, repository, &route).await?;
     let form = FormAction::new("submitted", &action, &parsed.proof).map_err(WebError::internal)?;
-    let context = mutation_context(&route, &viewer, repository.as_ref(), &page, form)?;
+    let mut context = mutation_context(&route, &viewer, repository.as_ref(), &page, form)?;
+    context.set_forms(sibling_actions(&route, &viewer, session.as_ref(), repository.as_ref(), &state, &mut browser));
     let executed = match parsed.input {
         PendingInput::Fields(fields) => {
-            let Ok(input) = FormData::new(fields) else { return Ok(failure(StatusCode::UNPROCESSABLE_ENTITY)) };
+            let Ok(input) = FormData::for_schema(fields, route.descriptor().form()) else {
+                return Ok(failure(StatusCode::UNPROCESSABLE_ENTITY));
+            };
             lease.execute(context, input).await
         }
         PendingInput::Upload(input) => lease.execute_upload(context, input).await,
@@ -259,13 +297,8 @@ fn render_result(
 ) -> WebResult<Response> {
     let (result, operation, cancellation) = result.into_parts();
     let (mut response, choice) = match result {
-        MutationResponse::Invalid(body) => {
-            let policy = ShellPolicy { native_forms: true, administrator: route.descriptor().audience() == MutationAudience::SiteAdmin };
-            let mut response =
-                shell(page, repository, route.owner().to_string(), route.descriptor().path().to_owned(), body, policy, state);
-            *response.status_mut() = StatusCode::UNPROCESSABLE_ENTITY;
-            (response, None)
-        }
+        MutationResponse::Invalid(body) => (compiled_result(body, StatusCode::UNPROCESSABLE_ENTITY, page, repository, route, state), None),
+        MutationResponse::Success(body) => (compiled_result(body, StatusCode::OK, page, repository, route, state), None),
         MutationResponse::Redirect(target) => (redirect_to(&target, route, repository.as_ref())?, None),
         MutationResponse::LocalePreference { choice, redirect } => {
             if route.descriptor().input_kind() != MutationInputKind::LocalePreference {
@@ -279,16 +312,36 @@ fn render_result(
     Ok(if let Some(choice) = choice { browser.choose(&choice, response) } else { response })
 }
 
+fn compiled_result(
+    body: rbit_services::plugin_pages::PageBody,
+    status: StatusCode,
+    page: Page,
+    repository: Option<RepoPage>,
+    route: &MutationRouteHandle,
+    state: &AppState,
+) -> Response {
+    let mut response = if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
+        super::document(body)
+    } else {
+        let policy = ShellPolicy { native_forms: true, administrator: route.descriptor().audience() == MutationAudience::SiteAdmin };
+        shell(page, repository, route.owner().to_string(), route.descriptor().path().to_owned(), body, policy, state)
+    };
+    *response.status_mut() = status;
+    response
+}
+
 fn redirect_to(
     target: &rbit_services::plugin_pages::PluginRedirect,
     route: &MutationRouteHandle,
     repository: Option<&RepoPage>,
 ) -> WebResult<Response> {
     // Literal same-plugin/scope paths cannot redirect to external sites or core recovery routes.
+    let query = target.query_string();
     let target = target.target(route.owner(), route.descriptor().scope());
     let target = target
         .render(repository.map(|repo| repo.ctx.repo.owner.name.as_str()), repository.map(|repo| repo.ctx.repo.repo.name.as_str()))
         .map_err(WebError::internal)?;
+    let target = if query.is_empty() { target } else { format!("{target}?{query}") };
     Ok(Redirect::to(&target).into_response())
 }
 
@@ -327,31 +380,35 @@ async fn reauthorize(
     Ok((viewer, repository))
 }
 
-fn check_input_headers(kind: MutationInputKind, headers: &HeaderMap) -> Result<(), StatusCode> {
-    if let MutationInputKind::Upload { max_bytes } = kind {
+fn check_input_headers(descriptor: &rbit_services::plugin_pages::MutationDescriptor, headers: &HeaderMap) -> Result<(), StatusCode> {
+    if let MutationInputKind::Upload { max_bytes } = descriptor.input_kind() {
         return super::upload_input::validate_headers(headers, max_bytes);
     }
     if !form_input::supported_content_type(headers) {
         return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
-    form_input::check_length(headers).map_err(InputError::status)
+    form_input::check_length_with_limit(headers, descriptor.form().limits().max_encoded_bytes()).map_err(InputError::status)
 }
 
 async fn read_submission(
     request: Request,
-    kind: MutationInputKind,
+    descriptor: &rbit_services::plugin_pages::MutationDescriptor,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<Submission, StatusCode> {
     let (parts, body) = request.into_parts();
-    if let MutationInputKind::Upload { max_bytes } = kind {
+    if let MutationInputKind::Upload { max_bytes } = descriptor.input_kind() {
         let (proof, input) = super::upload_input::parse(body, &parts.headers, cancellation, max_bytes).await?;
         return Ok(Submission { proof, input: PendingInput::Upload(input) });
     }
-    let parsed = read(body, cancellation).await?;
+    let parsed = read(body, cancellation, descriptor.form()).await?;
     Ok(Submission { proof: parsed.proof, input: PendingInput::Fields(parsed.fields) })
 }
 
-async fn read(mut body: Body, cancellation: &tokio_util::sync::CancellationToken) -> Result<ParsedForm, StatusCode> {
+async fn read(
+    mut body: Body,
+    cancellation: &tokio_util::sync::CancellationToken,
+    schema: &rbit_services::plugin_pages::FormSchema,
+) -> Result<ParsedForm, StatusCode> {
     use http_body::Body as _;
     let mut bytes = Vec::new();
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
@@ -365,12 +422,12 @@ async fn read(mut body: Body, cancellation: &tokio_util::sync::CancellationToken
         let Some(frame) = frame else { break };
         let frame = frame.map_err(|_| StatusCode::BAD_REQUEST)?;
         let data = frame.into_data().map_err(|_| StatusCode::BAD_REQUEST)?;
-        if data.len() > form_input::MAX_ENCODED_FORM_BYTES.saturating_sub(bytes.len()) {
+        if data.len() > schema.limits().max_encoded_bytes().saturating_sub(bytes.len()) {
             return Err(StatusCode::PAYLOAD_TOO_LARGE);
         }
         bytes.extend_from_slice(&data);
     }
-    ParsedForm::decode(&bytes).map_err(InputError::status)
+    ParsedForm::decode_with_schema(&bytes, schema).map_err(InputError::status)
 }
 
 fn failure(status: StatusCode) -> Response {

@@ -19,6 +19,8 @@ use tokio_util::sync::CancellationToken;
 pub const MAX_PAGE_ROUTES: usize = 128;
 pub const MAX_PAGE_PATH_BYTES: usize = 96;
 pub const MAX_PAGE_BODY_BYTES: usize = 256 * 1024;
+pub const MAX_LARGE_PAGE_BODY_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_CONCURRENT_LARGE_DOCUMENTS: usize = 8;
 pub const MAX_PAGE_TITLE_BYTES: usize = 160;
 pub const MAX_PAGE_DEADLINE: Duration = Duration::from_secs(1);
 pub const MAX_CONCURRENT_PAGES: usize = 64;
@@ -60,6 +62,9 @@ pub struct PageDescriptor {
     audience: PageAudience,
     deadline: Duration,
     forms: Vec<crate::FormReference>,
+    query: crate::RouteQuery,
+    presentation: crate::PagePresentation,
+    body_limit: usize,
 }
 impl PageDescriptor {
     pub fn new(id: &str, scope: PageScope, path: &str, audience: PageAudience, deadline: Duration) -> Result<Self, PageError> {
@@ -80,7 +85,35 @@ impl PageDescriptor {
             audience,
             deadline,
             forms: Vec::new(),
+            query: crate::RouteQuery::default(),
+            presentation: crate::PagePresentation::Shell,
+            body_limit: MAX_PAGE_BODY_BYTES,
         })
+    }
+    pub fn with_body_limit(mut self, bytes: usize) -> Result<Self, PageError> {
+        if bytes == 0 || bytes > MAX_LARGE_PAGE_BODY_BYTES {
+            return Err(PageError::Invalid("page body limit"));
+        }
+        self.body_limit = bytes;
+        Ok(self)
+    }
+    pub const fn body_limit(&self) -> usize {
+        self.body_limit
+    }
+    pub fn with_query(mut self, keys: &[&str]) -> Result<Self, PageError> {
+        self.query = crate::RouteQuery::new(keys)?;
+        Ok(self)
+    }
+    pub fn query(&self) -> &crate::RouteQuery {
+        &self.query
+    }
+    #[must_use]
+    pub fn with_document(mut self) -> Self {
+        self.presentation = crate::PagePresentation::Document;
+        self
+    }
+    pub const fn presentation(&self) -> crate::PagePresentation {
+        self.presentation
     }
     pub fn with_forms(mut self, forms: Vec<crate::FormReference>) -> Result<Self, PageError> {
         if forms.len() > 8
@@ -190,9 +223,9 @@ pub struct CompiledPage<T> {
     template: T,
 }
 impl<T: Template> CompiledPage<T> {
-    pub(crate) fn render(self) -> Result<PageBody, PageError> {
+    pub(crate) fn render_with_limit(self, limit: usize) -> Result<PageBody, PageError> {
         // Never trust SIZE_HINT or allocate an unbounded rendered intermediary.
-        let mut writer = BoundedWriter { output: String::new(), overflow: false };
+        let mut writer = BoundedWriter { output: String::new(), overflow: false, limit };
         if self.template.render_into(&mut writer).is_err() || writer.overflow {
             return Err(PageError::Render);
         }
@@ -219,14 +252,18 @@ impl PageBody {
     pub fn html(&self) -> &str {
         &self.html
     }
+    pub fn into_html(self) -> String {
+        self.html
+    }
 }
 struct BoundedWriter {
+    limit: usize,
     output: String,
     overflow: bool,
 }
 impl fmt::Write for BoundedWriter {
     fn write_str(&mut self, value: &str) -> fmt::Result {
-        if self.overflow || self.output.len().checked_add(value.len()).is_none_or(|length| length > MAX_PAGE_BODY_BYTES) {
+        if self.overflow || self.output.len().checked_add(value.len()).is_none_or(|length| length > self.limit) {
             self.overflow = true;
             return Err(fmt::Error);
         }
@@ -237,17 +274,17 @@ impl fmt::Write for BoundedWriter {
 
 type RenderFuture<'a> = Pin<Box<dyn Future<Output = Result<PageBody, PageError>> + Send + 'a>>;
 trait Renderer: Send + Sync {
-    fn render(&self, context: PageContext, forms: crate::FormActions) -> RenderFuture<'_>;
+    fn render(&self, context: PageContext, forms: crate::FormActions, query: crate::PageQuery, limit: usize) -> RenderFuture<'_>;
 }
 struct TemplateRenderer<F>(F);
 impl<T, F, Fut> Renderer for TemplateRenderer<F>
 where
     T: Template + Send + 'static,
-    F: Fn(PageContext, crate::FormActions) -> Fut + Send + Sync + 'static,
+    F: Fn(PageContext, crate::FormActions, crate::PageQuery) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
 {
-    fn render(&self, context: PageContext, forms: crate::FormActions) -> RenderFuture<'_> {
-        Box::pin(async move { (self.0)(context, forms).await?.render() })
+    fn render(&self, context: PageContext, forms: crate::FormActions, query: crate::PageQuery, limit: usize) -> RenderFuture<'_> {
+        Box::pin(async move { (self.0)(context, forms, query).await?.render_with_limit(limit) })
     }
 }
 
@@ -280,13 +317,21 @@ where
     F: Fn(PageContext) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
 {
-    PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(move |context, _| factory(context))) }
+    PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(move |context, _, _| factory(context))) }
 }
 
 pub fn compiled_form_page<T, F, Fut>(descriptor: PageDescriptor, factory: F) -> PageRegistration
 where
     T: Template + Send + 'static,
     F: Fn(PageContext, crate::FormActions) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
+{
+    PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(move |context, forms, _| factory(context, forms))) }
+}
+pub fn compiled_request_page<T, F, Fut>(descriptor: PageDescriptor, factory: F) -> PageRegistration
+where
+    T: Template + Send + 'static,
+    F: Fn(PageContext, crate::FormActions, crate::PageQuery) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<CompiledPage<T>, PageError>> + Send + 'static,
 {
     PageRegistration { descriptor, renderer: Arc::new(TemplateRenderer(factory)) }
@@ -296,6 +341,7 @@ where
 pub struct PageRegistry {
     inner: ScopedExtensionRegistry<PageRegistration>,
     renders: Arc<Semaphore>,
+    large: Arc<Semaphore>,
 }
 impl Default for PageRegistry {
     fn default() -> Self {
@@ -307,6 +353,7 @@ impl PageRegistry {
         Self {
             inner: ScopedExtensionRegistry::with_capacity(MAX_PAGE_ROUTES).expect("host page capacity is valid"),
             renders: Arc::new(Semaphore::new(MAX_CONCURRENT_PAGES)),
+            large: Arc::new(Semaphore::new(MAX_CONCURRENT_LARGE_DOCUMENTS)),
         }
     }
     /// Terminally withdraws all callbacks and cancels admitted work across clones.
@@ -321,7 +368,7 @@ impl PageRegistry {
         self.inner.snapshot().revision
     }
     pub fn snapshot(&self) -> PageRouteSnapshot {
-        PageRouteSnapshot { inner: self.inner.snapshot(), renders: Arc::clone(&self.renders) }
+        PageRouteSnapshot { inner: self.inner.snapshot(), renders: Arc::clone(&self.renders), large: Arc::clone(&self.large) }
     }
     pub fn stage(
         &self,
@@ -381,6 +428,7 @@ fn validate_batch(pages: &[PageRegistration]) -> Result<(), PageError> {
 pub struct PageRouteSnapshot {
     inner: ExtensionSnapshot<PageRegistration>,
     renders: Arc<Semaphore>,
+    large: Arc<Semaphore>,
 }
 impl PageRouteSnapshot {
     pub fn len(&self) -> usize {
@@ -419,15 +467,21 @@ impl PageRouteHandle {
         self.snapshot.inner.entries[self.index].generation
     }
     pub fn admit(&self) -> Result<PageLease, PageError> {
+        let large_permit = if self.descriptor().body_limit > MAX_PAGE_BODY_BYTES {
+            Some(Arc::clone(&self.snapshot.large).try_acquire_owned().map_err(|_| PageError::Unavailable)?)
+        } else {
+            None
+        };
         let permit = Arc::clone(&self.snapshot.renders).try_acquire_owned().map_err(|_| PageError::Unavailable)?;
         let inner = self.snapshot.inner.entries[self.index].admit().map_err(|_| PageError::Unavailable)?;
-        Ok(PageLease { inner, permit })
+        Ok(PageLease { inner, permit, large_permit })
     }
 }
 #[derive(Debug)]
 pub struct PageLease {
     inner: ExtensionLease<PageRegistration>,
     permit: OwnedSemaphorePermit,
+    large_permit: Option<OwnedSemaphorePermit>,
 }
 impl PageLease {
     pub fn cancellation_token(&self) -> CancellationToken {
@@ -437,14 +491,23 @@ impl PageLease {
         self.render_with_forms(context, crate::FormActions::default()).await
     }
     pub async fn render_with_forms(&mut self, context: PageContext, forms: crate::FormActions) -> Result<PageBody, PageError> {
+        self.render_with_request(context, forms, crate::PageQuery::default()).await
+    }
+    pub async fn render_with_request(
+        &mut self,
+        context: PageContext,
+        forms: crate::FormActions,
+        query: crate::PageQuery,
+    ) -> Result<PageBody, PageError> {
         let registration = self.inner.value();
         context.authorize(&registration.descriptor)?;
+        registration.descriptor.query.validate(&query)?;
         let deadline = Instant::now() + registration.descriptor.deadline;
         let cancellation = self.inner.cancellation_token();
         let page = tokio::select! {
             biased;
             ()=cancellation.cancelled()=>return Err(PageError::Unavailable),
-            result=timeout_at(deadline,async {registration.renderer.render(context,forms).await})=>result.map_err(|_|PageError::Timeout)??,
+            result=timeout_at(deadline,async {registration.renderer.render(context,forms,query,registration.descriptor.body_limit).await})=>result.map_err(|_|PageError::Timeout)??,
         };
         // Synchronous native rendering cannot be preempted. Check again before
         // publishing markup in case it completed after the deadline or revocation.
@@ -459,7 +522,7 @@ impl PageLease {
     pub fn into_parts(self) -> (PageOperation, CancellationToken) {
         let (registration, lease, cancellation) = self.inner.into_parts();
         drop(registration);
-        (PageOperation { _lease: lease, _permit: self.permit }, cancellation)
+        (PageOperation { _lease: lease, _permit: self.permit, _large_permit: self.large_permit }, cancellation)
     }
 }
 /// Host-owned response guard. Keep it until the last body producer is dropped.
@@ -467,6 +530,7 @@ impl PageLease {
 pub struct PageOperation {
     _lease: OperationLease,
     _permit: OwnedSemaphorePermit,
+    _large_permit: Option<OwnedSemaphorePermit>,
 }
 
 #[cfg(test)]
@@ -475,7 +539,7 @@ mod writer_tests {
     use std::fmt::Write as _;
     #[test]
     fn overflow_is_latched_even_if_a_native_writer_caller_ignores_the_error() {
-        let mut writer = BoundedWriter { output: String::new(), overflow: false };
+        let mut writer = BoundedWriter { output: String::new(), overflow: false, limit: MAX_PAGE_BODY_BYTES };
         writer.write_str(&"x".repeat(MAX_PAGE_BODY_BYTES)).unwrap();
         let _ignored = writer.write_str("extra");
         assert!(writer.overflow);

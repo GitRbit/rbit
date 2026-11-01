@@ -20,3 +20,6 @@ pub use mutations::*;
 
 mod capabilities;
 pub use capabilities::*;
+
+mod request;
+pub use request::*;

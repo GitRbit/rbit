@@ -30,7 +30,7 @@ impl InputError {
     }
 }
 
-pub(super) fn check_length(headers: &HeaderMap) -> Result<(), InputError> {
+pub(super) fn check_length_with_limit(headers: &HeaderMap, limit: usize) -> Result<(), InputError> {
     if headers.get_all(header::CONTENT_LENGTH).iter().count() > 1 {
         return Err(InputError::Malformed);
     }
@@ -40,7 +40,7 @@ pub(super) fn check_length(headers: &HeaderMap) -> Result<(), InputError> {
             return Err(InputError::Malformed);
         }
         let length = length.parse::<usize>().map_err(|_| InputError::TooLarge)?;
-        if length > MAX_ENCODED_FORM_BYTES {
+        if length > limit {
             return Err(InputError::TooLarge);
         }
     }
@@ -48,8 +48,18 @@ pub(super) fn check_length(headers: &HeaderMap) -> Result<(), InputError> {
 }
 
 impl ParsedForm {
+    #[cfg(test)]
     pub fn decode(body: &[u8]) -> Result<Self, InputError> {
-        if body.len() > MAX_ENCODED_FORM_BYTES {
+        Self::decode_inner(body, None)
+    }
+    pub fn decode_with_schema(body: &[u8], schema: &rbit_services::plugin_pages::FormSchema) -> Result<Self, InputError> {
+        Self::decode_inner(body, Some(schema))
+    }
+    fn decode_inner(body: &[u8], schema: Option<&rbit_services::plugin_pages::FormSchema>) -> Result<Self, InputError> {
+        let limit = schema.map_or(MAX_ENCODED_FORM_BYTES, |s| s.limits().max_encoded_bytes());
+        let max_pairs = schema.map_or(32, |s| s.limits().max_pairs());
+        let field_limit = schema.map_or(4096, |s| s.limits().max_field_bytes());
+        if body.len() > limit {
             return Err(InputError::TooLarge);
         }
         let body = std::str::from_utf8(body).map_err(|_| InputError::Malformed)?;
@@ -57,13 +67,17 @@ impl ParsedForm {
         let mut proof = None;
         let mut names = std::collections::BTreeSet::new();
         for pair in body.split('&') {
-            if names.len() >= 33 {
+            if fields.len() + usize::from(proof.is_some()) >= max_pairs + 1 {
                 return Err(InputError::TooLarge);
             }
             let (name, value) = pair.split_once('=').ok_or(InputError::Malformed)?;
             let name = decode_component(name)?;
             let value = decode_component(value)?;
-            if name.is_empty() || name.len() > 64 || !names.insert(name.clone()) {
+            if name.is_empty() || name.len() > 128 || (name.len() > 64 && !schema.is_some_and(|s| s.accepts_name(&name))) {
+                return Err(InputError::Malformed);
+            }
+            let repeated = !names.insert(name.clone());
+            if repeated && (name == "_csrf" || !schema.is_some_and(|s| s.accepts_repeated(&name))) {
                 return Err(InputError::Malformed);
             }
             if name == "_csrf" {
@@ -75,7 +89,7 @@ impl ParsedForm {
                 if matches!(name.as_str(), "_generation" | "_version") {
                     return Err(InputError::Malformed);
                 }
-                if value.len() > 4096 {
+                if value.len() > field_limit {
                     return Err(InputError::TooLarge);
                 }
                 fields.push((name, value));
@@ -85,7 +99,7 @@ impl ParsedForm {
     }
 }
 
-fn decode_component(encoded: &str) -> Result<String, InputError> {
+pub(super) fn decode_component(encoded: &str) -> Result<String, InputError> {
     let bytes = encoded.as_bytes();
     for (index, byte) in bytes.iter().enumerate() {
         if *byte == b'%' && !bytes.get(index + 1..index + 3).is_some_and(|digits| digits.iter().all(u8::is_ascii_hexdigit)) {

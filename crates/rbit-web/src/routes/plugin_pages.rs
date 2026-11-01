@@ -3,6 +3,7 @@
 mod browser_preference;
 mod form_input;
 mod forms;
+mod query_input;
 mod upload_input;
 
 use axum::{
@@ -111,7 +112,7 @@ async fn global(
     request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
-    page.path = uri.path().to_owned();
+    page.path = uri.path_and_query().map_or(uri.path(), |value| value.as_str()).to_owned();
     let route = lookup(&state, &uri, &path.plugin, &path.page, PageScope::Global)?;
     match route.descriptor().audience() {
         PageAudience::SignedIn | PageAudience::SiteAdmin if viewer.user().is_none() => return Ok(sign_in(&uri)),
@@ -125,7 +126,8 @@ async fn global(
     } else {
         browser_preference::BrowserForms::new(&request, https)
     };
-    render(route, page, &viewer, session.as_ref(), None, (&state, browser)).await
+    let query = query_input::parse(uri.query(), route.descriptor().query())?;
+    render(route, page, &viewer, session.as_ref(), None, (&state, browser, query)).await
 }
 
 async fn repository(
@@ -138,7 +140,7 @@ async fn repository(
     request: Request,
 ) -> WebResult<Response> {
     let Path(path) = path.map_err(|_| WebError::NotFound)?;
-    page.path = uri.path().to_owned();
+    page.path = uri.path_and_query().map_or(uri.path(), |value| value.as_str()).to_owned();
     let route = lookup(&state, &uri, &path.plugin, &path.page, PageScope::Repository)?;
     let loaded = RepoPage::load(&state, &viewer, &path.owner, &path.repo).await?;
     match route.descriptor().audience() {
@@ -152,7 +154,8 @@ async fn repository(
     } else {
         browser_preference::BrowserForms::new(&request, https)
     };
-    render(route, page, &viewer, session.as_ref(), Some(loaded), (&state, browser)).await
+    let query = query_input::parse(uri.query(), route.descriptor().query())?;
+    render(route, page, &viewer, session.as_ref(), Some(loaded), (&state, browser, query)).await
 }
 
 async fn render(
@@ -161,7 +164,7 @@ async fn render(
     viewer: &Viewer,
     session: Option<&crate::extract::CurrentSession>,
     repository: Option<RepoPage>,
-    (state, mut browser): (&AppState, browser_preference::BrowserForms),
+    (state, mut browser, query): (&AppState, browser_preference::BrowserForms, rbit_services::plugin_pages::PageQuery),
 ) -> WebResult<Response> {
     let context = PageContext {
         actor: viewer.user().map(|user| PageActor { account_id: user.id().0, is_admin: user.is_admin }),
@@ -176,7 +179,7 @@ async fn render(
     let native_forms = !route.descriptor().forms().is_empty();
     let actions = forms::actions(&route, viewer, session, repository.as_ref(), state, &mut browser);
     let Ok(mut lease) = route.admit() else { return Ok(unavailable()) };
-    let body = match lease.render_with_forms(context, actions).await {
+    let body = match lease.render_with_request(context, actions, query).await {
         Ok(body) => body,
         Err(PageError::Forbidden) => return Err(WebError::NotFound),
         Err(_) => return Ok(unavailable()),
@@ -184,11 +187,19 @@ async fn render(
     let owner = route.owner().to_string();
     let path = route.descriptor().path().to_owned();
     let policy = ShellPolicy { native_forms, administrator: route.descriptor().audience() == PageAudience::SiteAdmin };
-    let response = shell(page, repository, owner, path, body, policy, state);
+    let response = if route.descriptor().presentation() == rbit_services::plugin_pages::PagePresentation::Document {
+        document(body)
+    } else {
+        shell(page, repository, owner, path, body, policy, state)
+    };
     let (guard, cancellation) = lease.into_parts();
     let mut response = response;
     response.extensions_mut().insert(crate::middleware::PageResponseGuard::new(guard, cancellation));
     Ok(browser.apply(response))
+}
+
+fn document(body: rbit_services::plugin_pages::PageBody) -> Response {
+    axum::response::Html(body.into_html()).into_response()
 }
 
 fn shell(
