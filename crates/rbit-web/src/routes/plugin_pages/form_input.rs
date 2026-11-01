@@ -67,7 +67,7 @@ impl ParsedForm {
         let mut proof = None;
         let mut names = std::collections::BTreeSet::new();
         for pair in body.split('&') {
-            if fields.len() + usize::from(proof.is_some()) >= max_pairs + 1 {
+            if fields.len() + usize::from(proof.is_some()) > max_pairs {
                 return Err(InputError::TooLarge);
             }
             let (name, value) = pair.split_once('=').ok_or(InputError::Malformed)?;
@@ -202,6 +202,31 @@ mod tests {
         assert_eq!(ParsedForm::decode(b"title=a").unwrap_err(), InputError::MissingProof);
         assert_eq!(ParsedForm::decode(&vec![b'a'; MAX_ENCODED_FORM_BYTES + 1]).unwrap_err(), InputError::TooLarge);
         assert!(ParsedForm::decode(format!("_csrf=a&title={}", "x".repeat(4097)).as_bytes()).is_err());
+    }
+
+    #[test]
+    fn declared_prefix_names_preserve_the_full_inner_name_bound() {
+        use rbit_services::plugin_pages::{FormData, FormField, FormFieldKind, FormSchema};
+        let scalar = "s".repeat(64);
+        let schema = FormSchema::new(vec![FormField {
+            name: scalar.clone(),
+            kind: FormFieldKind::Text { max_bytes: 64, multiline: false },
+            required: false,
+        }])
+        .unwrap()
+        .with_prefix("inputs[", "]", 32, 64)
+        .unwrap();
+        let inner = "A".repeat(64);
+        let body = format!("_csrf=proof&inputs%5B{inner}%5D=value&{scalar}=ordinary");
+        let parsed = ParsedForm::decode_with_schema(body.as_bytes(), &schema).unwrap();
+        assert!(schema.validate(FormData::for_schema(parsed.fields, &schema).unwrap()).is_ok());
+        let too_long = format!("_csrf=proof&inputs%5B{}%5D=value", "A".repeat(65));
+        assert_eq!(ParsedForm::decode_with_schema(too_long.as_bytes(), &schema).unwrap_err(), InputError::Malformed);
+        let unknown = format!("_csrf=proof&{}=value", "u".repeat(64));
+        let parsed = ParsedForm::decode_with_schema(unknown.as_bytes(), &schema).unwrap();
+        assert!(FormData::for_schema(parsed.fields, &schema).is_err());
+        let ordinary_too_long = format!("_csrf=proof&{}=value", "s".repeat(65));
+        assert_eq!(ParsedForm::decode_with_schema(ordinary_too_long.as_bytes(), &schema).unwrap_err(), InputError::Malformed);
     }
 
     #[test]

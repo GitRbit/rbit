@@ -246,7 +246,14 @@ async fn runtime_route_registration_is_read_only_canonical_and_never_preloaded()
         fixture.request(Method::POST, "/-/plugins/example.pages/nested/report", None, &[("Origin", "https://evil.example")]).await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert_eq!(calls.load(Ordering::SeqCst), 0);
-    let response = fixture.request(Method::HEAD, "/-/plugins/example.pages/nested/report?ignored=private", None, &[]).await;
+    for method in [Method::GET, Method::HEAD] {
+        let response = fixture.request(method, "/-/plugins/example.pages/nested/report?ignored=private", None, &[]).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "undeclared query values never reach a page callback");
+        assert_host_headers(response.headers());
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert!(contexts.lock().unwrap().is_empty());
+    let response = fixture.request(Method::HEAD, "/-/plugins/example.pages/nested/report", None, &[]).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert!(to_bytes(response.into_body(), 1024).await.unwrap().is_empty());
     assert_eq!(calls.load(Ordering::SeqCst), 1, "HEAD shares the declared read-only callback contract");

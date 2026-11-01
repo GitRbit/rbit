@@ -75,6 +75,19 @@ fn binding<'a>(
     }
 }
 
+/// Only sealed locale-preference forms need an additional cookie/browser projection.
+pub(super) fn needs_browser(route: &PageRouteHandle, state: &AppState) -> bool {
+    if route.descriptor().forms().is_empty() {
+        return false;
+    }
+    let snapshot = state.services.mutation_registry().snapshot();
+    route.descriptor().forms().iter().any(|reference| {
+        snapshot.find(route.owner(), route.descriptor().scope(), &reference.path).is_some_and(|mutation| {
+            mutation.generation() == route.generation() && mutation.descriptor().input_kind() == MutationInputKind::LocalePreference
+        })
+    })
+}
+
 /// Only explicitly declared same-generation, same-owner and same-scope forms receive proofs.
 pub(super) fn actions(
     route: &PageRouteHandle,

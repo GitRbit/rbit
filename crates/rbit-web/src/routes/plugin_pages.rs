@@ -155,10 +155,10 @@ async fn global(
         PageAudience::RepositoryReader | PageAudience::RepositoryAdmin => return Err(WebError::NotFound),
     }
     let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
-    let browser = if route.descriptor().forms().is_empty() {
-        browser_preference::BrowserForms::empty(https)
-    } else {
+    let browser = if forms::needs_browser(&route, &state) {
         browser_preference::BrowserForms::new(&request, https)
+    } else {
+        browser_preference::BrowserForms::empty(https)
     };
     let query = query_input::parse(uri.query(), route.descriptor().query())?;
     render(route, page, &viewer, session.as_ref(), None, (&state, browser, query)).await
@@ -183,10 +183,10 @@ async fn repository(
         _ => return Err(WebError::NotFound),
     }
     let session = request.extensions().get::<crate::extract::CurrentSession>().cloned();
-    let browser = if route.descriptor().forms().is_empty() {
-        browser_preference::BrowserForms::empty(https)
-    } else {
+    let browser = if forms::needs_browser(&route, &state) {
         browser_preference::BrowserForms::new(&request, https)
+    } else {
+        browser_preference::BrowserForms::empty(https)
     };
     let query = query_input::parse(uri.query(), route.descriptor().query())?;
     render(route, page, &viewer, session.as_ref(), Some(loaded), (&state, browser, query)).await
