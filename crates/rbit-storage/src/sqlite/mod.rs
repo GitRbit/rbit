@@ -79,8 +79,8 @@ pub struct Database {
     pool: SqlitePool,
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
-    // Enrolled package policy, three account moderation, four principal creation
-    // and two external identity linking methods.
+    // Enrolled package policy, three account moderation, four principal creation,
+    // two external identity linking and three personal access token methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -174,7 +174,7 @@ impl Database {
     }
 
     pub fn access_tokens(&self) -> AccessTokenStore {
-        AccessTokenStore::new(self.store("access_tokens"))
+        AccessTokenStore::new(self.store("access_tokens"), self.authority_domain.writer())
     }
 
     pub fn audit(&self) -> audit::AuditStore {

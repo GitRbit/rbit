@@ -31,21 +31,36 @@ pub struct NewAccessToken {
 #[derive(Debug, Clone)]
 pub struct AccessTokenStore {
     pool: Pool,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl AccessTokenStore {
-    pub(crate) fn new(pool: Pool) -> Self {
-        Self { pool }
+    pub(crate) fn new(pool: Pool, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, writer }
     }
 
     pub async fn create(&self, new: NewAccessToken) -> Result<AccessToken, StorageError> {
-        self.create_with_limit(new, i64::MAX).await?.ok_or_else(|| sqlx::Error::RowNotFound.into())
+        let mutation = self.writer.begin().await.map_err(token_mutation_error)?;
+        let result = self.create_with_limit_raw(new, i64::MAX).await.and_then(|token| token.ok_or_else(|| sqlx::Error::RowNotFound.into()));
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
     }
 
     /// Inserts a token only while the owner's count is below `limit`, atomically with
     /// insertion. Concurrent requests cannot bypass the per-account resource limit.
     pub async fn create_with_limit(&self, new: NewAccessToken, limit: i64) -> Result<Option<AccessToken>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(token_mutation_error)?;
+        let result = self.create_with_limit_raw(new, limit).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn create_with_limit_raw(&self, new: NewAccessToken, limit: i64) -> Result<Option<AccessToken>, StorageError> {
         let now = Timestamp::now().seconds();
+        let mut tx = self.pool.begin().await?;
         let row: Option<AccessTokenRow> = sqlx::query_as(
             "INSERT INTO access_tokens (account_id, name, token_digest, hint, scope, created_at, expires_at) \
              SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 \
@@ -60,9 +75,10 @@ impl AccessTokenStore {
         .bind(now)
         .bind(new.expires_at.map(Timestamp::seconds))
         .bind(limit)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| StorageError::from_insert(e, "token"))?;
+        tx.commit().await?;
         row.map(AccessToken::try_from).transpose()
     }
 
@@ -81,11 +97,21 @@ impl AccessTokenStore {
 
     /// Deletes the token only if `account_id` owns it. Returns whether a token was removed.
     pub async fn delete(&self, account_id: AccountId, id: AccessTokenId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(token_mutation_error)?;
+        let result = self.delete_raw(account_id, id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn delete_raw(&self, account_id: AccountId, id: AccessTokenId) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("DELETE FROM access_tokens WHERE id = ? AND account_id = ?")
             .bind(id.0)
             .bind(account_id.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -118,3 +144,13 @@ impl AccessTokenStore {
         Ok(())
     }
 }
+
+fn token_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "access token mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "access token writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;
