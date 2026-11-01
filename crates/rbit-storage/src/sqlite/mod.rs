@@ -80,8 +80,8 @@ pub struct Database {
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
     // Enrolled package policy, three account moderation, four principal creation,
-    // two external identity linking, three personal access token, four SSH key
-    // and five recovery SQL methods.
+    // two external identity linking, three personal access token, four SSH key,
+    // five recovery SQL and ten two-factor methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -191,7 +191,7 @@ impl Database {
     }
 
     pub fn two_factor(&self) -> two_factor::TwoFactorStore {
-        two_factor::TwoFactorStore::new(self.store("two_factor"), self.key.clone())
+        two_factor::TwoFactorStore::new(self.store("two_factor"), self.key.clone(), self.authority_domain.writer())
     }
 
     pub fn admin(&self) -> admin::AdminStore {

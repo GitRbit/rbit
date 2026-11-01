@@ -136,11 +136,12 @@ macro_rules! has_factor {
 pub struct TwoFactorStore {
     pool: Pool,
     key: SealingKey,
+    writer: rbit_authority_fence::WriterRegistration,
 }
 
 impl TwoFactorStore {
-    pub(crate) fn new(pool: Pool, key: SealingKey) -> Self {
-        Self { pool, key }
+    pub(crate) fn new(pool: Pool, key: SealingKey, writer: rbit_authority_fence::WriterRegistration) -> Self {
+        Self { pool, key, writer }
     }
 
     pub async fn find(&self, account: AccountId) -> Result<Option<TwoFactorRecord>, StorageError> {
@@ -188,6 +189,15 @@ impl TwoFactorStore {
     /// Stores a pending secret, replacing an earlier pending one. Returns `false` (and
     /// changes nothing) when the authenticator app is already enabled.
     pub async fn begin_enrolment(&self, account: AccountId, secret: &[u8]) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.begin_enrolment_raw(account, secret).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn begin_enrolment_raw(&self, account: AccountId, secret: &[u8]) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "INSERT INTO two_factor (account_id, secret, created_at) VALUES (?1, ?2, ?3) \
              ON CONFLICT (account_id) DO UPDATE SET secret = excluded.secret, created_at = excluded.created_at, last_used_step = NULL \
@@ -196,8 +206,9 @@ impl TwoFactorStore {
         .bind(account.0)
         .bind(self.key.seal(secret)?.into_bytes())
         .bind(Timestamp::now().seconds())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
@@ -212,9 +223,24 @@ impl TwoFactorStore {
         step: u64,
         recovery_digests: &[[u8; 32]],
     ) -> Result<Option<bool>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.confirm_raw(account, secret, step, recovery_digests).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn confirm_raw(
+        &self,
+        account: AccountId,
+        secret: &[u8],
+        step: u64,
+        recovery_digests: &[[u8; 32]],
+    ) -> Result<Option<bool>, StorageError> {
         let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let Some(stored) = self.stored_secret(&mut *tx, account, secret, false).await? else {
+            tx.rollback().await?;
             return Ok(None);
         };
         let confirmed = sqlx::query(
@@ -230,6 +256,7 @@ impl TwoFactorStore {
         .rows_affected()
             == 1;
         if !confirmed {
+            tx.rollback().await?;
             return Ok(None);
         }
         if first_factor {
@@ -242,9 +269,18 @@ impl TwoFactorStore {
     /// Accepts time step `step` for an enabled account, unless it (or a later one) was
     /// already accepted. `true` means the code may be honoured.
     pub async fn claim_step(&self, account: AccountId, secret: &[u8], step: u64) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.claim_step_raw(account, secret, step).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn claim_step_raw(&self, account: AccountId, secret: &[u8], step: u64) -> Result<bool, StorageError> {
         let Some(stored) = self.stored_secret(&self.pool, account, secret, true).await? else {
             return Ok(false);
         };
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             "UPDATE two_factor SET last_used_step = ?1 WHERE account_id = ?2 AND secret = ?3 AND confirmed_at IS NOT NULL \
              AND (last_used_step IS NULL OR last_used_step < ?1)",
@@ -252,19 +288,30 @@ impl TwoFactorStore {
         .bind(step_value(step))
         .bind(account.0)
         .bind(stored)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
     /// Marks an unused recovery code as used. `true` if it existed and was unused.
     pub async fn spend_recovery_code(&self, account: AccountId, digest: &[u8; 32]) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.spend_recovery_code_raw(account, digest).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn spend_recovery_code_raw(&self, account: AccountId, digest: &[u8; 32]) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("UPDATE recovery_codes SET used_at = ? WHERE account_id = ? AND code_digest = ? AND used_at IS NULL")
             .bind(Timestamp::now().seconds())
             .bind(account.0)
             .bind(digest.as_slice())
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
@@ -277,8 +324,17 @@ impl TwoFactorStore {
 
     /// Replaces every recovery code of an enabled account. `false` if 2FA is not enabled.
     pub async fn replace_recovery_codes(&self, account: AccountId, digests: &[[u8; 32]]) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.replace_recovery_codes_raw(account, digests).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn replace_recovery_codes_raw(&self, account: AccountId, digests: &[[u8; 32]]) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin_immediate().await?;
         if !has_factor(&mut tx, account).await? {
+            tx.rollback().await?;
             return Ok(false);
         }
         replace_codes(&mut tx, account, digests).await?;
@@ -289,13 +345,31 @@ impl TwoFactorStore {
     /// Discards only an unconfirmed authenticator enrolment. Confirmation racing this
     /// operation must never turn cancellation into removal of an enabled factor.
     pub async fn cancel_enrolment(&self, account: AccountId) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM two_factor WHERE account_id = ? AND confirmed_at IS NULL").bind(account.0).execute(&self.pool).await?;
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.cancel_enrolment_raw(account).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn cancel_enrolment_raw(&self, account: AccountId) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM two_factor WHERE account_id = ? AND confirmed_at IS NULL").bind(account.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Removes the authenticator app (confirmed or pending), and the recovery codes too if
     /// that leaves no factor. `true` if anything was removed.
     pub async fn disable(&self, account: AccountId) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.disable_raw(account).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn disable_raw(&self, account: AccountId) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
         let removed = sqlx::query("DELETE FROM two_factor WHERE account_id = ?").bind(account.0).execute(&mut *tx).await?.rows_affected();
         drop_codes_without_factor(&mut tx, account).await?;
@@ -334,6 +408,19 @@ impl TwoFactorStore {
         passkey: &NewPasskey<'_>,
         recovery_digests: &[[u8; 32]],
     ) -> Result<PasskeyAdded, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.add_passkey_raw(account, passkey, recovery_digests).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn add_passkey_raw(
+        &self,
+        account: AccountId,
+        passkey: &NewPasskey<'_>,
+        recovery_digests: &[[u8; 32]],
+    ) -> Result<PasskeyAdded, StorageError> {
         let mut tx = self.pool.begin_immediate().await?;
         let first_factor = !has_factor(&mut tx, account).await?;
         let inserted = sqlx::query(
@@ -353,6 +440,7 @@ impl TwoFactorStore {
         .rows_affected()
             == 1;
         if !inserted {
+            tx.rollback().await?;
             return Ok(PasskeyAdded::Duplicate);
         }
         if first_factor {
@@ -366,20 +454,38 @@ impl TwoFactorStore {
     /// the signature was checked against) to `new_count`. `false` if another sign-in got
     /// there first, so one response can't be honoured twice.
     pub async fn use_passkey(&self, account: AccountId, id: i64, seen_count: u32, new_count: u32) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.use_passkey_raw(account, id, seen_count, new_count).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn use_passkey_raw(&self, account: AccountId, id: i64, seen_count: u32, new_count: u32) -> Result<bool, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query("UPDATE passkeys SET sign_count = ?, last_used_at = ? WHERE id = ? AND account_id = ? AND sign_count = ?")
             .bind(i64::from(new_count))
             .bind(Timestamp::now().seconds())
             .bind(id)
             .bind(account.0)
             .bind(i64::from(seen_count))
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() == 1)
     }
 
     /// Removes passkey `id`, and the recovery codes too if that leaves no factor. `true` if
     /// it existed.
     pub async fn remove_passkey(&self, account: AccountId, id: i64) -> Result<bool, StorageError> {
+        let mutation = self.writer.begin().await.map_err(factor_mutation_error)?;
+        let result = self.remove_passkey_raw(account, id).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn remove_passkey_raw(&self, account: AccountId, id: i64) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
         let removed = sqlx::query("DELETE FROM passkeys WHERE id = ? AND account_id = ?")
             .bind(id)
@@ -421,3 +527,13 @@ async fn replace_codes(tx: &mut super::pool::Conn, account: AccountId, digests: 
     }
     Ok(())
 }
+
+fn factor_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "two-factor mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "two-factor writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;
