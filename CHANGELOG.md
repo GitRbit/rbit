@@ -23,6 +23,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Optional `rbit-i18n-web` compiled language fragments behind narrow request-scoped
+  host ports, preserving current authorization, borrowed uploads, weak host ownership
+  and disabled-provider repair. CI checks the resolved all-target dependency boundary;
+  core-only builds retain English without the optional UI or catalog engine.
+
 - Bounded administrator renewal HTTP endpoints and `rbit plugin policy renew` /
   `renewal-operation` commands with strict 1 KiB requests, 64 KiB receipt responses,
   retained operation keys and exact recovery-hook exemptions. Historical evidence

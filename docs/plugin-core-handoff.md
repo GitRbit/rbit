@@ -1,5 +1,67 @@
 # Plugin core handoff
 
+## Optional i18n presentation extraction — 2026-11-01
+
+`rbit-i18n-web` now owns the compiled language picker, pack-management templates
+and route declarations behind narrow `LanguageHost`/`LanguageRequest` ports.
+Its normal graph contains shared message/page contracts and Askama, with an
+all-feature/all-target guard against Web, Services, storage, HTTP, catalog-engine
+and other optional implementation dependencies. The Web `i18n` feature selects
+this crate; core-only and Actions-only builds must exclude it. Message-reference
+and frontend markup scans follow the moved sources/templates, and CI includes its
+isolated contracts.
+
+Web retains the weak host adapter and request-scoped strong connection. Protected
+inventory reads and writes reload the active actor; Services still authorizes
+administration and owns validation, persistence and provider lifecycle. Pack uploads
+cross the port as a borrowed bounded slice, preserving the existing upload buffer.
+The host projects inventory through an owned exact-size iterator into the final
+display rows, avoiding an intermediate summary collection without relying on
+allocator reuse. This source-level change establishes no measured speedup.
+Host session/Origin/form-proof checks, typed locale-cookie effects, one-second
+callback deadlines, upload limits and separate active/installed-management scopes
+remain in force. Disabled or failed providers retain administrator repair access;
+retained blueprints cannot keep a dropped HTTP host alive.
+
+Four standalone presentation tests and standalone strict lint passed. All five
+actual dependency guards passed, the message check validated 1,908 messages and
+1,913 static references, and all 225 frontend tests passed. These leaf tests cover
+escaped rendering, fresh mock authority denial, borrowed upload identity, weak-host
+expiry, guest/account preferences, disabled-host refusal and declarations. Existing
+real HTTP tests exercise the host-side proofs, authority refresh, cancellation,
+repair and generation semantics rather than treating the passive port as authority.
+
+Final local validation passed the complete Web suite (647 tests, four expected
+ignores) and all four presentation tests. The i18n-only profile passed three unit
+and ten real HTTP tests on the final iterator source. The server's 46 tests passed
+before the inventory iterator adjustment; server/CLI source is unchanged by that
+presentation adjustment. Functional checks used unchanged Rust 1.95. Strict Rust
+1.99 workspace/all-target Clippy passed with warnings denied, as did final
+formatting, whitespace, all five dependency guards, all 225 frontend tests and
+message-reference checks. Core-only and Actions-only exclusion is checked by the
+resolved dependency graphs; new published-head hosted profile checks remain
+required. These results are not a new complete-workspace total.
+
+Performance baseline A is `d3dc8980dd091c31ceffc61f916ca282b10ab506`; the isolated
+presentation candidate B is `b951eed02f7fb13994d013f71b9ce87206f59f41`. Source and lockfile
+identities are recorded in the local validation evidence. Release executables and
+new paired latency measurements have not been produced for these revisions.
+Fresh isolated A/B asset builds with the same Tailwind 4.3.3 produced identical
+145,155-byte CSS (SHA-256
+`eb9b42f76df3a8b9336ad313e680232735db901bea8459a5fbda4013c6662b67`);
+the other 540 assets are unchanged and both moved templates are byte-identical.
+The original ignored CSS baseline was stale even against fresh A, so equality
+is against the fresh A/B builds, not that stale artifact. Local evidence is
+`target/i18n-web-extraction/css-parity/report.json`.
+
+No new performance result is established here. The earlier 0075cec-to-3b9 shared-UI
+comparison remains inconclusive at the 2% repository-page bound and does not isolate
+this change. Any subsequent paired comparison must retain fresh-process replication,
+A/A controls and identical feature profiles/data/toolchain. Native package execution,
+broker grants and runtime sandbox/worker admission remain unavailable; this compiled
+first-party extraction changes none of those policy boundaries. PR #47 and the
+modularization goal remain active.
+
 ## Bounded renewal HTTP and CLI adapters — 2026-11-01
 
 The dedicated `PUT`/`GET /api/v1/admin/plugin-policy-renewals/{operation_id}` routes
@@ -83,9 +145,13 @@ workspace suite passed 2,500 tests, zero failures and eight expected ignores acr
 74 test summaries. Strict Rust 1.99 workspace/all-target lint, formatting,
 whitespace and all four dependency guards passed. After documentation markup and
 a test-only string-assignment lint fix, all 14 policy storage tests passed again.
-These local results do not certify hosted/native Windows behavior. Exact-head CI
-remains required after publication. Earlier sections retain the validation
-provenance of preceding stages.
+Published backend commit `1a37665c8bae016be8cd35105ad8e82b9b27a9c9`
+passed all 11 jobs in [exact-head CI](https://github.com/GitRbit/rbit/actions/runs/41290719217),
+including native Windows, Linux, release, core-only, both optional profiles and
+strict workspace lint. The run actor and triggering actor were both GitRbit.
+This hosted result applies to that backend checkpoint; the later transport and
+presentation changes require their own published-head checks. Earlier sections
+retain the validation provenance of preceding stages.
 
 ## Bounded policy administration adapters — 2026-11-01
 
