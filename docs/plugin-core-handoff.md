@@ -1,5 +1,16 @@
 # Plugin core handoff
 
+## Controlled Unix pipe feasibility — 2026-11-01
+
+Separate [fixed-helper tests](design/native-process-feasibility.md) now exercise
+actual one-byte framing and stalled read/write deadlines on macOS, retaining an
+exclusive standard child handle through signal-before-reap and observed group/pipe
+settlement. Both OS tests and ten codec tests pass locally; strict Rust 1.99 crate
+lint and six dependency guards pass. A Linux-only WNOWAIT exited-leader test still
+requires hosted execution. The fresh-process/reaper assumptions, best-effort Drop
+and macOS exited-leader gap are explicit. No production launcher, waiter-loss owner,
+attempt schema or executable availability is added; the full goal remains active.
+
 ## Verified tentative native images — 2026-11-01
 
 The [image preparation contract](design/native-image-materialization.md) adds a

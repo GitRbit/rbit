@@ -97,3 +97,7 @@ UI dependency-guard tests reject transitive native backedges. Native is included
 the isolated CI contract job as well as normal workspace coverage. Hosted exact-head
 validation remains required. No OS subprocess, pipe, deadline, cleanup, sandbox,
 performance or executable-availability result is established by these pure tests.
+
+Separate [controlled Unix process tests](native-process-feasibility.md) exercise
+fixed helpers and actual pipes. Their platform-specific evidence and ownership
+assumptions do not change the pure production codec or executable availability.
