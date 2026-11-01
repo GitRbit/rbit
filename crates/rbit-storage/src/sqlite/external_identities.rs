@@ -127,10 +127,25 @@ impl ExternalIdentityStore {
         identity: NewExternalIdentity<'_>,
         at: Timestamp,
     ) -> Result<Result<ExternalIdentity, LinkConflict>, StorageError> {
+        let mutation = self.writer.begin().await.map_err(linking_mutation_error)?;
+        let result = self.link_raw(account, identity, at).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn link_raw(
+        &self,
+        account: AccountId,
+        identity: NewExternalIdentity<'_>,
+        at: Timestamp,
+    ) -> Result<Result<ExternalIdentity, LinkConflict>, StorageError> {
         let mut tx = self.pool.begin().await?;
         let inserted = insert(&mut tx, account, identity, at).await?;
         if inserted.is_ok() {
             tx.commit().await?;
+        } else {
+            tx.rollback().await?;
         }
         Ok(inserted)
     }
@@ -151,8 +166,17 @@ impl ExternalIdentityStore {
     /// without a way to sign in: it must have a password, or another identity at one of
     /// `usable_providers` (the configured ones). Checked and deleted in one statement.
     pub async fn unlink(&self, account: AccountId, provider: &str, usable_providers: &[&str]) -> Result<Unlinked, StorageError> {
+        let mutation = self.writer.begin().await.map_err(linking_mutation_error)?;
+        let result = self.unlink_raw(account, provider, usable_providers).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+    async fn unlink_raw(&self, account: AccountId, provider: &str, usable_providers: &[&str]) -> Result<Unlinked, StorageError> {
         // A JSON array keeps the statement static whatever the number of providers.
         let usable = serde_json::to_string(usable_providers).map_err(|error| StorageError::Corrupt(error.to_string()))?;
+        let mut tx = self.pool.begin().await?;
         let removed = sqlx::query(
             "DELETE FROM external_identities WHERE account_id = ?1 AND provider_id = ?2 AND ( \
                  EXISTS (SELECT 1 FROM user_logins WHERE account_id = ?1 AND password_hash <> '') \
@@ -162,9 +186,10 @@ impl ExternalIdentityStore {
         .bind(account.0)
         .bind(provider)
         .bind(usable)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?
         .rows_affected();
+        tx.commit().await?;
         if removed > 0 {
             return Ok(Unlinked::Removed);
         }
@@ -264,3 +289,13 @@ async fn insert(
         Err(error) => Err(error.into()),
     }
 }
+
+fn linking_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "external identity linking mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "external identity linking writer stopped",
+    })
+}
+
+#[cfg(test)]
+mod fence_tests;

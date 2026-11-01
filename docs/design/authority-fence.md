@@ -1,9 +1,9 @@
 # Closed authority writer coordination
 
-The authority fence coordinates policy mutations, user account creation and
-administrator role changes, suspension and account deletion within one `Database`
-and its clones. It stays closed: it cannot issue a generation, authorize execution,
-reopen admission or activate a package. Managed execution remains
+The authority fence coordinates policy mutations, user account creation, external
+identity bindings and administrator role changes, suspension and account deletion
+within one `Database` and its clones. It stays closed: it cannot issue a generation,
+authorize execution, reopen admission or activate a package. Managed execution remains
 **Unavailable**.
 
 The neutral `rbit-authority-fence` crate has no dependency on storage, plugin
@@ -12,9 +12,9 @@ Writers register before waiting for the shared mutation permit; at most 128
 mutations may be active or queued. Only the permit holder may begin its enrolled
 work. An unused domain starts no task, timer or database query.
 
-Policy initialization, epoch renewal, review/selection/clear, user account creation
-and the three moderation mutations acquire that permit before their first database
-operation. The wrapper records settlement only after the complete storage result
+Policy initialization, epoch renewal, review/selection/clear, user account creation,
+identity linking/unlinking and the three moderation mutations acquire that permit
+before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
 wrapper has not entered its SQL operation. Dropping an acquired mutation, including
@@ -37,6 +37,15 @@ registration, email-verification and initial-password rules are preserved. An
 external-identity conflict explicitly awaits rollback before returning its business
 conflict, so no partially created user is published. Failed or cancelled rollback
 remains uncertain; a returned row alone cannot certify transaction settlement.
+
+External-identity linking waits for commit or an explicit conflict rollback.
+Unlinking adds an outer transaction and awaited commit before its unchanged
+Removed/LastMethod/NotFound classification, retaining the provider list and the
+last-sign-in-method protection. This adds two transaction control statements to
+unlinking. Informational `touch` updates only reported email, username and usage
+time; authentication selects the stable provider/subject binding and rechecks the
+account. Verified-email matching reads `user_logins`, not this reported metadata.
+Those informational updates remain outside authority serialization.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -63,10 +72,10 @@ workers have exited.
 
 ## Coverage before execution
 
-This increment covers policy writes, the four user-creation methods and the three
-moderation methods obtained from the same database handle or its clones. It does
-not coordinate independently opened SQLite pools, another process, password
-changes, external-identity linking/unlinking, other credentials, KV sessions or other
+This increment covers policy writes, the four user-creation methods, external
+identity linking/unlinking and the three moderation methods obtained from the same
+database handle or its clones. It does not coordinate independently opened SQLite
+pools, another process, password changes, other credentials, KV sessions or other
 authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.

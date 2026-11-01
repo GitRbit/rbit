@@ -79,7 +79,8 @@ pub struct Database {
     pool: SqlitePool,
     /// Lazy FULL-synchronous writer, used only by the host package ledger.
     package_pool: SqlitePool,
-    // Enrolled package policy, three account moderation and four principal creation methods.
+    // Enrolled package policy, three account moderation, four principal creation
+    // and two external identity linking methods.
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
