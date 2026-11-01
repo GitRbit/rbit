@@ -103,6 +103,9 @@ mod tests {
         assert_eq!(view.issues_url, "/alice/demo/issues?q=is%3Aopen%20is%3Aissue%20label%3A%22good%20first%20issue%22");
         let page = |can_write| LabelsPage {
             page: Page {
+                plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+                plugin_fields: Vec::new(),
+                plugin_query: rbit_services::plugin_pages::PageQuery::default(),
                 locale: rbit_messages::LocaleSnapshot::english(0),
                 ui: rbit_services::ui::UiSnapshot::default(),
                 has_i18n: false,

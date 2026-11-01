@@ -185,6 +185,9 @@ mod tests {
     fn the_list_draws_progress_with_svg_widths() {
         let html = MilestonesPage {
             page: Page {
+                plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+                plugin_fields: Vec::new(),
+                plugin_query: rbit_services::plugin_pages::PageQuery::default(),
                 locale: rbit_messages::LocaleSnapshot::english(0),
                 ui: rbit_services::ui::UiSnapshot::default(),
                 has_i18n: false,

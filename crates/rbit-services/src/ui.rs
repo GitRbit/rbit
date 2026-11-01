@@ -34,7 +34,7 @@ pub(crate) fn actions() -> UiContributionSet {
             UiSlot::RepositoryTab,
             60,
             UiVisibility::RepositoryFeatureEnabled,
-            UiContent::Link(link("plugin-actions", "Actions", "/{owner}/{repo}/actions", UiIcon::Play)),
+            UiContent::Link(link("plugin-actions", "Actions", "/{owner}/{repo}/-/plugins/rbit.actions/runs", UiIcon::Play)),
         ),
         entry(
             "actions-repository-settings",
@@ -47,7 +47,7 @@ pub(crate) fn actions() -> UiContributionSet {
                     "ui-actions-repository-description",
                     "Run workflows on pushes and pull requests, with the secrets and variables they use.",
                 ),
-                action: Some(link("plugin-actions", "Actions", "/{owner}/{repo}/settings/actions", UiIcon::Play)),
+                action: Some(link("plugin-actions", "Actions", "/{owner}/{repo}/-/plugins/rbit.actions/settings", UiIcon::Play)),
             },
         ),
         entry(
@@ -55,14 +55,14 @@ pub(crate) fn actions() -> UiContributionSet {
             UiSlot::AccountSettings,
             80,
             UiVisibility::SignedIn,
-            UiContent::Link(link("plugin-actions", "Actions", "/settings/actions", UiIcon::Play)),
+            UiContent::Link(link("plugin-actions", "Actions", "/-/plugins/rbit.actions/settings", UiIcon::Play)),
         ),
         entry(
             "actions-admin-runners",
             UiSlot::AdminNav,
             90,
             UiVisibility::InstanceAdmin,
-            UiContent::Link(link("admin-nav-runners", "Runners", "/admin/runners", UiIcon::Terminal)),
+            UiContent::Link(link("admin-nav-runners", "Runners", "/-/plugins/rbit.actions/admin/runners", UiIcon::Terminal)),
         ),
         entry(
             "actions-organization-settings",

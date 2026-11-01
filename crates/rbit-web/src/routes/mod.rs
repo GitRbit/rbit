@@ -51,7 +51,7 @@ mod pwa;
 mod recovery;
 mod ref_picker;
 mod releases;
-mod repo;
+pub(crate) mod repo;
 mod repo_create;
 mod repo_settings;
 mod security;

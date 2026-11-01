@@ -72,7 +72,7 @@ impl AdminSection {
             Self::AuditLog => "/admin/audit",
             Self::Configuration => "/admin/configuration",
             Self::Plugins => "/admin/plugins",
-            Self::Runners => "/admin/runners",
+            Self::Runners => "/-/plugins/rbit.actions/admin/runners",
         }
     }
 
@@ -799,6 +799,9 @@ mod tests {
 
     fn page() -> Page {
         Page {
+            plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+            plugin_fields: Vec::new(),
+            plugin_query: rbit_services::plugin_pages::PageQuery::default(),
             locale: rbit_messages::LocaleSnapshot::english(0),
             ui: rbit_services::ui::UiSnapshot::default(),
             has_i18n: false,

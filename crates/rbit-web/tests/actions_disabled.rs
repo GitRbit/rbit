@@ -62,7 +62,9 @@ impl Fixture {
             .unwrap();
         let token = services.accounts.start_session(&alice).await.unwrap();
         let cookie = format!("rbit_session={}", token.encode());
-        let router = rbit_web::router(AppState::new(config, services.clone()));
+        let state = AppState::new(config, services.clone());
+        rbit_web::prepare_plugin_routes(&state).await.unwrap();
+        let router = rbit_web::router(state);
         Self { _directory: directory, services, router, cookie }
     }
 
@@ -167,7 +169,9 @@ async fn no_page_offers_actions() {
         for marker in [
             "data-repo-tab=\"rbit.actions:actions-repository-tab\"",
             "/alice/rocket/actions",
+            "/alice/rocket/-/plugins/rbit.actions/",
             "/settings/actions",
+            "/-/plugins/rbit.actions/",
             "/admin/runners",
             "workflow_run",
             "workflow_job",

@@ -1,6 +1,6 @@
 //! Shared application state handed to every handler.
 
-#[cfg(any(feature = "i18n", test))]
+#[cfg(any(feature = "i18n", feature = "actions", test))]
 use std::sync::Weak;
 use std::{ops::Deref, sync::Arc};
 
@@ -17,10 +17,10 @@ pub struct AppState(Arc<AppStateInner>);
 /// Route blueprints keep weak host ownership so service registries cannot form
 /// a cycle through their own registered callbacks.
 #[derive(Debug, Clone)]
-#[cfg(any(feature = "i18n", test))]
+#[cfg(any(feature = "i18n", feature = "actions", test))]
 pub(crate) struct WeakAppState(Weak<AppStateInner>);
 
-#[cfg(any(feature = "i18n", test))]
+#[cfg(any(feature = "i18n", feature = "actions", test))]
 impl WeakAppState {
     pub(crate) fn upgrade(&self) -> Option<AppState> {
         self.0.upgrade().map(AppState)
@@ -57,7 +57,7 @@ impl AppState {
         }))
     }
 
-    #[cfg(any(feature = "i18n", test))]
+    #[cfg(any(feature = "i18n", feature = "actions", test))]
     pub(crate) fn downgrade(&self) -> WeakAppState {
         WeakAppState(Arc::downgrade(&self.0))
     }

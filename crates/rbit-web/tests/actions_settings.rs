@@ -18,7 +18,7 @@ use rbit_storage::{Database, KvStore};
 use rbit_web::AppState;
 use tower::ServiceExt;
 
-const REPO: &str = "/alice/rocket/settings/actions";
+const REPO: &str = "/alice/rocket/-/plugins/rbit.actions/settings";
 
 struct Fixture {
     _directory: tempfile::TempDir,
@@ -67,19 +67,43 @@ impl Fixture {
             async move { format!("rbit_session={}", services.accounts.start_session(&user).await.unwrap().encode()) }
         };
         let (owner, writer, reader) = (session(alice.clone()).await, session(carol).await, session(bob.clone()).await);
-        let router = rbit_web::router(AppState::new(config, services.clone()));
+        let state = AppState::new(config, services.clone());
+        rbit_web::prepare_plugin_routes(&state).await.unwrap();
+        let router = rbit_web::router(state);
         Self { _directory: directory, database, services, router, alice, bob, owner, writer, reader }
     }
 
     async fn send(&self, method: Method, path: &str, cookie: &str, body: &str) -> (StatusCode, String, Option<String>) {
+        let mut body = body.to_owned();
+        let mut target = path.to_owned();
+        if method == Method::POST && path.contains("/-/plugins/rbit.actions/") {
+            let base = path.split('?').next().unwrap();
+            let source = base
+                .strip_suffix("/secrets")
+                .or_else(|| base.strip_suffix("/variables"))
+                .or_else(|| base.strip_suffix("/trusted"))
+                .unwrap_or(base);
+            let source = if path.contains("owner=acme") { format!("{source}?owner=acme") } else { source.to_owned() };
+            let get = Request::builder().uri(source).header(header::COOKIE, cookie).body(Body::empty()).unwrap();
+            let response = self.router.clone().oneshot(get).await.unwrap();
+            let markup = String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).into_owned();
+            let action_markup = markup.split(&format!("action=\"{base}\"")).nth(1).unwrap_or_default();
+            if let Some(proof) = action_markup.split("name=\"_csrf\" value=\"").nth(1).and_then(|s| s.split('"').next()) {
+                body.push_str(&format!("&_csrf={proof}"));
+            }
+            if path.contains("owner=acme") {
+                body.push_str("&owner=acme");
+            }
+            target = base.to_owned();
+        }
         let request = Request::builder()
             .method(method)
-            .uri(path)
+            .uri(target)
             .header(header::COOKIE, cookie)
             .header(header::HOST, "localhost:3000")
             .header(header::ORIGIN, "http://localhost:3000")
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(Body::from(body.to_owned()))
+            .body(Body::from(body))
             .unwrap();
         let response = self.router.clone().oneshot(request).await.unwrap();
         let status = response.status();
@@ -119,10 +143,10 @@ async fn the_cards_and_the_navigation_entry_lead_to_the_pages() {
     assert!(org.contains(r#"href="/acme/settings/actions""#), "the organisation settings card");
     for cookie in [&fixture.owner, &fixture.reader] {
         let profile = fixture.page("/settings/profile", cookie).await;
-        assert!(profile.contains(r#"href="/settings/actions""#), "the personal settings entry");
+        assert!(profile.contains(r#"href="/-/plugins/rbit.actions/settings""#), "the personal settings entry");
     }
-    let personal = fixture.page("/settings/actions", &fixture.reader).await;
-    assert!(personal.contains(r#"href="/settings/actions" aria-current="page""#));
+    let personal = fixture.page("/-/plugins/rbit.actions/settings", &fixture.reader).await;
+    assert!(personal.contains(r#"href="/-/plugins/rbit.actions/settings" aria-current="page""#));
 }
 
 #[tokio::test]
@@ -130,11 +154,11 @@ async fn without_actions_on_the_instance_every_settings_page_is_missing() {
     let fixture = Fixture::with(false).await;
     for path in [
         REPO,
-        "/alice/rocket/settings/actions/secrets",
-        "/alice/rocket/settings/actions/variables",
-        "/alice/rocket/settings/actions/trusted",
-        "/acme/settings/actions",
-        "/settings/actions",
+        "/alice/rocket/-/plugins/rbit.actions/settings/secrets",
+        "/alice/rocket/-/plugins/rbit.actions/settings/variables",
+        "/alice/rocket/-/plugins/rbit.actions/settings/trusted",
+        "/-/plugins/rbit.actions/org/settings?owner=acme",
+        "/-/plugins/rbit.actions/settings",
     ] {
         for method in [Method::GET, Method::POST] {
             let (status, ..) = fixture.send(method.clone(), path, &fixture.owner, "kind=secret&name=A&value=b").await;
@@ -142,9 +166,9 @@ async fn without_actions_on_the_instance_every_settings_page_is_missing() {
         }
     }
     let settings = fixture.page("/alice/rocket/settings", &fixture.owner).await;
-    assert!(!settings.contains("/settings/actions"));
+    assert!(!settings.contains("/-/plugins/rbit.actions/settings"));
     let profile = fixture.page("/settings/profile", &fixture.owner).await;
-    assert!(!profile.contains("/settings/actions"));
+    assert!(!profile.contains("/-/plugins/rbit.actions/settings"));
 }
 
 #[tokio::test]
@@ -152,14 +176,14 @@ async fn only_administrators_get_the_repository_page() {
     let fixture = Fixture::new().await;
     let page = fixture.page(REPO, &fixture.owner).await;
     assert!(page.contains(r#"hx-history="false""#), "secret pages stay out of the history cache");
-    assert!(page.contains(r#"action="/alice/rocket/settings/actions/secrets""#));
-    assert!(page.contains(r#"action="/alice/rocket/settings/actions/variables""#));
+    assert!(page.contains(r#"action="/alice/rocket/-/plugins/rbit.actions/settings/secrets""#));
+    assert!(page.contains(r#"action="/alice/rocket/-/plugins/rbit.actions/settings/variables""#));
 
     let posts = [
         (REPO, "enabled=on&token_permission=write"),
-        ("/alice/rocket/settings/actions/secrets", "name=TOKEN&value=x"),
-        ("/alice/rocket/settings/actions/variables", "name=REGION&value=x"),
-        ("/alice/rocket/settings/actions/trusted", "user=1"),
+        ("/alice/rocket/-/plugins/rbit.actions/settings/secrets", "name=TOKEN&value=x"),
+        ("/alice/rocket/-/plugins/rbit.actions/settings/variables", "name=REGION&value=x"),
+        ("/alice/rocket/-/plugins/rbit.actions/settings/trusted", "user=1"),
     ];
     for cookie in [&fixture.writer, &fixture.reader, ""] {
         let (status, ..) = fixture.send(Method::GET, REPO, cookie, "").await;
@@ -183,7 +207,7 @@ async fn only_administrators_get_the_repository_page() {
         assert!(status.is_redirection(), "{path}");
         assert_eq!(location.as_deref(), Some(REPO));
     }
-    let (status, ..) = fixture.send(Method::GET, "/alice/missing/settings/actions", &fixture.owner, "").await;
+    let (status, ..) = fixture.send(Method::GET, "/alice/missing/-/plugins/rbit.actions/settings", &fixture.owner, "").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -215,7 +239,7 @@ async fn the_switch_and_the_token_permission_are_saved() {
 #[tokio::test]
 async fn secret_values_are_never_rendered_back() {
     let fixture = Fixture::new().await;
-    let secrets = "/alice/rocket/settings/actions/secrets";
+    let secrets = "/alice/rocket/-/plugins/rbit.actions/settings/secrets";
     let done = format!("{REPO}?done=secret-saved");
     fixture.redirects(secrets, &fixture.owner, "name=deploy_key&value=hunter2-value%0D%0Aline", &done).await;
     let page = fixture.page(&done, &fixture.owner).await;
@@ -252,18 +276,19 @@ async fn unreadable_secrets_and_a_missing_key_are_explained() {
     let page = fixture.page(REPO, &fixture.owner).await;
     assert!(page.contains("Cannot be decrypted — set it again"));
     assert!(page.contains("Secrets cannot be stored or used:") && page.contains("missing while secrets are stored"));
-    let (status, page, _) = fixture.send(Method::POST, "/alice/rocket/settings/actions/secrets", &fixture.owner, "name=NEW&value=v").await;
+    let (status, page, _) =
+        fixture.send(Method::POST, "/alice/rocket/-/plugins/rbit.actions/settings/secrets", &fixture.owner, "name=NEW&value=v").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(page.contains("Secrets cannot be stored"));
     // Deleting works without the key.
     let done = format!("{REPO}?done=secret-deleted");
-    fixture.redirects("/alice/rocket/settings/actions/secrets", &fixture.owner, "action=delete&name=OLD", &done).await;
+    fixture.redirects("/alice/rocket/-/plugins/rbit.actions/settings/secrets", &fixture.owner, "action=delete&name=OLD", &done).await;
 }
 
 #[tokio::test]
 async fn variables_are_shown_escaped_and_can_be_edited() {
     let fixture = Fixture::new().await;
-    let variables = "/alice/rocket/settings/actions/variables";
+    let variables = "/alice/rocket/-/plugins/rbit.actions/settings/variables";
     let done = format!("{REPO}?done=variable-saved");
     fixture.redirects(variables, &fixture.owner, "name=greeting&value=%3Cb%3Ehi%3C%2Fb%3E", &done).await;
     let page = fixture.page(&done, &fixture.owner).await;
@@ -290,30 +315,43 @@ async fn trusted_authors_can_be_removed() {
     assert!(page.contains(r#"href="/bob""#) && page.contains("by alice"));
     assert!(page.contains(&format!(r#"name="user" value="{}""#, fixture.bob.id().0)));
 
-    let trusted = "/alice/rocket/settings/actions/trusted";
+    let trusted = "/alice/rocket/-/plugins/rbit.actions/settings/trusted";
+    let proof = page
+        .split(&format!("action=\"{trusted}\""))
+        .nth(1)
+        .unwrap()
+        .split("name=\"_csrf\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
     let body = format!("user={}", fixture.bob.id().0);
     fixture.redirects(trusted, &fixture.owner, &body, &format!("{REPO}?done=untrusted")).await;
     assert!(!fixture.database.actions_settings().is_trusted(repo, fixture.bob.id()).await.unwrap());
     assert!(fixture.page(REPO, &fixture.owner).await.contains("No trusted authors"));
-    for body in [body.as_str(), "user=nope", ""] {
-        let (status, ..) = fixture.send(Method::POST, trusted, &fixture.owner, body).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    for (body, expected) in
+        [(body.as_str(), StatusCode::NOT_FOUND), ("user=nope", StatusCode::UNPROCESSABLE_ENTITY), ("", StatusCode::UNPROCESSABLE_ENTITY)]
+    {
+        let form = if body.is_empty() { format!("_csrf={proof}") } else { format!("{body}&_csrf={proof}") };
+        let (status, ..) = fixture.send(Method::POST, trusted, &fixture.owner, &form).await;
+        assert_eq!(status, expected, "{body}");
     }
 }
 
 #[tokio::test]
 async fn organisation_owners_give_secrets_to_selected_repositories() {
     let fixture = Fixture::new().await;
-    let url = "/acme/settings/actions";
+    let url = "/-/plugins/rbit.actions/org/settings?owner=acme";
     let page = fixture.page(url, &fixture.owner).await;
     assert!(page.contains(r#"hx-history="false""#) && page.contains("This owner has no repositories yet."));
     for cookie in [&fixture.reader, &fixture.writer] {
         let (status, ..) = fixture.send(Method::GET, url, cookie, "").await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN));
         let (status, ..) = fixture.send(Method::POST, url, cookie, "kind=variable&name=A&value=b").await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(matches!(status, StatusCode::NOT_FOUND | StatusCode::FORBIDDEN));
     }
-    let (status, ..) = fixture.send(Method::GET, "/alice/settings/actions", &fixture.owner, "").await;
+    let (status, ..) = fixture.send(Method::GET, "/alice/-/plugins/rbit.actions/settings", &fixture.owner, "").await;
     assert_eq!(status, StatusCode::NOT_FOUND, "a user's are under personal settings");
 
     let org = fixture.services.orgs.open(Some(&fixture.alice), "acme").await.unwrap();
@@ -324,17 +362,31 @@ async fn organisation_owners_give_secrets_to_selected_repositories() {
     assert!(page.contains(&format!(r#"name="repository" value="{}""#, anvil.0)) && page.contains(">anvil<"));
 
     let body = format!("kind=secret&action=put&name=deploy&value=org-secret-value&visibility=selected&repository={}", anvil.0);
-    fixture.redirects(url, &fixture.owner, &body, &format!("{url}?done=secret-saved")).await;
+    fixture.redirects(url, &fixture.owner, &body, "/-/plugins/rbit.actions/org/settings?done=secret-saved&owner=acme").await;
     let listed = fixture.actions().list_secrets(ActionsTarget::Organization(&org)).await.unwrap();
     assert_eq!(listed[0].info.visibility, SecretVisibility::Selected);
     assert_eq!(listed[0].repositories, [anvil]);
     let page = fixture.page(url, &fixture.owner).await;
     assert!(page.contains("1 selected repository") && !page.contains("org-secret-value"));
 
-    fixture.redirects(url, &fixture.owner, "kind=secret&action=repositories&name=DEPLOY", &format!("{url}?done=secret-saved")).await;
+    fixture
+        .redirects(
+            url,
+            &fixture.owner,
+            "kind=secret&action=repositories&name=DEPLOY",
+            "/-/plugins/rbit.actions/org/settings?done=secret-saved&owner=acme",
+        )
+        .await;
     let listed = fixture.actions().list_secrets(ActionsTarget::Organization(&org)).await.unwrap();
     assert!(listed[0].repositories.is_empty(), "no repository ticked, the value kept");
-    fixture.redirects(url, &fixture.owner, "kind=variable&name=region&value=eu", &format!("{url}?done=variable-saved")).await;
+    fixture
+        .redirects(
+            url,
+            &fixture.owner,
+            "kind=variable&name=region&value=eu",
+            "/-/plugins/rbit.actions/org/settings?done=variable-saved&owner=acme",
+        )
+        .await;
     assert!(fixture.page(url, &fixture.owner).await.contains(">REGION<"));
     let (status, page, _) = fixture.send(Method::POST, url, &fixture.owner, "name=X&value=y").await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "a form without its kind");
@@ -344,7 +396,7 @@ async fn organisation_owners_give_secrets_to_selected_repositories() {
 #[tokio::test]
 async fn people_manage_their_own_secrets_and_variables() {
     let fixture = Fixture::new().await;
-    let url = "/settings/actions";
+    let url = "/-/plugins/rbit.actions/settings";
     let (status, _, location) = fixture.send(Method::GET, url, "", "").await;
     assert!(status.is_redirection() && location.is_some_and(|location| location.starts_with("/login")));
     let page = fixture.page(url, &fixture.reader).await;
@@ -362,4 +414,105 @@ async fn people_manage_their_own_secrets_and_variables() {
     assert_eq!(listed.len(), 1);
     fixture.redirects(url, &fixture.reader, "kind=secret&action=delete&name=NPM_TOKEN", &format!("{url}?done=secret-deleted")).await;
     assert!(fixture.actions().list_secrets(ActionsTarget::User(&fixture.bob)).await.unwrap().is_empty(), "deleted");
+}
+
+#[tokio::test]
+async fn native_actions_variable_pages_bound_previews_and_keep_selected_editors_complete() {
+    let fixture = Fixture::new().await;
+    let repo = fixture.services.repositories.open(Some(&fixture.alice), "alice", "rocket").await.unwrap();
+    let actions = fixture.actions();
+    let value = "&".repeat(48 * 1024);
+    for index in 0..4 {
+        actions.put_variable(&fixture.alice, ActionsTarget::Repository(&repo), &format!("LARGE_{index}"), &value).await.unwrap();
+    }
+    for index in 0..26 {
+        actions.put_variable(&fixture.alice, ActionsTarget::Repository(&repo), &format!("ROW_{index:02}"), "small").await.unwrap();
+    }
+    let listing = fixture.page(REPO, &fixture.owner).await;
+    assert!(listing.len() < 256 * 1024, "ordinary metadata does not serialize every complete value");
+    assert!(listing.contains('…'), "long previews explicitly indicate omission");
+    assert!(!listing.contains("id=\"variable-1-value\""), "complete editors load only on explicit selection");
+    let mut seen = std::collections::BTreeSet::new();
+    let mut cursor = Some(REPO.to_owned());
+    while let Some(path) = cursor.take() {
+        let html = fixture.page(&path, &fixture.owner).await;
+        for name in (0..4).map(|index| format!("LARGE_{index}")).chain((0..26).map(|index| format!("ROW_{index:02}"))) {
+            if html.contains(&format!(">{name}<")) {
+                assert!(seen.insert(name), "metadata rows do not repeat between pages");
+            }
+        }
+        cursor = html
+            .split("href=\"")
+            .skip(1)
+            .filter_map(|part| part.split('"').next())
+            .find(|target| target.contains("after=") && !target.contains("edit="))
+            .map(|target| target.split('#').next().unwrap().replace("&#38;", "&").replace("&amp;", "&"));
+        assert!(seen.len() <= 30);
+    }
+    assert_eq!(seen.len(), 30, "all metadata remains reachable through bounded pages");
+    let edited = fixture.page(&format!("{REPO}?edit=LARGE_2"), &fixture.owner).await;
+    assert!(edited.len() < 2 * 1024 * 1024);
+    let editor = edited.split("id=\"variable-3-value\"").nth(1).expect("selected existing editor");
+    let complete = editor.split_once('>').unwrap().1.split("</textarea>").next().unwrap().trim_start_matches('\n');
+    assert_eq!(complete.replace("&#38;", "&").replace("&amp;", "&"), value, "the selected textarea retains every byte, escaped");
+    assert_eq!(edited.matches("id=\"variable-").count(), 3, "one selected editor plus the new-variable name and value fields");
+    assert_eq!(
+        actions
+            .list_variables(ActionsTarget::Repository(&repo))
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|v| v.name.to_string() == "LARGE_2")
+            .unwrap()
+            .value,
+        value
+    );
+}
+
+#[tokio::test]
+async fn native_actions_secret_pages_expand_repository_choices_only_for_the_selected_secret() {
+    let fixture = Fixture::new().await;
+    for name in ["extra-one", "extra-two"] {
+        fixture
+            .services
+            .repositories
+            .create(
+                &fixture.alice,
+                CreateRepository { name: name.into(), description: String::new(), visibility: rbit_core::Visibility::Public },
+            )
+            .await
+            .unwrap();
+    }
+    let actions = fixture.actions();
+    for index in 0..26 {
+        actions
+            .put_secret(
+                &fixture.alice,
+                ActionsTarget::User(&fixture.alice),
+                &format!("SECRET_{index:02}"),
+                "write-only-value",
+                SecretVisibility::Selected,
+            )
+            .await
+            .unwrap();
+    }
+    let path = "/-/plugins/rbit.actions/settings";
+    let listing = fixture.page(path, &fixture.owner).await;
+    assert_eq!(listing.matches("name=\"repository\"").count(), 3, "only the new-secret form expands owner repository choices");
+    assert!(listing.contains(">SECRET_00<") && listing.contains(">SECRET_24<") && !listing.contains(">SECRET_25<"));
+    assert!(!listing.contains("write-only-value"));
+    let next = listing
+        .split("href=\"")
+        .skip(1)
+        .filter_map(|part| part.split('"').next())
+        .find(|target| target.contains("secret_after=") && !target.contains("secret_edit="))
+        .expect("next secret metadata page");
+    let next = next.split('#').next().unwrap().replace("&#38;", "&").replace("&amp;", "&");
+    let second = fixture.page(&next, &fixture.owner).await;
+    assert!(second.contains(">SECRET_25<") && !second.contains(">SECRET_24<"));
+    let editing = fixture.page(&format!("{path}?secret_edit=SECRET_03"), &fixture.owner).await;
+    assert_eq!(editing.matches("name=\"repository\"").count(), 9, "one selected replacement and visibility editor plus the new form");
+    assert!(editing.contains("id=\"secret-4-value\""));
+    assert!(!editing.contains("id=\"secret-1-value\""));
+    assert!(!editing.contains("write-only-value"), "even the selected secret remains write-only");
 }

@@ -14,6 +14,8 @@
 //! * [`partial`] — partial responses for navigation inside a repository.
 //! * `supervise` — idle and time limits for Git exchanges and archive downloads.
 
+#[cfg(feature = "actions")]
+mod actions_plugin_routes;
 pub mod assets;
 pub mod client_ip;
 pub mod error;

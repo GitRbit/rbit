@@ -216,7 +216,9 @@ async fn run_pages_list_artifacts_and_readers_download_them() {
     let run_url = format!("/alice/rocket/actions/runs/{}", run.number);
 
     let alice = fixture.alice.clone();
-    let shown = page(&fixture, &alice, &run_url).await;
+    let run_page_url = format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number);
+    let shown = page(&fixture, &alice, &run_page_url).await;
+    assert_eq!(shown.status, StatusCode::OK);
     let html = String::from_utf8_lossy(&shown.body).into_owned();
     assert!(html.contains("dist-linux") && html.contains("Artifacts"), "{html}");
     assert!(html.contains(">in 3 months</time>"), "the default 90 days, not \"just now\": {html}");

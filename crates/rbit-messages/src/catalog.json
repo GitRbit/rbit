@@ -991,6 +991,11 @@
   },
   {
     "namespace": "actions",
+    "key": "actions-summary-source-fallback",
+    "english": "Rendered summary exceeds the display limit; showing its Markdown source."
+  },
+  {
+    "namespace": "actions",
     "key": "actions-user-runners-a-actions",
     "english": "Actions"
   },
@@ -1096,6 +1101,11 @@
   },
   {
     "namespace": "actions",
+    "key": "artifacts-pages",
+    "english": "Artifacts pages"
+  },
+  {
+    "namespace": "actions",
     "key": "event-dispatch",
     "english": "dispatch"
   },
@@ -1123,6 +1133,19 @@
     "namespace": "actions",
     "key": "event-workflow-run",
     "english": "after a workflow"
+  },
+  {
+    "namespace": "actions",
+    "key": "job-preview-omitted",
+    "english": "{count} additional steps are omitted from this bounded preview. Download the raw log for the complete output.",
+    "args": {
+      "count": "number"
+    }
+  },
+  {
+    "namespace": "actions",
+    "key": "jobs-pages",
+    "english": "Jobs pages"
   },
   {
     "namespace": "actions",
@@ -1188,6 +1211,33 @@
     "namespace": "actions",
     "key": "state-workflow-error",
     "english": "Workflow error"
+  },
+  {
+    "namespace": "actions",
+    "key": "summary-step-title",
+    "english": "{job} summary · {step}",
+    "args": {
+      "job": "text",
+      "step": "text"
+    }
+  },
+  {
+    "namespace": "actions",
+    "key": "summary-steps",
+    "english": "Summary steps"
+  },
+  {
+    "namespace": "actions",
+    "key": "summary-title",
+    "english": "{job} summary",
+    "args": {
+      "job": "text"
+    }
+  },
+  {
+    "namespace": "actions",
+    "key": "summary-view",
+    "english": "View summary"
   },
   {
     "namespace": "core",

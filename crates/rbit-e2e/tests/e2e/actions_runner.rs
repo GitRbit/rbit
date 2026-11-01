@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use rbit_e2e::{Git, PASSWORD, TestServer, attribute_after};
+use rbit_e2e::{Client, Git, PASSWORD, Response, StatusCode, TestServer, attribute_after};
 use serde_json::Value;
 
 /// How long the whole run may take: the runner polls, checks out and runs four short jobs.
@@ -125,18 +125,60 @@ async fn json(client: &reqwest::Client, url: &str) -> Value {
     serde_json::from_str(&response.text().await.expect("a body")).expect("JSON")
 }
 
+/// Submit exactly the proof issued to this browser for the declared action.
+async fn native_post(client: &Client, page: &str, action: &str, form: &[(&str, &str)], origin: &str) -> Response {
+    let response = client.get(page).await;
+    response.expect_status(StatusCode::OK);
+    assert_eq!(response.header("cache-control"), Some("no-store"));
+    let marker = format!("action=\"{action}\"");
+    let form_html = response
+        .body
+        .split("<form ")
+        .map(|form| form.split("</form>").next().unwrap())
+        .find(|form| form.contains(&marker))
+        .expect("the authorized browser receives the requested native form");
+    let proof = attribute_after(form_html, r#"name="_csrf""#, "value").expect("the form contains a host proof");
+    assert!(!proof.is_empty());
+    let mut fields = form.to_vec();
+    fields.push(("_csrf", &proof));
+    let response = client.post_with(action, &fields, &[("Origin", origin)]).await;
+    assert_eq!(response.header("cache-control"), Some("no-store"));
+    response
+}
+
 #[tokio::test]
 async fn a_real_runner_runs_a_pushed_workflow() {
     let binary = runner_binary();
     let server = TestServer::start_with(|config| config.actions.enabled = true);
     let alice = server.sign_up("alice").await;
     alice.create_repo("alice", "rocket", "public").await;
-    alice.post("/alice/rocket/settings/actions", &[("enabled", "on"), ("token_permission", "read")]).await;
-    alice.post("/alice/rocket/settings/actions/secrets", &[("kind", "secret"), ("name", "GREETING"), ("value", "s3cr3t-greeting")]).await;
-    alice.post("/alice/rocket/settings/actions/variables", &[("kind", "variable"), ("name", "REGION"), ("value", "eu-west")]).await;
+    let settings = "/alice/rocket/-/plugins/rbit.actions/settings";
+    native_post(&alice, settings, settings, &[("enabled", "on"), ("token_permission", "read")], server.base_url())
+        .await
+        .expect_status(StatusCode::SEE_OTHER);
+    native_post(
+        &alice,
+        settings,
+        &format!("{settings}/secrets"),
+        &[("kind", "secret"), ("name", "GREETING"), ("value", "s3cr3t-greeting")],
+        server.base_url(),
+    )
+    .await
+    .expect_status(StatusCode::SEE_OTHER);
+    native_post(
+        &alice,
+        settings,
+        &format!("{settings}/variables"),
+        &[("kind", "variable"), ("name", "REGION"), ("value", "eu-west")],
+        server.base_url(),
+    )
+    .await
+    .expect_status(StatusCode::SEE_OTHER);
 
-    // A token from the runners page registers a host runner.
-    let page = alice.post("/alice/rocket/settings/actions/runners", &[("action", "create")]).await;
+    // A token from the native runners page registers the actual host runner.
+    let runners_path = "/alice/rocket/-/plugins/rbit.actions/settings/runners";
+    let page = native_post(&alice, runners_path, runners_path, &[("action", "create")], server.base_url()).await;
+    page.expect_status(StatusCode::OK);
     let token = attribute_after(&page.body, r#"id="issued-token""#, "value").expect("the page shows the new token");
     let home = tempfile::tempdir().expect("a runner directory");
     let config = home.path().join("runner.toml");
@@ -163,7 +205,8 @@ async fn a_real_runner_runs_a_pushed_workflow() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let runners = alice.get("/alice/rocket/settings/actions/runners").await;
+    let runners = alice.get(runners_path).await;
+    runners.expect_status(StatusCode::OK);
     assert!(runners.contains("e2e") && runners.contains("host — no isolation"));
 
     // Push the workflow, then let the runner work.
@@ -220,6 +263,7 @@ async fn a_real_runner_runs_a_pushed_workflow() {
     // The run reported its jobs as commit statuses.
     let status = json(&api, &server.url(&format!("/api/v1/repos/alice/rocket/commits/{sha}/status"))).await;
     assert_eq!(status["state"], "success", "{status}");
-    let page = alice.get(&format!("/alice/rocket/actions/runs/{}/jobs/{}", run["run_number"], job_id("build"))).await;
+    let page = alice.get(&format!("/alice/rocket/-/plugins/rbit.actions/job?run={}&job={}", run["run_number"], job_id("build"))).await;
+    page.expect_status(StatusCode::OK);
     assert!(page.contains("Compute") && page.contains("greeting is ***"));
 }

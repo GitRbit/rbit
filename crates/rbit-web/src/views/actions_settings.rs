@@ -82,6 +82,9 @@ impl RepoChoice {
 /// One stored secret: its name and when it changed, never its value.
 #[derive(Debug, Clone)]
 pub struct SecretRow {
+    pub editing: bool,
+    pub edit_url: String,
+    selected_repository_ids: Vec<RepoId>,
     pub name: String,
     pub updated: String,
     pub updated_iso: String,
@@ -108,12 +111,15 @@ impl SecretRow {
         };
         Self {
             name: secret.info.name.to_string(),
+            editing: false,
+            edit_url: String::new(),
+            selected_repository_ids: secret.repositories.clone(),
             updated: secret.info.updated_at.relative(),
             updated_iso: secret.info.updated_at.iso8601(),
             readable: secret.readable,
             visibility,
             selected,
-            repositories: owner_repositories.map(|all| RepoChoice::list(all, &secret.repositories)).unwrap_or_default(),
+            repositories: Vec::new(),
         }
     }
 }
@@ -121,6 +127,7 @@ impl SecretRow {
 /// The secrets section of a settings page.
 #[derive(Debug, Clone)]
 pub struct SecretsSection {
+    pub next_url: Option<String>,
     /// Where its forms post (`kind=secret`).
     pub action_url: String,
     pub rows: Vec<SecretRow>,
@@ -148,6 +155,7 @@ impl SecretsSection {
         Self {
             action_url,
             rows: secrets.iter().map(|secret| SecretRow::new(secret, owner_repositories)).collect(),
+            next_url: None,
             problem,
             error: FormError::default(),
             name: String::new(),
@@ -156,6 +164,38 @@ impl SecretsSection {
             repositories: owner_repositories.map(|all| RepoChoice::list(all, &[])).unwrap_or_default(),
             max_kib: MAX_VALUE_BYTES / 1024,
         }
+    }
+
+    /// Bound metadata and expand repository choices only for the explicitly selected editor.
+    #[must_use]
+    pub fn bounded(mut self, page: &Page) -> Self {
+        let after = page.plugin_query.get("secret_after").unwrap_or_default();
+        let edit = page.plugin_query.get("secret_edit");
+        self.rows.sort_by(|left, right| left.name.cmp(&right.name));
+        self.rows.retain(|row| row.name.as_str() > after);
+        if self.rows.len() > 25 {
+            self.rows.truncate(25);
+            self.next_url =
+                self.rows.last().map(|row| section_url(page, "secret_after", &row.name, false, "secret_after", "secrets-title"));
+        }
+        for row in &mut self.rows {
+            row.editing = edit == Some(row.name.as_str());
+            row.edit_url = section_url(page, "secret_edit", &row.name, true, "secret_after", "secrets-title");
+            if row.editing {
+                row.repositories = self
+                    .repositories
+                    .iter()
+                    .cloned()
+                    .map(|mut repository| {
+                        repository.checked = row.selected_repository_ids.contains(&RepoId(repository.id));
+                        repository
+                    })
+                    .collect();
+            } else {
+                row.repositories.clear();
+            }
+        }
+        self
     }
 
     /// Shows `error` above the new-secret form, keeping the submitted name and repository
@@ -175,6 +215,9 @@ impl SecretsSection {
 /// One stored variable, with its value.
 #[derive(Debug, Clone)]
 pub struct VariableRow {
+    pub preview: String,
+    pub editing: bool,
+    pub edit_url: String,
     pub name: String,
     pub value: String,
     pub updated: String,
@@ -185,6 +228,9 @@ impl From<&Variable> for VariableRow {
     fn from(variable: &Variable) -> Self {
         Self {
             name: variable.name.to_string(),
+            preview: variable_preview(&variable.value),
+            editing: false,
+            edit_url: String::new(),
             value: variable.value.clone(),
             updated: variable.updated_at.relative(),
             updated_iso: variable.updated_at.iso8601(),
@@ -195,6 +241,7 @@ impl From<&Variable> for VariableRow {
 /// The variables section of a settings page.
 #[derive(Debug, Clone)]
 pub struct VariablesSection {
+    pub next_url: Option<String>,
     /// Where its forms post (`kind=variable`).
     pub action_url: String,
     pub rows: Vec<VariableRow>,
@@ -210,11 +257,33 @@ impl VariablesSection {
         Self {
             action_url,
             rows: variables.iter().map(VariableRow::from).collect(),
+            next_url: None,
             error: FormError::default(),
             name: String::new(),
             value: String::new(),
             max_kib: MAX_VARIABLE_BYTES / 1024,
         }
+    }
+
+    /// A metadata page and short previews, with at most one complete editable value.
+    #[must_use]
+    pub fn bounded(mut self, page: &Page) -> Self {
+        let after = page.plugin_query.get("after").unwrap_or_default();
+        let edit = page.plugin_query.get("edit");
+        self.rows.sort_by(|left, right| left.name.cmp(&right.name));
+        self.rows.retain(|row| row.name.as_str() > after);
+        if self.rows.len() > 25 {
+            self.rows.truncate(25);
+            self.next_url = self.rows.last().map(|row| variable_url(page, "after", &row.name, false));
+        }
+        for row in &mut self.rows {
+            row.editing = edit == Some(row.name.as_str());
+            row.edit_url = variable_url(page, "edit", &row.name, true);
+            if !row.editing {
+                row.value = String::new();
+            }
+        }
+        self
     }
 
     /// Shows `error` above the new-variable form, keeping what was submitted.
@@ -225,6 +294,38 @@ impl VariablesSection {
         value.clone_into(&mut self.value);
         self
     }
+}
+
+fn variable_preview(value: &str) -> String {
+    let mut characters = value.chars();
+    let mut preview: String = characters.by_ref().take(256).collect();
+    if characters.next().is_some() {
+        preview.push('…');
+    }
+    preview
+}
+
+fn variable_url(page: &Page, key: &str, value: &str, keep_after: bool) -> String {
+    section_url(page, key, value, keep_after, "after", "variables-title")
+}
+
+fn section_url(page: &Page, key: &str, value: &str, keep_after: bool, cursor: &str, anchor: &str) -> String {
+    let other_cursor = if cursor == "after" { "secret_after" } else { "after" };
+    let mut pairs: Vec<_> = page
+        .plugin_query
+        .to_pairs()
+        .into_iter()
+        .filter(|(name, _)| matches!(name.as_str(), "owner" | "environment") || name == other_cursor || (keep_after && name == cursor))
+        .collect();
+    for (name, value) in &page.plugin_fields {
+        if matches!(name.as_str(), "owner" | "environment") && !pairs.iter().any(|(present, _)| present == name) {
+            pairs.push((name.clone(), value.clone()));
+        }
+    }
+    pairs.push((key.to_owned(), value.to_owned()));
+    let query =
+        rbit_services::plugin_pages::PageQuery::new(pairs).expect("validated page selectors and variable names fit query bounds").encoded();
+    format!("{}?{query}#{anchor}", page.path)
 }
 
 /// A choice of the default token permission.

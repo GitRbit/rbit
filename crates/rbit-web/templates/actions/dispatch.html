@@ -5,6 +5,7 @@
   <summary class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-[13px] font-medium hover:bg-subtle">{% call ui::icon("play", "size-4 shrink-0") %}{% endcall %}{{ crate::i18n::text("actions", "actions-dispatch-summary-run-workflow") }}</summary>
   <div class="border-t border-line p-3 sm:p-4">
     <form method="get" action="{{ form.page_url }}" class="flex flex-wrap items-end gap-2">
+<input type="hidden" name="workflow" value="{{ form.workflow_file }}">
       <div class="min-w-0 flex-1 basis-48">
         <label class="label" for="dispatch-ref">{{ crate::i18n::text("actions", "actions-dispatch-label-use-the-workflow-from") }}</label>
         <input class="input font-mono" id="dispatch-ref" name="ref" value="{{ form.reference }}" list="dispatch-refs" autocomplete="off" autocapitalize="none" spellcheck="false" required>
@@ -21,13 +22,15 @@
     {% endif %}
 
     {% if form.can_run %}
-    <form method="post" action="{{ form.action }}" class="mt-4 flex flex-col gap-4">
+    <form hx-boost="false" method="post" action="{{ form.action }}" class="mt-4 flex flex-col gap-4">
+<input type="hidden" name="_csrf" value="{{ page.plugin_csrf(form.action) }}">
+<input type="hidden" name="workflow" value="{{ form.workflow_file }}">
       <input type="hidden" name="ref" value="{{ form.reference }}">
       {% for input in form.inputs %}
       <div>
         {% if input.kind == "boolean" %}
-        <input type="hidden" name="{{ input.field }}" value="false">
-        <label class="flex min-h-11 items-center gap-2 text-[13px]"><input class="accent-(--ink)" type="checkbox" id="{{ input.id }}" name="{{ input.field }}" value="true" {% if input.checked() %}checked{% endif %}><span class="font-mono">{{ input.name }}</span></label>
+
+        <label class="label" for="{{ input.id }}">{{ input.name }}</label><select class="input" id="{{ input.id }}" name="{{ input.field }}"><option value="false" {% if !input.checked() %}selected{% endif %}>false</option><option value="true" {% if input.checked() %}selected{% endif %}>true</option></select>
         {% else %}
         <label class="label" for="{{ input.id }}"><span class="font-mono">{{ input.name }}</span>{% if input.required %}<span class="text-danger" aria-hidden="true"> *</span>{% endif %}</label>
         {% if input.kind == "choice" %}

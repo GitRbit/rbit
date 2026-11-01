@@ -1242,7 +1242,9 @@ impl Fixture {
             users.push(services.accounts.create_user(user, Some(false)).await.unwrap());
         }
         let [alice, bob, carol, dave, eve]: [User; 5] = <[User; 5]>::try_from(users).ok().unwrap();
-        let router = rbit_web::router(AppState::new(config, services.clone()));
+        let state = AppState::new(config, services.clone());
+        rbit_web::prepare_plugin_routes(&state).await.unwrap();
+        let router = rbit_web::router(state);
         Self { _directory: directory, services, database, router, alice, bob, carol, dave, eve }
     }
 

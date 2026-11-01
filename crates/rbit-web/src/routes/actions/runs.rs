@@ -7,36 +7,32 @@
 //!
 //! Workstream U (interface and secrets) owns this file.
 
-use axum::{
-    Form,
-    extract::{Path, Query, State},
-    response::Redirect,
-};
+use axum::extract::{Path, Query, State};
 use std::collections::BTreeMap;
 
-use rbit_core::actions::{JobId, RunEvent, RunId, Status};
+use rbit_core::actions::{RunEvent, RunId, Status};
 use rbit_git::RefKind;
 use rbit_services::{
     ActionsService, ServiceError,
-    actions::{browse::RunQuery, dispatch::DispatchRequest, runs::Rerun},
+    actions::{browse::RunQuery, dispatch::DispatchRequest},
 };
 use serde::Deserialize;
 
 use crate::{
     AppState,
     error::{WebError, WebResult},
-    extract::{SignedIn, Viewer},
+    extract::Viewer,
     routes::repo::RepoPage,
     views::{
         actions::{
-            ActionsUrls, ArtifactRow, DeploymentView, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunRow, RunSummary,
-            RunsPage, SummaryView, WorkflowLink, job_rows, runs_refresh, workflow_file,
+            ActionsUrls, ArtifactRow, DeploymentView, DispatchFormView, DispatchInputView, RunFilters, RunPage, RunPagination, RunRow,
+            RunSummary, RunsPage, SummaryView, WorkflowLink, job_rows, runs_refresh, workflow_file,
         },
         layout::Page,
     },
 };
 
-fn actions(state: &AppState) -> WebResult<ActionsService> {
+pub(crate) fn actions(state: &AppState) -> WebResult<ActionsService> {
     state.services.actions.snapshot().ok_or(WebError::NotFound)
 }
 
@@ -44,15 +40,15 @@ fn actions(state: &AppState) -> WebResult<ActionsService> {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ListQuery {
-    branch: String,
-    actor: String,
-    event: String,
-    status: String,
-    before: Option<i64>,
+    pub(crate) branch: String,
+    pub(crate) actor: String,
+    pub(crate) event: String,
+    pub(crate) status: String,
+    pub(crate) before: Option<i64>,
     // Actions: dispatch form.
     /// The branch or tag the dispatch form reads the workflow at.
     #[serde(rename = "ref")]
-    reference: String,
+    pub(crate) reference: String,
 }
 
 impl ListQuery {
@@ -86,38 +82,16 @@ fn non_empty(value: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
 }
 
-/// `GET /{owner}/{repo}/actions`
-pub async fn list(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<ListQuery>,
-) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, None, &query, None).await
-}
-
-/// `GET /{owner}/{repo}/actions/workflows/{workflow}`: the runs of one workflow file.
-pub async fn workflow(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo, workflow)): Path<(String, String, String)>,
-    Query(query): Query<ListQuery>,
-) -> WebResult<RunsPage> {
-    runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &query, None).await
-}
-
 // Actions: dispatch form.
 /// A dispatch that failed, shown again with its values and why.
-struct Submitted {
+pub(crate) struct Submitted {
     reference: String,
     inputs: BTreeMap<String, String>,
     error: String,
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn runs_page(
+pub(crate) async fn runs_page(
     state: &AppState,
     viewer: &Viewer,
     page: Page,
@@ -148,8 +122,7 @@ async fn runs_page(
         Some((path, _)) => actions.workflow_state(&loaded.ctx, path).await?.disabled,
         None => false,
     };
-    let switch_url =
-        selected.as_ref().filter(|_| loaded.ctx.can_write_content()).map(|(path, _)| format!("{}/switch", urls.workflow(path)));
+    let switch_url = selected.as_ref().filter(|_| loaded.ctx.can_write_content()).map(|_| urls.run_action(0, "switch"));
     let dispatch = match &selected {
         Some((path, _)) if loaded.ctx.can_write_content() && !disabled => {
             dispatch_form(&actions, &loaded, &urls, path, query, submitted).await?
@@ -172,7 +145,11 @@ async fn runs_page(
             .into_iter()
             .filter(|param| !param.is_empty())
             .collect();
-        if params.is_empty() { action.clone() } else { format!("{action}?{}", params.join("&")) }
+        if params.is_empty() {
+            action.clone()
+        } else {
+            format!("{action}{}{}", if action.contains('?') { "&" } else { "?" }, params.join("&"))
+        }
     };
     let next_url = listing.next.map(|before| page_url(Some(before.0)));
     let self_url = page_url(query.before);
@@ -195,6 +172,7 @@ async fn runs_page(
         None => format!("Actions · {}", loaded.ctx.repo.full_name()),
     };
     Ok(RunsPage {
+        workflow_file: selected.as_ref().map_or_else(String::new, |(path, _)| workflow_file(path).to_owned()),
         page: page.titled(title),
         header: loaded.header(state, "actions"),
         runs: listing.runs.iter().map(|run| RunRow::new(run, &listing.people, &urls)).collect(),
@@ -254,7 +232,8 @@ async fn dispatch_form(
         .unwrap_or_default();
     let error = submitted.map(|submitted| submitted.error.clone()).or(error);
     Ok(Some(DispatchFormView {
-        action: format!("{}/dispatch", urls.workflow(path)),
+        workflow_file: workflow_file(path).to_owned(),
+        action: urls.run_action(0, "dispatch"),
         page_url: urls.workflow(path),
         reference: shown,
         refs,
@@ -266,22 +245,25 @@ async fn dispatch_form(
     }))
 }
 
-/// `POST /{owner}/{repo}/actions/workflows/{workflow}/dispatch`: runs the workflow at the
-/// chosen branch or tag with the inputs given, and shows the new run. What the workflow
-/// refuses (a ref, an input) is shown in the form again, with the values given.
-pub async fn dispatch(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
+pub(crate) enum DispatchResult {
+    Run(i64),
+    Invalid(Box<RunsPage>),
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn dispatch_native(
+    state: &AppState,
+    user: &rbit_core::User,
+    viewer: &Viewer,
     page: Page,
-    Path((owner, repo, workflow)): Path<(String, String, String)>,
-    Form(fields): Form<Vec<(String, String)>>,
-) -> WebResult<axum::response::Response> {
-    use axum::response::IntoResponse as _;
-    let actions = actions(&state)?;
-    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
+    owner: &str,
+    repo: &str,
+    workflow: &str,
+    fields: Vec<(String, String)>,
+) -> WebResult<DispatchResult> {
+    let actions = actions(state)?;
+    let ctx = state.services.repositories.open(viewer.user(), owner, repo).await?;
     let mut reference = String::new();
-    // A boolean is sent as a hidden `false` and, when ticked, a later `true`: the last wins.
     let mut inputs = BTreeMap::new();
     for (name, value) in fields {
         if name == "ref" {
@@ -290,43 +272,19 @@ pub async fn dispatch(
             inputs.insert(input.to_owned(), value);
         }
     }
-    let request = DispatchRequest { workflow: workflow.clone(), reference: reference.clone(), inputs: inputs.clone() };
-    match actions.dispatch(&user, &ctx, &request).await {
-        Ok(run) => {
-            let urls = ActionsUrls::new(&format!("/{}", ctx.repo.full_name()));
-            Ok(Redirect::to(&urls.run(run.number)).into_response())
-        }
+    let request = DispatchRequest { workflow: workflow.to_owned(), reference: reference.clone(), inputs: inputs.clone() };
+    match actions.dispatch(user, &ctx, &request).await {
+        Ok(run) => Ok(DispatchResult::Run(run.number)),
         Err(ServiceError::Invalid(error)) => {
             let submitted = Submitted { reference, inputs, error };
-            let page = runs_page(&state, &viewer, page, &owner, &repo, Some(&workflow), &ListQuery::default(), Some(&submitted)).await?;
-            Ok((axum::http::StatusCode::UNPROCESSABLE_ENTITY, page).into_response())
+            let page = runs_page(state, viewer, page, owner, repo, Some(workflow), &ListQuery::default(), Some(&submitted)).await?;
+            Ok(DispatchResult::Invalid(Box::new(page)))
         }
         Err(error) => Err(error.into()),
     }
 }
 
 // Actions: disabled workflows.
-/// The form of the workflow page's Disable / Enable button.
-#[derive(Debug, serde::Deserialize)]
-pub struct SwitchForm {
-    disabled: bool,
-}
-
-/// `POST /{owner}/{repo}/actions/workflows/{workflow}/switch`: disables or enables the
-/// workflow, then shows its page again.
-pub async fn switch(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo, workflow)): Path<(String, String, String)>,
-    Form(form): Form<SwitchForm>,
-) -> WebResult<Redirect> {
-    let actions = actions(&state)?;
-    let ctx = state.services.repositories.open(viewer.user(), &owner, &repo).await?;
-    let switched = actions.set_workflow_disabled(&user, &ctx, &workflow, form.disabled).await?;
-    let urls = ActionsUrls::new(&format!("/{}", ctx.repo.full_name()));
-    Ok(Redirect::to(&urls.workflow(&switched.path)))
-}
 
 fn run_number(run: &str) -> WebResult<i64> {
     run.parse().ok().filter(|number| *number > 0).ok_or(WebError::NotFound)
@@ -429,15 +387,36 @@ pub async fn show(
     let has_jobs = !run.is_workflow_error();
     let any_failed = detail.jobs.iter().any(|job| matches!(job.status, Status::Failure | Status::Cancelled));
     // Actions: artifacts (A).
-    let artifacts =
+    let artifacts: Vec<_> =
         actions.run_artifacts(&loaded.ctx, run.id).await?.iter().map(|artifact| ArtifactRow::new(artifact, &urls, run.number)).collect();
     // Actions: step summaries.
-    let summaries = actions
-        .job_summaries(&loaded.ctx, &detail.jobs)
-        .await?
-        .iter()
-        .filter_map(|(id, texts)| detail.jobs.iter().find(|job| job.id == *id).map(|job| SummaryView::new(&job.name, texts)))
-        .collect();
+    let heads = actions.summary_heads(&loaded.ctx, &detail.jobs).await?;
+    let mut summaries = Vec::new();
+    let mut remaining = 8 * 1024;
+    for head in heads.iter().take(4) {
+        let Some(job) = detail.jobs.iter().find(|job| job.id == head.job_id) else {
+            continue;
+        };
+        if remaining == 0 {
+            break;
+        }
+        if let Some(text) = actions.summary_preview(&loaded.ctx, job, head.step, remaining).await? {
+            let clipped = text.len() >= remaining;
+            remaining = remaining.saturating_sub(text.len());
+            summaries.push(SummaryView::preview(&job.name, &text, urls.summary(run.number, job.id.0, Some(head.step)), clipped));
+        }
+    }
+    let mut jobs = job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs);
+    for job in &mut jobs {
+        if let Some(head) = heads.iter().find(|head| head.job_id.0 == job.id) {
+            job.summary_url = Some(urls.summary(run.number, job.id, Some(head.step)));
+        }
+    }
+    let jobs_pagination = RunPagination::new(&page, run.number, "jobs_page", jobs.len())?;
+    let jobs = jobs.into_iter().skip(jobs_pagination.offset).take(32).collect();
+    let artifacts_pagination = RunPagination::new(&page, run.number, "artifacts_page", artifacts.len())?;
+    let artifacts = artifacts.into_iter().skip(artifacts_pagination.offset).take(32).collect();
+    let self_url = crate::views::actions::run_page_url(&page, run.number, None)?;
     // Actions: environments.
     let deployments = actions
         .pending_deployments(viewer.user(), &loaded.ctx, run)
@@ -451,12 +430,14 @@ pub async fn show(
         })
         .collect();
     Ok(RunPage {
+        jobs_pagination,
+        artifacts_pagination,
         page: page.titled(format!("{} #{} · Actions · {}", run.workflow_name, run.number, loaded.ctx.repo.full_name())),
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(run, &detail.people, &urls, loaded.urls.commit(&run.sha)),
-        jobs: job_rows(&detail.jobs, run.number, &urls, can_write && finished && has_jobs),
+        jobs,
         active: !finished,
-        self_url: urls.run(run.number),
+        self_url,
         runs_url: urls.runs(),
         can_write,
         awaiting_approval: run.status == Status::AwaitingApproval,
@@ -472,135 +453,21 @@ pub async fn show(
 }
 
 // Actions: environments.
-/// The review form of a run's waiting deployments: the environments chosen, a comment,
-/// and whether they are approved.
-#[derive(Debug, Default)]
-pub struct ReviewForm {
-    environments: Vec<String>,
-    comment: String,
-    decision: String,
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/review`: approves or rejects the jobs waiting
-/// for the chosen environments.
-pub async fn review(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo, run)): Path<(String, String, String)>,
-    axum::Form(pairs): axum::Form<Vec<(String, String)>>,
-) -> WebResult<Redirect> {
-    let mut form = ReviewForm::default();
-    for (key, value) in pairs {
-        match key.as_str() {
-            "environment" => form.environments.push(value),
-            "comment" => form.comment = value,
-            "decision" => form.decision = value,
-            _ => {}
-        }
-    }
-    let decision = match form.decision.as_str() {
-        "approve" => rbit_core::actions::ReviewDecision::Approved,
-        "reject" => rbit_core::actions::ReviewDecision::Rejected,
-        _ => return Err(WebError::BadRequest("choose approve or reject".to_owned())),
-    };
-    let actions = actions(&state)?;
-    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
-    let detail = actions.run_detail(&loaded.ctx, run_number(&run)?).await?;
-    actions.review_deployments(&user, &loaded.ctx, &detail.run, &form.environments, decision, &form.comment).await?;
-    Ok(Redirect::to(&ActionsUrls::new(&loaded.urls.home()).run(detail.run.number)))
-}
-
-/// `GET /{owner}/{repo}/actions/runs/{run}/jobs`: the jobs are on the run page.
-pub async fn jobs(Path((owner, repo, run)): Path<(String, String, String)>) -> WebResult<Redirect> {
-    let number = run_number(&run)?;
-    Ok(Redirect::to(&ActionsUrls::new(&format!("/{owner}/{repo}")).run(number)))
-}
 
 /// Loads the repository and run `#run` for a signed-in viewer; the service checks write
 /// access for each action.
-async fn load_run(state: &AppState, viewer: &Viewer, owner: &str, repo: &str, run: &str) -> WebResult<(RepoPage, RunId, String)> {
+pub(crate) async fn load_run(
+    state: &AppState,
+    viewer: &Viewer,
+    owner: &str,
+    repo: &str,
+    run: &str,
+) -> WebResult<(RepoPage, RunId, String)> {
     let actions = actions(state)?;
     let loaded = RepoPage::load(state, viewer, owner, repo).await?;
     let detail = actions.run_detail(&loaded.ctx, run_number(run)?).await?;
     let url = ActionsUrls::new(&loaded.urls.home()).run(detail.run.number);
     Ok((loaded, detail.run.id, url))
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/cancel`
-pub async fn cancel(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo, run)): Path<(String, String, String)>,
-) -> WebResult<Redirect> {
-    let (loaded, id, url) = load_run(&state, &viewer, &owner, &repo, &run).await?;
-    actions(&state)?.cancel(&user, &loaded.ctx, id).await?;
-    Ok(Redirect::to(&url))
-}
-
-async fn rerun(
-    state: &AppState,
-    user: &rbit_core::User,
-    viewer: &Viewer,
-    path: (String, String, String),
-    which: impl FnOnce() -> Rerun,
-) -> WebResult<Redirect> {
-    let (owner, repo, run) = path;
-    let (loaded, id, url) = load_run(state, viewer, &owner, &repo, &run).await?;
-    actions(state)?.rerun(user, &loaded.ctx, id, which()).await?;
-    Ok(Redirect::to(&url))
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/rerun`
-pub async fn rerun_all(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path(path): Path<(String, String, String)>,
-) -> WebResult<Redirect> {
-    rerun(&state, &user, &viewer, path, || Rerun::All).await
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/rerun-failed`
-pub async fn rerun_failed(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path(path): Path<(String, String, String)>,
-) -> WebResult<Redirect> {
-    rerun(&state, &user, &viewer, path, || Rerun::Failed).await
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun`
-pub async fn rerun_job(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo, run, job)): Path<(String, String, String, String)>,
-) -> WebResult<Redirect> {
-    let job = JobId(job.parse().map_err(|_| WebError::NotFound)?);
-    rerun(&state, &user, &viewer, (owner, repo, run), || Rerun::Job(job)).await
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct ApproveForm {
-    trust_author: Option<String>,
-}
-
-/// `POST /{owner}/{repo}/actions/runs/{run}/approve`
-pub async fn approve(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo, run)): Path<(String, String, String)>,
-    Form(form): Form<ApproveForm>,
-) -> WebResult<Redirect> {
-    let (loaded, id, url) = load_run(&state, &viewer, &owner, &repo, &run).await?;
-    let trust_author = form.trust_author.as_deref() == Some("true");
-    actions(&state)?.approve(&user, &loaded.ctx, id, trust_author).await?;
-    Ok(Redirect::to(&url))
 }
 
 // Actions: artifacts (A).
@@ -639,4 +506,45 @@ async fn download(
         return Err(WebError::NotFound);
     }
     Ok(super::artifact_download(&actions, &artifact, file, format))
+}
+
+/// One full current-task step summary. Neighbor identities come from the bounded
+/// domain accessor rather than loading all bodies into the run document.
+pub(crate) async fn summary_page(
+    state: &AppState,
+    viewer: &Viewer,
+    mut page: Page,
+    owner: &str,
+    repo: &str,
+    selection: (i64, rbit_core::actions::JobId, Option<i64>),
+) -> WebResult<crate::views::actions::SummaryPage> {
+    let (run, job, step) = selection;
+    let loaded = RepoPage::load(state, viewer, owner, repo).await?;
+    let actions = actions(state)?;
+    let detail = actions.job_detail(&loaded.ctx, job).await?;
+    if detail.run.number != run {
+        return Err(WebError::NotFound);
+    }
+    let summary = actions.step_summary(&loaded.ctx, &detail.job, step).await?.ok_or(WebError::NotFound)?;
+    let urls = ActionsUrls::new(&loaded.urls.home());
+    page.path = urls.summary(run, job.0, Some(summary.number));
+    let previous = summary.previous.map(|step| urls.summary(run, job.0, Some(step)));
+    let next = summary.next.map(|step| urls.summary(run, job.0, Some(step)));
+    let html = crate::render::render_markdown_bounded(&summary.text, 512 * 1024);
+    let title = page.locale.format(&rbit_messages::MessageRef {
+        namespace: "actions",
+        key: "summary-title",
+        args: &[rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&detail.job.name) }],
+    });
+    Ok(crate::views::actions::SummaryPage {
+        page: page.titled(title),
+        header: loaded.header(state, "actions"),
+        run_url: urls.run(run),
+        job: detail.job.name,
+        number: summary.number,
+        html,
+        source: summary.text,
+        previous,
+        next,
+    })
 }

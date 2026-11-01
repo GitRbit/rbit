@@ -128,31 +128,41 @@ pub struct ActionsUrls {
     base: String,
 }
 
+const QUERY_COMPONENT: percent_encoding::AsciiSet = percent_encoding::NON_ALPHANUMERIC.remove(b'.').remove(b'-').remove(b'_').remove(b'~');
+
 impl ActionsUrls {
     /// For the repository at `home` (`/{owner}/{repo}`).
     pub fn new(home: &str) -> Self {
-        Self { base: format!("{home}/actions") }
+        Self { base: format!("{home}/-/plugins/rbit.actions") }
     }
 
     pub fn runs(&self) -> String {
-        self.base.clone()
+        format!("{}/runs", self.base)
     }
 
     /// The runs of one workflow, by its file name.
     pub fn workflow(&self, path: &str) -> String {
-        format!("{}/workflows/{}", self.base, workflow_file(path))
+        format!("{}/workflow?workflow={}", self.base, percent_encoding::utf8_percent_encode(workflow_file(path), &QUERY_COMPONENT))
     }
 
     pub fn run(&self, number: i64) -> String {
-        format!("{}/runs/{number}", self.base)
+        format!("{}/run?run={number}", self.base)
     }
 
-    pub fn run_action(&self, number: i64, action: &str) -> String {
-        format!("{}/runs/{number}/{action}", self.base)
+    pub fn summary(&self, run: i64, job: i64, step: Option<i64>) -> String {
+        let mut url = format!("{}/summary?run={run}&job={job}", self.base);
+        if let Some(step) = step {
+            use std::fmt::Write as _;
+            let _ = write!(url, "&step={step}");
+        }
+        url
+    }
+    pub fn run_action(&self, _number: i64, action: &str) -> String {
+        format!("{}/{action}", self.base)
     }
 
     pub fn job(&self, number: i64, job: i64) -> String {
-        format!("{}/runs/{number}/jobs/{job}", self.base)
+        format!("{}/job?run={number}&job={job}", self.base)
     }
 }
 
@@ -258,6 +268,7 @@ impl RunFilters {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "actions/runs.html")]
 pub struct RunsPage {
+    pub workflow_file: String,
     pub page: Page,
     pub header: RepoHeader,
     pub runs: Vec<RunRow>,
@@ -300,6 +311,7 @@ pub fn runs_refresh(runs: &[Run], newest: bool) -> Option<&'static str> {
 /// `?ref=`, so the inputs are always those of the workflow at that ref; no JavaScript needed.
 #[derive(Debug, Clone)]
 pub struct DispatchFormView {
+    pub workflow_file: String,
     /// Where the form posts.
     pub action: String,
     /// The workflow's page, which the ref form reloads.
@@ -377,6 +389,8 @@ impl DispatchInputView {
 /// One job on the run page, indented by how deep in `needs` it is.
 #[derive(Debug, Clone)]
 pub struct JobRow {
+    pub summary_url: Option<String>,
+    pub id: i64,
     pub name: String,
     pub url: String,
     pub look: StateLook,
@@ -420,6 +434,7 @@ pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) 
     ordered
         .into_iter()
         .map(|(level, _, job)| JobRow {
+            summary_url: None,
             name: job.name.clone(),
             url: urls.job(number, job.id.0),
             look: StateLook::of(job.status),
@@ -427,7 +442,8 @@ pub fn job_rows(jobs: &[Job], number: i64, urls: &ActionsUrls, can_write: bool) 
             needs: if job.needs.is_empty() { String::new() } else { format!("needs {}", job.needs.join(", ")) },
             depth: level,
             indent: ["", "w-4", "w-8", "w-12", "w-16"][level.min(4)],
-            rerun_url: format!("{}/rerun", urls.job(number, job.id.0)),
+            rerun_url: urls.run_action(number, "rerun-job"),
+            id: job.id.0,
             can_rerun: can_write && job.status.is_done(),
             environment: job.environment.clone(),
             environment_url: job.environment_url.clone().filter(|url| url.starts_with("https://") || url.starts_with("http://")),
@@ -487,6 +503,8 @@ impl RunSummary {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "actions/run.html")]
 pub struct RunPage {
+    pub jobs_pagination: RunPagination,
+    pub artifacts_pagination: RunPagination,
     pub page: Page,
     pub header: RepoHeader,
     pub run: RunSummary,
@@ -513,6 +531,45 @@ pub struct RunPage {
     pub review_url: String,
 }
 
+/// Independent, bounded metadata cursors for one run's ordered lists.
+#[derive(Debug, Clone)]
+pub struct RunPagination {
+    pub previous_url: Option<String>,
+    pub next_url: Option<String>,
+    pub offset: usize,
+    pub total: usize,
+}
+impl RunPagination {
+    pub fn new(page: &Page, number: i64, cursor: &str, total: usize) -> crate::error::WebResult<Self> {
+        let index = run_page_index(page, cursor)?;
+        let offset = index * 32;
+        let previous_url = index.checked_sub(1).map(|index| run_page_url(page, number, Some((cursor, index)))).transpose()?;
+        let next_url = (offset.saturating_add(32) < total).then(|| run_page_url(page, number, Some((cursor, index + 1)))).transpose()?;
+        Ok(Self { previous_url, next_url, offset, total })
+    }
+}
+fn run_page_index(page: &Page, cursor: &str) -> crate::error::WebResult<usize> {
+    page.plugin_query.get(cursor).map_or(Ok(0), |value| {
+        value.parse::<u16>().map(usize::from).map_err(|_| crate::error::WebError::BadRequest("invalid run page".into()))
+    })
+}
+pub(crate) fn run_page_url(page: &Page, number: i64, update: Option<(&str, usize)>) -> crate::error::WebResult<String> {
+    let mut pairs = vec![("run".to_owned(), number.to_string())];
+    for cursor in ["jobs_page", "artifacts_page"] {
+        let index = match update {
+            Some((key, index)) if key == cursor => index,
+            _ => run_page_index(page, cursor)?,
+        };
+        if index > 0 {
+            pairs.push((cursor.to_owned(), index.to_string()));
+        }
+    }
+    let query = rbit_services::plugin_pages::PageQuery::new(pairs)
+        .map_err(|_| crate::error::WebError::BadRequest("invalid run page".into()))?
+        .encoded();
+    Ok(format!("{}?{query}", page.path))
+}
+
 // Actions: environments.
 /// The jobs of a run waiting for one environment's reviewers.
 #[derive(Debug, Clone)]
@@ -530,11 +587,47 @@ pub struct DeploymentView {
 pub struct SummaryView {
     pub job: String,
     pub html: String,
+    pub url: String,
+    pub clipped: bool,
 }
 
 impl SummaryView {
-    pub fn new(job: &str, texts: &[String]) -> Self {
-        Self { job: job.to_owned(), html: crate::render::render_markdown(&texts.join("\n"), None) }
+    pub fn title(&self) -> String {
+        crate::i18n::format_ref(&rbit_messages::MessageRef {
+            namespace: "actions",
+            key: "summary-title",
+            args: &[rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&self.job) }],
+        })
+    }
+    pub fn preview(job: &str, text: &str, url: String, clipped: bool) -> Self {
+        let html = crate::render::render_markdown_bounded(text, 24 * 1024);
+        Self { job: job.into(), clipped: clipped || html.is_none(), html: html.unwrap_or_default(), url }
+    }
+}
+#[derive(Debug, Template, WebTemplate)]
+#[template(path = "actions/summary.html")]
+pub struct SummaryPage {
+    pub page: Page,
+    pub header: RepoHeader,
+    pub run_url: String,
+    pub job: String,
+    pub number: i64,
+    pub html: Option<String>,
+    pub source: String,
+    pub previous: Option<String>,
+    pub next: Option<String>,
+}
+
+impl SummaryPage {
+    pub fn heading(&self) -> String {
+        self.page.locale.format(&rbit_messages::MessageRef {
+            namespace: "actions",
+            key: "summary-step-title",
+            args: &[
+                rbit_messages::Argument { name: "job", value: rbit_messages::Value::Text(&self.job) },
+                rbit_messages::Argument { name: "step", value: rbit_messages::Value::Text(&self.number.to_string()) },
+            ],
+        })
     }
 }
 
@@ -556,7 +649,11 @@ impl ArtifactRow {
             size: crate::render::format_size(artifact.size),
             expires: artifact.expires_at.until(),
             expires_iso: artifact.expires_at.iso8601(),
-            url: format!("{}/artifacts/{}", urls.run(number), artifact.id.0),
+            url: format!(
+                "{}/actions/runs/{number}/artifacts/{}",
+                urls.base.strip_suffix("/-/plugins/rbit.actions").unwrap_or(&urls.base),
+                artifact.id.0
+            ),
         }
     }
 }
@@ -624,11 +721,10 @@ fn escape_xml(text: &str) -> String {
 
 // ------------------------------------------------------------------ the job page
 
-/// Lines of one step shown on the job page; the step's log page shows up to
-/// `rbit_services::actions::logs::STEP_VIEW_LINES`, the raw log everything.
-pub const JOB_PAGE_STEP_LINES: usize = 1000;
-/// Bytes of one step shown on the job page.
-pub const JOB_PAGE_STEP_BYTES: usize = 256 * 1024;
+/// Aggregate preview line budget for a bounded compiled job document.
+pub const JOB_PAGE_STEP_LINES: usize = 128;
+/// Aggregate raw preview bytes, leaving room for escaping and the host document.
+pub const JOB_PAGE_STEP_BYTES: usize = 16 * 1024;
 
 /// `line` without ANSI escape sequences (colours, cursor moves, OSC titles and links):
 /// logs are shown as text, never as terminal output.
@@ -724,6 +820,15 @@ impl StepLog {
     }
 }
 
+pub(crate) fn preview_label(value: &str) -> String {
+    let mut characters = value.chars();
+    let mut label: String = characters.by_ref().take(128).collect();
+    if characters.next().is_some() {
+        label.push('…');
+    }
+    label
+}
+
 /// One step on the job page.
 #[derive(Debug, Clone)]
 pub struct StepView {
@@ -743,7 +848,7 @@ impl StepView {
     pub fn new(step: &Step, log: Option<StepLog>, log_url: String) -> Self {
         Self {
             number: step.number,
-            name: step.name.clone(),
+            name: preview_label(&step.name),
             look: StateLook::of(step.status),
             duration: elapsed(step.started_at, step.stopped_at),
             open: false,
@@ -765,6 +870,8 @@ pub fn open_one(steps: &mut [StepView]) {
 #[derive(Debug, Template, WebTemplate)]
 #[template(path = "actions/job.html")]
 pub struct JobPage {
+    pub omitted_steps: usize,
+    pub job_id: i64,
     pub page: Page,
     pub header: RepoHeader,
     pub run: RunSummary,
@@ -780,6 +887,19 @@ pub struct JobPage {
     /// `None` until a runner took the job.
     pub raw_url: Option<String>,
     pub rerun_url: Option<String>,
+}
+
+impl JobPage {
+    pub fn omitted_notice(&self) -> String {
+        self.page.locale.format(&rbit_messages::MessageRef {
+            namespace: "actions",
+            key: "job-preview-omitted",
+            args: &[rbit_messages::Argument {
+                name: "count",
+                value: rbit_messages::Value::Number(f64::from(u32::try_from(self.omitted_steps).unwrap_or(u32::MAX))),
+            }],
+        })
+    }
 }
 
 #[derive(Debug, Template, WebTemplate)]
@@ -841,7 +961,7 @@ mod tests {
         let rows = job_rows(&jobs, 7, &urls, true);
         let order: Vec<(&str, usize)> = rows.iter().map(|row| (row.name.as_str(), row.depth)).collect();
         assert_eq!(order, [("build", 0), ("lint", 0), ("test", 1), ("deploy", 2)]);
-        assert_eq!(rows[0].url, "/a/b/actions/runs/7/jobs/3");
+        assert_eq!(rows[0].url, "/a/b/-/plugins/rbit.actions/job?run=7&job=3");
         assert_eq!(rows[3].needs, "needs test, lint");
         assert!(rows[0].can_rerun && !rows[2].can_rerun, "only finished jobs run again");
         assert!(job_rows(&jobs, 7, &urls, false).iter().all(|row| !row.can_rerun));
@@ -853,7 +973,14 @@ mod tests {
         assert_eq!(short_ref("refs/pull/12/head"), "#12");
         assert_eq!(short_ref("refs/tags/v1.0"), "v1.0");
         assert_eq!(workflow_file(".rbit/workflows/ci.yml"), "ci.yml");
-        assert_eq!(ActionsUrls::new("/a/b").workflow(".github/workflows/release.yaml"), "/a/b/actions/workflows/release.yaml");
+        assert_eq!(
+            ActionsUrls::new("/a/b").workflow(".github/workflows/release.yaml"),
+            "/a/b/-/plugins/rbit.actions/workflow?workflow=release.yaml"
+        );
+        assert_eq!(
+            ActionsUrls::new("/a/b").workflow("ci&event=push.yml"),
+            "/a/b/-/plugins/rbit.actions/workflow?workflow=ci%26event%3Dpush.yml"
+        );
     }
 
     #[test]

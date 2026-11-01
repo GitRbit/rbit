@@ -255,7 +255,9 @@ async fn boot(config: Config) -> Result<(axum::Router, Database, Services), Stri
     let kv = KvStore::open(&storage.kv_path()).map_err(|e| format!("cannot open redb: {e}"))?;
     let services = Services::new(Arc::clone(&config), &database, &kv).await.map_err(|e| format!("cannot build services: {e}"))?;
     services.spawn_background();
-    let app = rbit_web::router(AppState::new(Arc::clone(&config), services.clone()));
+    let state = AppState::new(Arc::clone(&config), services.clone());
+    rbit_web::prepare_plugin_routes(&state).await.map_err(|error| format!("cannot prepare native plugin routes: {error}"))?;
+    let app = rbit_web::router(state);
     Ok((app, database, services))
 }
 

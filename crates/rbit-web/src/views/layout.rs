@@ -7,6 +7,9 @@ use crate::{AppState, assets, themes::Theme, views::components::Avatar};
 /// Data every full page needs: rendered by `templates/base.html`.
 #[derive(Debug, Clone)]
 pub struct Page {
+    pub plugin_forms: rbit_services::plugin_pages::FormActions,
+    pub plugin_fields: Vec<(String, String)>,
+    pub plugin_query: rbit_services::plugin_pages::PageQuery,
     pub ui: rbit_services::ui::UiSnapshot,
     pub locale: rbit_messages::LocaleSnapshot,
     pub has_i18n: bool,
@@ -36,10 +39,21 @@ pub struct NavUser {
 }
 
 impl Page {
+    pub fn is_plugin_document(&self) -> bool {
+        self.path.contains("/-/plugins/")
+    }
+
+    pub fn plugin_csrf(&self, action: &str) -> &str {
+        self.plugin_forms.for_action(action).map_or("", rbit_services::plugin_pages::FormAction::csrf)
+    }
+
     pub fn new(state: &AppState, viewer: Option<&User>, path: &str) -> Self {
         let mut settings = state.services.instance.current();
         settings.branding.show_version &= state.config.updates.report_version;
         Self {
+            plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+            plugin_fields: Vec::new(),
+            plugin_query: rbit_services::plugin_pages::PageQuery::default(),
             locale: crate::i18n::current_snapshot(),
             ui: state.services.ui_snapshot(),
             has_i18n: state.services.i18n_enabled(),
@@ -135,6 +149,9 @@ mod tests {
     fn initial_styles_render_verbatim_and_need_no_network_requests() {
         for slug in ["system", "dark", "base24-berlin"] {
             let page = Page {
+                plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+                plugin_fields: Vec::new(),
+                plugin_query: rbit_services::plugin_pages::PageQuery::default(),
                 locale: rbit_messages::LocaleSnapshot::english(0),
                 ui: rbit_services::ui::UiSnapshot::default(),
                 has_i18n: false,
@@ -168,6 +185,9 @@ mod tests {
     fn update_footer_notice_remains_generic_when_running_version_is_hidden() {
         let branding = rbit_core::config::BrandingConfig { show_version: false, ..rbit_core::config::BrandingConfig::default() };
         let page = Page {
+            plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+            plugin_fields: Vec::new(),
+            plugin_query: rbit_services::plugin_pages::PageQuery::default(),
             locale: rbit_messages::LocaleSnapshot::english(0),
             ui: rbit_services::ui::UiSnapshot::default(),
             has_i18n: false,

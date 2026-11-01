@@ -27,6 +27,8 @@ mod actions_job_pages;
 mod actions_pages;
 // Actions: settings API.
 #[cfg(feature = "actions")]
+mod actions_native_limits;
+#[cfg(feature = "actions")]
 mod actions_permissions;
 #[cfg(feature = "actions")]
 mod actions_settings;

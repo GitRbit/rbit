@@ -209,7 +209,7 @@ async fn step_summaries_are_kept_once_and_shown_sanitised_on_the_run_page() {
 
     let token = fixture.services.accounts.start_session(&fixture.alice).await.unwrap();
     let request = Request::builder()
-        .uri(format!("/alice/rocket/actions/runs/{}", run.number))
+        .uri(format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number))
         .header(header::HOST, "localhost:3000")
         .header(header::COOKIE, format!("rbit_session={}", token.encode()))
         .body(Body::empty())
@@ -241,7 +241,7 @@ async fn step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in() 
 
     let token = fixture.services.accounts.start_session(&fixture.alice).await.unwrap();
     let request = Request::builder()
-        .uri(format!("/alice/rocket/actions/runs/{}", run.number))
+        .uri(format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number))
         .header(header::HOST, "localhost:3000")
         .header(header::COOKIE, format!("rbit_session={}", token.encode()))
         .body(Body::empty())
@@ -276,4 +276,80 @@ async fn workflows_are_shown_disabled_enabled_and_their_runs_listed() {
     assert_eq!(api(&fixture, Method::PUT, &format!("{workflows}/ci.yml/enable"), &write).await.status, StatusCode::NO_CONTENT);
     assert_eq!(api(&fixture, Method::GET, workflows, &read).await.json()["workflows"][0]["state"], "active");
     assert_eq!(api(&fixture, Method::PUT, &format!("{workflows}/nope.yml/disable"), &write).await.status, StatusCode::NOT_FOUND);
+}
+
+/// Markdown expansion cannot inflate the run document or hide the original
+/// summary: one step remains readable as escaped source, with current-task navigation.
+#[tokio::test]
+async fn native_actions_step_summary_documents_bound_amplification_and_keep_full_step_navigation() {
+    let fixture = Fixture::with(|config| config.actions.long_poll_seconds = 1).await;
+    let credential = fixture.runner(&["linux"]).await;
+    let run = seed(&fixture, &[payload(&template("build", &["linux"], &[]))]).await;
+    let job = fixture.database.actions_runs().jobs(run.id).await.unwrap().remove(0);
+    let task = spec(&poll(&fixture, &credential, Some("summary-bounds")).await.1).task_id.0;
+    let source = format!(
+        "## Full summary\n\n{}|\n{}|\n{}\n<script>summary_untrusted()</script>\nFULL_SOURCE_TAIL_MARKER",
+        "|x".repeat(100),
+        "|-".repeat(100),
+        format!("{}\n", "|".repeat(101)).repeat(620),
+    );
+    assert!(source.len() <= 64 * 1024);
+    assert!(
+        rbit_web::render::render_markdown_bounded(&source, 512 * 1024).is_none(),
+        "fixture must amplify beyond the full-page HTML budget"
+    );
+    let body = json!({"steps": [], "outputs": {}, "result": "success", "summaries": {"0": source, "1": "SECOND_STEP_COMPLETE"}});
+    assert_eq!(state(&fixture, &credential, task, &body).await.0, StatusCode::OK);
+    let cookie = format!("rbit_session={}", fixture.services.accounts.start_session(&fixture.alice).await.unwrap().encode());
+    let base = "/alice/rocket/-/plugins/rbit.actions";
+    let (status, page) = summary_document(&fixture, &cookie, &format!("{base}/run?run={}", run.number)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.len() < 256 * 1024, "run preview is bounded");
+    assert!(page.contains(&format!("{base}/summary?run={}", run.number)));
+    let summary = format!("{base}/summary?run={}&job={}", run.number, job.id.0);
+    let (status, page) = summary_document(&fixture, &cookie, &format!("{summary}&step=0")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("FULL_SOURCE_TAIL_MARKER"), "the complete source remains accessible");
+    assert!(page.contains("showing its Markdown source"));
+    assert!(!page.contains("<script>summary_untrusted()"));
+    assert!(page.contains("step=1"));
+    let (status, page) = summary_document(&fixture, &cookie, &format!("{summary}&step=1")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("SECOND_STEP_COMPLETE") && page.contains("step=0"));
+    assert!(!page.contains("FULL_SOURCE_TAIL_MARKER"));
+
+    let other = fixture
+        .services
+        .repositories
+        .create(
+            &fixture.alice,
+            rbit_services::CreateRepository {
+                name: "other".into(),
+                description: String::new(),
+                visibility: rbit_core::Visibility::Private,
+            },
+        )
+        .await
+        .unwrap();
+    fixture.database.actions_settings().set_enabled(other.repo.id, true, rbit_core::Timestamp::now()).await.unwrap();
+    let path = format!("/alice/other/-/plugins/rbit.actions/summary?run={}&job={}", run.number, job.id.0);
+    assert_eq!(summary_document(&fixture, &cookie, &path).await.0, StatusCode::NOT_FOUND);
+    fixture.actions().rerun(&fixture.alice, &fixture.repo().await, run.id, rbit_storage::sqlite::actions_runs::Rerun::All).await.unwrap();
+    assert_eq!(
+        summary_document(&fixture, &cookie, &summary).await.0,
+        StatusCode::NOT_FOUND,
+        "old-attempt summaries do not attach to a new task"
+    );
+}
+
+async fn summary_document(fixture: &Fixture, cookie: &str, path: &str) -> (StatusCode, String) {
+    let request =
+        Request::builder().uri(path).header(header::HOST, "git.example.com").header(header::COOKIE, cookie).body(Body::empty()).unwrap();
+    let response = fixture.router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    if status == StatusCode::OK {
+        assert!(response.headers()[header::CACHE_CONTROL].to_str().unwrap().contains("no-store"));
+    }
+    let bytes = to_bytes(response.into_body(), 3 * 1024 * 1024).await.unwrap();
+    (status, String::from_utf8(bytes.to_vec()).unwrap())
 }

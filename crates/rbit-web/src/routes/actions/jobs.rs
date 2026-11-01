@@ -9,16 +9,15 @@
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::{HeaderMap, HeaderValue, header},
     response::{IntoResponse, Response},
 };
 use rbit_core::actions::{JobId, Step, TaskId};
 use rbit_services::{
     ActionsService, RepoContext,
-    actions::logs::{LogRange, RawLog, STEP_VIEW_BYTES, STEP_VIEW_LINES},
+    actions::logs::{LogRange, RawLog},
 };
-use serde::Deserialize;
 use tokio_util::io::ReaderStream;
 
 use crate::{
@@ -60,6 +59,23 @@ async fn step_log(
     Ok(Some(StepLog::new(&window, u64::try_from(step.log_index).unwrap_or_default())))
 }
 
+fn preview_steps(steps: &[Step]) -> Vec<&Step> {
+    let mut shown: Vec<_> = steps.iter().take(32).collect();
+    let important: Vec<_> = [rbit_core::actions::Status::Running, rbit_core::actions::Status::Failure]
+        .into_iter()
+        .filter_map(|status| steps.iter().find(|step| step.status == status))
+        .collect();
+    for step in &important {
+        if !shown.iter().any(|shown| shown.number == step.number)
+            && let Some(slot) = shown.iter().rposition(|shown| !important.iter().any(|pinned| pinned.number == shown.number))
+        {
+            shown[slot] = step;
+        }
+    }
+    shown.sort_by_key(|step| step.number);
+    shown
+}
+
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}`
 pub async fn show(
     State(state): State<AppState>,
@@ -76,11 +92,19 @@ pub async fn show(
     }
     let urls = ActionsUrls::new(&loaded.urls.home());
     let job_url = urls.job(number, detail.job.id.0);
-    let mut steps = Vec::with_capacity(detail.steps.len());
+    let shown = preview_steps(&detail.steps);
+    let omitted_steps = detail.steps.len().saturating_sub(shown.len());
+    let bytes = JOB_PAGE_STEP_BYTES / shown.len().max(1);
+    let lines = JOB_PAGE_STEP_LINES / shown.len().max(1);
+    let mut steps = Vec::with_capacity(shown.len());
     if let Some(task) = detail.job.task_id {
-        for step in &detail.steps {
-            let log = step_log(&actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
-            steps.push(StepView::new(step, log, format!("{job_url}/logs?step={}", step.number)));
+        for step in shown {
+            let log = step_log(&actions, &loaded.ctx, task, step, lines, bytes).await?;
+            steps.push(StepView::new(
+                step,
+                log,
+                format!("/{owner}/{repo}/-/plugins/rbit.actions/logs?run={number}&job={}&step={}", job.0, step.number),
+            ));
         }
     }
     open_one(&mut steps);
@@ -88,64 +112,69 @@ pub async fn show(
     let finished = detail.job.status.is_done();
     let can_rerun = loaded.ctx.can_write_content() && finished && detail.run.status.is_done();
     Ok(JobPage {
-        page: page.titled(format!("{} · {} #{} · {}", detail.job.name, detail.run.workflow_name, number, loaded.ctx.repo.full_name())),
+        omitted_steps,
+        job_id: detail.job.id.0,
+        page: page.titled(format!(
+            "{} · {} #{} · {}",
+            crate::views::actions::preview_label(&detail.job.name),
+            crate::views::actions::preview_label(&detail.run.workflow_name),
+            number,
+            loaded.ctx.repo.full_name()
+        )),
         header: loaded.header(&state, "actions"),
         run: RunSummary::new(&detail.run, &people, &urls, loaded.urls.commit(&detail.run.sha)),
         run_url: urls.run(number),
-        name: detail.job.name.clone(),
+        name: crate::views::actions::preview_label(&detail.job.name),
         look: StateLook::of(detail.job.status),
         duration: crate::views::actions::job_duration(&detail.job),
-        labels: detail.job.runs_on.join(", "),
+        labels: crate::views::actions::preview_label(&detail.job.runs_on.join(", ")),
         active: !finished,
         self_url: job_url.clone(),
         steps,
-        raw_url: detail.job.task_id.map(|_| format!("{job_url}/logs/raw")),
-        rerun_url: can_rerun.then(|| format!("{job_url}/rerun")),
+        raw_url: detail.job.task_id.map(|_| format!("/{owner}/{repo}/actions/runs/{number}/jobs/{}/logs/raw", job.0)),
+        rerun_url: can_rerun.then(|| urls.run_action(number, "rerun-job")),
     })
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct StepQuery {
-    step: Option<i64>,
-}
-
-/// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs?step=n`: one step's log, up to
-/// `STEP_VIEW_LINES` of its last lines. Without `step`, the job page.
-pub async fn logs(
-    State(state): State<AppState>,
-    viewer: Viewer,
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn step_page(
+    state: &AppState,
+    viewer: &Viewer,
     page: Page,
-    Path((owner, repo, run, job)): Path<(String, String, String, String)>,
-    Query(query): Query<StepQuery>,
-) -> WebResult<Response> {
-    let actions = actions(&state)?;
-    let (number, job) = ids(&run, &job)?;
-    let loaded = RepoPage::load(&state, &viewer, &owner, &repo).await?;
+    owner: &str,
+    repo: &str,
+    run: &str,
+    job: &str,
+    wanted: i64,
+) -> WebResult<StepLogPage> {
+    let actions = actions(state)?;
+    let (number, job) = ids(run, job)?;
+    let loaded = RepoPage::load(state, viewer, owner, repo).await?;
     let detail = actions.job_detail(&loaded.ctx, job).await?;
     let job_url = ActionsUrls::new(&loaded.urls.home()).job(number, detail.job.id.0);
     if detail.run.number != number {
         return Err(WebError::NotFound);
     }
-    let Some(wanted) = query.step else {
-        return Ok(axum::response::Redirect::to(&job_url).into_response());
-    };
     let (Some(task), Some(step)) = (detail.job.task_id, detail.steps.iter().find(|step| step.number == wanted)) else {
         return Err(WebError::NotFound);
     };
-    let log = step_log(&actions, &loaded.ctx, task, step, STEP_VIEW_LINES, STEP_VIEW_BYTES).await?;
+    let log = step_log(&actions, &loaded.ctx, task, step, JOB_PAGE_STEP_LINES, JOB_PAGE_STEP_BYTES).await?;
     let view = StepView::new(step, log, String::new());
     Ok(StepLogPage {
-        page: page.titled(format!("{} · {} · {}", step.name, detail.job.name, loaded.ctx.repo.full_name())),
-        header: loaded.header(&state, "actions"),
-        job_name: detail.job.name.clone(),
+        page: page.titled(format!(
+            "{} · {} · {}",
+            crate::views::actions::preview_label(&step.name),
+            crate::views::actions::preview_label(&detail.job.name),
+            loaded.ctx.repo.full_name()
+        )),
+        header: loaded.header(state, "actions"),
+        job_name: crate::views::actions::preview_label(&detail.job.name),
         active: !step.status.is_done(),
-        self_url: format!("{job_url}/logs?step={wanted}"),
-        raw_url: format!("{job_url}/logs/raw"),
+        self_url: format!("/{owner}/{repo}/-/plugins/rbit.actions/logs?run={number}&job={}&step={wanted}", job.0),
+        raw_url: format!("/{owner}/{repo}/actions/runs/{number}/jobs/{}/logs/raw", job.0),
         job_url,
         step: view,
-    }
-    .into_response())
+    })
 }
 
 /// `GET /{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw`

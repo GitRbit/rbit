@@ -12,26 +12,16 @@
 //!
 //! Workstream U (interface and secrets) owns this file.
 
-use axum::{
-    Form,
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
-};
-use rbit_core::{
-    AccountId, RepoId, User,
-    actions::{DefaultTokenPermission, SecretVisibility},
-};
+use rbit_core::{RepoId, User, actions::SecretVisibility};
 use rbit_services::{
     ActionsService, OrgContext, ServiceError,
     actions::{secrets::ActionsTarget, settings::OwnerRepository},
 };
-use serde::Deserialize;
 
 use crate::{
     AppState,
     error::{WebError, WebResult},
-    extract::{SignedIn, Viewer},
+    extract::Viewer,
     routes::repo::RepoPage,
     views::{
         actions_settings::{
@@ -45,34 +35,15 @@ use crate::{
     },
 };
 
-pub(super) fn actions(state: &AppState) -> WebResult<ActionsService> {
+pub(crate) fn actions(state: &AppState) -> WebResult<ActionsService> {
     state.services.actions.snapshot().ok_or(WebError::NotFound)
-}
-
-/// `?done=` after a form's redirect.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub(super) struct DoneQuery {
-    done: String,
-}
-
-impl DoneQuery {
-    pub(super) fn notice(&self) -> Option<Notice> {
-        Notice::parse(&self.done)
-    }
-}
-
-pub(super) fn done(url: &str, notice: Notice) -> Response {
-    Redirect::to(&format!("{url}?done={}", notice.key())).into_response()
 }
 
 // ------------------------------------------------------------------ forms
 
-/// A secret or variable form. Read from the pairs, since an owner secret's repositories
-/// repeat the `repository` field.
 #[derive(Debug, Default)]
-pub(super) struct EntryForm {
-    pub(super) kind: String,
+pub(crate) struct EntryForm {
+    pub(crate) kind: String,
     action: String,
     name: String,
     value: String,
@@ -81,7 +52,7 @@ pub(super) struct EntryForm {
 }
 
 impl EntryForm {
-    pub(super) fn parse(pairs: Vec<(String, String)>) -> Self {
+    pub(crate) fn parse(pairs: Vec<(String, String)>) -> Self {
         let mut form = Self::default();
         for (key, value) in pairs {
             match key.as_str() {
@@ -104,8 +75,7 @@ impl EntryForm {
     }
 }
 
-/// Applies a secret form to `target`.
-pub(super) async fn apply_secret(
+pub(crate) async fn apply_secret(
     actions: &ActionsService,
     user: &User,
     target: ActionsTarget<'_>,
@@ -132,8 +102,7 @@ pub(super) async fn apply_secret(
     }
 }
 
-/// Applies a variable form to `target`.
-pub(super) async fn apply_variable(
+pub(crate) async fn apply_variable(
     actions: &ActionsService,
     user: &User,
     target: ActionsTarget<'_>,
@@ -148,9 +117,7 @@ pub(super) async fn apply_variable(
     }
 }
 
-/// The secrets and variables sections of `target`, posting to `secrets_url` and
-/// `variables_url`.
-pub(super) async fn sections(
+pub(crate) async fn sections(
     actions: &ActionsService,
     target: ActionsTarget<'_>,
     secrets_url: String,
@@ -169,9 +136,7 @@ pub(super) async fn sections(
     ))
 }
 
-/// Puts a rejected entry form's message (and, for a new one, what was submitted, never a
-/// secret's value) back on its section.
-pub(super) fn reject(
+pub(crate) fn reject(
     secrets: SecretsSection,
     variables: VariablesSection,
     form: &EntryForm,
@@ -188,8 +153,7 @@ pub(super) fn reject(
 
 // ------------------------------------------------------------------ repository
 
-/// Loads the repository for a viewer who may administer it; 404 for everyone else.
-pub(super) async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
+pub(crate) async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<RepoPage> {
     actions(state)?;
     let loaded = RepoPage::load(state, viewer, owner, repo).await?;
     if !loaded.ctx.access.can_admin() {
@@ -198,14 +162,21 @@ pub(super) async fn load_admin(state: &AppState, viewer: &Viewer, owner: &str, r
     Ok(loaded)
 }
 
-/// The repository's settings page with its stored values.
-async fn repo_page(state: &AppState, loaded: &RepoPage, page: Page, notice: Option<Notice>) -> WebResult<RepoActionsSettingsPage> {
+pub(crate) async fn repo_page(
+    state: &AppState,
+    loaded: &RepoPage,
+    mut page: Page,
+    notice: Option<Notice>,
+) -> WebResult<RepoActionsSettingsPage> {
     let actions = actions(state)?;
     let target = ActionsTarget::Repository(&loaded.ctx);
     let settings = actions.repo_settings(&loaded.ctx).await?;
     let base = format!("{}/settings", loaded.urls.home());
-    let action_url = format!("{base}/actions");
+    let action_url = format!("{}/-/plugins/rbit.actions/settings", loaded.urls.home());
     let (secrets, variables) = sections(&actions, target, format!("{action_url}/secrets"), format!("{action_url}/variables")).await?;
+    page.path = action_url.clone();
+    let secrets = secrets.bounded(&page);
+    let variables = variables.bounded(&page);
     Ok(RepoActionsSettingsPage {
         page: page.titled(format!("Actions · Settings · {}", loaded.ctx.repo.full_name())),
         header: loaded.header(state, "settings"),
@@ -224,183 +195,41 @@ async fn repo_page(state: &AppState, loaded: &RepoPage, page: Page, notice: Opti
     })
 }
 
-/// `GET /{owner}/{repo}/settings/actions`
-pub async fn repository(
-    State(state): State<AppState>,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Query(query): Query<DoneQuery>,
-) -> WebResult<RepoActionsSettingsPage> {
-    let loaded = load_admin(&state, &viewer, &owner, &repo).await?;
-    repo_page(&state, &loaded, page, query.notice()).await
-}
-
-/// `GET /{owner}/{repo}/settings/actions/{secrets,variables}`: the forms are on the page.
-pub async fn to_repository(Path((owner, repo)): Path<(String, String)>) -> Redirect {
-    Redirect::to(&format!("/{owner}/{repo}/settings/actions"))
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct GeneralForm {
-    enabled: Option<String>,
-    token_permission: String,
-}
-
-/// `POST /{owner}/{repo}/settings/actions`: the switch and the default token permission.
-pub async fn save_repository(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Form(form): Form<GeneralForm>,
-) -> WebResult<Response> {
-    let loaded = load_admin(&state, &viewer, &owner, &repo).await?;
-    let actions = actions(&state)?;
-    let Some(permission) = DefaultTokenPermission::parse(&form.token_permission) else {
-        let mut settings = repo_page(&state, &loaded, page, None).await?;
-        settings.general_error = FormError::new("Choose read or read and write.");
-        return Ok((StatusCode::UNPROCESSABLE_ENTITY, settings).into_response());
-    };
-    actions.set_repo_enabled(&user, &loaded.ctx, form.enabled.is_some()).await?;
-    actions.set_token_permission(&user, &loaded.ctx, permission).await?;
-    Ok(done(&format!("{}/settings/actions", loaded.urls.home()), Notice::Saved))
-}
-
-/// `POST /{owner}/{repo}/settings/actions/secrets`
-pub async fn repository_secret(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Form(pairs): Form<Vec<(String, String)>>,
-) -> WebResult<Response> {
-    let mut form = EntryForm::parse(pairs);
-    "secret".clone_into(&mut form.kind);
-    repository_entry(&state, &user, &viewer, page, (&owner, &repo), &form).await
-}
-
-/// `POST /{owner}/{repo}/settings/actions/variables`
-pub async fn repository_variable(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    page: Page,
-    Path((owner, repo)): Path<(String, String)>,
-    Form(pairs): Form<Vec<(String, String)>>,
-) -> WebResult<Response> {
-    let mut form = EntryForm::parse(pairs);
-    "variable".clone_into(&mut form.kind);
-    repository_entry(&state, &user, &viewer, page, (&owner, &repo), &form).await
-}
-
-async fn repository_entry(
-    state: &AppState,
-    user: &User,
-    viewer: &Viewer,
-    page: Page,
-    (owner, repo): (&str, &str),
-    form: &EntryForm,
-) -> WebResult<Response> {
-    let loaded = load_admin(state, viewer, owner, repo).await?;
-    let actions = actions(state)?;
-    let target = ActionsTarget::Repository(&loaded.ctx);
-    let result = if form.kind == "variable" {
-        apply_variable(&actions, user, target, form).await
-    } else {
-        apply_secret(&actions, user, target, form).await
-    };
-    match result {
-        Ok(notice) => Ok(done(&format!("{}/settings/actions", loaded.urls.home()), notice)),
-        Err(ServiceError::Invalid(message)) => {
-            let mut settings = repo_page(state, &loaded, page, None).await?;
-            (settings.secrets, settings.variables) = reject(settings.secrets, settings.variables, form, &message);
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, settings).into_response())
-        }
-        Err(other) => Err(other.into()),
-    }
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct TrustedForm {
-    user: String,
-}
-
-/// `POST /{owner}/{repo}/settings/actions/trusted`: stops trusting an author.
-pub async fn untrust(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    viewer: Viewer,
-    Path((owner, repo)): Path<(String, String)>,
-    Form(form): Form<TrustedForm>,
-) -> WebResult<Response> {
-    let loaded = load_admin(&state, &viewer, &owner, &repo).await?;
-    let author = AccountId(form.user.parse().map_err(|_| WebError::NotFound)?);
-    actions(&state)?.untrust_user(&user, &loaded.ctx, author).await?;
-    Ok(done(&format!("{}/settings/actions", loaded.urls.home()), Notice::Untrusted))
-}
-
 // ------------------------------------------------------------------ organisation
 
-/// The organisation, if `user` may manage it; 404 for everyone else.
-async fn managed_org(state: &AppState, user: &User, owner: &str) -> WebResult<OrgContext> {
+pub(crate) async fn managed_org(state: &AppState, user: &User, owner: &str) -> WebResult<OrgContext> {
     actions(state)?;
     let ctx = state.services.orgs.open(Some(user), owner).await?;
     if ctx.can_manage { Ok(ctx) } else { Err(WebError::NotFound) }
 }
 
-async fn org_page(state: &AppState, ctx: &OrgContext, page: Page, notice: Option<Notice>) -> WebResult<OrgActionsSettingsPage> {
-    let url = format!("/{}/settings/actions", ctx.org.name());
+pub(crate) async fn org_page(
+    state: &AppState,
+    ctx: &OrgContext,
+    mut page: Page,
+    notice: Option<Notice>,
+) -> WebResult<OrgActionsSettingsPage> {
+    let url = crate::actions_plugin_routes::global_url("org/settings");
     let (secrets, variables) = sections(&actions(state)?, ActionsTarget::Organization(ctx), url.clone(), url).await?;
+    page.path = crate::actions_plugin_routes::global_url("org/settings");
+    let secrets = secrets.bounded(&page);
+    let variables = variables.bounded(&page);
     Ok(OrgActionsSettingsPage {
         page: page.titled(format!("Actions · Settings · {}", ctx.org.label())),
         header: OrgHeader::new(ctx, OrgTab::Settings),
         notice,
         secrets,
         variables,
-        runners_url: format!("/{}/settings/actions/runners", ctx.org.name()),
+        runners_url: format!("{}?owner={}", crate::actions_plugin_routes::global_url("org/runners"), ctx.org.name()),
     })
 }
 
-/// `GET /{org}/settings/actions`
-pub async fn organization(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Path(owner): Path<String>,
-    Query(query): Query<DoneQuery>,
-) -> WebResult<OrgActionsSettingsPage> {
-    let ctx = managed_org(&state, &user, &owner).await?;
-    org_page(&state, &ctx, page, query.notice()).await
-}
-
-/// `POST /{org}/settings/actions`: every secret and variable form of the page.
-pub async fn save_organization(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Path(owner): Path<String>,
-    Form(pairs): Form<Vec<(String, String)>>,
-) -> WebResult<Response> {
-    let ctx = managed_org(&state, &user, &owner).await?;
-    let form = EntryForm::parse(pairs);
-    match apply(&actions(&state)?, &user, ActionsTarget::Organization(&ctx), &form).await {
-        Ok(notice) => Ok(done(&format!("/{}/settings/actions", ctx.org.name()), notice)),
-        Err(ServiceError::Invalid(message)) => {
-            let mut settings = org_page(&state, &ctx, page, None).await?;
-            (settings.secrets, settings.variables) = reject(settings.secrets, settings.variables, &form, &message);
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, settings).into_response())
-        }
-        Err(other) => Err(other.into()),
-    }
-}
-
-/// Applies an owner page's form, by its `kind`.
-async fn apply(actions: &ActionsService, user: &User, target: ActionsTarget<'_>, form: &EntryForm) -> Result<Notice, ServiceError> {
+pub(crate) async fn apply(
+    actions: &ActionsService,
+    user: &User,
+    target: ActionsTarget<'_>,
+    form: &EntryForm,
+) -> Result<Notice, ServiceError> {
     match form.kind.as_str() {
         "secret" => apply_secret(actions, user, target, form).await,
         "variable" => apply_variable(actions, user, target, form).await,
@@ -410,48 +239,23 @@ async fn apply(actions: &ActionsService, user: &User, target: ActionsTarget<'_>,
 
 // ------------------------------------------------------------------ personal
 
-const PERSONAL_URL: &str = SettingsSection::Actions.url();
+const PERSONAL_URL: &str = "/-/plugins/rbit.actions/settings";
 
-async fn user_page(state: &AppState, user: &User, page: Page, notice: Option<Notice>) -> WebResult<UserActionsSettingsPage> {
+pub(crate) async fn user_page(state: &AppState, user: &User, mut page: Page, notice: Option<Notice>) -> WebResult<UserActionsSettingsPage> {
     let (secrets, variables) =
         sections(&actions(state)?, ActionsTarget::User(user), PERSONAL_URL.to_owned(), PERSONAL_URL.to_owned()).await?;
+    page.path = PERSONAL_URL.into();
+    let secrets = secrets.bounded(&page);
+    let variables = variables.bounded(&page);
+    let title = page.locale.text("core", "title-actions");
     Ok(UserActionsSettingsPage {
-        page: page.titled(crate::i18n::text("core", "title-actions")),
+        page: page.titled(title),
         settings_nav: SettingsSection::Actions.nav(),
         notice,
         secrets,
         variables,
-        runners_url: "/settings/actions/runners".to_owned(),
+        runners_url: "/-/plugins/rbit.actions/settings/runners".to_owned(),
     })
-}
-
-/// `GET /settings/actions`: the signed-in user's own secrets and variables.
-pub async fn personal(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Query(query): Query<DoneQuery>,
-) -> WebResult<UserActionsSettingsPage> {
-    user_page(&state, &user, page, query.notice()).await
-}
-
-/// `POST /settings/actions`: every secret and variable form of the page.
-pub async fn save_personal(
-    State(state): State<AppState>,
-    SignedIn(user): SignedIn,
-    page: Page,
-    Form(pairs): Form<Vec<(String, String)>>,
-) -> WebResult<Response> {
-    let form = EntryForm::parse(pairs);
-    match apply(&actions(&state)?, &user, ActionsTarget::User(&user), &form).await {
-        Ok(notice) => Ok(done(PERSONAL_URL, notice)),
-        Err(ServiceError::Invalid(message)) => {
-            let mut settings = user_page(&state, &user, page, None).await?;
-            (settings.secrets, settings.variables) = reject(settings.secrets, settings.variables, &form, &message);
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, settings).into_response())
-        }
-        Err(other) => Err(other.into()),
-    }
 }
 
 #[cfg(test)]

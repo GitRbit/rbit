@@ -3,6 +3,7 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
+<div hx-history="false" hx-boost="false">
 {#- Workflows stack above the runs on phones and sit beside them from `md` up. -#}
 <div class="flex flex-col gap-6 md:flex-row md:items-start">
   <nav class="md:w-56 md:shrink-0" aria-label="{{ crate::i18n::text("actions", "actions-runs-aria-label-workflows") }}">
@@ -19,7 +20,9 @@
     <div class="mb-3 flex min-h-8 items-center gap-3">
       <h1 class="text-[13px] font-medium text-ink-muted">{% if let Some(name) = workflow %}{{ name }}{% else %}All workflow runs{% endif %}</h1>
       {% if let Some(url) = switch_url %}
-      <form method="post" action="{{ url }}" class="ml-auto">
+      <form hx-boost="false" method="post" action="{{ url }}" class="ml-auto">
+<input type="hidden" name="_csrf" value="{{ page.plugin_csrf(url) }}">
+<input type="hidden" name="workflow" value="{{ workflow_file }}">
         <input type="hidden" name="disabled" value="{% if disabled %}false{% else %}true{% endif %}">
         <button class="btn h-10 sm:h-8" type="submit">{% if disabled %}{{ crate::i18n::text("actions", "actions-runs-button-enable-workflow") }}{% else %}{{ crate::i18n::text("actions", "actions-runs-button-disable-workflow") }}{% endif %}</button>
       </form>
@@ -33,6 +36,7 @@
     {% if let Some(form) = dispatch %}{% include "actions/dispatch.html" %}{% endif %}
 
     <form method="get" action="{{ filters.action }}" class="mb-3 flex flex-wrap items-center gap-2" role="search">
+{% if !workflow_file.is_empty() %}<input type="hidden" name="workflow" value="{{ workflow_file }}">{% endif %}
       <label class="sr-only" for="runs-branch">{{ crate::i18n::text("actions", "actions-runs-label-branch") }}</label>
       <input class="input min-w-0 flex-1 basis-36 sm:max-w-48" id="runs-branch" type="search" name="branch" value="{{ filters.branch }}" placeholder="{{ crate::i18n::text("actions", "actions-runs-placeholder-branch") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
       <label class="sr-only" for="runs-actor">{{ crate::i18n::text("actions", "actions-runs-label-actor") }}</label>
@@ -101,5 +105,6 @@
     {% endif %}
     </div>
   </div>
+</div>
 </div>
 {% endblock %}

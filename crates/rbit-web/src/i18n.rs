@@ -42,6 +42,11 @@ pub(crate) async fn scope<T>(snapshot: LocaleSnapshot, future: impl Future<Outpu
     MESSAGES.scope(snapshot, future).await
 }
 
+#[cfg(feature = "actions")]
+pub(crate) fn render_scope<T>(snapshot: LocaleSnapshot, render: impl FnOnce() -> T) -> T {
+    MESSAGES.sync_scope(snapshot, render)
+}
+
 /// A bounded typed count used by the language-pack administrator page.
 #[must_use]
 pub fn pack_count(count: usize) -> String {

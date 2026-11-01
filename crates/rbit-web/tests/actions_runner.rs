@@ -65,7 +65,9 @@ impl Fixture {
         let input = CreateRepository { name: "rocket".into(), description: String::new(), visibility: Visibility::Private };
         let repo = services.repositories.create(&alice, input).await.unwrap();
         database.actions_settings().set_enabled(repo.repo.id, true, rbit_core::Timestamp::now()).await.unwrap();
-        let router = rbit_web::router(AppState::new(config, services.clone()));
+        let state = AppState::new(config, services.clone());
+        rbit_web::prepare_plugin_routes(&state).await.unwrap();
+        let router = rbit_web::router(state);
         Self { _directory: directory, services, database, router, alice }
     }
 

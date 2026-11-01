@@ -1,5 +1,7 @@
 //! Plugin controls remain on one router across runtime transitions.
 
+#[cfg(feature = "actions")]
+mod actions_routes;
 #[cfg(feature = "i18n")]
 mod i18n_recovery;
 #[cfg(feature = "i18n")]
@@ -160,7 +162,7 @@ async fn plugin_administration_is_host_owned_and_requires_an_administrator() {
 async fn runtime_refusals_report_the_revision_needed_to_refresh_an_open_page() {
     let fixture = Fixture::new().await;
     let revision = fixture.services.plugin_revision().to_string();
-    let (status, _, headers) = fixture.get("/alice/rocket/actions").await;
+    let (status, _, headers) = fixture.get("/alice/rocket/-/plugins/rbit.actions/runs").await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(headers["rbit-plugin-revision"], revision);
     for authorization in [format!("Bearer rbat_{}", "a".repeat(43)), format!("Bearer {}", "a".repeat(4097))] {
@@ -230,7 +232,7 @@ async fn one_router_reflects_enable_and_disable_in_pages_navigation_and_openapi(
             assert_eq!(status, StatusCode::SEE_OTHER);
             assert_eq!(headers["hx-redirect"], "/admin/plugins");
         }
-        let (status, _, _) = fixture.get("/alice/rocket/actions").await;
+        let (status, _, _) = fixture.get("/alice/rocket/-/plugins/rbit.actions/runs").await;
         assert_eq!(status, if enabled { StatusCode::OK } else { StatusCode::NOT_FOUND });
         let (_, body, _) = fixture.get("/alice/rocket").await;
         assert_eq!(body.contains("data-repo-tab=\"rbit.actions:actions-repository-tab\""), enabled);

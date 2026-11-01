@@ -97,8 +97,8 @@ const MAX_RAW_BYTES: usize = 100 * 1024 * 1024;
 // ------------------------------------------------------------------ browsing helpers
 
 /// Everything a repository page needs before rendering its specific content.
-pub(super) struct RepoPage {
-    pub(super) ctx: RepoContext,
+pub(crate) struct RepoPage {
+    pub(crate) ctx: RepoContext,
     pub(super) urls: RepoUrls,
     refs: Vec<RefSummary>,
     stars: StarSummary,
@@ -113,7 +113,7 @@ pub(super) struct RepoPage {
 impl RepoPage {
     /// The repository, access-checked, with its header's data from the same statement
     /// ([`rbit_services::RepositoryService::open_page`]), and its refs.
-    pub(super) async fn load(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
+    pub(crate) async fn load(state: &AppState, viewer: &Viewer, owner: &str, repo: &str) -> WebResult<Self> {
         let (mut ctx, header) = state.services.repositories.open_page(viewer.user(), owner, repo).await?;
         ctx.reader = ctx.reader.pinned();
         let urls = RepoUrls::new(ctx.repo.owner.name.as_str(), ctx.repo.repo.name.as_str());

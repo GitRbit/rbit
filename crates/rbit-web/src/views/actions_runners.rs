@@ -48,7 +48,7 @@ pub struct RunnerRow {
 }
 
 impl RunnerRow {
-    pub fn new(runner: &Runner, manageable: bool, base_url: &str, now: Timestamp) -> Self {
+    pub fn new(runner: &Runner, manageable: bool, action_url: &str, now: Timestamp) -> Self {
         let backends: Vec<&str> = runner
             .capabilities
             .backends
@@ -85,7 +85,7 @@ impl RunnerRow {
             ephemeral: runner.ephemeral,
             disabled: runner.disabled,
             manageable,
-            url: format!("{base_url}/{}", runner.id.0),
+            url: action_url.to_owned(),
         }
     }
 }
@@ -252,13 +252,13 @@ mod tests {
     #[test]
     fn runners_say_where_they_run_and_whether_they_are_there() {
         let now = Timestamp(10_000);
-        let row = RunnerRow::new(&runner(Some(Timestamp(9_950)), false), true, "/admin/runners", now);
+        let row = RunnerRow::new(&runner(Some(Timestamp(9_950)), false), true, "/-/plugins/rbit.actions/admin/runner", now);
         assert_eq!(
             (row.state, row.scope, row.backends.as_str(), row.platform.as_str()),
             ("online", "instance", "container, host", "linux/x86_64")
         );
         assert!(row.host, "a host label means no isolation");
-        assert_eq!(row.url, "/admin/runners/3");
+        assert_eq!(row.url, "/-/plugins/rbit.actions/admin/runner");
         assert_eq!(RunnerRow::new(&runner(Some(Timestamp(1)), false), true, "", now).state, "offline");
         assert_eq!(RunnerRow::new(&runner(None, false), true, "", now).state, "never seen");
         assert_eq!(RunnerRow::new(&runner(Some(now), true), true, "", now).state, "disabled");

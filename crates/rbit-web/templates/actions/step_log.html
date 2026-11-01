@@ -3,6 +3,7 @@
 {% block nav_context %}{% include "repo/nav_context.html" %}{% endblock %}
 {% block subnav %}{% include "repo/subnav.html" %}{% endblock %}
 {% block content %}
+<div hx-history="false" hx-boost="false">
 <p class="mb-3 truncate text-xs text-ink-muted"><a class="hover:text-ink hover:underline hover:underline-offset-4" href="{{ job_url }}">{{ job_name }}</a></p>
 
 <section id="step" {% if active %}hx-get="{{ self_url }}" hx-trigger="every 3s" hx-select="#step" hx-target="this" hx-swap="outerHTML"{% endif %}>
@@ -16,4 +17,5 @@
     {% include "actions/step_body.html" %}
   </div>
 </section>
+</div>
 {% endblock %}

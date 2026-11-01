@@ -43,14 +43,18 @@
         </div>
         {% if runner.manageable %}
         <div class="flex shrink-0 gap-2">
-          <form method="post" action="{{ runner.url }}">
+          <form method="post" action="{{ runner.url }}" hx-boost="false">
+            {% call ui::plugin_form(page, runner.url) %}{% endcall %}
+            <input type="hidden" name="runner" value="{{ runner.id }}">
             {% if runner.disabled %}
             <button class="btn h-10 sm:h-8" type="submit" name="action" value="enable">{{ crate::i18n::text("actions", "actions-runners-section-button-enable") }}</button>
             {% else %}
             <button class="btn h-10 sm:h-8" type="submit" name="action" value="disable">{{ crate::i18n::text("actions", "actions-runners-section-button-disable") }}</button>
             {% endif %}
           </form>
-          <form method="post" action="{{ runner.url }}">
+          <form method="post" action="{{ runner.url }}" hx-boost="false">
+            {% call ui::plugin_form(page, runner.url) %}{% endcall %}
+            <input type="hidden" name="runner" value="{{ runner.id }}">
             <button class="btn btn-danger h-10 sm:h-8" type="submit" name="action" value="remove" aria-label="Remove {{ runner.name }}">{{ crate::i18n::text("actions", "actions-runners-section-button-remove") }}</button>
           </form>
         </div>
@@ -65,7 +69,8 @@
 <section class="mt-8" aria-labelledby="tokens-title">
   <h2 id="tokens-title" class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-runners-section-h2-registration-tokens") }}</h2>
   <p class="mt-1 text-[13px] text-ink-muted">{{ crate::i18n::text("actions", "actions-runners-section-p-a-runner-trades-a-registration-token-for-its-own-credential-once") }}</p>
-  <form method="post" action="{{ section.action_url }}" class="box mt-4" novalidate>
+  <form method="post" action="{{ section.action_url }}" hx-boost="false" class="box mt-4" novalidate>
+    {% call ui::plugin_form(page, section.action_url) %}{% endcall %}
     <div class="grid gap-4 p-4 sm:grid-cols-2">
       <div class="sm:col-span-2">{% call ui::form_error(section.error) %}{% endcall %}</div>
       <div>
@@ -82,7 +87,7 @@
         <input class="input font-mono" id="token-labels" name="labels" placeholder="{{ crate::i18n::text("actions", "actions-runners-section-placeholder-ubuntu-latest-arm64") }}" autocomplete="off" autocapitalize="none" spellcheck="false">
       </div>
       <label class="flex min-h-11 cursor-pointer items-center gap-3 sm:col-span-2">
-        <input class="accent-(--ink)" type="checkbox" name="reusable" value="on">
+        <input class="accent-(--ink)" type="checkbox" name="reusable" value="true">
         <span class="text-[13px]">{{ crate::i18n::text("actions", "actions-runners-section-span-allow-any-number-of-runners-to-register-with-it-until-it-expires") }}</span>
       </label>
     </div>
@@ -99,7 +104,8 @@
         <p class="text-xs text-ink-muted">{{ token.uses }}{% if let Some(labels) = token.labels %} · <span class="font-mono">{{ labels }}</span>{% endif %}</p>
       </div>
       {% if token.usable %}
-      <form method="post" action="{{ section.action_url }}" class="shrink-0">
+      <form method="post" action="{{ section.action_url }}" hx-boost="false" class="shrink-0">
+        {% call ui::plugin_form(page, section.action_url) %}{% endcall %}
         <input type="hidden" name="token" value="{{ token.id }}">
         <button class="btn h-10 sm:h-8" type="submit" name="action" value="revoke">{{ crate::i18n::text("actions", "actions-runners-section-button-revoke") }}</button>
       </form>

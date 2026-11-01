@@ -254,3 +254,9 @@
 {% call logo(class, px) %}{% endcall %}
 {% else %}<img src="{{ page.branding.logo_url }}" width="{{ px }}" height="{{ px }}" class="{{ class }} object-contain" alt="" aria-hidden="true">{% endif %}
 {% endmacro %}
+
+{# Explicit host-issued plugin proof and typed owner/environment fields. #}
+{% macro plugin_form(page, action) %}
+<input type="hidden" name="_csrf" value="{{ page.plugin_csrf(action) }}">
+{% for field in page.plugin_fields %}<input type="hidden" name="{{ field.0 }}" value="{{ field.1 }}">{% endfor %}
+{% endmacro %}

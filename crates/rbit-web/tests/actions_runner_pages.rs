@@ -1,6 +1,4 @@
-//! Actions workstream U: the runners pages of a repository, an organisation, a user and the
-//! instance — a token created on the page registers a real runner over the protocol, which
-//! the page then lists, disables and removes.
+//! Native runner forms retain the real runner protocol and scope authorization.
 
 use axum::{
     body::{Body, to_bytes},
@@ -11,25 +9,52 @@ use tower::ServiceExt;
 
 use crate::actions_runner::{Fixture, register_body};
 
-async fn send(fixture: &Fixture, user: &rbit_core::User, method: Method, path: &str, form: &str) -> (StatusCode, String, Option<String>) {
-    let token = fixture.services.accounts.start_session(user).await.unwrap();
-    let request = Request::builder()
-        .method(method)
-        .uri(path)
-        .header(header::COOKIE, format!("rbit_session={}", token.encode()))
-        .header(header::HOST, "localhost:3000")
-        .header(header::ORIGIN, "http://localhost:3000")
-        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-        .body(Body::from(form.to_owned()))
-        .unwrap();
-    let response = fixture.router.clone().oneshot(request).await.unwrap();
-    let status = response.status();
-    let location = response.headers().get(header::LOCATION).map(|value| value.to_str().unwrap().to_owned());
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    (status, String::from_utf8_lossy(&body).into_owned(), location)
+const REPO_RUNNERS: &str = "/alice/rocket/-/plugins/rbit.actions/settings/runners";
+const REPO_RUNNER: &str = "/alice/rocket/-/plugins/rbit.actions/settings/runner";
+
+struct Browser<'a> {
+    fixture: &'a Fixture,
+    cookie: String,
+}
+impl<'a> Browser<'a> {
+    async fn new(fixture: &'a Fixture, user: &rbit_core::User) -> Self {
+        let token = fixture.services.accounts.start_session(user).await.unwrap();
+        Self { fixture, cookie: format!("rbit_session={}", token.encode()) }
+    }
+    async fn send(&self, method: Method, path: &str, form: &str) -> (StatusCode, String, Option<String>) {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::COOKIE, &self.cookie)
+            .header(header::HOST, "git.example.com")
+            .header(header::ORIGIN, "https://git.example.com")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(form.to_owned()))
+            .unwrap();
+        let response = self.fixture.router.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let location = response.headers().get(header::LOCATION).map(|value| value.to_str().unwrap().to_owned());
+        let body = to_bytes(response.into_body(), 2 * 1024 * 1024).await.unwrap();
+        (status, String::from_utf8_lossy(&body).into_owned(), location)
+    }
+    async fn post(&self, page: &str, action: &str, form: &str) -> (StatusCode, String, Option<String>) {
+        let (status, html, _) = self.send(Method::GET, page, "").await;
+        assert_eq!(status, StatusCode::OK);
+        let proof = proof(&html, action);
+        self.send(Method::POST, action, &format!("_csrf={proof}&{form}")).await
+    }
 }
 
-/// The token value shown on a page after creating one.
+fn proof(html: &str, action: &str) -> String {
+    let target = format!("action=\"{action}\"");
+    let form = html.split("<form ").find(|form| form.split("</form>").next().unwrap().contains(&target)).expect("authorized action");
+    let proof = form.split("name=\"_csrf\" value=\"").nth(1).unwrap().split('"').next().unwrap();
+    assert!(!proof.is_empty());
+    proof.to_owned()
+}
+
+/// The token value is only present in the successful POST response.
 fn issued(page: &str) -> String {
     let start = page.find(r#"id="issued-token" class="input rounded-r-none font-mono text-xs" value=""#).expect("a token is shown");
     let rest = &page[start..];
@@ -40,52 +65,47 @@ fn issued(page: &str) -> String {
 #[tokio::test]
 async fn a_token_from_the_page_registers_a_runner_the_page_then_manages() {
     let fixture = Fixture::new().await;
-    let alice = fixture.alice.clone();
-    let page_url = "/alice/rocket/settings/actions/runners";
-
-    let (status, page, _) = send(&fixture, &alice, Method::GET, page_url, "").await;
+    let browser = Browser::new(&fixture, &fixture.alice).await;
+    let (status, page, _) = browser.send(Method::GET, REPO_RUNNERS, "").await;
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains("No runners yet"));
-    let (status, settings, _) = send(&fixture, &alice, Method::GET, "/alice/rocket/settings/actions", "").await;
+    let (status, settings, _) = browser.send(Method::GET, "/alice/rocket/-/plugins/rbit.actions/settings", "").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(settings.contains(page_url), "the Actions settings link to the runners");
-
-    let (status, page, _) = send(&fixture, &alice, Method::POST, page_url, "action=create&lifetime=86400&labels=linux").await;
+    assert!(settings.contains(REPO_RUNNERS));
+    let (status, page, _) = browser.post(REPO_RUNNERS, REPO_RUNNERS, "action=create&lifetime=86400&labels=linux").await;
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains("Registration token created") && page.contains("rbit-runner register --url"));
     let token = issued(&page);
-    assert!(token.starts_with("rbrg_"), "{token}");
-    let (_, again, _) = send(&fixture, &alice, Method::GET, page_url, "").await;
-    assert!(!again.contains(&token), "the token is shown once");
+    assert!(token.starts_with("rbrg_"));
+    let (_, again, _) = browser.send(Method::GET, REPO_RUNNERS, "").await;
+    assert!(!again.contains(&token));
     assert!(again.contains("1 use left") && again.contains("linux"));
-
     let answer = fixture.call("register", None, register_body(&token, "build-1", &["linux"]).to_string()).await;
     assert_eq!(answer.status, StatusCode::OK, "{}", answer.json);
     let runner = answer.json["runner_id"].as_i64().unwrap();
-    let (_, page, _) = send(&fixture, &alice, Method::GET, page_url, "").await;
+    let (_, page, _) = browser.send(Method::GET, REPO_RUNNERS, "").await;
     assert!(page.contains("build-1") && page.contains("container, host") && page.contains("linux/x86_64"));
-    assert!(page.contains("used up"), "a single-use token is spent");
-
-    let runner_url = format!("{page_url}/{runner}");
-    let (status, _, location) = send(&fixture, &alice, Method::POST, &runner_url, "action=disable").await;
-    assert!(status.is_redirection());
-    assert_eq!(location.as_deref(), Some(page_url));
-    let (_, page, _) = send(&fixture, &alice, Method::GET, page_url, "").await;
+    assert!(page.contains("used up"));
+    let (status, _, location) = browser.post(REPO_RUNNERS, REPO_RUNNER, &format!("action=disable&runner={runner}")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location.as_deref(), Some(REPO_RUNNERS));
+    let (_, page, _) = browser.send(Method::GET, REPO_RUNNERS, "").await;
     assert!(page.contains("disabled") && page.contains(r#"value="enable""#));
-    send(&fixture, &alice, Method::POST, &runner_url, "action=remove").await;
-    let (_, page, _) = send(&fixture, &alice, Method::GET, page_url, "").await;
+    let (status, ..) = browser.post(REPO_RUNNERS, REPO_RUNNER, &format!("action=remove&runner={runner}")).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (_, page, _) = browser.send(Method::GET, REPO_RUNNERS, "").await;
     assert!(page.contains("No runners yet"));
-
-    let (_, page, _) = send(&fixture, &alice, Method::POST, page_url, "action=create&labels=not%20a%20label").await;
-    assert!(page.contains("role=\"alert\""), "a malformed label is refused on the form");
+    let (status, page, _) = browser.post(REPO_RUNNERS, REPO_RUNNERS, "action=create&labels=not%20a%20label").await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(page.contains("role=\"alert\""));
 }
 
 #[tokio::test]
 async fn tokens_can_be_revoked_and_strangers_see_nothing() {
     let fixture = Fixture::new().await;
-    let alice = fixture.alice.clone();
-    let page_url = "/alice/rocket/settings/actions/runners";
-    send(&fixture, &alice, Method::POST, page_url, "action=create&reusable=on").await;
+    let browser = Browser::new(&fixture, &fixture.alice).await;
+    let (status, ..) = browser.post(REPO_RUNNERS, REPO_RUNNERS, "action=create&reusable=true").await;
+    assert_eq!(status, StatusCode::OK);
     let token = fixture
         .database
         .actions_runners()
@@ -93,9 +113,9 @@ async fn tokens_can_be_revoked_and_strangers_see_nothing() {
         .await
         .unwrap()
         .remove(0);
-    let (_, page, _) = send(&fixture, &alice, Method::POST, page_url, &format!("action=revoke&token={}", token.id.0)).await;
+    let (status, page, _) = browser.post(REPO_RUNNERS, REPO_RUNNERS, &format!("action=revoke&token={}", token.id.0)).await;
+    assert_eq!(status, StatusCode::OK);
     assert!(page.contains("revoked") || page.contains("no longer usable"));
-
     let bob = fixture
         .services
         .accounts
@@ -105,39 +125,47 @@ async fn tokens_can_be_revoked_and_strangers_see_nothing() {
         )
         .await
         .unwrap();
-    for path in [page_url, "/admin/runners"] {
-        let (status, ..) = send(&fixture, &bob, Method::GET, path, "").await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
+    let stranger = Browser::new(&fixture, &bob).await;
+    for path in [REPO_RUNNERS, "/-/plugins/rbit.actions/admin/runners"] {
+        assert_eq!(stranger.send(Method::GET, path, "").await.0, StatusCode::NOT_FOUND);
     }
-    let (status, ..) = send(&fixture, &bob, Method::POST, page_url, "action=create").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(stranger.send(Method::POST, REPO_RUNNERS, "action=create").await.0, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn owners_and_administrators_have_their_own_runners_pages() {
     let fixture = Fixture::new().await;
-    let alice = fixture.alice.clone();
-    let (status, page, _) = send(&fixture, &alice, Method::GET, "/settings/actions/runners", "").await;
+    let browser = Browser::new(&fixture, &fixture.alice).await;
+    let personal = "/-/plugins/rbit.actions/settings/runners";
+    let (status, page, _) = browser.send(Method::GET, personal, "").await;
     assert_eq!(status, StatusCode::OK);
     assert!(page.contains("your repositories"));
-    let (_, page, _) = send(&fixture, &alice, Method::POST, "/settings/actions/runners", "action=create").await;
-    assert!(issued(&page).starts_with("rbrg_"));
-
-    let (status, page, _) = send(&fixture, &alice, Method::GET, "/admin/runners", "").await;
+    let (status, page, _) = browser.post(personal, personal, "action=create").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(page.contains(r#"href="/admin/runners""#), "the admin navigation lists runners with Actions on");
-    let (_, page, _) = send(&fixture, &alice, Method::POST, "/admin/runners", "action=create&lifetime=3600").await;
     assert!(issued(&page).starts_with("rbrg_"));
-
+    let admin = "/-/plugins/rbit.actions/admin/runners";
+    let (status, page, _) = browser.send(Method::GET, admin, "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains(&format!("href=\"{admin}\"")));
+    let (status, page, _) = browser.post(admin, admin, "action=create&lifetime=3600").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(issued(&page).starts_with("rbrg_"));
     fixture
         .services
         .orgs
-        .create(&alice, rbit_services::CreateOrganization { name: "acme".into(), display_name: String::new(), description: String::new() })
+        .create(
+            &fixture.alice,
+            rbit_services::CreateOrganization { name: "acme".into(), display_name: String::new(), description: String::new() },
+        )
         .await
         .unwrap();
-    let (status, page, _) = send(&fixture, &alice, Method::GET, "/acme/settings/actions/runners", "").await;
+    let organization = "/-/plugins/rbit.actions/org/runners?owner=acme";
+    let (status, page, _) = browser.send(Method::GET, organization, "").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(page.contains("acme"));
-    let (_, settings, _) = send(&fixture, &alice, Method::GET, "/acme/settings/actions", "").await;
-    assert!(settings.contains("/acme/settings/actions/runners"));
+    assert!(page.contains("acme") && page.contains("name=\"owner\" value=\"acme\""));
+    let (status, page, _) = browser.post(organization, "/-/plugins/rbit.actions/org/runners", "action=create&owner=acme").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(issued(&page).starts_with("rbrg_"));
+    let (_, settings, _) = browser.send(Method::GET, "/-/plugins/rbit.actions/org/settings?owner=acme", "").await;
+    assert!(settings.contains(organization));
 }

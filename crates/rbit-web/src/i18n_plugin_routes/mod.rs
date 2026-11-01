@@ -17,7 +17,12 @@ pub async fn prepare_plugin_routes(state: &AppState) -> Result<(), rbit_services
             let (active, management) = (language::bundle(state.downgrade())?, management::bundle(state.downgrade())?);
             #[cfg(not(feature = "i18n"))]
             let (active, management) = (rbit_services::I18nRouteBundle::default(), rbit_services::I18nRouteBundle::default());
-            state.services.bind_i18n_routes(active, management).await
+            state.services.bind_i18n_routes(active, management).await?;
+            #[cfg(feature = "actions")]
+            let actions = crate::actions_plugin_routes::bundle(state.downgrade())?;
+            #[cfg(not(feature = "actions"))]
+            let actions = rbit_services::ActionsRouteBundle::default();
+            state.services.bind_actions_routes(actions).await
         })
         .await
         .copied()

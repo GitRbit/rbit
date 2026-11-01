@@ -30,14 +30,46 @@ struct Web<'a> {
 
 impl Web<'_> {
     async fn send(&self, method: Method, path: &str, body: &str) -> (StatusCode, String, Option<String>) {
+        let mut form = body.to_owned();
+        let base = path.split('?').next().unwrap();
+        if method == Method::POST && path.contains("/-/plugins/rbit.actions/") {
+            let query = path.split_once('?').map_or("", |(_, query)| query);
+            let source = if base.ends_with("/review") {
+                format!("{}?{query}", base.trim_end_matches("review").to_owned() + "run")
+            } else {
+                let source = base
+                    .strip_suffix("/delete")
+                    .or_else(|| base.strip_suffix("/secrets"))
+                    .or_else(|| base.strip_suffix("/variables"))
+                    .unwrap_or(base);
+                if query.is_empty() { source.to_owned() } else { format!("{source}?{query}") }
+            };
+            let get = Request::builder().uri(source).header(header::COOKIE, &self.cookie).body(Body::empty()).unwrap();
+            let response = self.fixture.router.clone().oneshot(get).await.unwrap();
+            let markup = String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).into_owned();
+            let action = markup.split(&format!("action=\"{base}\"")).nth(1).unwrap_or_default();
+            if let Some(proof) = action.split("name=\"_csrf\" value=\"").nth(1).and_then(|s| s.split('"').next()) {
+                if !form.is_empty() {
+                    form.push('&');
+                }
+                form.push_str(&format!("_csrf={proof}"));
+            }
+            if !query.is_empty() {
+                if !form.is_empty() {
+                    form.push('&');
+                }
+                form.push_str(query);
+            }
+        }
+        let target = if method == Method::POST { base } else { path };
         let request = Request::builder()
             .method(method)
-            .uri(path)
+            .uri(target)
             .header(header::COOKIE, &self.cookie)
-            .header(header::HOST, "localhost:3000")
-            .header(header::ORIGIN, "http://localhost:3000")
+            .header(header::HOST, "git.example.com")
+            .header(header::ORIGIN, "https://git.example.com")
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(Body::from(body.to_owned()))
+            .body(Body::from(form))
             .unwrap();
         let response = self.fixture.router.clone().oneshot(request).await.unwrap();
         let status = response.status();
@@ -87,35 +119,41 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
     let credential = fixture.runner(&["linux"]).await;
 
     // The settings pages: a new environment, its rules, a secret and a variable.
-    let (status, _, location) = web.send(Method::POST, "/alice/rocket/settings/actions/environments", "name=production").await;
+    let (status, _, location) =
+        web.send(Method::POST, "/alice/rocket/-/plugins/rbit.actions/settings/environments", "name=production").await;
     assert!(status.is_redirection(), "{status}");
-    assert_eq!(location.as_deref(), Some("/alice/rocket/settings/actions/environments/production"));
+    assert_eq!(location.as_deref(), Some("/alice/rocket/-/plugins/rbit.actions/settings/environment?environment=production"));
     let (status, _, _) = web
         .send(
             Method::POST,
-            "/alice/rocket/settings/actions/environments/production",
+            "/alice/rocket/-/plugins/rbit.actions/settings/environment?environment=production",
             "reviewers=alice&policy=selected&patterns=main%0Arelease%2F*",
         )
         .await;
     assert!(status.is_redirection(), "{status}");
-    let (status, page, _) =
-        web.send(Method::POST, "/alice/rocket/settings/actions/environments/production", "reviewers=nobody&policy=all").await;
+    let (status, page, _) = web
+        .send(
+            Method::POST,
+            "/alice/rocket/-/plugins/rbit.actions/settings/environment?environment=production",
+            "reviewers=nobody&policy=all",
+        )
+        .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(page.contains("There is no user called nobody"), "{page}");
     let environment = actions.environment(&repo, "production").await.unwrap();
     let target = ActionsTarget::Environment(&repo, &environment);
     actions.put_secret(&fixture.alice, target, "DEPLOY_KEY", "s3cret-deploy-key", SecretVisibility::All).await.unwrap();
     actions.put_variable(&fixture.alice, target, "REGION", "eu-west").await.unwrap();
-    let list = web.page("/alice/rocket/settings/actions/environments").await;
+    let list = web.page("/alice/rocket/-/plugins/rbit.actions/settings/environments").await;
     assert!(list.contains("production") && list.contains("1 reviewer · branches main, release/*"), "{list}");
-    let settings = web.page("/alice/rocket/settings/actions/environments/production").await;
+    let settings = web.page("/alice/rocket/-/plugins/rbit.actions/settings/environment?environment=production").await;
     assert!(settings.contains("DEPLOY_KEY") && settings.contains("eu-west") && !settings.contains("s3cret-deploy-key"), "{settings}");
 
     // The job waits: no runner may take it, and the run page asks the reviewer.
     let run = seed(&fixture, &[payload(&deploy("production"))]).await;
     let (status, _) = poll(&fixture, &credential, Some("a")).await;
     assert_eq!(status, StatusCode::NO_CONTENT, "a job waiting for review is not handed out");
-    let run_page = web.page(&format!("/alice/rocket/actions/runs/{}", run.number)).await;
+    let run_page = web.page(&format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number)).await;
     assert!(run_page.contains("Waiting for review") && run_page.contains("Approve and deploy"), "{run_page}");
 
     let token = fixture
@@ -139,7 +177,7 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
     let (status, _, _) = web
         .send(
             Method::POST,
-            &format!("/alice/rocket/actions/runs/{}/review", run.number),
+            &format!("/alice/rocket/-/plugins/rbit.actions/review?run={}", run.number),
             "environment=production&decision=approve&comment=go",
         )
         .await;
@@ -151,7 +189,7 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
     assert_eq!(job.contexts.vars.get("REGION").map(String::as_str), Some("eu-west"));
     let done = json!({"steps": [], "outputs": {}, "result": "success", "environment_url": "https://example.com/42"});
     assert_eq!(state(&fixture, &credential, job.task_id.0, &done).await.0, StatusCode::OK);
-    let run_page = web.page(&format!("/alice/rocket/actions/runs/{}", run.number)).await;
+    let run_page = web.page(&format!("/alice/rocket/-/plugins/rbit.actions/run?run={}", run.number)).await;
     assert!(run_page.contains("https://example.com/42") && !run_page.contains("Waiting for review"), "{run_page}");
 
     // A branch the policy does not allow fails when a runner takes the job.
@@ -224,7 +262,9 @@ async fn a_protected_environment_holds_its_jobs_until_a_reviewer_approves_them()
     let (status, staging) = api(&fixture, Method::PUT, "/repos/alice/rocket/environments/staging", &admin, Some(cleared)).await;
     assert_eq!((status, staging["deployment_branch_policy"].is_null()), (StatusCode::OK, true), "{staging}");
     assert_eq!(api(&fixture, Method::DELETE, "/repos/alice/rocket/environments/staging", &admin, None).await.0, StatusCode::NO_CONTENT);
-    let (status, _, location) = web.send(Method::POST, "/alice/rocket/settings/actions/environments/production/delete", "").await;
-    assert_eq!((status.is_redirection(), location.as_deref()), (true, Some("/alice/rocket/settings/actions/environments")));
+    let (status, _, location) =
+        web.send(Method::POST, "/alice/rocket/-/plugins/rbit.actions/settings/environment/delete?environment=production", "").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location.as_deref(), Some("/alice/rocket/-/plugins/rbit.actions/settings/environments"));
     assert_eq!(api(&fixture, Method::GET, "/repos/alice/rocket/environments/production", &token, None).await.0, StatusCode::NOT_FOUND);
 }

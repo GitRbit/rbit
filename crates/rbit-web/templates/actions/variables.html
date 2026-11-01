@@ -15,19 +15,21 @@
         <div class="flex items-start gap-3">
           <div class="min-w-0 flex-1">
             <span class="block truncate font-mono text-[13px] font-medium">{{ variable.name }}</span>
-            <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ variable.value }}</p>
+            <p class="mt-1 whitespace-pre-wrap break-words font-mono text-xs">{{ variable.preview }}</p>
             <p class="mt-0.5 text-xs text-ink-muted">{{ crate::i18n::text("actions", "actions-variables-p-updated") }} <time datetime="{{ variable.updated_iso }}">{{ variable.updated }}</time></p>
           </div>
-          <form method="post" action="{{ variables.action_url }}" class="shrink-0">
+          <form hx-boost="false" method="post" action="{{ variables.action_url }}" class="shrink-0">
+    {% call ui::plugin_form(page, variables.action_url) %}{% endcall %}
             <input type="hidden" name="kind" value="variable">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="name" value="{{ variable.name }}">
             <button class="btn h-10 sm:h-8" type="submit" aria-label="Delete variable {{ variable.name }}">{% call ui::icon("trash", "size-3.5") %}{% endcall %}{{ crate::i18n::text("actions", "actions-variables-button-delete") }}</button>
           </form>
         </div>
-        <details class="mt-1">
-          <summary class="flex min-h-11 cursor-pointer items-center text-[13px] text-ink-muted hover:text-ink">{{ crate::i18n::text("actions", "actions-variables-summary-edit") }}</summary>
-          <form method="post" action="{{ variables.action_url }}" class="pb-2" novalidate>
+        {% if variable.editing %}
+        <div class="mt-1">
+          <form hx-boost="false" method="post" action="{{ variables.action_url }}" class="pb-2" novalidate>
+    {% call ui::plugin_form(page, variables.action_url) %}{% endcall %}
             <input type="hidden" name="kind" value="variable">
             <input type="hidden" name="action" value="put">
             <input type="hidden" name="name" value="{{ variable.name }}">
@@ -36,14 +38,22 @@
 {{ variable.value }}</textarea>
             <button class="btn btn-primary mt-3 w-full sm:w-auto" type="submit">{{ crate::i18n::text("actions", "actions-variables-button-save-variable") }}</button>
           </form>
-        </details>
+        </div>
+        {% else %}
+        <a class="link mt-1 inline-flex min-h-11 items-center text-sm" href="{{ variable.edit_url }}">{{ crate::i18n::text("actions", "actions-variables-summary-edit") }}</a>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>
     {% endif %}
   </div>
 
-  <form method="post" action="{{ variables.action_url }}" class="box mt-4" novalidate>
+  {% if let Some(next_url) = variables.next_url %}
+  <a class="btn mt-4" href="{{ next_url }}">{{ crate::i18n::text("core", "macros-a-next") }}</a>
+  {% endif %}
+
+  <form hx-boost="false" method="post" action="{{ variables.action_url }}" class="box mt-4" novalidate>
+    {% call ui::plugin_form(page, variables.action_url) %}{% endcall %}
     <div class="box-header">
       <h3 class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-variables-h3-new-variable") }}</h3>
     </div>

@@ -10,17 +10,13 @@
 //! The Actions foundation (workstream F) owns the route list; workstream U (interface and
 //! secrets) owns the handlers.
 
-mod environments;
+pub(crate) mod environments;
 pub(crate) mod jobs;
-mod runners;
-mod runs;
-mod settings;
+pub(crate) mod runners;
+pub(crate) mod runs;
+pub(crate) mod settings;
 
-use axum::{
-    Router,
-    http::Method,
-    routing::{get, post},
-};
+use axum::{Router, http::Method, routing::get};
 
 use crate::AppState;
 
@@ -213,51 +209,87 @@ pub fn file_routes(state: &AppState) -> Router<AppState> {
 
 /// The Actions pages. Merged only when Actions is enabled (see `routes::page_routes`).
 pub fn routes() -> Router<AppState> {
-    // Actions: interface and secrets (U).
-    Router::new()
-        .route("/{owner}/{repo}/actions", get(runs::list))
-        .route("/{owner}/{repo}/actions/workflows/{workflow}", get(runs::workflow))
+    // Compatibility GETs never execute mutations or render native documents.
+    let mut router = Router::new()
         .route("/{owner}/{repo}/actions/workflows/{workflow}/badge.svg", get(runs::badge))
-        .route("/{owner}/{repo}/actions/workflows/{workflow}/dispatch", post(runs::dispatch))
-        // Actions: disabled workflows.
-        .route("/{owner}/{repo}/actions/workflows/{workflow}/switch", post(runs::switch))
-        .route("/{owner}/{repo}/actions/runs/{run}", get(runs::show))
-        .route("/{owner}/{repo}/actions/runs/{run}/jobs", get(runs::jobs))
-        .route("/{owner}/{repo}/actions/runs/{run}/cancel", post(runs::cancel))
-        .route("/{owner}/{repo}/actions/runs/{run}/rerun", post(runs::rerun_all))
-        .route("/{owner}/{repo}/actions/runs/{run}/rerun-failed", post(runs::rerun_failed))
-        .route("/{owner}/{repo}/actions/runs/{run}/approve", post(runs::approve))
-        // Actions: environments.
-        .route("/{owner}/{repo}/actions/runs/{run}/review", post(runs::review))
-        .route("/{owner}/{repo}/settings/actions/environments", get(environments::list).post(environments::create))
-        .route("/{owner}/{repo}/settings/actions/environments/{environment}", get(environments::show).post(environments::save))
-        .route(
-            "/{owner}/{repo}/settings/actions/environments/{environment}/secrets",
-            get(environments::to_environment).post(environments::secret),
-        )
-        .route(
-            "/{owner}/{repo}/settings/actions/environments/{environment}/variables",
-            get(environments::to_environment).post(environments::variable),
-        )
-        .route("/{owner}/{repo}/settings/actions/environments/{environment}/delete", post(environments::delete))
-        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/rerun", post(runs::rerun_job))
-        .route("/{owner}/{repo}/settings/actions/runners", get(runners::repository).post(runners::repository_tokens))
-        .route("/{owner}/{repo}/settings/actions/runners/{runner}", post(runners::repository_runner))
-        .route("/{owner}/settings/actions/runners", get(runners::organization).post(runners::organization_tokens))
-        .route("/{owner}/settings/actions/runners/{runner}", post(runners::organization_runner))
-        .route("/settings/actions/runners", get(runners::personal).post(runners::personal_tokens))
-        .route("/settings/actions/runners/{runner}", post(runners::personal_runner))
-        .route("/admin/runners", get(runners::instance).post(runners::instance_tokens))
-        .route("/admin/runners/{runner}", post(runners::instance_runner))
-        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}", get(jobs::show))
-        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs", get(jobs::logs))
-        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", get(jobs::raw))
-        .route("/{owner}/{repo}/settings/actions", get(settings::repository).post(settings::save_repository))
-        .route("/{owner}/{repo}/settings/actions/secrets", get(settings::to_repository).post(settings::repository_secret))
-        .route("/{owner}/{repo}/settings/actions/variables", get(settings::to_repository).post(settings::repository_variable))
-        .route("/{owner}/{repo}/settings/actions/trusted", post(settings::untrust))
-        .route("/{owner}/settings/actions", get(settings::organization).post(settings::save_organization))
-        .route("/settings/actions", get(settings::personal).post(settings::save_personal))
+        .route("/{owner}/{repo}/actions/runs/{run}/jobs/{job}/logs/raw", get(jobs::raw));
+    for (path, methods) in PATHS {
+        if methods.contains(&Method::GET) && !path.contains("artifacts/") && !path.ends_with("badge.svg") && !path.ends_with("logs/raw") {
+            router = router.route(path, get(compatibility));
+        }
+    }
+    router
+}
+
+async fn compatibility(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(values): axum::extract::Path<std::collections::HashMap<String, String>>,
+    matched: axum::extract::MatchedPath,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
+) -> crate::error::WebResult<axum::response::Redirect> {
+    use crate::error::WebError;
+    use rbit_services::plugin_pages::{PageQuery, PageScope};
+    if uri.query().is_some_and(|query| query.len() > 8192) {
+        return Err(WebError::BadRequest("query is too large".into()));
+    }
+    let axum::extract::Query(query) =
+        axum::extract::Query::<Vec<(String, String)>>::try_from_uri(&uri).map_err(|_| WebError::BadRequest("invalid query".into()))?;
+    let pattern = matched.as_str();
+    let repository = values.get("repo");
+    let owner = values.get("owner");
+    let mut pairs = Vec::new();
+    let path = if let Some(repo) = repository {
+        let _ = repo;
+        if pattern.ends_with("/environments/{environment}")
+            || pattern.ends_with("/environments/{environment}/secrets")
+            || pattern.ends_with("/environments/{environment}/variables")
+        {
+            pairs.push(("environment".into(), values.get("environment").ok_or(WebError::NotFound)?.clone()));
+            "settings/environment"
+        } else if pattern.ends_with("/environments") {
+            "settings/environments"
+        } else if pattern.ends_with("/settings/actions/runners") {
+            "settings/runners"
+        } else if pattern.contains("/settings/actions") {
+            "settings"
+        } else if pattern.ends_with("/jobs/{job}/logs") {
+            pairs.extend([("run".into(), values["run"].clone()), ("job".into(), values["job"].clone())]);
+            if query.iter().any(|(key, _)| key == "step") { "logs" } else { "job" }
+        } else if pattern.ends_with("/jobs/{job}") {
+            pairs.extend([("run".into(), values["run"].clone()), ("job".into(), values["job"].clone())]);
+            "job"
+        } else if pattern.contains("/runs/{run}") {
+            pairs.push(("run".into(), values["run"].clone()));
+            "run"
+        } else if pattern.contains("/workflows/{workflow}") {
+            pairs.push(("workflow".into(), values["workflow"].clone()));
+            "workflow"
+        } else {
+            "runs"
+        }
+    } else if let Some(owner) = owner {
+        pairs.push(("owner".into(), owner.clone()));
+        if pattern.ends_with("/runners") { "org/runners" } else { "org/settings" }
+    } else if pattern == "/admin/runners" {
+        "admin/runners"
+    } else if pattern.ends_with("/runners") {
+        "settings/runners"
+    } else {
+        "settings"
+    };
+    let scope = if repository.is_some() { PageScope::Repository } else { PageScope::Global };
+    let id = "rbit.actions".parse().map_err(WebError::internal)?;
+    let route = state.services.page_registry().snapshot().find(&id, scope, path).ok_or(WebError::NotFound)?;
+    for (key, value) in query {
+        if route.descriptor().query().allows(&key) {
+            pairs.push((key, value));
+        }
+    }
+    let query = PageQuery::new(pairs).map_err(|_| WebError::BadRequest("invalid query".into()))?.encoded();
+    let target =
+        route.descriptor().target(&id).render(owner.map(String::as_str), repository.map(String::as_str)).map_err(WebError::internal)?;
+    let target = if query.is_empty() { target } else { format!("{target}?{query}") };
+    Ok(axum::response::Redirect::to(&target))
 }
 
 #[cfg(test)]

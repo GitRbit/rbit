@@ -197,6 +197,9 @@ mod tests {
 
     fn page(entries: Vec<UiEntry>) -> Page {
         Page {
+            plugin_forms: rbit_services::plugin_pages::FormActions::default(),
+            plugin_fields: Vec::new(),
+            plugin_query: rbit_services::plugin_pages::PageQuery::default(),
             ui: UiSnapshot { revision: 1, entries: Arc::from(entries) },
             locale: rbit_messages::LocaleSnapshot::default(),
             has_i18n: false,

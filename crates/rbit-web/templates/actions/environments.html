@@ -26,7 +26,8 @@
     {% endif %}
   </div>
 
-  <form method="post" action="{{ action_url }}" class="box mt-4" novalidate>
+  <form hx-boost="false" method="post" action="{{ action_url }}" class="box mt-4" novalidate>
+    {% call ui::plugin_form(page, action_url) %}{% endcall %}
     <div class="box-header"><h2 class="text-[13px] font-medium">{{ crate::i18n::text("actions", "actions-environments-h2-new-environment") }}</h2></div>
     <div class="p-4">
       {% call ui::form_error(error) %}{% endcall %}
