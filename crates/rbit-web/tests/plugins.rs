@@ -673,6 +673,48 @@ async fn runtime_ui_registration_renders_through_askama_and_cleans_up_on_one_rou
     fixture.services.shutdown().await;
 }
 
+async fn assert_policy_recovery_reachable(fixture: &Fixture) {
+    // The full router supplies /api/v1-prefixed MatchedPath values. Browser
+    // cookies still cannot authenticate its policy/operation API handlers.
+    for path in [
+        "/api/v1/admin/plugin-policy",
+        "/api/v1/admin/plugin-policy-operations/known-key",
+        "/api/v1/admin/plugin-package-operations/known-key",
+    ] {
+        assert_eq!(fixture.get(path).await.0, StatusCode::UNAUTHORIZED, "host PAT guard remains active at {path}");
+    }
+    let admin = fixture.services.context().database.accounts().find_login("alice").await.unwrap().unwrap().user;
+    let (_, token) = fixture
+        .services
+        .tokens
+        .create(
+            &admin,
+            rbit_services::CreateAccessToken { name: "policy-recovery".into(), scope: rbit_core::TokenScope::Admin, expires_in_days: None },
+        )
+        .await
+        .unwrap();
+    for (path, expected) in [
+        ("/api/v1/admin/plugin-policy", StatusCode::OK),
+        ("/api/v1/admin/plugin-policy-operations/known-key", StatusCode::NOT_FOUND),
+        ("/api/v1/admin/plugin-package-operations/known-key", StatusCode::NOT_FOUND),
+    ] {
+        let response = fixture
+            .router
+            .clone()
+            .oneshot(Request::builder().uri(path).header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected, "host recovery handler remains reachable at {path}");
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        if expected == StatusCode::OK {
+            let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["execution"], "unavailable");
+            assert_eq!(value["gate"]["state"], "uninitialized", "inspection cannot bootstrap policy");
+        }
+    }
+}
+
 #[tokio::test]
 async fn custom_request_hooks_preserve_host_recovery_and_its_security_guards() {
     use rbit_plugin_api::Generation;
@@ -767,6 +809,7 @@ async fn custom_request_hooks_preserve_host_recovery_and_its_security_guards() {
         assert!(headers.contains_key(header::SET_COOKIE));
         assert_eq!(fixture.get("/assets/app.bundle.js").await.0, StatusCode::OK);
         assert_eq!(fixture.get("/healthz").await.0, StatusCode::OK);
+        assert_policy_recovery_reachable(&fixture).await;
         assert_eq!(calls.load(Ordering::SeqCst), 1, "reserved host recovery paths never invoke custom hooks");
         scope.quiesce();
         assert_eq!(scope.in_flight(), 0);

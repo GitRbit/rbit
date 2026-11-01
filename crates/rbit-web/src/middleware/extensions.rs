@@ -60,6 +60,12 @@ fn reserved_host_route(route: &str) -> bool {
     matches!(
         route,
         "/admin/plugins"
+            | "/api/v1/admin/plugin-policy"
+            | "/api/v1/admin/plugin-policy/prepare"
+            | "/api/v1/admin/plugin-policy/candidates/{plugin_id}"
+            | "/api/v1/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}"
+            | "/api/v1/admin/plugin-policy-operations/{operation_id}"
+            | "/api/v1/admin/plugin-package-operations/{operation_id}"
             | "/admin/restart"
             | "/admin/restart/status"
             | "/admin/monitoring"
@@ -297,7 +303,23 @@ mod tests {
             .route("/admin/monitoring", get(|| async { StatusCode::UNAUTHORIZED }))
             .route("/login", get(|| async { StatusCode::OK }).post(|| async { StatusCode::UNAUTHORIZED }))
             .route("/assets/{*path}", get(|| async { "trusted asset" }))
+            .route("/api/v1/admin/plugin-policy", get(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/api/v1/admin/plugin-policy/prepare", post(|| async { StatusCode::UNAUTHORIZED }))
+            .route("/api/v1/admin/plugin-policy/candidates/{plugin_id}", get(|| async { StatusCode::UNAUTHORIZED }))
+            .route(
+                "/api/v1/admin/plugin-policy/packages/{plugin_id}/versions/{full_version}/archives/{digest}",
+                get(|| async { StatusCode::UNAUTHORIZED }),
+            )
+            .route(
+                "/api/v1/admin/plugin-policy-operations/{operation_id}",
+                get(|| async { StatusCode::UNAUTHORIZED }).put(|| async { StatusCode::UNAUTHORIZED }),
+            )
+            .route(
+                "/api/v1/admin/plugin-package-operations/{operation_id}",
+                get(|| async { StatusCode::UNAUTHORIZED }).put(|| async { StatusCode::UNAUTHORIZED }),
+            )
             .route("/admin", get(|| async { "must not run" }))
+            .route("/api/v1/admin/unrelated", get(|| async { "must not run" }))
             .layer(from_fn_with_state(registry, layer))
             .layer(from_fn(crate::middleware::csrf_origin_check));
         for (method, path, status) in [
@@ -309,6 +331,18 @@ mod tests {
             ("GET", "/login", StatusCode::OK),
             ("POST", "/login", StatusCode::UNAUTHORIZED),
             ("GET", "/assets/app.bundle.js", StatusCode::OK),
+            ("GET", "/api/v1/admin/plugin-policy", StatusCode::UNAUTHORIZED),
+            ("POST", "/api/v1/admin/plugin-policy/prepare", StatusCode::UNAUTHORIZED),
+            ("GET", "/api/v1/admin/plugin-policy/candidates/example.native", StatusCode::UNAUTHORIZED),
+            (
+                "GET",
+                "/api/v1/admin/plugin-policy/packages/example.native/versions/1.0.0/archives/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                StatusCode::UNAUTHORIZED,
+            ),
+            ("GET", "/api/v1/admin/plugin-policy-operations/known-key", StatusCode::UNAUTHORIZED),
+            ("PUT", "/api/v1/admin/plugin-policy-operations/known-key", StatusCode::UNAUTHORIZED),
+            ("GET", "/api/v1/admin/plugin-package-operations/known-key", StatusCode::UNAUTHORIZED),
+            ("PUT", "/api/v1/admin/plugin-package-operations/known-key", StatusCode::UNAUTHORIZED),
         ] {
             let response = router.clone().oneshot(Request::builder().method(method).uri(path).body(Body::empty()).unwrap()).await.unwrap();
             assert_eq!(response.status(), status, "{method} {path}");
@@ -323,9 +357,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap().as_ref(), b"cross-site request blocked");
         assert_eq!(calls.load(Ordering::SeqCst), 0);
-        let response = router.oneshot(Request::builder().uri("/admin").body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "no blanket admin exemption");
+        for path in ["/admin", "/api/v1/admin/unrelated"] {
+            let response = router.clone().oneshot(Request::builder().uri(path).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "no blanket browser or API admin exemption");
     }
 }
 #[test]
