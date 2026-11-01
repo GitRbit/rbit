@@ -49,6 +49,7 @@ pub mod recovery;
 pub mod releases;
 pub mod repo_settings;
 mod repositories;
+mod repository_writes;
 mod reseal;
 pub mod reviews;
 mod rows;

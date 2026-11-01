@@ -27,55 +27,28 @@ impl RepoSettingsStore {
     }
 
     pub async fn update_general(&self, id: RepoId, settings: &RepoGeneralSettings) -> Result<(), StorageError> {
-        sqlx::query("UPDATE repositories SET description = ?, visibility = ?, default_branch = ?, updated_at = ? WHERE id = ?")
-            .bind(settings.description.as_deref())
-            .bind(settings.visibility.as_str())
-            .bind(&settings.default_branch)
-            .bind(Timestamp::now().seconds())
-            .bind(id.0)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+        super::repository_writes::update_general(&self.pool, id, settings).await
     }
 
     /// [`StorageError::Conflict`] (`"repository name"`) if the owner already has a repository
     /// called `name` (case-insensitively).
     pub async fn rename(&self, id: RepoId, name: &RepoName) -> Result<(), StorageError> {
-        sqlx::query("UPDATE repositories SET name = ?, updated_at = ? WHERE id = ?")
-            .bind(name.as_str())
-            .bind(Timestamp::now().seconds())
-            .bind(id.0)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "repository name"))?;
-        Ok(())
+        super::repository_writes::rename(&self.pool, id, name).await
     }
 
     /// Marks the repository archived by `by` at `at`. `false` when it already was (the
     /// original time and actor are kept) or does not exist.
     pub async fn archive(&self, id: RepoId, by: AccountId, at: Timestamp) -> Result<bool, StorageError> {
-        let result = sqlx::query(
-            "INSERT INTO repo_archives (repo_id, archived_by, archived_at) \
-             SELECT id, ?2, ?3 FROM repositories WHERE id = ?1 \
-             ON CONFLICT (repo_id) DO NOTHING",
-        )
-        .bind(id.0)
-        .bind(by.0)
-        .bind(at.seconds())
-        .execute(&self.pool)
-        .await?;
-        Ok(result.rows_affected() == 1)
+        super::repository_writes::archive(&self.pool, id, by, at).await
     }
 
     /// Makes the repository writable again. `false` when it was not archived.
     pub async fn unarchive(&self, id: RepoId) -> Result<bool, StorageError> {
-        let result = sqlx::query("DELETE FROM repo_archives WHERE repo_id = ?").bind(id.0).execute(&self.pool).await?;
-        Ok(result.rows_affected() == 1)
+        super::repository_writes::unarchive(&self.pool, id).await
     }
 
     /// Removes the metadata row (stars cascade). The caller deletes the bare repository.
     pub async fn delete(&self, id: RepoId) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM repositories WHERE id = ?").bind(id.0).execute(&self.pool).await?;
-        Ok(())
+        super::repository_writes::delete(&self.pool, id).await
     }
 }

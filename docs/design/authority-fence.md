@@ -403,6 +403,17 @@ audit/event producer or REST endpoint. Physical ownership, driver termination,
 crash recovery, fresh authorization and native execution remain unproven; added
 transaction control is not a claim of performance parity.
 
+Seven private fixed SQL helpers now serve the eight selected repository lifecycle
+and settings entry points, including both public metadata-delete aliases. The
+existing public methods retain their pooled execution or existing transfer
+transaction, timestamp expressions, conversion/error mapping and bool/unit behavior.
+The helpers preserve instrumented Pool/Conn execution, accept no arbitrary query or
+callback and add no admission or transaction control. These eight APIs remain
+unenrolled at this step; the existing collaborator upsert is separately enrolled.
+Typed commands still need actual SQL settlement provenance, pre-effect admission,
+owned backend/fork work and caller adoption before these helpers support that proof.
+The extraction alone is not a measured performance or wider authority-coverage claim.
+
 Repository deletion and relocation retain their existing exclusive lease in the
 actual blocking filesystem worker. Canceling an async waiter does not release the
 moving flag while that worker can still remove or rename the directory. Deletion

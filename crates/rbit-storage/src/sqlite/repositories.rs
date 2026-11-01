@@ -407,29 +407,13 @@ impl RepositoryStore {
 
     pub async fn create(&self, new: NewRepository) -> Result<Repository, StorageError> {
         let now = Timestamp::now().seconds();
-        let row: RepositoryRow = sqlx::query_as(
-            "INSERT INTO repositories (owner_id, name, description, visibility, default_branch, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, ?, ?, ?) \
-             RETURNING id, owner_id, name, description, visibility, default_branch, created_at, updated_at, pushed_at, \
-             NULL AS archived_at",
-        )
-        .bind(new.owner_id.0)
-        .bind(new.name.as_str())
-        .bind(new.description.as_deref())
-        .bind(new.visibility.as_str())
-        .bind(&new.default_branch)
-        .bind(now)
-        .bind(now)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| StorageError::from_insert(e, "repository name"))?;
+        let row: RepositoryRow = super::repository_writes::create(&self.pool, &new, now).await?;
         row.try_into()
     }
 
     /// Removes the metadata row. The caller is responsible for deleting the bare repository.
     pub async fn delete(&self, id: RepoId) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM repositories WHERE id = ?").bind(id.0).execute(&self.pool).await?;
-        Ok(())
+        super::repository_writes::delete(&self.pool, id).await
     }
 
     pub async fn find_by_path(&self, owner: &str, name: &str) -> Result<Option<OwnedRepository>, StorageError> {
@@ -660,15 +644,7 @@ impl RepositoryStore {
     /// if the new owner already has a repository with this name.
     pub async fn transfer(&self, repo: RepoId, new_owner: AccountId) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("UPDATE repositories SET owner_id = ?, updated_at = ? WHERE id = ?")
-            .bind(new_owner.0)
-            .bind(Timestamp::now().seconds())
-            .bind(repo.0)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| StorageError::from_insert(e, "repository name"))?;
-        sqlx::query("DELETE FROM team_repositories WHERE repo_id = ?").bind(repo.0).execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM collaborators WHERE repo_id = ? AND user_id = ?").bind(repo.0).bind(new_owner.0).execute(&mut *tx).await?;
+        super::repository_writes::transfer(&mut tx, repo, new_owner).await?;
         tx.commit().await?;
         Ok(())
     }
