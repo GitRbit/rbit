@@ -26,8 +26,10 @@ contracts is the next prerequisite for an independent `rbit-actions-web` crate.
 The API also has bounded package metadata contracts for adapter kind, portable payload
 paths, size/digest declarations and requested resources. `rbit-plugin-packages` validates
 bounded canonical archives and hashes payloads without extracting them. These do not
-install or run packages; immutable staging, trust, worker protocols and execution remain
-unimplemented.
+install or run packages. Host-owned staging now validates into the same private inode
+and publishes a digest-addressed archive without replacement, with explicit durability
+and cleanup receipts. Persistent installation metadata, trust, worker protocols and
+execution remain unimplemented.
 Source reference links below follow their current crate locations.
 
 Build a runtime extension platform around scoped resources, typed services and atomic publication. Extract Actions first into an optional compiled module, make that module safely activatable and disposable while Rbit is running, then introduce an i18n plugin and installable language packs. Complete the platform with independently installable executable plugins and a sandboxed execution adapter. Runtime loading must eventually work on a previously unknown package without rebuilding or restarting Rbit.
@@ -327,7 +329,7 @@ Ship pseudolocales for expansion and RTL first, then a reviewed non-English pack
 
 ## 11 Package management and administrator experience
 
-Use immutable package versions in `<data_dir>/plugins/packages/<id>/<version>/<digest>` and separate writable data in `<data_dir>/plugins/data/<id>`. Stage uploads outside active paths, validate all archive entries and digest metadata, then rename atomically. Resolve all runtime paths relative to verified package roots. Installation never runs arbitrary package scripts.
+Use immutable archive objects in `<data_dir>/plugins/packages/<archive-sha256>.rbit-plugin`, with plugin ID/version associations in the installation ledger and separate writable data in `<data_dir>/plugins/data/<id>`. Digest-only object filenames avoid platform reserved-name and version-encoding ambiguity. Stage uploads in private directories on the same filesystem, validate and synchronize the exact staged inode, then publish without replacement. Unix hard-link publication synchronizes the directory; Windows uses a write-through move. A matching existing Windows object still requires a prior durable receipt or explicit reconciliation. Resolve future extracted runtime paths relative to verified package roots. Installation never runs arbitrary package scripts. See the [archive store contract](../../crates/rbit-plugin-packages/README.md) for deployment preconditions and failure receipts.
 
 Manifest fields cover package kind, ID, version, host API range, platform target, entry point, required/provided services, requested capabilities, declared contributions, resource budgets and schema compatibility. The host revalidates runtime registrations against that manifest. Content hashes ensure integrity; publisher signatures and pinned keys establish a separate trust decision. Support offline installation and a local allowlist first. An online marketplace is outside the initial scope.
 

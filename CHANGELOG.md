@@ -17,13 +17,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Host-owned private staging of validated plugin archives and no-clobber,
+  digest-addressed publication. Receipts distinguish visibility, durability and
+  cleanup; this stores archive objects without granting installation authority.
+
 - Standalone sanitizer-enabled fuzz targets for streamed package validation, with
   deterministic native/Wasm/data seeds, structured malformed envelopes and fragmented
   reader checks. Tooling dependencies stay outside the server workspace.
 
 - Streaming validation of canonical uncompressed plugin archives, including bounded
   manifest parsing, actual payload size/SHA256 checks and strict archive termination.
-  The validator writes no files and executes no code; package staging remains later work.
+  The validator writes no files and executes no code; staging uses a separate host-owned store.
 
 - Bounded plugin package metadata contracts for native executables, Wasm components
   and data packages, with portable file paths, size/digest declarations and requested

@@ -9,8 +9,9 @@ canonical uncompressed USTAR archives without extracting or executing anything.
 It caps metadata before parsing, streams payload hashing through a fixed heap buffer
 and enforces exact membership, sizes, hashes, padding and termination. Its README
 defines the intentionally narrow packaging profile accepted by the validator.
-Both changes received independent security review. Existing dependency versions and
-migrations remain unchanged; the only lockfile addition is the local package crate.
+Both validation changes received independent security review. At those commits,
+dependency versions and migrations remained unchanged; the only lockfile addition
+was the local package crate. Staging dependency additions are recorded below.
 
 Focused validation passes 24 API tests and 12 archive tests, strict all-target Clippy
 for both crates, formatting and whitespace checks. All 219 frontend/tooling tests,
@@ -23,8 +24,9 @@ The paired release HTTP experiment compares exact archived `0075cec` and `3b9f26
 sources. Both binaries completed with production fat LTO and one codegen unit,
 identical generated assets and recorded source/binary hashes. Initial warmed p95
 changes were below one percent, but same-binary controls exposed enough process
-variation that the two-percent gate remains unresolved. A fresh-process paired
-experiment is in progress. All 120 restart-only samples were valid; these are not
+variation that the two-percent gate remains unresolved. The completed 60-block fresh-process paired experiment
+leaves the repository page inconclusive at the two-percent bound; the report records
+all four page intervals and same-binary controls. All 120 restart-only samples were valid; these are not
 disk-cold measurements. Scripts and raw evidence live under ignored
 `target/perf/ui-extraction/`.
 
@@ -40,7 +42,20 @@ The shared presentation head `3b9f263` passed all 11 CI jobs in
 including Linux 2,360 tests, Windows 2,352 and the artifact-page regression scenario.
 The newer package and tooling commits require their own final-head CI.
 
-The next package milestone is immutable staging and persistent installation metadata,
+Host-owned staging now validates, hashes and writes the same private inode,
+synchronizes its contents and publishes a digest-addressed object without replacement.
+Existing objects are rehashed; static error receipts distinguish visibility, durability
+and cleanup. Unix staging directories are explicitly 0700 and files 0600. Windows
+uses a narrowly scoped `atomicwrites` 0.4.4 dependency for lossless-path, write-through
+publication; existing-object namespace durability remains unconfirmed. No installation
+ledger, trust grant or live intent is written. The package suite passes 23 tests
+(including 11 real-filesystem staging cases), strict all-target Clippy on macOS and
+Windows GNU cross-target compilation/lint. Native Linux/Windows execution and the
+license/advisory check remain exact-head CI requirements. Existing dependency versions
+and the tempfile random-source edge are preserved; the new dependency adds only
+its older rustix/linux-raw-sys lock entries.
+
+The next package milestone is persistent installation metadata and backup references,
 followed by bounded worker framing/supervision and an independently built native sample
 installed on a running core-only server. First-party Actions/i18n still need narrow
 host-service ports and independent Web extraction; the Wasm adapter and release gates

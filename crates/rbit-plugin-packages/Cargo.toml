@@ -1,6 +1,6 @@
 [package]
 name = "rbit-plugin-packages"
-description = "Bounded streaming validation of declarative plugin package archives."
+description = "Bounded streaming validation and host-owned staging of plugin archives."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,10 @@ rbit-plugin-api.workspace = true
 sha2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+atomicwrites = "=0.4.4"
 
 [dev-dependencies]
 tar.workspace = true

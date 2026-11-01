@@ -7,6 +7,15 @@
 //!
 //! See the crate README for the exact accepted header and termination profile.
 //! General tar extensions and extra record padding are intentionally rejected.
+//! `PackageStore` separately stages validated bytes in a private host-owned root;
+//! its publication receipts do not grant installation or execution authority.
+
+mod store;
+
+pub use store::{
+    CleanupStatus, Durability, PackageReceipt, PackageStore, PreparedPackage, PublicationKind, PublicationVisibility, StageControl,
+    StoreError, StoreFailure,
+};
 
 use std::{
     collections::BTreeMap,
