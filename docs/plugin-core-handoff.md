@@ -1,5 +1,24 @@
 # Plugin core handoff
 
+## Verified tentative native images — 2026-11-01
+
+The [image preparation contract](design/native-image-materialization.md) adds a
+Unix-only non-executable payload materializer in `rbit-plugin-packages`. One safely
+opened CAS object drives the unchanged strict parser, file hashes and full archive
+identity while writing tentative private `0700`/`0600` output. A complete owned image
+returns only after exact identity, hashes and actual EOF succeed. No writable file,
+launch permission or caller-selected extraction destination escapes.
+
+Package tests pass 36 top-level cases plus two acknowledged/reaped helper executions.
+Default/core host package suites pass nine tests each; core Web uploads pass seven,
+and all sixteen backup tests pass. Strict package lint on Rust 1.95 and full
+workspace/all-target lint on Rust 1.99 pass. Native Windows/hosted exact-head
+validation remains required. Root/ACL/ancestor stability, finite admission through blocking work/cleanup and
+same-UID trust remain explicit preconditions. Pending cleanup, real crash/disk-full,
+Windows ACL/native support and OS syscall deadlines remain unproven. No server,
+policy, installation/review/selection or execution availability is changed. Owned
+runtime coordination and the broader modularization goal remain unfinished.
+
 ## Pure native probe codec — 2026-11-01
 
 The [worker protocol](design/native-worker-protocol.md) now has bounded passive SDK

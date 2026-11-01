@@ -46,10 +46,14 @@ impl StageControl {
         }
         Ok(Self { deadline, max_wire_bytes, cancelled: Arc::new(AtomicBool::new(false)) })
     }
+    #[cfg(unix)]
+    pub(crate) fn wire_quota(&self) -> u64 {
+        self.max_wire_bytes
+    }
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
-    fn check(&self) -> Result<(), StoreError> {
+    pub(crate) fn check(&self) -> Result<(), StoreError> {
         if self.cancelled.load(Ordering::Acquire) {
             return Err(StoreError::Cancelled);
         }
@@ -185,6 +189,10 @@ pub struct PackageStore {
     root: Arc<PathBuf>,
 }
 impl PackageStore {
+    #[cfg(unix)]
+    pub(crate) fn object_path(&self, digest: &Sha256Digest) -> PathBuf {
+        self.root.join(format!("{}.rbit-plugin", digest.as_str()))
+    }
     pub fn open(root: impl AsRef<Path>) -> Result<Self, StoreError> {
         let root = root.as_ref();
         let metadata = fs::symlink_metadata(root).map_err(|_| StoreError::Root)?;

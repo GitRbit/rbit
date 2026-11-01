@@ -9,8 +9,12 @@
 //! General tar extensions and extra record padding are intentionally rejected.
 //! `PackageStore` separately stages validated bytes in a private host-owned root;
 //! its publication receipts do not grant installation or execution authority.
+//! `NativeImageStore` separately derives tentative private non-executable payload
+//! images; complete byte validation still creates no launch or policy authority.
 
+mod image;
 mod store;
+pub use image::{ImageError, ImageFailure, NativeImageStore, PreparedNativeImage};
 
 pub use store::{
     CleanupStatus, Durability, PackageReceipt, PackageStore, PreparedPackage, PublicationKind, PublicationVisibility, StageControl,
