@@ -89,6 +89,16 @@ impl TeamStore {
     /// [`StorageError::Conflict`] (`"team name"`) if the organisation already has a team
     /// with this name (case-insensitively).
     pub async fn create(&self, org: AccountId, name: &TeamName, description: Option<&str>) -> Result<Team, StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.create_raw(org, name, description).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn create_raw(&self, org: AccountId, name: &TeamName, description: Option<&str>) -> Result<Team, StorageError> {
+        let mut tx = self.pool.begin().await?;
         let row: TeamRow = sqlx::query_as(
             "INSERT INTO teams (org_id, name, description, created_at) VALUES (?, ?, ?, ?) \
              RETURNING id, org_id, name, description, created_at",
@@ -97,9 +107,10 @@ impl TeamStore {
         .bind(name.as_str())
         .bind(description)
         .bind(Timestamp::now().seconds())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| StorageError::from_insert(e, "team name"))?;
+        tx.commit().await?;
         row.try_into()
     }
 
@@ -132,19 +143,41 @@ impl TeamStore {
 
     /// Renames the team and replaces its description. [`StorageError::Conflict`] on a name clash.
     pub async fn update(&self, team: TeamId, name: &TeamName, description: Option<&str>) -> Result<(), StorageError> {
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.update_raw(team, name, description).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn update_raw(&self, team: TeamId, name: &TeamName, description: Option<&str>) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
         sqlx::query("UPDATE teams SET name = ?, description = ? WHERE id = ?")
             .bind(name.as_str())
             .bind(description)
             .bind(team.0)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| StorageError::from_insert(e, "team name"))?;
+        tx.commit().await?;
         Ok(())
     }
 
     /// Deletes the team with its memberships and repository grants.
     pub async fn delete(&self, team: TeamId) -> Result<(), StorageError> {
-        sqlx::query("DELETE FROM teams WHERE id = ?").bind(team.0).execute(&self.pool).await?;
+        let mutation = self.writer.begin().await.map_err(team_mutation_error)?;
+        let result = self.delete_raw(team).await;
+        if result.is_ok() {
+            mutation.complete();
+        }
+        result
+    }
+
+    async fn delete_raw(&self, team: TeamId) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("DELETE FROM teams WHERE id = ?").bind(team.0).execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -300,8 +333,8 @@ impl TeamStore {
     }
 }
 
-// Only these four direct membership/grant APIs are enrolled. Team identity,
-// transfer, other trigger/cascade paths and service freshness remain separate.
+// All seven direct TeamStore writer APIs use this registration. Other
+// transfer/cascade origins and service freshness remain separate categories.
 fn team_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
     StorageError::AdmissionUnavailable {
         scope: "team",
@@ -315,3 +348,7 @@ fn team_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError 
 #[cfg(test)]
 #[path = "teams/fence_tests.rs"]
 mod fence_tests;
+
+#[cfg(test)]
+#[path = "teams/lifecycle_fence_tests.rs"]
+mod lifecycle_fence_tests;

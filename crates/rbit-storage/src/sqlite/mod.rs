@@ -86,7 +86,7 @@ pub struct Database {
     // plus bound session write workers (purge certification is per write batch),
     // and four direct collaborator assignment APIs (not transfers/cascades),
     // plus four existing-organization membership/base-permission APIs
-    // and four direct team membership/repository-grant APIs (not team lifecycle),
+    // and all seven direct TeamStore writer APIs (not other cascade origins),
     // plus three direct branch-protection rule graph APIs (not other cascade origins).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,

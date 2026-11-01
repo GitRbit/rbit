@@ -4,7 +4,8 @@ The authority fence coordinates policy mutations, user account creation, externa
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
 factors, profile credentials, account renames and administrator role changes,
 suspension, account deletion, direct collaborator assignments, existing-organization
-membership/base permissions and bound session mutations
+membership/base permissions, direct team operations, branch-protection rule graphs
+and bound session mutations
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
 **Unavailable**.
@@ -19,7 +20,8 @@ Policy initialization, epoch renewal, review/selection/clear, user account creat
 identity linking/unlinking, token and key creation/deletion and the three moderation
 mutations, together with SQL recovery, factor and profile credential mutations,
 account renames, direct collaborator assignments and existing-organization
-membership/base permissions, acquire that permit
+membership/base permissions, direct team operations and branch-protection rule
+graphs, acquire that permit
 before their first database operation. The wrapper records settlement only after the complete storage result
 succeeds, including historical
 replays and committed policy seals. Cancellation while queued is clean because the
@@ -298,9 +300,9 @@ This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
 two account rename methods, four direct collaborator assignments, four existing-
-organization membership/base methods, four direct team membership/repository-grant
-methods, three direct branch-protection rule graph methods, the three moderation
-methods and bound session workers
+organization membership/base methods, all seven direct TeamStore writer methods,
+three direct branch-protection rule graph methods, the three moderation methods
+and bound session workers
 obtained from the same database handle or its clones. It also covers the narrow
 forced administrator, email-reset and response-deferred self-service commands
 described above. It does not coordinate
@@ -319,9 +321,9 @@ idempotent branch remain outside mutation admission.
 Membership and repository grants are distinct relationships: removing a member
 preserves the team's repository grant for other members, and removing a grant
 preserves membership. Branch-protection team attribution follows membership even
-without an explicit repository grant. Team creation, name/profile updates,
-deletion, transfers and other originating cascades remain separate writer
-categories; direct branch-protection mutations are addressed below. This partial enrollment does not establish fresh request
+without an explicit repository grant. Direct team lifecycle and branch-protection
+mutations are addressed below. Transfers and other originating cascades remain
+separate writer categories. This partial enrollment does not establish fresh request
 authorization, physical ownership or execution readiness. Added transaction control
 statements are not a claim of query-count or latency parity.
 
@@ -347,6 +349,30 @@ establish fresh request authorization. External account/team/repository deletion
 repository transfer and other inputs to push/merge authorization remain separate
 originating writer categories. No physical-driver shutdown, crash reconciliation,
 native execution readiness or query-count/latency parity follows from this slice.
+
+The remaining three direct team lifecycle APIs also use the existing team writer
+registration. All seven direct TeamStore writers therefore share this Database's
+domain. Creation acknowledges an outer COMMIT before converting the returned row
+into a Team; the same guard covers that fallible conversion. A conversion error
+would remain uncertain even after an acknowledged commit. The direct invalid-row
+unit test checks conversion itself, not an injected committed conversion failure.
+Update and delete preserve their unit-success behavior for missing IDs and repeated
+operations, but now acknowledge COMMIT before returning success.
+
+Renaming preserves the team ID, creation timestamp, memberships, repository grants
+and protection allowlist references; it adds no old-name redirects. The existing
+combined name/description API stays indivisible. Only the exact team-name conflict
+receives duplicate-name validation. Reads, service actor checks and subsequent
+audit or redirect/reopen work retain their existing boundaries.
+
+Selected team deletion owns its actual membership, repository-grant and
+branch-protection-team cascades in the same transaction. Other teams' grants,
+users, underlying repositories and restrictive rules remain. Other originating
+account/organization deletion and repository transfer/cascade APIs are separate;
+complete direct TeamStore coverage does not imply complete table-writer coverage.
+Independent opens, actual driver tails, physical ownership and native execution
+remain outside the proof. Three added begin/commit pairs do not establish measured
+query-count, allocation or latency parity.
 
 Before execution can become available, supported store opens need enforced shared
 identity and ownership, and every relevant authority writer must join the same

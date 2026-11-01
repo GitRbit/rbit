@@ -269,3 +269,45 @@ async fn typed_team_writer_stop_preserves_duplicate_and_readonly_ensure_behavior
     assert_eq!(fixture.services.audit.list(&fixture.root, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
     assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
 }
+
+#[tokio::test]
+async fn typed_team_lifecycle_stop_preserves_name_errors_and_existing_state() {
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+    let fixture = Fixture::new().await;
+    let core = fixture.team("core").await;
+    let docs = fixture.team("docs").await;
+    let teams = &fixture.services.teams;
+    teams.add_member(&fixture.olga, &core, "bob").await.unwrap();
+    teams.set_repository(&fixture.olga, &core, "rocket", Permission::Write).await.unwrap();
+    let input = |name: &str, description: &str| TeamInput { name: name.into(), description: description.into() };
+    invalid(teams.create(&fixture.olga, &fixture.acme, input("CORE", "Duplicate")).await, "already exists");
+    invalid(teams.update(&fixture.olga, &docs, input("CORE", "Duplicate")).await, "already exists");
+    let original = fixture.database.teams().find_by_name(fixture.acme.account.id, "core").await.unwrap().unwrap();
+    let before = fixture.services.audit.list(&fixture.root, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items;
+    let mut events = fixture.services.events.subscribe();
+    let database = fixture.database.clone();
+    drop(database.close());
+    let stopped = |result: &Result<(), ServiceError>| {
+        assert!(matches!(
+            result,
+            Err(ServiceError::AdmissionUnavailable { scope: "team", reason: rbit_storage::AdmissionReason::Stopped })
+        ));
+    };
+    stopped(
+        &tokio::time::timeout(WAIT, teams.create(&fixture.olga, &fixture.acme, input("fresh", "Unavailable"))).await.unwrap().map(|_| ()),
+    );
+    stopped(&tokio::time::timeout(WAIT, teams.update(&fixture.olga, &core, input("writers", "Unavailable"))).await.unwrap().map(|_| ()));
+    stopped(&tokio::time::timeout(WAIT, teams.delete(&fixture.olga, &core)).await.unwrap());
+    let current = fixture.database.teams().find_by_name(fixture.acme.account.id, "core").await.unwrap().unwrap();
+    assert_eq!(
+        (current.id, current.name, current.description, current.created_at),
+        (original.id, original.name, original.description, original.created_at)
+    );
+    assert!(fixture.database.teams().find_by_name(fixture.acme.account.id, "fresh").await.unwrap().is_none());
+    assert!(fixture.database.teams().find_by_name(fixture.acme.account.id, "writers").await.unwrap().is_none());
+    assert!(fixture.database.teams().is_member(core.team.id, fixture.bob.id()).await.unwrap());
+    let rocket = fixture.database.repositories().find_by_path("acme", "rocket").await.unwrap().unwrap();
+    assert_eq!(fixture.database.teams().grants_for_repository(rocket.repo.id).await.unwrap()[0].permission, Permission::Write);
+    assert_eq!(fixture.services.audit.list(&fixture.root, None, &rbit_services::admin::ListQuery::default()).await.unwrap().items, before);
+    assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+}

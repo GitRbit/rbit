@@ -271,7 +271,7 @@ fn not_in_org(team: &TeamContext, name: &str) -> ServiceError {
 
 fn name_taken(error: StorageError) -> ServiceError {
     match error {
-        StorageError::Conflict(_) => ServiceError::Invalid("a team with this name already exists".to_owned()),
+        StorageError::Conflict("team name") => ServiceError::Invalid("a team with this name already exists".to_owned()),
         other => other.into(),
     }
 }
