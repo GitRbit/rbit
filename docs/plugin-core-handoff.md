@@ -1,5 +1,72 @@
 # Plugin core handoff
 
+## Borrowed Actions step-log content — 2026-11-01
+
+The shared `StepLog` model and compiled `StepLogBody` now live in `rbit-actions-web`.
+Web job-preview and standalone log templates borrow the same component directly
+through `HtmlSafe`/`FastWritable`; existing buffers and URLs are not copied into an
+intermediate rendered String. The host retains callbacks, repository/read permission,
+run/job/current-task binding, bounded log selection and the existing ANSI/OSC and
+workflow-marker HTML formatter. Its preformatted lines are trusted escaped output
+by compiled-host contract, not sanitized/attested arbitrary external HTML.
+
+The existing aggregate 16 KiB / 128-line job budget, 32-step selection, standalone
+window limits, task log quota, one-second callback deadline and output caps remain
+host-owned. Both full shells retain page/repository chrome, theme/unread state,
+CSP, history restrictions and response leases. Polling IDs/targets and allowlisted
+Actions enhancement metadata remain in the host templates; raw-log streaming/gzip
+and sandbox headers remain specialized host transport. Expired windows suppress
+retained lines. No permissions, lifecycle, package trust or executable capability
+is added by this rendering move.
+
+Before extraction, the real HTTP regression passed at
+`bca8290c674d9b529d67e1c7dca5ac1017692f47`. It uses actual runner log/state calls,
+a configured 64 KiB task quota to cause truncation, finalization and storage's
+supported retention transition. Retained files deliberately remain for expired
+redaction checks; this is not filesystem sweeper/cleanup evidence. Each route and
+phase was measured independently:
+
+| Phase | Job document SQL statements | Standalone step SQL statements |
+|---|---:|---:|
+| Live | 16 | 12 |
+| Truncated, live | 16 | 12 |
+| Final | 16 | 12 |
+| Expired | 16 | 12 |
+
+All four job cells have exact sorted SQL-multiset SHA-256
+`bdf6608de611b73805feddfc454cd7be71a80759533ba8fff448df699628fd23`;
+all four standalone cells have
+`bf44062aeedeb4660d2a8c1f8418c5b384d7f7546d8a02df1b5307a09264c300`.
+The versioned length-prefix encoding retains exact SQL bytes and multiplicity.
+Local provenance is `target/actions-step-body-extraction/baseline-host-contract.json`.
+All eight post-extraction route/phase observations match their respective baseline
+counts and exact hashes, in both default and Actions-only profiles. These remain
+fixture-specific query observations, not a latency result or an assumed equality
+between the two routes. The regression was committed before production extraction
+as `284658f7bb2efc914b645f5af6d4e2bccb0745e4`.
+
+Final production-source validation passed all 649 Web tests and eight standalone
+Actions presentation tests, with zero failures and four expected ignores. The
+Actions-only profile passed 19 real HTTP tests and one unit test. A later diagnostic-only
+change to the existing run-page test passed its focused rerun: request-local plugin
+error tracing and the response body now accompany failure, with the same request,
+deadline, status/content assertions and no retries. This improves evidence on a
+recurrence; it does not identify or fix the preceding Windows failure's cause.
+
+Functional checks used unchanged Rust 1.95. Strict Rust 1.99 workspace/all-target
+Clippy passed with warnings denied. Formatting/whitespace, all six actual dependency
+guards, all 230 frontend tests and 1,908 messages/1,914 static references passed.
+Fresh preceding/candidate builds produced identical bytes for all 541 generated
+assets. No dependency or lockfile change is introduced by this log-body extraction.
+The leaf tests cover expiration suppression, escaping/navigation, borrowed shell
+composition, block/column boundaries and writer failure including the numerical
+2 MiB host cap; the small test shell/writer is not itself a production HTTP writer
+proof. Real-route document/security contracts are checked separately above.
+Local logs, hashes and scoped results live under `target/actions-step-body-extraction/`.
+No new full-workspace total or performance certification is claimed. Published-head
+hosted checks remain required. Other Actions presentation and host service ports
+remain unfinished; PR #47 and the broader goal stay active and unmerged.
+
 ## Optional Actions step-summary content — 2026-11-01
 
 `rbit-actions-web` now owns only the compiled step-summary content model/template.
@@ -44,6 +111,23 @@ source baseline. No new complete-workspace total is claimed. Hosted checks for
 this code remain required after publication; earlier hosted evidence belongs to
 its recorded revisions. The broader modularization goal and PR #47 remain active
 and unmerged.
+
+## Published renewal and i18n batch: hosted validation — 2026-11-01
+
+Exact head `8a7b2a93d2ac9da48aed9c50bf6dc5bf4d165a43`, pushed and triggered as
+GitRbit, completed [CI run 41295976577](https://github.com/GitRbit/rbit/actions/runs/41295976577)
+with ten successful jobs and one failed Windows job. Linux passed 2,508 tests
+with eight skipped. Windows passed 2,488 tests with five skipped; its sole failure
+was `actions_api::step_summaries_follow_their_jobs_whatever_order_they_were_claimed_in`,
+whose existing Actions run-page request returned 503 instead of 200.
+The published batch changed neither that handler/test nor its one-second callback
+budget. A timing-sensitive timeout is plausible but unproven: the retained failure
+contains neither the callback error nor a response body, and multiple error paths
+produce that status. Earlier passes and the total test duration do not establish
+its cause. The failure remains recorded, without a retry or deadline increase.
+The local status proof and failure analysis are under `target/ci-test-disk-draft/`.
+The later Actions presentation commits are outside this hosted revision and require
+their own published-head validation.
 
 ## Optional i18n presentation extraction — 2026-11-01
 

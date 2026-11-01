@@ -23,6 +23,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Shared borrowed Actions step-log content for job previews and standalone log
+  documents in `rbit-actions-web`. The host retains log permissions, current-task
+  selection, byte/line limits, escaping, polling, raw streaming and retention;
+  compiled content nests directly into each existing document shell.
+
 - Optional `rbit-actions-web` compiled step-summary content, nested directly into
   the existing host document. Web retains repository authorization, navigation,
   captured locale, bounded Markdown sanitization and response security; summary

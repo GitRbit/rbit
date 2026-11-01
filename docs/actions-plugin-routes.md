@@ -131,6 +131,31 @@ this compiled first-party contract neither sanitizes arbitrary HTML nor establis
 external-package trust. Source fallback and all ordinary fields remain escaped.
 Other Actions views and factory/service wiring remain in Web for later extractions.
 
+## Shared step-log presentation boundary
+
+`rbit-actions-web::StepLog` is the passive display model for a bounded log window.
+Its `StepLogBody` template borrows that model and its host-generated navigation URL
+inside both the job preview and standalone step-log document. The component owns
+only log-state notices, virtualized code rows, column sizing and earlier-line links.
+It does not fetch logs, choose a task, authorize a reader or create response headers.
+
+Web retains ANSI/OSC stripping and workflow-marker formatting. Lines cross this
+compiled first-party boundary already HTML-escaped, with the formatter's limited
+markup; `HtmlSafe` marks the compiled component, not arbitrary external log content.
+This contract neither sanitizes arbitrary HTML nor establishes package trust.
+Direct `FastWritable` nesting borrows existing line buffers/URLs and uses the outer
+bounded writer, without rendering an intermediate content String or adding a callback.
+
+The host still verifies repository/run/job/current-task identity, loads the selected
+log window and enforces the existing aggregate 16 KiB / 128-line job-preview budget,
+32-step selection and the standalone 16 KiB / 128-line window. Task log quotas and
+retention remain authoritative. Expired windows emit their notice without retained
+lines. Job and standalone wrappers keep their distinct step/polling anchors,
+allowlisted enhancement metadata, full page/repository navigation, appearance and
+security. One-second callback deadlines and existing output caps remain in force.
+Raw download routes continue to stream complete retained bytes with their sandbox
+policy and gzip negotiation; the shared HTML component does not replace transport.
+
 ## Compatibility and transport boundaries
 
 Legacy browser GET bookmarks redirect to the corresponding native page while Actions
