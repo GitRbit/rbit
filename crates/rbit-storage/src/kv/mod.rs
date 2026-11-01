@@ -21,19 +21,20 @@ use crate::{StorageError, error::kv_error};
 pub struct KvStore {
     db: Arc<redb::Database>,
     writer: rbit_authority_fence::WriterRegistration,
+    purge: Arc<tokio::sync::Semaphore>,
 }
 
 impl KvStore {
     pub(crate) fn open_bound(path: &Path, writer: rbit_authority_fence::WriterRegistration) -> Result<Self, StorageError> {
         let db = redb::Database::create(path).map_err(kv_error)?;
-        let store = Self { db: Arc::new(db), writer };
+        let store = Self { db: Arc::new(db), writer, purge: Arc::new(tokio::sync::Semaphore::new(1)) };
         store.sessions().ensure_table()?;
         store.insights().ensure_tables()?;
         Ok(store)
     }
 
     pub fn sessions(&self) -> SessionStore {
-        SessionStore::new(Arc::clone(&self.db), self.writer.clone())
+        SessionStore::new(Arc::clone(&self.db), self.writer.clone(), self.purge.clone())
     }
 
     pub(crate) fn is_bound_to(&self, writer: &rbit_authority_fence::WriterRegistration) -> bool {

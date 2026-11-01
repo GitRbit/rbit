@@ -81,7 +81,8 @@ pub struct Database {
     package_pool: SqlitePool,
     // Enrolled package policy, three account moderation, four principal creation,
     // two external identity linking, three personal access token, four SSH key,
-    // five recovery SQL, ten two-factor, four profile credential and two account rename methods.
+    // five recovery SQL, ten two-factor, four profile credential and two account rename methods,
+    // plus bound session write workers (purge certification is per write batch).
     // No duplicate-open, all-writer or physical ownership claim.
     authority_domain: rbit_authority_fence::Domain,
     /// Seals the credentials stores keep (see [`crate::sealing`]).
@@ -556,3 +557,6 @@ pub(crate) mod plans {
         assert_ne!(tiny, large, "{tiny:#?}");
     }
 }
+
+#[cfg(test)]
+mod kv_worker_tests;

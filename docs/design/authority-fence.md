@@ -3,7 +3,7 @@
 The authority fence coordinates policy mutations, user account creation, external
 identity bindings, personal access tokens, SSH keys, SQL recovery, authentication
 factors, profile credentials, account renames and administrator role changes,
-suspension and account deletion
+suspension, account deletion and bound session mutations
 within one `Database` and its clones. It stays closed: it cannot issue a generation,
 authorize execution, reopen admission or activate a package. Managed execution remains
 **Unavailable**.
@@ -104,8 +104,27 @@ in-process registration. Services reject a mismatched SQL/KV pair before their
 first query or bootstrap action; independently opened SQL handles stay different
 domains even when their file path is the same. The public unbound KV constructor
 is removed, and cache consumers retain their existing cache handle. This binding
-alone does not enroll session mutation workers or constructor transactions and
-does not establish physical ownership. Those remain prerequisites below.
+alone does not establish physical ownership or enroll constructor transactions.
+Those remain prerequisites below.
+
+Session put, renewal, deletion and account-wide revocation acquire admission before
+submitting blocking work. The actual worker owns the mutation through its complete
+synchronous result: losing its async waiter does not release the guard. A successful
+commit or explicit no-op abort settles inside that worker; error, panic or destruction
+of an acquired guard remains uncertain. Expired-session lookup enrolls only its lazy
+cleanup branch and preserves the transaction recheck against replacement or renewal.
+Live reads and account session listings remain outside authority serialization.
+
+Expiry purge keeps one read snapshot and timestamp through bounded worker handoffs.
+It examines at most 256 rows per read chunk, accumulating expired candidates until
+the existing 256-candidate batch limit or snapshot end. Pure scanning holds no
+authority permit or redb writer. A shared fail-fast reservation bounds concurrent
+purges to one per KV handle and its clones, retained with actual worker resources
+even after waiter loss. Each write batch separately owns and settles its mutation.
+Earlier committed batches remain known progress if a later scan fails or admission
+stops; non-success does not imply rollback. A failed actual write batch is uncertain.
+These checks do not make blocking IO cancellable or certify constructor writes,
+physical resource release or whole SQL-plus-KV service task settlement.
 
 A snapshot describes enrolled work at one instant. It grants no authority. A
 successful drain retains the shared permit in an owned guard, preventing enrolled
@@ -116,7 +135,7 @@ gate.
 ## Permanent writer closure
 
 Stopping writers is irreversible within the domain. It rejects later requests and
-prevents already queued requests from starting SQL. An acquired mutation may still
+prevents already queued requests from starting enrolled work. An acquired mutation may still
 finish; dropping it remains uncertain. Cloned registrations observe the same stop.
 
 Terminal writer settlement requires stopped admission, no active mutations and no
@@ -127,17 +146,17 @@ new authority changes. Queue counters are retained until their tickets are dropp
 
 Calling `Database::close()` stops its enrolled writers synchronously, even
 if the returned future is dropped without being polled. Awaiting that future closes
-the pools as before. This does not stop other stores' writers or prove that SQLite
-workers have exited.
+the pools as before. Bound session workers share this stop; unrelated domains
+remain independent. This does not prove that SQLite or redb resources have exited.
 
 ## Coverage before execution
 
 This increment covers policy writes, the four user-creation methods, external
 identity linking/unlinking, the three token methods, four direct key methods and
 five SQL recovery methods, ten factor methods, four profile credential methods,
-two account rename methods and the three moderation methods obtained from the same
-database handle or its clones. It does not coordinate independently opened SQLite
-pools, another process, complete SQL-plus-KV credential changes, session workers
+two account rename methods, the three moderation methods and bound session workers
+obtained from the same database handle or its clones. It does not coordinate independently opened SQLite
+pools, another process, complete SQL-plus-KV credential changes, constructor writes
 or other authority writers. It does not prove SQLite worker termination or physical store
 ownership. No runtime may use this
 partial coverage to issue execution authority.

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use rbit_core::{AccountId, Timestamp};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use serde::{Deserialize, Serialize};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::{StorageError, error::kv_error};
 
@@ -75,11 +76,12 @@ pub struct StoredSession {
 pub struct SessionStore {
     db: Arc<redb::Database>,
     writer: rbit_authority_fence::WriterRegistration,
+    purge: Arc<Semaphore>,
 }
 
 impl SessionStore {
-    pub(crate) fn new(db: Arc<redb::Database>, writer: rbit_authority_fence::WriterRegistration) -> Self {
-        Self { db, writer }
+    pub(crate) fn new(db: Arc<redb::Database>, writer: rbit_authority_fence::WriterRegistration, purge: Arc<Semaphore>) -> Self {
+        Self { db, writer, purge }
     }
 
     pub(super) fn is_bound_to(&self, writer: &rbit_authority_fence::WriterRegistration) -> bool {
@@ -98,40 +100,55 @@ impl SessionStore {
         tx.commit().map_err(kv_error)
     }
 
-    /// Inserts or replaces a session (and indexes it under its account).
-    pub async fn put(&self, digest: [u8; 32], record: SessionRecord) -> Result<(), StorageError> {
-        let encoded = record.encode()?;
+    // Admission precedes submission; the actual queued/running worker owns the
+    // mutation until its complete synchronous result, independently of its waiter.
+    async fn write<T, F>(&self, operation: F) -> Result<T, StorageError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&redb::Database) -> Result<T, StorageError> + Send + 'static,
+    {
+        let mutation = self.writer.begin().await.map_err(session_mutation_error)?;
         let db = Arc::clone(&self.db);
         tokio::task::spawn_blocking(move || {
-            let tx = db.begin_write().map_err(kv_error)?;
-            remove(&tx, &digest)?;
-            tx.open_table(SESSIONS).map_err(kv_error)?.insert(&digest, encoded.as_slice()).map_err(kv_error)?;
-            tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?.insert((record.account_id.0, &digest), ()).map_err(kv_error)?;
-            tx.commit().map_err(kv_error)
+            let result = operation(&db);
+            if result.is_ok() {
+                mutation.complete();
+            }
+            result
         })
         .await?
+    }
+
+    /// Inserts or replaces a session (and indexes it under its account).
+    pub async fn put(&self, digest: [u8; 32], record: SessionRecord) -> Result<(), StorageError> {
+        self.write(move |db| put_session(db, &digest, &record)).await
     }
 
     /// Renews a live session atomically, without recreating a revoked or expired one.
     /// Concurrent requests can only move its timestamps forward.
     pub async fn renew(&self, digest: [u8; 32], expires_at: Timestamp, last_seen_at: Timestamp) -> Result<bool, StorageError> {
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
+        self.write(move |db| {
             let tx = db.begin_write().map_err(kv_error)?;
-            {
+            let renewed = {
                 let mut table = tx.open_table(SESSIONS).map_err(kv_error)?;
                 let record = table.get(&digest).map_err(kv_error)?.and_then(|value| SessionRecord::decode(value.value()));
-                let Some(mut record) = record.filter(|record| !record.is_expired()) else {
-                    return Ok(false);
-                };
-                record.expires_at = record.expires_at.max(expires_at);
-                record.last_seen_at = record.last_seen_at.max(last_seen_at);
-                table.insert(&digest, record.encode()?.as_slice()).map_err(kv_error)?;
+                if let Some(mut record) = record.filter(|record| !record.is_expired()) {
+                    record.expires_at = record.expires_at.max(expires_at);
+                    record.last_seen_at = record.last_seen_at.max(last_seen_at);
+                    table.insert(&digest, record.encode()?.as_slice()).map_err(kv_error)?;
+                    true
+                } else {
+                    false
+                }
+            };
+            if !renewed {
+                tx.abort().map_err(kv_error)?;
+                return Ok(false);
             }
             tx.commit().map_err(kv_error)?;
             Ok(true)
         })
-        .await?
+        .await
     }
 
     /// Returns the session if it exists and has not expired. Expired sessions are removed lazily.
@@ -146,8 +163,7 @@ impl SessionStore {
 
         match record {
             Some(record) if record.is_expired() => {
-                let db = Arc::clone(&self.db);
-                tokio::task::spawn_blocking(move || {
+                self.write(move |db| {
                     let tx = db.begin_write().map_err(kv_error)?;
                     let expired = tx
                         .open_table(SESSIONS)
@@ -161,7 +177,7 @@ impl SessionStore {
                     }
                     tx.commit().map_err(kv_error)
                 })
-                .await??;
+                .await?;
                 Ok(None)
             }
             other => Ok(other),
@@ -169,13 +185,12 @@ impl SessionStore {
     }
 
     pub async fn delete(&self, digest: [u8; 32]) -> Result<(), StorageError> {
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
+        self.write(move |db| {
             let tx = db.begin_write().map_err(kv_error)?;
             remove(&tx, &digest)?;
             tx.commit().map_err(kv_error)
         })
-        .await?
+        .await
     }
 
     /// The account's unexpired sessions, most recently active first.
@@ -203,8 +218,7 @@ impl SessionStore {
 
     /// Deletes every session of `account` except `keep`; returns how many were removed.
     pub async fn delete_for_account(&self, account: AccountId, keep: Option<[u8; 32]>) -> Result<usize, StorageError> {
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
+        self.write(move |db| {
             let tx = db.begin_write().map_err(kv_error)?;
             let digests: Vec<[u8; 32]> = {
                 let index = tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?;
@@ -222,35 +236,102 @@ impl SessionStore {
             tx.commit().map_err(kv_error)?;
             Ok(removed)
         })
-        .await?
+        .await
     }
 
-    /// Deletes expired sessions from a read snapshot, rechecking each candidate under
-    /// a short write transaction. Active sessions never hold up other database writers
-    /// while they are scanned; renewal or replacement after the snapshot remains safe.
+    /// Deletes expired sessions from one snapshot/time, rechecking each candidate
+    /// in bounded write batches. Read chunks do not hold the authority serial.
+    /// Non-success can follow acknowledged earlier batches; it does not imply rollback.
     pub async fn purge_expired(&self) -> Result<usize, StorageError> {
+        self.purge_with(PurgeState::scan, PurgeState::flush).await
+    }
+
+    // Private static function-item seam: production is monomorphized with the
+    // fixed methods above; tests can inject a precisely labeled phase failure.
+    async fn purge_with<S, W>(&self, scan: S, write: W) -> Result<usize, StorageError>
+    where
+        S: Fn(PurgeState) -> Result<PurgeState, StorageError> + Clone + Send + 'static,
+        W: Fn(PurgeState, &redb::Database) -> Result<PurgeState, StorageError> + Clone + Send + 'static,
+    {
+        let reservation = self.purge.clone().try_acquire_owned().map_err(|_| StorageError::Conflict("session purge capacity"))?;
         let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let now = Timestamp::now();
-            let snapshot = db.begin_read().map_err(kv_error)?;
-            let table = snapshot.open_table(SESSIONS).map_err(kv_error)?;
-            let mut expired = Vec::with_capacity(PURGE_BATCH_SIZE);
-            let mut removed = 0;
-            for entry in table.iter().map_err(kv_error)? {
-                let (key, value) = entry.map_err(kv_error)?;
-                if SessionRecord::decode(value.value()).is_none_or(|record| record.expires_at <= now) {
-                    expired.push(*key.value());
-                    if expired.len() == PURGE_BATCH_SIZE {
-                        removed += remove_expired_batch(&db, &expired, now)?;
-                        expired.clear();
-                    }
+        let first_scan = scan.clone();
+        let mut state = tokio::task::spawn_blocking(move || first_scan(PurgeState::snapshot(&db, reservation)?)).await??;
+        loop {
+            if state.candidates.len() == PURGE_BATCH_SIZE || state.done {
+                if !state.candidates.is_empty() {
+                    let write = write.clone();
+                    state = self.write(move |db| write(state, db)).await?;
+                }
+                if state.done {
+                    return Ok(state.removed);
                 }
             }
-            removed += remove_expired_batch(&db, &expired, now)?;
-            Ok(removed)
-        })
-        .await?
+            let scan = scan.clone();
+            state = tokio::task::spawn_blocking(move || scan(state)).await??;
+        }
     }
+}
+
+fn put_session(db: &redb::Database, digest: &[u8; 32], record: &SessionRecord) -> Result<(), StorageError> {
+    let encoded = record.encode()?;
+    let tx = db.begin_write().map_err(kv_error)?;
+    remove(&tx, digest)?;
+    tx.open_table(SESSIONS).map_err(kv_error)?.insert(digest, encoded.as_slice()).map_err(kv_error)?;
+    tx.open_table(ACCOUNT_SESSIONS).map_err(kv_error)?.insert((record.account_id.0, digest), ()).map_err(kv_error)?;
+    tx.commit().map_err(kv_error)
+}
+
+// Range owns the original read snapshot even after its table/transaction handles
+// are dropped. Each handoff moves the reservation with actual worker resources.
+type SessionRange = redb::Range<'static, &'static [u8; 32], &'static [u8]>;
+struct PurgeState {
+    range: SessionRange,
+    now: Timestamp,
+    candidates: Vec<[u8; 32]>,
+    removed: usize,
+    done: bool,
+    _reservation: OwnedSemaphorePermit,
+}
+impl PurgeState {
+    fn snapshot(db: &redb::Database, reservation: OwnedSemaphorePermit) -> Result<Self, StorageError> {
+        let now = Timestamp::now();
+        let snapshot = db.begin_read().map_err(kv_error)?;
+        let table = snapshot.open_table(SESSIONS).map_err(kv_error)?;
+        let range = table.range::<&[u8; 32]>(..).map_err(kv_error)?;
+        Ok(Self { range, now, candidates: Vec::with_capacity(PURGE_BATCH_SIZE), removed: 0, done: false, _reservation: reservation })
+    }
+
+    fn scan(mut self) -> Result<Self, StorageError> {
+        for _ in 0..PURGE_BATCH_SIZE {
+            if self.candidates.len() == PURGE_BATCH_SIZE {
+                break;
+            }
+            let Some(entry) = self.range.next() else {
+                self.done = true;
+                break;
+            };
+            let (key, value) = entry.map_err(kv_error)?;
+            if SessionRecord::decode(value.value()).is_none_or(|record| record.expires_at <= self.now) {
+                self.candidates.push(*key.value());
+            }
+        }
+        Ok(self)
+    }
+
+    fn flush(mut self, db: &redb::Database) -> Result<Self, StorageError> {
+        let removed = remove_expired_batch(db, &self.candidates, self.now)?;
+        self.removed = self.removed.checked_add(removed).ok_or_else(|| StorageError::Corrupt("session purge count overflow".into()))?;
+        self.candidates.clear();
+        Ok(self)
+    }
+}
+
+fn session_mutation_error(error: rbit_authority_fence::BeginError) -> StorageError {
+    StorageError::Conflict(match error {
+        rbit_authority_fence::BeginError::Capacity => "session mutation capacity",
+        rbit_authority_fence::BeginError::Stopped => "session writer stopped",
+    })
 }
 
 /// A snapshot may contain keys that another request has replaced or revoked.
@@ -294,7 +375,7 @@ mod tests {
     fn store() -> (tempfile::TempDir, SessionStore) {
         let dir = tempfile::tempdir().unwrap();
         let db = redb::Database::create(dir.path().join("kv.redb")).unwrap();
-        let store = SessionStore::new(Arc::new(db), rbit_authority_fence::Domain::new().writer());
+        let store = SessionStore::new(Arc::new(db), rbit_authority_fence::Domain::new().writer(), Arc::new(Semaphore::new(1)));
         store.ensure_table().unwrap();
         (dir, store)
     }
@@ -444,3 +525,6 @@ mod tests {
         assert_eq!(store.delete_for_account(AccountId(1), None).await.unwrap(), 1);
     }
 }
+
+#[cfg(test)]
+mod worker_tests;
