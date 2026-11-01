@@ -22,20 +22,22 @@ struct Request(Arc<State>);
 struct Document;
 impl RunsHost for Host {
     type Request = Request;
-    async fn connect(&self, kind: RunsPageKind, _: PageContext, _: FormActions) -> Result<Request, PageError> {
-        let state = self.0.upgrade().ok_or(PageError::Unavailable)?;
-        state.calls.lock().unwrap().push(Call::Connect(kind));
-        if !state.allowed {
-            return Err(PageError::Unavailable);
-        }
-        Ok(Request(state))
+    fn connect(&self, kind: RunsPageKind, _: PageContext, _: FormActions) -> impl Future<Output = Result<Request, PageError>> + Send {
+        std::future::ready((|| {
+            let state = self.0.upgrade().ok_or(PageError::Unavailable)?;
+            state.calls.lock().unwrap().push(Call::Connect(kind));
+            if !state.allowed {
+                return Err(PageError::Unavailable);
+            }
+            Ok(Request(state))
+        })())
     }
 }
 impl RunsRequest for Request {
     type Document = Document;
-    async fn render(self, query: RunsQuery, workflow: Option<&str>) -> Result<CompiledPage<Document>, PageError> {
+    fn render(self, query: RunsQuery, workflow: Option<&str>) -> impl Future<Output = Result<CompiledPage<Document>, PageError>> + Send {
         self.0.calls.lock().unwrap().push(Call::Render(query, workflow.map(str::to_owned)));
-        CompiledPage::new("Actions", Document)
+        std::future::ready(CompiledPage::new("Actions", Document))
     }
 }
 fn host(allowed: bool) -> (Arc<State>, Host, Arc<Mutex<Vec<Call>>>) {
