@@ -30,6 +30,7 @@ pub struct ActionsSlot {
 #[derive(Debug)]
 struct Inner {
     ctx: ServiceContext,
+    routes: crate::actions_routes::ActionsRoutes,
     revision: AtomicU64,
     shutting_down: AtomicBool,
     status: RwLock<Option<PluginStatus>>,
@@ -63,6 +64,7 @@ struct EmbeddedActions {
     observed_scope: Arc<RwLock<Option<PluginScope>>>,
     cancel_on_stop: AtomicBool,
     ui: UiRegistry,
+    routes: crate::actions_routes::ActionsRoutes,
     ui_registration: Arc<Mutex<Option<UiRegistration>>>,
 }
 
@@ -80,12 +82,14 @@ impl Plugin for EmbeddedActions {
     }
     fn start(&self, scope: PluginScope) -> PluginFuture {
         *self.observed_scope.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(scope.clone());
+        let routes = self.routes.stage_active(&scope);
         let registration = self.ui.stage(self.manifest.id.clone(), &scope, scope.generation(), crate::ui::actions());
         let ui_registration = Arc::clone(&self.ui_registration);
         let service = ActionsService::with_scope(self.ctx.clone(), scope);
         *self.staged.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(service.clone());
         let ctx = self.ctx.clone();
         Box::pin(async move {
+            routes.map_err(|error| error.to_string())?;
             *ui_registration.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
                 Some(registration.map_err(|error| error.to_string())?);
             reconcile_pending(&ctx).await.map_err(|error| error.to_string())?;
@@ -126,7 +130,13 @@ async fn reconcile_pending(ctx: &ServiceContext) -> Result<(), ServiceError> {
 
 impl ActionsSlot {
     #[cfg(not(feature = "actions"))]
-    pub(crate) async fn new(ctx: ServiceContext, _ui: rbit_plugin_runtime::UiRegistry) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(
+        ctx: ServiceContext,
+        _ui: rbit_plugin_runtime::UiRegistry,
+        pages: rbit_plugin_web::PageRegistry,
+        mutations: rbit_plugin_web::MutationRegistry,
+    ) -> Result<Self, ServiceError> {
+        let routes = crate::actions_routes::ActionsRoutes::new(pages, mutations);
         let enabled = ctx.database.plugin_settings().desired_enabled(ACTIONS_ID).await?.unwrap_or(ctx.config.actions.enabled);
         if enabled {
             Err(ServiceError::Invalid("this distribution was built without Actions".to_owned()))
@@ -134,6 +144,7 @@ impl ActionsSlot {
             Ok(Self {
                 inner: Arc::new(Inner {
                     ctx,
+                    routes,
                     revision: AtomicU64::new(1),
                     shutting_down: AtomicBool::new(false),
                     status: RwLock::new(None),
@@ -142,7 +153,13 @@ impl ActionsSlot {
         }
     }
     #[cfg(feature = "actions")]
-    pub(crate) async fn new(ctx: ServiceContext, ui: UiRegistry) -> Result<Self, ServiceError> {
+    pub(crate) async fn new(
+        ctx: ServiceContext,
+        ui: UiRegistry,
+        pages: rbit_plugin_web::PageRegistry,
+        mutations: rbit_plugin_web::MutationRegistry,
+    ) -> Result<Self, ServiceError> {
+        let routes = crate::actions_routes::ActionsRoutes::new(pages, mutations);
         #[cfg(feature = "actions")]
         {
             reconcile_pending(&ctx).await?;
@@ -165,6 +182,7 @@ impl ActionsSlot {
                 observed_scope: Arc::clone(&observed_scope),
                 cancel_on_stop: AtomicBool::new(false),
                 ui,
+                routes: routes.clone(),
                 ui_registration: Arc::clone(&ui_registration),
             });
             let mut manager = PluginManager::new(semver::Version::new(1, 0, 0), Duration::from_secs(30));
@@ -174,6 +192,7 @@ impl ActionsSlot {
             let slot = Self {
                 inner: Arc::new(Inner {
                     ctx,
+                    routes,
                     revision: AtomicU64::new(1),
                     shutting_down: AtomicBool::new(false),
                     status: RwLock::new(status),
@@ -197,6 +216,33 @@ impl ActionsSlot {
             }
             Ok(slot)
         }
+    }
+    #[allow(clippy::unused_async)] // Unavailable builds have no activation controller to await.
+    pub(crate) async fn bind_routes(&self, routes: crate::ActionsRouteBundle) -> Result<(), ServiceError> {
+        if self.inner.shutting_down.load(Ordering::Acquire) {
+            return Err(ServiceError::Conflict("server shutdown"));
+        }
+        #[cfg(feature = "actions")]
+        let _controller = self.inner.controller.lock().await;
+        if self.inner.shutting_down.load(Ordering::Acquire) {
+            return Err(ServiceError::Conflict("server shutdown"));
+        }
+        self.inner.routes.bind(routes)?;
+        #[cfg(feature = "actions")]
+        if self.is_some() {
+            let scope = self
+                .inner
+                .observed_scope
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+                .ok_or(ServiceError::Conflict("Actions activation"))?;
+            if let Err(error) = self.inner.routes.stage_active(&scope).and_then(|()| self.inner.routes.publish_active()) {
+                self.unpublish();
+                return Err(error);
+            }
+        }
+        Ok(())
     }
     #[cfg(feature = "actions")]
     pub fn snapshot(&self) -> Option<ActionsService> {
@@ -374,11 +420,16 @@ impl ActionsSlot {
             self.unpublish();
             return Err(error);
         }
+        if let Err(error) = self.inner.routes.publish_active() {
+            self.unpublish();
+            return Err(error);
+        }
         Ok(())
     }
     #[cfg(feature = "actions")]
     fn unpublish(&self) {
         self.inner.ctx.actions_availability.set_enabled(false);
+        self.inner.routes.withdraw_active();
         if let Some(registration) = &*self.inner.ui_registration.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
             registration.unpublish();
         }
@@ -395,6 +446,7 @@ impl ActionsSlot {
     /// Close admission synchronously without changing saved intent or cancelling runs.
     pub(crate) fn prepare_shutdown(&self) {
         self.inner.shutting_down.store(true, Ordering::Release);
+        self.inner.routes.close();
         #[cfg(feature = "actions")]
         self.unpublish();
     }

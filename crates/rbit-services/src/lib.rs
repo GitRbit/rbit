@@ -8,7 +8,9 @@ pub use rbit_services_base::*;
 use rbit_storage::{Database, KvStore};
 use std::{ops::Deref, sync::Arc};
 mod actions_plugin;
+mod actions_routes;
 pub use actions_plugin::ActionsSlot;
+pub use actions_routes::ActionsRouteBundle;
 mod i18n_plugin;
 mod i18n_routes;
 pub use i18n_plugin::{I18nSlot, LanguagePackInfo};
@@ -17,6 +19,8 @@ pub mod ui;
 pub use rbit_plugin_web as plugin_pages;
 pub use rbit_plugin_web as plugin_mutations;
 pub use rbit_plugin_web as request_hooks;
+#[cfg(test)]
+mod actions_route_tests;
 #[cfg(test)]
 mod i18n_route_tests;
 #[cfg(test)]
@@ -47,9 +51,9 @@ impl Services {
         // Feature preparation has large state; keep it out of every caller's async frame.
         let core = Arc::new(Box::pin(rbit_services_base::Services::new(config, database, kv)).await?);
         let ui = rbit_plugin_runtime::UiRegistry::default();
-        let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone())).await?;
         let pages = plugin_pages::PageRegistry::new();
         let mutations = plugin_mutations::MutationRegistry::new();
+        let actions = Box::pin(ActionsSlot::new(core.context().clone(), ui.clone(), pages.clone(), mutations.clone())).await?;
         let i18n = Box::pin(I18nSlot::new(core.context().clone(), ui.clone(), pages.clone(), mutations.clone())).await?;
         Ok(Self { core, actions, i18n, ui, request_hooks: request_hooks::RequestHookRegistry::new(), pages, mutations })
     }
@@ -99,6 +103,10 @@ impl Services {
     /// Bind native presentation factories before serving HTTP. Blueprints must capture weak host references.
     pub async fn bind_i18n_routes(&self, active: I18nRouteBundle, management: I18nRouteBundle) -> Result<(), ServiceError> {
         self.i18n.bind_routes(active, management).await
+    }
+    /// Bind native Actions factories once before serving HTTP, using weak host captures.
+    pub async fn bind_actions_routes(&self, routes: ActionsRouteBundle) -> Result<(), ServiceError> {
+        self.actions.bind_routes(routes).await
     }
     pub fn actions_status(&self) -> std::future::Ready<Option<PluginStatus>> {
         std::future::ready(self.actions.status())
