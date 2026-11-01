@@ -1,5 +1,24 @@
 # Plugin core handoff
 
+## Runs/workflow document baseline — 2026-11-01
+
+Before extracting the runs/workflow GET request port, real-router tests capture
+separate private-repository owner cells on production `274f598`. The filtered runs
+page performs 12 SQL statements; the disabled selected workflow performs 16. Exact
+sorted SQL bytes and multiplicity match in default and Actions-only builds. Each
+profile has its own pinned normalized full-document digest because excluding i18n
+changes the host publication revision. Owner forms, shell/CSP/theme/unread state,
+filters/polling and anonymous/non-administrator outsider concealment are checked.
+
+Normalization replaces CSRF values, complete time elements, validated footer
+request-duration text, the numeric update-observation revision and the random
+English catalog revision base. It preserves the locale and aggregate plugin
+revision delta, notice state, markup and other values. Tests reject malformed
+durations and distinguish changed publication deltas. This is fixture-specific
+SQL/normalized-document evidence, not raw HTML equality, individual registry
+revision equality or a latency/allocation result. Failed draft baseline runs and
+source corrections remain in ignored local evidence.
+
 ## Isolated i18n warm HTTP criterion met — 2026-11-01
 
 The [isolated i18n report](performance-i18n-extraction.md) closes the registered

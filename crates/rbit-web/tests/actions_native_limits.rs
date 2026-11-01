@@ -256,3 +256,6 @@ mod native_actions_summary_host_contract;
 
 #[path = "actions_log_host_contract.rs"]
 mod native_actions_log_host_contract;
+
+#[path = "actions_runs_host_contract.rs"]
+mod native_actions_runs_host_contract;
