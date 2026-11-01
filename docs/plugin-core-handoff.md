@@ -1,5 +1,52 @@
 # Plugin core handoff
 
+## Bounded backend policy renewal — 2026-11-01
+
+The SDK renewal comparisons, migration `0065`, epoch-aware storage and exclusive
+Services maintenance owner now support an explicit sealed-epoch transition. The
+caller supplies a known operation key and the observed fingerprint/seal operation;
+current administrator authorization, exact CAS and retained graph validation share
+the FULL transaction. Host-generated epoch entropy and descriptor-version-2
+fingerprints establish a fresh empty policy epoch. Migration preserves version-1
+fingerprints and original canonical audit bytes rather than recomputing old identity.
+
+Retention is fixed at three epochs (two retired plus one current) and two immutable
+renewal receipts. A third retirement refuses recovery and leaves the gate sealed;
+no pruning, export or unlimited recovery is implemented. Ordinary policy keys,
+renewal keys and rejected-capacity seal keys remain reserved across retained epochs.
+Historical replay reports evidence without restoring old heads, and stale unrecorded
+fingerprints cannot exploit a new `Absent` state. Reviews, selections, grants and
+enabled intent never carry forward. Archive-store capacity is separate and unchanged.
+
+The Services maintenance owner is exclusive with ordinary policy mutations, survives
+waiter loss and remains tracked through commit/shutdown drain. Backup format 5 now
+validates the frozen legacy five-table `0064` decoder or all seven current tables,
+including retired/current epochs, renewal links and bounded histories. Historical
+schema detection never ignores a partial epoch graph because its marker is absent.
+Retained archives remain part of the backup; epoch duplication does not duplicate
+shared digest objects. Restore changes no executable authority.
+
+Maintenance HTTP/CLI adapters are **not yet exposed**; ordinary policy HTTP/CLI
+commands do not rotate epochs or query renewal receipts. Every package remains
+execution unavailable, broker grants remain empty, and future managed admission
+must fence retired generations and host calls before any runtime integration.
+Export/pruning, remaining recovery, native worker/sandbox adapters and first-party
+service/Web separation remain unfinished. PR #47 and the broader goal stay active.
+
+Focused local checks passed 38 SDK tests, 14 policy storage tests, two epoch codec
+tests, 19 upgrade tests and four policy service tests in each of the default and
+core-only profiles. The complete server suite passed 42 tests, including renewed
+backup/restore, malformed inventory scalar rejection and restart. The populated
+legacy-policy cases use the actual SQLx migrator for both Open and already-Sealed
+version-1 graphs, preserving canonical audit bytes and selected reviews. The complete
+workspace suite passed 2,500 tests, zero failures and eight expected ignores across
+74 test summaries. Strict Rust 1.99 workspace/all-target lint, formatting,
+whitespace and all four dependency guards passed. After documentation markup and
+a test-only string-assignment lint fix, all 14 policy storage tests passed again.
+These local results do not certify hosted/native Windows behavior. Exact-head CI
+remains required after publication. Earlier sections retain the validation
+provenance of preceding stages.
+
 ## Bounded policy administration adapters — 2026-11-01
 
 Admin-PAT HTTP routes and `rbit plugin policy` commands now expose explicit
@@ -26,8 +73,11 @@ ignores, and the complete server suite passed 40 tests. Strict Rust 1.99
 workspace/all-target Clippy, formatting, whitespace and dependency guards passed.
 After extracting two long test scenarios into helpers, all six HTTP policy cases
 and the hook-recovery integration scenario passed again. Functional tests used
-unchanged Rust 1.95. Exact-head hosted CI remains required after publication.
-The broader modularization goal and PR #47 remain active.
+unchanged Rust 1.95. Hosted head `751aa01` passed all 11 CI jobs, including
+2,481 Linux tests, 2,462 native Windows tests, release, core-only and both optional
+profiles. The three Windows package-upload guards passed on their native platform.
+That evidence covers the adapter head, before the renewal backend above. The
+broader modularization goal and PR #47 remain active.
 
 ## Durable review and candidate policy — 2026-11-01
 

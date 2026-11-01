@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- Validate package backup inventory scalar types and complete byte lengths before
+  loading stored strings, including malformed values with embedded NUL bytes.
+
 - Confine CLI API requests to the configured instance origin and deployment path,
   and reject redirects so credentials and private request bodies are never replayed.
 
@@ -19,6 +22,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wikilinks, the only affected option.
 
 ### Added
+
+- Explicit backend renewal of a sealed policy epoch with exact fingerprint/seal
+  comparisons, fresh host identity, exclusive owned maintenance and retained audit.
+  Three epochs and two renewals bound recovery; old decisions never carry forward.
+  Backup validates both legacy policy snapshots and retained epoch graphs. Renewal
+  HTTP/CLI adapters and export/pruning remain future work; execution stays unavailable.
 
 - Admin-PAT HTTP policy endpoints and `rbit plugin policy` commands for explicit
   prepare, exact-package inspection, review, selection, clearing and retained-key

@@ -131,14 +131,15 @@ Review/selection/clear operations use caller-known keys and canonical bounded
 receipts. Exact replay acknowledges history without restoring old heads. Bootstrap
 has no operation receipt; after a lost response, inspect the authoritative gate.
 
-Bounds are 4,096 reviews, 4,096 receipts and 1,024 heads of each kind. A valid mutation
-that would exceed a bound or exhaust a revision commits only a permanent seal and
-its bounded provenance, then reports that seal. It changes no review, candidate or
-receipt. Invalid/stale requests cannot seal policy. The seal survives restart and
-ordinary APIs cannot reopen it. Maintenance, pruning and epoch renewal are not
-implemented. Future adapters must enforce the seal against starts and existing
-generation/host-call admission before any live integration is accepted; this
-metadata increment proves no worker revocation.
+Each epoch permits 4,096 reviews, 4,096 ordinary receipts and 1,024 heads of each
+kind. A valid mutation that would exceed a bound or exhaust a revision commits only
+a persistent epoch seal and its bounded provenance, then reports that seal. It
+changes no review, candidate or receipt. Invalid/stale requests cannot seal policy.
+The seal survives restart and ordinary review/selection APIs cannot reopen it.
+Explicit backend renewal below creates a fresh epoch while preserving the sealed
+one. Future adapters must fence starts, existing generations and host-call admission
+before any live integration is accepted; this metadata stage proves no worker
+revocation.
 
 Two owned policy mutations may run at once. A dropped waiter leaves the transaction
 owner intact, and shutdown closes admission and drains it before stores close.
@@ -146,6 +147,57 @@ Unused policy starts no worker, timer or query. Embedded Actions/i18n compositio
 enabled intent and presentation remain separate. Backup validates these bounded
 records in its immutable SQLite snapshot and preserves the epoch and seal; restore
 never executes a candidate.
+
+## Bounded backend epoch renewal
+
+Migration `0065` retains at most three policy epochs: one current and two retired.
+At most two successful renewals fit this fixed retention budget. Within each epoch
+the ordinary history/receipt/head bounds above remain unchanged. Renewal is finite
+policy-capacity recovery; it does not reclaim archive object/version/installation
+operation slots. Export, pruning, deletion and unlimited epoch rotation are not
+implemented. A request beyond the retention budget leaves the current gate sealed.
+
+The strict SDK `PackagePolicyRenewalRequest` carries the observed host fingerprint
+and seal operation key, with a complete 1 KiB request bound. A caller supplies a
+separate known operation key before invoking the backend. The active administrator,
+exact sealed fingerprint/seal key, retained graph and global operation-key identity
+are checked inside the FULL transaction. The host generates fresh epoch entropy
+outside that transaction; it atomically retires the sealed epoch, records the
+immutable renewal receipt and publishes an empty current epoch with a new
+fingerprint. Current descriptor version 2 binds the finite policy limits; migrated
+version 1 fingerprints and canonical historical bytes remain unchanged.
+
+Review heads, selection heads, grants and enabled intent do not carry into the new
+epoch. Inspecting the same archive initially finds no current review or selection;
+a new decision needs its new fingerprint and revision expectations. An old unrecorded
+request remains stale even if it expected `Absent`. Retained ordinary and renewal
+receipts remain readable. Accepted exact replay reports history without applying
+it again; a sealed current gate still rejects ordinary mutation replay. Policy
+ordinary receipts, renewal receipts and rejected-capacity seal keys cannot be reused
+for another command across retained epochs. A new epoch never inherits native trust
+or supplies a Wasm-to-native fallback.
+
+`Services.package_policy.renew` owns exclusive maintenance admission against the
+ordinary policy mutation owners; it refuses overlap rather than running competing
+rotations. Losing a waiter leaves that owner tracked through commit, and shutdown
+closes admission and drains it before stores close. Immutable renewal receipts are
+recoverable through the backend `renewal_operation` method. After an uncertain
+response, inspect that receipt and the current gate before an explicit retry with
+the same actor, request and key; missing receipts never establish rollback.
+
+Maintenance renewal is **not exposed through HTTP or the CLI yet**. Existing
+`rbit plugin policy` commands and HTTP review/select/clear routes remain unchanged;
+the ordinary operation endpoint does not expose renewal receipts. The backend
+mechanism grants no executable authority: execution remains unavailable for every
+package, nonempty broker grants are rejected, and native workers/sandbox enforcement
+remain subsequent stages.
+
+Backup format 5 validates both the frozen five-table `0064` graph and the complete
+seven-table `0065` graph, rejecting partial schemas even when migration markers are
+missing. All retained epochs, renewal links, global keys and bounded ordinary
+histories belong to the same immutable SQLite snapshot. Retired archive references
+remain retained; shared object bytes are copied once per digest. Restore preserves
+old audit and current policy without executing or enabling a candidate.
 
 ## Recovery boundary
 
